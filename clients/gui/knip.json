@@ -1,0 +1,44 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignore": [
+    "**/dist/**",
+    "**/generated/**",
+    "**/upstream/**",
+    "**/scripts/**",
+    "**/design-system/**",
+    "**/native/**",
+    "**/acceptance/**",
+    "**/test-fixtures/**",
+    "**/fixtures/**",
+    "**/*.snap",
+    "app/src/vendor/**",
+    "packages/gen-ui/assets/**",
+    "oxlint-plugin-areal/**"
+  ],
+  "ignoreDependencies": ["@axe-core/playwright", "ajv"],
+  "workspaces": {
+    "app": {
+      "entry": [
+        "src/main.cjs",
+        "src/core/preload.cjs",
+        "src/core/**/*.ts",
+        "src/ipc/host-ticket.ts",
+        "src/themes/controls.css"
+      ],
+      "project": ["src/**/*"]
+    },
+    "renderer": {
+      "entry": [
+        "src/main.tsx",
+        "src/**/*.{ts,tsx}",
+        "remote-web/remote.css",
+        "vite.mobile.config.ts"
+      ],
+      "project": ["src/**/*", "remote-web/remote.css", "vite*.ts"]
+    },
+    "packages/*": {
+      "entry": ["src/**/*.{js,jsx,mjs,cjs,ts,tsx}", "guest.ts"],
+      "project": ["src/**/*", "guest.ts"]
+    }
+  }
+}

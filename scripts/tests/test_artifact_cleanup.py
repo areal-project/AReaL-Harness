@@ -97,6 +97,64 @@ class CleanupFixture(unittest.TestCase):
 
 
 class TemporaryWorktreeCacheTest(CleanupFixture):
+    def test_explicit_generic_project_with_nested_cargo_target(self):
+        foreign = self.root / "foreign project"
+        (foreign / "daemon").mkdir(parents=True)
+        (foreign / "daemon/Cargo.toml").write_text(
+            '[package]\nname = "foreign-daemon"\nversion = "0.1.0"\n'
+        )
+        (foreign / ".gitignore").write_text("target/\n")
+        self.git("-C", str(foreign), "init", "-q")
+        self.git("-C", str(foreign), "add", ".")
+        self.git(
+            "-C",
+            str(foreign),
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=test@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-qm",
+            "fixture",
+        )
+        profile = foreign / "daemon/target/debug"
+        (profile / "deps").mkdir(parents=True)
+        (profile / ".cargo-lock").touch()
+        (profile / "deps/cache").write_bytes(b"intermediate")
+        (profile / "daemon").write_bytes(b"keep executable")
+        (profile / "daemon").chmod(0o755)
+        report = self.run_cleanup(
+            "--project", str(foreign), "--include-primary", "--min-idle-hours", "0", "--apply"
+        )
+        self.assertEqual(report["roots"], [str(foreign)])
+        self.assertEqual(report["worktree_targets"][0]["target"], str(foreign / "daemon/target"))
+        self.assertFalse((profile / "deps/cache").exists())
+        self.assertTrue((profile / "daemon").exists())
+        self.assertTrue((self.repo / "target/debug/deps/cache").exists())
+
+    def test_primary_opt_in_retains_recent_dirty_and_active_profiles(self):
+        profile = self.repo / "target/debug"
+        preview = self.run_cleanup("--include-primary")
+        self.assertIn(str(self.repo), preview["roots"])
+        primary = [i for i in preview["items"] if i["scope"] == str(self.repo)]
+        self.assertTrue(primary)
+        self.assertTrue(all(i["status"] == "retained-recent" for i in primary))
+        (self.repo / "uncommitted.txt").write_text("keep")
+        dirty = self.run_cleanup("--include-primary", "--min-idle-hours", "0", "--apply")
+        primary = [i for i in dirty["items"] if i["scope"] == str(self.repo)]
+        self.assertTrue(all(i["status"] == "retained-worktree-dirty" for i in primary))
+        self.assertTrue((profile / "deps/cache").exists())
+        (self.repo / "uncommitted.txt").unlink()
+        with (profile / ".cargo-lock").open("r+") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.run_cleanup("--include-primary", "--min-idle-hours", "0", "--apply")
+            self.assertTrue((profile / "deps/cache").exists())
+        self.run_cleanup("--include-primary", "--min-idle-hours", "0", "--apply")
+        self.assertFalse((profile / "deps/cache").exists())
+        self.assertTrue((profile / "areal").exists())
+
     def test_managed_worktrees_collect_loose_intermediates_without_cache_directories(self):
         for checkout, tool in [(self.old, "Codex"), (self.new, "T3 Code")]:
             destination = self.root / tool / "worktrees" / checkout.name
@@ -334,7 +392,12 @@ class TemporaryWorktreeCacheTest(CleanupFixture):
             observations, error = cleanup.activity([self.old])
             self.assertIsNone(error)
             self.assertEqual(
-                {o["path"] for o in observations if o["pid"] == child.pid}, {str(inside)}
+                {
+                    o["path"]
+                    for o in observations
+                    if o["pid"] == child.pid and o["type"] == "open-file"
+                },
+                {str(inside)},
             )
         finally:
             child.communicate(timeout=10)
@@ -501,6 +564,95 @@ class RustIntermediatesTest(CleanupFixture):
 
 
 class ArtifactCleanupTest(unittest.TestCase):
+    def test_validation_recheck_detects_nested_changes_without_parent_mtime_change(self):
+        spec = importlib.util.spec_from_file_location("cleanup_validation", SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as tmp:
+            scenario = Path(tmp).resolve()
+            app = scenario / "app"
+            (app / "nested").mkdir(parents=True)
+            child = app / "nested/data"
+            child.write_text("before")
+            item = {"path": str(app), "validation_scenario": str(scenario)}
+            self.assertIsNone(module.validation_retention(item, 0))
+            parent_time = app.stat().st_mtime_ns
+            child.write_text("after modification")
+            self.assertEqual(app.stat().st_mtime_ns, parent_time)
+            self.assertEqual(module.validation_retention(item, 0), "skipped-changed-or-active")
+
+    def test_validation_retention_is_per_scenario_and_preserves_unknown_source(self):
+        with tempfile.TemporaryDirectory(prefix="validation retention ") as tmp:
+            parent = Path(tmp).resolve()
+            root = parent / "scratch"
+            for scenario in ["one", "two"]:
+                for i in range(3):
+                    folder = root / scenario / f"round-{i}"
+                    app = folder / "AReaL Harness GUI.app"
+                    resources = app / "Contents/Resources"
+                    resources.mkdir(parents=True)
+                    (resources / "app.asar").write_bytes(f"{scenario}-{i}".encode())
+                    core = resources / "areal-core"
+                    files = {}
+                    for name in [
+                        "bin/areal",
+                        "libexec/areal/areal-runtime",
+                        "libexec/areal/areal-runtime-fs",
+                    ]:
+                        binary = core / name
+                        binary.parent.mkdir(parents=True, exist_ok=True)
+                        binary.write_bytes(b"core")
+                        files[name] = hashlib.sha256(b"core").hexdigest()
+                    (core / "manifest.json").write_text(
+                        json.dumps({"coreBuild": {"inputHash": str(i)}, "files": files})
+                    )
+                    exe = app / "Contents/MacOS/AReaL Harness GUI"
+                    exe.parent.mkdir()
+                    exe.write_bytes(b"gui")
+                    with (app / "Contents/Info.plist").open("wb") as f:
+                        plistlib.dump({"CFBundleShortVersionString": "1.0"}, f)
+                    record = folder / "package-evidence.json"
+                    record.write_text(json.dumps({"app": str(app)}))
+                    os.utime(record, (1000 + i, 1000 + i))
+                (root / scenario / "source.rs").write_text("keep source")
+                (root / scenario / "unknown.zip").write_bytes(b"not a known archive")
+            command = [
+                sys.executable,
+                str(SCRIPT),
+                "--validation-artifacts",
+                "--root",
+                str(root),
+                "--keep",
+                "2",
+                "--json",
+            ]
+            corrupt = (
+                root / "two/round-2/AReaL Harness GUI.app/Contents/Resources/areal-core/bin/areal"
+            )
+            corrupt.write_bytes(b"corrupt")
+            checked = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(checked.returncode, 0, checked.stderr)
+            self.assertFalse(any("/two/" in i["path"] for i in json.loads(checked.stdout)["items"]))
+            corrupt.write_bytes(b"core")
+            recent = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(recent.returncode, 0, recent.stderr)
+            self.assertEqual(
+                {i["status"] for i in json.loads(recent.stdout)["items"]}, {"retained-recent"}
+            )
+            applied = subprocess.run(
+                command
+                + ["--min-idle-hours", "0", "--apply", "--report", str(parent / "receipt.json")],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(applied.returncode, 0, applied.stderr)
+            for scenario in ["one", "two"]:
+                self.assertFalse((root / scenario / "round-0/AReaL Harness GUI.app").exists())
+                self.assertTrue((root / scenario / "round-1/AReaL Harness GUI.app").exists())
+                self.assertTrue((root / scenario / "round-0/package-evidence.json").exists())
+                self.assertTrue((root / scenario / "source.rs").exists())
+                self.assertTrue((root / scenario / "unknown.zip").exists())
+
     def test_preview_keeps_five_rounds_and_never_changes_artifacts(self):
         with tempfile.TemporaryDirectory(prefix="artifact cleanup ") as tmp:
             root = Path(tmp).resolve() / "artifacts"

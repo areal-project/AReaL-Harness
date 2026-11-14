@@ -150,6 +150,21 @@ fn installer_links_deduplicate_and_can_reference_global_canonical_skills() {
 
 #[cfg(unix)]
 #[test]
+fn user_skill_directory_link_can_target_external_directory() {
+    use std::os::unix::fs::symlink;
+    let user = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let target = skill(outside.path(), "source", "linked", "linked skill");
+    let root = user.path().join(".agents/skills");
+    fs::create_dir_all(&root).unwrap();
+    symlink(&target, root.join("linked")).unwrap();
+    let found = discover(None, Some(user.path())).unwrap();
+    assert_eq!(found.skills.len(), 1);
+    assert_eq!(found.skills[0].root, target.canonicalize().unwrap());
+}
+
+#[cfg(unix)]
+#[test]
 fn escaping_dangling_and_cyclic_directory_links_are_rejected() {
     use std::os::unix::fs::symlink;
     let project = tempfile::tempdir().unwrap();

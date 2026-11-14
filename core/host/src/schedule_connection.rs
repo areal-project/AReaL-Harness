@@ -693,7 +693,7 @@ impl CoreSession {
     }
 
     fn snapshot_progress(
-        &self,
+        self: &Rc<Self>,
         host: &Rc<Host>,
         thread: &str,
         snapshot: &Value,
@@ -710,7 +710,7 @@ impl CoreSession {
                     .sessions
                     .borrow()
                     .get(&self.project_id)
-                    .is_some_and(|current| std::ptr::eq(current.as_ref(), self)),
+                    .is_some_and(|current| Rc::ptr_eq(current, self)),
             unavailable()
         );
         ensure!(
@@ -743,22 +743,25 @@ impl CoreSession {
                         progress.terminal_hinted = true;
                         first_hint
                     };
-                    match super::library_service::record_thread_activity(
+                    // 共享订阅被另一消费者的快照替换时，终态事件可能只存在于该快照中。
+                    // 复用事件分发补齐所有投影，不能只结算资料库而留下工作台的进行中状态。
+                    if first_hint {
+                        publish_event(
+                            host,
+                            self,
+                            json!({"method":"turn/completed","params":{"threadId":thread,"turn":turn}}),
+                        );
+                        continue;
+                    }
+                    if super::library_service::record_thread_activity(
                         host,
                         &self.project_id,
                         thread,
                         Some(id),
-                    ) {
-                        Ok(()) => {
-                            self.observed_progress.borrow_mut().remove(thread);
-                        }
-                        Err(_) if first_hint => {
-                            eprintln!("Host library snapshot completion update failed")
-                        }
-                        Err(_) => {}
-                    }
-                    if first_hint {
-                        host.changed();
+                    )
+                    .is_ok()
+                    {
+                        self.observed_progress.borrow_mut().remove(thread);
                     }
                 }
                 _ => {}

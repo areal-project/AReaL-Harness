@@ -1,3 +1,4 @@
+import { recordItems, stringItems } from "./data-shapes.js";
 import { CommandDetails as DetailsView } from "@areal/ui/experimental";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { CopyTextAction } from "./MessageActions.js";
@@ -14,9 +15,12 @@ export function CommandDetails({ item }: { item: Data }) {
   const view = toolPresentation(item);
   const output = commandResult(item);
   const process = item.processResult ?? output;
-  const command = item.arguments?.command ?? item.arguments?.argv?.join(" ") ?? "";
-  const rawText = (item.contentItems ?? []).map((part: Data) => part.text ?? "").join("\n");
-  const pages: Data[] = item.processObservations ?? [output];
+  const command = item.arguments?.command ?? stringItems(item.arguments?.argv).join(" ") ?? "";
+  const rawText = recordItems(item.contentItems)
+    .map((part: Data) => part.text ?? "")
+    .join("\n");
+  const pages: Data[] =
+    item.processObservations == null ? [output] : recordItems(item.processObservations);
   const text =
     pages
       .map((page) => [page.stdout, page.stderr].filter(Boolean).join(""))
@@ -29,7 +33,7 @@ export function CommandDetails({ item }: { item: Data }) {
         : !Object.keys(output).length
           ? rawText
           : "");
-  const reads = (item.processRecords ?? []).filter(
+  const reads = recordItems(item.processRecords).filter(
     (record: Data) => record.tool === "read_process",
   ).length;
   return (

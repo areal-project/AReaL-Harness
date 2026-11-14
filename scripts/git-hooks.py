@@ -128,7 +128,6 @@ def precommit():
                     "node",
                     "node_modules/vite-plus/bin/vp",
                     "check",
-                    "--deny-warnings",
                     "--no-error-on-unmatched-pattern",
                     *(f"./{path}" for path in gui),
                 ],

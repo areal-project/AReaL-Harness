@@ -10,9 +10,12 @@ import noRestyle from "./rules/no-restyle.ts";
 import noSmokeTransportPatch from "./rules/no-smoke-transport-patch.ts";
 import noAsyncWaitForFunction from "./rules/no-async-wait-for-function.ts";
 
+import noUncheckedArrayMethod from "./rules/no-unchecked-array-method.ts";
+
 export default definePlugin({
   meta: { name: "areal" },
   rules: {
+    "no-unchecked-array-method": noUncheckedArrayMethod,
     "no-workbench-core-owner": noWorkbenchCoreOwner,
     "require-suppression-reason": requireSuppressionReason,
     "no-raw-resize-observer": noRawResizeObserver,

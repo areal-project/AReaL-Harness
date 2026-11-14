@@ -150,7 +150,8 @@ pub fn prepare(argv: &[String], tty: bool, filter: Option<&File>) -> io::Result<
             child_lifetime: Some(child_lifetime),
             child_receipt: Some(child_receipt),
             child_arguments: Some(arguments),
-            receipt: AsyncFd::new(receipt)?,
+            // SAFETY: 回执管道由 AsyncFd 独占持有，注册期间保持同一打开的描述符。
+            receipt: unsafe { AsyncFd::register(receipt)? },
             buffer: Vec::new(),
             startup: None,
             startup_deadline: None,

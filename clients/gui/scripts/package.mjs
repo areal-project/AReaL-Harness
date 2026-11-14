@@ -1,8 +1,14 @@
-import { makeTempDir } from "./support/temp.mjs";
+import {
+  cachedBuild,
+  guiBuildInput,
+  treeHash,
+  withStaging,
+  createTimings,
+} from "./package-build.mjs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { join, resolve } from "node:path";
-import { cp, lstat, mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -16,6 +22,8 @@ import { buildWorkbenchResources } from "./workbench-resources.mjs";
 const gui = fileURLToPath(new URL("..", import.meta.url));
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
+const timings = createTimings();
+const started = performance.now();
 const { values: options } = parseArgs({
   options: {
     help: { type: "boolean" },
@@ -65,7 +73,7 @@ assert.ok(
   "Signing credentials require --signing developer-id",
 );
 if (developerId) {
-  assert.ok(formats.length === 2, "Developer ID acceptance requires --formats dmg,zip");
+  assert.ok(formats.includes("dmg"), "Developer ID acceptance requires a DMG format");
   assert.ok(
     identity && profile,
     "Developer ID requires --identity and --keychain-profile (or CSC_NAME/APPLE_KEYCHAIN_PROFILE)",
@@ -93,250 +101,375 @@ try {
 }
 // Explicit command options own child process behavior, rather than inherited mode flags.
 process.env.AREAL_GUI_UNSIGNED_LOCAL = unsignedLocal ? "1" : "0";
-if (options.build) {
-  process.env.AREAL_CORE_PROFILE = "release";
-  for (const target of ["release", "gui-install", "gui-build"])
-    execFileSync("make", [target], { cwd: root, stdio: "inherit" });
-}
 await mkdir(output, { recursive: true });
-const staged = await makeTempDir("areal-stage-");
-// stageCoreApp 要求新目录；使用临时目录的子目录隔离包管理器发现。
-const appStage = join(staged, "app");
-const dependencies = await stageCoreApp({ root: gui, destination: appStage });
-if (process.env.AREAL_GUI_RELAY_CA_CERT) {
-  const caPath = resolve(process.env.AREAL_GUI_RELAY_CA_CERT);
-  const {
-    normalizeNetworkSetting,
-  } = require("@areal/workbench-service/desktop/core/desktop-network.cjs");
-  normalizeNetworkSetting("httpProxyCaCertPath", caPath);
-  await cp(caPath, join(appStage, "node_modules/@areal/workbench-service/src/assets/relay-ca.pem"));
-}
-const { githubFeedUrl } = require(join(gui, "app/src/update/config.cjs"));
-const updateConfig = join(staged, "areal-update.json");
-const nativeUpdateConfig = join(staged, "app-update.yml");
-if (release) {
-  const dirty = execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" });
-  if (dirty.trim()) throw new Error("GUI release requires a clean source checkout");
-  await writeFile(
-    updateConfig,
-    JSON.stringify({ engine: "electron", feedUrl: githubFeedUrl }) + "\n",
+const lock = join(gui, "node_modules/.cache/areal-package.lock");
+await mkdir(resolve(lock, ".."), { recursive: true });
+// 同一工作树的打包只允许一个写者；不删除其他进程持有的锁。
+await mkdir(lock);
+await writeFile(join(lock, "owner.json"), JSON.stringify({ pid: process.pid, output }) + "\n");
+let cleanup = false;
+let source;
+try {
+  source = {
+    revision: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
+    dirty: !!execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" }).trim(),
+  };
+  const coreArgs = [
+    join(root, "scripts/package.py"),
+    "--profile",
+    "release",
+    "--check-inputs",
+    ...(unsignedLocal ? ["--unsigned-local", "--reuse-core"] : []),
+  ];
+  if (options.build) {
+    process.env.AREAL_CORE_PROFILE = "release";
+    await timings.measure("core-build", async () => {
+      if (!process.env.AREAL_GUI_CORE_BUNDLE) {
+        try {
+          execFileSync("python3", coreArgs, { cwd: root, stdio: "pipe" });
+          return { reused: true };
+        } catch {
+          /* 输入不匹配或产物损坏时由正式构建入口重建。 */
+        }
+        execFileSync("make", ["release"], { cwd: root, stdio: "inherit" });
+        execFileSync("python3", coreArgs, { cwd: root, stdio: "pipe" });
+        return { reused: false };
+      }
+      return { reused: true };
+    });
+  }
+  const guiOutputs = [
+    "renderer/dist",
+    "packages/ui/dist",
+    "packages/gen-ui/dist",
+    "packages/browser-automation/dist",
+    "packages/browser-data/dist",
+    "app/src/core/snapshots/build",
+    "app/src/ipc/generated",
+    "native/computer-helper/build/AReaL Computer Helper.app",
+    "../../services/workbench/src/generated",
+  ].map((path) => join(gui, path));
+  // 依赖同步只执行一次；缓存只替代构建，不替代锁文件安装。
+  await timings.measure("dependencies", () =>
+    execFileSync("make", ["gui-install"], { cwd: root, stdio: "inherit" }),
   );
-  // dir 目标不会生成原生更新元数据；在签名前写入同一权威更新源与稳定缓存名。
-  await writeFile(
-    nativeUpdateConfig,
-    require("yaml").stringify({
-      provider: "generic",
-      url: githubFeedUrl,
-      updaterCacheDirName: "areal-harness-gui-updater",
-      useMultipleRangeRequest: false,
+  const guiBuild = await timings.measure("gui-build", () =>
+    cachedBuild({
+      receipt: join(gui, "node_modules/.cache/areal-package-gui.json"),
+      input: () => guiBuildInput(root),
+      outputs: guiOutputs,
+      build: () => execFileSync("pnpm", ["--dir", gui, "build"], { cwd: root, stdio: "inherit" }),
     }),
   );
-}
-const bundle = join(output, "areal-core");
-// 验收可固定已校验的 Core bundle，避免并行 Cargo 构建切换输入字节。
-if (process.env.AREAL_GUI_CORE_BUNDLE) {
-  await cp(resolve(process.env.AREAL_GUI_CORE_BUNDLE), bundle, {
-    recursive: true,
-    errorOnExist: true,
-    force: false,
-  });
-} else {
-  execFileSync(
-    "python3",
-    [
-      join(root, "scripts/package.py"),
-      "--profile",
-      process.env.AREAL_CORE_PROFILE || (release ? "release" : "debug"),
-      "--output",
-      bundle,
-      ...(unsignedLocal ? ["--unsigned-local"] : []),
-    ],
-    { cwd: root, stdio: "inherit" },
-  );
-}
-const { verifyCoreBundle } = require(
-  join(gui, "../../services/workbench/src/desktop/core/bundle.cjs"),
-);
-const coreBundle = verifyCoreBundle(output, { hashes: true });
-if (release)
-  assert.equal(
-    coreBundle.manifest.profile,
-    "release",
-    "GUI release requires a release Core bundle",
-  );
-const iconset = join(staged, "app.iconset");
-await mkdir(iconset);
-for (const size of [16, 32, 128, 256, 512]) {
-  for (const scale of [1, 2]) {
-    execFileSync(
-      "/usr/bin/sips",
-      [
-        "-z",
-        String(size * scale),
-        String(size * scale),
-        join(gui, "app/assets/icon-1024.png"),
-        "--out",
-        join(iconset, `icon_${size}x${size}${scale === 2 ? "@2x" : ""}.png`),
-      ],
-      { stdio: "ignore" },
-    );
-  }
-}
-const icon = join(staged, "app.icns");
-execFileSync("/usr/bin/iconutil", ["-c", "icns", iconset, "-o", icon]);
-const { build, Platform, Arch } = require("electron-builder");
-const relayBundle = await relayResources.buildRelayResources({
-  source: join(root, "services/remote-relay"),
-  site: join(gui, "renderer/dist"),
-  destination: join(output, "areal-relay"),
-});
-const workbenchBundle = await buildWorkbenchResources({
-  source: join(root, "services/workbench"),
-  destination: join(output, "areal-workbench"),
-});
-await build({
-  publish: "never",
-  targets: Platform.MAC.createTarget(["dir"], Arch.arm64),
-  projectDir: appStage,
-  config: {
-    appId: "org.areal.harness.gui",
-    productName: "AReaL Harness GUI",
-    directories: { app: appStage, output: join(output, "package") },
-    electronVersion: require("electron/package.json").version,
-    electronDist: join(require.resolve("electron/package.json"), "../dist"),
-    asar: true,
-    asarUnpack: [
-      "src/core/snapshots/build/SnapShotAccessibilityWorker.cjs",
-      "node_modules/@crowecawcaw/xa11y*/**/*",
-    ],
-    npmRebuild: false,
-    nodeGypRebuild: false,
-    files: ["**/*"],
-    extraResources: [
-      { from: bundle, to: "areal-core" },
-      { from: relayBundle.bundleDir, to: "areal-relay", filter: ["**/*", "!assets{,/**}"] },
-      {
-        from: join(relayBundle.bundleDir, "node_modules"),
-        to: "areal-relay/node_modules",
-      },
-      { from: workbenchBundle.bundleDir, to: "areal-workbench" },
-      {
-        from: join(gui, "renderer/dist"),
-        to: "areal-gui",
-        filter: ["**/*", "!bundle-analysis.json"],
-      },
-      {
-        from: join(gui, "native/computer-helper/build/AReaL Computer Helper.app"),
-        to: "computer-helper/AReaL Computer Helper.app",
-      },
-      ...(release
-        ? [
-            { from: updateConfig, to: "areal-update.json" },
-            { from: nativeUpdateConfig, to: "app-update.yml" },
-          ]
-        : []),
-    ],
-    mac: { icon, identity: null, notarize: false, category: "public.app-category.developer-tools" },
-    publish: null,
-  },
-});
-const app = join(output, "package/mac-arm64/AReaL Harness GUI.app");
-const backgroundService = await stageMacOSService(app);
-if (release) {
-  const native = require("yaml").parse(
-    await readFile(join(app, "Contents/Resources/app-update.yml"), "utf8"),
-  );
-  assert.equal(native.provider, "generic");
-  assert.equal(native.url, githubFeedUrl);
-  assert.ok(
-    typeof native.updaterCacheDirName === "string" && native.updaterCacheDirName.length > 0,
-  );
-}
-// 本机无新增签名模式保留输入签名；不能把拼装后的 bundle 宣称为签名有效。
-let signatureVerification;
-if (!unsignedLocal) {
-  await signLocalMacOSApp(app, (command, args) =>
-    execFileSync(command, args, { stdio: "inherit" }),
-  );
-  signatureVerification = { valid: true };
-} else {
-  try {
-    execFileSync("/usr/bin/codesign", ["--verify", "--deep", "--strict", app], { stdio: "pipe" });
-    signatureVerification = { valid: true };
-  } catch (error) {
-    signatureVerification = {
-      valid: false,
-      exitCode: error.status,
-      detail: String(error.stderr ?? error.message).trim(),
-    };
-  }
-}
-verifyCoreBundle(join(app, "Contents/Resources"), { hashes: true });
-const archive =
-  formats.includes("zip") && !developerId
-    ? join(output, "AReaL-Harness-GUI-mac-arm64.zip")
-    : undefined;
-if (archive)
-  execFileSync("/usr/bin/ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", app, archive]);
-const dmg =
-  formats.includes("dmg") && !developerId
-    ? await buildMacOSDmg({
-        app,
-        destination: join(output, "AReaL-Harness-GUI-mac-arm64.dmg"),
-        volumeName: "AReaL Harness Preview",
-        verifySignatures: !unsignedLocal,
-      })
-    : undefined;
-await writeFile(
-  join(output, "package-evidence.json"),
-  JSON.stringify(
-    {
-      target: { platform: options.platform, arch: options.arch },
-      formats,
-      signingMode: signing,
-      app,
-      archive,
-      dmg,
-      dependencies,
-      backgroundService,
-      builder: {
-        node: process.version,
-        executable: process.execPath,
-        sha256: createHash("sha256")
-          .update(await readFile(process.execPath))
-          .digest("hex"),
-      },
-      core: JSON.parse(await readFile(join(bundle, "manifest.json"), "utf8")),
-      signing: unsignedLocal
-        ? "No new signatures; input signatures preserved; local validation only; launch and bundle trust not established"
-        : "Ad-hoc staging only; run sign:mac for Developer ID signing and app/DMG notarization before installation acceptance",
-      signatureVerification,
-    },
-    null,
-    2,
-  ),
-);
-console.log(JSON.stringify({ app, archive, dmg, evidence: join(output, "package-evidence.json") }));
+  await withStaging(
+    async (staged) => {
+      // stageCoreApp 要求新目录；使用临时目录的子目录隔离包管理器发现。
+      const appStage = join(staged, "app");
+      const dependencies = await timings.measure("stage-app", () =>
+        stageCoreApp({ root: gui, destination: appStage }),
+      );
+      if (process.env.AREAL_GUI_RELAY_CA_CERT) {
+        const caPath = resolve(process.env.AREAL_GUI_RELAY_CA_CERT);
+        const {
+          normalizeNetworkSetting,
+        } = require("@areal/workbench-service/desktop/core/desktop-network.cjs");
+        normalizeNetworkSetting("httpProxyCaCertPath", caPath);
+        await cp(
+          caPath,
+          join(appStage, "node_modules/@areal/workbench-service/src/assets/relay-ca.pem"),
+        );
+      }
+      const { githubFeedUrl } = require(join(gui, "app/src/update/config.cjs"));
+      const updateConfig = join(staged, "areal-update.json");
+      const nativeUpdateConfig = join(staged, "app-update.yml");
+      if (release) {
+        const dirty = execFileSync("git", ["status", "--porcelain"], {
+          cwd: root,
+          encoding: "utf8",
+        });
+        if (dirty.trim()) throw new Error("GUI release requires a clean source checkout");
+        await writeFile(
+          updateConfig,
+          JSON.stringify({ engine: "electron", feedUrl: githubFeedUrl }) + "\n",
+        );
+        // dir 目标不会生成原生更新元数据；在签名前写入同一权威更新源与稳定缓存名。
+        await writeFile(
+          nativeUpdateConfig,
+          require("yaml").stringify({
+            provider: "generic",
+            url: githubFeedUrl,
+            updaterCacheDirName: "areal-harness-gui-updater",
+            useMultipleRangeRequest: false,
+          }),
+        );
+      }
+      const bundle = join(output, "areal-core");
+      await timings.measure("core-bundle", async () => {
+        // 验收可固定已校验的 Core bundle，避免并行 Cargo 构建切换输入字节。
+        if (process.env.AREAL_GUI_CORE_BUNDLE) {
+          await cp(resolve(process.env.AREAL_GUI_CORE_BUNDLE), bundle, {
+            recursive: true,
+            errorOnExist: true,
+            force: false,
+          });
+        } else {
+          execFileSync(
+            "python3",
+            [
+              join(root, "scripts/package.py"),
+              "--profile",
+              process.env.AREAL_CORE_PROFILE || (release ? "release" : "debug"),
+              "--output",
+              bundle,
+              ...(unsignedLocal ? ["--unsigned-local", "--reuse-core"] : []),
+            ],
+            { cwd: root, stdio: "inherit" },
+          );
+        }
+      });
+      const { verifyCoreBundle } = require(
+        join(gui, "../../services/workbench/src/desktop/core/bundle.cjs"),
+      );
+      const coreBundle = verifyCoreBundle(output, { hashes: true });
+      if (release)
+        assert.equal(
+          coreBundle.manifest.profile,
+          "release",
+          "GUI release requires a release Core bundle",
+        );
+      const iconset = join(staged, "app.iconset");
+      await mkdir(iconset);
+      for (const size of [16, 32, 128, 256, 512]) {
+        for (const scale of [1, 2]) {
+          execFileSync(
+            "/usr/bin/sips",
+            [
+              "-z",
+              String(size * scale),
+              String(size * scale),
+              join(gui, "app/assets/icon-1024.png"),
+              "--out",
+              join(iconset, `icon_${size}x${size}${scale === 2 ? "@2x" : ""}.png`),
+            ],
+            { stdio: "ignore" },
+          );
+        }
+      }
+      const icon = join(staged, "app.icns");
+      execFileSync("/usr/bin/iconutil", ["-c", "icns", iconset, "-o", icon]);
+      const { build, Platform, Arch } = require("electron-builder");
+      const relayBundle = await relayResources.buildRelayResources({
+        source: join(root, "services/remote-relay"),
+        site: join(gui, "renderer/dist"),
+        destination: join(output, "areal-relay"),
+      });
+      const workbenchBundle = await buildWorkbenchResources({
+        source: join(root, "services/workbench"),
+        destination: join(output, "areal-workbench"),
+      });
+      await timings.measure("electron-package", () =>
+        build({
+          publish: "never",
+          targets: Platform.MAC.createTarget(["dir"], Arch.arm64),
+          projectDir: appStage,
+          config: {
+            appId: "org.areal.harness.gui",
+            productName: "AReaL Harness GUI",
+            directories: { app: appStage, output: join(output, "package") },
+            electronVersion: require("electron/package.json").version,
+            electronDist: join(require.resolve("electron/package.json"), "../dist"),
+            asar: true,
+            asarUnpack: [
+              "src/core/snapshots/build/SnapShotAccessibilityWorker.cjs",
+              "node_modules/@crowecawcaw/xa11y*/**/*",
+            ],
+            npmRebuild: false,
+            nodeGypRebuild: false,
+            files: ["**/*"],
+            extraResources: [
+              { from: bundle, to: "areal-core" },
+              { from: relayBundle.bundleDir, to: "areal-relay", filter: ["**/*", "!assets{,/**}"] },
+              {
+                from: join(relayBundle.bundleDir, "node_modules"),
+                to: "areal-relay/node_modules",
+              },
+              { from: workbenchBundle.bundleDir, to: "areal-workbench" },
+              {
+                from: join(gui, "renderer/dist"),
+                to: "areal-gui",
+                filter: ["**/*", "!bundle-analysis.json"],
+              },
+              {
+                from: join(gui, "native/computer-helper/build/AReaL Computer Helper.app"),
+                to: "computer-helper/AReaL Computer Helper.app",
+              },
+              ...(release
+                ? [
+                    { from: updateConfig, to: "areal-update.json" },
+                    { from: nativeUpdateConfig, to: "app-update.yml" },
+                  ]
+                : []),
+            ],
+            mac: {
+              icon,
+              identity: null,
+              notarize: false,
+              category: "public.app-category.developer-tools",
+            },
+            publish: null,
+          },
+        }),
+      );
+      const app = join(output, "package/mac-arm64/AReaL Harness GUI.app");
+      const backgroundService = await timings.measure("service-bundle", () =>
+        stageMacOSService(app),
+      );
+      if (release) {
+        const native = require("yaml").parse(
+          await readFile(join(app, "Contents/Resources/app-update.yml"), "utf8"),
+        );
+        assert.equal(native.provider, "generic");
+        assert.equal(native.url, githubFeedUrl);
+        assert.ok(
+          typeof native.updaterCacheDirName === "string" && native.updaterCacheDirName.length > 0,
+        );
+      }
+      // 本机无新增签名模式保留输入签名；不能把拼装后的 bundle 宣称为签名有效。
+      let signatureVerification;
+      if (!unsignedLocal) {
+        await signLocalMacOSApp(app, (command, args) =>
+          execFileSync(command, args, { stdio: "inherit" }),
+        );
+        signatureVerification = { valid: true };
+      } else {
+        try {
+          execFileSync("/usr/bin/codesign", ["--verify", "--deep", "--strict", app], {
+            stdio: "pipe",
+          });
+          signatureVerification = { valid: true };
+        } catch (error) {
+          signatureVerification = {
+            valid: false,
+            exitCode: error.status,
+            detail: String(error.stderr ?? error.message).trim(),
+          };
+        }
+      }
+      verifyCoreBundle(join(app, "Contents/Resources"), { hashes: true });
+      const archive =
+        formats.includes("zip") && !developerId
+          ? join(output, "AReaL-Harness-GUI-mac-arm64.zip")
+          : undefined;
+      if (archive)
+        await timings.measure("zip", () =>
+          execFileSync("/usr/bin/ditto", [
+            "-c",
+            "-k",
+            "--sequesterRsrc",
+            "--keepParent",
+            app,
+            archive,
+          ]),
+        );
+      const dmg =
+        formats.includes("dmg") && !developerId
+          ? await timings.measure("dmg", () =>
+              buildMacOSDmg({
+                app,
+                destination: join(output, "AReaL-Harness-GUI-mac-arm64.dmg"),
+                volumeName: "AReaL Harness Preview",
+                verifySignatures: !unsignedLocal,
+              }),
+            )
+          : undefined;
+      if (
+        (await guiBuildInput(root)) !== guiBuild.inputHash ||
+        (await treeHash(guiOutputs)) !== guiBuild.outputHash
+      )
+        throw Error("GUI inputs or outputs changed during packaging");
+      await writeFile(
+        join(output, "package-evidence.json"),
+        JSON.stringify(
+          {
+            target: { platform: options.platform, arch: options.arch },
+            formats,
+            signingMode: signing,
+            source,
+            guiBuild,
+            stages: timings.stages,
+            archiveSha256: archive
+              ? createHash("sha256")
+                  .update(await readFile(archive))
+                  .digest("hex")
+              : undefined,
+            app,
+            archive,
+            dmg,
+            dependencies,
+            backgroundService,
+            builder: {
+              node: process.version,
+              executable: process.execPath,
+              sha256: createHash("sha256")
+                .update(await readFile(process.execPath))
+                .digest("hex"),
+            },
+            core: JSON.parse(await readFile(join(bundle, "manifest.json"), "utf8")),
+            signing: unsignedLocal
+              ? "No distribution signing; input signatures preserved; native helper build uses ad-hoc signing; local validation only"
+              : "Ad-hoc staging only; run sign:mac for Developer ID signing and app/DMG notarization before installation acceptance",
+            signatureVerification,
+          },
+          null,
+          2,
+        ),
+      );
+      console.log(
+        JSON.stringify({ app, archive, dmg, evidence: join(output, "package-evidence.json") }),
+      );
 
-if (developerId) {
-  try {
-    execFileSync(
-      process.execPath,
-      [
-        join(gui, "scripts/notarize-macos.mjs"),
-        "--app",
-        app,
-        "--output",
-        join(output, "signed"),
-        "--identity",
-        identity,
-        "--keychain-profile",
-        profile,
-        ...(options["skip-tests"] ? ["--skip-tests"] : []),
-      ],
-      { cwd: root, stdio: "inherit" },
-    );
-  } catch (error) {
-    process.exit(error.status || 1);
-  }
+      if (developerId) {
+        await timings.measure("notarize", () =>
+          execFileSync(
+            process.execPath,
+            [
+              join(gui, "scripts/notarize-macos.mjs"),
+              "--app",
+              app,
+              "--output",
+              join(output, "signed"),
+              "--identity",
+              identity,
+              "--keychain-profile",
+              profile,
+              ...(options["skip-tests"] ? ["--skip-tests"] : []),
+              ...(options["dmg-only"] ? ["--dmg-only"] : []),
+            ],
+            { cwd: root, stdio: "inherit" },
+          ),
+        );
+      }
+    },
+    () => {
+      cleanup = true;
+    },
+  );
+} catch (error) {
+  if (Number.isInteger(error.status) && error.status > 0) process.exitCode = error.status;
+  throw error;
+} finally {
+  await rm(lock, { recursive: true, force: true });
+  await writeFile(
+    join(output, "package-timings.json"),
+    JSON.stringify(
+      {
+        source,
+        totalMs: Math.round(performance.now() - started),
+        stages: timings.stages,
+        stagingCleaned: cleanup,
+      },
+      null,
+      2,
+    ) + "\n",
+  );
 }

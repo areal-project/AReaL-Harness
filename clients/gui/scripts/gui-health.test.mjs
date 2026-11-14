@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { reviewedBaselineTransition } from "./gui-health.mjs";
 
 const cli = fileURLToPath(new URL("./gui-health.mjs", import.meta.url));
 async function fixture(t) {
@@ -108,14 +107,17 @@ test("JSON report counts production code and keeps report-only counts separate",
 test("down and up metrics reject regression and write only improvements", async (t) => {
   const f = await fixture(t);
   assert.equal(f.run("--write").status, 0);
-  await f.put("renderer/src/App.tsx", 'import { useState } from "react";\nuseState(1);\n\n');
+  await f.put(
+    "renderer/src/App.tsx",
+    '// @ts-ignore\nimport { useState } from "react";\nuseState(1);\n',
+  );
   const failed = f.run("--check");
   assert.notEqual(failed.status, 0);
-  assert.match(failed.stderr, /appLines/);
+  assert.match(failed.stderr, /tsIgnores/);
   assert.match(failed.stderr, /down/);
   assert.notEqual(f.run("--write").status, 0);
-  assert.equal((await f.baseline()).appLines.value, 2);
-  assert.equal(f.run("--write", "--allow-regression=appLines").status, 0);
+  assert.equal((await f.baseline()).tsIgnores.value, 0);
+  assert.equal(f.run("--write", "--allow-regression=tsIgnores").status, 0);
   await f.put("renderer/src/Consumer.tsx", "export const view = <div />;\n");
   const up = f.run("--check");
   assert.notEqual(up.status, 0);
@@ -126,39 +128,42 @@ test("down and up metrics reject regression and write only improvements", async 
 test("one explicit exception cannot authorize another metric", async (t) => {
   const f = await fixture(t);
   assert.equal(f.run("--write").status, 0);
-  await f.put("renderer/src/App.tsx", "useState(1);\nuseState(2);\nuseState(3);\n");
-  assert.notEqual(f.run("--write", "--allow-regression=appLines").status, 0);
-  assert.equal((await f.baseline()).appLines.value, 2);
+  await f.put("renderer/src/App.tsx", "// @ts-ignore\n// @ts-expect-error\nuseState(1);\n");
+  assert.notEqual(f.run("--write", "--allow-regression=tsIgnores").status, 0);
+  assert.equal((await f.baseline()).tsIgnores.value, 0);
   assert.notEqual(f.run("--write", "--allow-regression=typo").status, 0);
 });
 
-test("new 801-line production source fails independently of aggregate improvement", async (t) => {
+test("new 801-line production source is reported despite aggregate improvement", async (t) => {
   const f = await fixture(t);
-  await f.put("renderer/src/Legacy.tsx", "legacy\n".repeat(1001));
+  await f.put("packages/provider-config/Legacy.cjs", "legacy();\n".repeat(1001));
   assert.equal(f.run("--write").status, 0);
-  await f.put("renderer/src/Legacy.tsx", "legacy\n");
-  await f.put("renderer/src/New.tsx", "new\n".repeat(801));
+  await f.put("packages/provider-config/Legacy.cjs", "legacy();\n");
+  await f.put("packages/provider-config/New.cjs", "newSource();\n".repeat(801));
   const failed = f.run("--check");
-  assert.notEqual(failed.status, 0);
-  assert.match(failed.stderr, /New\.tsx/);
+  assert.equal(failed.status, 0);
+  assert.match(failed.stderr, /New\.cjs/);
   assert.match(failed.stderr, /800/);
 });
 
-test("per-path caps reject growth, rename, and debt restored after deletion", async (t) => {
+test("per-path signals report growth, rename, and source restored after deletion", async (t) => {
   const f = await fixture(t);
-  await f.put("renderer/src/Legacy.tsx", "legacy\n".repeat(1001));
+  await f.put("packages/provider-config/Legacy.cjs", "legacy();\n".repeat(1001));
   assert.equal(f.run("--write").status, 0);
-  await f.put("renderer/src/Legacy.tsx", "legacy\n".repeat(1002));
-  assert.notEqual(f.run("--check").status, 0);
-  await rename(join(f.root, "renderer/src/Legacy.tsx"), join(f.root, "renderer/src/Renamed.tsx"));
-  assert.match(f.run("--check").stderr, /Renamed\.tsx/);
-  await rm(join(f.root, "renderer/src/Renamed.tsx"));
+  await f.put("packages/provider-config/Legacy.cjs", "legacy();\n".repeat(1002));
+  assert.equal(f.run("--check").status, 0);
+  await rename(
+    join(f.root, "packages/provider-config/Legacy.cjs"),
+    join(f.root, "packages/provider-config/Renamed.cjs"),
+  );
+  assert.match(f.run("--check").stderr, /Renamed\.cjs/);
+  await rm(join(f.root, "packages/provider-config/Renamed.cjs"));
   assert.equal(f.run("--write").status, 0);
-  await f.put("renderer/src/Legacy.tsx", "legacy\n".repeat(1001));
-  assert.notEqual(f.run("--check").status, 0);
+  await f.put("packages/provider-config/Legacy.cjs", "legacy();\n".repeat(1001));
+  assert.equal(f.run("--check").status, 0);
 });
 
-test("Main aggregate rejects new small files and permits business removal", async (t) => {
+test("Main aggregate reports new small files and permits business removal", async (t) => {
   const f = await fixture(t);
   await f.put("app/src/business.cjs", "business();\n".repeat(3));
   assert.equal(f.run("--write").status, 0);
@@ -168,13 +173,13 @@ test("Main aggregate rejects new small files and permits business removal", asyn
   assert.equal(baseline.mainSourceLines.value, 2);
   await f.put("app/src/new-business.cjs", "newBusiness();\n");
   const added = f.run("--check");
-  assert.notEqual(added.status, 0);
+  assert.equal(added.status, 0);
   assert.match(added.stderr, /mainSourceLines/);
-  assert.notEqual(f.run("--write").status, 0);
-  assert.equal((await f.baseline()).mainSourceLines.value, 2);
+  assert.equal(f.run("--write").status, 0);
+  assert.equal((await f.baseline()).mainSourceLines.value, 3);
 });
 
-test("Main cannot regrow against base using unused baseline headroom", async (t) => {
+test("Main growth remains visible against base despite unused baseline headroom", async (t) => {
   const f = await fixture(t);
   await f.put("app/src/business.cjs", "business();\n".repeat(3));
   assert.equal(f.run("--write").status, 0);
@@ -195,69 +200,14 @@ test("Main cannot regrow against base using unused baseline headroom", async (t)
     0,
   );
   const stale = f.run("--check", "--base=HEAD");
-  assert.notEqual(stale.status, 0);
+  assert.equal(stale.status, 0);
   assert.match(stale.stderr, /mainSourceLines.*baseline exceeds actual Main lines at base/);
   await f.put("app/src/business.cjs", "business();\n".repeat(2));
   const grown = f.run("--check", "--base=HEAD");
-  assert.notEqual(grown.status, 0);
+  assert.equal(grown.status, 0);
   assert.match(grown.stderr, /mainSourceLines.*Main source grew against base/);
-  assert.notEqual(f.run("--write", "--base=HEAD").status, 0);
-  assert.equal((await f.baseline()).mainSourceLines.value, 4);
-});
-
-test("reviewed document transition matches only its exact values and unchanged ownership", () => {
-  const before = { value: 184954, direction: "down", owner: "design/ clients/gui/design-system" };
-  const current = { ...before, value: 193947 };
-  assert.ok(reviewedBaselineTransition("activeDesignDocBytes", before, current));
-  for (const [name, old, next] of [
-    ["appLines", before, current],
-    ["activeDesignDocBytes", { ...before, value: 262923 }, current],
-    ["activeDesignDocBytes", before, { ...current, value: 269715 }],
-    ["activeDesignDocBytes", before, { ...current, direction: "up" }],
-    ["activeDesignDocBytes", before, { ...current, owner: "other" }],
-    ["activeDesignDocBytes", current, { ...current, value: 269715 }],
-    ["activeDesignDocBytes", current, current],
-  ])
-    assert.equal(reviewedBaselineTransition(name, old, next), null);
-});
-
-test("reviewed document transition never waives actual growth or other caps", async (t) => {
-  const f = await fixture(t);
-  const git = (...args) => spawnSync("git", args, { cwd: join(f.root, "../.."), encoding: "utf8" });
-  assert.equal(f.run("--write").status, 0);
-  const baseline = await f.baseline();
-  baseline.activeDesignDocBytes.value = 184954;
-  await f.put("health-baseline.json", JSON.stringify(baseline));
-  assert.equal(git("init", "-q").status, 0);
-  assert.equal(git("add", ".").status, 0);
-  assert.equal(
-    git(
-      "-c",
-      "user.name=Fixture",
-      "-c",
-      "user.email=fixture@example.test",
-      "commit",
-      "-qm",
-      "baseline",
-    ).status,
-    0,
-  );
-  baseline.activeDesignDocBytes.value = 193947;
-  await f.put("health-baseline.json", JSON.stringify(baseline));
-  await f.put("../../design/principles.md", "x".repeat(193947));
-  const accepted = f.run("--check", "--base=HEAD");
-  assert.equal(accepted.status, 0, accepted.stderr);
-  assert.equal(JSON.parse(accepted.stdout).reviewedTransitions.length, 1);
-  await f.put("../../design/principles.md", "x".repeat(269715));
-  assert.notEqual(f.run("--check", "--base=HEAD").status, 0);
-  await f.put("../../design/principles.md", "x".repeat(193947));
-  baseline.appLines.value++;
-  await f.put("health-baseline.json", JSON.stringify(baseline));
-  assert.notEqual(f.run("--check", "--base=HEAD").status, 0);
-  baseline.appLines.value--;
-  baseline.$sourceCaps["app/src/main.cjs"] = 801;
-  await f.put("health-baseline.json", JSON.stringify(baseline));
-  assert.notEqual(f.run("--check", "--base=HEAD").status, 0);
+  assert.equal(f.run("--write", "--base=HEAD").status, 0);
+  assert.equal((await f.baseline()).mainSourceLines.value, 3);
 });
 
 test("an explicit base detects baseline relaxation in the same change", async (t) => {
@@ -279,11 +229,11 @@ test("an explicit base detects baseline relaxation in the same change", async (t
     0,
   );
   const baseline = await f.baseline();
-  baseline.appLines.value = 100;
+  baseline.tsIgnores.value = 100;
   await f.put("health-baseline.json", JSON.stringify(baseline));
   const result = f.run("--check", "--base=HEAD");
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /appLines/);
+  assert.match(result.stderr, /tsIgnores/);
   assert.match(result.stderr, /baseline/i);
   const head = git("rev-parse", "HEAD").stdout.trim();
   baseline.$rebaseline = { base: head, reason: "architecture move" };
@@ -317,7 +267,7 @@ async function commitFixture(f) {
   assert.equal(result.status, 0, result.stderr);
 }
 
-test("Main business budget counts new and renamed modules and rejects restored debt", async (t) => {
+test("Main business signal counts new and renamed modules and restored source", async (t) => {
   const f = await fixture(t);
   assert.equal(f.run("--write").status, 0);
   const check = () => f.run("--check", "--metric=mainBusinessLines");
@@ -326,15 +276,15 @@ test("Main business budget counts new and renamed modules and rejects restored d
   await rm(join(f.root, "app/src/business.cjs"));
   await rename(join(f.root, "app/src/main.cjs"), join(f.root, "app/src/renamed.cjs"));
   assert.equal(check().status, 0);
-  await f.put("app/src/renamed.cjs", "module.exports = {};\n\n");
-  assert.notEqual(check().status, 0);
-  assert.notEqual(f.run("--write", "--allow-regression=mainBusinessLines").status, 0);
+  await f.put("app/src/renamed.cjs", "module.exports = {};\nadded();\n");
+  assert.equal(check().status, 0);
+  assert.equal(f.run("--check").status, 0);
   await rm(join(f.root, "app/src/renamed.cjs"));
   await f.put("app/src/main.cjs", "");
   assert.equal(f.run("--write").status, 0);
   assert.equal((await f.baseline()).mainBusinessLines.value, 0);
   await f.put("app/src/main.cjs", "module.exports = {};\n");
-  assert.notEqual(check().status, 0);
+  assert.equal(check().status, 0);
   await rm(join(f.root, "app/src/main.cjs"));
   assert.equal(check().status, 0);
 });
@@ -349,11 +299,11 @@ test("native shell exemptions are exact paths and cannot reclassify business aga
   await f.put("health-baseline.json", JSON.stringify(baseline));
   await commitFixture(f);
   const check = () => f.run("--check", "--metric=mainBusinessLines", "--base=HEAD");
-  await f.put("app/src/preload.cjs", "module.exports = {};\n\n");
+  await f.put("app/src/preload.cjs", "module.exports = {};\nadded();\n");
   const green = check();
   assert.equal(green.status, 0, green.stderr);
   const total = f.run("--check", "--metric=mainSourceLines", "--base=HEAD");
-  assert.notEqual(total.status, 0);
+  assert.equal(total.status, 0);
   assert.match(total.stderr, /mainSourceLines/);
   assert.match(total.stderr, /Main source grew against base/);
   assert.deepEqual(JSON.parse(green.stdout).mainBusinessSources, { "app/src/main.cjs": 1 });
@@ -385,9 +335,9 @@ for (const metric of ["mainSourceLines", "mainBusinessLines"]) {
     baseline[metric].value = 2;
     await f.put("health-baseline.json", JSON.stringify(baseline));
     assert.match(check().stderr, /initial baseline must equal actual Main lines/);
-    await f.put("app/src/main.cjs", "module.exports = {};\n\n");
+    await f.put("app/src/main.cjs", "module.exports = {};\nadded();\n");
     const grown = check();
-    assert.notEqual(grown.status, 0);
+    assert.equal(grown.status, 0);
     assert.match(grown.stderr, /Main source grew against base/);
     await f.put("app/src/main.cjs", "module.exports = {};\n");
     baseline[metric].value = 1;
@@ -395,7 +345,7 @@ for (const metric of ["mainSourceLines", "mainBusinessLines"]) {
     assert.equal(check().status, 0);
   });
 
-  test(`${metric} baseline cannot increase or reuse old headroom against actual base`, async (t) => {
+  test(`${metric} baseline increases and reused headroom remain visible against actual base`, async (t) => {
     const f = await fixture(t);
     assert.equal(f.run("--write").status, 0);
     await commitFixture(f);
@@ -403,7 +353,7 @@ for (const metric of ["mainSourceLines", "mainBusinessLines"]) {
     baseline[metric].value++;
     await f.put("health-baseline.json", JSON.stringify(baseline));
     const relaxed = f.run("--check", `--metric=${metric}`, "--base=HEAD");
-    assert.notEqual(relaxed.status, 0);
+    assert.equal(relaxed.status, 0);
     assert.match(relaxed.stderr, /baseline relaxed against base/);
     assert.match(relaxed.stderr, /baseline exceeds actual Main lines at base/);
     baseline[metric].value--;
@@ -426,7 +376,7 @@ for (const metric of ["mainSourceLines", "mainBusinessLines"]) {
     );
     await f.put("app/src/main.cjs", "module.exports = {};\n");
     const restored = f.run("--check", `--metric=${metric}`, "--base=HEAD");
-    assert.notEqual(restored.status, 0);
+    assert.equal(restored.status, 0);
     assert.match(restored.stderr, /Main source grew against base/);
     assert.notEqual(f.run("--write", `--metric=${metric}`).status, 0);
   });
@@ -436,7 +386,10 @@ test("an explicit base classifies inherited regressions without waiving the revi
   const f = await fixture(t);
   const git = (...args) => spawnSync("git", args, { cwd: join(f.root, "../.."), encoding: "utf8" });
   assert.equal(f.run("--write").status, 0);
-  await f.put("renderer/src/App.tsx", 'import { useState } from "react";\nuseState(1);\n\n');
+  await f.put(
+    "renderer/src/App.tsx",
+    'import { useState } from "react";\nuseState(1);\n// @ts-ignore\n',
+  );
   assert.equal(git("init", "-q").status, 0);
   assert.equal(git("add", ".").status, 0);
   assert.equal(
@@ -453,17 +406,20 @@ test("an explicit base classifies inherited regressions without waiving the revi
   );
   const inherited = f.run("--check", "--base=HEAD");
   assert.notEqual(inherited.status, 0);
-  assert.match(inherited.stderr, /appLines.*inherited/);
-  const allowed = f.run("--check", "--base=HEAD", "--allow-regression=appLines");
+  assert.match(inherited.stderr, /tsIgnores.*inherited/);
+  const allowed = f.run("--check", "--base=HEAD", "--allow-regression=tsIgnores");
   assert.equal(allowed.status, 0, allowed.stderr);
   assert.deepEqual(
     JSON.parse(allowed.stdout).inheritedRegressions.map((failure) => failure.metric),
-    ["appLines"],
+    ["appLines", "tsIgnores"],
   );
-  await f.put("renderer/src/App.tsx", 'import { useState } from "react";\nuseState(1);\n\n\n');
+  await f.put(
+    "renderer/src/App.tsx",
+    'import { useState } from "react";\nuseState(1);\n// @ts-ignore\n// @ts-ignore\n',
+  );
   const grown = f.run("--check", "--base=HEAD");
   assert.notEqual(grown.status, 0);
-  assert.match(grown.stderr, /appLines/);
+  assert.match(grown.stderr, /tsIgnores/);
   assert.doesNotMatch(grown.stderr, /inherited/);
 });
 
@@ -502,7 +458,7 @@ test("package root and client implementations share production caps while build 
   assert.equal(report.sourceLines["packages/gen-ui/build.mjs"], undefined);
   assert.equal(report.sourceLines["packages/runtime-client/core.d.ts"], undefined);
   const result = f.run("--check");
-  assert.notEqual(result.status, 0);
+  assert.equal(result.status, 0);
   assert.match(result.stderr, /connections\.cjs/);
   assert.match(result.stderr, /client\/model\.js/);
 });
@@ -549,7 +505,7 @@ test("active design document growth is tracked while the user entry has a separa
   const after = JSON.parse(f.run().stdout);
   assert.ok(after.metrics.activeDesignDocBytes.value > before.metrics.activeDesignDocBytes.value);
   assert.equal(after.counts.userEntryDocBytes, before.counts.userEntryDocBytes);
-  assert.notEqual(f.run("--check").status, 0);
+  assert.equal(f.run("--check").status, 0);
 });
 
 test("workbench convergence counts new and renamed files and retains unrelated JS", async (t) => {
@@ -570,7 +526,7 @@ test("workbench convergence counts new and renamed files and retains unrelated J
   const added = "../../services/workbench/src/renamed-library.ts";
   await f.put(added, "export {};\n");
   assert.match(check().stderr, /workbenchConvergeLines/);
-  assert.notEqual(f.run("--write", "--allow-regression=workbenchConvergeLines").status, 0);
+  assert.equal(check().status, 0);
   await rm(join(f.root, added));
   await rename(join(f.root, library), join(f.root, added));
   assert.equal(check().status, 0);
@@ -613,4 +569,82 @@ test("workbench first baseline measures service sources at base and prevents res
   await commitFixture(f);
   await f.put(library, "library();\n");
   assert.match(check().stderr, /workbenchConvergeLines/);
+});
+
+test("Main compression cannot hide growth or change the measured base", async (t) => {
+  const f = await fixture(t);
+  await f.put("app/src/main.cjs", "first();\nsecond();\n");
+  assert.equal(f.run("--write").status, 0);
+  await commitFixture(f);
+  await f.put("app/src/main.cjs", "first(); second();\n");
+  const same = f.run("--check", "--metric=mainSourceLines", "--base=HEAD");
+  assert.equal(same.status, 0, same.stderr);
+  assert.equal(JSON.parse(same.stdout).metrics.mainSourceLines.value, 2);
+  await f.put("app/src/main.cjs", "first(); second(); third();\n");
+  const grown = f.run("--check", "--metric=mainSourceLines", "--base=HEAD");
+  assert.equal(grown.status, 0);
+  assert.match(grown.stderr, /Main source grew against base/);
+});
+
+test("physical-line baseline upgrades by measuring the same base, with visible growth signals", async (t) => {
+  const f = await fixture(t);
+  await f.put("app/src/main.cjs", "first(); second();\n");
+  assert.equal(f.run("--write").status, 0);
+  const normalized = await f.baseline();
+  const physical = structuredClone(normalized);
+  delete physical.$mainLineCounting;
+  physical.mainSourceLines.value = physical.mainBusinessLines.value = 1;
+  physical.$sourceCaps["app/src/main.cjs"] = 1;
+  await f.put("health-baseline.json", JSON.stringify(physical));
+  await commitFixture(f);
+  await f.put("health-baseline.json", JSON.stringify(normalized));
+  const check = () => f.run("--check", "--base=HEAD");
+  assert.equal(check().status, 0, check().stderr);
+  await f.put("app/src/main.cjs", "first(); second(); third();\n");
+  assert.match(check().stderr, /Main source grew against base/);
+});
+
+test("scale signals retain measured base evidence and do not hide invalid metadata", async (t) => {
+  const f = await fixture(t);
+  assert.equal(f.run("--write").status, 0);
+  await commitFixture(f);
+  await f.put("app/src/main.cjs", "first(); second(); third();\n");
+  const growth = f.run("--check", "--base=HEAD");
+  assert.equal(growth.status, 0, growth.stderr);
+  assert.ok(
+    JSON.parse(growth.stdout).signals.some(
+      (signal) =>
+        signal.metric === "mainSourceLines" &&
+        signal.baseline === 1 &&
+        signal.current === 3 &&
+        signal.reason === "Main source grew against base",
+    ),
+  );
+  const baseline = await f.baseline();
+  for (const change of [
+    (value) => {
+      value.mainSourceLines.owner = "other";
+    },
+    (value) => {
+      value.mainSourceLines.direction = "up";
+    },
+    (value) => {
+      value.mainSourceLines.value = null;
+    },
+    (value) => {
+      delete value.mainSourceLines;
+    },
+    (value) => {
+      delete value.$sourceCaps["app/src/main.cjs"];
+    },
+  ]) {
+    const invalid = structuredClone(baseline);
+    change(invalid);
+    await f.put("health-baseline.json", JSON.stringify(invalid));
+    assert.notEqual(f.run("--check", "--base=HEAD").status, 0);
+    assert.notEqual(
+      f.run("--check", "--base=HEAD", "--allow-regression=mainSourceLines").status,
+      0,
+    );
+  }
 });

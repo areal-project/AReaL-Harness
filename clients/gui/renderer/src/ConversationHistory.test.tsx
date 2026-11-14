@@ -28,6 +28,28 @@ beforeEach(() => {
 });
 
 describe("conversation history ownership", () => {
+  it("waits for a cached Host conversation to become fresh before acquiring its history", async () => {
+    const reads = {
+      acquire: vi.fn().mockRejectedValue(new Error("Conversation unavailable")),
+      release: vi.fn().mockResolvedValue(undefined),
+    } as unknown as PlatformReadServices;
+    const thread = {
+      id: "selected",
+      displayHistory: { supported: true, viewGeneration: "cached", freshness: "stale" },
+    };
+    function View() {
+      useConversationHistory("project", thread, vi.fn() as Action);
+      return null;
+    }
+    renderToStaticMarkup(
+      createElement(PlatformReadProvider, { reads, children: createElement(View) }),
+    );
+    const cleanups = effects.map((effect) => effect());
+    await Promise.resolve();
+    expect(reads.acquire).not.toHaveBeenCalled();
+    cleanups.forEach((cleanup) => cleanup?.());
+  });
+
   it("keeps the selected Host thread on Host reads", async () => {
     const reads = {
       acquire: vi.fn().mockResolvedValue(undefined),

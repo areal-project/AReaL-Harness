@@ -185,6 +185,8 @@ endpoint 是完整 HTTP(S) 请求 URL；Core 只支持 `chat-completions` / `res
 history_thinking = "omit"
 ```
 
+旧的显式 `model.replay_chat_reasoning_content`（或 `AREAL_HARNESS_REPLAY_CHAT_REASONING_CONTENT`）在配置入口转换为统一策略：`true` 对应 `preserve`，`false` 对应 `omit`。请将配置改用新名称；同一配置层同时设置新旧名称会报冲突。已有模型归档在摘要校验后导入，保留原始字节及 revision，不重写历史引用。
+
 `preserve` 将已记录的 Chat 明文思考放入对应 assistant 的 `reasoning_content`，Responses 原生 reasoning 按原顺序回传一次，保留加密字段；显示摘要不充当完整 thinking。`omit` 只从请求投影中移除历史思考，正文、工具调用和结果继续保留，完整输出仍存档。预算、压缩候选和实际发送使用同一策略；压缩仍可用摘要替换较早的完整轮次。它不要求模型生成 thinking，也不控制训练 loss。默认保留会增加 Chat 的实际上下文，不能继承旧策略的效果或成本结论。该全局设置覆盖共享 Core 构造的模型、子任务和 Workgroup；各客户端无需另设开关。该设置在 Core 启动时读取，修改后应在服务空闲时按原部署参数重启。
 
 AReaL 训练使用配套 OpenAI proxy 实现，并透传 `x-areal-history-thinking` 请求头。`preserve` 允许合法父 token 续接，并检查模板没有丢失已提供的明文 thinking；`omit` 重新编码完整请求，不续接父 token，concat 导出将各请求保留为独立根。两种模式都保存本轮完整输出 tokens 和真实 loss mask；omit 的 Responses WebSocket 禁用服务端响应续接并发送完整输入。中间代理也必须保留该请求头；其他模型服务是否消费 `reasoning_content` 由其接口与模板决定，精确制样仍应取实际引擎 tokens。详见[轨迹制样与 SFT](training-data.md)。

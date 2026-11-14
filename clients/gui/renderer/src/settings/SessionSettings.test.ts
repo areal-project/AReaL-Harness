@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { wireParameters } from "./SessionSettings.js";
+import { wireParameters, sessionConfigurationDraft } from "./SessionSettings.js";
 
 vi.mock("../i18n/IntlProvider.js", () => ({
   useI18n: () => ({ t: (id: string) => id }),
@@ -22,5 +22,17 @@ describe("session settings parameter submission", () => {
 
   it("clears the tier together with other parameters on explicit reset", () => {
     expect(wireParameters({ serviceTier: "fast", reasoningEffort: "max" }, true)).toEqual({});
+  });
+});
+
+describe("historical session configuration", () => {
+  it("opens settings with malformed selectedSkills without losing valid entries", () => {
+    expect(sessionConfigurationDraft({ revision: 3, selectedSkills: {} }).skills).toEqual([]);
+    expect(
+      sessionConfigurationDraft({
+        revision: 3,
+        selectedSkills: [null, {}, { id: "review", revision: "v1" }],
+      }).skills,
+    ).toEqual(["review/v1"]);
   });
 });

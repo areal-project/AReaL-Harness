@@ -56,7 +56,7 @@ push 到受保护分支、发布、使用真实凭据、写外部系统、破坏
 - 客户端要用的业务只经 Host 协议提供：跨项目的放 Host（过渡期可放工作台服务），单个项目内的放 Core。判断方法：这个功能在浏览器或手机里要不要用？要用就不能放进 Main。
 - 跨层修改先明确写入与读取所有者、目标身份、代际和完成信号；调用方复用现有适配器，不各自猜测身份或结算状态。
 - 新的 Electron 能力先登记进 `shell-capabilities.cjs` 并写明原因；`transitional` 只减不增。
-- Main 源码总行数由 `gui-health` 检查，只降不升，不靠拆文件或放宽基线把业务放回 Main。Main 新增文件用 TypeScript，构建为 CommonJS。
+- Main 只承载登记的原生能力和必要协议适配。`gui-health` 的行数、规模及逐文件变化作为职责审查信号，不因增长单独失败；修复过渡模块不要求先整体迁移，不用无关删除或压行抵消增长。职责、依赖边界和类型覆盖仍是硬检查。Main 新增文件用 TypeScript，构建为 CommonJS。
 - Renderer 不导入 Node/Electron，不读已保存的凭据，不跑 Agent 执行循环。只有平台适配文件能碰 preload 对象。
 - 恢复用权威快照，不重放不确定是否已受理的提交。停止受理不等于后台已终止。
 - 只改受控源码和 `clients/gui/patches/`，不改 `node_modules`。
@@ -103,7 +103,7 @@ push 到受保护分支、发布、使用真实凭据、写外部系统、破坏
 
 ## 仓库技能
 
-`.agents/skills/` 下按任务选用：`testing`（选测试、判断是否回归）、`remove-compat`（删过渡代码）、`cross-surface-feature`（加跨端功能）、`mac-acceptance`（交 Mac 验收）。
+`.agents/skills/` 下按任务选用：`testing`（选测试、判断是否回归和报告未执行阶段）、`ci`（检查计划、并行调度、证据和门禁）、`remove-compat`（删过渡代码）、`cross-surface-feature`（加跨端功能）、`mac-acceptance`（交 Mac 验收）。
 
 ## 风格
 

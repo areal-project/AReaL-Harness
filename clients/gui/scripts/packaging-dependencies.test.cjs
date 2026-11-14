@@ -121,3 +121,55 @@ test("Capacitor rimraf retains recursive removal through its glob dependency", a
   assert.equal(await readFile(join(source, "index.js"), "utf8"), "module.exports = 42;\n");
   await rimraf(root);
 });
+
+test("package build receipts reject changed inputs, corrupted outputs and failed builds", async (t) => {
+  const { root } = await fixture(t);
+  const { cachedBuild, withStaging, createTimings } = await import("./package-build.mjs");
+  const output = join(root, "built");
+  const receipt = join(root, "receipt.json");
+  const timings = createTimings();
+  let runs = 0;
+  let input = "first";
+  const build = () =>
+    cachedBuild({
+      receipt,
+      input: async () => input,
+      outputs: [output],
+      build: async () => {
+        runs++;
+        await mkdir(output, { recursive: true });
+        await writeFile(join(output, "app.js"), input);
+      },
+    });
+  assert.equal((await timings.measure("cold", build)).reused, false);
+  assert.equal((await build()).reused, true);
+  await writeFile(join(output, "app.js"), "corrupt");
+  assert.equal((await build()).reused, false);
+  input = "second";
+  assert.equal((await build()).reused, false);
+  assert.equal(runs, 3);
+  await assert.rejects(
+    cachedBuild({
+      receipt,
+      input: async () => "third",
+      outputs: [output],
+      build: async () => {
+        throw Error("failed build");
+      },
+    }),
+    /failed build/,
+  );
+  input = "third";
+  assert.equal((await build()).reused, false);
+  let staging;
+  await assert.rejects(
+    withStaging(async (path) => {
+      staging = path;
+      throw Error("package failed");
+    }),
+    /package failed/,
+  );
+  await assert.rejects(stat(staging), { code: "ENOENT" });
+  assert.ok(timings.stages[0].durationMs >= 0);
+  assert.equal(timings.stages[0].status, "ok");
+});

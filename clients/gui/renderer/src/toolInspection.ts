@@ -1,3 +1,4 @@
+import { recordItems } from "./data-shapes.js";
 import type { Data } from "./services.js";
 import { rawText } from "./errors/errorCopy.js";
 
@@ -5,8 +6,8 @@ export function hasUnknownToolOutcome(item: Data): boolean {
   return (
     item.type === "dynamicToolCall" &&
     (item.execution?.outcome === "unknown" ||
-      item.execution?.hooks?.some((hook: Data) => hook.outcome === "unknown") ||
-      item.execution?.plugin?.operations?.some(
+      recordItems(item.execution?.hooks).some((hook: Data) => hook.outcome === "unknown") ||
+      recordItems(item.execution?.plugin?.operations).some(
         (operation: Data) => operation.outcome === "unknown",
       ))
   );

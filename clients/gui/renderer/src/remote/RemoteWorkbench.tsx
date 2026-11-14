@@ -23,6 +23,7 @@ import { useAppearance, useApplicationPreferences } from "../settings/applicatio
 import { shouldSteer } from "../settings/applicationSettings.js";
 import type { Action, CommandName, Data } from "../services.js";
 import type { LexicalChatInputHandle } from "../LexicalChatInput.js";
+import { remoteQueueInput } from "../data-shapes.js";
 import "../styles.css";
 import "../workbench.css";
 import "./remote.css";
@@ -390,7 +391,11 @@ function Session({ view, api }: { view: View; api: API }) {
               return;
             }
             setEditing(item);
-            api.draft(item.input.map((p: Data) => p.text).join("\n"));
+            api.draft(
+              remoteQueueInput(item)
+                .map((p: Data) => p.text)
+                .join("\n"),
+            );
           }}
         />
         {s.queue.complete === false && <p role="status">队列未完整加载，请在桌面管理。</p>}

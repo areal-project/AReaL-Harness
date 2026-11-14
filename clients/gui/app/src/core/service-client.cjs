@@ -8,7 +8,7 @@ const {
 const { commandSemantics, desktopError } = require("@areal/workbench/desktop-contract");
 const { startupTrace } = require("@areal/workbench-service/desktop/core/startup-timing.cjs");
 const { randomUUID } = require("node:crypto");
-const { mkdir, readFile, realpath, writeFile, rename, rm } = require("node:fs/promises");
+const { mkdir, readFile, realpath, rm } = require("node:fs/promises");
 const { join } = require("node:path");
 const { HostClient, executeHost } = require("@areal/client/node");
 const { hostUpdateReceipt } = require("@areal/workbench/desktop-contract/desktop-control");
@@ -240,21 +240,21 @@ class SharedCoreBackend {
   get saved() {
     return this.value.projects;
   }
-  get activeCommands() {
-    return this.status.activeCommands ?? 0;
-  }
-  get providerUpdating() {
-    return this.status.providerUpdating;
-  }
-  get starting() {
-    return { size: this.status.starting ?? 0 };
-  }
-  hasWork() {
-    return !this.status.connected || this.status.busy === true;
-  }
   /** @param {string} projectId @param {string} threadId */
   ownsThread(projectId, threadId) {
     return ownsThread(this.value, projectId, threadId);
+  }
+  /** @param {string} projectId @param {string} threadId */
+  async ensureBrowserThread(projectId, threadId) {
+    if (!this.status.connected) await this.init();
+    if (this.ownsThread(projectId, threadId)) return;
+    const connection = this.requireConnection();
+    await this.command("open", { projectId, threadId });
+    const packet = await connection.request("snapshot");
+    if (connection !== this.connection || !this.status.connected)
+      throw new Error("后台连接已变化，请重试");
+    this.accept(packet);
+    if (!this.ownsThread(projectId, threadId)) throw new Error("请选择已连接 Core 的有效任务");
   }
   /** @param {string} projectId @param {string} threadId */
   retainsThreadResources(projectId, threadId) {
@@ -588,17 +588,6 @@ class SharedCoreBackend {
       if (desktopError(error).code === "ENOENT") return null;
       throw error;
     }
-  }
-  /** @param {string} state */
-  async saveControl(state) {
-    await mkdir(this.app.getPath("userData"), { recursive: true, mode: 0o700 });
-    await writeFile(
-      `${this.controlPath}.tmp`,
-      JSON.stringify({ home: this.home, state, pid: this.metadata?.pid }),
-      { mode: 0o600 },
-    );
-    await rename(`${this.controlPath}.tmp`, this.controlPath);
-    this.controlState = state;
   }
   /** @param {{automatic?:boolean}} [options] @returns {Promise<void>} */
   async init({ automatic = false } = {}) {

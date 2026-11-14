@@ -26,9 +26,12 @@ import { createScheduleEditorLoader, type ScheduleEditorState } from "./schedule
 // 定时任务页与会话共用同一处实验组件入口，毕业前只在这里登记一次。
 export { ScheduledWorkspace };
 
+export const hasUnsettledWorkers = (run: Data) =>
+  run.workers != null &&
+  (!Array.isArray(run.workers) || run.workers.some((worker: Data) => worker?.settled !== true));
+
 export const settledRun = (run: Data) =>
-  ["completed", "failed", "cancelled", "skipped"].includes(run.status) &&
-  !(run.workers ?? []).some((worker: Data) => !worker.settled);
+  ["completed", "failed", "cancelled", "skipped"].includes(run.status) && !hasUnsettledWorkers(run);
 export const taskDeletionPending = (task: Data) =>
   task.deletedAt != null &&
   (task.hasUnsettledWork ?? (task.runs ?? []).some((run: Data) => !settledRun(run)));

@@ -1472,6 +1472,10 @@ async function normalComposerAndSideCommands() {
       async () => (await sideTabs().count()) === tabs + 1,
       `bare /${command} creates empty child`,
     );
+    await until(
+      async () => (await mainComposer().getByTestId("chat-input").textContent()) === "",
+      `bare /${command} clears the accepted composer input`,
+    );
     assert.equal(await mainComposer().getByTestId("chat-input").textContent(), "");
     assert.equal(requests.length, count, "bare app command does not send");
     await mainComposer()
@@ -1484,6 +1488,10 @@ async function normalComposerAndSideCommands() {
     );
     const sent = requests.at(-1);
     assert.equal(sent.prompt, `PARITY:P5_${command.toUpperCase()}`);
+    await until(
+      async () => (await mainComposer().getByTestId("chat-input").textContent()) === "",
+      `/${command} clears the accepted composer input`,
+    );
     assert.equal(await mainComposer().getByTestId("chat-input").textContent(), "");
     const parentAfter = await readCoreThread(parent);
     assert.deepEqual(

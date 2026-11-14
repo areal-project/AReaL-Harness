@@ -106,6 +106,7 @@ export function DraftComposer({
   surfaceLayout = "default",
   worktree,
   onWorktreeCreated,
+  prepareBrowserDraft,
 }: DraftComposerProps) {
   const readOnly = useReadOnly();
   const conversationSubmitReadOnly = useConversationSubmitReadOnly();
@@ -349,6 +350,89 @@ export function DraftComposer({
     setText("");
     setFiles([]);
   };
+  const makeCreationRequest = (owner: Data, selection: typeof worktree, requestId: string) => {
+    const profile = resolveDraftProfile(owner, profileSelection);
+    if ((profileSelection || owner.defaultProfile) && !profile)
+      throw new Error("当前任务配置不可用，输入已保留。");
+    const separator = effectiveModel.indexOf("/");
+    const chosen = owner.models.find((item: Data) => modelValue(item) === effectiveModel) ??
+      currentModel ?? {
+        providerId: effectiveModel.slice(0, separator) || null,
+        modelId: effectiveModel.slice(separator + 1),
+      };
+    const parameters = { ...chosen.parameters };
+    delete parameters.reasoningEffort;
+    if (effort) parameters.reasoningEffort = effort;
+    if (requestedServiceTier) parameters.serviceTier = requestedServiceTier;
+    if (chosen.capabilities?.reasoning === false) delete parameters.reasoningSummary;
+    return {
+      projectId: owner.id,
+      requestId,
+      parameters,
+      options: planModeOptions(plan, permissionOptions(permission)),
+      ...(profileSelection && profile
+        ? { profile: { id: profile.id, revision: profile.revision } }
+        : {}),
+      ...(effectiveModel && chosen.providerId
+        ? { model: { providerId: chosen.providerId, modelId: chosen.modelId } }
+        : {}),
+      ...(selection ? { worktree: { ...selection } } : {}),
+    };
+  };
+  useEffect(() => {
+    if (!prepareBrowserDraft) return;
+    const prepare = async () => {
+      if (sending.has(key) || unknown || conversationCreateReadOnly) return;
+      if (!executionReady) {
+        setDraftError("项目连接尚未就绪，请稍后打开浏览器。");
+        return;
+      }
+      const requestId = crypto.randomUUID();
+      let accepted = false;
+      markSending(key, true);
+      setDraftError("");
+      try {
+        const request = makeCreationRequest(project, worktree, requestId);
+        localStorage.setItem(`${key}:pending-create-request`, JSON.stringify(request));
+        const result = await readAction("create", request);
+        accepted = true;
+        if (!mounted.current) {
+          localStorage.setItem(`${key}:pending-create`, requestId);
+          return;
+        }
+        const targetKey = stageThreadDraft(project.id, result.threadId, text, files);
+        await moveSnapShotDraft(key, targetKey);
+        if (!mounted.current) {
+          localStorage.setItem(`${key}:pending-create`, requestId);
+          return;
+        }
+        transferNewReviewComments(project.id, result.threadId);
+        transferComposerSkills(key, targetKey);
+        transferComposerPlugins(key, targetKey);
+        if (goalMode) localStorage.setItem(`${targetKey}:goal`, "true");
+        localStorage.removeItem(`${key}:pending-create-request`);
+        onWorktreeCreated?.();
+        clear();
+        return result.threadId as string;
+      } catch (cause) {
+        const failure = cause as RecoveryFailure;
+        if (accepted || failure.submissionUnknown) {
+          localStorage.setItem(`${key}:pending-create`, requestId);
+          if (mounted.current) setUnknown(requestId);
+        } else {
+          localStorage.removeItem(`${key}:pending-create-request`);
+          if (mounted.current) setDraftError(recoveryMessage(failure));
+        }
+        return undefined;
+      } finally {
+        markSending(key, false);
+      }
+    };
+    prepareBrowserDraft.current = prepare;
+    return () => {
+      if (prepareBrowserDraft.current === prepare) prepareBrowserDraft.current = null;
+    };
+  });
   useEffect(() => {
     if (!unknown || stoppedCreation.current.has(unknown)) return;
     const outcome = recoveredOutcome(project, unknown, "", {
@@ -422,12 +506,6 @@ export function DraftComposer({
       const profile = resolveDraftProfile(owner, profileSelection);
       if ((profileSelection || owner.defaultProfile) && !profile)
         throw new Error("当前任务配置不可用，输入已保留。");
-      const separator = effectiveModel.indexOf("/");
-      const chosenModel = owner.models.find((item: Data) => modelValue(item) === effectiveModel) ??
-        currentModel ?? {
-          providerId: effectiveModel.slice(0, separator) || null,
-          modelId: effectiveModel.slice(separator + 1),
-        };
       await revalidateComposerPlugins(
         readAction,
         {
@@ -460,25 +538,8 @@ export function DraftComposer({
         )
           throw new Error("当前任务配置未提供所选 Skill 的确切版本，草稿已保留。");
       }
-      const parameters = { ...chosenModel.parameters };
-      delete parameters.reasoningEffort;
-      if (effort) parameters.reasoningEffort = effort;
-      if (requestedServiceTier) parameters.serviceTier = requestedServiceTier;
-      if (chosenModel.capabilities?.reasoning === false) delete parameters.reasoningSummary;
       creationAttempted = true;
-      const creationRequest = {
-        projectId: owner.id,
-        requestId: creationRequestId,
-        parameters,
-        options: planModeOptions(plan, permissionOptions(permission)),
-        ...(profileSelection && profile
-          ? { profile: { id: profile.id, revision: profile.revision } }
-          : {}),
-        ...(chosenModel.providerId
-          ? { model: { providerId: chosenModel.providerId, modelId: chosenModel.modelId } }
-          : {}),
-        ...(selection ? { worktree: { ...selection } } : {}),
-      };
+      const creationRequest = makeCreationRequest(owner, selection, creationRequestId);
       localStorage.setItem(`${key}:pending-create-request`, JSON.stringify(creationRequest));
       setActiveCreation({
         requestId: creationRequestId,

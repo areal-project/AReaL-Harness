@@ -6,6 +6,7 @@ import { Button } from "./components/ui/button.js";
 import { ControlHintTooltip } from "./ControlHintTooltip.js";
 import { goalBudgetMessage } from "./conversationPresentation.js";
 import { GoalUsageSummary } from "./GoalUsage.js";
+import { goalReportItems } from "./data-shapes.js";
 
 export const goalControlError = (cause: unknown) => {
   const message = (cause as Error).message;
@@ -278,21 +279,21 @@ export function GoalEditor({ project, thread, action }: Props) {
               <h4>{t("common.goal.progress")}</h4>
               <p>{goal.report.summary}</p>
               {goal.report.blocker && <p role="status">受阻原因：{goal.report.blocker}</p>}
-              {goal.report.evidence.length > 0 && (
+              {goalReportItems(goal.report.evidence).length > 0 && (
                 <>
                   <p>确认依据</p>
                   <ul>
-                    {goal.report.evidence.map((item, index) => (
+                    {goalReportItems(goal.report.evidence).map((item, index) => (
                       <li key={index}>{item}</li>
                     ))}
                   </ul>
                 </>
               )}
-              {goal.report.remaining.length > 0 && (
+              {goalReportItems(goal.report.remaining).length > 0 && (
                 <>
                   <p>剩余工作</p>
                   <ul>
-                    {goal.report.remaining.map((item, index) => (
+                    {goalReportItems(goal.report.remaining).map((item, index) => (
                       <li key={index}>{item}</li>
                     ))}
                   </ul>

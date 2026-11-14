@@ -130,14 +130,24 @@ jobs:
           elif [ "$GITHUB_EVENT_NAME" = "push" ] && [ -n "$PUSH_BASE" ] && [[ ! "$PUSH_BASE" =~ ^0+$ ]]; then
             design_base="$PUSH_BASE"
           elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ -n "$COMPARISON_BASE" ]; then
-            design_base="$(git rev-parse --verify --end-of-options "$COMPARISON_BASE^{commit}")"
+            if design_base="$(git merge-base "$COMPARISON_BASE" HEAD 2>/dev/null)"; then
+              :
+            elif design_base="$(git merge-base "origin/$COMPARISON_BASE" HEAD 2>/dev/null)"; then
+              :
+            else
+              design_base="$(git rev-parse HEAD^)"
+            fi
           else
             design_base="$(git rev-parse HEAD^)"
           fi
           git cat-file -e "$design_base^{commit}"
           git merge-base --is-ancestor "$design_base" HEAD
           echo "AREAL_DESIGN_BASE=$design_base" >> "$GITHUB_ENV"
-      - name: Check dependency-free health contracts and reviewed baseline
+      - name: Install pinned health dependencies
+        run: |
+          npm install --global pnpm@11.7.0
+          pnpm --dir clients/gui install --frozen-lockfile --ignore-scripts
+      - name: Check health contracts and reviewed baseline
         run: python3 scripts/ci-preflight.py --groups gui-health --output target/ci/checks/gui-health
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
@@ -245,7 +255,13 @@ jobs:
           elif [ "$GITHUB_EVENT_NAME" = "push" ] && [ -n "$PUSH_BASE" ] && [[ ! "$PUSH_BASE" =~ ^0+$ ]]; then
             design_base="$PUSH_BASE"
           elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ -n "$COMPARISON_BASE" ]; then
-            design_base="$(git rev-parse --verify --end-of-options "$COMPARISON_BASE^{commit}")"
+            if design_base="$(git merge-base "$COMPARISON_BASE" HEAD 2>/dev/null)"; then
+              :
+            elif design_base="$(git merge-base "origin/$COMPARISON_BASE" HEAD 2>/dev/null)"; then
+              :
+            else
+              design_base="$(git rev-parse HEAD^)"
+            fi
           else
             design_base="$(git rev-parse HEAD^)"
           fi

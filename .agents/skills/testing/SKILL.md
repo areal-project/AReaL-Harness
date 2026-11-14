@@ -29,6 +29,8 @@ description: 为 AReaL Harness 的改动选择并运行合适的测试（Core/Ho
 5. 业务旅程跑 `pnpm --dir clients/gui run test:web-journeys`；Linux 无显示时用 `xvfb-run`。
 6. 推送运行仓库快检；完整验收入口见上述指南。
 
+长验收按阶段记录 `firstFailure`、`reached`、`unreached` 和 `cleanup`。前置条件失败只能报告为前置阻断，不能算目标业务失败；未执行阶段不能算通过。跨层状态必须同时核对正确的 Core/Host 身份、Renderer 投影和用户可见结果，不能用旧 Main 快照或空的 `pending` 列表代替权威事件。
+
 ## 失败是不是你的
 
 ```bash

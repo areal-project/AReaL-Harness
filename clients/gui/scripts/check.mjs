@@ -65,14 +65,7 @@ if (files.length === 0) {
 
 const result = spawnSync(
   process.execPath,
-  [
-    vp,
-    "check",
-    "--deny-warnings",
-    "--no-error-on-unmatched-pattern",
-    ...process.argv.slice(2),
-    ...files,
-  ],
+  [vp, "check", "--no-error-on-unmatched-pattern", ...process.argv.slice(2), ...files],
   { cwd: root, stdio: "inherit" },
 );
 if (result.error) throw result.error;

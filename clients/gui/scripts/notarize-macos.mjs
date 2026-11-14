@@ -144,6 +144,7 @@ async function main() {
       "history-source": { type: "string" },
       resume: { type: "boolean" },
       "skip-tests": { type: "boolean" },
+      "dmg-only": { type: "boolean" },
       "wait-seconds": { type: "string", default: "60" },
     },
   });
@@ -314,6 +315,7 @@ async function main() {
       coreSourceRevision: manifest.sourceRevision,
       inputManifestSha256,
       historyPreflight,
+      dmgOnly: options["dmg-only"] === true,
       notarization: {},
       startedAt: new Date().toISOString(),
     };
@@ -464,7 +466,8 @@ async function main() {
   const app = join(output, state.appName);
   const stem = "AReaLHarness-" + state.version + "-macos-arm64";
   const zip = join(output, stem + ".zip"),
-    dmg = join(output, stem + ".dmg");
+    dmg = join(output, stem + ".dmg"),
+    dmgOnly = state.dmgOnly === true;
   if (!(await notarize("zip", join(output, "app-submission.zip")))) return;
   if (state.phase === "signed") {
     run("/usr/bin/xcrun", ["stapler", "staple", app]);
@@ -497,7 +500,7 @@ async function main() {
     save();
     // These paths belong to this locked run and may contain interrupted output.
     for (const path of [zip, dmg]) rmSync(path, { recursive: true, force: true });
-    run("/usr/bin/ditto", ["-c", "-k", "--keepParent", app, zip]);
+    if (!dmgOnly) run("/usr/bin/ditto", ["-c", "-k", "--keepParent", app, zip]);
     state.dmgExport = await buildMacOSDmg({
       app,
       destination: dmg,
@@ -508,11 +511,11 @@ async function main() {
     const detail = run("/usr/bin/codesign", ["--display", "--verbose=4", dmg]).stderr;
     state.dmgCdhash = /^CDHash=(.+)$/m.exec(detail)?.[1];
     assert.ok(state.dmgCdhash, "Missing DMG CodeDirectory hash");
-    state.zipSha256 = hash(zip);
+    if (!dmgOnly) state.zipSha256 = hash(zip);
     state.phase = "packaged";
     save();
   }
-  assert.equal(hash(zip), state.zipSha256, "Final ZIP changed");
+  if (!dmgOnly) assert.equal(hash(zip), state.zipSha256, "Final ZIP changed");
   if (state.phase !== "finalizing" && !(await notarize("dmg", dmg))) return;
   const dmgLog = readJSON(join(output, "dmg-notary-log.json"));
   assert.equal(dmgLog.status, "Accepted", "DMG must have an accepted Apple receipt");
@@ -555,8 +558,10 @@ async function main() {
     }
   }
   if (failure) throw failure;
+  if (dmgOnly) rmSync(join(output, "app-submission.zip"), { force: true });
+  const artifactPaths = dmgOnly ? [dmg] : [zip, dmg];
   state.artifacts = Object.fromEntries(
-    [zip, dmg].map((path) => [basename(path), { sha256: hash(path) }]),
+    artifactPaths.map((path) => [basename(path), { sha256: hash(path) }]),
   );
   writeFileSync(
     join(output, "SHA256SUMS.txt"),

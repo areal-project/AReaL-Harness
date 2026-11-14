@@ -1,3 +1,4 @@
+import { recordItems } from "./data-shapes.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import {
   Dialog,
@@ -16,7 +17,7 @@ export function TurnHookStats({ turn }: { turn: Data }) {
   const { t } = useI18n();
   const runs = (turn.items ?? []).flatMap((item: Data) =>
     item.type === "dynamicToolCall"
-      ? (item.execution?.hooks ?? []).map((hook: Data) => ({
+      ? recordItems(item.execution?.hooks).map((hook: Data) => ({
           hook,
           tool: item.tool,
           itemId: item.id,

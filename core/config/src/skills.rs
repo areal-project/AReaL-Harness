@@ -72,12 +72,12 @@ pub fn discover(workspace: Option<&Path>, homedir: Option<&Path>) -> Result<Skil
             } else {
                 allowed.push(root.clone());
             }
-            roots.push(root);
+            roots.push((root, Some(base) == workspace.as_deref()));
         }
     }
     let mut selected = BTreeMap::new();
     // 先选定最高优先级，避免低优先级副本的旧资源阻止项目覆盖。
-    for root in roots.into_iter().rev() {
+    for (root, project) in roots.into_iter().rev() {
         let mut entries = fs::read_dir(&root)?
             .take(MAX_SKILL_DIRECTORY_ENTRIES + 1)
             .collect::<std::io::Result<Vec<_>>>()?;
@@ -102,7 +102,7 @@ pub fn discover(workspace: Option<&Path>, homedir: Option<&Path>) -> Result<Skil
                     .canonicalize()
                     .with_context(|| format!("resolve skill directory {}", path.display()))?;
                 ensure!(
-                    allowed.iter().any(|p| target.starts_with(p)),
+                    !project || allowed.iter().any(|p| target.starts_with(p)),
                     "skill directory escaped trusted roots: {}",
                     path.display()
                 );

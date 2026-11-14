@@ -1180,8 +1180,7 @@ class AppProviders {
       const provider = this.value.data.find((item) => item.id === request.id);
       if (!provider?.apiKeyEnv) throw new Error("尚未配置可用的 API Key");
       try {
-        const apiKey = credentialValue(this.key(provider));
-        if (!apiKey) throw new Error();
+        const apiKey = await this.config.reveal(provider);
         return { apiKey };
       } catch {
         throw new Error("无法显示 API Key，请解锁系统安全存储后重试。");

@@ -5,6 +5,8 @@ import { useI18n } from "./i18n/IntlProvider.js";
 import { FeedbackNotice } from "./FeedbackNotice.js";
 import { wasReported } from "./errors/reported.js";
 import type { Data, Action, CommandParams } from "./services.js";
+import { queueInput, queueItems, queueText } from "./data-shapes.js";
+export { queueText } from "./data-shapes.js";
 
 export type QueueEditInput = {
   [Request in CommandParams<"queueEdit"> as Request["operation"]]: Omit<
@@ -12,9 +14,6 @@ export type QueueEditInput = {
     "projectId" | "threadId" | "expectedRevision" | "requestId"
   >;
 }[CommandParams<"queueEdit">["operation"]];
-
-export const queueText = (item: Data) =>
-  (item.input ?? []).map((p: Data) => (p.type === "text" ? p.text : "[附件]")).join("\n");
 
 const statusLabel: Record<string, string> = {
   pending: "等待执行",
@@ -43,7 +42,7 @@ export function queueEditRefusal(
   fallback = "",
 ): string {
   if (!draft?.id) return fallback;
-  const item = (queue.items ?? []).find((entry: Data) => entry.id === draft.id);
+  const item = queueItems(queue).find((entry: Data) => entry.id === draft.id);
   if (item && item.status !== "pending") {
     return `这条消息${blockedBecause[item.status] ?? `当前是${item.status}`}，不能再编辑。未提交的内容已保留。`;
   }
@@ -70,7 +69,8 @@ export function Queue({
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<QueueDraft | null>(null);
   const [error, setError] = useState("");
-  const pending = queue.items.filter((item: Data) => item.status === "pending");
+  const items = queueItems(queue);
+  const pending = items.filter((item: Data) => item.status === "pending");
   const reason = draft ? queueEditRefusal(queue, draft, error) : error;
   const edit = async (request: QueueEditInput, revision = queue.revision) => {
     if (busy) return;
@@ -138,8 +138,8 @@ export function Queue({
       {reason && (
         <FeedbackNotice transient tone="error" message={reason} onDismiss={() => setError("")} />
       )}
-      {queue.items.length === 0 && <p>任务运行中可以继续发送消息，消息将在这里排队。</p>}
-      {queue.items.map((item: Data) => {
+      {items.length === 0 && <p>任务运行中可以继续发送消息，消息将在这里排队。</p>}
+      {items.map((item: Data) => {
         const position = pending.findIndex((entry: Data) => entry.id === item.id);
         const open = draft?.id === item.id ? draft : null;
         const current = queueText(item);
@@ -173,10 +173,12 @@ export function Queue({
                   data-slot={undefined}
                   type="submit"
                   disabled={
-                    disabled || busy || !item.input.every((part: Data) => part.type === "text")
+                    disabled ||
+                    busy ||
+                    !queueInput(item).every((part: Data) => part.type === "text")
                   }
                   title={
-                    item.input.every((part: Data) => part.type === "text")
+                    queueInput(item).every((part: Data) => part.type === "text")
                       ? undefined
                       : "含附件消息请移除后重新添加"
                   }

@@ -144,8 +144,9 @@ class ScopedResources {
           const directory = await realpath(join(root, id));
           resolvedRoot = directory;
           if (
+            scope !== "user" &&
             !roots.some((r) => within(r, directory)) &&
-            !(scope !== "user" && within(base, directory))
+            !within(base, directory)
           )
             throw new Error("技能目录链接超出可信范围");
           const meta = metadata(await bounded(join(directory, "SKILL.md")), id);

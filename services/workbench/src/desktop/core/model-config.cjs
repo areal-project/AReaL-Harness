@@ -219,6 +219,27 @@ class ModelConfiguration {
     return reference;
   }
   /** @param {{apiKeyEnv?:string}} item */
+  async reveal(item) {
+    const reference = item?.apiKeyEnv;
+    if (!reference) throw new Error("尚未配置可用的 API Key");
+    const cached = this.key(item);
+    if (cached) return credentialValue(cached);
+    const value = await this.hostVault.read(
+      {
+        kind: "providerCredential",
+        sourceId: this.backend.host.sourceId,
+        reference,
+      },
+      { interactionAllowed: true },
+    );
+    const secret = credentialValue(value?.value);
+    if (!secret) throw new Error("尚未配置可用的 API Key");
+    // 用户已明确请求查看，成功的交互读取应立即清除本地的 locked 投影。
+    this.vault.keys[reference] = secret;
+    this.vault.locked.delete(reference);
+    return secret;
+  }
+  /** @param {{apiKeyEnv?:string}} item */
   key(item) {
     if (!item?.apiKeyEnv) return "";
     if (Object.hasOwn(this.vault.keys, item.apiKeyEnv)) return this.vault.keys[item.apiKeyEnv];

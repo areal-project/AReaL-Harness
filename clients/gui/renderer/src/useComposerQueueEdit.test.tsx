@@ -143,7 +143,11 @@ describe("queued composer upload lifetime", () => {
             revision: 3,
             paused: false,
             items: [
-              { id: "item", status: "pending", input: [{ type: "text", text: "stale text" }] },
+              {
+                id: "item",
+                status: "pending",
+                input: [{ type: "text", text: "stale text" }],
+              },
             ],
           },
         },
@@ -227,4 +231,66 @@ describe("queued composer upload lifetime", () => {
     expect(localStorage.getItem(fixture.key)).toBe("original draft");
     forgetComposerUploads(fixture.owner, [fixture.originalFile, fixture.addition]);
   });
+});
+
+describe("queue snapshot input shape", () => {
+  it.each([undefined, { text: "old shape" }, [null]])(
+    "re-reads authoritative input before editing %j",
+    async (input) => {
+      const draftKey = `queue-shape-${crypto.randomUUID()}`;
+      const target = { id: "item", status: "pending", input };
+      const setText = vi.fn();
+      const readAction = vi.fn<Action>().mockResolvedValue({
+        revision: 4,
+        paused: true,
+        items: [
+          {
+            id: "item",
+            status: "pending",
+            input: [{ type: "text", text: "confirmed input" }],
+          },
+        ],
+      });
+      let editor!: ReturnType<typeof useComposerQueueEdit>;
+      function Harness() {
+        editor = useComposerQueueEdit({
+          project: {
+            id: "project",
+            state: {
+              connected: true,
+              queues: { thread: { revision: 3, paused: true, items: [target] } },
+            },
+          },
+          threadId: "thread",
+          draftKey,
+          action: vi.fn<Action>() as Action,
+          readAction: readAction as Action,
+          api: { current: null },
+          draftFiles: new Map(),
+          setText,
+          setFiles: vi.fn(),
+          setGoalMode: vi.fn(),
+          uploadFiles: async () => [],
+          inFlight: false,
+          setInFlight: vi.fn(),
+          annotationBlocked: false,
+        });
+        return null;
+      }
+      renderToStaticMarkup(createElement(Harness));
+      await editor.begin(target);
+      expect(readAction).toHaveBeenCalledWith("queue", {
+        projectId: "project",
+        threadId: "thread",
+      });
+      expect(setText).toHaveBeenCalledWith("confirmed input");
+      expect(JSON.parse(localStorage.getItem(`${draftKey}:queue-edit`)!)).toMatchObject({
+        phase: "editing",
+        revision: 4,
+        attachments: [],
+      });
+      localStorage.removeItem(`${draftKey}:queue-edit`);
+      localStorage.removeItem(draftKey);
+    },
+  );
 });

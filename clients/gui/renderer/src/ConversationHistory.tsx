@@ -19,6 +19,7 @@ export function useConversationHistory(projectId: string, thread: Data, action: 
   const releaseGenerations = useRef(new Map<string, string>());
   if (reads) releaseGenerations.current.set(owner, String(thread.displayHistory?.viewGeneration));
   const supported = thread.displayHistory?.supported === true;
+  const refreshing = !!reads && thread.displayHistory?.freshness === "stale";
   const [failure, setFailure] = useState<{
     generation: string;
     itemId?: string;
@@ -61,7 +62,7 @@ export function useConversationHistory(projectId: string, thread: Data, action: 
   // 重新观察会换新的历史窗口（viewGeneration 变化），视图登记随窗口沿用。这里只重新登记，
   // 不先释放：释放会清空已加载页并中断补全，随后再补回，顶部内容会反复消失、出现。
   useEffect(() => {
-    if (!supported) return;
+    if (!supported || refreshing) return;
     current.current = generation;
     let active = true;
     void register().then(
@@ -76,7 +77,7 @@ export function useConversationHistory(projectId: string, thread: Data, action: 
     return () => {
       active = false;
     };
-  }, [generation, supported, register, t]);
+  }, [generation, supported, refreshing, register, t]);
   const load = useCallback(
     async (itemId?: string, pageId?: string) => {
       setFailure(undefined);

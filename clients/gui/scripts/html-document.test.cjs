@@ -85,6 +85,10 @@ test("directory grant serves versioned HTML and only bounded canonical static as
   assert.equal(entry.status, 200);
   assert.equal(entry.body, "<h1>approved</h1>");
   assert.equal(entry.headers["cache-control"], "no-store");
+  assert.match(
+    entry.headers["content-security-policy"],
+    /script-src 'self' 'unsafe-inline' 'unsafe-eval'/,
+  );
   assert.match(entry.headers["content-security-policy"], /worker-src 'none'/);
   for (const path of ["style.css", "sibling.js"])
     assert.equal((await get(grant, prefix + path)).status, 200, path);

@@ -101,7 +101,9 @@ const server = createServer(async (request, response) => {
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const config = join(userHome, ".areal", "config.toml");
 const composerPicker = process.argv.includes("--composer-picker");
+const pickerEfforts = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 const composerFast = process.argv.includes("--composer-fast");
+const sendContinuity = process.argv.includes("--send-continuity");
 await writeFile(
   config,
   `schema_version=1\n[model]\ncatalog_version=1\nprovider="theta"\nname="theta-model"\n` +
@@ -117,14 +119,14 @@ await writeFile(
   (await readFile(config, "utf8")) +
     `\n[model.providers.env]\nname="env"\nenabled=false\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\nprotocol="chat-completions"\napi_key_env="AREAL_MODEL_FIXTURE_KEY"\nmodels=[{id="env-model",enabled=true}]\n`,
 );
-if (composerPicker || composerFast) {
+if (composerPicker || composerFast || sendContinuity) {
   await writeFile(
     config,
     `schema_version=1\n[model]\ncatalog_version=1\nprovider="alpha"\nname="alpha-model"\n` +
       ["alpha", "beta"]
         .map(
           (id) =>
-            `\n[model.providers.${id}]\nname="${composerPicker ? `Configured ${id}` : id}"\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\nprotocol="chat-completions"\nmodels=[{id="${id}-model",enabled=true${composerFast && id === "alpha" ? ',parameters={service_tier="fast"}' : ""},capabilities={tools=true,vision=true,reasoning=true,reasoning_effort_options=["low","high"]}}]\n`,
+            `\n[model.providers.${id}]\nname="${composerPicker ? `Configured ${id}` : id}"\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\nprotocol="chat-completions"\nmodels=[{id="${id}-model",enabled=true${composerFast && id === "alpha" ? ',parameters={service_tier="fast"}' : ""},capabilities={tools=true,vision=true,reasoning=true,reasoning_effort_options=${JSON.stringify(composerPicker ? pickerEfforts : ["low", "high"])}}}]\n`,
         )
         .join(""),
   );
@@ -410,39 +412,69 @@ const bridge = desktopBridge(() => page);
 const { state, call } = bridge;
 const until = (predicate, label) => bridge.untilState(predicate, label, { interval: 80 });
 async function waitForServiceIdle({ canStop = false } = {}) {
-  await untilValue(
-    async () => {
-      const reply = await page.evaluate(() => window.arealDesktop.command("serviceStatus", {}));
-      if (!reply.ok) return { ok: false };
-      const { busy, activeCommands, starting, providerUpdating, canStop, clients, projects } =
-        reply.value;
-      return {
-        ok: true,
-        busy,
-        activeCommands,
-        starting,
-        providerUpdating,
-        canStop,
-        clients,
-        projects: projects.map((project) => ({
-          observation: project.observation,
-          restartSafe: project.restartSafe,
-          activeTasks: project.activeTasks,
-          waitingMessages: project.waitingMessages,
-          goals: project.goalThreads?.length,
-          tasks: project.tasks?.map((task) => ({ paused: task.paused })),
+  try {
+    await untilValue(
+      async () => {
+        const reply = await page.evaluate(() => window.arealDesktop.command("serviceStatus", {}));
+        if (!reply.ok) return { ok: false };
+        const { busy, activeCommands, starting, providerUpdating, canStop, clients, projects } =
+          reply.value;
+        return {
+          ok: true,
+          busy,
+          activeCommands,
+          starting,
+          providerUpdating,
+          canStop,
+          clients,
+          projects: projects.map((project) => ({
+            observation: project.observation,
+            restartSafe: project.restartSafe,
+            activeTasks: project.activeTasks,
+            waitingMessages: project.waitingMessages,
+            goals: project.goalThreads?.length,
+            tasks: project.tasks?.map((task) => ({ paused: task.paused })),
+          })),
+        };
+      },
+      canStop ? "service can stop" : "service operations settled",
+      {
+        accept: (status) =>
+          status.ok &&
+          (canStop
+            ? status.canStop
+            : !status.busy &&
+              !status.activeCommands &&
+              !status.starting &&
+              !status.providerUpdating),
+      },
+    );
+  } catch (error) {
+    try {
+      const snapshot = await state();
+      const projects = snapshot.projects.map((project) => ({
+        id: project.id,
+        pending: project.pending?.map(({ method }) => method),
+        turns: Object.entries(project.state?.threads ?? {}).flatMap(([threadId, thread]) =>
+          (thread.turns ?? [])
+            .filter((turn) => turn.status === "inProgress")
+            .map((turn) => ({ threadId, id: turn.id, status: turn.status })),
+        ),
+        queues: Object.entries(project.state?.queues ?? {}).map(([threadId, queue]) => ({
+          threadId,
+          paused: queue.paused,
+          statuses: queue.items.map((item) => item.status),
         })),
-      };
-    },
-    canStop ? "service can stop" : "service operations settled",
-    {
-      accept: (status) =>
-        status.ok &&
-        (canStop
-          ? status.canStop
-          : !status.busy && !status.activeCommands && !status.starting && !status.providerUpdating),
-    },
-  );
+      }));
+      await writeFile(
+        join(scratch, "service-idle-failure.json"),
+        JSON.stringify(projects, null, 2),
+      );
+    } catch (observationError) {
+      console.error("[model-selection] failed to capture service idle state:", observationError);
+    }
+    throw error;
+  }
 }
 const fixtureProject = (snapshot) =>
   snapshot.projects.find((project) => project.root === workspace);
@@ -1599,6 +1631,48 @@ async function verifyComposerPicker() {
     assert.equal(await effortMenu.getByRole("button", { name, exact: true }).count(), 1);
   await effortMenu.getByRole("button", { name: "最高", exact: true }).click();
   await page.keyboard.press("Escape");
+  // 先建立合法历史，再收窄能力；新草稿会自动选择受支持档位，不能用来验历史拒绝。
+  const historyText = "PICKER_MAX_HISTORY";
+  await page.getByTestId("chat-input").fill(historyText);
+  const beforeHistory = modelRequests.length;
+  await button("发送").click();
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId,
+  );
+  const effortThread = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+  const historyTurn = await waitForCoreTurn(effortThread, { text: historyText, count: 1 });
+  await page.locator(`[data-turn-id="${historyTurn.id}"][data-turn-status="completed"]`).waitFor();
+  assert.equal(modelRequests.length, beforeHistory + 1);
+  assert.deepEqual(modelRequests.at(-1), { model: "beta-model", effort: "max", hasEffort: true });
+  await waitForServiceIdle();
+  const providers = await call("providers", { operation: "list" });
+  const provider = providers.data.find((entry) => entry.id === "beta");
+  assert.ok(provider);
+  await call("providers", {
+    operation: "saveAndApply",
+    expectedRevision: providers.revision,
+    authentication: "none",
+    provider: {
+      ...provider,
+      models: provider.models.map((model) => ({
+        ...model,
+        capabilities: { ...model.capabilities, reasoningEffortOptions: ["low", "high"] },
+      })),
+    },
+  });
+  await until(
+    (snapshot) =>
+      JSON.stringify(
+        fixtureProject(snapshot)?.models.find((model) => model.providerId === "beta")
+          ?.reasoningEffortOptions,
+      ) === JSON.stringify(["low", "high"]),
+    "picker capability subset reaches catalog",
+  );
+  assert.equal(
+    (await readCoreThread(effortThread)).desktop.configuration.parameters.reasoningEffort,
+    "max",
+  );
+  assert.match(await button("选择思考强度").innerText(), /最高/);
   const draft = "UNSUPPORTED_EFFORT_DRAFT";
   await page.getByTestId("chat-input").fill(draft);
   const before = modelRequests.length;
@@ -1618,15 +1692,32 @@ async function verifyComposerPicker() {
   );
   await button("选择思考强度").click();
   const slider = page.getByRole("slider", { name: "选择思考强度", exact: true });
-  await slider.waitFor();
-  await slider.fill("4");
+  assert.equal(await slider.count(), 0, "unsupported historical effort has no slider value");
+  assert.deepEqual(
+    await effortMenu
+      .getByRole("group", { name: "选择思考强度", exact: true })
+      .getByRole("button")
+      .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label"))),
+    ["低", "高"],
+  );
+  await effortMenu.getByRole("button", { name: "高", exact: true }).click();
   await page.keyboard.press("Escape");
   await button("发送").click();
   await page.waitForFunction(
     () => document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId,
   );
-  const effortThread = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
-  await waitForCoreTurn(effortThread, { text: draft, label: "valid effort reaches provider" });
+  assert.equal(
+    await page.getByTestId("areal-workbench").getAttribute("data-thread-id"),
+    effortThread,
+  );
+  const recoveredTurn = await waitForCoreTurn(effortThread, {
+    text: draft,
+    count: 2,
+    label: "valid effort reaches provider",
+  });
+  await page
+    .locator(`[data-turn-id="${recoveredTurn.id}"][data-turn-status="completed"]`)
+    .waitFor();
   assert.equal(modelRequests.length, before + 1);
   assert.deepEqual(modelRequests.at(-1), { model: "beta-model", effort: "high", hasEffort: true });
   for (const theme of ["dark", "light"]) {
@@ -2628,13 +2719,131 @@ async function runFullModelSelection() {
   await verifyModelCapabilities();
   await verifyModelDefaults(projectId);
 }
+async function verifyFirstSendContinuity() {
+  await until(
+    (snapshot) =>
+      fixtureProject(snapshot)?.state?.connected &&
+      fixtureProject(snapshot).models.some((model) => model.available),
+    "fixture ready",
+  );
+  const input = page.getByTestId("chat-input");
+  const previous = [];
+  for (const text of ["EXISTING ONE", "EXISTING TWO"]) {
+    if (previous.length) await createProjectConversation(page, "workspace");
+    await input.fill(text);
+    await button("发送").click();
+    await page.waitForFunction(
+      () => !!document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId,
+    );
+    const id = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+    await waitForCoreTurn(id, { text });
+    previous.push(id);
+  }
+  const secondProject = join(scratch, "other-project");
+  await mkdir(secondProject);
+  execFileSync("git", ["init", "-b", "main"], { cwd: secondProject, stdio: "ignore" });
+  await app.evaluate(({ dialog }, root) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [root] });
+  }, secondProject);
+  await button("打开项目").click();
+  await createProjectConversation(page, "other-project");
+  await until(
+    (snapshot) =>
+      snapshot.projects.find((project) => project.root === secondProject)?.state?.connected,
+    "other project ready",
+  );
+  const text = "FIRST NEW PROJECT MESSAGE";
+  await input.fill(text);
+  await page.evaluate((text) => {
+    window.__sendContinuity = [];
+    window.__sendContinuityPhase = "send";
+    const record = () => {
+      const main = document.querySelector('[data-testid="chat-view"]')?.innerText ?? "";
+      window.__sendContinuity.push({
+        phase: window.__sendContinuityPhase,
+        message: main.includes(text),
+        starting: main.includes("正在启动聊天"),
+        draft: main.includes("你想让我们在"),
+        reading: main.includes("正在读取对话"),
+        historyError: main.includes("历史内容加载失败"),
+      });
+    };
+    window.__recordSendContinuity = record;
+    new MutationObserver(record).observe(document.body, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["data-thread-id", "data-project-id"],
+    });
+    record();
+  }, text);
+  await button("发送").click();
+  await until((snapshot) => {
+    const project = snapshot.projects.find((item) => item.root === secondProject);
+    return (
+      project &&
+      Object.values(project.state?.threads ?? {}).some((thread) =>
+        thread.turns?.some((turn) =>
+          turn.items?.some((item) => JSON.stringify(item).includes(text)),
+        ),
+      )
+    );
+  }, "new project message projection");
+  const project = (await state()).projects.find((item) => item.root === secondProject);
+  const thread = Object.values(project.state.threads).find((item) =>
+    item.turns?.some((turn) => turn.items?.some((entry) => JSON.stringify(entry).includes(text))),
+  );
+  let completedTurn;
+  await until(async () => {
+    const current = await observeCoreThread({
+      binary: coreBinary,
+      env,
+      gui,
+      threadId: thread.id,
+      project,
+      workspace: secondProject,
+    });
+    completedTurn = current.turns.at(-1);
+    return completedTurn?.status === "completed" && JSON.stringify(completedTurn).includes(text);
+  }, "new project Core turn completed");
+  await page
+    .locator(`[data-turn-id="${completedTurn.id}"][data-turn-status="completed"]`)
+    .waitFor();
+  await page.evaluate(() => {
+    window.__sendContinuityPhase = "switch";
+    window.__recordSendContinuity();
+  });
+  await selectConversation(page, previous[0]);
+  await selectConversation(page, previous[1]);
+  await page.getByText("EXISTING TWO").first().waitFor();
+  const observed = await page.evaluate(() => window.__sendContinuity);
+  const sent = observed.filter((sample) => sample.phase === "send");
+  const preview = sent.findIndex((sample) => sample.starting && sample.message);
+  assert.ok(preview >= 0, "first pending preview is shown");
+  assert.deepEqual(
+    sent.slice(preview).filter((sample) => !sample.message || sample.draft || sample.reading),
+    [],
+    "first message remains visible until Core projection",
+  );
+  assert.ok(
+    observed.filter((sample) => sample.phase === "switch").every((sample) => !sample.historyError),
+    "switching cached conversations does not flash a history error",
+  );
+  recordCheck(
+    "first message stays visible through Core projection and cached conversation switches",
+  );
+}
+
 try {
   console.log(`[model-selection] evidence: ${scratch}`);
   await launch();
   console.log("[model-selection] creating project conversation");
   await button("打开项目").click();
   await createProjectConversation(page, "workspace");
-  if (composerFast) {
+  if (sendContinuity) {
+    await verifyFirstSendContinuity();
+  } else if (composerFast) {
     await verifyComposerFast();
   } else if (composerPicker) {
     await verifyComposerPicker();

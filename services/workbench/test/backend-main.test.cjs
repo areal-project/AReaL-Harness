@@ -55,18 +55,35 @@ async function fixture(t, retired, projectionFixture = false) {
   await mkdir(join(appRoot, "node_modules/@areal/workbench"), { recursive: true });
   await writeFile(
     join(appRoot, "node_modules/@areal/workbench/package.json"),
-    JSON.stringify({ exports: { "./desktop-contract": "./contract.cjs" } }),
+    JSON.stringify({
+      exports: {
+        "./desktop-contract": "./contract.cjs",
+        "./desktop-contract/shared": "./shared.cjs",
+        "./desktop-contract/provider": "./provider.cjs",
+      },
+    }),
   );
   await writeFile(
     join(appRoot, "node_modules/@areal/workbench/contract.cjs"),
     `
+    Object.assign(exports, require(${JSON.stringify(require.resolve("../../../clients/gui/packages/workbench/client/desktop-contract.cjs"))}));
     exports.validateCommand = (name, params) => { if (params.invalid) throw Error('Invalid ' + name + ' request'); };
     exports.validateCommandResponse = () => {};
   `,
   );
+  for (const name of ["shared", "provider"]) {
+    await writeFile(
+      join(appRoot, `node_modules/@areal/workbench/${name}.cjs`),
+      `module.exports = require(${JSON.stringify(require.resolve(`../../../clients/gui/packages/workbench/client/desktop-contract/${name}.cjs`))});`,
+    );
+  }
   const child = spawn(process.execPath, [join(__dirname, "../src/backend-main.cjs")], {
     env: { PATH: process.env.PATH, HOME: root },
     stdio: ["pipe", "pipe", "pipe"],
+  });
+  let stderr = "";
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
   });
   const exited = once(child, "exit");
   t.after(async () => {
@@ -82,6 +99,13 @@ async function fixture(t, retired, projectionFixture = false) {
     child,
     lines,
     exited,
+    line: () =>
+      Promise.race([
+        once(lines, "line"),
+        exited.then(([code, signal]) => {
+          throw new Error(`Backend exited before reply (${code}, ${signal}): ${stderr}`);
+        }),
+      ]),
     start: () =>
       child.stdin.write(
         JSON.stringify({
@@ -95,10 +119,10 @@ async function fixture(t, retired, projectionFixture = false) {
 
 test("creation catalog publishes the latest Core accepted model", async (t) => {
   const f = await fixture(t, "catalog");
-  const ready = once(f.lines, "line");
+  const ready = f.line();
   f.start();
   await ready;
-  const reply = once(f.lines, "line");
+  const reply = f.line();
   f.child.stdin.write(
     JSON.stringify({
       version: 1,
@@ -108,6 +132,7 @@ test("creation catalog publishes the latest Core accepted model", async (t) => {
     }) + "\n",
   );
   const frame = JSON.parse((await reply)[0]);
+  assert.ok(frame.result, JSON.stringify(frame));
   assert.equal(frame.result.lastAcceptedModel.modelId, "m");
   assert.equal(frame.result.lastAcceptedModel.reasoningEffort, "xhigh");
   f.child.stdin.end();
@@ -116,7 +141,7 @@ test("creation catalog publishes the latest Core accepted model", async (t) => {
 
 test("后台发布身份但不泄露票据，Host EOF 等待关闭并清理本代元数据", async (t) => {
   const f = await fixture(t);
-  const ready = once(f.lines, "line");
+  const ready = f.line();
   f.start();
   const [line] = await ready;
   const frame = JSON.parse(line);
@@ -147,7 +172,7 @@ test("只清理 Host 确认已退出的同一后台代际", async (t) => {
   const retired = { pid: 19, identity: "old", desktopGeneration: "old-generation" };
   const f = await fixture(t, retired);
   await writeFile(join(f.home, "service.json"), JSON.stringify(retired));
-  const ready = once(f.lines, "line");
+  const ready = f.line();
   f.start();
   await ready;
   f.child.stdin.end();
@@ -156,11 +181,11 @@ test("只清理 Host 确认已退出的同一后台代际", async (t) => {
 
 test("本机网页的桌面命令只放行命令表内、合同通过的请求，并带回失败原因", async (t) => {
   const f = await fixture(t);
-  const ready = once(f.lines, "line");
+  const ready = f.line();
   f.start();
   await ready;
   const call = async (id, params) => {
-    const answer = once(f.lines, "line");
+    const answer = f.line();
     f.child.stdin.write(
       JSON.stringify({ version: 1, id, method: "desktop.command", params }) + "\n",
     );
@@ -244,7 +269,7 @@ test("本机网页的桌面命令只放行命令表内、合同通过的请求�
 
 test("Host Worktree invalidation refreshes persisted progress and rejects another source", async (t) => {
   const f = await fixture(t, undefined, true);
-  const ready = once(f.lines, "line");
+  const ready = f.line();
   f.start();
   await ready;
   const requestId = require("node:crypto").randomUUID();
@@ -259,7 +284,7 @@ test("Host Worktree invalidation refreshes persisted progress and rejects anothe
     threadId: "original-thread",
   };
   await writeFile(join(f.home, "worktree-requests", requestId + ".json"), JSON.stringify(record));
-  const projected = once(f.lines, "line");
+  const projected = f.line();
   f.child.stdin.write(
     JSON.stringify({ version: 1, event: "worktree.changed", sourceId: "fixture-source" }) + "\n",
   );
@@ -272,10 +297,10 @@ test("Host Worktree invalidation refreshes persisted progress and rejects anothe
 
 test("恢复目录查询只接受空间身份并经 Host 读取，不传入任意来源路径", async (t) => {
   const f = await fixture(t);
-  const ready = once(f.lines, "line");
+  const ready = f.line();
   f.start();
   await ready;
-  const reply = once(f.lines, "line");
+  const reply = f.line();
   f.child.stdin.write(
     JSON.stringify({
       version: 1,
@@ -287,7 +312,7 @@ test("恢复目录查询只接受空间身份并经 Host 读取，不传入任�
   const frame = JSON.parse((await reply)[0]);
   assert.equal(frame.call, "recovery.inspect");
   assert.deepEqual(frame.params, {});
-  const answer = once(f.lines, "line");
+  const answer = f.line();
   f.child.stdin.write(
     JSON.stringify({
       version: 1,
@@ -300,7 +325,7 @@ test("恢复目录查询只接受空间身份并经 Host 读取，不传入任�
     projects: [],
     providers: [],
   });
-  const rejected = once(f.lines, "line");
+  const rejected = f.line();
   f.child.stdin.write(
     JSON.stringify({
       version: 1,
@@ -319,10 +344,10 @@ test("恢复目录查询只接受空间身份并经 Host 读取，不传入任�
 
 test("恢复工作区只登记 Host 清单的目录，不接受调用者路径", async (t) => {
   const f = await fixture(t);
-  const ready = once(f.lines, "line");
+  const ready = f.line();
   f.start();
   await ready;
-  const reversed = once(f.lines, "line");
+  const reversed = f.line();
   f.child.stdin.write(
     JSON.stringify({
       version: 1,
@@ -334,7 +359,7 @@ test("恢复工作区只登记 Host 清单的目录，不接受调用者路径",
   const frame = JSON.parse((await reversed)[0]);
   assert.equal(frame.call, "recovery.inspect");
   assert.deepEqual(frame.params, {});
-  const reply = once(f.lines, "line");
+  const reply = f.line();
   f.child.stdin.write(
     JSON.stringify({ version: 1, id: frame.id, result: { workspace: "/verified-new-space" } }) +
       "\n",
@@ -342,7 +367,7 @@ test("恢复工作区只登记 Host 清单的目录，不接受调用者路径",
   assert.deepEqual(JSON.parse((await reply)[0]).result, {
     projectId: "project:/verified-new-space",
   });
-  const rejected = once(f.lines, "line");
+  const rejected = f.line();
   f.child.stdin.write(
     JSON.stringify({
       version: 1,

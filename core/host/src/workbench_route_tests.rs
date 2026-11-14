@@ -364,7 +364,8 @@ async fn backend_business_errors_preserve_only_codes_supported_by_the_host() {
             .map(|path| path.join("node")).find(|path| path.is_file()).unwrap();
         let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
         let runner_root = root.path().join("runner");
-        let contract = runner_root.join("node_modules/@areal/workbench");
+        std::fs::create_dir_all(&runner_root).unwrap();
+        let contract = app.join("node_modules/@areal/workbench");
         std::fs::create_dir_all(&contract).unwrap();
         for file in ["backend-main.cjs", "channel.cjs", "pages.cjs"] {
             std::fs::copy(repository.join("services/workbench/src").join(file), runner_root.join(file)).unwrap();

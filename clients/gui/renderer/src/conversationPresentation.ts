@@ -1,6 +1,13 @@
 import type { Translate } from "./i18n/IntlProvider.js";
 import type { Data } from "./services.js";
 
+const recordItems = (value: unknown): Data[] =>
+  Array.isArray(value)
+    ? value.filter((item): item is Data => !!item && typeof item === "object")
+    : [];
+const stringItems = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+
 export function goalBudgetMessage(reason: string | null | undefined): string | undefined {
   if (reason === "GOAL_TOKEN_BUDGET") return "Token 预算不足，无法继续执行。请调整预算后恢复。";
   if (reason === "GOAL_TIME_BUDGET") return "已达到目标活动时间上限，请调整停止条件后恢复。";
@@ -49,7 +56,7 @@ function hasToolImage(item: Data): boolean {
   return (
     item.status === "completed" &&
     item.success === true &&
-    !!item.contentItems?.some(
+    !!recordItems(item.contentItems).some(
       (part: Data) => part.type === "arealMedia" && part.modality === "image" && part.media?.uri,
     )
   );
@@ -314,7 +321,7 @@ export function toolPresentation(item: Data) {
         : (args.path ??
           args.file_path ??
           args.command ??
-          args.argv?.join(" ") ??
+          (Array.isArray(args.argv) ? stringItems(args.argv).join(" ") : undefined) ??
           args.query ??
           args.pattern ??
           "");
@@ -396,7 +403,9 @@ export function timelineItems(items: Data[]): Data[] {
     if (item.type === "reasoning") {
       if (
         !item.historyOmitted &&
-        ![...(item.summary ?? []), ...(item.content ?? [])].some((text: string) => text.trim())
+        ![...stringItems(item.summary), ...stringItems(item.content)].some((text: string) =>
+          text.trim(),
+        )
       )
         continue;
       if (!reasoningGroup) {
@@ -416,7 +425,7 @@ export function timelineItems(items: Data[]): Data[] {
 export function commandResult(item: Data): Data {
   if (!["run_command", "verify_command", "read_process", "terminate_process"].includes(item.tool))
     return {};
-  for (const part of item.contentItems ?? []) {
+  for (const part of recordItems(item.contentItems)) {
     try {
       const value = JSON.parse(part.text);
       if (value && typeof value === "object" && !Array.isArray(value)) return value;
@@ -575,14 +584,14 @@ export function executionSegments(items: Data[], turnStatus: string): Data[] {
       item.status === "completed" &&
       item.success === true
     ) {
-      for (const part of item.contentItems ?? []) {
+      for (const part of recordItems(item.contentItems)) {
         let value;
         try {
           value = JSON.parse(part.text);
         } catch {
           continue;
         }
-        const questions: Data[] = item.arguments?.questions ?? [];
+        const questions = recordItems(item.arguments?.questions);
         if (
           !questions.length ||
           !questions.every((q) => typeof value?.answers?.[q.id] === "string")
@@ -708,7 +717,7 @@ export function agentSettlements(item: Data): { threadId: string; label: string 
   )
     return [];
   const found: { threadId: string; label: string }[] = [];
-  for (const part of item.contentItems ?? []) {
+  for (const part of recordItems(item.contentItems)) {
     if (!["inputText", "text"].includes(part.type)) continue;
     let value: Data;
     try {

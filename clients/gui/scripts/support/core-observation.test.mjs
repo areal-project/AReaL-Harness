@@ -133,3 +133,59 @@ test("preserves a read failure and closes its connection", async () => {
   );
   assert.equal(closed, true);
 });
+
+test("explicit worktree cannot discard a conflicting projected execution identity", async () => {
+  await assert.rejects(
+    readCoreThread({
+      threadId: "t",
+      workspace: "/main",
+      executionWorkspace: "/requested",
+      project: {
+        core: { serviceGeneration: "main" },
+        state: {
+          threads: {
+            t: { executionCore: { serviceGeneration: "other" }, worktree: { directory: "/other" } },
+          },
+        },
+      },
+      inventory: [{ state: "ready", workspace: "/other", generation: "other" }],
+      connect: () => assert.fail("must reject conflicting target before connecting"),
+    }),
+    /execution workspace disagrees/,
+  );
+});
+
+test("rejects a response for another thread and closes the observer", async () => {
+  let closed = false;
+  await assert.rejects(
+    readCoreThread({
+      threadId: "original",
+      workspace: "/main",
+      inventory: [{ state: "ready", workspace: "/main" }],
+      connect: async () => ({
+        request: async () => ({ thread: { id: "different" } }),
+        close: () => {
+          closed = true;
+        },
+      }),
+    }),
+    /original thread/,
+  );
+  assert.equal(closed, true);
+});
+
+test("an explicit unprojected worktree uses its descriptor, never the parent generation", async () => {
+  const target = { state: "ready", workspace: "/worktree", generation: "child" };
+  const observed = await readCoreThread({
+    threadId: "child",
+    workspace: "/main",
+    executionWorkspace: "/worktree",
+    project: { core: { serviceGeneration: "parent" } },
+    inventory: [{ state: "ready", workspace: "/main", generation: "parent" }, target],
+    connect: async (descriptor) => {
+      assert.equal(descriptor, target);
+      return { request: async () => ({ thread: { id: "child" } }), close() {} };
+    },
+  });
+  assert.equal(observed.id, "child");
+});

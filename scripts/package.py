@@ -47,10 +47,10 @@ def source_input_hash(root):
     return value.hexdigest()
 
 
-def validate_build_info(info, revision, fingerprint, metadata):
+def validate_build_info(info, revision, fingerprint, metadata, reuse_core=False):
     if (
         not isinstance(info, dict)
-        or info.get("sourceRevision") != revision
+        or (not reuse_core and info.get("sourceRevision") != revision)
         or info.get("inputHash") != fingerprint
         or any(info.get(key) != value for key, value in metadata.items())
     ):
@@ -92,7 +92,9 @@ def private_shell_info(root, source):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=("debug", "release"), default="release")
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--check-inputs", action="store_true")
+    parser.add_argument("--reuse-core", action="store_true")
     parser.add_argument(
         "--unsigned-local",
         action="store_true",
@@ -100,9 +102,13 @@ def main():
     )
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
-    destination = args.output.resolve()
+    if args.reuse_core and not args.unsigned_local:
+        parser.error("--reuse-core is only available with --unsigned-local")
+    if not args.check_inputs and not args.output:
+        parser.error("--output is required")
+    destination = args.output.resolve() if args.output else None
     metadata = bundle_info(root)
-    if destination.exists():
+    if destination and destination.exists():
         parser.error("output must not exist")
     targets = {("Darwin", "arm64"): "darwin/arm64", ("Linux", "x86_64"): "linux/x86_64"}
     target_platform = targets.get((platform.system(), platform.machine()))
@@ -124,7 +130,19 @@ def main():
         revision,
         source_input_hash(root),
         metadata,
+        reuse_core=args.reuse_core,
     )
+    if args.reuse_core:
+        # 复用原构建回执验证全部二进制，保留原提交身份，不把旧构建标成新提交。
+        from verification import check_files, RECEIPT
+
+        receipt = json.loads((source / RECEIPT).read_text())
+        if receipt["inputHash"] != identity["inputHash"]:
+            raise ValueError("Core receipt inputs differ from binary")
+        check_files(source, receipt)
+    if args.check_inputs:
+        print(json.dumps(identity))
+        return
     files = {}
     (destination / "bin").mkdir(parents=True)
     shutil.copy2(root / "LICENSE", destination / "LICENSE")

@@ -13,6 +13,7 @@ import { useMcpAppsWorkspace } from "../McpAppsWorkspace.js";
 import { ModelTrajectoryPane } from "../ModelTrajectoryPane.js";
 import { PlanPane } from "../PlanPane.js";
 import { Preview } from "../Preview.js";
+import { Button } from "../components/ui/button.js";
 import { ProcessesPane } from "../ProcessesPane.js";
 import { Queue } from "../Queue.js";
 import { SavedPermissionsPane } from "../SavedPermissionsPane.js";
@@ -231,14 +232,14 @@ export function WorkspacePanelContent({
       </div>
     );
   if (panel === "预览")
-    return (
+    return services.capabilities?.native === false ? (
       <p role="status" className="p-3 text-ui-base text-foreground-subtle">
-        {t(
-          services.capabilities?.native === false
-            ? "browser.desktopRequired"
-            : "browser.chatRequired",
-        )}
+        {t("browser.desktopRequired")}
       </p>
+    ) : (
+      <div className="utility-content">
+        <Button onClick={() => void openBrowser()}>{t("browser.open")}</Button>
+      </div>
     );
   if (isBrowserTab(panel))
     return (

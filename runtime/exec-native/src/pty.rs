@@ -44,7 +44,11 @@ pub fn open() -> io::Result<(Master, File)> {
     if unsafe { libc::fcntl(master.as_raw_fd(), libc::F_SETFL, libc::O_NONBLOCK) } < 0 {
         return Err(io::Error::last_os_error());
     }
-    Ok((Master(Arc::new(AsyncFd::new(master)?)), slave))
+    // SAFETY: File 的所有权转入 AsyncFd，注册期间不会替换或关闭该描述符。
+    Ok((
+        Master(Arc::new(unsafe { AsyncFd::register(master)? })),
+        slave,
+    ))
 }
 
 impl Master {

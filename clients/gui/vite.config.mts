@@ -12,12 +12,17 @@ export default defineConfig({
     environment: "node",
   },
   lint: {
+    categories: { correctness: "error" },
     jsPlugins: ["./oxlint-plugin-areal/index.ts"],
     rules: {
       "areal/require-suppression-reason": "error",
       "areal/no-workbench-core-owner": "error",
     },
     overrides: [
+      {
+        files: ["renderer/src/**/*.{ts,tsx}"],
+        rules: { "areal/no-unchecked-array-method": "warn" },
+      },
       {
         files: ["scripts/**/*.{js,jsx,cjs,mjs,ts,tsx,cts,mts}"],
         rules: { "areal/no-async-wait-for-function": "error" },

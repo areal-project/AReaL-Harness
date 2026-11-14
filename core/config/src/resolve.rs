@@ -10,7 +10,7 @@ use std::{
 const ENV: &[(&str, &str, &str)] = &[
     (
         "AREAL_HARNESS_HISTORY_THINKING",
-        "",
+        "AREAL_HARNESS_REPLAY_CHAT_REASONING_CONTENT",
         "model.history_thinking",
     ),
     (
@@ -668,7 +668,7 @@ pub(crate) fn load_mode(
                 name,
                 "AREAL_HARNESS_HOME" | "AREAL_HARNESS_CONFIG" | "AREAL_HARNESS_SERVICE_HOME"
             )
-            && !ENV.iter().any(|(key, _, _)| *key == name)
+            && !is_config_environment_name(name)
         {
             return Err(error(
                 ConfigErrorKind::UnknownField,
@@ -818,7 +818,33 @@ pub(crate) fn load_mode(
     let mut warnings = Vec::new();
     for (name, alias, field) in ENV {
         for name in [*alias, *name].into_iter().filter(|s| !s.is_empty()) {
-            if let Some(entry) = env(inputs, name)? {
+            if let Some(mut entry) = env(inputs, name)? {
+                if name == "AREAL_HARNESS_REPLAY_CHAT_REASONING_CONTENT" {
+                    if inputs
+                        .env
+                        .contains_key(OsStr::new("AREAL_HARNESS_HISTORY_THINKING"))
+                    {
+                        return Err(error(
+                            ConfigErrorKind::Conflict,
+                            field,
+                            &entry.source,
+                            "set only AREAL_HARNESS_HISTORY_THINKING",
+                        ));
+                    }
+                    let enabled = match entry.value.as_str() {
+                        "true" | "1" => true,
+                        "false" | "0" => false,
+                        _ => {
+                            return Err(error(
+                                ConfigErrorKind::InvalidValue,
+                                field,
+                                &entry.source,
+                                "expected a boolean",
+                            ));
+                        }
+                    };
+                    entry.value = HistoryThinking::from_chat_replay(enabled).as_str().into();
+                }
                 if name == *alias && name.starts_with("AREAL_MODEL") {
                     warnings.push(format!(
                         "{name} is deprecated; use {}",

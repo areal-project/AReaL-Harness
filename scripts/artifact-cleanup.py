@@ -42,10 +42,15 @@ def safe(path, roots):
     )
 
 
-def fingerprint(read, exists):
+def fingerprint(read, exists, verify_files=False):
     info = plistlib.loads(read("Info.plist"))
     core = json.loads(read("Resources/areal-core/manifest.json"))
-    identity = core.get("coreBuild", {}).get("inputHash")
+    if not isinstance(info, dict) or not isinstance(core, dict):
+        raise ValueError("Invalid package metadata")
+    build = core.get("coreBuild")
+    if not isinstance(build, dict) or not isinstance(core.get("files"), dict):
+        raise ValueError("Invalid Core manifest")
+    identity = build.get("inputHash")
     if not identity:
         raise ValueError("Missing Core build identity")
     required = ["bin/areal", "libexec/areal/areal-runtime", "libexec/areal/areal-runtime-fs"]
@@ -56,23 +61,34 @@ def fingerprint(read, exists):
         raise ValueError("Incomplete embedded Core bundle")
     if not exists("MacOS/" + info.get("CFBundleExecutable", "AReaL Harness GUI")):
         raise ValueError("Missing GUI executable")
+    if verify_files:
+        for name, expected in core["files"].items():
+            relative = Path(name)
+            if (
+                relative.is_absolute()
+                or ".." in relative.parts
+                or hashlib.sha256(read("Resources/areal-core/" + name)).hexdigest() != expected
+            ):
+                raise ValueError("Embedded Core integrity mismatch")
     asar = hashlib.sha256(read("Resources/app.asar")).hexdigest()
     return (info.get("CFBundleShortVersionString", "?"), identity, asar)
 
 
-def app_identity(path):
+def app_identity(path, verify_files=False):
     return fingerprint(
         lambda name: (path / "Contents" / name).read_bytes(),
         lambda name: (path / "Contents" / name).is_file(),
+        verify_files,
     )
 
 
-def zip_identity(path):
+def zip_identity(path, verify_files=False):
     with zipfile.ZipFile(path) as archive:
         names = set(archive.namelist())
         return fingerprint(
             lambda name: archive.read(f"{APP}/Contents/{name}"),
             lambda name: f"{APP}/Contents/{name}" in names,
+            verify_files,
         )
 
 
@@ -127,13 +143,25 @@ def activity(roots):
             "gmake",
             "gnumake",
             "dsymutil",
+            "node",
+            "npm",
+            "pnpm",
+            "bun",
+            "deno",
+            "java",
+            "gradle",
+            "swift",
+            "swiftc",
+            "xcodebuild",
         }
         debuggers = {"lldb", "debugserver", "gdb"}
         for pid, process in processes.items():
             if pid in ignored:
                 continue
             program = Path(process["program"]).name
-            if program in builders | debuggers:
+            if program in builders | debuggers or re.fullmatch(
+                r"python(?:\d+(?:\.\d+)?)?", program
+            ):
                 for root in roots:
                     if str(root) in process["command"] or within(Path(process["cwd"]), root):
                         observations.append(
@@ -219,13 +247,21 @@ def discover(roots):
     )
 
 
-def gui_plan(evidence, apps, archives, keep, roots, warnings):
+def gui_plan(evidence, apps, archives, keep, roots, warnings, verify_files=False):
     rounds = []
     owners = {}
     identities = {}
     for record in evidence:
         folder = record.parent
-        data = json.loads(record.read_text())
+        try:
+            if not safe(record, roots):
+                continue
+            data = json.loads(record.read_text())
+            if not isinstance(data, dict):
+                raise ValueError("Expected an object")
+        except (OSError, ValueError):
+            warnings.append(f"Unreadable build evidence retained: {record}")
+            continue
         payload = []
         identity = None
         for key in ("app", "archive", "dmg"):
@@ -242,12 +278,19 @@ def gui_plan(evidence, apps, archives, keep, roots, warnings):
                 path = folder / path
             if not safe(path, roots) or not within(path, folder):
                 continue
+            if (
+                (key == "app" and path.name != APP)
+                or (key == "archive" and path.suffix != ".zip")
+                or (key == "dmg" and path.suffix != ".dmg")
+            ):
+                warnings.append(f"Unexpected package payload retained: {path}")
+                continue
             payload.append(path)
             try:
                 if path.name == APP:
-                    identity = app_identity(path)
+                    identity = app_identity(path, verify_files)
                 elif path.suffix == ".zip" and identity is None:
-                    identity = zip_identity(path)
+                    identity = zip_identity(path, verify_files)
             except (
                 OSError,
                 ValueError,
@@ -278,7 +321,7 @@ def gui_plan(evidence, apps, archives, keep, roots, warnings):
         if app in owners:
             continue
         try:
-            entry = identities.get(app_identity(app))
+            entry = identities.get(app_identity(app, verify_files))
         except (OSError, ValueError, KeyError, plistlib.InvalidFileException):
             entry = None
         if entry:
@@ -292,7 +335,7 @@ def gui_plan(evidence, apps, archives, keep, roots, warnings):
             continue
         if archive.suffix == ".zip":
             try:
-                entry = identities.get(zip_identity(archive))
+                entry = identities.get(zip_identity(archive, verify_files))
             except (
                 OSError,
                 ValueError,
@@ -560,6 +603,10 @@ def intermediate_files(path):
 
 def item_busy(item, observations):
     path = Path(item["path"])
+    if item.get("validation_scenario"):
+        return busy(
+            Path(item["validation_scenario"]), observations, Path(item["validation_scenario"])
+        )
     if item.get("temporary_worktree") or item.get("preserve_outputs"):
         # 定期回收保护整个 profile，直接启动的 Core/Runtime 也可能再加载伴随资源。
         return busy(Path(item["profile"]), observations, Path(item["scope"]))
@@ -572,8 +619,10 @@ def item_busy(item, observations):
     return busy(path, observations)
 
 
-def registered_worktrees(warnings):
-    result = command(["git", "-C", str(REPO), "worktree", "list", "--porcelain"])
+def registered_worktrees(warnings, project=REPO):
+    result = command(
+        ["git", "--no-optional-locks", "-C", str(project), "worktree", "list", "--porcelain"]
+    )
     if result.returncode:
         raise RuntimeError("Cannot enumerate repository worktrees")
     paths = [Path(line[9:]) for line in result.stdout.splitlines() if line.startswith("worktree ")]
@@ -588,6 +637,91 @@ def registered_worktrees(warnings):
         else:
             existing.append(path)
     return paths[0], existing
+
+
+def validation_snapshot(path):
+    digest = hashlib.sha256()
+    latest = 0
+
+    def visit(current):
+        nonlocal latest
+        info = current.lstat()
+        latest = max(latest, info.st_mtime_ns)
+        digest.update(
+            str(
+                (
+                    str(current),
+                    info.st_dev,
+                    info.st_ino,
+                    info.st_mode,
+                    info.st_size,
+                    info.st_mtime_ns,
+                )
+            ).encode()
+        )
+        if current.is_symlink():
+            digest.update(os.readlink(current).encode())
+        elif current.is_dir():
+            for child in sorted(current.iterdir()):
+                visit(child)
+
+    visit(path)
+    return digest.hexdigest(), latest
+
+
+def validation_retention(item, min_idle_ns):
+    scenario = Path(item["validation_scenario"])
+    if (scenario / ".git").exists():
+        status = command(
+            [
+                "git",
+                "--no-optional-locks",
+                "-C",
+                str(scenario),
+                "status",
+                "--porcelain",
+                "--untracked-files=normal",
+            ]
+        )
+        if status.returncode:
+            return "blocked-reuse-unknown"
+        if status.stdout:
+            return "retained-worktree-dirty"
+    snapshot, latest = validation_snapshot(Path(item["path"]))
+    if item.get("validation_snapshot") and item["validation_snapshot"] != snapshot:
+        return "skipped-changed-or-active"
+    item["validation_snapshot"] = snapshot
+    item["last_activity_ns"] = latest
+    if time.time_ns() - latest < min_idle_ns:
+        return "retained-recent"
+    return None
+
+
+def cargo_targets(worktrees):
+    targets = set()
+    for repo in worktrees:
+        result = command(
+            [
+                "git",
+                "--no-optional-locks",
+                "-C",
+                str(repo),
+                "ls-files",
+                "-z",
+                "Cargo.toml",
+                ":(glob)**/Cargo.toml",
+            ]
+        )
+        if result.returncode:
+            raise RuntimeError(f"Cannot inspect Cargo manifests: {repo}")
+        for name in result.stdout.split("\0"):
+            if not name:
+                continue
+            manifest = repo / name
+            target = manifest.parent / "target"
+            if safe(manifest, [repo]) and manifest.is_file() and safe(target, [repo]):
+                targets.add((repo, target))
+    return sorted(targets)
 
 
 def cache_groups(items):
@@ -735,11 +869,27 @@ def main():
         default=5,
         help="Complete GUI/Core bundle versions to retain per category",
     )
+    parser.add_argument(
+        "--project",
+        action="append",
+        type=Path,
+        help="Git project for worktree cache policy (repeatable)",
+    )
+    parser.add_argument(
+        "--validation-artifacts",
+        action="store_true",
+        help="Retain complete packages per immediate child of each explicit root; never clean source or Cargo profiles",
+    )
     parser.add_argument("--no-worktrees", action="store_true", help="Only scan explicit roots")
     parser.add_argument(
         "--temporary-worktrees",
         action="store_true",
         help="Only budget non-executable Rust intermediates in registered secondary worktrees",
+    )
+    parser.add_argument(
+        "--include-primary",
+        action="store_true",
+        help="Include the primary checkout in idle worktree cache budgeting",
     )
     parser.add_argument(
         "--rust-intermediates",
@@ -752,7 +902,9 @@ def main():
         type=Path,
         help="Cargo target directory for --rust-intermediates (repeatable; default: primary target)",
     )
-    parser.add_argument("--cache-budget-gib", type=float, default=40, help="Secondary cache budget")
+    parser.add_argument(
+        "--cache-budget-gib", type=float, default=40, help="Selected worktree cache budget"
+    )
     parser.add_argument(
         "--min-free-gib", type=float, default=30, help="Free-space collection threshold"
     )
@@ -760,7 +912,7 @@ def main():
         "--min-idle-hours",
         type=float,
         default=72,
-        help="Minimum idle age for temporary worktree caches; pressure never overrides this",
+        help="Minimum idle age for worktree caches and validation artifacts; pressure never overrides this",
     )
     parser.add_argument("--json", action="store_true", help="Print the complete JSON preview")
     parser.add_argument(
@@ -770,6 +922,16 @@ def main():
         "--apply", action="store_true", help="Delete eligible paths; default is preview only"
     )
     args = parser.parse_args()
+    if args.project and not args.temporary_worktrees:
+        parser.error("--project requires --temporary-worktrees")
+    if args.validation_artifacts and (
+        not args.root or args.temporary_worktrees or args.rust_intermediates
+    ):
+        parser.error("--validation-artifacts requires --root and cannot select worktree caches")
+    if args.validation_artifacts:
+        args.no_worktrees = True
+    if args.include_primary and not args.temporary_worktrees:
+        parser.error("--include-primary requires --temporary-worktrees")
     if args.keep < 1:
         parser.error("--keep must be at least 1")
     if any(
@@ -807,10 +969,16 @@ def main():
             targets.append((owner, target))
         roots = sorted({owner for owner, _ in targets})
     elif not args.no_worktrees:
-        primary, worktrees = registered_worktrees(warnings)
         if args.temporary_worktrees:
-            roots = [p for p in worktrees if p != primary]
+            roots = []
+            for project in args.project or [REPO]:
+                project = Path(os.path.abspath(project.expanduser()))
+                if not project.is_dir() or project.resolve() != project:
+                    parser.error("Each project must be an existing real Git directory")
+                primary, worktrees = registered_worktrees(warnings, project)
+                roots.extend(p for p in worktrees if args.include_primary or p != primary)
         else:
+            _, worktrees = registered_worktrees(warnings)
             roots.extend(worktrees)
     temporary_repos = list(roots)
     roots = sorted(set(roots), key=lambda p: (len(p.parts), str(p)))
@@ -834,14 +1002,13 @@ def main():
         for item in rust_items:
             item["preserve_outputs"] = True
     elif args.temporary_worktrees:
-        print("Scanning registered secondary worktree caches...", file=sys.stderr)
-        repos = [
-            p
-            for p in temporary_repos
-            if (p / "Cargo.toml").is_file() and (p / "core/engine/Cargo.toml").is_file()
-        ]
+        print("Scanning selected registered worktree caches...", file=sys.stderr)
+        repos = sorted(set(temporary_repos))
+        targets = cargo_targets(repos)
         gui, bundles, gui_items, bundle_items = [], [], [], []
-        rust, rust_items = rust_plan(repos, roots, False, [], loose_intermediates=True)
+        rust, rust_items = rust_plan(
+            repos, roots, False, [], targets=targets, loose_intermediates=True
+        )
         rust_items = [
             i
             for i in rust_items
@@ -855,6 +1022,24 @@ def main():
                 Path(item["path"]).stat().st_mtime_ns,
                 Path(item["profile"]).stat().st_mtime_ns,
             )
+    elif args.validation_artifacts:
+        gui, bundles, gui_items, bundle_items = [], [], [], []
+        rust, rust_items = [], []
+        for root in roots:
+            for scenario in sorted(root.iterdir()):
+                if not scenario.is_dir() or not safe(scenario, roots):
+                    continue
+                evidence, apps, archives, _, manifests = discover([scenario])
+                rounds, old = gui_plan(
+                    evidence, apps, archives, args.keep, [scenario], warnings, verify_files=True
+                )
+                core, old_core, _ = rust_bundles(manifests, args.keep, [scenario], warnings)
+                gui.extend(rounds)
+                bundles.extend(core)
+                for item in old + old_core:
+                    item["validation_scenario"] = str(scenario)
+                gui_items.extend(old)
+                bundle_items.extend(old_core)
     else:
         print("Scanning GUI build records and Rust profiles...", file=sys.stderr)
         evidence, apps, archives, repos, manifests = discover(roots)
@@ -909,6 +1094,14 @@ def main():
         item["mtime_ns"] = path.stat().st_mtime_ns
         items.append(item)
     min_idle_ns = int(args.min_idle_hours * 3600 * 10**9)
+    if args.validation_artifacts:
+        for item in items:
+            if item["status"] == "eligible":
+                try:
+                    item["status"] = validation_retention(item, min_idle_ns) or "eligible"
+                except (OSError, subprocess.SubprocessError) as error:
+                    item["status"] = "blocked-reuse-unknown"
+                    warnings.append(f"Validation artifact retained: {item['path']}: {error}")
     if args.temporary_worktrees:
         # 热缓存只统计容量；冷缓存才枚举逐文件回执，避免为开发中的巨大 target 生成冗余清单。
         for group in cache_groups(items).values():
@@ -938,14 +1131,16 @@ def main():
         "items": items,
         "warnings": warnings,
         "free_before_bytes": free_before,
-        "scope": "rust-intermediates"
+        "scope": "validation-artifacts"
+        if args.validation_artifacts
+        else "rust-intermediates"
         if args.rust_intermediates
         else "temporary-worktrees"
         if args.temporary_worktrees
         else "artifacts",
         "target_roots": [str(target) for _, target in targets],
         "excluded_scopes": [
-            "primary and custom targets",
+            "custom targets" if args.include_primary else "primary and custom targets",
             "unregistered worktrees",
             "executables and GUI/Core packages",
         ]
@@ -960,15 +1155,16 @@ def main():
         report["worktree_targets"] = [
             {
                 "repo": str(repo),
-                "target": str(repo / "target"),
-                "status": "scanned"
-                if safe(repo / "target", roots)
-                else "missing-or-symlink-skipped",
-                "cleanup_paths": sum(i["scope"] == str(repo) for i in items),
+                "target": str(target),
+                "status": "scanned" if safe(target, roots) else "missing-or-symlink-skipped",
+                "cleanup_paths": sum(
+                    i["scope"] == str(repo) and within(Path(i["path"]), target) for i in items
+                ),
             }
-            for repo in repos
+            for repo, target in targets
         ]
         report["cache_policy"] = {
+            "include_primary": args.include_primary,
             "budget_bytes": budget,
             "min_free_bytes": min_free,
             "min_idle_hours": args.min_idle_hours,
@@ -1011,6 +1207,11 @@ def main():
                         ):
                             item["status"] = "skipped-changed-or-active"
                             continue
+                        if item.get("validation_scenario"):
+                            retained = validation_retention(item, min_idle_ns)
+                            if retained:
+                                item["status"] = retained
+                                continue
                         item["status"] = "deleting"
                         args.report.write_text(
                             json.dumps(report, indent=2, ensure_ascii=False) + "\n"
@@ -1077,7 +1278,7 @@ def main():
         report["cache_policy"]["min_observed_free_bytes"] = min(available, default=free_bytes(REPO))
         if args.apply and remaining > budget:
             warnings.append(
-                "Secondary cache budget remains exceeded; reusable, active or locked caches kept"
+                "Selected worktree cache budget remains exceeded; reusable, active or locked caches kept"
             )
         if args.apply and available and min(available) < min_free:
             warnings.append(
@@ -1093,7 +1294,7 @@ def main():
         if args.rust_intermediates:
             print(f"{report['mode'].upper()}: non-executable Rust intermediates only")
         elif args.temporary_worktrees:
-            print(f"{report['mode'].upper()}: secondary cache budget {args.cache_budget_gib:g} GiB")
+            print(f"{report['mode'].upper()}: worktree cache budget {args.cache_budget_gib:g} GiB")
         else:
             print(
                 f"{report['mode'].upper()}: keep {args.keep} complete GUI/Core bundle versions; caches are independent"

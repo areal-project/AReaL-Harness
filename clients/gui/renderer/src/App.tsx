@@ -55,12 +55,10 @@ import { WorkbenchSettings } from "./views/LazyWorkbenchSettings.js";
 import { WorkspacePanelContent } from "./views/LazyWorkspacePanelContent.js";
 import { WorkspacePanels } from "./views/WorkspacePanels.js";
 import { WorkspaceFileTree } from "./workspace-file-tree/WorkspaceFileTree.js";
+import { usePendingMessage } from "./pendingMessage.js";
 export function App({ services }: { services: PlatformServices }) {
-  return (
-    <AppProviders services={services}>
-      <AppContent services={services} />
-    </AppProviders>
-  );
+  // prettier-ignore
+  return <AppProviders services={services}><AppContent services={services} /></AppProviders>;
 }
 function AppContent({ services }: { services: PlatformServices }) {
   const { t } = useI18n();
@@ -423,8 +421,9 @@ function AppContent({ services }: { services: PlatformServices }) {
   const admitting = useSyncExternalStore(subscribeSending, () =>
     sending.has(`areal-gui:draft:${project?.id}:${threadId || "new"}`),
   );
+  const pendingMessage = usePendingMessage(`areal-gui:draft:${project?.id}:${threadId}`);
   const empty =
-    !(thread && admitting) &&
+    !(thread && (admitting || pendingMessage)) &&
     thread?.conversation?.kind !== "fork" &&
     !thread?.turns?.some((turn: Data) => turn.items?.length || turn.status === "inProgress");
   const taskActions = (

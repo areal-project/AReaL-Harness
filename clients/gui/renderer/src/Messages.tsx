@@ -18,6 +18,7 @@ import {
   settleReadingRestore,
 } from "./conversationReading.js";
 import { observeResize } from "@areal/ui/observe-resize";
+import { DelayedVisible } from "@areal/ui";
 import { PendingMessageView } from "./UserMessageBody.js";
 import {
   readingViews,
@@ -42,6 +43,7 @@ import { useForkHistory } from "./ForkHistory.js";
 import { DeferredHistoryItem, useConversationHistory } from "./ConversationHistory.js";
 import { UnknownToolInspection } from "./UnknownToolInspection.js";
 import { showTurnStatus } from "./toolInspection.js";
+import { dataItems, recordItems } from "./data-shapes.js";
 import { TurnNavigation } from "./TurnNavigation.js";
 import {
   executionOutcome,
@@ -100,7 +102,6 @@ import { latestScheduleItems, ScheduledTaskCards } from "./ScheduledTasks.js";
 import { TurnFileSummary } from "./TurnFileSummary.js";
 import type { Data, Action, PlatformServices } from "./services.js";
 import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
-// Queue pauseReason "stopped" is Core's stop receipt. It stays separate from the turn status.
 export function Messages({
   project,
   thread: localThread,
@@ -251,12 +252,16 @@ export function Messages({
         item.type === "dynamicToolCall" &&
         (item.status === "inProgress" ||
           item.execution?.outcome === "running" ||
-          item.execution?.hooks?.some((hook: Data) => hook.outcome === "running") ||
-          item.execution?.plugin?.operations?.some((op: Data) => op.outcome === "running") ||
+          recordItems(item.execution?.hooks).some((hook: Data) => hook.outcome === "running") ||
+          recordItems(item.execution?.plugin?.operations).some(
+            (op: Data) => op.outcome === "running",
+          ) ||
           (!item.execution?.inspection &&
             (item.execution?.outcome === "unknown" ||
-              item.execution?.hooks?.some((hook: Data) => hook.outcome === "unknown") ||
-              item.execution?.plugin?.operations?.some((op: Data) => op.outcome === "unknown")))),
+              recordItems(item.execution?.hooks).some((hook: Data) => hook.outcome === "unknown") ||
+              recordItems(item.execution?.plugin?.operations).some(
+                (op: Data) => op.outcome === "unknown",
+              )))),
     );
   const prefixIssue = (thread.turns ?? []).map((turn: Data) =>
     turn.status === "inProgress" || unresolved(turn) ? turn.id : "",
@@ -1042,13 +1047,18 @@ export function Messages({
             )}
           {beforeTurns}
           <ModelChanges changes={thread.desktop?.modelChanges} />
-          {inherited.loading && <p role="status">正在加载继承历史…</p>}
+          <DelayedVisible key={`inherited:${owner}`} active={inherited.loading}>
+            <p role="status">正在加载继承历史…</p>
+          </DelayedVisible>
           {inherited.error && <p role="alert">继承历史读取失败：{inherited.error}</p>}
           {localThread.displayHistory?.supported && (
             <div ref={olderSentinel} className="message-history-controls" aria-live="polite">
-              {localThread.displayHistory.loadingLatest ? (
+              <DelayedVisible
+                key={`latest:${owner}`}
+                active={!!localThread.displayHistory.loadingLatest}
+              >
                 <span role="status">{t("chat.history.loadingLatest")}</span>
-              ) : null}
+              </DelayedVisible>
             </div>
           )}
           {history.failure && !history.failure.itemId && (
@@ -1258,7 +1268,7 @@ export function Messages({
                                 loading={localThread.displayHistory?.loadingItems?.[item.id]}
                                 error={
                                   history.failure?.itemId === item.id
-                                    ? history.failure?.message // raw-error-ok: 已是词条
+                                    ? /* raw-error-ok: 已是词条 */ history.failure?.message
                                     : undefined
                                 }
                                 onLoad={() => {
@@ -1276,7 +1286,7 @@ export function Messages({
                               >
                                 <div className="user-message-content">
                                   <div className="user-bubble question-answer-bubble">
-                                    {item.questions.map((question: Data) => (
+                                    {dataItems(item.questions).map((question: Data) => (
                                       <div key={question.id}>
                                         <p className="question-answer-title">{question.title}</p>
                                         <p>{item.answers[question.id]}</p>
@@ -1389,20 +1399,20 @@ export function Messages({
                                       {t("chat.history.reloadPage")}
                                     </Button>
                                   );
-                                if (entry.type === "dynamicToolCall")
+                                if (entry.type === "dynamicToolCall") {
+                                  // prettier-ignore
+                                  const processRecords = recordItems(entry.processRecords ?? [entry]);
                                   return (
                                     <div data-side-item-id={entry.id} key={entry.id}>
                                       <ToolEvent
                                         item={approval.mark(entry)}
                                         mediaGeneration={localThread.displayHistory?.viewGeneration}
                                         onLoadDetails={
-                                          (entry.processRecords ?? [entry]).some(
+                                          processRecords.some(
                                             (record: Data) => record.deferredHistory,
                                           )
                                             ? async () => {
-                                                for (const record of entry.processRecords ?? [
-                                                  entry,
-                                                ]) {
+                                                for (const record of processRecords) {
                                                   if (
                                                     record.deferredHistory &&
                                                     !(await live.loadHistory?.(record.id))
@@ -1412,17 +1422,10 @@ export function Messages({
                                               }
                                             : undefined
                                         }
-                                        detailsLoading={(entry.processRecords ?? [entry]).some(
-                                          (record: Data) =>
-                                            localThread.displayHistory?.loadingItems?.[record.id],
-                                        )}
-                                        detailsError={
-                                          (entry.processRecords ?? [entry]).some(
-                                            (record: Data) => record.id === history.failure?.itemId,
-                                          )
-                                            ? history.failure?.message // raw-error-ok: 已是词条
-                                            : undefined
-                                        }
+                                        // prettier-ignore
+                                        detailsLoading={processRecords.some((record: Data) => localThread.displayHistory?.loadingItems?.[record.id])}
+                                        // prettier-ignore
+                                        detailsError={processRecords.some((record: Data) => record.id === history.failure?.itemId) ? /* raw-error-ok: 历史读取错误已在 ConversationHistory 中转为词条 */ history.failure?.message : undefined}
                                         {...disclosure}
                                         onOpenResult={
                                           (ordinary ||
@@ -1460,6 +1463,7 @@ export function Messages({
                                       />
                                     </div>
                                   );
+                                }
                                 if (entry.type === "modelContext") return null;
                                 return (
                                   <SettingsDisclosure

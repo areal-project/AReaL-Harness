@@ -45,12 +45,12 @@ fetch: ## 下载 Cargo.lock 中的依赖
 
 build: ## 构建整个 workspace（debug）
 	python3 scripts/prepare-runtime-shell.py --profile debug
-	cargo build --locked --workspace
+	cargo build --locked --workspace --timings
 	python3 scripts/verification.py record-core --profile debug
 
 release: ## 构建整个 workspace（release）
 	python3 scripts/prepare-runtime-shell.py --profile release
-	cargo build --locked --workspace --release
+	cargo build --locked --workspace --release --timings
 	python3 scripts/verification.py record-core --profile release
 
 check: ## 类型检查整个 workspace 和测试目标
@@ -139,7 +139,7 @@ ci-gui-static: ## 共享计划的 GUI 提交前静态、类型、生产构建与
 	@test -n "$(CI_BASE)" || { echo 'CI_BASE is required' >&2; exit 1; }
 	python3 scripts/ci-preflight.py --base "$(CI_BASE)" --groups gui-portable --phase commit
 
-ci-gui-health: ## 无依赖安装的 GUI 健康合同与基线检查
+ci-gui-health: ## GUI 健康合同与基线检查（使用已安装的固定格式化器）
 	@set -eu; \
 	test -n "$(CI_BASE)" || { echo 'CI_BASE is required' >&2; exit 1; }; \
 	base="$$(git merge-base "$(CI_BASE)" HEAD)"; \
@@ -341,8 +341,8 @@ gui-build: ## 同步锁定依赖并构建 GUI renderer
 	pnpm --dir clients/gui build
 gui: gui-build ## 启动桌面 GUI（先 make build）
 	pnpm --dir clients/gui start
-gui-package: gui-build ## 构建 macOS arm64 候选应用（先构建 Core，随后执行 sign:mac）
-	pnpm --dir clients/gui package
+gui-package: ## 增量构建 macOS arm64 候选应用（正式签名随后执行 sign:mac）
+	pnpm --dir clients/gui dist
 gui-smoke: ## 隔离目录中验证真实 Electron/Core 和本地模型
 	pnpm --dir clients/gui test:e2e
 

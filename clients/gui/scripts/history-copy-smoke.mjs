@@ -421,14 +421,16 @@ try {
               .locator(".messages [data-turn-id]")
               .first()
               .getAttribute("data-turn-id");
+            const scrollTop = await page.locator(".messages").evaluate((node) => node.scrollTop);
             await page.locator(".messages").hover();
             await page.mouse.wheel(0, -1000000);
             await page.waitForFunction(
-              (first) =>
+              ({ first, scrollTop }) =>
                 Boolean(document.querySelector('[data-side-item-id="paged-user-00"]')) ||
+                document.querySelector(".messages")?.scrollTop < scrollTop ||
                 document.querySelector(".messages [data-turn-id]")?.getAttribute("data-turn-id") !==
                   first,
-              first,
+              { first, scrollTop },
               { timeout: 30000 },
             );
           }

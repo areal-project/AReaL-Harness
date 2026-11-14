@@ -43,6 +43,32 @@ test("locked orphan does not appear in current providers, active lock appears in
   assert.deepEqual(config.public().credentialErrors, {});
 });
 
+test("explicit API key reveal retries a locked credential interactively", async () => {
+  const calls = [];
+  const backend = {
+    host: {
+      sourceId: "source",
+      state: { credentials: { references: ["AREAL_CREDENTIAL_active"] } },
+    },
+  };
+  const config = new ModelConfiguration(backend, {
+    read: async (slot, options) => {
+      calls.push({ slot, options });
+      if (options.interactionAllowed === false)
+        throw Object.assign(new Error(), { code: "storageLocked" });
+      return { value: "interactive-secret" };
+    },
+  });
+  await config.refreshCredentials(["AREAL_CREDENTIAL_active"]);
+  config.value = {
+    data: [{ id: "active", apiKeyEnv: "AREAL_CREDENTIAL_active" }],
+  };
+
+  assert.equal(await config.reveal(config.value.data[0]), "interactive-secret");
+  assert.equal(config.vault.locked.has("AREAL_CREDENTIAL_active"), false);
+  assert.deepEqual(calls.at(-1).options, { interactionAllowed: true });
+});
+
 test("clearing sensitive plugin configuration saves without restarting peers", async () => {
   const calls = [];
   const detail = {

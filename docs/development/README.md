@@ -131,6 +131,10 @@ PR CI 以包含 runner 排队的 10–15 分钟端到端反馈为目标。GUI �
 
 ## 本机 Rust 共享缓存
 
+`make build` 和 `make release` 默认生成 Cargo HTML 耗时报告，保存在实际 target 目录的 `cargo-timings` 子目录。比较同一 profile 的首次构建和无改动重跑；编译单元耗时包括优化与链接，不能直接当作纯链接时间。排查重复编译可运行 `CARGO_LOG=cargo::core::compiler::fingerprint=info cargo build --locked --workspace --release --timings`，保留首个 dirty 原因及其下游链。
+
+使用 mbx 时，在下一次构建前保存 `mbx analyze` 和 `mbx explain --last` 的输出；它们只读取最近的构建记录。若对比记录来自另一 profile，参数差异不能证明当前 profile 的缓存反复失效。检查磁盘空间和 mbx 的 GC 报告：空闲空间低于 `gc.min_free_size` 时，即使未到容量上限也会回收共享缓存；Cargo dep-info 引用的共享生成文件缺失会触发下游重编译。仓库通过 `.mbx.toml` 中的 `share_out_dir=false` 将生成文件保留在工作树内，避免共享目录回收使 Cargo 指纹失效；切换后需要重建一次以更新 dep-info。读取 `OUT_DIR` 的编译结果会绑定当前工作树，其他编译结果仍可共享；低磁盘空间下共享结果仍可能被回收。先解决存储压力，再评估优化 profile；不要用关闭构建身份校验来换取命中率。
+
 可选使用固定版本 [mr-boxington](https://github.com/jdx/mr-boxington) 复用不同工作树的编译结果。项目继续使用 `rust-toolchain.toml` 中的 Rust 版本；`.mbx.toml` 关闭 build.rs 执行结果缓存，保留 Git 修订、源码哈希等构建身份的正常生成与校验。普通 Cargo 和 CI 无需安装 mbx。
 
 ```sh
@@ -158,13 +162,24 @@ mbx setup
 make artifact-cleanup ARGS='--temporary-worktrees --cache-budget-gib 40 --min-free-gib 30 --min-idle-hours 72 --report /private/tmp/worktree-cache-preview.json'
 ```
 
-审阅后追加 `--apply`，并为每次运行指定独立报告路径。该模式只选择本仓 Git 登记中仍存在的次级工作树，包括 Codex、T3 Code 等工具创建的工作树，不按工具目录名猜测范围；主工作树始终排除，不接受 `--root` 或 `--no-worktrees` 覆盖。它回收已识别 Cargo profile 下的 `deps`、`incremental`、`build` 和 `.fingerprint` 中的非可执行文件，以及有 `.cargo-lock` 的 profile 根部遗留的非可执行 `.rlib`、`.rmeta`、`.o`、`.d`，即使缓存目录已经清空也能识别。可执行文件、动态库、shell、完整包、delivery 目录、依赖和符号链接始终保留，缓存目录内也适用。失效工作树登记只跳过，不移除。报告的 `worktree_targets` 列出各工作树默认 target 的扫描状态和候选路径数，零候选不代表整个 target 没有占用。
+审阅后追加 `--apply`，并为每次运行指定独立报告路径。该模式只选择本仓 Git 登记中仍存在的次级工作树，包括 Codex、T3 Code 等工具创建的工作树，不按工具目录名猜测范围；默认排除主工作树；显式追加 `--include-primary` 时，将主工作树纳入相同的预算、闲置、改动及占用保护。不接受 `--root` 或 `--no-worktrees` 覆盖。它回收已识别 Cargo profile 下的 `deps`、`incremental`、`build` 和 `.fingerprint` 中的非可执行文件，以及有 `.cargo-lock` 的 profile 根部遗留的非可执行 `.rlib`、`.rmeta`、`.o`、`.d`，即使缓存目录已经清空也能识别。可执行文件、动态库、shell、完整包、delivery 目录、依赖和符号链接始终保留，缓存目录内也适用。失效工作树登记只跳过，不移除。报告的 `worktree_targets` 列出各工作树默认 target 的扫描状态和候选路径数，零候选不代表整个 target 没有占用。
 
-40 GiB 是所有次级工作树缓存的分配块估算总预算，独立于 mbx 共享缓存的 40 GiB。先保护可复用缓存：有暂存、未暂存或未忽略的新文件的工作树整组保留；干净工作树的 profile 只有连续闲置至少 72 小时才参与预算回收，窗口可用 `--min-idle-hours` 调整。最近活动取 profile 内文件和目录的最新写入时间，以及该工作树 Git index、HEAD reflog 的修改时间，覆盖目录时间未改变的文件重写及近期提交/切换。检查 Git 时禁用可选锁，避免扫描自身刷新 index。它不是精确的读取 LRU。
+40 GiB 是所选工作树缓存的分配块估算总预算，独立于 mbx 共享缓存的 40 GiB。先保护可复用缓存：有暂存、未暂存或未忽略的新文件的工作树整组保留；干净工作树的 profile 只有连续闲置至少 72 小时才参与预算回收，窗口可用 `--min-idle-hours` 调整。最近活动取 profile 内文件和目录的最新写入时间，以及该工作树 Git index、HEAD reflog 的修改时间，覆盖目录时间未改变的文件重写及近期提交/切换。检查 Git 时禁用可选锁，避免扫描自身刷新 index。它不是精确的读取 LRU。
 
 仅在超预算或磁盘低于 30 GiB 时，按最近活动从旧到新选择符合条件的冷缓存。磁盘压力不覆盖闲置窗口或开发改动保护，避免在构建间隙删除依赖与 fingerprint、导致下次完整重编译。删除前持有 Cargo 锁并再次检查复用状态和占用；同一 profile 内任何打开文件或该工作树中的构建/调试进程都会阻止整组回收。单个 profile 无法统计时保留并记录；无法确认 Git 或文件活动时保留并以非零退出。报告的 `cache_policy.min_idle_hours` 和 `retained-recent`、`retained-worktree-dirty` 状态说明保留原因。受保护缓存和范围外数据可能使预算或空闲线无法满足，报告会列出剩余压力。APFS 共享块使分配块估算不同于实际释放量。
 
-可在 Codex 为本聊天配置每 30 分钟调用一次该命令的心跳，追加 `--apply` 并保存独立报告；无删除或无需处理的占用跳过保持安静，仅通知实际回收、失败或无法缓解的磁盘告急。自动化复用此模式，不调用全量包清理，也不停止构建或服务。它不会自动迁移 target；主工作树缓存和完整 GUI/Core 包继续使用下述按需清理入口。
+
+### 跨项目工作树与验证副本
+
+`--temporary-worktrees` 可重复传入 `--project /absolute/git-project`，未指定时仅选择本仓。每个项目通过 Git 枚举工作树，不依赖创建工具；仅查找受 Git 跟踪的 `Cargo.toml` 旁的真实 `target`，支持 `daemon/target` 等嵌套布局，保留相同的改动、闲置、占用和锁保护。`--include-primary` 对所有所选项目生效。Node 依赖、Gradle/Android SDK、未知自定义 target 和未登记源码副本不自动加入；`worktree_targets` 报告实际扫描的目标。
+
+`.scratch` 使用独立模式：`make artifact-cleanup ARGS='--validation-artifacts --root /absolute/repo/.scratch --keep 2 --min-idle-hours 72 --report /private/tmp/UNIQUE-validation-report.json'`。每个 root 的一级子目录是独立验证任务，分别保留最近两轮可识别 GUI 包和独立 Core 包。保留 GUI 包会校验包内 Core 清单哈希，未知、损坏、不完整或回执路径不匹配的产物保留；不会按目录名猜测重新归属。旧包还必须超过闲置窗口、没有任务目录内进程/打开文件占用；已登记任务工作树有改动时保留。删除前复核候选整个目录树的文件身份和修改时间，保留源码、截图、视频、运行数据及 JSON 回执，不清 Cargo 缓存、不删除整个验证任务目录。首次预览后才追加 `--apply`；每次运行使用新的报告路径。
+
+### 定时清理建议
+
+每天运行一次 `make artifact-cleanup ARGS='--temporary-worktrees --include-primary --cache-budget-gib 40 --min-free-gib 30 --min-idle-hours 72 --report /private/tmp/UNIQUE-cache-report.json --apply'`，每次替换 `UNIQUE`，报告不得覆盖。首次去掉 `--apply` 审阅。主仓持续开发或有未提交修改时会保留缓存；预算和空闲线是目标而非强制配额，不能保证释放到指定空间。定时任务应汇报实际回收、保护原因和仍存压力，不自动降低闲置窗口或清空正在用的 target。
+
+完整包采用独立的保留策略：每周对专用打包输出目录运行 `make artifact-cleanup ARGS='--root /absolute/package-output --no-worktrees --keep 3 --report /private/tmp/UNIQUE-package-report.json --apply'`，首次同样预览。只扫描明确的产物目录，不将整个 home 或临时目录加入范围；需要将多个历史包一起比较时可重复传入 `--root`。当前产物以 `package-evidence.json` 归组，未知或不完整产物保留。临时 staging 由打包流程自身清理，其他软件缓存、真实服务数据、源码与安装应用不纳入此任务。
 
 ## 验证产物保留
 

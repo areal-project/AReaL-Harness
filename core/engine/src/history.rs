@@ -656,6 +656,20 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
             }
         })
         .collect();
+    // 原生工具轮次没有正文关联；按完成轮次归属识别展示思考，避免再次桥接。
+    let mut native_messages = HashSet::new();
+    let mut completion = None;
+    for item in items.iter().skip(start) {
+        match item {
+            Item::AgentMessage { id, .. } => completion = Some(id.as_str()),
+            Item::ModelContext { value, .. } if value["type"] == "areal_response_output" => {
+                if let Some(id) = completion {
+                    native_messages.insert(id);
+                }
+            }
+            _ => {}
+        }
+    }
     for item in items.into_iter().skip(start) {
         if matches!(
             item,
@@ -743,8 +757,8 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
                 message
             }
             Item::AgentMessage { id, text, .. } => {
-                native_completion = canonical_messages.contains(id.as_str());
-                if native_completion {
+                native_completion = native_messages.contains(id.as_str());
+                if canonical_messages.contains(id.as_str()) {
                     continue;
                 }
                 assistant_index = Some(messages.len());
@@ -1164,6 +1178,49 @@ mod observation_tests {
         let omitted = model::project_history(messages, model::HistoryThinking::Omit);
         assert_eq!(omitted[0].responses_output().unwrap().len(), 1);
         assert_eq!(omitted[0].text_content(), "answer");
+        engine.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn tool_only_responses_replay_native_thinking_once_after_serialization() {
+        let data = tempfile::tempdir().unwrap();
+        let engine = Engine::open(
+            data.path(),
+            Arc::new(model::UnconfiguredModel),
+            Limits::default(),
+        )
+        .unwrap();
+        let mut thread = engine.create("/workspace".into()).await.unwrap();
+        thread.turns.push(serde_json::from_value(json!({"id":"turn","status":"completed","items":[
+            {"type":"agentMessage","id":"empty","text":""},
+            {"type":"reasoning","id":"display","content":["native thought"]},
+            {"type":"modelContext","id":"native","value":{"type":"areal_response_output","items":[
+                {"type":"reasoning","id":"rs1","summary":[],"content":[{"type":"reasoning_text","text":"native thought"}]},
+                {"type":"function_call","id":"fc1","call_id":"call1","name":"inspect","arguments":"{}"}
+            ]}},
+            {"type":"dynamicToolCall","id":"tool","callId":"call1","tool":"inspect","arguments":{},"status":"completed","success":true,"contentItems":[{"type":"inputText","text":"observed"}],"execution":{"runtimeEpoch":"epoch","scopeId":"scope","operationId":"op","outcome":"succeeded"}},
+            {"type":"agentMessage","id":"chat","text":"answer"},
+            {"type":"reasoning","id":"chat-thought","content":["next thought"]}
+        ]})).unwrap());
+        let restored: Thread =
+            serde_json::from_value(serde_json::to_value(&thread).unwrap()).unwrap();
+        for source in [&thread, &restored] {
+            let messages = history(source, &engine.store).unwrap();
+            assert_eq!(
+                messages.len(),
+                3,
+                "native thinking must not create a second assistant message"
+            );
+            assert_eq!(messages[0].responses_output().unwrap().len(), 2);
+            assert_eq!(messages[1].tool_call_id.as_deref(), Some("call1"));
+            assert_eq!(
+                messages[2].provider_context.as_ref().unwrap()["reasoning_content"],
+                "next thought"
+            );
+            let omitted = model::project_history(messages, model::HistoryThinking::Omit);
+            assert_eq!(omitted[0].responses_output().unwrap().len(), 1);
+            assert_eq!(omitted[2].text_content(), "answer");
+        }
         engine.shutdown().await;
     }
 

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
-import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { connect } from "../examples/desktop-api/client.mjs";
@@ -37,6 +37,7 @@ const evidence = {
 const host = new HostClient();
 const coreClients = [];
 let modelFailure;
+let linkedSkillRead = false;
 let desktopProvider;
 const desktopModelTools = [];
 const model = createServer(async (request, response) => {
@@ -65,26 +66,50 @@ const model = createServer(async (request, response) => {
         desktopProvider = undefined;
       }
     }
-    const tool = goal?.goal?.limitsPending
-      ? { name: "goal_set_limits", args: { expectedRevision: goal.revision, sources: {} } }
-      : goal && goal.goal.report?.status !== "complete"
-        ? {
-            name: "goal_update",
-            args: {
-              expectedRevision: goal.revision,
-              status: "complete",
-              summary: "HOST_SCHEDULE_DONE",
-              evidence: ["Local deterministic schedule fixture."],
-              remaining: [],
-            },
-          }
-        : null;
+    const skillResults = (body.messages ?? []).filter((message) => message.role === "tool");
+    const listed = skillResults.find((message) => message.tool_call_id === "linked-schedule-list");
+    const readLinked = skillResults.find(
+      (message) => message.tool_call_id === "linked-schedule-read",
+    );
+    let skillTool;
+    if (JSON.stringify(body.messages).includes("HOST_SCHEDULE_managed") && !readLinked) {
+      if (!listed) skillTool = { id: "linked-schedule-list", name: "skill_list", args: {} };
+      else {
+        const skill = JSON.parse(listed.content).data.find((item) => item.id === "linked-skill");
+        assert.ok(skill, "scheduled agent sees the linked skill");
+        skillTool = {
+          id: "linked-schedule-read",
+          name: "skill_read",
+          args: { skill: { id: skill.id, revision: skill.revision } },
+        };
+      }
+    }
+    if (readLinked) {
+      assert.match(JSON.parse(readLinked.content).text, /Linked schedule instructions/);
+      linkedSkillRead = true;
+    }
+    const tool =
+      skillTool ??
+      (goal?.goal?.limitsPending
+        ? { name: "goal_set_limits", args: { expectedRevision: goal.revision, sources: {} } }
+        : goal && goal.goal.report?.status !== "complete"
+          ? {
+              name: "goal_update",
+              args: {
+                expectedRevision: goal.revision,
+                status: "complete",
+                summary: "HOST_SCHEDULE_DONE",
+                evidence: ["Local deterministic schedule fixture."],
+                remaining: [],
+              },
+            }
+          : null);
     const delta = tool
       ? {
           tool_calls: [
             {
               index: 0,
-              id: randomUUID(),
+              id: tool.id ?? randomUUID(),
               type: "function",
               function: { name: tool.name, arguments: JSON.stringify(tool.args) },
             },
@@ -108,6 +133,14 @@ const model = createServer(async (request, response) => {
   }
 });
 await mkdir(user);
+const linkedSkillRoot = join(root, "external-skill");
+await mkdir(linkedSkillRoot);
+await writeFile(
+  join(linkedSkillRoot, "SKILL.md"),
+  "---\nname: Linked skill\ndescription: Scheduled fixture\n---\nLinked schedule instructions.\n",
+);
+await mkdir(join(user, ".agents/skills"), { recursive: true });
+await symlink(linkedSkillRoot, join(user, ".agents/skills/linked-skill"));
 await new Promise((done) => model.listen(0, "127.0.0.1", done));
 const configPath = join(user, "config.toml");
 await writeFile(
@@ -330,6 +363,21 @@ try {
     includeTurns: false,
   });
   const firstProfile = firstManagedThread.thread.desktop.configuration.profile;
+  assert.ok(linkedSkillRead, "scheduled agent reads the linked skill through its tool");
+  const scheduledSkills = (
+    await firstManagedClient.call("areal/skill/list", { threadId: managedTask.runs[0].threadId })
+  ).data;
+  const linkedSkill = scheduledSkills.find((skill) => skill.id === "linked-skill");
+  assert.ok(linkedSkill, "scheduled thread receives the linked user skill");
+  const linkedContent = await firstManagedClient.call("areal/skill/read", {
+    threadId: managedTask.runs[0].threadId,
+    skill: { id: linkedSkill.id, revision: linkedSkill.revision },
+    resource: "SKILL.md",
+  });
+  assert.match(linkedContent.text, /Linked schedule instructions/);
+  evidence.checks.push(
+    "scheduled thread lists and reads a user skill linked outside its discovery root",
+  );
   assert.equal(managedTask.runs[0].scheduledAt, due);
   assert.match(firstProfile.revision, /^resources-/);
   await writeFile(
