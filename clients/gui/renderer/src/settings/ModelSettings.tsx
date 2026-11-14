@@ -129,7 +129,7 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
     setMessage("");
   };
   const editConnection = (patch: Data) => {
-    discovery.invalidate(true);
+    discovery.invalidate();
     setChecked([]);
     edit(patch);
   };
@@ -481,7 +481,7 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
                 const authentication = definition.authMethods?.includes("apiKey")
                   ? "apiKey"
                   : "none";
-                discovery.invalidate(true);
+                discovery.invalidate();
                 setChecked([]);
                 setSelected("");
                 setDraft(newConnectionDraft(definition, authentication, state.value?.revision));
