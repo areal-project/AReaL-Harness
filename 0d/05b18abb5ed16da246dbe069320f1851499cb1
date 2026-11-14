@@ -1,0 +1,184 @@
+core/engine/src/history.rs
+  s_fd5de44d1f47fb::t_ab1bd9a2d16450 447-448,643,678-682,957-958,967-970,978-979,981
+  s_fd5de44d1f47fb::t_d9521c2f6ecdb7 438-446,683-688,734-736,745-749,955-956,959-961,965-966,971-977,985-986
+  s_fd5de44d1f47fb::t_f47d2f2ee82b14 1083-1141,1143-1162
+  s_fd5de44d1f47fb::t_9598915840fb40 980,982-984,987-988,1142,1163-1169
+Makefile
+  s_fd5de44d1f47fb::t_0d060b62a685cd 24-25
+  s_fd5de44d1f47fb::t_430f59c1f127fb 192-200
+core/engine/src/workgroup/native.rs
+  s_fd5de44d1f47fb::t_ab1bd9a2d16450 244-246
+  s_fd5de44d1f47fb::t_b609fc720f366d 1442
+core/engine/src/model/history_thinking.rs
+  s_fd5de44d1f47fb::t_dbc092ebf0be1d 161-183
+  s_fd5de44d1f47fb::t_e37f468c1cccc9 3-33
+  s_fd5de44d1f47fb::t_6cb40100148fcb 1-2,34-38,50,52-53,67
+  s_fd5de44d1f47fb::t_cfd51ca1c903fe 68-80,82-99,101-129,131-136,138-160,184
+  s_fd5de44d1f47fb::t_d9521c2f6ecdb7 39-49,51,54-66
+  s_fd5de44d1f47fb::t_820571ef8900e6 81
+  s_fd5de44d1f47fb::t_9c7581e25bb42b 100
+  s_fd5de44d1f47fb::t_9bd14e614e5fc9 130
+  s_fd5de44d1f47fb::t_822007e8a88e0f 137
+  s_fd5de44d1f47fb::t_720467ba2fc783 185-187
+docs/README.en.md
+  s_fd5de44d1f47fb::t_d01e653a5c07f1 34-35
+core/engine/src/desktop/catalog.rs
+  s_fd5de44d1f47fb::t_d9521c2f6ecdb7 555-560
+  s_fd5de44d1f47fb::t_ab1bd9a2d16450 64
+core/config/tests/loading.rs
+  s_fd5de44d1f47fb::t_f47d2f2ee82b14 18-24,26-47,49-53
+  s_fd5de44d1f47fb::t_6be7fc9d13366d 17,25,48
+core/engine/src/context.rs
+  s_fd5de44d1f47fb::t_d9521c2f6ecdb7 107,123,145,925-927,981,1117,1168,1356,1380
+  s_fd5de44d1f47fb::t_74a1b70ccb97fc 1939
+core/engine/tests/context.rs
+  s_fd5de44d1f47fb::t_d9521c2f6ecdb7 365-367
+  s_fd5de44d1f47fb::t_b6478e49315b53 267-362
+scripts/train-trajectory-sft.py
+  s_fd5de44d1f47fb::t_25cfa73660ab5c 17-19,24-28
+  s_fd5de44d1f47fb::t_430f59c1f127fb 1-16,20-23,29-46
+docs/design/architecture.md
+  s_fd5de44d1f47fb::t_d01e653a5c07f1 61-62
+core/engine/src/model.rs
+  s_fd5de44d1f47fb::t_d9521c2f6ecdb7 10,1806-1811,1821
+  s_fd5de44d1f47fb::t_ab1bd9a2d16450 17-18,677-679,842,869,1140-1141
+  s_fd5de44d1f47fb::t_55172205e0bc0d 1142,1398-1401,1419,1791,1812-1820
+scripts/training_data.py
+  s_fd5de44d1f47fb::t_b161f585afc2f1 174-179,276-278,308-311,390-391,412-415,500-508
+  s_fd5de44d1f47fb::t_25cfa73660ab5c 112,207-209,226-230,282-290,354-362,376-382,385-387,398-400,423-431,441-443,445-447,456-461,471,495-498,509-511
+  s_fd5de44d1f47fb::t_8b46ae29ec2086 519,521-543,545-548,550
+  s_fd5de44d1f47fb::t_290c5659460be7 204,210-213,235-236,242-243,254-255,268,368-369,417,421-422,475-493
+  s_fd5de44d1f47fb::t_9573366399c6d1 237-241,418-420
+  s_fd5de44d1f47fb::t_537ef6b8f6f842 317-335,339-340,383-384,389,392
+  s_fd5de44d1f47fb::t_656c0498171cee 68-73,448-452
+  s_fd5de44d1f47fb::t_9dd3489db4128e 436-440,444,499
+  s_fd5de44d1f47fb::t_dab7af73bdbea3 1-67,74-111,113-122,124-140,143-173,180-203,205-206,214-225,231-234,244-253,256-267,269-275,279-281,291-307,312-316,336-338,341-353,363-367,370-375,393-397,401-411,416,432-435,453-455,462-463,468,472-474,494,512-518,520
+  s_fd5de44d1f47fb::t_6c531ae47a2aa0 123,141-142
+  s_fd5de44d1f47fb::t_1f3cbdbaaabac2 549
+  s_fd5de44d1f47fb::t_d7c0839dde347e 388,464-467,469-470,544
+core/server/src/reload.rs
+  s_fd5de44d1f47fb::t_ab1bd9a2d16450 64
+  s_fd5de44d1f47fb::t_ca42f8256b1679 216-248
+docs/features.md
+  s_fd5de44d1f47fb::t_d01e653a5c07f1 44
+core/engine/src/goals/budget.rs
+  s_fd5de44d1f47fb::t_ab1bd9a2d16450 564-566
+docs/guides/training-data.md
+  s_fd5de44d1f47fb::t_9dd3489db4128e 1-80
+  s_fd5de44d1f47fb::t_9774a5b01b5cdc 81-85
+docs/README.md
+  s_fd5de44d1f47fb::t_0d060b62a685cd 34-35
+core/server/src/workgroup.rs
+  s_fd5de44d1f47fb::t_ab1bd9a2d16450 188
+core/config/src/file.rs
+  s_fd5de44d1f47fb::t_ab1bd9a2d16450 399
+core/config/src/lib.rs
+  s_fd5de44d1f47fb::t_ab1bd9a2d16450 238-254,277-278,426
+core/config/src/resolve.rs
+  s_fd5de44d1f47fb::t_ab1bd9a2d16450 407-411,746,1058-1061
+  s_fd5de44d1f47fb::t_d9521c2f6ecdb7 11-15
+docs/guides/training-data.en.md
+  s_fd5de44d1f47fb::t_9dd3489db4128e 1-80
+  s_fd5de44d1f47fb::t_279bf03e21f627 81-85
+core/engine/src/observations.rs
+  s_fd5de44d1f47fb::t_ab1bd9a2d16450 148
+  s_fd5de44d1f47fb::t_badc72436b3d45 112-121
+scripts/export-training-data.py
+  s_fd5de44d1f47fb::t_25cfa73660ab5c 28-30,32-39,108-110,112-115,117-118,126,153-159,164-166
+  s_fd5de44d1f47fb::t_8b46ae29ec2086 7,50-53,55-59,161
+  s_fd5de44d1f47fb::t_88f81fde86a58e 69-72,78-93,119-125
+  s_fd5de44d1f47fb::t_430f59c1f127fb 1-6,8-27,31,40-49,54,60-67,94-103,105,127-131,134-152,163,169-173
+  s_fd5de44d1f47fb::t_1f3cbdbaaabac2 68,73-77,104,106-107,111,116
+  s_fd5de44d1f47fb::t_290c5659460be7 132-133,160,162,167-168
+scripts/training-data-smoke.py
+  s_fd5de44d1f47fb::t_88f81fde86a58e 129-131,150-153,186-192
+  s_fd5de44d1f47fb::t_25cfa73660ab5c 27-30,36-55,58-60,68-74,76-81,93-98,109-111,133-148,158-171,176-185,201-218,227-229,240-242
+  s_fd5de44d1f47fb::t_656c0498171cee 1-26,31-35,56-57,62-67,75,82-92,99-108,112-128,132,149,154-157,172-175,196-200,219,226,230-239,243-246
+  s_fd5de44d1f47fb::t_77d12a5fceb63c 61,220-225
+  s_fd5de44d1f47fb::t_86466294704d36 193-195
+  s_fd5de44d1f47fb::t_415e3539a96866 247-344
+core/engine/src/model/terminal_integrity_tests.rs
+  s_fd5de44d1f47fb::t_d9521c2f6ecdb7 7-20,410-411
+  s_fd5de44d1f47fb::t_2fe1e263e4b832 3-6,21-23,419
+  s_fd5de44d1f47fb::t_5d9ff1dd9bfdfb 402,409,412-418,420-425
+core/server/src/lib.rs
+  s_fd5de44d1f47fb::t_ab1bd9a2d16450 739
+core/engine/src/trajectory.rs
+  s_fd5de44d1f47fb::t_430f59c1f127fb 399-400
+  s_fd5de44d1f47fb::t_b161f585afc2f1 971,990
+docs/design/architecture.en.md
+  s_fd5de44d1f47fb::t_d01e653a5c07f1 63-64
+scripts/tests/test_training_data.py
+  s_fd5de44d1f47fb::t_25cfa73660ab5c 22-29,36-39,42-45,48-53,63-67,71-98,112,128-136,150-152,167-169,175-182,206-209,221-223,322,324-331,334-348,356-364
+  s_fd5de44d1f47fb::t_6c531ae47a2aa0 231-232
+  s_fd5de44d1f47fb::t_86466294704d36 104,107,116,274-318
+  s_fd5de44d1f47fb::t_537ef6b8f6f842 1-21,30-35,40-41,46-47,54-62,68-70,99-103,105-106,108-111,113-115,117-127,137-149,153-166,170-174,183-205,210-220,224-230,233-273,319-321,323,332-333,349-355,365-373
+docs/features.en.md
+  s_fd5de44d1f47fb::t_d01e653a5c07f1 44
+core/engine/src/context_usage.rs
+  s_fd5de44d1f47fb::t_d9521c2f6ecdb7 157,159,380,490-494,496-502
+clients/gui/health-baseline.json
+  s_fd5de44d1f47fb::t_daaa0adc51dfdb 16,854
+core/config/examples/config.toml
+  s_fd5de44d1f47fb::t_4c5a7b23739650 20-21
+core/engine/src/context/reference_tests.rs
+  s_fd5de44d1f47fb::t_6ae1252c5dd8f2 1-72
+core/engine/src/generation.rs
+  s_fd5de44d1f47fb::t_b2077d87907702 820,2201
+core/engine/src/generation/receipt_tests.rs
+  s_fd5de44d1f47fb::t_dccf6a7e6936d0 1-149
+core/engine/src/model/websocket.rs
+  s_fd5de44d1f47fb::t_2fdd8419c343da 122-126,150,169-171,614-645
+core/engine/src/workgroup/native/request_budget_tests.rs
+  s_fd5de44d1f47fb::t_af9869ee4c8026 1-179
+core/engine/tests/http_model.rs
+  s_8ffa5594c30d0d::t_8fcd3354be03e8 24-128
+core/engine/tests/support/solve_only_http.rs
+  s_fd5de44d1f47fb::t_fda19050b8947c 22-24
+core/engine/tests/tool_call_stream.rs
+  s_29db349718cb29::t_c86e348ec2eb69 12,199-201,1108-1118
+core/protocol/src/lib.rs
+  s_fd5de44d1f47fb::t_1b5c07214acf9f 269
+docs/api/core.en.md
+  s_fd5de44d1f47fb::t_bd76a7fc0d9562 163,181,472,488-489
+docs/api/core.md
+  s_fd5de44d1f47fb::t_cc7e06e961bcde 158,176,481,497-498
+docs/guides/configuration.en.md
+  s_fd5de44d1f47fb::t_74a414d4f412ed 181-191
+docs/guides/configuration.md
+  s_fd5de44d1f47fb::t_96ff949e194af3 181-191
+schemas/areal-core-v1.json
+  s_fd5de44d1f47fb::t_19b9a08333fc54 2466,7747,10678,11533,13518,16247,18179,34102,37913,40633,43962,44348,46884,50776,64390,67107,79119,81838,84836,87553,96065,110127,115004,115389,119707,122482,124412,137646,141445,145338,145723,149992,152732,156115,158832
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0d05b18abb5ed16da246dbe069320f1851499cb1",
+  "prompts": {},
+  "sessions": {
+    "s_29db349718cb29": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d44d-e871-7240-b2cc-64fb74e22fc0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    },
+    "s_8ffa5594c30d0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d31c-2950-79c3-89fe-068f7712b050",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    },
+    "s_fd5de44d1f47fb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d4ab-0d82-7091-9189-191162b9793e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
