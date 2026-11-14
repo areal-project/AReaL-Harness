@@ -12,6 +12,7 @@ export default defineConfig({
     environment: "node",
   },
   lint: {
+    categories: { correctness: "error" },
     jsPlugins: ["./oxlint-plugin-areal/index.ts"],
     rules: {
       "areal/require-suppression-reason": "error",

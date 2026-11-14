@@ -461,7 +461,7 @@ describe("no-restyle", () => {
 });
 
 describe("no-unchecked-array-method", () => {
-  test("project configuration enables a warning for Renderer sources", () => {
+  test("project check reports array risk but rejects other lint and formatting failures", () => {
     const project = join(scratch, "array-method-config");
     mkdirSync(join(project, "renderer/src"), { recursive: true });
     writeFileSync(join(project, "package.json"), '{"private":true,"type":"module"}');
@@ -470,15 +470,28 @@ describe("no-unchecked-array-method", () => {
     symlinkSync(join(root, "oxlint-plugin-areal"), join(project, "oxlint-plugin-areal"));
     writeFileSync(
       join(project, "renderer/src/fixture.ts"),
-      "export function view(item: Data) { return (item.input ?? []).filter(Boolean); }",
+      "export function view(item: Data) {\n  return (item.input ?? []).filter(Boolean);\n}\n",
     );
     const result = spawnSync(
       process.execPath,
-      [join(root, "node_modules/vite-plus/bin/vp"), "lint", "renderer/src/fixture.ts"],
+      [join(root, "node_modules/vite-plus/bin/vp"), "check", "renderer/src/fixture.ts"],
       { cwd: project, encoding: "utf8" },
     );
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(result.stdout + result.stderr).toContain("areal(no-unchecked-array-method)");
+    for (const [source, diagnostic] of [
+      ["const unused = 1;\nexport {};\n", "no-unused-vars"],
+      ["export const value=1", "format"],
+    ]) {
+      writeFileSync(join(project, "renderer/src/fixture.ts"), source);
+      const rejected = spawnSync(
+        process.execPath,
+        [join(root, "node_modules/vite-plus/bin/vp"), "check", "renderer/src/fixture.ts"],
+        { cwd: project, encoding: "utf8" },
+      );
+      expect(rejected.status, rejected.stdout + rejected.stderr).not.toBe(0);
+      expect((rejected.stdout + rejected.stderr).toLowerCase()).toContain(diagnostic);
+    }
   });
 
   test.each([

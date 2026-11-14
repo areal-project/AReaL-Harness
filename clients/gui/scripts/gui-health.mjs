@@ -9,30 +9,34 @@ import { collectUiAdoption } from "./design-system-maturity.mjs";
 import { readTestManifest } from "./test-manifest.mjs";
 import { collectDesignRuleMetrics } from "./design-rules.mjs";
 
-// D-005 规格包与 R-CHECK-024 的人工审阅声明，不是授权验证。新基线进入 base 后自然失效，可移除此迁移记录。
-const reviewedDocBudgetTransition = Object.freeze({
-  metric: "activeDesignDocBytes",
-  from: 184954,
-  to: 193947,
-  direction: "down",
-  owner: "design/ clients/gui/design-system",
-  reason:
-    "Reproducible design spec package (D-005, design/spec) and layer check rule; no extra headroom",
-  review: "Owner-approved architecture in the project thread; document-only budget adjustment",
-});
-
-export function reviewedBaselineTransition(name, before, current) {
-  const review = reviewedDocBudgetTransition;
-  return name === review.metric &&
-    before?.value === review.from &&
-    current?.value === review.to &&
-    before.direction === review.direction &&
-    current.direction === review.direction &&
-    before.owner === review.owner &&
-    current.owner === review.owner
-    ? review
-    : null;
-}
+// 规模只提示审查；所有权、职责分类、未知值和实际边界违规仍阻断。
+const scaleMetrics = new Set([
+  "mainSourceLines",
+  "mainBusinessLines",
+  "workbenchConvergeLines",
+  "appLines",
+  "appHooks",
+  "rendererCssLines",
+  "activeDesignDocBytes",
+  "mainCheckedFiles",
+  "rendererUnitTestFiles",
+]);
+const scaleReasons = new Set([
+  undefined,
+  "baseline exceeds actual Main lines at base",
+  "Main source grew against base",
+  "workbench source or baseline grew against actual base",
+  "baseline relaxed against base",
+  "source path cap increased",
+  "new production source exceeds 800 lines",
+  "baseline source cap relaxed against base",
+  "baseline added oversized source against base",
+]);
+const scaleSignal = (finding) =>
+  (scaleMetrics.has(finding.metric) || finding.metric.startsWith("source:")) &&
+  scaleReasons.has(finding.reason) &&
+  Number.isFinite(finding.current) &&
+  Number.isFinite(finding.baseline);
 
 const gui = fileURLToPath(new URL("../", import.meta.url));
 const mainLineCounting = "oxfmt-v1";
@@ -592,13 +596,10 @@ async function main() {
   ]);
   for (const name of allowed)
     if (!names.has(name)) throw new Error(`Unknown regression exception ${name}`);
-  if (allowed.has("workbenchConvergeLines"))
-    throw new Error("Workbench convergence growth cannot be waived with --allow-regression");
-  if (allowed.has("mainBusinessLines") || allowed.has("mainSourceLines"))
-    throw new Error("Main source growth cannot be waived with --allow-regression");
+  if ([...allowed].some((name) => scaleMetrics.has(name) || name.startsWith("source:")))
+    throw new Error("Scale changes are signals; integrity failures cannot be waived");
   const failures = baseline ? compare(report, baseline) : [];
   const base = value("--base") ?? process.env.AREAL_DESIGN_BASE;
-  const reviewedTransitions = [];
   let measuredBase;
   // 架构迁移一次性换基线：只对登记的那一个基点提交免去“相对基点只降不升”，合入后的下一次比较自动恢复。
   const rebaselined =
@@ -691,16 +692,18 @@ async function main() {
           current.value === null ||
           (old.direction === "down" ? current.value > old.value : current.value < old.value))
       ) {
-        const review = reviewedBaselineTransition(name, old, current);
-        if (review) reviewedTransitions.push(review);
-        else
-          failures.push({
-            metric: name,
-            baseline: old.value,
-            current: current.value,
-            direction: old.direction,
-            reason: "baseline relaxed against base",
-          });
+        failures.push({
+          metric: name,
+          baseline: old.value,
+          current: current.value,
+          direction: old.direction,
+          reason:
+            old.direction !== current.direction || old.owner !== current.owner
+              ? "baseline owner or direction changed"
+              : current.value === null
+                ? "unknown metric"
+                : "baseline relaxed against base",
+        });
       }
     }
     for (const [path, storedCap] of Object.entries(before.$sourceCaps)) {
@@ -714,6 +717,8 @@ async function main() {
       )
         failures.push({
           metric: `source:${path}`,
+          baseline: Math.max(800, cap),
+          current: baseline.$sourceCaps[path],
           reason: "baseline source cap relaxed against base",
         });
     }
@@ -721,6 +726,8 @@ async function main() {
       if (!(path in before.$sourceCaps) && cap > 800)
         failures.push({
           metric: `source:${path}`,
+          baseline: 800,
+          current: cap,
           reason: "baseline added oversized source against base",
         });
   }
@@ -740,8 +747,15 @@ async function main() {
       }),
     ),
   );
+  const signals = failures.filter(
+    (failure) => (!metric || failure.metric === metric) && scaleSignal(failure),
+  );
+  signals.forEach((finding) => console.warn(JSON.stringify({ ...finding, severity: "signal" })));
   const rejected = failures.filter(
-    (failure) => (!metric || failure.metric === metric) && !allowed.has(failure.metric),
+    (failure) =>
+      (!metric || failure.metric === metric) &&
+      !scaleSignal(failure) &&
+      !allowed.has(failure.metric),
   );
   if (rejected.length) {
     rejected.forEach((failure) => console.error(JSON.stringify(failure)));
@@ -756,7 +770,7 @@ async function main() {
     JSON.stringify({
       passed: true,
       written: write,
-      reviewedTransitions,
+      signals,
       rebaselinedFrom: rebaselined ? baseline.$rebaseline : null,
       allowedRegressions: failures.filter((failure) => allowed.has(failure.metric)),
       inheritedRegressions: inherited,

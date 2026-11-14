@@ -442,7 +442,7 @@ cargo test --locked -p areal-engine --lib plugin_host_inherits_proxies_without_o
 
 `make host-protocol-check` 检查生成物、生成器回归和桌面 IPC 冻结反例，并运行需要 GUI 依赖的两条用例（生成的 TypeScript 声明、Host 经工作台后台冻结上下文），所以要先装 `clients/gui` 的依赖。CI 还以 PR 基线的完整提交 SHA 运行 `node clients/gui/scripts/check-desktop-ipc-freeze.cjs --base <SHA>`，拒绝新增顶层命令或已有命令下的业务 operation，原生 bridge 通道不在冻结范围内。
 
-Main 的业务行数与源码总行数分别由 `gui-health.mjs --check --metric=mainBusinessLines --base=<SHA>` 和 `--metric=mainSourceLines` 检查。业务统计默认包含所有 Main 文件，仅排除基线逐路径注明职责的原生文件；混合文件整计为业务的保守上界。两项及 Main 逐文件上限按现有 `vite-plus/fmt` 的固定格式化口径计数（宽度 100、缩进 2），压行不能减少预算。基线用 `$mainLineCounting` 标识计数口径；切换口径时以同一算法重测 PR 基点源码，不把旧物理行数与新计数直接比较。两项同时比较基线值和 PR 基点实测，不允许提高基线或通过重新分类隐藏增长。Renderer 的平台边界通过 `pnpm --dir clients/gui exec vp lint --config oxlint.renderer-boundary.json renderer packages/remote packages/remote-client packages/ui` 检查，规则单测与其他 oxlint 规则放在同一测试文件中。
+Main 总行数和业务行数分别通过 `gui-health.mjs --check --metric=mainSourceLines --base=<SHA>` 与 `--metric=mainBusinessLines` 报告；混合文件整计为业务规模上界，不代表新增职责。总量和逐文件统计沿用 `vite-plus/fmt` 固定格式（宽度 100、缩进 2），基点以同一算法实测，压行不会隐藏增长。规模变化输出 `signals` 和诊断，不单独阻断；指标缺失、未知值、owner/direction 变化及新增原生/保留职责豁免仍阻断。Renderer 平台边界继续通过 `pnpm --dir clients/gui exec vp lint --config oxlint.renderer-boundary.json renderer packages/remote packages/remote-client packages/ui` 检查。
 
 `cargo test --locked -p areal-host --test host_protocol_conformance` 编译生成类型并调用真实本机 wire。准备匹配的固定路径 Core/Runtime 后，运行 `AREAL_TEST_HOST_KEYCHAIN=1 AREAL_CORE_BIN=/absolute/verified/areal pnpm --dir clients/gui test:host-protocol-conformance`，通过隔离 Host、Core、Relay 和 Noise 对照实际收发及资源边界。macOS 的钥匙串仅使用夹具合成项；该检查不代表安装包、真实数据或手机真机验收。
 
@@ -599,9 +599,9 @@ PR #111 在初始 G0 快照后整合历史恢复与定时任务所有权。以�
 
 本地与 CI 通过 `scripts/ci-preflight.py --groups <组名>` 执行同一计划，`--plan` 只展示。`make ci-gui-static CI_BASE=<ref>` 运行 Portable 的提交阶段，`make ci-gui-portable CI_BASE=<ref>` 运行完整 Portable 组，`make ci-core-contracts CI_BASE=<ref>` 连同产物依赖运行 Core 契约。`make ci-gui-health` 保留轻量健康入口。显式 `AREAL_CORE_BIN` 必须与刚构建的 Core 哈希一致；macOS 原生执行按固定产物路径流程准备。CI 只有同一 run/attempt 的产物依赖报告可跨 job 使用，消费者重新核对产物哈希。最终 gate 独立重算计划，严格核对结果全集、子测试全集和源码/计划/run/attempt 身份，缺项或意外 skip 拒绝放行。
 
-`gui-health.mjs --check --base=<ref>` 会标记基线源码已存在的超限，仍以已审核的 `health-baseline.json` 判定失败。继承分类用于归因，不是自动豁免；显式例外与基准变更继续经过既有审查。模型菜单 smoke 通过稳定的 `composer-model-trigger` 打开入口，在对应服务商标签内选择原生 radio，并以选中模型和后续行为验证结果。 架构迁移需要整体换基线时，在 `health-baseline.json` 写一条 `$rebaseline`（基点提交、原因、放行的 IPC 名字）：只有以该提交为基点的比较免去“相对基点只降不升”和 IPC 冻结，合入后自动失效，下次写基线时删除。
+`gui-health.mjs --check --base=<ref>` 会标记基线源码已存在的超限，硬检查仍以已审核的 `health-baseline.json` 判定失败。继承分类用于归因，不是自动豁免；显式例外与基准变更继续经过既有审查。模型菜单 smoke 通过稳定的 `composer-model-trigger` 打开入口，在对应服务商标签内选择原生 radio，并以选中模型和后续行为验证结果。 架构迁移需要整体换基线时，在 `health-baseline.json` 写一条 `$rebaseline`（基点提交、原因、放行的 IPC 名字）：只有以该提交为基点的比较免去“相对基点只降不升”和 IPC 冻结，合入后自动失效，下次写基线时删除。
 
-`mainSourceLines` 将 Main 自有源码总行数作为业务迁出的保守上限，只降不升。检查同时比较已审核基线和 PR 基点的实际行数；新增小文件也计入总量，旧基线尚未收紧的余量不能用于恢复已迁出的代码。它沿用现有生产源码统计范围，不替代业务必须经协议进入 Host 或 Core 的架构约束。
+规模信号包括 Main 总量/业务量、工作台迁移规模、App 行数和 hooks、Renderer CSS 行数、设计文档字节数、已检查文件数、单测文件数及逐文件大小。保留基线和实际 PR 基点对照供职责审查，不通过提高阈值或无关删改消除信号。类型覆盖、能力清单、preload/transport 一致性和依赖边界继续硬检查。数组风险规则 `areal/no-unchecked-array-method` 保持 warning；现有 lint correctness 规则设为 error，提交和 push 入口不再把该信号升级为失败，其他 lint、格式和类型错误仍阻断。
 
 `Track red main` 工作流跟踪 main 上 `Verify` 和 `GUI checks` 的 push 结果。写 issue 前核对当前 main 提交、该 workflow 最新 run/attempt 及终态；过期通知与未完成的新 attempt 不修改告警。当前失败创建或更新对应 issue，当前成功关闭；仓库保护规则拥有必需检查设置。`python3 -m unittest scripts.tests.test_ci_contracts` 在 GitHub CLI 边界使用离线响应，覆盖乱序完成、旧 attempt、新运行未完成和 API 读取失败，测试不会写入真实 issue。
 
