@@ -382,7 +382,8 @@ class HistoryObservation {
         previous = this.historyWindows.get(key);
       if (!previous && this.historyWindows.size >= historyViewLimit) {
         const victim = [...this.historyWindows.entries()].find(
-          ([, window]) => window.views.size === 0,
+          ([, window]) =>
+            window.views.size === 0 && !window.project.observationReads?.has(window.threadId),
         );
         if (!victim) throw historyFailure("同时打开的历史视图已达上限，请先关闭一个视图。");
         this.historyWindows.delete(victim[0]);
@@ -391,6 +392,15 @@ class HistoryObservation {
         const { [threadId]: _interactions, ...otherInteractions } = owner.model.state.interactions;
         const { [threadId]: _queue, ...queues } = owner.model.state.queues;
         owner.model.publish({ threads, interactions: otherInteractions, queues });
+        const retired = victim[1];
+        // 缓存淘汰同步释放同一连接的订阅；先发出释放，再允许后续重新观察该会话。
+        if (this.host.currentConnection(owner, retired.client))
+          void retired.client
+            .request("areal/subscription/remove", { threadIds: [threadId] })
+            .catch((error) => {
+              if (this.host.currentConnection(owner, retired.client))
+                this.observationFailure(owner, threadId, error);
+            });
       }
       const latestTurn = thread.turns.at(-1);
       const latestId = latestTurn?.id;
