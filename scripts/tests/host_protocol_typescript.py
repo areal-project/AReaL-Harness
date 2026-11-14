@@ -4,6 +4,7 @@ import importlib.util
 import json
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import tempfile
 import unittest
@@ -49,19 +50,34 @@ function inspect(control: RemoteSessionControlParams) {
   if (control.operation === 'configure') control.values.model?.providerId;
 }
 """)
-            subprocess.run(
+            with subprocess.Popen(
                 [
                     "node",
+                    "--trace-sigint",
                     str(compiler),
                     "--strict",
                     "--noEmit",
                     "--skipLibCheck",
                     "--ignoreConfig",
+                    "--traceResolution",
+                    "--diagnostics",
                     str(root / "consumer.ts"),
                 ],
                 cwd=ROOT,
-                check=True,
-            )
+            ) as process:
+                try:
+                    returncode = process.wait(timeout=120)
+                except subprocess.TimeoutExpired:
+                    # 先保留编译器停滞的调用栈，再回收本次子进程，仍抛原超时。
+                    process.send_signal(signal.SIGINT)
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    raise
+                if returncode:
+                    raise subprocess.CalledProcessError(returncode, process.args)
 
 
 if __name__ == "__main__":

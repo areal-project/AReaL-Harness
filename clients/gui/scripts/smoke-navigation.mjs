@@ -1,3 +1,4 @@
+import { observationSummary } from "./support/desktop-fixture.mjs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
@@ -74,7 +75,7 @@ export async function resizeConversation(app, page, width, height) {
 }
 
 export async function captureSmokeFailure(page, scratch, error) {
-  const state = { error: error.stack ?? String(error) };
+  const state = { error: error.stack ?? String(error), capturedAt: new Date().toISOString() };
   const files = [];
   try {
     Object.assign(
@@ -95,6 +96,15 @@ export async function captureSmokeFailure(page, scratch, error) {
     );
   } catch (failure) {
     state.stateCaptureError = failure.message;
+  }
+  try {
+    state.observation = observationSummary(
+      await withSmokeDeadline("failure projection capture", () =>
+        page.evaluate(() => window.arealDesktop.snapshot()),
+      ),
+    );
+  } catch (failure) {
+    state.observationCaptureError = failure.message;
   }
   try {
     // 保留整窗而非 Composer 裁剪；导航失败时侧栏和空白区也是证据。

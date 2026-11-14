@@ -277,12 +277,12 @@
     "requires": ["electron", "core-binary", "git", "gui-build"]
   },
   {
-    "script": "test:queue",
+    "script": "test:side-chat-parity",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
-    "areas": ["composer"],
-    "requires": ["electron", "core-binary", "git", "gui-build"],
-    "ciSmoke": "queue"
+    "areas": ["side-chat"],
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
+    "ciSmoke": "side-chat"
   },
   {
     "script": "test:interactions",
@@ -306,13 +306,12 @@
     "requires": ["electron", "core-binary", "gui-build", "git", "python3"]
   },
   {
-    "script": "test:composer",
+    "script": "test:model-selection",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
-    "areas": ["composer", "design"],
+    "areas": ["provider"],
     "requires": ["electron", "core-binary", "git", "gui-build"],
-    "ciSmoke": "composer",
-    "notes": "Composer input, Skills, plugins, IME and executable Side interaction."
+    "ciSmoke": "model-selection"
   },
   {
     "script": "test:composer-files",
@@ -352,20 +351,21 @@
     "requires": ["electron", "core-binary", "gui-build", "git", "python3"]
   },
   {
-    "script": "test:model-selection",
+    "script": "test:composer",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
-    "areas": ["provider"],
+    "areas": ["composer", "design"],
     "requires": ["electron", "core-binary", "git", "gui-build"],
-    "ciSmoke": "model-selection"
+    "ciSmoke": "composer",
+    "notes": "Composer input, Skills, plugins, IME and executable Side interaction."
   },
   {
-    "script": "test:history-compat",
+    "script": "test:design",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
-    "areas": ["history"],
-    "requires": ["electron", "core-binary", "gui-build"],
-    "ciSmoke": "history"
+    "areas": ["design"],
+    "requires": ["browser", "git", "gui-build"],
+    "ciSmoke": "design"
   },
   {
     "script": "test:history-cleanup",
@@ -407,13 +407,13 @@
     "notes": "Chrome production Messages and reading checkpoint persistence; counts synchronous encoding work and verifies reload anchors."
   },
   {
-    "script": "test:conversation-reading",
+    "script": "test:e2e",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
-    "areas": ["conversation", "history", "design"],
-    "requires": ["browser", "gui-build", "git"],
-    "ciSmoke": "conversation-reading",
-    "notes": "Production Messages and Desktop history with deterministic Core RPCs check evicted-page restore, reobservation, streaming and reflow. No provider or package coverage."
+    "areas": ["migration"],
+    "requires": ["electron", "core-binary", "git", "gui-build"],
+    "ciSmoke": "migration",
+    "qualificationJourney": "send-stream"
   },
   {
     "script": "test:tool-detail-ui",
@@ -461,12 +461,13 @@
     "requires": ["electron", "core-binary", "gui-build", "git"]
   },
   {
-    "script": "test:conversation-derivation",
+    "script": "test:conversation-reading",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
-    "areas": ["conversation"],
-    "requires": ["electron", "core-binary", "git", "gui-build"],
-    "ciSmoke": "conversation-derivation"
+    "areas": ["conversation", "history", "design"],
+    "requires": ["browser", "gui-build", "git"],
+    "ciSmoke": "conversation-reading",
+    "notes": "Production Messages and Desktop history with deterministic Core RPCs check evicted-page restore, reobservation, streaming and reflow. No provider or package coverage."
   },
   {
     "script": "test:content-reading",
@@ -523,13 +524,12 @@
     "requires": ["browser", "gui-build"]
   },
   {
-    "script": "test:e2e",
+    "script": "test:queue",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
-    "areas": ["migration"],
+    "areas": ["composer"],
     "requires": ["electron", "core-binary", "git", "gui-build"],
-    "ciSmoke": "migration",
-    "qualificationJourney": "send-stream"
+    "ciSmoke": "queue"
   },
   {
     "script": "test:update",
@@ -678,12 +678,12 @@
     "notes": "Host fixtures start the real Core binary named by AREAL_CORE_BIN."
   },
   {
-    "script": "test:design",
+    "script": "test:browser-navigation",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
-    "areas": ["design"],
-    "requires": ["browser", "git", "gui-build"],
-    "ciSmoke": "design"
+    "areas": ["browser"],
+    "ciSmoke": "browser-navigation",
+    "requires": ["electron", "core-binary", "git", "gui-build"]
   },
   {
     "script": "test:regressions",
@@ -811,12 +811,12 @@
     "requires": ["electron", "core-binary", "gui-build", "git"]
   },
   {
-    "script": "test:side-chat-parity",
+    "script": "test:conversation-derivation",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
-    "areas": ["side-chat"],
-    "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
-    "ciSmoke": "side-chat"
+    "areas": ["conversation"],
+    "requires": ["electron", "core-binary", "git", "gui-build"],
+    "ciSmoke": "conversation-derivation"
   },
   {
     "script": "test:automation",
@@ -933,12 +933,12 @@
     "requires": ["electron", "gui-build"]
   },
   {
-    "script": "test:browser-navigation",
+    "script": "test:history-compat",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
-    "areas": ["browser"],
-    "ciSmoke": "browser-navigation",
-    "requires": ["electron", "core-binary", "git", "gui-build"]
+    "areas": ["history"],
+    "requires": ["electron", "core-binary", "gui-build"],
+    "ciSmoke": "history"
   },
   {
     "script": "test:resize-observer",

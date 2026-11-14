@@ -1,3 +1,4 @@
+import { until as observeUntil } from "./support/desktop-fixture.mjs";
 import { readCoreThread as observeCoreThread, listCoreSides } from "./support/core-observation.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
@@ -378,15 +379,10 @@ const exists = (path) =>
       throw error;
     },
   );
-async function until(predicate, label, timeout = 30000) {
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
-    const value = await predicate();
-    if (value) return value;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw Error(`Timeout waiting for ${label}`);
+function until(predicate, label, timeout = 30000) {
+  return observeUntil(predicate, label, { timeout });
 }
+
 async function shot(name) {
   await withSmokeDeadline("side parity screenshot", () =>
     page.screenshot({ path: join(evidence, `${name}.png`), animations: "disabled", scale: "css" }),

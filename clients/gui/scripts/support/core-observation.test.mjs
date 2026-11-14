@@ -189,3 +189,27 @@ test("an explicit unprojected worktree uses its descriptor, never the parent gen
   });
   assert.equal(observed.id, "child");
 });
+
+test("repeated Side cursor fails deterministically and releases the observer", async () => {
+  let reads = 0;
+  let closed = false;
+  await assert.rejects(
+    listCoreSides({
+      threadId: "original",
+      workspace: "/main",
+      inventory: [{ state: "ready", workspace: "/main" }],
+      connect: async () => ({
+        request: async () => {
+          reads++;
+          return { data: [{ id: "side" }], nextCursor: "same" };
+        },
+        close: () => {
+          closed = true;
+        },
+      }),
+    }),
+    /cursor must advance/,
+  );
+  assert.equal(reads, 2);
+  assert.equal(closed, true);
+});

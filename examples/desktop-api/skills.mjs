@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { mkdir, readdir, readFile, writeFile, symlink, rm } from "node:fs/promises";
 import { trackedMkdtemp } from "../../clients/gui/scripts/support/host-cleanup.cjs";
+import { assertApplicationStopped } from "../../clients/gui/scripts/application-cleanup.mjs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { spawnNative } from "../../scripts/native-child.mjs";
@@ -18,6 +19,7 @@ const env = {
   ...process.env,
   HOME: userDirectory,
   AREAL_HARNESS_HOME: join(scratch, "harness-home"),
+  AREAL_HARNESS_SERVICE_HOME: join(scratch, "harness-home"),
   NO_PROXY: "127.0.0.1,localhost",
   no_proxy: "127.0.0.1,localhost",
   OTEL_SDK_DISABLED: "true",
@@ -49,7 +51,7 @@ async function assertSkillWarning(stderr, dataDir) {
   assert.match(diagnostic, /skipping auto-discovered skill broken-skill/);
   assert.match(diagnostic, /invalid skill frontmatter/);
 }
-async function run(binary, args, dataDir) {
+async function command(binary, args) {
   const process = spawnNative(join(bin, binary), args, {
     cwd: workspace,
     env,
@@ -63,6 +65,10 @@ async function run(binary, args, dataDir) {
   const [code] = await once(process, "exit");
   clearTimeout(timer);
   assert.equal(code, 0, stdout + stderr);
+  return { stdout, stderr };
+}
+async function run(binary, args, dataDir) {
+  const { stdout, stderr } = await command(binary, args);
   assert.match(stdout, /SKILL_DISCOVERY_PASSED/);
   await assertSkillWarning(stderr, dataDir);
   return stdout;
@@ -298,6 +304,31 @@ try {
   assert.deepEqual(model.failures, []);
 } finally {
   await stop();
-  await model.close();
-  await rm(scratch, { recursive: true, force: true });
+  try {
+    const descriptor = await readFile(join(env.AREAL_HARNESS_HOME, "host/host.json"), "utf8")
+      .then(JSON.parse)
+      .catch((error) => {
+        if (error.code === "ENOENT") return null;
+        throw error;
+      });
+    if (descriptor) {
+      // CLI/TUI 退出不结束共享 Host；删目录前必须确认原代际及其 Core 已退出。
+      const { stdout } = await command("areal", [
+        "host",
+        "stop",
+        "--cancel",
+        "--json",
+        "--expected-generation",
+        descriptor.generation,
+      ]);
+      assert.equal(JSON.parse(stdout).state, "completed", "original Host cleanup must settle");
+      await assertApplicationStopped(join(bin, "areal"), env, descriptor);
+      console.log(
+        JSON.stringify({ entry: "cleanup", status: "passed", generation: descriptor.generation }),
+      );
+    }
+    await rm(scratch, { recursive: true, force: true });
+  } finally {
+    await model.close();
+  }
 }
