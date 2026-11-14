@@ -562,12 +562,36 @@ try {
         const indexes = sample.mounted.map((id) => expected.findIndex((item) => item.id === id));
         return indexes.some((index, position) => position > 0 && index <= indexes[position - 1]);
       });
+      // Host 按预算分页，单轮可以跨页；缺少提问时必须通过真实阅读入口找回，不能把分页当作丢失。
+      const restoredContexts = [];
+      for (const user of new Set(missingContext.map((entry) => entry.user))) {
+        await until(async () => {
+          if (await page.locator(`[data-side-item-id="${user}"]`).count()) return true;
+          await page.locator(".messages").evaluate((reader) => {
+            reader.scrollTop = 0;
+            reader.dispatchEvent(new WheelEvent("wheel", { deltaY: -200, bubbles: true }));
+          });
+          return false;
+        }, "paged user context restored");
+        const mounted = await page
+          .locator(".messages [data-side-item-id]")
+          .evaluateAll((nodes) => nodes.map((node) => node.dataset.sideItemId));
+        const indexes = mounted
+          .filter((id) => expected.some((item) => item.id === id))
+          .map((id) => expected.findIndex((item) => item.id === id));
+        assert.ok(
+          indexes.every((index, position) => position === 0 || index > indexes[position - 1]),
+          "Paging changed basic message order",
+        );
+        restoredContexts.push(user);
+      }
       observations.push({
         projectId: project.id,
         threadId,
         expected,
         projection,
         missingContext,
+        restoredContexts,
         orderErrors,
         ...captured,
       });
@@ -581,9 +605,11 @@ try {
   assert.ok(
     observations.every(
       (observation) =>
-        observation.missingContext.length === 0 && observation.orderErrors.length === 0,
+        observation.missingContext.every((entry) =>
+          observation.restoredContexts.includes(entry.user),
+        ) && observation.orderErrors.length === 0,
     ),
-    "A sampled DOM had a response without its user context or changed basic message order",
+    "A response lost its readable user context or changed basic message order",
   );
   if (values["check-detail"]) {
     const project = isolatedProjects.find((value) => sessions.get(value.id).length);
