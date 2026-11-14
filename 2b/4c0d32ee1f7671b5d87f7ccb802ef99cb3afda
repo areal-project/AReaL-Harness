@@ -1,0 +1,19 @@
+core/app-server/tests/fork_replay.rs
+  s_fd5de44d1f47fb::t_690f907cd11e60 388,402-407,409,456,458-469,649-657,659-660,662,677-682
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2b4c0d32ee1f7671b5d87f7ccb802ef99cb3afda",
+  "prompts": {},
+  "sessions": {
+    "s_fd5de44d1f47fb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d4ab-0d82-7091-9189-191162b9793e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
