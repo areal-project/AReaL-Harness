@@ -392,7 +392,12 @@ class TemporaryWorktreeCacheTest(CleanupFixture):
             observations, error = cleanup.activity([self.old])
             self.assertIsNone(error)
             self.assertEqual(
-                {o["path"] for o in observations if o["pid"] == child.pid}, {str(inside)}
+                {
+                    o["path"]
+                    for o in observations
+                    if o["pid"] == child.pid and o["type"] == "open-file"
+                },
+                {str(inside)},
             )
         finally:
             child.communicate(timeout=10)
