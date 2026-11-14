@@ -25,10 +25,14 @@ describe("session settings parameter submission", () => {
   });
 });
 
-
 describe("historical session configuration", () => {
   it("opens settings with malformed selectedSkills without losing valid entries", () => {
     expect(sessionConfigurationDraft({ revision: 3, selectedSkills: {} }).skills).toEqual([]);
-    expect(sessionConfigurationDraft({ revision: 3, selectedSkills: [null, {}, { id: "review", revision: "v1" }] }).skills).toEqual(["review/v1"]);
+    expect(
+      sessionConfigurationDraft({
+        revision: 3,
+        selectedSkills: [null, {}, { id: "review", revision: "v1" }],
+      }).skills,
+    ).toEqual(["review/v1"]);
   });
 });

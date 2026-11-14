@@ -1203,7 +1203,11 @@ function startDesktop() {
             }
             if (!preview) throw new Error(nativeText("browser.previewUnavailable"));
             const activePreview = preview;
-            if (["newPage", "openLink", "subscribe"].includes(request.operation))
+            if (
+              request.operation === "newPage" ||
+              request.operation === "openLink" ||
+              request.operation === "subscribe"
+            )
               await serviceBackend.ensureBrowserThread(request.projectId, request.threadId);
             if (request?.operation === "subscribe") {
               const key = JSON.stringify([request.projectId, request.threadId]);

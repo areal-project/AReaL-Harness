@@ -46,7 +46,10 @@ test("locked orphan does not appear in current providers, active lock appears in
 test("explicit API key reveal retries a locked credential interactively", async () => {
   const calls = [];
   const backend = {
-    host: { sourceId: "source", state: { credentials: { references: ["AREAL_CREDENTIAL_active"] } } },
+    host: {
+      sourceId: "source",
+      state: { credentials: { references: ["AREAL_CREDENTIAL_active"] } },
+    },
   };
   const config = new ModelConfiguration(backend, {
     read: async (slot, options) => {

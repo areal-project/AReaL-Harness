@@ -28,7 +28,9 @@ const parseSkill = (value: string) => {
   return { id: value.slice(0, slash), revision: value.slice(slash + 1) };
 };
 export const sessionConfigurationDraft = (configuration: Data): Data => {
-  const skills = recordItems(configuration.selectedSkills).filter((skill) => typeof skill.id === "string" && typeof skill.revision === "string").map(skillKey);
+  const skills = recordItems(configuration.selectedSkills)
+    .filter((skill) => typeof skill.id === "string" && typeof skill.revision === "string")
+    .map(skillKey);
   return {
     baseRevision: configuration.revision,
     model: configuration.model
