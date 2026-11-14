@@ -37,9 +37,12 @@ export function StartupScreen({
   onQuit: () => void;
 }) {
   const { t } = useI18n();
+  // 只有已确认的失败才展示恢复操作；超时、等待结算和未确认状态仍属于 loading。
   const failed =
-    state.restoration.failed || state.connection?.state === "unavailable" || state.lifecycleBlocked;
-  const recovery = failed || state.delayed;
+    state.restoration.failed ||
+    state.connection?.state === "unavailable" ||
+    !!state.lifecycle?.error;
+  const recovery = failed;
   const busy =
     state.backend.pending ||
     state.restoration.refreshing ||
