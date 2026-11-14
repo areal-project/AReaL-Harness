@@ -53,7 +53,7 @@ pub(super) async fn execute_with_options(
     host.migration.source_profile(source)?;
     let operation = params["operation"].as_str().context("INVALID_PARAMS")?;
     let fields: &[&str] = match operation {
-        "modelsRead" | "configShow" | "feedbackStatus" => &["operation"],
+        "modelsCatalog" | "modelsRead" | "configShow" | "feedbackStatus" => &["operation"],
         "modelsWrite" | "configValidate" | "feedbackSubmit" => &["operation", "document"],
         "pluginSnapshot" => &["operation", "projectId", "pluginId"],
         "pluginDoctor" => &["operation", "projectId"],
@@ -79,6 +79,33 @@ pub(super) async fn execute_with_options(
     }
     let mut inputs = inputs(&options)?;
     let mut stored = Vec::new();
+    if operation == "modelsCatalog" {
+        for (name, value) in host.gateway.workbench.environment_credentials(source) {
+            inputs.env.insert(name.into(), value.into());
+        }
+        let references: Vec<_> = host
+            .migration
+            .vault
+            .provider_references(source)?
+            .into_iter()
+            .collect();
+        for reference in &references {
+            inputs.env.remove(OsString::from(reference).as_os_str());
+        }
+        let mut value = serde_json::to_value(areal_config::models::read(&inputs, &references)?)?;
+        // 沿用配置解析器选出的实际凭据来源，包含当前模型的环境覆盖。
+        for (id, source) in value["credentialSources"]
+            .as_object()
+            .cloned()
+            .unwrap_or_default()
+        {
+            if source == "stored" {
+                value["credentialStates"][&id] = json!("checking");
+            }
+        }
+        return Ok(value);
+    }
+
     if matches!(
         operation,
         "modelsRead" | "modelsWrite" | "feedbackStatus" | "feedbackSubmit"

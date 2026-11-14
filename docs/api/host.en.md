@@ -43,6 +43,8 @@ Host serves the same packaged Renderer as Electron. `areal web` opens the public
 
 `providers.read` reads the original backend public provider configuration. `providers.command` accepts save, apply, default selection, removal, discovery, and probe operations, requiring local browser manage authorization. Commands are queried by their original `commandId`; draft credentials are never stored in journal parameters, and browsers cannot call `revealKey`. Saving an API-key provider without an input or existing reference returns `PROVIDER_CREDENTIAL_REQUIRED` as a definitive rejection, leaving no pending submission to reconcile.
 
+Provider lists use Host `modelsCatalog` to read configuration and credential references without waiting for secure storage or project reconciliation. Unchecked stored credentials report `credentialStates: checking`; the latest credential diagnostics may be reused for the same configuration revision. Background work continues noninteractive credential checks and reconciliation of original project receipts. Clients refresh while credentials are checking or application remains unconfirmed. A visible catalog does not establish credential availability; saving, probing, and execution retain their validation paths.
+
 Workbench domain reads and writes (`library`, `worktree`, `tasks`, `trajectory`, `feedback`, `manage`, `providers`) and `desktop.command` no longer need a client-supplied `sourceId`: when omitted, Host uses the source of the current workbench backend and returns `CAPABILITY_UNAVAILABLE` if that backend is not running; an explicit mismatching value returns `FORBIDDEN`.
 
 ## Envelope and common types

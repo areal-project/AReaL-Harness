@@ -957,9 +957,9 @@ class AppProviders {
       if (this.networkPromise) (await this.networkPromise).close();
     }
   }
-  /** @returns {import("@areal/workbench/desktop-contract/provider").ProviderStatus} */
-  public() {
-    const value = this.config.public();
+  /** @param {ModelSnapshot} [snapshot] @returns {import("@areal/workbench/desktop-contract/provider").ProviderStatus} */
+  public(snapshot) {
+    const value = this.config.public(snapshot);
     const projects = value.projects.map((item) => ({
       ...item,
       application: this.applicationState(this.backend.projects.get(item.projectId), value.revision),
@@ -1000,7 +1000,9 @@ class AppProviders {
         : { kind: "failed", revision, message: failure.message };
     return project.providerRevision === revision &&
       !project.providerError &&
-      (!project.providerProof || this.credentialsReady(project.providerProof, this.snapshot()))
+      (!project.providerProof ||
+        (this.config.value?.revision === revision &&
+          this.credentialsReady(project.providerProof, this.config.value)))
       ? { kind: "applied", revision }
       : { kind: "deferred", revision, reason: "busy" };
   }
@@ -1163,13 +1165,20 @@ class AppProviders {
   async command(rawRequest) {
     const request = providerContract.readRequest("providers", rawRequest);
     if (request.operation === "list") {
+      const snapshot = await this.config.catalog();
       if (!this.saving && !this.backend.providerUpdating) {
-        await this.config.current();
-        for (const project of this.backend.projects.values())
-          if (project.client?.ready && this.pendingApplications.has(project.id))
-            await this.reconcilePending(this.target(project));
+        // 目录展示不等待钥匙串或项目对账；后台继续核对原回执，不重放提交。
+        void this.config
+          .current()
+          .then(() => {
+            if (!this.closed) {
+              this.requestReconciliation();
+              this.backend.onChange();
+            }
+          })
+          .catch(() => {});
       }
-      return this.public();
+      return this.public(snapshot);
     }
     if (this.saving || this.backend.providerUpdating)
       throw new Error("模型配置正在保存，请稍后重试");

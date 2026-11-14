@@ -343,7 +343,7 @@ function modelCapabilities(raw) {
 /** @typedef {{stream:boolean,tools:boolean|null,usage:boolean|null,store?:boolean,unsupportedParameters?:string[]}} CapabilityDefaults */
 /** @typedef {{definitionId:string,connectionId:string,billing:string,authentication:string,credentialSource:string,region:string|null,discovery:Discovery,capabilityDefaults:CapabilityDefaults}} ConnectionMetadata */
 /** @typedef {{id:string,name:string,kind:string,icon:string|null,baseUrl:string,protocol:string,protocols:string[],authMethods:string[],billing:string,models:Array<{id:string,enabled:boolean}>,configurationSchema:Record<string,string>,discovery:Discovery,capabilityDefaults:CapabilityDefaults,regions:Array<{id:string,name:string,baseUrl:string}>}} ProviderDefinition */
-/** @typedef {Pick<ModelSnapshot,'path'|'revision'|'defaultModel'|'credentialStates'|'credentialSources'|'effective'> & {data:Array<ProviderConfig & {baseUrl:string,connection:ConnectionMetadata}>,projects:Array<{projectId:string,root:string,connected:boolean,applied:boolean,error:string|null,application:ApplicationState}>,pendingApply:boolean,application:ApplicationState,definitions:ProviderDefinition[]}} ProviderStatus */
+/** @typedef {Pick<ModelSnapshot,'path'|'revision'|'defaultModel'|'credentialStates'|'credentialSources'|'effective'> & {data:Array<ProviderConfig & {baseUrl:string,connection:ConnectionMetadata}>,projects:Array<{projectId:string,root:string,connected:boolean,applied:boolean,error:string|null,application:ApplicationState}>,pendingApply:boolean,refreshing?:boolean,application:ApplicationState,definitions:ProviderDefinition[]}} ProviderStatus */
 /** @typedef {{id:string,name?:string,source?:string,parameters?:{contextWindowTokens:number},reasoningEffortOptions?:string[]}} SubscriptionModel */
 /** @typedef {{loginId:string,authUrl:string}} Login */
 /** @typedef {{code:string,state:string,phase:string,httpStatus:number|null,requestId:string|null}} Diagnostic */
@@ -526,6 +526,7 @@ function providerStatus(value) {
     (value.defaultModel === null || modelRef(value.defaultModel)) &&
     stringMap(value.credentialStates) &&
     stringMap(value.credentialSources) &&
+    (value.refreshing === undefined || typeof value.refreshing === "boolean") &&
     record(value.effective) &&
     Array.isArray(value.data) &&
     value.data.every(

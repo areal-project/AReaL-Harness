@@ -175,3 +175,35 @@ test("projectless catalog exposes the active locked provider", async () => {
   const result = await new ProjectlessWorkspaces({ providers }).command({ operation: "catalog" });
   assert.equal(result.models[0].unavailableReason, "storageLocked");
 });
+
+test("catalog uses fresh configuration without waiting for credential reads or replacing the execution snapshot", async () => {
+  const snapshot = {
+    path: "/fixture/config.toml",
+    revision: "new",
+    data: [],
+    defaultModel: null,
+    credentialStates: { active: "checking" },
+    credentialSources: { active: "stored" },
+    effective: {},
+  };
+  const config = new ModelConfiguration(
+    {
+      hostCall: async (method, request) => {
+        assert.equal(method, "workbench.utility");
+        assert.deepEqual(request, { operation: "modelsCatalog" });
+        return structuredClone(snapshot);
+      },
+    },
+    {
+      read: () => {
+        throw new Error("catalog must not open the vault");
+      },
+    },
+  );
+  const prior = { ...snapshot, revision: "old", credentialStates: { active: "available" } };
+  config.value = prior;
+  assert.equal((await config.catalog()).credentialStates.active, "checking");
+  assert.equal(config.value, prior);
+  config.value = { ...prior, revision: "new" };
+  assert.equal((await config.catalog()).credentialStates.active, "available");
+});

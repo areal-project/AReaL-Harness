@@ -185,18 +185,24 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
   const credentialErrors = (
     state.value as typeof state.value & { credentialErrors?: Record<string, string> }
   )?.credentialErrors;
+  const providerCredentialError =
+    provider?.id && state.value?.credentialStates?.[provider.id] !== "checking"
+      ? credentialErrors?.[provider.id]
+      : undefined;
   const savedStatus = (item?: Data) =>
     !item
       ? t("settings.modelSettings.unsaved")
       : !item.enabled
         ? t("settings.modelSettings.disabled")
-        : credentialErrors?.[item.id] === "migrationPending"
-          ? t("settings.modelSettings.credentialMigrating")
-          : credentialErrors?.[item.id] === "storageLocked"
-            ? t("settings.modelSettings.keychainLocked")
-            : state.value?.credentialStates?.[item.id] === "unavailable"
-              ? t("settings.modelSettings.missingCredentials")
-              : t("settings.modelSettings.available");
+        : state.value?.credentialStates?.[item.id] === "checking"
+          ? t("settings.modelSettings.checkingCredentials")
+          : credentialErrors?.[item.id] === "migrationPending"
+            ? t("settings.modelSettings.credentialMigrating")
+            : credentialErrors?.[item.id] === "storageLocked"
+              ? t("settings.modelSettings.keychainLocked")
+              : state.value?.credentialStates?.[item.id] === "unavailable"
+                ? t("settings.modelSettings.missingCredentials")
+                : t("settings.modelSettings.available");
   const dirty =
     key !== undefined ||
     (draft !== null &&
@@ -242,15 +248,19 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
     (accountEnabled ? CHATGPT : (items.find((item) => item.enabled)?.id ?? items[0]?.id ?? null));
   useEffect(() => {
     // 初始选择只决定一次；账号临时状态变化不能把用户移到另一份连接配置。
-    if (selected === null && !picker && state.value && accountStatus)
+    if (selected === null && !picker && state.value)
       setSelected(
         accountEnabled
           ? CHATGPT
           : (items.find((item) => item.enabled)?.id ?? items[0]?.id ?? CHATGPT),
       );
-  }, [selected, picker, state.value, accountStatus, accountEnabled]);
+  }, [selected, picker, state.value, accountEnabled]);
   const application = state.value?.application;
-  const waitingForApplication = application?.kind === "deferred" || application?.kind === "unknown";
+  const waitingForApplication =
+    application?.kind === "deferred" ||
+    application?.kind === "unknown" ||
+    state.value?.refreshing === true ||
+    Object.values(state.value?.credentialStates ?? {}).includes("checking");
   useEffect(() => {
     if (!waitingForApplication || busy) return;
     let stopped = false;
@@ -652,12 +662,10 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
                 </div>
                 {authentication === "apiKey" && (
                   <div>
-                    {provider.id &&
-                      credentialErrors?.[provider.id] === "migrationPending" &&
-                      !key && (
-                        <p role="status">{t("settings.modelSettings.credentialMigrating")}</p>
-                      )}
-                    {provider.id && credentialErrors?.[provider.id] === "storageLocked" && !key && (
+                    {provider.id && providerCredentialError === "migrationPending" && !key && (
+                      <p role="status">{t("settings.modelSettings.credentialMigrating")}</p>
+                    )}
+                    {provider.id && providerCredentialError === "storageLocked" && !key && (
                       <p role="status">{t("settings.modelSettings.keychainLocked")}</p>
                     )}
                     <ProviderApiKeySection

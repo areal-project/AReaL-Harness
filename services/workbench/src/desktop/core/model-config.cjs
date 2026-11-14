@@ -153,6 +153,22 @@ class ModelConfiguration {
       throw new Error("Core 返回了无效的模型配置");
     }
   }
+  async catalog() {
+    const snapshot = modelSnapshot(
+      await this.backend.hostCall("workbench.utility", {
+        operation: "modelsCatalog",
+      }),
+    );
+    snapshot.refreshing = this.value?.revision !== snapshot.revision;
+    // 只有同一目录版本的诊断可以复用；未检查的凭据不能投影为可用或丢失。
+    if (this.value?.revision === snapshot.revision) {
+      for (const [id, state] of Object.entries(snapshot.credentialStates)) {
+        if (state === "checking" && this.value.credentialStates[id])
+          snapshot.credentialStates[id] = this.value.credentialStates[id];
+      }
+    }
+    return snapshot;
+  }
   /** @returns {Promise<import('./provider-contract.cjs').ModelSnapshot>} */
   current() {
     // 设置页与多个项目启动可同时读取，首次迁移只允许一个写入者。
@@ -271,8 +287,9 @@ class ModelConfiguration {
       ]),
     );
   }
-  public() {
-    const value = this.value;
+  /** @param {import('./provider-contract.cjs').ModelSnapshot} [snapshot] */
+  public(snapshot) {
+    const value = snapshot ?? this.value;
     if (!value) throw new Error("模型配置尚未读取");
     return {
       ...value,

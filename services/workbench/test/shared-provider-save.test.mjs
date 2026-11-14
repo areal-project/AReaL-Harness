@@ -288,3 +288,26 @@ test("shared CLI project applies the saved model configuration", async () => {
   await f.service.command(f.request);
   assert(f.calls.some(([method]) => method === applyMethod));
 });
+
+test("provider list returns the current catalog without waiting for credentials or project reconciliation", async () => {
+  const f = fixture();
+  const blocked = Promise.withResolvers();
+  f.service.config.current = () => blocked.promise;
+  f.service.config.catalog = async () => f.service.config.value;
+  f.service.pendingApplications.set("p", {});
+  f.service.reconcilePending = () => blocked.promise;
+  try {
+    const result = await Promise.race([
+      f.service.command({ operation: "list" }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("catalog exceeded 300 ms")), 300),
+      ),
+    ]);
+    assert.equal(result.data[0].name, "Original");
+    assert.equal(result.application.kind, "unknown");
+  } finally {
+    blocked.resolve(f.service.config.value);
+    f.service.closed = true;
+    clearTimeout(f.service.reconciliationTimer);
+  }
+});

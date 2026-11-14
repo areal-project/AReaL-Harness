@@ -24923,6 +24923,9 @@
           "items": {
             "$ref": "#/$defs/WorkbenchProviderDefinition"
           }
+        },
+        "refreshing": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -61220,6 +61223,7 @@
             "operation": {
               "type": "string",
               "enum": [
+                "modelsCatalog",
                 "modelsRead",
                 "configShow",
                 "feedbackStatus"

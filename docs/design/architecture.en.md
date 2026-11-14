@@ -10,6 +10,8 @@ AReaL-Harness follows **Clients → Core → Runtime**. Core exclusively owns se
 
 During migration, a Host-supervised Node workbench service holds cross-project business that has not yet moved to Host or Core. The [workbench service design](workbench-service.en.md) first takes over the existing backend, with Main attaching over a private authenticated channel. It has no Electron dependency; public clients connect only to Host. Decrypted values stay in runtime memory and are never persisted as plaintext credentials. In the target design, the Electron shell provides native capabilities unavailable in browsers and registers a desktop tool provider with Host. The UI shows optional platform entry points according to available capabilities. These are migration targets, not claims about the current implementation. The backend implementation and its dependencies live in `services/workbench`; Main and Host takeover share the service package. Main retains the shell and connection client, without a duplicate backend implementation.
 
+The initial provider settings read projects only Host-parsed configuration and credential references. Secure-storage checks and project reconciliation continue in the background without blocking the catalog. This projection does not replace the execution snapshot or establish credential availability.
+
 ![Architecture](diagrams/architecture.svg)
 
 [draw.io source](diagrams/architecture.drawio) · [PNG](diagrams/architecture.png) · [Diagram style](STYLE_GUIDE.en.md)

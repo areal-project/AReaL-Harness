@@ -515,3 +515,48 @@ fn restarts_back_off_and_stop_after_five_failures() {
         vec![Instant::now() - FAILURE_WINDOW - Duration::from_secs(1); 5];
     assert!(supervisor.admit().is_ok());
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn provider_catalog_reads_configuration_without_opening_credentials() {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path().canonicalize().unwrap();
+    let (mut host, input, source) = resumable_host(&root);
+    let vault = crate::vault::Vault::isolated_files(&host.home);
+    Rc::get_mut(&mut Rc::get_mut(&mut host).unwrap().migration)
+        .unwrap()
+        .vault = vault;
+    let reference = "AREAL_CREDENTIAL_catalog_fixture";
+    host.migration
+        .vault
+        .dispatch(
+            "vault.replace",
+            json!({
+                "requestId":uuid::Uuid::new_v4().to_string(),
+                "expectedGeneration":host.identity.generation,
+                "slot":{"kind":"providerCredential","sourceId":source,"reference":reference},
+                "expectedRevision":0,"value":"synthetic-secret"
+            }),
+            &host.identity.generation,
+            &host.migration,
+        )
+        .unwrap();
+    std::fs::create_dir(root.join(".areal")).unwrap();
+    std::fs::write(root.join(".areal/config.toml"), format!(
+        "schema_version=1\n[model]\nprovider='fixture'\nname='fixture'\n[model.providers.fixture]\nendpoint='http://example.invalid/v1/responses'\nprotocol='responses'\napi_key_env='{reference}'\n"
+    )).unwrap();
+    let started = std::time::Instant::now();
+    let result = crate::server::workbench_utility::execute_with_options(
+        &host,
+        &source,
+        json!({"operation":"modelsCatalog"}),
+        input.options,
+    )
+    .await
+    .unwrap();
+    assert!(started.elapsed() < std::time::Duration::from_millis(300));
+    assert_eq!(result["data"][0]["id"], "fixture");
+    assert_eq!(result["credentialStates"]["fixture"], "checking");
+    assert_eq!(result["credentialSources"]["fixture"], "stored");
+    assert!(!result.to_string().contains("synthetic-secret"));
+    eprintln!("provider catalog elapsed: {:?}", started.elapsed());
+}

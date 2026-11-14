@@ -43,6 +43,8 @@ Host 发布包内与 Electron 相同的 Renderer。`areal web` 打开公开 orig
 
 `providers.read` 读取原后台的公开供应商配置；`providers.command` 接受保存、应用、默认模型、删除、发现和探测，要求本机浏览器的 manage 授权。写入以 `commandId` 查询原回执；草稿凭据不进入 journal 参数，浏览器不能调用 `revealKey`。保存要求 API Key 但既无输入也无已配置引用时返回 `PROVIDER_CREDENTIAL_REQUIRED`，原命令确定拒绝，不留待核对的提交。
 
+供应商列表通过 Host 的 `modelsCatalog` 只读取配置及凭据引用，不等待安全存储或项目配置对账。尚未核查的已存储凭据返回 `credentialStates: checking`；同一配置 revision 可复用最近一次凭据诊断。后台继续非交互检查凭据并核对原项目回执，客户端在 checking 或应用未确认时刷新投影。目录可见不代表凭据可用；保存、探测和执行仍走原校验路径。
+
 工作台各域的读写（`library`、`worktree`、`tasks`、`trajectory`、`feedback`、`manage`、`providers`）与 `desktop.command` 都不需要客户端指定 `sourceId`：省略时 Host 用当前工作台后台的来源，后台未运行时返回 `CAPABILITY_UNAVAILABLE`；显式传入且不一致时返回 `FORBIDDEN`。
 
 ## 消息封装与公共类型

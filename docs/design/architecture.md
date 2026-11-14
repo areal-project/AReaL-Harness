@@ -10,6 +10,8 @@ AReaL-Harness 采用 **Clients → Core → Runtime** 分层。Core 是会话、
 
 过渡期的 Node 工作台服务由 Host 监督，承载尚未迁入 Host 或 Core 的跨项目业务。按[工作台服务设计](workbench-service.md)先整体接管现有后台，Main 经私有认证通道 attach。它不依赖 Electron，公共客户端只连 Host；解密值仅在运行内存使用，不持久化明文凭据。目标中的 Electron 外壳只提供浏览器没有的原生能力，并向 Host 登记桌面工具提供者；界面按可用能力显示可选平台入口。这些是迁移目标，不代表当前实现已满足该边界。 后台实现与依赖位于 `services/workbench`，Main 和 Host 接管入口共用服务包；Main 保留外壳与连接客户端，不保留后台实现副本。
 
+供应商设置的首屏读取只投影 Host 解析的配置和凭据引用；安全存储检查与项目配置对账在后台继续，不阻塞目录展示。目录投影不替换执行快照，也不表示凭据已通过检查。
+
 ![架构](diagrams/architecture.svg)
 
 [draw.io 源文件](diagrams/architecture.drawio) · [PNG](diagrams/architecture.png) · [图表规范](STYLE_GUIDE.md)
