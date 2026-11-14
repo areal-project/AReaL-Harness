@@ -476,10 +476,16 @@ class BuildIdentityTests(unittest.TestCase):
         )
 
     def test_local_reuse_preserves_core_revision_but_rejects_changed_inputs(self):
-        info = {"sourceRevision": "A", "inputHash": "same", "workingTree": "false",
-                "apiVersion": "core.v1", "stateVersion": 1}
+        info = {
+            "sourceRevision": "A",
+            "inputHash": "same",
+            "workingTree": "false",
+            "apiVersion": "core.v1",
+            "stateVersion": 1,
+        }
         metadata = {"apiVersion": "core.v1", "stateVersion": 1}
-        self.assertEqual(package.validate_build_info(
-            info, "B", "same", metadata, reuse_core=True), info)
+        self.assertEqual(
+            package.validate_build_info(info, "B", "same", metadata, reuse_core=True), info
+        )
         with self.assertRaises(ValueError):
             package.validate_build_info(info, "B", "changed", metadata, reuse_core=True)

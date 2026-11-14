@@ -131,6 +131,10 @@ PR CI 以包含 runner 排队的 10–15 分钟端到端反馈为目标。GUI �
 
 ## 本机 Rust 共享缓存
 
+`make build` 和 `make release` 默认生成 Cargo HTML 耗时报告，保存在实际 target 目录的 `cargo-timings` 子目录。比较同一 profile 的首次构建和无改动重跑；编译单元耗时包括优化与链接，不能直接当作纯链接时间。排查重复编译可运行 `CARGO_LOG=cargo::core::compiler::fingerprint=info cargo build --locked --workspace --release --timings`，保留首个 dirty 原因及其下游链。
+
+使用 mbx 时，在下一次构建前保存 `mbx analyze` 和 `mbx explain --last` 的输出；它们只读取最近的构建记录。若对比记录来自另一 profile，参数差异不能证明当前 profile 的缓存反复失效。检查磁盘空间和 mbx 的 GC 报告：空闲空间低于 `gc.min_free_size` 时，即使未到容量上限也会回收共享缓存；Cargo dep-info 引用的共享生成文件缺失会触发下游重编译。仓库通过 `.mbx.toml` 中的 `share_out_dir=false` 将生成文件保留在工作树内，避免共享目录回收使 Cargo 指纹失效；切换后需要重建一次以更新 dep-info。读取 `OUT_DIR` 的编译结果会绑定当前工作树，其他编译结果仍可共享；低磁盘空间下共享结果仍可能被回收。先解决存储压力，再评估优化 profile；不要用关闭构建身份校验来换取命中率。
+
 可选使用固定版本 [mr-boxington](https://github.com/jdx/mr-boxington) 复用不同工作树的编译结果。项目继续使用 `rust-toolchain.toml` 中的 Rust 版本；`.mbx.toml` 关闭 build.rs 执行结果缓存，保留 Git 修订、源码哈希等构建身份的正常生成与校验。普通 Cargo 和 CI 无需安装 mbx。
 
 ```sh

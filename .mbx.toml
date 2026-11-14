@@ -1,2 +1,4 @@
 # 构建身份还读取 Git 状态与全仓源码列表，保留 build.rs 的正常执行判定。
 build_script_execution = false
+# Cargo dep-info 必须引用工作树内的生成文件，避免共享目录被 GC 回收后触发整条依赖链重编译。
+share_out_dir = false

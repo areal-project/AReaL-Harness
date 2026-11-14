@@ -133,6 +133,10 @@ PR CI targets a 10–15 minute end-to-end feedback window, including runner queu
 
 ## Local shared Rust cache
 
+`make build` and `make release` generate Cargo HTML timing reports in the actual target directory's `cargo-timings` subdirectory. Compare an initial build and an unchanged repeat using the same profile. Compilation-unit durations include optimization and linking; they are not pure linker timings. Diagnose rebuilds with `CARGO_LOG=cargo::core::compiler::fingerprint=info cargo build --locked --workspace --release --timings`, retaining the first dirty reason and its downstream chain.
+
+When using mbx, save `mbx analyze` and `mbx explain --last` before the next build; both read the latest recorded build. If the comparison record uses another profile, argument differences do not establish repeated cache invalidation within the current profile. Check disk space and mbx GC reports: free space below `gc.min_free_size` triggers shared-cache eviction even below the capacity limit. Missing shared generated files referenced by Cargo dep-info trigger downstream rebuilds. The repository sets `share_out_dir=false` in `.mbx.toml` to retain generated files within each checkout, preventing shared-directory eviction from invalidating Cargo fingerprints. Switching requires one rebuild to update dep-info. Compilations that read `OUT_DIR` become checkout-specific; other compilation results remain shareable, but may still be evicted under disk pressure. Address storage pressure before evaluating optimization profiles; do not disable build identity checks to improve cache hits.
+
 Optionally use a pinned [mr-boxington](https://github.com/jdx/mr-boxington) version to reuse compiler outputs across worktrees. Keep the Rust version in `rust-toolchain.toml`. The project's `.mbx.toml` disables caching build-script execution results, preserving normal generation and verification of Git revisions, source hashes and other build identity. Plain Cargo and CI do not require mbx.
 
 ```sh
