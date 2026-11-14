@@ -1,4 +1,6 @@
 import { SnapShotSettings } from "../snapshots/SnapShotSettings.js";
+import { BackendServiceStatus } from "../BackendStatusNotice.js";
+import { legacyServiceSettingsIds } from "../lib/legacySettingsIds.js";
 import { lazy, Suspense, type ReactNode } from "react";
 import { Button } from "../components/ui/button.js";
 import { useI18n } from "../i18n/IntlProvider.js";
@@ -95,6 +97,17 @@ export function WorkbenchSettings({
       title={settingsLabel(settingsTab, t)}
       subtitle={settingsSubtitle(settingsTab, t)}
     >
+      {!legacyServiceSettingsIds.includes(settingsTab) &&
+        snapshot.connection?.state === "unavailable" && (
+          <BackendServiceStatus
+            connection={snapshot.connection}
+            update={snapshot.backendUpdate}
+            lifecycle={snapshot.lifecycle}
+            pending={backendActionPending}
+            error={backendActionError}
+            onAction={(kind) => void runBackendAction(kind)}
+          />
+        )}
       {settingsTab === "外观" ? (
         <AppearanceSettings
           theme={theme}

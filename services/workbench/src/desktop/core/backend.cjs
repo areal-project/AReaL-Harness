@@ -521,7 +521,13 @@ class CoreBackend {
       await this.host.resumeMigration(id);
       const project = await this.loadProjectJournal(id);
       if (project.client?.ready && !project.resourceInitializing) {
-        if (resumeScheduling) await this.launch(project, { resumeScheduling: true });
+        if (resumeScheduling || project.binaryUpdatePending)
+          await this.launch(project, { resumeScheduling });
+        if (!project.client?.ready) {
+          await this.connect(project);
+          await this.reconcile(project);
+        }
+        if (project.binaryUpdatePending) this.scheduleReconnect(project);
         trace?.finish("skipped");
         return project;
       }
@@ -541,6 +547,7 @@ class CoreBackend {
         project.resourceInitializing = false;
         project.error = null;
         project.model.connection(true);
+        if (project.binaryUpdatePending) this.scheduleReconnect(project);
         this.onChange();
         trace?.finish("ok");
         return project;
@@ -662,18 +669,42 @@ class CoreBackend {
           ? await this.prepareServiceLaunch(project, trace)
           : undefined;
       trace.advance("service_ensure");
-      const { descriptor, token } = await this.host.ensure(
-        randomUUID(),
-        project.id,
-        launch?.launchInputs,
-        launch?.credentials,
-        resumeScheduling,
-      );
+      const ensure = () =>
+        this.host.ensure(
+          randomUUID(),
+          project.id,
+          launch?.launchInputs,
+          launch?.credentials,
+          resumeScheduling,
+        );
+      let connection;
+      try {
+        connection = await ensure();
+        project.binaryUpdatePending = false;
+      } catch (error) {
+        // 仅升级本工作台管理的二进制；其它配置冲突和未知受理不能通过重启绕过。
+        if (!launch || desktopError(error).code !== "CORE_BINARY_UPDATE_REQUIRED") throw error;
+        const current = await this.host.observe(project.id);
+        project.service = current.descriptor;
+        if (await this.stopProjectForUpdate(project, { deferBusy: true })) {
+          connection = await ensure();
+          project.binaryUpdatePending = false;
+        } else {
+          connection = current;
+          project.binaryUpdatePending = true;
+          project.reconnectAttempt = (project.reconnectAttempt ?? 0) + 1;
+        }
+      }
+      const { descriptor, token } = connection;
       project.service = descriptor;
       project.endpoint = descriptor.endpoint;
       project.token = token;
       trace.advance("configuration_recheck");
-      if (launch && (await this.hooks.current()).revision === launch.hookDeployment.revision)
+      if (
+        launch &&
+        !project.binaryUpdatePending &&
+        (await this.hooks.current()).revision === launch.hookDeployment.revision
+      )
         project.hookRevision = launch.hookDeployment.revision;
       trace.finish("ok");
       const attached = startupTrace("core.service_ready", {
@@ -716,8 +747,8 @@ class CoreBackend {
     }
   }
 
-  /** @param {Project} project @param {{expectedRevision?:string}} [options] */
-  async restartProject(project, { expectedRevision } = {}) {
+  /** @param {Project} project @param {{deferBusy?:boolean}} [options] */
+  async stopProjectForUpdate(project, { deferBusy = false } = {}) {
     this.lifecycleOperations.assertProject(project.id);
     if (project.service) {
       const receipt = await this.lifecycleOperations.request({
@@ -733,13 +764,27 @@ class CoreBackend {
           },
         ],
       });
+      // 确定拒绝空闲停止时继续观察原实例；未知或未清理完的停止不能重发。
+      if (
+        deferBusy &&
+        receipt.phase === "blocked" &&
+        !!receipt.targets?.length &&
+        receipt.targets.every((target) => target.phase === "blocked")
+      )
+        return false;
       if (receipt.phase !== "completed")
-        throw Object.assign(new Error("原 Core 尚未停止，不能更新配置"), {
+        throw Object.assign(new Error("服务更新尚未完成，当前对话和草稿已保留。请查看连接详情。"), {
           code: "LIFECYCLE_INCOMPLETE",
           requestId: receipt.requestId,
           lifecycle: receipt,
         });
     }
+    return true;
+  }
+
+  /** @param {Project} project @param {{expectedRevision?:string}} [options] */
+  async restartProject(project, { expectedRevision } = {}) {
+    await this.stopProjectForUpdate(project);
     if (
       expectedRevision !== undefined &&
       (await this.providers.config.current()).revision !== expectedRevision

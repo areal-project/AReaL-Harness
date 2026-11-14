@@ -26,6 +26,8 @@ import { McpMentionsPicker, useMcpAppsWorkspace } from "../McpAppsWorkspace.js";
 import { Messages } from "../Messages.js";
 import { ProjectlessDraft } from "../ProjectlessDraft.js";
 import { recoverySettings } from "../recoveryPresentation.js";
+import { rawText } from "../errors/errorCopy.js";
+import { serviceSettingsId } from "../lib/legacySettingsIds.js";
 import { conversationLoadState } from "./conversationLoadState.js";
 import { type Action, type PlatformServices } from "../services.js";
 import { projectExecutionBlocked } from "../state/projectExecution.js";
@@ -154,13 +156,16 @@ function ConversationContent() {
                     />
                   </div>
                 )}
-                {(!pendingMessage || loadState.kind === "failed") && (
-                  <p>
-                    {loadState.kind === "failed" && loadState.detail
-                      ? loadState.detail
-                      : t(loadState.message)}
-                  </p>
-                )}
+                {(!pendingMessage || loadState.kind === "failed") &&
+                  (loadState.kind === "failed" ? (
+                    <FeedbackNotice
+                      tone="error"
+                      message={loadState.detail || t(loadState.message)}
+                      detail={viewFailure ? rawText(viewFailure) : undefined}
+                    />
+                  ) : (
+                    <p>{t(loadState.message)}</p>
+                  ))}
                 {loadState.kind === "failed" && (
                   <Button
                     variant="outline"
@@ -182,6 +187,19 @@ function ConversationContent() {
                     }}
                   >
                     {t("recovery.checkSettings")}
+                  </Button>
+                )}
+                {loadState.kind === "failed" && !settings && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => {
+                      surfaces.setSettingsTab(serviceSettingsId);
+                      surfaces.setSettingsOpen(true);
+                    }}
+                  >
+                    {t("recovery.details")}
                   </Button>
                 )}
               </div>

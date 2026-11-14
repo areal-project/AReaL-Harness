@@ -803,3 +803,27 @@ describe("local web desktop commands", () => {
     });
   });
 });
+
+it.each([true, false])(
+  "reconnect restores the owning transports before returning on desktop=%s",
+  async (native) => {
+    const events: string[] = [];
+    const client = {
+      retry: async () => {
+        events.push("host");
+      },
+      snapshot: () => ({ connection: "ready" }),
+    } as unknown as HostClient;
+    const desktop = native
+      ? ({
+          command: async () => {
+            events.push("desktop");
+            return { ok: true, value: null };
+          },
+        } as unknown as PlatformServices)
+      : undefined;
+    const routes = createWorkbenchRoutes(client, desktop, undefined, undefined, () => "fixture");
+    expect(await routes.call("connectService", {})).toEqual({ value: null });
+    expect(events).toEqual(native ? ["desktop", "host"] : ["host"]);
+  },
+);

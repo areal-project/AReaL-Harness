@@ -32,7 +32,7 @@ const {
  * taskNotificationMonitor?:InstanceType<typeof import('./notifications.cjs').TaskNotificationMonitor>,taskViews?:Map<string,string>,
  * error:string|null,summaries:import('@areal/workbench/core-model-contract').CoreThread[],
  * service?:(import('./local-service.cjs').RecoveryTarget & {endpoint?:string,owner?:unknown,hostPid?:unknown,corePid?:unknown})|null,resourceInitializing?:boolean,endpoint?:string|null,token?:string,connectionGeneration?:number,
- * reconnectTimer?:NodeJS.Timeout|null,reconnectBlocked?:boolean,reconnectAttempt?:number,
+ * reconnectTimer?:NodeJS.Timeout|null,reconnectBlocked?:boolean,reconnectAttempt?:number,binaryUpdatePending?:boolean,
  * crashCheck?:{generation:string,started:number},crashAttempts?:number[],crashRecovery?:{original:import('./local-service.cjs').RecoveryTarget,calls:number},journalLoaded?:boolean,client?:import('@areal/runtime-client/core').CoreClient|null,hookRevision?:string|null
  * }} CoreProject */
 

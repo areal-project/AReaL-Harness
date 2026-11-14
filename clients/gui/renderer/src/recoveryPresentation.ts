@@ -118,6 +118,13 @@ export function recoveryMessage(
     return "操作结果待确认。";
   if (["migrationBlocked", "MIGRATION_PENDING"].includes(String(failure.code)))
     return "旧运行状态尚未确认，暂时无法打开项目。历史和草稿已保留，请先检查原任务的停止结果。";
+  if (
+    failure.code === "CORE_BINARY_UPDATE_REQUIRED" ||
+    (rawText(failure) ?? "").startsWith("service configuration conflict (binaries)")
+  )
+    return "服务需要更新才能继续打开对话。历史和草稿已保留，请重新连接以完成更新。";
+  if (failure.code === "LIFECYCLE_INCOMPLETE")
+    return "连接恢复尚未完成，历史和草稿已保留。请查看连接详情，确认恢复进度。";
   if (t && failure instanceof UiMessageError) return errorText(t, failure);
   const code = errorCode(failure);
   if (t && context === "operation" && code && Object.hasOwn(ERROR_CODES, code))

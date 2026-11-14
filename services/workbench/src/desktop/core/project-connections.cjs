@@ -215,8 +215,10 @@ class ProjectConnections {
       project.resourceInitializing ||
       !project.service ||
       project.reconnectBlocked ||
+      (project.binaryUpdatePending &&
+        this.host.lifecycleOperations.schedulingSuppressed(project.id)) ||
       project.reconnectTimer ||
-      project.client?.ready
+      (project.client?.ready && !project.binaryUpdatePending)
     )
       return;
     const delay = project.reconnectAttempt
@@ -226,9 +228,12 @@ class ProjectConnections {
       project.reconnectTimer = null;
       if (
         this.host.closing ||
+        (project.binaryUpdatePending && this.host.projects.get(project.id) !== project) ||
         !project.service ||
         project.reconnectBlocked ||
-        project.client?.ready
+        (project.binaryUpdatePending &&
+          this.host.lifecycleOperations.schedulingSuppressed(project.id)) ||
+        (project.client?.ready && !project.binaryUpdatePending)
       )
         return;
       if (
@@ -239,7 +244,11 @@ class ProjectConnections {
         this.scheduleReconnect(project);
         return;
       }
-      const task = this.reconnectProject(project)
+      const task = (
+        project.binaryUpdatePending
+          ? this.host.startProject(project.id)
+          : this.reconnectProject(project)
+      )
         .catch(
           /** @param {unknown} error */ (error) => {
             if (!this.host.closing) {

@@ -250,3 +250,208 @@ test("foreign project snapshot exposes only Core profiles and models", () => {
   assert.deepEqual(view.models, project.models);
   assert.deepEqual(view.profiles, project.profiles);
 });
+
+test("managed binary upgrade settles the original service before retrying launch", async () => {
+  const events = [];
+  const old = { serviceId: "service", generation: "old" };
+  const fresh = { serviceId: "service", generation: "new", endpoint: "fixture" };
+  let attempts = 0;
+  const backend = Object.assign(Object.create(CoreBackend.prototype), {
+    providers: { manages: () => true },
+    prepareServiceLaunch: async () => ({
+      launchInputs: {},
+      credentials: {},
+      hookDeployment: { revision: "hooks" },
+    }),
+    hooks: { current: async () => ({ revision: "hooks" }) },
+    host: {
+      ensure: async () => {
+        events.push("ensure");
+        if (++attempts === 1)
+          throw Object.assign(new Error("version mismatch"), {
+            code: "CORE_BINARY_UPDATE_REQUIRED",
+          });
+        return { descriptor: fresh, token: "fixture" };
+      },
+      observe: async () => {
+        events.push("observe");
+        return { descriptor: old };
+      },
+    },
+    lifecycleOperations: {
+      generation: "desktop",
+      assertProject() {},
+      request: async (request) => {
+        events.push("update");
+        assert.equal(request.mode, "ifIdle");
+        assert.deepEqual(request.expectedTargets, [{ projectId: "gui", ...old }]);
+        return { phase: "completed" };
+      },
+    },
+  });
+  const project = { id: "gui" };
+  await backend.launch(project);
+  assert.deepEqual(events, ["ensure", "observe", "update", "ensure"]);
+  assert.equal(project.service, fresh);
+});
+
+test("binary recovery never bypasses an unsettled update or unrelated conflict", async () => {
+  for (const scenario of ["busy", "unknown", "configuration", "foreign"]) {
+    let attempts = 0;
+    let updates = 0;
+    const failure = Object.assign(
+      new Error(
+        `service configuration conflict (${scenario === "configuration" ? "binaries, permissions" : "binaries"}) for instance service`,
+      ),
+      {
+        submissionUnknown: scenario === "unknown",
+        code: ["busy", "foreign"].includes(scenario)
+          ? "CORE_BINARY_UPDATE_REQUIRED"
+          : "internalError",
+      },
+    );
+    const backend = Object.assign(Object.create(CoreBackend.prototype), {
+      providers: { manages: () => scenario !== "foreign" },
+      prepareServiceLaunch: async () => ({ launchInputs: {} }),
+      host: {
+        ensure: async () => {
+          attempts++;
+          throw failure;
+        },
+        observe: async () => ({ descriptor: { serviceId: "service", generation: "old" } }),
+      },
+      lifecycleOperations: {
+        generation: "desktop",
+        assertProject() {},
+        request: async () => {
+          updates++;
+          return { phase: "blocked", requestId: "original" };
+        },
+      },
+    });
+    await assert.rejects(
+      backend.launch({ id: "gui" }),
+      scenario === "busy"
+        ? { code: "LIFECYCLE_INCOMPLETE", requestId: "original" }
+        : (error) => error === failure,
+    );
+    assert.equal(attempts, 1);
+    assert.equal(updates, scenario === "busy" ? 1 : 0);
+  }
+});
+
+test("a definitively busy old service stays readable while its upgrade waits", async () => {
+  const old = { serviceId: "service", generation: "old", endpoint: "fixture" };
+  let attempts = 0;
+  const backend = Object.assign(Object.create(CoreBackend.prototype), {
+    providers: { manages: () => true },
+    prepareServiceLaunch: async () => ({ launchInputs: {}, hookDeployment: { revision: "hooks" } }),
+    hooks: { current: async () => ({ revision: "hooks" }) },
+    host: {
+      ensure: async () => {
+        attempts++;
+        throw Object.assign(new Error("version mismatch"), { code: "CORE_BINARY_UPDATE_REQUIRED" });
+      },
+      observe: async () => ({ descriptor: old, token: "fixture" }),
+    },
+    lifecycleOperations: {
+      generation: "desktop",
+      assertProject() {},
+      request: async () => ({ phase: "blocked", targets: [{ phase: "blocked" }] }),
+    },
+  });
+  const project = { id: "gui" };
+  await backend.launch(project);
+  assert.equal(attempts, 1);
+  assert.equal(project.service, old);
+  assert.equal(project.binaryUpdatePending, true);
+});
+
+test("the existing reconnect scheduler completes a deferred upgrade while the old observer is ready", async (t) => {
+  const {
+    ProjectConnections,
+  } = require("@areal/workbench-service/desktop/core/project-connections.cjs");
+  let run;
+  t.mock.method(globalThis, "setTimeout", (callback) => {
+    run = callback;
+    return { unref() {} };
+  });
+  let complete;
+  const finished = new Promise((resolve) => {
+    complete = resolve;
+  });
+  const project = {
+    id: "gui",
+    service: { generation: "old" },
+    client: { ready: true },
+    binaryUpdatePending: true,
+  };
+  const host = {
+    lifecycleOperations: { schedulingSuppressed: () => false },
+    projects: new Map([[project.id, project]]),
+    starting: new Map(),
+    startProject: async (id) => {
+      assert.equal(id, project.id);
+      project.binaryUpdatePending = false;
+      complete();
+      return project;
+    },
+  };
+  const connections = new ProjectConnections(host);
+  connections.reconnectProject = () =>
+    assert.fail("a deferred upgrade must use the controlled launch path");
+  connections.scheduleReconnect(project);
+  assert.equal(typeof run, "function");
+  run();
+  await finished;
+  await host.starting.get(project.id);
+  assert.equal(project.binaryUpdatePending, false);
+  assert.equal(host.starting.size, 0);
+  assert.equal(project.reconnectTimer, null);
+});
+
+test("binary upgrade classification requires the original Host rejection receipt", async () => {
+  const {
+    GuiHostProjects,
+  } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
+  const failure = new Error("service configuration conflict (binaries) for instance service");
+  const original = {
+    state: "blocked",
+    method: "project.ensure",
+    requestId: "request",
+    projectId: "canonical",
+    hostId: "host",
+    generation: "generation",
+    error: { message: failure.message },
+  };
+  for (const override of [
+    null,
+    {},
+    { state: "admissionUnknown" },
+    { hostId: "other" },
+    { generation: "other" },
+    { projectId: "other" },
+    { requestId: "other" },
+    { method: "project.stop" },
+  ]) {
+    const host = {
+      sourceId: "source",
+      migrationError: () => null,
+      resolve: () => ({ projectId: "canonical", sourceId: "source" }),
+      client: {
+        hostId: "host",
+        generation: "generation",
+        ensureProject: async () => {
+          throw failure;
+        },
+      },
+      operation: async () => (override === null ? null : { ...original, ...override }),
+    };
+    await assert.rejects(
+      GuiHostProjects.prototype.ensure.call(host, "request", "alias", {}),
+      override && Object.keys(override).length === 0
+        ? { code: "CORE_BINARY_UPDATE_REQUIRED", requestId: "request" }
+        : (error) => error === failure,
+    );
+  }
+});

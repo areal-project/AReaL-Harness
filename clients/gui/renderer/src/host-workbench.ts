@@ -465,6 +465,18 @@ export function createWorkbenchRoutes(
   for (const name of ["focus", "blur"]) events?.addEventListener(name, report);
   return {
     async call(name, params) {
+      if (name === "connectService") {
+        if (desktop) {
+          const result = await desktop.command("connectService", {});
+          if (!result.ok) throw result.error;
+        }
+        await client.retry();
+        if (client.snapshot().connection !== "ready")
+          throw Object.assign(new Error("连接暂未恢复，正在自动重连。历史和草稿已保留。"), {
+            code: "DISCONNECTED",
+          });
+        return { value: null };
+      }
       // 原生进程的连接租约归 Main；其薄适配仍经 Host 访问 Core。
       if (desktop && name === "manage" && String(params.operation).startsWith("process"))
         return undefined;

@@ -391,13 +391,40 @@ class GuiHostProjects {
     const message = this.migrationError(id);
     if (message) throw Object.assign(new Error(message), { code: "MIGRATION_PENDING" });
     const binding = this.resolve(id);
-    const result = await this.client.ensureProject(
-      requestId,
-      binding.projectId,
-      binding.sourceId === this.sourceId ? launchInputs : undefined,
-      binding.sourceId === this.sourceId ? credentials : undefined,
-      resumeScheduling,
-    );
+    const hostId = this.client.hostId;
+    const generation = this.client.generation;
+    let result;
+    try {
+      result = await this.client.ensureProject(
+        requestId,
+        binding.projectId,
+        binding.sourceId === this.sourceId ? launchInputs : undefined,
+        binding.sourceId === this.sourceId ? credentials : undefined,
+        resumeScheduling,
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.startsWith("service configuration conflict (binaries) for instance ")
+      ) {
+        const receipt = await this.operation(requestId).catch(() => null);
+        // 只有同一 Host 对原请求的确定拒绝，才允许切换服务版本。
+        if (
+          receipt?.state === "blocked" &&
+          receipt.method === "project.ensure" &&
+          receipt.requestId === requestId &&
+          receipt.projectId === binding.projectId &&
+          receipt.hostId === hostId &&
+          receipt.generation === generation &&
+          receipt.error?.message === error.message
+        )
+          throw Object.assign(new Error("GUI 与服务版本不一致，需要安全更新后继续。"), {
+            code: "CORE_BINARY_UPDATE_REQUIRED",
+            requestId,
+          });
+      }
+      throw error;
+    }
     this.rememberScheduling(result.project);
     if (result.project.state !== "ready" || !result.service)
       throw Object.assign(new Error(`Host project is ${result.project.state}`), {
