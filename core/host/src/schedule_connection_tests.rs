@@ -228,9 +228,17 @@ async fn lifecycle_completion(snapshot_only: bool, library_failure: bool) {
             assert_eq!(super::super::library_store::read_source(&host,&source_id).unwrap()["threads"][&key]["unread"],false,"重复终态不覆盖已读");
             assert!(session.observed_progress.borrow().is_empty(),"终态清除可重建进度");
             publish_event(&host,&session,json!({"method":"turn/started","params":{"threadId":"event-thread","turn":{"id":"event-turn","status":"inProgress"}}}));
+            let mut completed_events = session.events.subscribe();
             session.snapshot_progress(&host,"event-thread",&json!({"thread":{"id":"event-thread","turns":[{"id":"event-turn","status":"completed"}]}}), None).unwrap();
             assert_eq!(super::super::library_store::read_source(&host,&source_id).unwrap()["threads"][format!("{alias}:event-thread")]["completionId"], "event-turn", "已见开始事件也能由终态快照补齐");
             assert!(session.observed_progress.borrow().is_empty());
+            let completed = completed_events.try_recv().expect("替换快照中的终态必须同步给共享投影");
+            assert_eq!(completed.value["method"], "turn/completed");
+            assert_eq!(completed.value["params"]["turn"]["id"], "event-turn");
+            assert_eq!(completed.value["params"]["turn"]["status"], "completed");
+            assert!(completed.sequence > 0);
+            session.snapshot_progress(&host,"event-thread",&json!({"thread":{"id":"event-thread","turns":[{"id":"event-turn","status":"completed"}]}}), None).unwrap();
+            assert!(completed_events.try_recv().is_err(), "重复快照不重复广播终态");
         }
         let stored = super::super::workbench_lifecycle::read_request(&host,&source_id,"read",&json!({"requestId":request})).await.unwrap();
         assert_eq!(stored["phase"],"completed");
