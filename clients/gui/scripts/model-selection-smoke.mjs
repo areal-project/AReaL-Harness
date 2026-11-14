@@ -1,7 +1,11 @@
 import { readCoreThread as observeCoreThread } from "./support/core-observation.mjs";
 import { installHostTransportBarrier } from "./support/host-transport-barrier.mjs";
 import { makeTempDir } from "./support/temp.mjs";
-import { desktopBridge, until as untilValue } from "./support/desktop-fixture.mjs";
+import {
+  desktopBridge,
+  observationSummary,
+  until as untilValue,
+} from "./support/desktop-fixture.mjs";
 import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -452,20 +456,7 @@ async function waitForServiceIdle({ canStop = false } = {}) {
   } catch (error) {
     try {
       const snapshot = await state();
-      const projects = snapshot.projects.map((project) => ({
-        id: project.id,
-        pending: project.pending?.map(({ method }) => method),
-        turns: Object.entries(project.state?.threads ?? {}).flatMap(([threadId, thread]) =>
-          (thread.turns ?? [])
-            .filter((turn) => turn.status === "inProgress")
-            .map((turn) => ({ threadId, id: turn.id, status: turn.status })),
-        ),
-        queues: Object.entries(project.state?.queues ?? {}).map(([threadId, queue]) => ({
-          threadId,
-          paused: queue.paused,
-          statuses: queue.items.map((item) => item.status),
-        })),
-      }));
+      const projects = observationSummary(snapshot);
       await writeFile(
         join(scratch, "service-idle-failure.json"),
         JSON.stringify(projects, null, 2),

@@ -53,3 +53,23 @@ export function desktopBridge(currentPage) {
     until(state, label, { ...options, accept: predicate });
   return { state, call, untilState };
 }
+
+// 失败现场只保留身份和结算状态，不复制消息正文、模型配置或凭据。
+export function observationSummary(snapshot) {
+  return (snapshot?.projects ?? []).map((project) => ({
+    id: project.id,
+    core: project.core && { serviceGeneration: project.core.serviceGeneration },
+    connected: project.state?.connected,
+    pending: project.pending?.map(({ method }) => method),
+    threads: Object.entries(project.state?.threads ?? {}).map(([threadId, thread]) => ({
+      threadId,
+      serviceGeneration: thread.executionCore?.serviceGeneration,
+      turns: (thread.turns ?? []).map(({ id, status }) => ({ id, status })),
+    })),
+    queues: Object.entries(project.state?.queues ?? {}).map(([threadId, queue]) => ({
+      threadId,
+      paused: queue.paused,
+      statuses: (queue.items ?? []).map((item) => item.status),
+    })),
+  }));
+}

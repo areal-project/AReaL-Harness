@@ -2,6 +2,8 @@
 
 # 测试
 
+共享失败采集 `captureSmokeFailure` 在清理前保存窗口状态、截图及脱敏的项目/执行代际、pending 方法、Turn 和队列状态；采集失败分别记入 `failure-state.json`，保留原断言错误。Side、Composer 与模型选择共用观察/诊断助手。smoke 的 manifest 顺序同时用于现有矩阵：先运行有失败记录的 Side、模型选择，其余按实测 job 耗时从长到短排列。排序参考 [CI 运行 43540581319](https://github.com/areal-project/AReaL-Harness/actions/runs/43540581319)：Side 314 秒、模型选择 230 秒且失败；其余为 Composer files 327、Composer 300、design 289、migration 240、reading 230、queue 148、browser navigation 134、derivation 129、history 128 秒。这是单轮调度样本，不是稳定性能基线；后续用现有 `ci-timing.py` 的原始数据更新顺序，不改变检查集合、并发上限或通过条件。
+
 共享业务优先在 Web 与真实 Host 服务上用隔离数据验收，不以 GUI 打包为常规前置。窗口、系统加密、浏览器视图和电脑控制等 Electron 专属能力才启动桌面；发行资源、签名与升级仍在对应发行任务单独验证。协议测试、页面交互、原生与发行包证据分别记录，不互相替代。
 
 共享 smoke 夹具位于 `clients/gui/scripts/support/`：`core-observation.mjs` 统一解析原 Thread 的执行工作区与服务代际，并校验返回的 Thread 身份；显式 worktree 与已有投影冲突时直接失败，尚未投影的 worktree 不借用父项目代际。`host-transport-barrier.mjs` 在 Host 传输边界控制本次请求与响应。注入须断言命中的请求 ID，权威结算与 UI 呈现分别验证；清理复用 `application-cleanup.mjs` 核对原 Host 停止回执及实际退出，保留原失败。`test:script-units` 验证夹具，`test:core-observation` 验证真实隔离 Core；`test:workbench-errors` 在 GUI 构建后验证后台进程和 Host 错误码映射，依赖均登记在 manifest。

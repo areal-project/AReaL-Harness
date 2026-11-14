@@ -82,3 +82,74 @@ test("desktop bridge follows the current page and rejects failed commands", asyn
     connection: { state: "restarted" },
   });
 });
+
+test("deadline bounds a stalled predicate with deterministic time", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"] });
+  const waiting = until(() => ({ status: "completed" }), "projection predicate", {
+    timeout: 100,
+    accept: () => new Promise(() => {}),
+  });
+  const rejected = assert.rejects(waiting, /Timeout: projection predicate/);
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+  t.mock.timers.tick(100);
+  await rejected;
+});
+
+test("failure observation retains terminal turns and identity without payloads", async () => {
+  const { observationSummary } = await import("./desktop-fixture.mjs");
+  const result = observationSummary({
+    projects: [
+      {
+        id: "project",
+        core: { serviceGeneration: "generation", token: "secret" },
+        pending: [{ method: "thread/read", params: { token: "secret" } }],
+        state: {
+          connected: true,
+          threads: {
+            original: {
+              executionCore: { serviceGeneration: "execution" },
+              turns: [{ id: "turn", status: "completed", text: "secret" }],
+            },
+          },
+          queues: { original: { paused: false, items: [{ status: "pending", text: "secret" }] } },
+        },
+      },
+    ],
+  });
+  assert.deepEqual(result[0].threads, [
+    {
+      threadId: "original",
+      serviceGeneration: "execution",
+      turns: [{ id: "turn", status: "completed" }],
+    },
+  ]);
+  assert.deepEqual(result[0].pending, ["thread/read"]);
+  assert.equal(JSON.stringify(result).includes("secret"), false);
+});
+
+test("failure capture preserves the original error when observation and screenshot fail", async () => {
+  const { captureSmokeFailure } = await import("../smoke-navigation.mjs");
+  const { mkdtemp, readFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const directory = await mkdtemp(join(tmpdir(), "failure-evidence-"));
+  try {
+    const page = {
+      evaluate: async () => {
+        throw Error("disconnected");
+      },
+      screenshot: async () => {
+        throw Error("closed");
+      },
+    };
+    assert.deepEqual(await captureSmokeFailure(page, directory, Error("original assertion")), [
+      "failure-state.json",
+    ]);
+    const result = JSON.parse(await readFile(join(directory, "failure-state.json"), "utf8"));
+    assert.match(result.error, /original assertion/);
+    assert.equal(result.observationCaptureError, "disconnected");
+    assert.equal(result.screenshotError, "closed");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
