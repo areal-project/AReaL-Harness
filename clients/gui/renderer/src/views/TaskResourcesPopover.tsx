@@ -41,9 +41,8 @@ export function TaskResourcesPopover({
   onAddSchedule?: () => void;
   onOpenSchedule?: (task: Data) => void;
 }) {
-  const { t, intl } = useI18n();
+  const { t } = useI18n();
   const changes = useWorkspaceChanges(project, thread, action);
-  const changed = changes.files.length > 0;
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const composerHandoff = useRef(false);
@@ -73,13 +72,7 @@ export function TaskResourcesPopover({
         setOpen(next);
       }}
     >
-      <TitleTooltip
-        title={
-          changed
-            ? `${t("chat.context.changeScope", { count: changes.files.length })} · +${intl.formatNumber(changes.additions)} −${intl.formatNumber(changes.deletions)}`
-            : undefined
-        }
-      >
+      <TitleTooltip title={t("chat.resources.trigger")}>
         <PopoverTrigger
           render={
             <Button
@@ -87,18 +80,11 @@ export function TaskResourcesPopover({
               type="button"
               ref={trigger}
               className={`icon-button task-resources-trigger ${open ? "active" : ""}`}
-              data-variant={changed ? "count" : undefined}
               aria-label={t("chat.resources.trigger")}
             />
           }
         >
           <TaskSummaryIcon />
-          {changed && (
-            <span className="diff-count" aria-hidden="true">
-              <b>+{intl.formatNumber(changes.additions)}</b>
-              <em>−{intl.formatNumber(changes.deletions)}</em>
-            </span>
-          )}
         </PopoverTrigger>
       </TitleTooltip>
       <PopoverContent
