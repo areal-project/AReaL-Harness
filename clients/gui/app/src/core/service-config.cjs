@@ -29,9 +29,19 @@ function serviceOptions(app) {
   const config = process.env.AREAL_CORE_CONFIG || process.env.AREAL_HARNESS_CONFIG;
   const bundledProfile = require("@areal/workbench-service/desktop/core/desktop-profile.json")
     .profiles[0];
-  const configHome = resolve(
-    process.env.AREAL_HARNESS_HOME || join(process.env.AREAL_CORE_USER_HOME || homedir(), ".areal"),
-  );
+  // 开发工作树的 Host 与凭据命名空间独立，不能接管安装版后台。
+  const defaultHostHome =
+    app.isPackaged === false
+      ? join(
+          process.env.AREAL_CORE_USER_HOME || homedir(),
+          ".areal-dev",
+          createHash("sha256")
+            .update(resolve(app.getPath("userData")))
+            .digest("hex")
+            .slice(0, 12),
+        )
+      : join(process.env.AREAL_CORE_USER_HOME || homedir(), ".areal");
+  const configHome = resolve(process.env.AREAL_HARNESS_HOME || defaultHostHome);
   return {
     binary: bootstrap.resolveCoreBinary({
       explicit:
@@ -43,9 +53,7 @@ function serviceOptions(app) {
     home: serviceHome(app),
     guiProfile: app.getPath("userData"),
     hostHome: resolve(
-      process.env.AREAL_HARNESS_SERVICE_HOME ||
-        process.env.AREAL_HARNESS_HOME ||
-        join(process.env.AREAL_CORE_USER_HOME || homedir(), ".areal"),
+      process.env.AREAL_HARNESS_SERVICE_HOME || process.env.AREAL_HARNESS_HOME || defaultHostHome,
     ),
     applicationOwner: process.env.AREAL_GUI_OWNER
       ? require("@areal/workbench-service/desktop/core/application-owner.cjs").parseOwner(
@@ -56,15 +64,17 @@ function serviceOptions(app) {
     harnessHome:
       process.env.AREAL_HARNESS_SERVICE_HOME ||
       process.env.AREAL_HARNESS_HOME ||
-      join(
-        app.getPath("home"),
-        ".areal",
-        "gui",
-        createHash("sha256")
-          .update(resolve(serviceHome(app)))
-          .digest("hex")
-          .slice(0, 12),
-      ),
+      (app.isPackaged === false
+        ? defaultHostHome
+        : join(
+            app.getPath("home"),
+            ".areal",
+            "gui",
+            createHash("sha256")
+              .update(resolve(serviceHome(app)))
+              .digest("hex")
+              .slice(0, 12),
+          )),
     userHome: process.env.AREAL_CORE_USER_HOME,
     config: config ? resolve(config) : undefined,
     configHome,

@@ -86,7 +86,7 @@ Run from a clean, merged commit:
 
 ```sh
 make release
-AREAL_GUI_RELEASE=1 AREAL_GUI_PACKAGE_DIR=/absolute/new-package make gui-package
+AREAL_GUI_RELEASE=1 pnpm --dir clients/gui dist --signing adhoc --output /absolute/new-package
 pnpm --dir clients/gui run sign:mac --app "/absolute/new-package/package/mac-arm64/AReaL Harness GUI.app" \
   --output /absolute/new-signed-directory --identity "Developer ID Application: Name (TEAMID)" \
   --keychain-profile areal-harness

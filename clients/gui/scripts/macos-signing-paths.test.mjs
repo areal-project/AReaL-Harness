@@ -112,3 +112,47 @@ test("a failed nested signature prevents sealing an incomplete local app", async
     false,
   );
 });
+
+test("Developer ID Core signing replaces build-derived identifiers with stable tool identities", async (t) => {
+  const { signCoreTools } = await import("./macos-signing-paths.mjs");
+  const { createHash } = await import("node:crypto");
+  const root = await mkdtemp(join(tmpdir(), "areal-core-signing-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const files = {};
+  for (const name of [
+    "bin/areal",
+    "libexec/areal/areal-runtime",
+    "libexec/areal/areal-runtime-fs",
+  ]) {
+    await mkdir(join(root, name, ".."), { recursive: true });
+    await writeFile(join(root, name), "fixture");
+    files[name] = createHash("sha256").update("fixture").digest("hex");
+  }
+  const calls = [];
+  const manifest = { files };
+  await signCoreTools({
+    directory: root,
+    manifest,
+    identity: "test-identity",
+    run: (_command, args) => calls.push(args),
+  });
+  const signs = calls.filter((args) => args.includes("--sign"));
+  assert.deepEqual(
+    signs.map((args) => args[args.indexOf("--identifier") + 1]),
+    ["org.areal.harness.core", "org.areal.harness.runtime", "org.areal.harness.runtime-fs"],
+  );
+  assert.ok(signs.every((args) => args.includes("--timestamp") && args.includes("runtime")));
+});
+
+test("default packaging stops before building when distribution signing credentials are absent", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const env = { ...process.env };
+  for (const name of ["CSC_NAME", "APPLE_KEYCHAIN_PROFILE", "AREAL_GUI_UNSIGNED_LOCAL"])
+    delete env[name];
+  const result = spawnSync(process.execPath, [new URL("./package.mjs", import.meta.url).pathname], {
+    env,
+    encoding: "utf8",
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Developer ID requires --identity and --keychain-profile/);
+});

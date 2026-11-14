@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { preserveSignedPaths } from "./macos-signing-paths.mjs";
+import { preserveSignedPaths, signCoreTools } from "./macos-signing-paths.mjs";
 import { buildMacOSDmg } from "./macos-dmg.mjs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -23,35 +23,6 @@ import {
   renameSync,
   statSync,
 } from "node:fs";
-// Core 的摘要校验要求签名后更新清单，并排除后续 Electron 重签。
-async function signCoreTools({ directory, manifest, identity, run }) {
-  const signed = [];
-  for (const relative of [
-    "bin/areal",
-    "libexec/areal/areal-runtime",
-    "libexec/areal/areal-runtime-fs",
-    ...["libexec/areal/shells/bash", "libexec/areal/shells/sh"].filter(
-      (relative) => relative in manifest.files,
-    ),
-  ]) {
-    const binary = join(directory, relative);
-    assert.equal(hash(binary), manifest.files[relative], "Input Core digest differs: " + relative);
-    run("/usr/bin/codesign", [
-      "--force",
-      "--sign",
-      identity,
-      "--options",
-      "runtime",
-      "--timestamp",
-      binary,
-    ]);
-    run("/usr/bin/codesign", ["--verify", "--strict", binary]);
-    manifest.files[relative] = hash(binary);
-    signed.push(binary);
-  }
-  manifest.signing = "Developer ID; verify enclosing app notarization";
-  return signed;
-}
 
 const desktop = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(desktop, "app/package.json"));

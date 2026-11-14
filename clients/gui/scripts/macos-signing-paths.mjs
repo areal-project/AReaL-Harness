@@ -1,4 +1,6 @@
-import { existsSync, realpathSync } from "node:fs";
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { existsSync, realpathSync, readFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -34,4 +36,45 @@ export async function signLocalMacOSApp(app, run) {
   if (existsSync(unpacked)) await signLibraries(unpacked);
   run("/usr/bin/codesign", ["--force", "--deep", "--sign", "-", app]);
   run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app]);
+}
+
+const hash = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
+// Core 的摘要校验要求签名后更新清单，并排除后续 Electron 重签。
+export async function signCoreTools({ directory, manifest, identity, run }) {
+  const identifiers = {
+    "bin/areal": "org.areal.harness.core",
+    "libexec/areal/areal-runtime": "org.areal.harness.runtime",
+    "libexec/areal/areal-runtime-fs": "org.areal.harness.runtime-fs",
+    "libexec/areal/shells/bash": "org.areal.harness.shell.bash",
+    "libexec/areal/shells/sh": "org.areal.harness.shell.sh",
+  };
+  const signed = [];
+  for (const relative of [
+    "bin/areal",
+    "libexec/areal/areal-runtime",
+    "libexec/areal/areal-runtime-fs",
+    ...["libexec/areal/shells/bash", "libexec/areal/shells/sh"].filter(
+      (relative) => relative in manifest.files,
+    ),
+  ]) {
+    const binary = join(directory, relative);
+    assert.equal(hash(binary), manifest.files[relative], "Input Core digest differs: " + relative);
+    run("/usr/bin/codesign", [
+      "--force",
+      "--sign",
+      identity,
+      // Rust linker 的默认标识含构建哈希，升级后会改变钥匙串访问身份。
+      "--identifier",
+      identifiers[relative],
+      "--options",
+      "runtime",
+      "--timestamp",
+      binary,
+    ]);
+    run("/usr/bin/codesign", ["--verify", "--strict", binary]);
+    manifest.files[relative] = hash(binary);
+    signed.push(binary);
+  }
+  manifest.signing = "Developer ID; verify enclosing app notarization";
+  return signed;
 }

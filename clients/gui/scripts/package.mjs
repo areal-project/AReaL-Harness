@@ -51,7 +51,7 @@ assert.ok(
   "Supported GUI target: mac/arm64 only; Linux/Windows and cross-compilation are not implemented",
 );
 const signing =
-  options.signing || (process.env.AREAL_GUI_UNSIGNED_LOCAL === "1" ? "none" : "adhoc");
+  options.signing || (process.env.AREAL_GUI_UNSIGNED_LOCAL === "1" ? "none" : "developer-id");
 assert.ok(["none", "adhoc", "developer-id"].includes(signing), "Invalid --signing mode");
 assert.ok(!options.formats || !options["dmg-only"], "Choose --formats or --dmg-only");
 const formats = (options.formats || (options["dmg-only"] ? "dmg" : "dmg,zip")).split(",");
