@@ -1,11 +1,7 @@
 import { readCoreThread as observeCoreThread } from "./support/core-observation.mjs";
 import { installHostTransportBarrier } from "./support/host-transport-barrier.mjs";
 import { makeTempDir } from "./support/temp.mjs";
-import {
-  desktopBridge,
-  observationSummary,
-  until as untilValue,
-} from "./support/desktop-fixture.mjs";
+import { desktopBridge, until as untilValue } from "./support/desktop-fixture.mjs";
 import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -15,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import {
   captureSmokeFailure,
   createProjectConversation,
@@ -177,6 +174,30 @@ let app,
 const checks = [],
   errors = [];
 const stoppedServices = [];
+const started = performance.now();
+const timings = [];
+let phase = "setup";
+function markPhase(next) {
+  phase = next;
+  console.log(
+    `[model-selection] phase=${next} elapsedMs=${Math.round(performance.now() - started)} lastCheck=${checks.at(-1) ?? "none"}`,
+  );
+}
+async function timed(label, operation) {
+  const start = performance.now();
+  try {
+    return await operation();
+  } finally {
+    const elapsedMs = Math.round(performance.now() - start);
+    timings.push({ label, elapsedMs });
+    console.log(`[model-selection] ${label} elapsedMs=${elapsedMs}`);
+  }
+}
+process.on("exit", (code) => {
+  console.log(
+    `[model-selection] process exit code=${code} phase=${phase} elapsedMs=${Math.round(performance.now() - started)} lastCheck=${checks.at(-1) ?? "none"}`,
+  );
+});
 function recordCheck(description) {
   checks.push(description);
   console.log(`[model-selection] completed: ${description}`);
@@ -455,12 +476,7 @@ async function waitForServiceIdle({ canStop = false } = {}) {
     );
   } catch (error) {
     try {
-      const snapshot = await state();
-      const projects = observationSummary(snapshot);
-      await writeFile(
-        join(scratch, "service-idle-failure.json"),
-        JSON.stringify(projects, null, 2),
-      );
+      await captureSmokeFailure(page, scratch, error);
     } catch (observationError) {
       console.error("[model-selection] failed to capture service idle state:", observationError);
     }
@@ -478,7 +494,7 @@ async function showModel(name) {
   await page.getByRole("tab", { name: provider, exact: true }).click();
   return page.getByRole("radio", { name, exact: true });
 }
-async function stopService() {
+async function stopServiceImpl() {
   console.log("[model-selection] stopping isolated Host");
   if (!stoppingHost) return;
   const home = env.AREAL_HARNESS_SERVICE_HOME;
@@ -548,7 +564,7 @@ async function waitForCoreTurn(threadId, { text, status = "completed", count, la
   }, label);
   return turn;
 }
-async function launch() {
+async function launchImpl() {
   console.log("[model-selection] launching GUI");
   app = await electron.launch({
     executablePath: process.env.AREAL_GUI_EXECUTABLE || require("electron"),
@@ -580,7 +596,7 @@ async function launch() {
     BrowserWindow.getAllWindows()[0].setSize(1440, 960);
   }, workspace);
 }
-async function closeGui() {
+async function closeGuiImpl() {
   console.log("[model-selection] closing GUI");
   const current = app;
   if (!current) return;
@@ -643,6 +659,9 @@ async function closeGui() {
     if (child.exitCode !== null || child.signalCode !== null) app = undefined;
   }
 }
+const launch = () => timed("GUI launch", launchImpl);
+const closeGui = () => timed("GUI close", closeGuiImpl);
+const stopService = () => timed("Host stop and Core cleanup", stopServiceImpl);
 async function verifyModelCapabilities() {
   console.log("[model-selection] verifying model capabilities");
   const previous = await call("providers", { operation: "list" });
@@ -2707,8 +2726,8 @@ async function runFullModelSelection() {
   await assertComposerActions();
   await openModelSettings();
   recordCheck("empty catalog provides neutral guidance and Settings > Models remains accessible");
-  await verifyModelCapabilities();
-  await verifyModelDefaults(projectId);
+  await timed("model capabilities", verifyModelCapabilities);
+  await timed("model defaults and recovery", () => verifyModelDefaults(projectId));
 }
 async function verifyFirstSendContinuity() {
   await until(
@@ -2828,6 +2847,7 @@ async function verifyFirstSendContinuity() {
 
 try {
   console.log(`[model-selection] evidence: ${scratch}`);
+  markPhase("business");
   await launch();
   console.log("[model-selection] creating project conversation");
   await button("打开项目").click();
@@ -2843,11 +2863,13 @@ try {
   }
   assert.deepEqual(errors, []);
   passed = true;
+  markPhase("business-complete");
 } catch (error) {
   failure = error.stack ?? String(error);
   if (page) await captureSmokeFailure(page, scratch, error);
   throw error;
 } finally {
+  markPhase("cleanup");
   console.log("[model-selection] cleaning up fixtures");
   releaseHeldReply?.();
   const cleanupFailure = (operation, error) => {
@@ -2879,6 +2901,7 @@ try {
   }
   server.closeAllConnections();
   await new Promise((resolve) => server.close(resolve));
+  markPhase("report");
   const files = [
     "scripts/model-selection-smoke.mjs",
     "renderer/src/settings/ModelSettings.tsx",
@@ -2952,6 +2975,9 @@ try {
         errors,
         failure,
         stoppedServices,
+        timings,
+        phase,
+        lastCheck: checks.at(-1) ?? null,
         source: execFileSync("git", ["rev-parse", "HEAD"], { cwd: gui, encoding: "utf8" }).trim(),
         hashes,
         core: { binary: coreBinary, sha256: coreSha256, unchanged: coreUnchanged },
@@ -2964,4 +2990,5 @@ try {
     ),
   );
   console.log(JSON.stringify({ passed, evidence: scratch, checks, errors }));
+  markPhase("report-complete");
 }

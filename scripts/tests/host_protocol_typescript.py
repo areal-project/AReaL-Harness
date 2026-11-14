@@ -61,6 +61,8 @@ function inspect(control: RemoteSessionControlParams) {
                 ],
                 cwd=ROOT,
                 check=True,
+                # 单独约束编译子进程，避免卡住后只留下整个 CI job 取消的现场。
+                timeout=120,
             )
 
 

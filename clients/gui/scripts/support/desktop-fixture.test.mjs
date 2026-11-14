@@ -153,3 +153,28 @@ test("failure capture preserves the original error when observation and screensh
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("failure capture bounds a stalled projection and retains the original failure", async (t) => {
+  const { captureSmokeFailure } = await import("../smoke-navigation.mjs");
+  const { mkdtemp, readFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const directory = await mkdtemp(join(tmpdir(), "failure-evidence-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let calls = 0;
+  const page = {
+    evaluate: () => (++calls === 1 ? Promise.resolve({}) : new Promise(() => {})),
+    screenshot: () => Promise.reject(Error("closed")),
+  };
+  const capture = captureSmokeFailure(page, directory, Error("original idle timeout"));
+  while (calls < 2) await Promise.resolve();
+  t.mock.timers.tick(10000);
+  await capture;
+  const result = JSON.parse(await readFile(join(directory, "failure-state.json"), "utf8"));
+  assert.match(result.error, /original idle timeout/);
+  assert.match(
+    result.observationCaptureError,
+    /failure projection capture timed out after 10000ms/,
+  );
+});
