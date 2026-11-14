@@ -412,39 +412,69 @@ const bridge = desktopBridge(() => page);
 const { state, call } = bridge;
 const until = (predicate, label) => bridge.untilState(predicate, label, { interval: 80 });
 async function waitForServiceIdle({ canStop = false } = {}) {
-  await untilValue(
-    async () => {
-      const reply = await page.evaluate(() => window.arealDesktop.command("serviceStatus", {}));
-      if (!reply.ok) return { ok: false };
-      const { busy, activeCommands, starting, providerUpdating, canStop, clients, projects } =
-        reply.value;
-      return {
-        ok: true,
-        busy,
-        activeCommands,
-        starting,
-        providerUpdating,
-        canStop,
-        clients,
-        projects: projects.map((project) => ({
-          observation: project.observation,
-          restartSafe: project.restartSafe,
-          activeTasks: project.activeTasks,
-          waitingMessages: project.waitingMessages,
-          goals: project.goalThreads?.length,
-          tasks: project.tasks?.map((task) => ({ paused: task.paused })),
+  try {
+    await untilValue(
+      async () => {
+        const reply = await page.evaluate(() => window.arealDesktop.command("serviceStatus", {}));
+        if (!reply.ok) return { ok: false };
+        const { busy, activeCommands, starting, providerUpdating, canStop, clients, projects } =
+          reply.value;
+        return {
+          ok: true,
+          busy,
+          activeCommands,
+          starting,
+          providerUpdating,
+          canStop,
+          clients,
+          projects: projects.map((project) => ({
+            observation: project.observation,
+            restartSafe: project.restartSafe,
+            activeTasks: project.activeTasks,
+            waitingMessages: project.waitingMessages,
+            goals: project.goalThreads?.length,
+            tasks: project.tasks?.map((task) => ({ paused: task.paused })),
+          })),
+        };
+      },
+      canStop ? "service can stop" : "service operations settled",
+      {
+        accept: (status) =>
+          status.ok &&
+          (canStop
+            ? status.canStop
+            : !status.busy &&
+              !status.activeCommands &&
+              !status.starting &&
+              !status.providerUpdating),
+      },
+    );
+  } catch (error) {
+    try {
+      const snapshot = await state();
+      const projects = snapshot.projects.map((project) => ({
+        id: project.id,
+        pending: project.pending?.map(({ method }) => method),
+        turns: Object.entries(project.state?.threads ?? {}).flatMap(([threadId, thread]) =>
+          (thread.turns ?? [])
+            .filter((turn) => turn.status === "inProgress")
+            .map((turn) => ({ threadId, id: turn.id, status: turn.status })),
+        ),
+        queues: Object.entries(project.state?.queues ?? {}).map(([threadId, queue]) => ({
+          threadId,
+          paused: queue.paused,
+          statuses: queue.items.map((item) => item.status),
         })),
-      };
-    },
-    canStop ? "service can stop" : "service operations settled",
-    {
-      accept: (status) =>
-        status.ok &&
-        (canStop
-          ? status.canStop
-          : !status.busy && !status.activeCommands && !status.starting && !status.providerUpdating),
-    },
-  );
+      }));
+      await writeFile(
+        join(scratch, "service-idle-failure.json"),
+        JSON.stringify(projects, null, 2),
+      );
+    } catch (observationError) {
+      console.error("[model-selection] failed to capture service idle state:", observationError);
+    }
+    throw error;
+  }
 }
 const fixtureProject = (snapshot) =>
   snapshot.projects.find((project) => project.root === workspace);
