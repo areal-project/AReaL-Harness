@@ -101,6 +101,7 @@ const server = createServer(async (request, response) => {
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const config = join(userHome, ".areal", "config.toml");
 const composerPicker = process.argv.includes("--composer-picker");
+const pickerEfforts = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 const composerFast = process.argv.includes("--composer-fast");
 const sendContinuity = process.argv.includes("--send-continuity");
 await writeFile(
@@ -125,7 +126,7 @@ if (composerPicker || composerFast || sendContinuity) {
       ["alpha", "beta"]
         .map(
           (id) =>
-            `\n[model.providers.${id}]\nname="${composerPicker ? `Configured ${id}` : id}"\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\nprotocol="chat-completions"\nmodels=[{id="${id}-model",enabled=true${composerFast && id === "alpha" ? ',parameters={service_tier="fast"}' : ""},capabilities={tools=true,vision=true,reasoning=true,reasoning_effort_options=["low","high"]}}]\n`,
+            `\n[model.providers.${id}]\nname="${composerPicker ? `Configured ${id}` : id}"\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\nprotocol="chat-completions"\nmodels=[{id="${id}-model",enabled=true${composerFast && id === "alpha" ? ',parameters={service_tier="fast"}' : ""},capabilities={tools=true,vision=true,reasoning=true,reasoning_effort_options=${JSON.stringify(composerPicker ? pickerEfforts : ["low", "high"])}}}]\n`,
         )
         .join(""),
   );
@@ -1600,6 +1601,48 @@ async function verifyComposerPicker() {
     assert.equal(await effortMenu.getByRole("button", { name, exact: true }).count(), 1);
   await effortMenu.getByRole("button", { name: "最高", exact: true }).click();
   await page.keyboard.press("Escape");
+  // 先建立合法历史，再收窄能力；新草稿会自动选择受支持档位，不能用来验历史拒绝。
+  const historyText = "PICKER_MAX_HISTORY";
+  await page.getByTestId("chat-input").fill(historyText);
+  const beforeHistory = modelRequests.length;
+  await button("发送").click();
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId,
+  );
+  const effortThread = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+  const historyTurn = await waitForCoreTurn(effortThread, { text: historyText, count: 1 });
+  await page.locator(`[data-turn-id="${historyTurn.id}"][data-turn-status="completed"]`).waitFor();
+  assert.equal(modelRequests.length, beforeHistory + 1);
+  assert.deepEqual(modelRequests.at(-1), { model: "beta-model", effort: "max", hasEffort: true });
+  await waitForServiceIdle();
+  const providers = await call("providers", { operation: "list" });
+  const provider = providers.data.find((entry) => entry.id === "beta");
+  assert.ok(provider);
+  await call("providers", {
+    operation: "saveAndApply",
+    expectedRevision: providers.revision,
+    authentication: "none",
+    provider: {
+      ...provider,
+      models: provider.models.map((model) => ({
+        ...model,
+        capabilities: { ...model.capabilities, reasoningEffortOptions: ["low", "high"] },
+      })),
+    },
+  });
+  await until(
+    (snapshot) =>
+      JSON.stringify(
+        fixtureProject(snapshot)?.models.find((model) => model.providerId === "beta")
+          ?.reasoningEffortOptions,
+      ) === JSON.stringify(["low", "high"]),
+    "picker capability subset reaches catalog",
+  );
+  assert.equal(
+    (await readCoreThread(effortThread)).desktop.configuration.parameters.reasoningEffort,
+    "max",
+  );
+  assert.match(await button("选择思考强度").innerText(), /最高/);
   const draft = "UNSUPPORTED_EFFORT_DRAFT";
   await page.getByTestId("chat-input").fill(draft);
   const before = modelRequests.length;
@@ -1619,15 +1662,32 @@ async function verifyComposerPicker() {
   );
   await button("选择思考强度").click();
   const slider = page.getByRole("slider", { name: "选择思考强度", exact: true });
-  await slider.waitFor();
-  await slider.fill("4");
+  assert.equal(await slider.count(), 0, "unsupported historical effort has no slider value");
+  assert.deepEqual(
+    await effortMenu
+      .getByRole("group", { name: "选择思考强度", exact: true })
+      .getByRole("button")
+      .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label"))),
+    ["低", "高"],
+  );
+  await effortMenu.getByRole("button", { name: "高", exact: true }).click();
   await page.keyboard.press("Escape");
   await button("发送").click();
   await page.waitForFunction(
     () => document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId,
   );
-  const effortThread = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
-  await waitForCoreTurn(effortThread, { text: draft, label: "valid effort reaches provider" });
+  assert.equal(
+    await page.getByTestId("areal-workbench").getAttribute("data-thread-id"),
+    effortThread,
+  );
+  const recoveredTurn = await waitForCoreTurn(effortThread, {
+    text: draft,
+    count: 2,
+    label: "valid effort reaches provider",
+  });
+  await page
+    .locator(`[data-turn-id="${recoveredTurn.id}"][data-turn-status="completed"]`)
+    .waitFor();
   assert.equal(modelRequests.length, before + 1);
   assert.deepEqual(modelRequests.at(-1), { model: "beta-model", effort: "high", hasEffort: true });
   for (const theme of ["dark", "light"]) {
