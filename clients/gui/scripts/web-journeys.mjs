@@ -89,6 +89,35 @@ try {
   record(await inspectPage(page, "W1 网页打开项目"));
   await create.click({ force: true });
 
+  const workbench = page.getByTestId("areal-workbench");
+  const projectId = await workbench.getAttribute("data-project-id");
+  const threadId = await workbench.getAttribute("data-thread-id");
+  assert.ok(projectId && threadId, "网页工作台暴露项目和会话身份");
+  const mainComment = {
+    id: "web-main-review-comment",
+    path: "src/math.ts",
+    root: scene.project,
+    scope: "working-tree",
+    ref: "",
+    token: "web-journey-review",
+    head: "head",
+    base: "base",
+    side: "additions",
+    start: 1,
+    end: 1,
+    snippet: "export const add = (a: number, b: number) => a + b;",
+    body: "网页主会话结构化评论",
+  };
+  const mainReviewKey = `areal-gui:review-comments:${projectId}:${threadId}`;
+  await page.evaluate(
+    ({ key, comment }) => {
+      localStorage.setItem(key, JSON.stringify({ comments: [comment], attachedIds: [comment.id] }));
+      window.dispatchEvent(new CustomEvent("areal-review-comments-change", { detail: key }));
+    },
+    { key: mainReviewKey, comment: mainComment },
+  );
+  await page.getByRole("button", { name: "1 个评论", exact: true }).waitFor();
+
   // 旅程 W2：发送 → 审批卡出现、输入框仍在 → 审批中继续排队 → 允许 → 本轮完成。
   const input = page.getByTestId("chat-input").first();
   await input.fill("给 src/math.ts 加一个 clamp 函数");
@@ -117,15 +146,34 @@ try {
     .getByText(reply.split("\n")[0].replace("## ", ""))
     .first()
     .waitFor({ timeout: 60_000 });
+  const sentMainComment = page.getByRole("button", { name: "已发送的 1 个评论", exact: true });
+  await sentMainComment.waitFor();
+  await sentMainComment.click();
+  await page.getByText(mainComment.body, { exact: true }).waitFor();
   await shot("done");
   record(await inspectPage(page, "W2 本轮完成"));
 
   // 旅程 W3：刷新后对话还在（Host 是唯一真相，不靠页面内存）。
   await page.reload();
   await page.getByText("已添加 clamp").first().waitFor({ timeout: 60_000 });
+  await page.getByRole("button", { name: "已发送的 1 个评论", exact: true }).click();
+  await page.getByText(mainComment.body, { exact: true }).waitFor();
   record(await inspectPage(page, "W3 刷新后对话仍在"));
 
   // 旅程 W6：侧边聊天经 Host 附加观察显示：打开、发送后右侧能看到自己的问题和回复进度，不依赖桌面后台快照。
+  const sideComment = {
+    ...mainComment,
+    id: "web-side-review-comment",
+    body: "网页 Side 结构化评论",
+  };
+  const newReviewKey = `areal-gui:review-comments:${projectId}:new`;
+  await page.evaluate(
+    ({ key, comment }) => {
+      localStorage.setItem(key, JSON.stringify({ comments: [comment], attachedIds: [comment.id] }));
+      window.dispatchEvent(new CustomEvent("areal-review-comments-change", { detail: key }));
+    },
+    { key: newReviewKey, comment: sideComment },
+  );
   await input.fill("/side");
   await page
     .getByRole("option", { name: /\/side/ })
@@ -134,6 +182,7 @@ try {
   const sidePane = page.getByTestId("side-chat-pane");
   const sideInput = sidePane.getByTestId("side-chat-input");
   await sideInput.waitFor({ timeout: 60_000 });
+  await sidePane.getByRole("button", { name: "1 个评论", exact: true }).waitFor();
   await sideInput.fill("侧边：这个函数叫什么");
   await sidePane.getByTestId("side-chat-send").click();
   await sidePane.getByText("侧边：这个函数叫什么").first().waitFor({ timeout: 60_000 });
@@ -141,6 +190,10 @@ try {
     .locator('.decision-card, :text("添加 clamp")')
     .first()
     .waitFor({ timeout: 60_000 });
+  const sentSideComment = sidePane.getByRole("button", { name: "已发送的 1 个评论", exact: true });
+  await sentSideComment.waitFor();
+  await sentSideComment.click();
+  await sidePane.getByText(sideComment.body, { exact: true }).waitFor();
   await shot("side-chat");
   record(await inspectPage(page, "W6 侧边聊天"));
   const sideApproval = sidePane.locator('.decision-card[data-interaction="approval"]');

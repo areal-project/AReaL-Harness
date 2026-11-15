@@ -3,7 +3,13 @@ import type { Action } from "./services.js";
 import { submitMessage } from "./Composer.js";
 import { appendMcpDraft, clearMcpDraft, readMcpDraft, removeMcpDraft } from "./mcp-app-draft.js";
 import { composerUploads, forgetComposerUploads } from "./ComposerUploadState.js";
-import { reviewCommentKey, writeReviewComments, type ReviewComment } from "./reviewComments.js";
+import {
+  readReviewComments,
+  reconcileReviewSubmission,
+  reviewCommentKey,
+  writeReviewComments,
+  type ReviewComment,
+} from "./reviewComments.js";
 
 vi.hoisted(() => {
   vi.stubGlobal("window", new EventTarget());
@@ -48,6 +54,38 @@ describe("composer submission upload lifetime", () => {
     const firstCall = action.mock.calls[0];
     if (!firstCall) throw new Error("send action was not recorded");
     expect((firstCall[1] as { text?: string }).text).not.toContain("审查反馈：");
+  });
+
+  it("keeps context parts through UNKNOWN and consumes them only after reconcile", async () => {
+    const comment: ReviewComment = {
+      id: "unknown-comment",
+      path: "src/app.ts",
+      root: "/workspace",
+      scope: "branch",
+      ref: "main",
+      token: "token",
+      head: "head",
+      base: "base",
+      side: "additions",
+      start: 3,
+      end: 3,
+      snippet: "const value = 1;",
+      body: "Keep this after a lost reply.",
+    };
+    const key = reviewCommentKey("project", "unknown-thread");
+    writeReviewComments(key, { comments: [comment], attachedIds: [comment.id] });
+    const action = vi.fn<Action>().mockRejectedValue(
+      Object.assign(new Error("response lost"), {
+        submissionUnknown: true,
+        requestId: "unknown-request",
+      }),
+    );
+    await expect(
+      submitMessage(action as Action, "project", "unknown-thread", "please fix", []),
+    ).rejects.toMatchObject({ submissionUnknown: true, requestId: "unknown-request" });
+    expect(readReviewComments(key).submission?.comments).toEqual([comment]);
+    reconcileReviewSubmission(key, "unknown-request", true);
+    expect(readReviewComments(key).comments).toEqual([]);
   });
 
   it("blocks restored missing files before uploads or admission", async () => {
