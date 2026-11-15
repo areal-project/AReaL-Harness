@@ -140,6 +140,25 @@ export async function createScene(prefix) {
 
   // 杀掉 Electron 后，它拉起的后台进程可能还在；只按本次临时目录认领，不按名字匹配。
   async function stopLeftovers() {
+    // macOS 没有可读的 /proc；先用本次现场自己的 Host 元数据发出一次
+    // 有界停止，再由 Linux 的 PID 兜底清理 Core/Runtime 子进程。
+    const hostFile = join(scratch, "web", "registry", "host", "host.json");
+    const host = JSON.parse(await readFile(hostFile, "utf8").catch(() => "null"));
+    if (host?.pid) {
+      const env = await environment("web");
+      try {
+        execFileSync(coreBin, ["host", "stop", "--cancel", "--json"], {
+          env,
+          stdio: "ignore",
+          timeout: 10_000,
+        });
+      } catch {
+        // 进程可能已经退出；下面只处理仍由本现场认领的 PID。
+      }
+      try {
+        process.kill(host.pid, "SIGKILL");
+      } catch {}
+    }
     if (process.platform !== "linux") return;
     const owned = (entry) => entry.startsWith("AREAL_") && entry.includes(`=${scratch}/`);
     // Host 与服务进程会互相拉起：先全部暂停再杀，直到一个不剩。

@@ -34,6 +34,7 @@ const model = await startModel();
 const scene = await createScene("areal-web-");
 let browser;
 let page;
+let desktop;
 const shot = (step) => page.screenshot({ path: join(shots, `web-${step}.png`) });
 const unknownSend = { armed: false, dropped: false, requestId: null };
 
@@ -71,13 +72,12 @@ function dropOneAcceptedSend(socket) {
 
 try {
   // 引导：桌面第一次启动时登记资料库来源并让 Host 记住后台启动参数，然后关闭。
-  const desktop = await scene.launchDesktop("web", model.port);
+  desktop = await scene.launchDesktop("web", model.port);
   const env = desktop.env;
   const { port } = JSON.parse(
     await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/web-bind.json"), "utf8"),
   );
-  await desktop.close();
-  console.log(`… Host 网页在 127.0.0.1:${port}，桌面窗口已关闭`);
+  console.log(`… Host 网页在 127.0.0.1:${port}，保留 Electron owner 直到网页旅程结束`);
 
   browser = await playwright.chromium.launch({
     executablePath: process.env.AREAL_CHROMIUM || undefined,
@@ -119,11 +119,27 @@ try {
   if (await choice.isVisible().catch(() => false)) await choice.click();
   const create = page.locator('button[aria-label="在项目 demo 中新建对话"]');
   await create.waitFor({ timeout: 60_000 });
+  await page.waitForFunction(
+    () => {
+      const button = document.querySelector('button[aria-label="在项目 demo 中新建对话"]');
+      return button instanceof HTMLButtonElement && !button.disabled;
+    },
+    { timeout: 60_000 },
+  );
   await shot("project");
   record(await inspectPage(page, "W1 网页打开项目"));
   await create.click({ force: true });
 
   const workbench = page.getByTestId("areal-workbench");
+  await page.waitForFunction(
+    () => {
+      const element = document.querySelector('[data-testid="areal-workbench"]');
+      return (
+        !!element?.getAttribute("data-project-id") && !!element?.getAttribute("data-thread-id")
+      );
+    },
+    { timeout: 60_000 },
+  );
   const projectId = await workbench.getAttribute("data-project-id");
   const threadId = await workbench.getAttribute("data-thread-id");
   assert.ok(projectId && threadId, "网页工作台暴露项目和会话身份");
@@ -336,6 +352,7 @@ try {
   throw error;
 } finally {
   await browser?.close();
+  await desktop?.close();
   await scene.dispose();
   model.close();
 }
