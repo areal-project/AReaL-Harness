@@ -300,15 +300,8 @@ class ModelConfiguration {
       ...value,
       credentialErrors: Object.fromEntries(
         value.data
-          .filter(
-            (item) =>
-              item.apiKeyEnv &&
-              this.credentialErrors.has(item.apiKeyEnv),
-          )
-          .map((item) => [
-            item.id,
-            this.credentialErrors.get(item.apiKeyEnv ?? ""),
-          ]),
+          .filter((item) => item.apiKeyEnv && this.credentialErrors.has(item.apiKeyEnv))
+          .map((item) => [item.id, this.credentialErrors.get(item.apiKeyEnv ?? "")]),
       ),
       data: value.data.map((item) => ({
         ...item,

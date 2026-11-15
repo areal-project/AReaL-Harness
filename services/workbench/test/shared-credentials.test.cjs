@@ -6,36 +6,35 @@ const { catalog } = require("../src/desktop/core/provider-model-catalog.cjs");
 const { configurePluginValues } = require("../src/desktop/core/plugin-configuration.cjs");
 
 test("missing saved entry remains distinct from an unconfigured key and can be recovered", async () => {
-    const reference = "AREAL_CREDENTIAL_saved";
-    let missing = true;
-    const config = new ModelConfiguration(
-        { host: { sourceId: "source" }, projects: new Map() },
-        {
-            read: async () => {
-                if (missing)
-                    throw Object.assign(new Error("entry missing"), { code: "storageMissing" });
-                return { value: "synthetic-restored" };
-            },
-        },
-    );
-    config.value = {
-        data: [
-            {
-                id: "saved",
-                apiKeyEnv: reference,
-                endpoint: "https://example.invalid/v1/responses",
-                protocol: "responses",
-            },
-        ],
-    };
-    await config.refreshCredentials([reference]);
-    assert.deepEqual(config.public().credentialErrors, { saved: "storageMissing" });
-    assert.equal(config.references.has(reference), true);
-    assert.equal(config.key(config.value.data[0]), "");
-    missing = false;
-    await config.refreshCredentials([reference]);
-    assert.deepEqual(config.public().credentialErrors, {});
-    assert.equal(config.key(config.value.data[0]), "synthetic-restored");
+  const reference = "AREAL_CREDENTIAL_saved";
+  let missing = true;
+  const config = new ModelConfiguration(
+    { host: { sourceId: "source" }, projects: new Map() },
+    {
+      read: async () => {
+        if (missing) throw Object.assign(new Error("entry missing"), { code: "storageMissing" });
+        return { value: "synthetic-restored" };
+      },
+    },
+  );
+  config.value = {
+    data: [
+      {
+        id: "saved",
+        apiKeyEnv: reference,
+        endpoint: "https://example.invalid/v1/responses",
+        protocol: "responses",
+      },
+    ],
+  };
+  await config.refreshCredentials([reference]);
+  assert.deepEqual(config.public().credentialErrors, { saved: "storageMissing" });
+  assert.equal(config.references.has(reference), true);
+  assert.equal(config.key(config.value.data[0]), "");
+  missing = false;
+  await config.refreshCredentials([reference]);
+  assert.deepEqual(config.public().credentialErrors, {});
+  assert.equal(config.key(config.value.data[0]), "synthetic-restored");
 });
 
 test("locked orphan does not appear in current providers, active lock appears in catalog", async () => {
