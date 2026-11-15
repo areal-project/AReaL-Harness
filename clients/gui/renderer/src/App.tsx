@@ -534,7 +534,7 @@ function AppContent({ services }: { services: PlatformServices }) {
             onAction={(kind) => void runBackendAction(kind)}
           />
         )}
-        {!initialReleased ? (
+        {!initialReleased && !projectFailureReady ? (
           <StartupScreen
             services={services}
             state={{

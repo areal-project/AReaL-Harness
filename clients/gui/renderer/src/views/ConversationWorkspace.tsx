@@ -164,9 +164,9 @@ function ConversationContent() {
                       message={loadState.detail || t(loadState.message)}
                       detail={viewFailure ? rawText(viewFailure) : undefined}
                     />
-                  ) : (
+                  ) : loadState.kind === "starting" ? (
                     <p>{t(loadState.message)}</p>
-                  ))}
+                  ) : null)}
                 {loadState.kind === "failed" && (
                   <Button
                     variant="outline"
