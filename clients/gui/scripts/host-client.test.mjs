@@ -415,6 +415,19 @@ test("concurrent selection of the same conversation shares one subscription", as
   assert.equal(frames.filter((frame) => frame.method === "subscription.close").length, 0);
 });
 
+test("reselecting a fresh conversation keeps the baseline visible and records a cache hit", async (t) => {
+  const { client, frames } = await readServer(t);
+  const target = { projectId: project.projectId, threadId: "thread" };
+  await client.selectSession(target);
+  beginSessionLoad(target.threadId);
+  await client.selectSession(target);
+  assert.equal(client.readsSnapshot().session.state, "fresh");
+  assert.equal(frames.filter((frame) => frame.method === "session.open").length, 1);
+  const timing = sessionLoadTiming(target.threadId);
+  timing.mark("cache", true);
+  assert.equal(performance.getEntriesByName("areal.session-load").at(-1)?.detail.cache, "hit");
+});
+
 test("UI restoration joins the selected conversation's automatic reconnect", async (t) => {
   const { client, frames, listener } = await readServer(t);
   const target = { projectId: project.projectId, threadId: "thread" };
