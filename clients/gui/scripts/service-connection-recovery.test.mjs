@@ -1202,8 +1202,14 @@ test("explicit update finalizes a live Desktop after read-only reconciliation co
   const receipt = f.receipts.get(first.operation.requestId);
   receipt.targets[0].phase = "completed";
   f.service.targets = [];
+  f.backend.lifecycleError = "应用启动的版本不匹配，请重新打开应用";
   const checked = await f.backend.checkLifecycle();
   assert.equal(checked.phase, "acceptedPending");
+  assert.equal(
+    f.backend.lifecycleError,
+    null,
+    "a successful lifecycle read clears stale startup errors",
+  );
   assert.equal(f.calls.filter((call) => call.method === "lifecycleRequest").length, 1);
   const second = await f.backend.applyUpdate();
   const writes = f.calls.filter((call) => call.method === "lifecycleRequest");

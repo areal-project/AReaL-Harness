@@ -526,6 +526,9 @@ class SharedCoreBackend {
             });
           this.computerHostOwned = record(packet) && packet.computerHostOwned === true;
           this.accept(packet, metadata);
+          // 成功握手覆盖此前升级或重连尝试留下的错误；错误只属于真正失败的连接，
+          // 后台恢复后不能再让它闪现在启动页。
+          this.lifecycleError = null;
           break;
         } catch (error) {
           if (passive) throw error;
@@ -772,6 +775,9 @@ class SharedCoreBackend {
       if (this.disposed) throw new Error("GUI 连接已关闭");
       if (!(await this.attach({ expectedIdentity: owner.identity })))
         throw new Error("Host 后台尚未就绪");
+      // 旧 Host 退出期间可能短暂报告身份不匹配；新 Host 完成 attach 且身份确认后，
+      // 清掉这条过期错误，避免启动页继续停在失败状态。
+      this.lifecycleError = null;
       await completeUpgrade();
       this.backendUpdate = undefined;
     } finally {
