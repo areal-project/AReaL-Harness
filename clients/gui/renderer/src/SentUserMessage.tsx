@@ -56,7 +56,12 @@ export function SentUserMessage({
     .filter((part: Data) => part.type === "text" && !part.mcpContent)
     .map((part: Data) => part.text ?? "")
     .join("\n");
-  const feedback = sentReviewFeedback(text);
+  const structuredComments = content.flatMap((part: Data) =>
+    part.type === "text" && Array.isArray(part.reviewComments) ? part.reviewComments : [],
+  );
+  const feedback = structuredComments.length
+    ? { text, comments: structuredComments }
+    : sentReviewFeedback(text);
   const attachments: Data[] = content.filter((part: Data) => part.type !== "text");
   const browserFeedback = sentBrowserAnnotations(feedback.text, attachments);
   const snapshotFeedback = sentSnapShots(browserFeedback.text, attachments, decorations);

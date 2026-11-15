@@ -645,6 +645,9 @@ export function createHostReadServices(
               ? { conversationQuotes: params.conversationQuotes }
               : {}),
             ...(params.mcpContent !== undefined ? { mcpContent: params.mcpContent } : {}),
+            ...(params.reviewComments !== undefined
+              ? { reviewComments: params.reviewComments }
+              : {}),
           });
           const commandId =
             typeof params.requestId === "string" ? params.requestId : crypto.randomUUID();

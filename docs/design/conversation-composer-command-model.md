@@ -50,7 +50,7 @@ type ComposerContextPart = {
 ## 分阶段交付
 
 1. **阶段一（本次）**：命令判别联合、提交适配器、conversation quote 垂直切片；覆盖 Host-compatible send/steer/queue 选择、accepted/rejected/unknown 消费规则，并保持旧字段兼容。
-2. **阶段二**：把 Review comment 迁移为 `reviewComment` context part；Host/Core 只在结构化字段中传递，历史回显直接按类型渲染。
+2. **阶段二（本次）**：把 Review comment 迁移为 `reviewComments` context part；Host/Core 只在结构化字段中传递，历史回显直接按类型渲染。模型适配只在边界生成带标签的文本投影，用户历史保留原始结构。
 3. **阶段三**：迁移浏览器批注、图片批注、Plugin intent 和 Skill；为每类部件声明 `persisted`、`modelProjection` 和 `editable`。
 4. **阶段四**：主会话、Side、Remote 共用 command adapter；各入口只提供目标身份、权限和 UI owner，删除重复的消费与 UNKNOWN 编排。
 

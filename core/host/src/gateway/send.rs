@@ -17,6 +17,8 @@ struct Message {
     conversation_quotes: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     mcp_content: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    review_comments: Option<Vec<areal_protocol::ReviewComment>>,
 }
 #[derive(Serialize)]
 struct Semantic<'a> {
@@ -487,13 +489,42 @@ pub(super) fn rich_message_input(text: &str, values: &Value) -> Result<Vec<areal
         attachments: values.get("attachments").cloned(),
         conversation_quotes: values.get("conversationQuotes").cloned(),
         mcp_content: values.get("mcpContent").cloned(),
+        review_comments: values
+            .get("reviewComments")
+            .cloned()
+            .map(serde_json::from_value)
+            .transpose()?,
     })
 }
 fn message_input(params: &Message) -> Result<Vec<areal_protocol::Input>> {
     use areal_protocol::Input;
+    if let Some(comments) = &params.review_comments {
+        ensure!(comments.len() <= 32, "reviewComments");
+        ensure!(
+            comments.iter().all(|comment| {
+                comment.start > 0
+                    && comment.end >= comment.start
+                    && comment.end - comment.start <= 999
+                    && (comment.side == "additions" || comment.side == "deletions")
+            }),
+            "reviewComments"
+        );
+        ensure!(
+            serde_json::to_vec(comments)
+                .map(|value| value.len() <= 2 * 1024 * 1024)
+                .unwrap_or(false),
+            "reviewComments"
+        );
+    }
     let mut input = Vec::new();
     if !params.text.trim().is_empty() {
-        input.push(Input::text(params.text.clone()));
+        let text = Input::text(params.text.clone());
+        input.push(match &params.review_comments {
+            Some(comments) => text.with_review_comments(comments.clone()),
+            None => text,
+        });
+    } else if let Some(comments) = &params.review_comments {
+        input.push(Input::text("").with_review_comments(comments.clone()));
     }
     let quotes = match &params.conversation_quotes {
         None => Vec::new(),

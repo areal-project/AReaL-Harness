@@ -3,6 +3,7 @@ import type { Action } from "./services.js";
 import { submitMessage } from "./Composer.js";
 import { appendMcpDraft, clearMcpDraft, readMcpDraft, removeMcpDraft } from "./mcp-app-draft.js";
 import { composerUploads, forgetComposerUploads } from "./ComposerUploadState.js";
+import { reviewCommentKey, writeReviewComments, type ReviewComment } from "./reviewComments.js";
 
 vi.hoisted(() => {
   vi.stubGlobal("window", new EventTarget());
@@ -17,6 +18,38 @@ vi.hoisted(() => {
 const media = { uri: "areal://blob/receipt", mimeType: "text/plain" };
 
 describe("composer submission upload lifetime", () => {
+  it("submits review comments as structured context instead of text", async () => {
+    const comment: ReviewComment = {
+      id: "comment",
+      path: "src/app.ts",
+      root: "/workspace",
+      scope: "branch",
+      ref: "main",
+      token: "token",
+      head: "head",
+      base: "base",
+      side: "additions",
+      start: 3,
+      end: 3,
+      snippet: "const value = 1;",
+      body: "Please extract this value.",
+    };
+    const key = reviewCommentKey("project", "thread");
+    writeReviewComments(key, { comments: [comment], attachedIds: [comment.id] });
+    const action = vi.fn<Action>().mockResolvedValue({ threadId: "thread" });
+    await submitMessage(action as Action, "project", "thread", "please fix", []);
+    expect(action).toHaveBeenCalledWith(
+      "send",
+      expect.objectContaining({
+        text: "please fix",
+        reviewComments: [comment],
+      }),
+    );
+    const firstCall = action.mock.calls[0];
+    if (!firstCall) throw new Error("send action was not recorded");
+    expect((firstCall[1] as { text?: string }).text).not.toContain("审查反馈：");
+  });
+
   it("blocks restored missing files before uploads or admission", async () => {
     const action = vi.fn<Action>();
     await expect(

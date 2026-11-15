@@ -30,7 +30,6 @@ import {
   reviewCommentKey,
   attachedReviewComments,
   readReviewComments,
-  reviewCommentText,
   recordUnknownReviewSubmission,
   consumeReviewComments,
 } from "./reviewComments.js";
@@ -123,7 +122,6 @@ export async function submitMessage(
       annotationFeedback,
       snapShotContext(input.files, attachments),
       serializeImageAnnotations(imageSnapshot, attachments),
-      comments.map(reviewCommentText).join("\n\n"),
       pluginIntent,
       skillContent,
     ]
@@ -136,6 +134,7 @@ export async function submitMessage(
         projectId,
         text: feedback ? (input.text ? `${input.text}\n\n${feedback}` : feedback) : input.text,
         attachments,
+        ...(comments.length ? { reviewComments: comments } : {}),
         ...(capturedReferences.length
           ? {
               conversationQuotes: conversationQuotes(

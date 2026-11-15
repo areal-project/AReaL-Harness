@@ -18,7 +18,7 @@ The first slice introduces typed `send`, `steer`, `queueEdit`, and `sideSend` co
 ## Staged delivery
 
 1. Type the command adapter and migrate conversation quotes while retaining `conversationQuotes` compatibility.
-2. Migrate review comments as a structured `reviewComment` part.
+2. Migrate review comments as a structured `reviewComments` part, retaining the structured value in history and generating the labelled text projection only at the model boundary.
 3. Migrate browser annotations, image annotations, plugin intent, and skills with explicit persistence and model-projection rules.
 4. Share the command adapter across main, side, and remote entry points while keeping each owner’s permissions and recovery policy explicit.
 
