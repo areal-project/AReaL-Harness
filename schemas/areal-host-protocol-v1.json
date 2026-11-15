@@ -17282,12 +17282,32 @@
         "key": {
           "type": "string",
           "enum": [
+            "showPinned",
+            "showCompleted",
+            "permissionNotifications",
+            "questionNotifications",
+            "preventSleep",
+            "showInMenuBar",
+            "betaUpdates",
+            "terminalInheritSystemProfile",
+            "hardwareAcceleration",
+            "taskNotifications",
+            "computerControlShowEntry",
+            "browserFullAddress",
+            "terminalFontFamily",
+            "httpProxy",
+            "httpProxyNoProxy",
+            "httpProxyCaCertPath",
+            "busyEnter",
             "sidebarSort",
             "sidebarSortChats",
             "sidebarSortProjects",
             "sidebarSortPinned",
-            "showPinned",
-            "showCompleted"
+            "turnNotifications",
+            "notificationSound",
+            "fileOpenTarget",
+            "browserLinkTarget",
+            "browserLocalTarget"
           ]
         },
         "value": {
@@ -17297,11 +17317,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "updated_at",
-                "priority",
-                "manual"
-              ]
+              "maxLength": 4096
             }
           ]
         },
@@ -35823,7 +35839,6 @@
             "feedback",
             "fork",
             "history",
-            "library",
             "list",
             "manage",
             "media",
@@ -44314,12 +44329,32 @@
         "key": {
           "type": "string",
           "enum": [
+            "showPinned",
+            "showCompleted",
+            "permissionNotifications",
+            "questionNotifications",
+            "preventSleep",
+            "showInMenuBar",
+            "betaUpdates",
+            "terminalInheritSystemProfile",
+            "hardwareAcceleration",
+            "taskNotifications",
+            "computerControlShowEntry",
+            "browserFullAddress",
+            "terminalFontFamily",
+            "httpProxy",
+            "httpProxyNoProxy",
+            "httpProxyCaCertPath",
+            "busyEnter",
             "sidebarSort",
             "sidebarSortChats",
             "sidebarSortProjects",
             "sidebarSortPinned",
-            "showPinned",
-            "showCompleted"
+            "turnNotifications",
+            "notificationSound",
+            "fileOpenTarget",
+            "browserLinkTarget",
+            "browserLocalTarget"
           ]
         },
         "value": {
@@ -44329,11 +44364,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "updated_at",
-                "priority",
-                "manual"
-              ]
+              "maxLength": 4096
             }
           ]
         },

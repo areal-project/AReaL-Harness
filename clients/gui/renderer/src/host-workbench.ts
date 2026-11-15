@@ -95,7 +95,6 @@ export const DESKTOP_COMMANDS = new Set([
   "feedback",
   "fork",
   "history",
-  "library",
   "list",
   "manage",
   "media",
@@ -132,11 +131,6 @@ export function hostDesktopCommand(
   onSnapshot?: (snapshot: Record<string, unknown>) => void,
 ): PlatformServices["command"] {
   return async (name, params) => {
-    if (name === "library" && !client.writable("desktop.command"))
-      throw Object.assign(new Error("资料库服务尚未就绪，请稍后再试"), {
-        code: "CAPABILITY_UNAVAILABLE",
-        submissionUnknown: false,
-      });
     if (!DESKTOP_COMMANDS.has(name) || !client.writable("desktop.command"))
       throw new Error("此功能需要桌面应用");
     try {
@@ -364,21 +358,6 @@ const ACTIVITY_MS = 5000;
 const IDLE_CAP_SECONDS = 24 * 60 * 60;
 /** 服务没起来或方法未开放时退回桌面原路径；其它错误照常报给界面。 */
 const FALLBACK = new Set(["CAPABILITY_UNAVAILABLE", "methodNotFound", "FORBIDDEN"]);
-const LIBRARY_OPERATIONS = new Set(
-  "renameProject renameThread pinThread pinProject createSection renameSection removeSection orderSection moveThread moveProject readThread markAllRead orderSidebarThread hideProject orderProject orderThread dropSidebar".split(
-    " ",
-  ),
-);
-
-const LIBRARY_SETTINGS = new Set([
-  "sidebarSort",
-  "sidebarSortChats",
-  "sidebarSortProjects",
-  "sidebarSortPinned",
-  "showPinned",
-  "showCompleted",
-]);
-
 /** Host 明确未受理（服务没起来、方法未开放、无权限），可以安全改走桌面原路径。 */
 export function declinedCode(code: unknown) {
   return FALLBACK.has(String(code));
@@ -596,11 +575,7 @@ export function createWorkbenchRoutes(
         }
       }
 
-      if (
-        name === "library" &&
-        (LIBRARY_OPERATIONS.has(String(params.operation)) ||
-          (params.operation === "settings" && LIBRARY_SETTINGS.has(String(params.key))))
-      ) {
+      if (name === "library" && !desktopKeepsCommand(name, params)) {
         if (!client.writable("library.command"))
           throw Object.assign(new Error("资料库服务尚未就绪，请稍后再试"), {
             code: "CAPABILITY_UNAVAILABLE",
@@ -702,9 +677,12 @@ export function routeDesktopCommand(
   if (!desktop) return hostCommand as Run;
   const native = desktop.command as Run;
   return async (name, params) => {
-    // 非原生资料库操作只有 Host 一个入口，拒绝或断连也不能换传输重发。
+    // 非原生资料库操作必须先经过 workbench 的回执路径，不能旁路派发。
     if (name === "library" && !desktopKeepsCommand(name, params))
-      return (hostCommand as Run)(name, params);
+      throw Object.assign(new Error("资料库操作入口尚未就绪，请重新连接"), {
+        code: "CAPABILITY_UNAVAILABLE",
+        submissionUnknown: false,
+      });
     if (!DESKTOP_COMMANDS.has(name) || desktopKeepsCommand(name, params) || !hostReady())
       return native(name, params);
     const result = await (hostCommand as Run)(name, params);

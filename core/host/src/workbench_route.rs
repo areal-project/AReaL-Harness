@@ -1085,10 +1085,15 @@ pub(super) async fn backend_command(
     if method == "manage.command" && payload.get("requestId").is_none() {
         payload["requestId"] = json!(command);
     }
-    // 资料库、工作树与任务变更由 Host 执行，其余领域交给工作台后台。
+    // 导航、工作树与任务变更由 Host 执行；其他偏好沿工作台校验和 Host patch 写入。
     let native_task = method == "manage.command"
         && super::task_catalog::mutation(payload["operation"].as_str().unwrap_or("")).is_some();
-    let result = if method == "library.command" {
+    let library_navigation = method == "library.command"
+        && (payload["operation"] != "settings"
+            || payload["key"]
+                .as_str()
+                .is_some_and(super::library_commands::navigation_setting));
+    let result = if library_navigation {
         super::library_service::command(host, &source, payload).await
     } else if method == "worktree.command" {
         super::worktree_catalog::command(host, &source, payload).await

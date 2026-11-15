@@ -47,6 +47,8 @@ Host 发布包内与 Electron 相同的 Renderer。`areal web` 打开公开 orig
 
 工作台各域的读写（`library`、`worktree`、`tasks`、`trajectory`、`feedback`、`manage`、`providers`）与 `desktop.command` 都不需要客户端指定 `sourceId`：省略时 Host 用当前工作台后台的来源，后台未运行时返回 `CAPABILITY_UNAVAILABLE`；显式传入且不一致时返回 `FORBIDDEN`。
 
+资料库非原生操作（含非导航偏好）统一使用 `library.command` 和原 `commandId` 回执；`desktop.command` 不再接受 `library`。电脑控制的启用、provider、executable 三项设置仍使用本机 Main 权限入口。
+
 ## 消息封装与公共类型
 
 请求使用独立 envelope，与现有 service 控制协议分开。结构字段使用 camelCase，tagged enum 值使用本文的 wire 字符串。Rust serde 可用 envelope 加按 method 标记的 payload 表达。版本 1 拒绝未知字段与无效组合。除非特别注明，可选字段省略，不写 null。

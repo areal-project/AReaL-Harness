@@ -47,6 +47,8 @@ Provider lists use Host `modelsCatalog` to read configuration and credential ref
 
 Workbench domain reads and writes (`library`, `worktree`, `tasks`, `trajectory`, `feedback`, `manage`, `providers`) and `desktop.command` no longer need a client-supplied `sourceId`: when omitted, Host uses the source of the current workbench backend and returns `CAPABILITY_UNAVAILABLE` if that backend is not running; an explicit mismatching value returns `FORBIDDEN`.
 
+All non-native library operations, including non-navigation preferences, use `library.command` with the original `commandId` receipt. `desktop.command` no longer accepts `library`. The computer-control enabled, provider and executable settings retain the local Main permission entry point.
+
 ## Envelope and common types
 
 Requests use a dedicated envelope, separate from the existing service control protocol. Struct fields use camelCase; tagged enum values use their literal wire strings. Rust serde can represent requests as an envelope plus a method-tagged payload. Version 1 rejects unknown fields and invalid combinations. Optional fields are omitted rather than serialized as null unless stated below.
