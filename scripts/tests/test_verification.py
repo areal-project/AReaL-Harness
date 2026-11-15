@@ -284,7 +284,7 @@ class VerificationTests(unittest.TestCase):
             "Renderer build inputs differ", " ".join(self.doctor("source.json", False)["errors"])
         )
         (self.root / "clients/gui/renderer/input.ts").write_text("source")
-        service = self.root / "services/workbench/src/host-library-store.ts"
+        service = self.root / "services/workbench/src/host-core-client.ts"
         service.parent.mkdir(parents=True)
         service.write_text("export const revision = 1;\n")
         self.assertIn(

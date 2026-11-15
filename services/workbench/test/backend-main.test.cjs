@@ -29,7 +29,7 @@ async function fixture(t, retired, projectionFixture = false) {
     exports.createMainDesktop = async (options, lifetime) => {
       if (typeof lifetime.hostCall !== "function") throw Error("Host ownership must precede backend initialization");
       if (options.sourceSingletonHeld !== false || options.applicationOwner) throw Error('wrong owner');
-      const backend = { home: options.home, hostCall: lifetime.hostCall, host: { sourceId: 'fixture-source' }, cloud: {}, useHostLibrary: async () => {}, addProject: async (path) => 'project:' + path };
+      const backend = { home: options.home, hostCall: lifetime.hostCall, host: { sourceId: 'fixture-source' }, cloud: {}, addProject: async (path) => 'project:' + path };
       if (options.retired === 'catalog') {
         const accepted = { acceptedAt: 2, model: { providerId: 'p', modelId: 'm' }, modelId: 'm', reasoningEffort: 'xhigh' };
         backend.starting = new Map();

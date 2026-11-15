@@ -16,7 +16,7 @@ GUI always uses the Host-supervised backend; there is no renderer switch. An exi
 
 GUI upgrades await source and safe-project publication before starting the backend. The native credential adapter continues the original slot imports and retirement on its own connection without holding backend readiness. Pending projects or slots retain their migration state while confirmed resources remain usable. Reopening GUI after unlocking rechecks the original migration; reconnecting a project advances only its original handoff, never reviving legacy writers or replaying UNKNOWN. Project launch resolves model dependencies through the same canonical configuration: unrelated in-flight or migrating slots are deferred only for this launch without clearing cached credentials; selected or unproven dependencies still wait for the original operation.
 
-`CoreBackend`, `DesktopService` and their runtime dependency closure live in `services/workbench/src/desktop`; trajectory and feedback live in `src/domains`, and the library staging writer is built from `src/host-library-store.ts` into CommonJS. Host takeover and the Main fallback load the same implementation through `@areal/workbench-service`. Main retains application configuration, the connection client and the native lifecycle client. Deployment identity includes service sources, split contracts and the generated writer. The service package is an explicit GUI workspace dependency, staged with its resources and dependency closure inside `app.asar`; it does not rely on implicit module resolution from `Resources/areal-workbench` into a sibling archive.
+`CoreBackend`, `DesktopService` and their runtime dependency closure live in `services/workbench/src/desktop`; trajectory and feedback live in `src/domains`. Library mutations use Host commands and patches; the backend has no switchable staging writer. Host takeover and the Main fallback load the same implementation through `@areal/workbench-service`. Main retains application configuration, the connection client and the native lifecycle client. Deployment identity includes service sources, split contracts and generated Host clients. The service package is an explicit GUI workspace dependency, staged with its resources and dependency closure inside `app.asar`; it does not rely on implicit module resolution from `Resources/areal-workbench` into a sibling archive.
 
 ## Supervision
 
@@ -90,6 +90,8 @@ The decreasing `workbenchConvergeLines` budget covers the library, submission re
 Host is the sole writer of `library.json`; navigation changes execute directly in a Host transaction. When the backend changes settings it submits patches through `library.patch` and rereads and recomputes on conflict.
 
 Analytics exposes `analytics.read`, `analytics.sync`, `analytics.activity` and `analytics.import`. Sync reads allowlisted `thread/list` and `thread/read` through Host's shared Core connections. Host forwards turn events without starting the service solely for an event. Clients report activity every five seconds and the service takes the union; legacy Main activity merges by daily maximum. Disabled domains retain their old analytics path.
+
+Non-native GUI library operations use Host exclusively. Navigation writes use `library.command` and retain the original `commandId` for outcome queries; other preferences use the Host workbench command path and its existing validation. Unavailable or rejected Host requests do not fall back to desktop IPC. Computer-control settings retain the Main permission owner.
 
 ## Native capabilities and credentials
 

@@ -2,7 +2,6 @@
 "use strict";
 const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
-const { createHash } = require("node:crypto");
 const { openSync, fstatSync, readSync, closeSync, constants } = require("node:fs");
 const { normalizeNetworkSetting } = require("./desktop-network.cjs");
 const { modelRecord } = require("@areal/workbench/core-model-contract");
@@ -121,10 +120,6 @@ class CoreLibrary {
     };
     /** @type {Promise<unknown>} */
     this.writes = Promise.resolve();
-    /** 切到 Host 单写时的写入口；未设置时 Main 自己写文件。 @type {{required?:boolean,write:(value:unknown,expectedDigest:string|null)=>Promise<string>}|null} */
-    this.store = null;
-    /** 最近一次读到或写入的文件内容摘要，交给 Host 做比较后替换。 @type {string|null} */
-    this.digest = null;
   }
   async init() {
     await this.reload();
@@ -144,25 +139,9 @@ class CoreLibrary {
       bytes = await readFile(join(this.backend.home, "library.json"));
     } catch (error) {
       if (!modelRecord(error) || error.code !== "ENOENT") throw error;
-      this.digest = null;
       return;
     }
     this.value = { ...empty, ...readLibraryState(JSON.parse(bytes.toString("utf8")), empty) };
-    this.digest = createHash("sha256").update(bytes).digest("hex");
-  }
-  /**
-   * 资料库改由 Host 单写（areal.oneProtocol.domains 含 library）。在写队列里切换，切换前先重读磁盘。
-   * @param {{required?:boolean,write:(value:unknown,expectedDigest:string|null)=>Promise<string>}|null} store
-   */
-  useStore(store) {
-    const task = this.writes
-      .catch(() => {})
-      .then(async () => {
-        if (store) await this.reload();
-        this.store = store;
-      });
-    this.writes = task.catch(() => {});
-    return task;
   }
   /** @param {(state:LibraryState)=>void} change */
   async change(change) {

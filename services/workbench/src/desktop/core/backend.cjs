@@ -105,7 +105,6 @@ class CoreBackend {
     });
     this.configHome = configHome ?? join(userHome || require("node:os").homedir(), ".areal");
     this.home = home;
-    this.hostLibrary = { home: hostHome, profile: guiProfile };
     this.genUiState = createGenUiState(home);
     this.harnessHome = harnessHome;
     this.config = config;
@@ -408,20 +407,6 @@ class CoreBackend {
     return { hostId: this.host.client.hostId, generation: this.host.client.generation };
   }
 
-  /** 资料库改由 Host 单写（一套协议过渡开关），关掉即回到这里自己写。 @param {boolean} enabled @param {boolean} [required] */
-  useHostLibrary(enabled, required = false) {
-    if (!enabled) return this.library.useStore(null);
-    /** @type {typeof import("@areal/workbench-service/host-library-store")} */
-    const { createHostLibraryStore } = require("@areal/workbench-service/host-library-store");
-    return this.library.useStore({
-      ...createHostLibraryStore({
-        ...this.hostLibrary,
-        binary: this.binary,
-        library: this.home,
-      }),
-      required,
-    });
-  }
   /** @param {string} name @param {unknown} value */
   save(name, value) {
     const contents = JSON.stringify(value);

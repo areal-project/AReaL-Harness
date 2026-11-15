@@ -353,6 +353,20 @@ try {
     checks.push(
       "Paired browser drag ordering and navigation preferences persist; native settings are rejected",
     );
+    const font = await call("desktop.command", {
+      command: "library",
+      request: { operation: "settings", key: "terminalFontFamily", value: "monospace" },
+    });
+    assert.equal(font.settings.terminalFontFamily, "monospace");
+    const savedPreferences = JSON.parse(
+      await readFile(join(source.coreHome, "library.json"), "utf8"),
+    );
+    assert.equal(savedPreferences.settings.terminalFontFamily, "monospace");
+    assert.equal(
+      savedPreferences.sections.filter((section) => section.title === "Web library").length,
+      1,
+    );
+    checks.push("Non-native preferences use the Host workbench path and preserve navigation state");
   }
   if (selected("trajectory")) {
     const trajectory = await call("trajectory.read", {

@@ -400,13 +400,13 @@ class CiContracts(unittest.TestCase):
             "clients/gui/app/assets/builtin-skills/sample/SKILL.md",
             "core/config/prompt.md",
             "examples/plugin-marketplace/sample/skills/sample/SKILL.md",
-            "services/workbench/src/host-library-store.ts",
+            "services/workbench/src/host-core-client.ts",
         ):
             with self.subTest(path=path):
                 impact = scope.impact([path])
                 self.assertTrue(impact["shared"] or impact["gui"])
         self.assertEqual(
-            scope.impact(["services/workbench/src/host-library-store.ts"])["unknown"], []
+            scope.impact(["services/workbench/src/host-core-client.ts"])["unknown"], []
         )
         for path in (
             "README.md",

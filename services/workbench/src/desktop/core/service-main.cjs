@@ -38,8 +38,6 @@ async function createMainDesktop(options, { onClose = () => {}, hostCall }) {
       onClose();
     })());
   try {
-    // Host 接管时在任何恢复与后台初始化前绑定单写者，不能等 ready 后才切换。
-    await backend.useHostLibrary(true, true);
     await backend.init();
     const power = new SharedPowerMonitor(backend);
     adapter = new DesktopService(
