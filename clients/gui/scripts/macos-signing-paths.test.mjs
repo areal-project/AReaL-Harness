@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile, copyFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { preserveSignedPaths, signLocalMacOSApp } from "./macos-signing-paths.mjs";
+import { createRequire } from "node:module";
+import { execFileSync, spawnSync } from "node:child_process";
+import {
+  preserveSignedPaths,
+  signLocalMacOSApp,
+  createSigningFilter,
+} from "./macos-signing-paths.mjs";
 
 test("outer signing preserves Core bytes through main and background-service resource paths", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "areal-sign-paths-"));
@@ -159,3 +165,127 @@ test("default packaging stops before building when distribution signing credenti
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Developer ID requires --identity and --keychain-profile/);
 });
+
+test("distribution signing selects native code once and leaves data to the resource seal", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "areal-sign-filter-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const app = join(root, "Candidate.app");
+  const framework = join(app, "Contents/Frameworks/Native.framework");
+  await mkdir(join(framework, "Versions/A"), { recursive: true });
+  const native = join(framework, "Versions/A/Native");
+  await writeFile(native, Buffer.from("cffaedfe00000000", "hex"));
+  await symlink("A", join(framework, "Versions/Current"));
+  await symlink("Versions/Current/Native", join(framework, "Native"));
+  const resources = join(app, "Contents/Resources");
+  await mkdir(resources);
+  const data = join(resources, "locale.pak");
+  await writeFile(data, Buffer.from([0, 1, 2, 3, 4]));
+  const core = join(resources, "core");
+  await writeFile(core, Buffer.from("cafebabe00000000", "hex"));
+  const ignore = createSigningFilter({ app, protectedPaths: [core] });
+  assert.equal(ignore(data), true);
+  assert.equal(ignore(native), false);
+  assert.equal(ignore(join(framework, "Native")), true);
+  assert.equal(ignore(join(framework, "Versions/Current/Native")), true);
+  assert.equal(ignore(core), true);
+  assert.equal(ignore(framework), false);
+  assert.equal(ignore(app), false);
+  assert.throws(() => ignore(join(resources, "missing")));
+});
+
+test(
+  "filtered signing still seals resources and rejects later resource edits",
+  { skip: process.platform !== "darwin" },
+  async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "areal-sign-seal-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const app = join(root, "Fixture.app");
+    await mkdir(join(app, "Contents/MacOS"), { recursive: true });
+    await mkdir(join(app, "Contents/Resources"));
+    await copyFile("/usr/bin/true", join(app, "Contents/MacOS/fixture"));
+    await writeFile(
+      join(app, "Contents/Info.plist"),
+      `<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>org.areal.signing.fixture</string><key>CFBundleExecutable</key><string>fixture</string><key>CFBundlePackageType</key><string>APPL</string></dict></plist>`,
+    );
+    const resource = join(app, "Contents/Resources/locale.pak");
+    await writeFile(resource, Buffer.from([0, 1, 2, 3, 4]));
+    const require = createRequire(new URL("../app/package.json", import.meta.url));
+    const builderRequire = createRequire(require.resolve("electron-builder"));
+    const { signAsync } = builderRequire("@electron/osx-sign");
+    const targets = [];
+    await signAsync({
+      app,
+      platform: "darwin",
+      identity: "-",
+      identityValidation: false,
+      gatekeeperAssess: false,
+      preAutoEntitlements: false,
+      preEmbedProvisioningProfile: false,
+      ignore: createSigningFilter({ app, protectedPaths: [] }),
+      optionsForFile: (path) => {
+        targets.push(path);
+        return {
+          hardenedRuntime: true,
+          entitlements: new URL("./entitlements.mac.plist", import.meta.url).pathname,
+        };
+      },
+    });
+    assert.ok(targets.includes(app));
+    assert.ok(targets.includes(join(app, "Contents/MacOS/fixture")));
+    assert.ok(!targets.includes(resource));
+    execFileSync("/usr/bin/codesign", ["--verify", "--deep", "--strict", app]);
+    await writeFile(resource, "changed resource");
+    assert.throws(() =>
+      execFileSync("/usr/bin/codesign", ["--verify", "--deep", "--strict", app], { stdio: "pipe" }),
+    );
+  },
+);
+
+test(
+  "notarization timing preserves failed runs across resume without contacting Apple",
+  { skip: process.platform !== "darwin" },
+  async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "areal-sign-timing-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const { realpath } = await import("node:fs/promises");
+    const output = await realpath(root);
+    await writeFile(
+      join(output, "notarization.json"),
+      JSON.stringify({
+        schema: 1,
+        output,
+        phase: "signed",
+        appName: "Missing.app",
+        historyPreflight: { passed: true },
+      }),
+    );
+    for (let i = 0; i < 2; i++) {
+      const result = spawnSync(
+        process.execPath,
+        [new URL("./notarize-macos.mjs", import.meta.url).pathname, "--resume", "--output", output],
+        { encoding: "utf8" },
+      );
+      assert.equal(result.status, 1, result.stderr);
+    }
+    const events = (await readFile(join(output, "notarization-timings.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map(JSON.parse);
+    assert.equal(new Set(events.map((event) => event.runId)).size, 2);
+    assert.deepEqual(
+      events.map((event) => event.status),
+      ["running", "failed", "running", "failed"],
+    );
+    const commands = (await readFile(join(output, "commands.log"), "utf8"))
+      .trim()
+      .split("\n")
+      .map(JSON.parse);
+    assert.equal(commands.length, 2);
+    for (const record of commands) {
+      assert.equal(record.command[0], "/usr/bin/codesign");
+      assert.equal(record.command[1], "--verify");
+      assert.ok(record.durationMs >= 0);
+      assert.notEqual(record.exitCode, 0);
+    }
+  },
+);

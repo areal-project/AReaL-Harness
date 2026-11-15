@@ -1,8 +1,16 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, realpathSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  realpathSync,
+  readFileSync,
+  statSync,
+  openSync,
+  readSync,
+  closeSync,
+} from "node:fs";
 import { readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve, relative } from "node:path";
 
 // 后台服务的 Resources 链接回主应用；跳过物理文件的全部别名，避免二次签名使清单失效。
 export function preserveSignedPaths(paths) {
@@ -13,6 +21,35 @@ export function preserveSignedPaths(paths) {
     } catch {
       return false;
     }
+  };
+}
+
+// 只对原生代码与 bundle 单独签名；普通资源由外层资源封印覆盖。
+// osx-sign 的扫描会跟随软链接并把所有二进制资源当代码，必须在这里过滤别名与资源。
+export function createSigningFilter({ app, protectedPaths }) {
+  const root = realpathSync(app);
+  const protectedFile = preserveSignedPaths(protectedPaths);
+  return (path) => {
+    const physical = realpathSync(path);
+    if (physical !== resolve(root, relative(app, path)) || protectedFile(path)) return true;
+    if (statSync(path).isDirectory()) return false;
+    const fd = openSync(path, "r");
+    const magic = Buffer.alloc(4);
+    try {
+      readSync(fd, magic, 0, 4, 0);
+    } finally {
+      closeSync(fd);
+    }
+    return ![
+      "feedface",
+      "cefaedfe",
+      "feedfacf",
+      "cffaedfe",
+      "cafebabe",
+      "bebafeca",
+      "cafebabf",
+      "bfbafeca",
+    ].includes(magic.toString("hex"));
   };
 }
 

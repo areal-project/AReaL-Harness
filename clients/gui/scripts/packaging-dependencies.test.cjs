@@ -173,3 +173,43 @@ test("package build receipts reject changed inputs, corrupted outputs and failed
   assert.ok(timings.stages[0].durationMs >= 0);
   assert.equal(timings.stages[0].status, "ok");
 });
+
+test("package timing records failed and successful intervals before and after execution", async () => {
+  const { createTimings } = await import("./package-build.mjs");
+  const events = [];
+  const timings = createTimings((stage) => events.push({ ...stage }));
+  assert.equal(
+    timings.measureSync("copy", () => 7),
+    7,
+  );
+  const failure = new Error("sign failed");
+  await assert.rejects(
+    timings.measure("sign", async () => {
+      throw failure;
+    }),
+    (error) => error === failure,
+  );
+  assert.throws(
+    () =>
+      timings.measureSync("verify", () => {
+        throw failure;
+      }),
+    (error) => error === failure,
+  );
+  assert.deepEqual(
+    events.map(({ name, status }) => [name, status]),
+    [
+      ["copy", "running"],
+      ["copy", "ok"],
+      ["sign", "running"],
+      ["sign", "failed"],
+      ["verify", "running"],
+      ["verify", "failed"],
+    ],
+  );
+  for (const stage of timings.stages) {
+    assert.ok(Number.isFinite(Date.parse(stage.startedAt)));
+    assert.ok(Date.parse(stage.completedAt) >= Date.parse(stage.startedAt));
+    assert.ok(stage.durationMs >= 0);
+  }
+});

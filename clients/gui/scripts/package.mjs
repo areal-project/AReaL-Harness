@@ -7,7 +7,7 @@ import {
 } from "./package-build.mjs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { join, resolve } from "node:path";
+import { join, resolve, relative } from "node:path";
 import { cp, lstat, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
@@ -337,8 +337,12 @@ try {
       // 本机无新增签名模式保留输入签名；不能把拼装后的 bundle 宣称为签名有效。
       let signatureVerification;
       if (!unsignedLocal) {
-        await signLocalMacOSApp(app, (command, args) =>
-          execFileSync(command, args, { stdio: "inherit" }),
+        await timings.measure("sign-adhoc", () =>
+          signLocalMacOSApp(app, (command, args) =>
+            timings.measureSync("sign-adhoc:" + args[0] + ":" + relative(app, args.at(-1)), () =>
+              execFileSync(command, args, { stdio: "inherit" }),
+            ),
+          ),
         );
         signatureVerification = { valid: true };
       } else {
