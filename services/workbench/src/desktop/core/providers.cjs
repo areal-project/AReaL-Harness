@@ -1623,10 +1623,8 @@ class AppProviders {
             (method) => target.client.capabilities?.methods?.includes(method),
           )
         ) {
-          if (this.pendingApplications.has(project.id))
-            throw new Error("原模型配置操作结果尚未确认，请先核对原回执。");
-          target.readOnly = true;
-          return;
+          project.providerError = "请更新 Core 后再应用模型配置。";
+          throw new Error(project.providerError);
         }
         const reconciled = await this.inspectPending(target);
         if (reconciled?.pending) throw reconciled.error;
