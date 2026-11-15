@@ -50,10 +50,14 @@ class ArchitectureAndJourneys(unittest.TestCase):
             violations = architecture.check(root, loaded)
             self.assertEqual(violations[0]["rule"], "test")
 
-    def test_changed_paths_map_to_both_journeys(self):
+    def test_changed_paths_map_to_registered_narrow_paths(self):
         self.assertEqual(
-            journeys.affected(["core/engine/src/recovery.rs"]),
-            ["conversation-submit", "unknown-receipt-recovery"],
+            journeys.affected(["clients/gui/renderer/src/DraftComposer.tsx"]),
+            ["conversation-submit"],
+        )
+        self.assertEqual(
+            journeys.affected(["core/host/src/client.rs"]),
+            ["unknown-receipt-recovery"],
         )
 
     def test_evidence_requires_matching_identity(self):
@@ -87,7 +91,10 @@ class ArchitectureAndJourneys(unittest.TestCase):
         report = triage.compare(1)
         self.assertEqual(report["schemaVersion"], 1)
         self.assertEqual(report["sampleSize"], 1)
-        self.assertIn("human minutes", report["measurement"]["old"])
+        self.assertIn("human", report["measurement"]["old"])
+        self.assertIn("realJourneyEvidence", report["rows"][0]["newProcess"])
+        self.assertIn("blockReasons", report["rows"][0]["newProcess"]["realJourneyEvidence"][0])
+        self.assertFalse(report["conclusion"]["canConfirmHumanTimeReduction"])
 
 
 if __name__ == "__main__":

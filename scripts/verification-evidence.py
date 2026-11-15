@@ -24,6 +24,8 @@ def validate(report):
     for journey in evidence["journeys"]:
         if journey.get("status") not in {"passed", "failed", "blocked", "pending", "not-selected"}:
             raise ValueError("verification evidence has an invalid journey status")
+        if not isinstance(journey.get("blockReasons", []), list):
+            raise ValueError("verification evidence blockReasons must be a list")
     return evidence
 
 

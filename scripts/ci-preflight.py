@@ -345,6 +345,7 @@ def run_plan(
                     "id": journey_id,
                     "requiredChecks": plan.get("journeyChecks", {}).get(journey_id, []),
                     "observedChecks": [],
+                    "blockReasons": [],
                     "status": "pending",
                 }
                 for journey_id in plan.get("affectedJourneys", [])
@@ -519,6 +520,17 @@ def run_plan(
                 if any(result["id"].endswith(check) for check in required)
             ]
             journey["observedChecks"] = [result["id"] for result in matching]
+            journey["blockReasons"] = [
+                reason
+                for result in matching
+                if result["status"] in {"blocked", "failed"}
+                for reason in (
+                    result.get("reason"),
+                    *result.get("missingRequirements", []),
+                    *result.get("blockedBy", []),
+                )
+                if reason
+            ]
             if not matching:
                 journey["status"] = "not-selected"
             elif any(result["status"] == "failed" for result in matching):

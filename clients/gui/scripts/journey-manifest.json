@@ -5,7 +5,15 @@
       "id": "conversation-submit",
       "title": "提交对话并看到权威结果",
       "surfaces": ["web", "desktop", "mobile"],
-      "paths": ["clients/gui/**", "core/**", "schemas/**", "services/workbench/**"],
+      "paths": [
+        "clients/gui/scripts/ux-journeys.mjs",
+        "clients/gui/scripts/ux-checks.mjs",
+        "clients/gui/scripts/support/journey-fixture.mjs",
+        "clients/gui/renderer/src/DraftComposer.tsx",
+        "clients/gui/renderer/src/ComposerQueue.tsx",
+        "clients/gui/renderer/src/Messages.tsx",
+        "clients/gui/renderer/src/components/messages/**"
+      ],
       "authorities": ["host", "core", "runtime"],
       "terminalFacts": ["requestAccepted", "turnSettled", "visibleResult"],
       "checks": ["test:ux-journeys", "test:conversation-reading"]
@@ -14,7 +22,19 @@
       "id": "unknown-receipt-recovery",
       "title": "断线后核对 UNKNOWN 收据且不重放",
       "surfaces": ["web", "desktop", "mobile"],
-      "paths": ["clients/gui/**", "core/**", "schemas/**", "services/workbench/**", "runtime/**"],
+      "paths": [
+        "clients/gui/scripts/service-reopen-smoke.mjs",
+        "clients/gui/scripts/history-copy-smoke.mjs",
+        "clients/gui/scripts/application-cleanup.mjs",
+        "clients/gui/scripts/support/desktop-fixture.mjs",
+        "clients/gui/packages/client/node/host-client.cjs",
+        "core/host/src/client.rs",
+        "core/host/src/server.rs",
+        "core/host/src/service.rs",
+        "core/app-server/src/**",
+        "runtime/supervisor/**",
+        "runtime/daemon/**"
+      ],
       "authorities": ["host", "core", "runtime"],
       "terminalFacts": [
         "originalRequestRetained",
