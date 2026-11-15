@@ -91,7 +91,7 @@ Host 是 `library.json` 的唯一写者，导航整理直接在 Host 事务中�
 
 统计方法为 `analytics.read`、`analytics.sync`、`analytics.activity`、`analytics.import`。同步通过 Host 的共享 Core 连接白名单读取 `thread/list` 与 `thread/read`；Host 转发轮次事件但不为事件单独启动服务。客户端每 5 秒上报活跃状态，服务取并集；Main 旧活跃时间按天取较大值合并。未启用领域时保留旧统计路径。
 
-GUI 非原生资料库操作统一调用 `library.command`，保留原 `commandId` 经 `command.read` 核对结果；缺少回执保持 UNKNOWN，不重发。Host 拥有准入和回执：导航整理直接执行，其他偏好交给工作台保留原有校验，再经 Host `library.patch` 写入。回执沿用公开导航投影，偏好值从现有状态订阅读取，不把私有配置写入回执。新增非原生偏好只扩展该契约与现有校验，不新增客户端路由。`desktop.command` 不接受资料库操作，Host 不可用时不回退 IPC。只有电脑控制的 enabled、provider、executable 三项设置保留 Main 权限所有者。
+GUI 非原生资料库操作统一调用 `library.command`，保留原 `commandId` 经 `command.read` 核对结果；缺少回执保持 UNKNOWN，不重发。Host 拥有准入和回执：导航整理直接执行，其他偏好交给工作台保留原有校验，再经 Host `library.patch` 写入。回执沿用公开导航投影，偏好值从现有状态订阅读取，不把私有配置写入回执。新增非原生偏好只扩展该契约与现有校验，不新增客户端路由。旧的整份资料库替换接口 `library.write` 已移除。`desktop.command` 不接受资料库操作，Host 不可用时不回退 IPC。只有电脑控制的 enabled、provider、executable 三项设置保留 Main 权限所有者。
 
 ## 原生能力与凭据
 

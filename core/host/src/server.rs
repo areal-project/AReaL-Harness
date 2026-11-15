@@ -1427,7 +1427,6 @@ impl Host {
                 self.update_status()
             }
             "host.update" => self.update(serde_json::from_value(params)?).await,
-            "library.write" => library_store::write(self, serde_json::from_value(params)?),
             _ => Err(error("methodNotFound", "unknown Host method")),
         }
     }
