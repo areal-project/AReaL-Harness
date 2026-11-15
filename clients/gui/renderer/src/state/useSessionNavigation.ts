@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { beginSessionLoad } from "@areal/client";
 import { currentErrorText } from "../errors/currentErrorText.js";
 import {
   recoveryMessage,
@@ -408,6 +409,7 @@ export function useSessionNavigation(
     });
   };
   const selectConversation = async (pid: string, id: string) => {
+    beginSessionLoad(id);
     setNoProject(false);
     setProjectId(pid);
     setThreadId(id);
@@ -427,6 +429,7 @@ export function useSessionNavigation(
     await restoreConversation(owner, target?.state?.connected ? "open" : "connect");
   };
   const selectDraft = (pid: string | undefined) => {
+    beginSessionLoad("");
     if (services.recoverPersistedHistory) {
       restorationAttempt.current = undefined;
       void services.recoverPersistedHistory(null).catch(() => {});

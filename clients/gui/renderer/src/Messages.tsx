@@ -1,4 +1,5 @@
 import { ConversationDiagramDialog } from "./ConversationDiagramDialog.js";
+import { sessionLoadTiming } from "@areal/client";
 import { currentErrorText } from "./errors/currentErrorText.js";
 import type { MediaOwner } from "./PlatformReadContext.js";
 import { scheduledRunTask, scheduledTaskName } from "./scheduleText.js";
@@ -862,6 +863,41 @@ export function Messages({
   }, [owner, latestTurnId, latestUserId, turnStartRequest, reserveResponseSpace]);
   useLayoutEffect(() => {
     layoutReading.current();
+  });
+  useLayoutEffect(() => {
+    if (embedded) return;
+    const timing = sessionLoadTiming(localThread.id);
+    const element = container.current;
+    if (!timing || timing.has("messagesPainted") || !element) return;
+    const hasVisibleMessage = () => {
+      if (document.visibilityState !== "visible") return false;
+      const viewport = element.getBoundingClientRect();
+      return [
+        ...element.querySelectorAll(
+          "[data-side-item-id] .user-bubble, [data-side-item-id] .conversation-markdown",
+        ),
+      ].some((message) => {
+        if (!message.textContent?.trim()) return false;
+        const rect = message.getBoundingClientRect();
+        return (
+          rect.width > 0 &&
+          rect.height > 0 &&
+          rect.right > Math.max(0, viewport.left) &&
+          rect.left < Math.min(window.innerWidth, viewport.right) &&
+          rect.bottom > Math.max(0, viewport.top) &&
+          rect.top < Math.min(window.innerHeight, viewport.bottom)
+        );
+      });
+    };
+    if (!hasVisibleMessage()) return;
+    timing.mark("messagesCommitted");
+    // 下一帧再跨过一次绘制机会；标题、骨架和屏外消息不算首屏完成。
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        if (element.isConnected && hasVisibleMessage()) timing.mark("messagesPainted");
+      });
+    });
+    return () => cancelAnimationFrame(frame);
   });
   useLayoutEffect(() => {
     return () => {

@@ -30,6 +30,8 @@ import {
 export { readHostBootstrap, type HostBootstrap } from "./bootstrap.js";
 export type * from "./read-state.js";
 export { sessionReadKey, SESSION_READ_CACHE_MS, SESSION_READ_CACHE_LIMIT } from "./read-state.js";
+export { beginSessionLoad, sessionLoadTiming } from "./session-load-timing.js";
+import { sessionLoadTiming } from "./session-load-timing.js";
 export type HostReadState =
   | {
       connection: "connecting" | "offline";
@@ -451,6 +453,7 @@ export class HostClient {
     return this.#subscribeShell(true);
   }
   async selectSession(target: { projectId: string; threadId: string; persisted?: boolean } | null) {
+    const timing = target ? sessionLoadTiming(target.threadId) : undefined;
     if (
       target &&
       target.projectId === this.#target?.projectId &&
@@ -462,8 +465,10 @@ export class HostClient {
         session.state === "fresh" &&
         this.#state.connection === "ready" &&
         session.value.connectionId === this.#state.identity.connectionId
-      )
+      ) {
+        timing?.mark("cache", true);
         return;
+      }
       return this.#openSession();
     }
     this.#retainSession();
@@ -490,6 +495,7 @@ export class HostClient {
             }),
           )?.value
         : undefined;
+    timing?.mark("cache", !!cached);
     this.#publishReads({
       ...this.#reads,
       session: cached ? { state: "stale", value: cached } : { state: "loading" },
@@ -518,6 +524,7 @@ export class HostClient {
       target = this.#target,
       selection = ++this.#selection;
     if (!transport || !target) return;
+    const timing = sessionLoadTiming(target.threadId);
     const shell = previous(this.#reads.shell);
     const project = shell?.snapshot.projects.find((p) => p.projectId === target.projectId);
     const persisted =
@@ -536,11 +543,13 @@ export class HostClient {
       ...(project.serviceGeneration ? { serviceGeneration: project.serviceGeneration } : {}),
     };
     try {
+      timing?.mark("request");
       const value = await transport.request(
         persisted ? "session.openPersisted" : "session.open",
         { threadId: target.threadId, view: "conversation" } satisfies ConversationOpenParams,
         context,
       );
+      timing?.mark("response");
       if (selection !== this.#selection || transport !== this.#transport) {
         if (identity(value))
           void transport
@@ -578,6 +587,7 @@ export class HostClient {
         view: "conversation",
         snapshot: value.snapshot,
       };
+      timing?.mark("baseline");
       this.#publishReads({ ...this.#reads, session: { state: "fresh", value: session } });
       this.#pruneSessionCache();
     } catch (error) {

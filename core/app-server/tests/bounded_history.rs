@@ -137,6 +137,14 @@ impl Running {
         self.stop.cancel();
         self.server.await.unwrap().unwrap();
         self.engine.shutdown().await;
+        // HTTP listener 退出不代表升级后的 WebSocket 已释放 Core；重开目录前等连接所有者退出。
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while Arc::strong_count(&self.engine) > 1 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("WebSocket owners must release Core before reopening its store");
     }
 }
 
@@ -146,6 +154,72 @@ fn turn(n: usize, text: String) -> Value {
         {"id":format!("answer-{n}"),"type":"agentMessage","text":text}
     ]})
 }
+
+#[tokio::test]
+async fn conversation_first_page_of_long_history_preserves_messages_and_budget() {
+    let directory = tempfile::tempdir().unwrap();
+    let engine = Engine::open(directory.path(), Arc::new(IdleModel), Limits::default()).unwrap();
+    let thread = engine.create("/bounded-fixture".into()).await.unwrap();
+    engine.shutdown().await;
+    drop(engine);
+    let path = directory.path().join(format!("{}.json", thread.id));
+    let mut record: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    let turns: Vec<_> = (0..1500)
+        .map(|n| {
+            turn(
+                n,
+                format!("actual answer {n} {}", "long history ".repeat(640)),
+            )
+        })
+        .collect();
+    record["thread"]["turns"] = json!(turns);
+    std::fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
+    let mut running = Running::open(directory.path()).await;
+    // 先编译测试端 schema；不能把断言框架初始化算进目标会话读取。
+    let empty = running
+        .engine
+        .create("/bounded-fixture".into())
+        .await
+        .unwrap();
+    running
+        .call(
+            "areal/thread/observe",
+            json!({"threadId":empty.id,"mode":"conversation","maxBytes":131072}),
+            Some(131072),
+        )
+        .await;
+    for sample in 0..5 {
+        let started = std::time::Instant::now();
+        let reply = running
+            .call(
+                "areal/thread/observe",
+                json!({"threadId":thread.id,"mode":"conversation","maxBytes":131072}),
+                Some(131072),
+            )
+            .await;
+        let elapsed = started.elapsed().as_secs_f64() * 1000.0;
+        assert!(reply.get("error").is_none(), "{reply}");
+        let result = &reply["result"];
+        let latest = result["thread"]["turns"]
+            .as_array()
+            .unwrap()
+            .last()
+            .unwrap();
+        assert_eq!(latest["id"], "turn-1499");
+        assert_eq!(latest["items"][0]["content"][0]["text"], "question 1499");
+        assert!(
+            latest["items"][1]["text"]
+                .as_str()
+                .unwrap()
+                .starts_with("actual answer 1499 ")
+        );
+        assert_eq!(result["history"]["complete"], false);
+        assert!(result["history"]["nextCursor"].is_string());
+        eprintln!("conversation_first_page sample={sample} elapsed_ms={elapsed:.2}");
+    }
+    running.close().await;
+}
+
 async fn fixture(path: &std::path::Path, archived: bool) -> (String, Vec<Value>) {
     let engine = Engine::open(path, Arc::new(IdleModel), Limits::default()).unwrap();
     let thread = engine.create("/bounded-fixture".into()).await.unwrap();

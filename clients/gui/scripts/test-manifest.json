@@ -1130,5 +1130,14 @@
     "areas": ["lifecycle", "service"],
     "requires": ["electron", "core-binary", "gui-build"],
     "notes": "Web client against a partially migrated Host; needs AREAL_PARTIAL_CORE_SHA256 of the old Core."
+  },
+  {
+    "script": "test:session-load-performance",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "Uses isolated macOS Host/Core services and Chrome to measure actual message paint.",
+    "areas": ["history", "conversation", "service"],
+    "requires": ["chrome", "core-binary", "gui-build"],
+    "notes": "Measures cache misses and revisits with 1500-turn history; enforces a 200ms maximum and retains staged timings and cleanup receipts."
   }
 ]

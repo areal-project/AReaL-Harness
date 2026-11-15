@@ -15,6 +15,7 @@ export type { ReadingTarget, ReadingWindow } from "./host-snapshot.js";
 import { cacheHistoryPages, pinnedPage, retainTarget, encodedBytes } from "./host-history-cache.js";
 import {
   HostClient,
+  sessionLoadTiming,
   sessionReadKey,
   SESSION_READ_CACHE_MS,
   SESSION_READ_CACHE_LIMIT,
@@ -245,6 +246,7 @@ export function createHostReadServices(
       },
     );
     snapshot = projection.snapshot;
+    if (currentSession) sessionLoadTiming(currentSession.threadId)?.mark("projection");
     librarySourceId = projection.sourceId;
     for (const listener of listeners) listener(snapshot);
     if (client.writable("project.models"))

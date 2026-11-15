@@ -411,8 +411,11 @@ impl Engine {
         mut envelope: Value,
         conversation: bool,
     ) -> Result<(Value, broadcast::Receiver<Value>)> {
+        let started = std::time::Instant::now();
         let cell = self.raw_cell(thread_id).await?;
+        let materialized = started.elapsed();
         let state = cell.state.lock().await;
+        let locked = started.elapsed();
         let (ownership, _tasks) = self.ownership_and_lock(&state.thread, allowed).await;
         let mut thread = if state.thread.desktop.as_ref().is_some_and(|d| d.archived) {
             self.store
@@ -424,20 +427,22 @@ impl Engine {
         };
         project_side_capacity(&mut thread, state.active.as_ref());
         self.refresh_goal_usage(&mut thread);
-        let mut metadata = thread.clone();
-        metadata.turns.clear();
-        metadata.context_checkpoint = None;
-        if let Some(desktop) = metadata.desktop.as_mut() {
+        // 首屏外壳不包含历史正文；移动后归还，避免为了清空 turns 再复制整个长会话。
+        let turns = std::mem::take(&mut thread.turns);
+        thread.context_checkpoint = None;
+        if let Some(desktop) = thread.desktop.as_mut() {
             desktop.receipts.clear();
         }
-        envelope["cwd"] = json!(metadata.cwd);
-        envelope["thread"] = json!(metadata);
+        envelope["cwd"] = json!(thread.cwd);
+        envelope["thread"] = json!(thread);
+        thread.turns = turns;
         envelope["ownership"] = json!(ownership);
         let empty_active_turn = thread
             .turns
             .last()
             .filter(|turn| turn.status == TurnStatus::InProgress && turn.items.is_empty())
             .cloned();
+        let prepared = started.elapsed();
         let result = self
             .store
             .own_history_page(
@@ -450,6 +455,16 @@ impl Engine {
                 conversation,
             )
             .await?;
+        tracing::debug!(
+            target: "areal::session_load",
+            thread_id,
+            materialize_ms = materialized.as_secs_f64() * 1000.0,
+            lock_ms = (locked - materialized).as_secs_f64() * 1000.0,
+            prepare_ms = (prepared - locked).as_secs_f64() * 1000.0,
+            page_ms = (started.elapsed() - prepared).as_secs_f64() * 1000.0,
+            total_ms = started.elapsed().as_secs_f64() * 1000.0,
+            "conversation baseline"
+        );
         Ok((result, cell.events.subscribe()))
     }
 

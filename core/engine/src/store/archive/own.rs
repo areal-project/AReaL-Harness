@@ -197,17 +197,20 @@ impl Store {
         empty_active_turn: Option<Turn>,
         conversation: bool,
     ) -> crate::Result<Value> {
+        let started = std::time::Instant::now();
         let permit = self
             .fork_reads
             .clone()
             .acquire_owned()
             .await
             .map_err(|e| crate::Error::Storage(e.to_string()))?;
+        let queued = started.elapsed();
         let root = self.root.clone();
         let cached_entry = self.own_history_entry.clone();
         tokio::task::spawn_blocking(move || {
             let _permit = permit;
-            page(
+            let assembled = std::time::Instant::now();
+            let result = page(
                 &root,
                 &thread,
                 &identity,
@@ -217,7 +220,16 @@ impl Store {
                 empty_active_turn,
                 conversation,
                 &cached_entry,
-            )
+            );
+            tracing::debug!(
+                target: "areal::session_load",
+                thread_id = %thread.id,
+                queue_ms = queued.as_secs_f64() * 1000.0,
+                worker_ms = (assembled.duration_since(started) - queued).as_secs_f64() * 1000.0,
+                assembly_ms = assembled.elapsed().as_secs_f64() * 1000.0,
+                "conversation page"
+            );
+            result
         })
         .await
         .map_err(|e| crate::Error::Storage(e.to_string()))?

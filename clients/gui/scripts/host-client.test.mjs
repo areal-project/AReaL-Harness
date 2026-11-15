@@ -14,9 +14,38 @@ const { outputFiles } = await buildRequire("esbuild").build({
   format: "esm",
   platform: "browser",
 });
-const { HostClient, readHostBootstrap } = await import(
+const { HostClient, readHostBootstrap, beginSessionLoad, sessionLoadTiming } = await import(
   `data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString("base64")}`
 );
+
+test("session latency ignores superseded reads and records each milestone once", () => {
+  performance.clearMeasures("areal.session-load");
+  beginSessionLoad("first");
+  const original = sessionLoadTiming("first");
+  original.mark("cache", false);
+  beginSessionLoad("second");
+  original.mark("response");
+  assert.equal(sessionLoadTiming("first"), undefined);
+  beginSessionLoad("first");
+  original.mark("messagesPainted");
+  const current = sessionLoadTiming("first");
+  current.mark("cache", true);
+  current.mark("projection");
+  current.mark("projection");
+  current.mark("messagesPainted");
+  const entries = performance.getEntriesByName("areal.session-load");
+  assert.equal(entries.filter((entry) => entry.detail.sample === original.sample).length, 2);
+  const latest = entries.filter((entry) => entry.detail.sample === current.sample);
+  assert.deepEqual(
+    latest.map((entry) => entry.detail.stage),
+    ["selected", "cache", "projection", "messagesPainted"],
+  );
+  assert.equal(latest.at(-1).detail.cache, "hit");
+  assert.ok(latest.every((entry) => entry.duration >= 0));
+  beginSessionLoad("");
+  assert.equal(sessionLoadTiming("first"), undefined);
+  performance.clearMeasures("areal.session-load");
+});
 const hostId = "ae883ffd-144b-4092-bb4c-c7b719bd9d06";
 const generation = "dd6013a2-dfd2-42d5-afb9-f90e78af0dfe";
 const origin = "areal-ui://app";
