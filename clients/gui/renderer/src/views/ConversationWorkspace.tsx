@@ -27,6 +27,7 @@ import { Messages } from "../Messages.js";
 import { ProjectlessDraft } from "../ProjectlessDraft.js";
 import { recoverySettings } from "../recoveryPresentation.js";
 import { rawText } from "../errors/errorCopy.js";
+// 过渡：到 0.1.21 删，设置页标识统一后移除旧标识模块引用。
 import { serviceSettingsId } from "../lib/legacySettingsIds.js";
 import { conversationLoadState } from "./conversationLoadState.js";
 import { type Action, type PlatformServices } from "../services.js";

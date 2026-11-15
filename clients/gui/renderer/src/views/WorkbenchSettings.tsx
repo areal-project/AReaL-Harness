@@ -1,5 +1,6 @@
 import { SnapShotSettings } from "../snapshots/SnapShotSettings.js";
 import { BackendServiceStatus } from "../BackendStatusNotice.js";
+// 过渡：到 0.1.21 删，设置页标识统一后移除旧标识模块引用。
 import { legacyServiceSettingsIds } from "../lib/legacySettingsIds.js";
 import { lazy, Suspense, type ReactNode } from "react";
 import { Button } from "../components/ui/button.js";
@@ -97,6 +98,7 @@ export function WorkbenchSettings({
       title={settingsLabel(settingsTab, t)}
       subtitle={settingsSubtitle(settingsTab, t)}
     >
+      {/* 过渡：到 0.1.21 删，旧服务页标识仍由专属面板展示连接状态。 */}
       {!legacyServiceSettingsIds.includes(settingsTab) &&
         snapshot.connection?.state === "unavailable" && (
           <BackendServiceStatus
