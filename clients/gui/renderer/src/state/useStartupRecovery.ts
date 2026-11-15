@@ -1,12 +1,30 @@
 import { recoveryMessage, recoverySettings, sameRecoveryOwner } from "../recoveryPresentation.js";
 import type { useSessionNavigation } from "./useSessionNavigation.js";
 
+export function startupReadyForPresentation(input: {
+  themeReady: boolean;
+  connectionState: string | undefined;
+  selectionReady: boolean;
+  restorationFailed: boolean;
+  startupLifecycleBlocked: boolean;
+  project: unknown;
+  currentRestoration: unknown;
+}) {
+  return (
+    input.themeReady &&
+    input.connectionState === "ready" &&
+    input.selectionReady &&
+    !input.restorationFailed &&
+    !input.startupLifecycleBlocked &&
+    (input.project === undefined || input.currentRestoration !== undefined)
+  );
+}
+
 export function useStartupRecovery(
   session: ReturnType<typeof useSessionNavigation>,
   themeReady: boolean,
 ) {
-  const { snapshot, project, thread, threadId, restoration, restorationOwner, selectionReady } =
-    session;
+  const { snapshot, project, threadId, restoration, restorationOwner, selectionReady } = session;
   const currentRestoration = sameRecoveryOwner(restoration, restorationOwner)
     ? restoration
     : undefined;
@@ -49,13 +67,17 @@ export function useStartupRecovery(
     ["acceptedPending", "admissionUnconfirmed", "partial", "settlementIncomplete"].includes(
       startupLifecycle?.phase ?? "",
     );
-  const startupReady =
-    themeReady &&
-    snapshot.connection?.state === "ready" &&
-    selectionReady &&
-    !restorationFailed &&
-    !startupLifecycleBlocked &&
-    (!project || (currentRestoration && !currentRestoration.pending && (!threadId || !!thread)));
+  // 启动壳只等待 Host、主题和选择收敛；历史正文由会话区自己的读取状态承载。
+  // 如果把正文读取也放在这里，慢历史会让整页停留在启动 Loading，随后再闪失败页。
+  const startupReady = startupReadyForPresentation({
+    themeReady,
+    connectionState: snapshot.connection?.state,
+    selectionReady,
+    restorationFailed,
+    startupLifecycleBlocked,
+    project,
+    currentRestoration,
+  });
   const projectFailureReady =
     themeReady &&
     snapshot.connection?.state === "ready" &&
