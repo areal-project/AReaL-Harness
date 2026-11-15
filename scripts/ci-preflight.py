@@ -96,6 +96,21 @@ def publish_progress(plan, report, output):
     )
 
 
+def validate_evidence(report):
+    evidence = report.get("evidence")
+    if not isinstance(evidence, dict) or evidence.get("schemaVersion") != 1:
+        raise ValueError("verification evidence schemaVersion 1 is required")
+    expected = {
+        key: report["identity"].get(key)
+        for key in ("baseRevision", "sourceRevision", "headRevision", "inputHash")
+    }
+    if evidence.get("source") != expected:
+        raise ValueError("verification evidence source does not match report identity")
+    result_ids = {result["id"] for result in report["results"]}
+    if any(check.get("id") not in result_ids for check in evidence.get("checks", [])):
+        raise ValueError("verification evidence references an unknown check")
+
+
 def matching_core(root=ROOT):
     built = root / "target/debug/areal"
     core = Path(os.environ.get("AREAL_CORE_BIN") or built)
@@ -316,6 +331,22 @@ def run_plan(
             {item["id"] for item in plan["items"]} - {item["id"] for item in selected}
         ),
         "startedAt": datetime.now(timezone.utc).isoformat(),
+        "evidence": {
+            "schemaVersion": 1,
+            "source": {
+                key: identity.get(key)
+                for key in ("baseRevision", "sourceRevision", "headRevision", "inputHash")
+            },
+            "journeys": plan.get("affectedJourneys", []),
+            "authorities": sorted(
+                {
+                    authority
+                    for journey_id in plan.get("affectedJourneys", [])
+                    for authority in plan.get("journeyAuthorities", {}).get(journey_id, [])
+                }
+            ),
+            "checks": [],
+        },
     }
     started = time.monotonic()
     if metadata is not None:
@@ -466,6 +497,9 @@ def run_plan(
             report["firstFailureAt"] = result["completedAt"]
         previous[item["id"]] = result
         results.append(result)
+        report["evidence"]["checks"].append(
+            {"id": result["id"], "status": result["status"], "authority": "ci-preflight"}
+        )
         report.pop("activeItem", None)
         print(json.dumps(result), flush=True)
         report["elapsedMs"] = round((time.monotonic() - started) * 1000)
@@ -489,6 +523,7 @@ def run_plan(
         completedAt=datetime.now(timezone.utc).isoformat(),
         elapsedMs=round((time.monotonic() - started) * 1000),
     )
+    validate_evidence(report)
     publish_progress(plan, report, output)
     return report
 

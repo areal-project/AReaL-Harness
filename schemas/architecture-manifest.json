@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "rules": [
+    {
+      "id": "renderer-shell-boundary",
+      "owner": "clients/gui/renderer",
+      "appliesTo": ["clients/gui/renderer/src/**/*.ts", "clients/gui/renderer/src/**/*.tsx"],
+      "excludedPaths": [
+        "clients/gui/renderer/src/desktop-services.ts",
+        "clients/gui/renderer/src/desktop-response.ts"
+      ],
+      "forbiddenImportSubstrings": [
+        "desktop-contract",
+        "state-projection",
+        "electron",
+        "clients/gui/app"
+      ],
+      "reason": "Renderer must use PlatformServices; native capabilities belong to the shell."
+    },
+    {
+      "id": "client-authority-boundary",
+      "owner": "clients",
+      "appliesTo": [
+        "clients/gui/renderer/src/**/*.ts",
+        "clients/gui/renderer/src/**/*.tsx",
+        "clients/mobile/**/*.ts",
+        "clients/mobile/**/*.tsx"
+      ],
+      "excludedPaths": [],
+      "forbiddenImportSubstrings": ["core/engine", "core/store", "runtime/supervisor"],
+      "reason": "Clients project authoritative state; they do not own Core history or Runtime permissions."
+    },
+    {
+      "id": "core-runtime-authority-boundary",
+      "owner": "core",
+      "appliesTo": ["core/**/*.rs"],
+      "excludedPaths": [],
+      "forbiddenImportSubstrings": ["electron", "clients/gui", "runtime/exec-native"],
+      "reason": "Core owns product state while Runtime owns operating-system execution."
+    },
+    {
+      "id": "runtime-product-boundary",
+      "owner": "runtime",
+      "appliesTo": ["runtime/**/*.rs"],
+      "excludedPaths": [],
+      "forbiddenImportSubstrings": [
+        "core/engine",
+        "clients/gui",
+        "model_strategy",
+        "parallel_width"
+      ],
+      "reason": "Runtime enforces execution facts and permissions; it does not choose product workflows."
+    }
+  ]
+}

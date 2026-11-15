@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "journeys": [
+    {
+      "id": "conversation-submit",
+      "title": "提交对话并看到权威结果",
+      "surfaces": ["web", "desktop", "mobile"],
+      "paths": ["clients/gui/**", "core/**", "schemas/**", "services/workbench/**"],
+      "authorities": ["host", "core", "runtime"],
+      "terminalFacts": ["requestAccepted", "turnSettled", "visibleResult"],
+      "checks": ["test:ux-journeys", "test:conversation-reading"]
+    },
+    {
+      "id": "unknown-receipt-recovery",
+      "title": "断线后核对 UNKNOWN 收据且不重放",
+      "surfaces": ["web", "desktop", "mobile"],
+      "paths": ["clients/gui/**", "core/**", "schemas/**", "services/workbench/**", "runtime/**"],
+      "authorities": ["host", "core", "runtime"],
+      "terminalFacts": [
+        "originalRequestRetained",
+        "receiptReconciled",
+        "noReplay",
+        "cleanupSettled"
+      ],
+      "checks": ["test:history-compat", "test:service-reopen", "test:conversation-reading"]
+    }
+  ]
+}

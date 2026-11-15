@@ -22,7 +22,11 @@ endif
 	setup setup-node sdk-build script-test launcher-test workgroup-smoke unified-execution-smoke delegation-permissions-smoke capacity-workgroup local-service-smoke upgrade-smoke tui-upgrade-smoke \
 	verify-native integration-boundaries ci-preflight ci-gui-static ci-gui-health \
 	ci-gui-portable ci-core-contracts workflow-lint hooks-install check-changed baseline-diff agent-setup check-refs check-transitional check-rust-size lazy-mcp-compare \
-	training-export training-check training-smoke
+	training-export training-check training-smoke verification-evidence
+
+verification-evidence: ## 校验一份 ci-preflight 结构化 evidence 报告；REPORT=<report.json>
+	@test -n "$(REPORT)" || { echo 'REPORT is required' >&2; exit 2; }
+	python3 scripts/verification-evidence.py "$(REPORT)"
 
 help: ## 显示常用操作（默认目标）
 	@printf '%s\n' '用法：make <target> [ARGS="..."]' ''

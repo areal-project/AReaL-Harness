@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
+JOURNEY_MANIFEST = ROOT / "clients/gui/scripts/journey-manifest.json"
 SCOPES = {
     "gui": [
         "design/**",
@@ -289,6 +290,21 @@ def build_plan(paths, source, manifest):
     """计划不接收环境能力；缺少前提只能产生 blocked，不能删项。"""
     affected = impact(paths)
     items = []
+    journeys = json.loads(JOURNEY_MANIFEST.read_text())["journeys"]
+    affected_journeys = sorted(
+        {
+            journey["id"]
+            for journey in journeys
+            if any(
+                fnmatch.fnmatchcase(path, pattern) for path in paths for pattern in journey["paths"]
+            )
+        }
+    )
+    journey_authorities = {
+        journey["id"]: journey["authorities"]
+        for journey in journeys
+        if journey["id"] in affected_journeys
+    }
 
     def add(
         name,
@@ -357,6 +373,18 @@ def build_plan(paths, source, manifest):
         add("format", ["make", "fmt-check"], "early", phase="commit")
         add("workflow", ["make", "workflow-lint"], "early", phase="commit")
         add(
+            "architecture-boundary",
+            ["python3", "scripts/check-architecture.py"],
+            "early",
+            phase="commit",
+        )
+        add(
+            "journey-registry",
+            ["python3", "scripts/check-journeys.py"],
+            "early",
+            phase="commit",
+        )
+        add(
             "plan-contracts",
             [
                 "python3",
@@ -365,6 +393,7 @@ def build_plan(paths, source, manifest):
                 "scripts.tests.test_ci_contracts",
                 "scripts.tests.test_check_changed",
                 "scripts.tests.test_git_hooks",
+                "scripts.tests.test_architecture_journeys",
             ],
             "early",
             phase="commit",
@@ -774,6 +803,8 @@ def build_plan(paths, source, manifest):
         "source": source,
         "paths": paths,
         "fallbackPaths": affected["unknown"],
+        "affectedJourneys": affected_journeys,
+        "journeyAuthorities": journey_authorities,
         "items": items,
     }
     plan["planHash"] = hashlib.sha256(
