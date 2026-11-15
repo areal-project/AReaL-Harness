@@ -426,12 +426,14 @@ async fn run_configured(mut args: Args, diagnostic: Option<ConfigCommand>) -> Re
     let result = serve(
         args,
         config,
-        model,
+        ExecutionSetup {
+            model,
+            model_document,
+            execution_error,
+        },
         stopping.clone(),
         extensions,
         inputs,
-        model_document,
-        execution_error,
     )
     .await;
     stopping.cancel();
@@ -466,16 +468,25 @@ fn canonicalize_pending(path: &std::path::Path) -> Result<PathBuf> {
     }
 }
 
+struct ExecutionSetup {
+    model: Arc<dyn areal_engine::model::Model>,
+    model_document: Option<areal_config::models::ModelConfiguration>,
+    execution_error: Option<String>,
+}
+
 async fn serve(
     args: Args,
     config: Arc<ResolvedCoreConfig>,
-    model: Arc<dyn areal_engine::model::Model>,
+    execution: ExecutionSetup,
     stopping: tokio_util::sync::CancellationToken,
     mut extensions: areal_engine::tools::ToolExtensions,
     inputs: ConfigInputs,
-    model_document: Option<areal_config::models::ModelConfiguration>,
-    mut execution_error: Option<String>,
 ) -> Result<()> {
+    let ExecutionSetup {
+        model,
+        model_document,
+        mut execution_error,
+    } = execution;
     let mcp_env = inputs.env.clone();
     let homedir = inputs.homedir.clone();
     let model: Arc<dyn areal_engine::model::Model> =
