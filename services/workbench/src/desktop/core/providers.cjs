@@ -1058,8 +1058,11 @@ class AppProviders {
           if (!this.manages(project)) continue;
           if (this.closed || this.backend.closing) break;
           const state = this.applicationState(project);
-          if (project.client?.ready && ["deferred", "unknown"].includes(state.kind))
-            await this.reconcileProject(project);
+          if (project.client?.ready && ["deferred", "unknown"].includes(state.kind)) {
+            if (!this.supportsConfiguration(project))
+              await this.restoreConfigurationService(project);
+            else await this.reconcileProject(project);
+          }
         }
       })()
         .catch(() => {})
@@ -1620,8 +1623,10 @@ class AppProviders {
             (method) => target.client.capabilities?.methods?.includes(method),
           )
         ) {
-          project.providerError = "请更新 Core 后再应用模型配置。";
-          throw new Error(project.providerError);
+          if (this.pendingApplications.has(project.id))
+            throw new Error("原模型配置操作结果尚未确认，请先核对原回执。");
+          target.readOnly = true;
+          return;
         }
         const reconciled = await this.inspectPending(target);
         if (reconciled?.pending) throw reconciled.error;
@@ -1750,6 +1755,50 @@ class AppProviders {
     }
   }
   /** @param {CoreProject} project */
+  supportsConfiguration(project) {
+    return ["areal/server/modelConfiguration/read", "areal/server/modelConfiguration/apply"].every(
+      (method) => project.client?.capabilities?.methods?.includes(method),
+    );
+  }
+  /** @param {CoreProject} project */
+  async restoreConfigurationService(project) {
+    if (this.closed || this.backend.closing || this.pendingApplications.has(project.id)) return;
+    if (
+      this.backend.providerUpdating ||
+      this.backend.resourcesUpdating ||
+      this.backend.activeCommands ||
+      this.backend.starting.size ||
+      this.backend.hasWork()
+    )
+      return;
+    const target = this.target(project);
+    const snapshot = await this.config.current();
+    try {
+      const status = await target.client.request(
+        "areal/server/status",
+        {},
+        {
+          decode: providerContract.serverStatus,
+        },
+      );
+      this.requireTarget(target);
+      if (!status.restartSafe || this.closed || this.backend.closing) return;
+      await this.acquireUpdate("正在完成当前操作。");
+      try {
+        this.requireTarget(target);
+        if (this.closed || this.backend.closing) return;
+        // 通过现有停止回执切换后台；在项目应用队列外执行，避免重连等待自己。
+        await this.backend.restartProject(project, { expectedRevision: snapshot.revision });
+        if (!this.supportsConfiguration(project))
+          throw new Error("应用暂时无法完成连接，请重启应用后重试。");
+      } finally {
+        this.backend.providerUpdating = false;
+      }
+    } catch (error) {
+      this.applicationFailed(this.target(project), snapshot.revision, error);
+    }
+  }
+  /** @param {CoreProject} project */
   reconcileProject(project, { refreshModels = true } = {}) {
     if (!this.manages(project)) return Promise.resolve();
     const target = this.target(project);
@@ -1765,13 +1814,12 @@ class AppProviders {
           try {
             if (this.closed || this.backend.closing) return;
             this.requireTarget(target);
-            if (
-              ![
-                "areal/server/modelConfiguration/read",
-                "areal/server/modelConfiguration/apply",
-              ].every((method) => target.client.capabilities?.methods?.includes(method))
-            )
-              throw new Error("请更新 Core 后再应用模型配置。");
+            if (!this.supportsConfiguration(project)) {
+              project.providerRevision = undefined;
+              project.providerError = null;
+              this.requestReconciliation();
+              return;
+            }
             const reconciled = await this.inspectPending(target, undefined, {
               refreshModels,
             });

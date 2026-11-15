@@ -1516,22 +1516,20 @@ async function verifyModelDefaults(projectId) {
   );
   const beforeLegacy = modelRequests.length;
   await createProjectConversation(page, "workspace");
-  await expectModel("legacy-alpha", "高");
-  const implicit = await send("Implicit service default records effective high", {
+  assert.equal(await button("发送").isDisabled(), true);
+  await chooseModel("Legacy Alpha");
+  await expectModel("Legacy Alpha", "高");
+  const implicit = await send("Explicit first choice records effective high", {
     model: "legacy-alpha",
     effort: "high",
     hasEffort: true,
   });
   const implicitConfig = snapshotProject(await state()).configurations[implicit];
-  assert.ok(
-    implicitConfig.defaultModelRevision,
-    "desktop implicit model is pinned before global changes",
-  );
-  assert.equal(implicitConfig.model, null);
+  assert.deepEqual(implicitConfig.model, { providerId: "legacy", modelId: "legacy-alpha" });
   await settings();
   await setDefault("Legacy Beta", { providerId: "legacy", modelId: "legacy-beta" });
   await button("返回应用").click();
-  await expectModel("legacy-alpha", "高");
+  await expectModel("Legacy Alpha", "高");
   // 放大回执与投影的到达差异，连续编辑断言仍覆盖整个真实保存过程。
   const effortSession = await page.context().newCDPSession(page);
   try {
@@ -1541,7 +1539,7 @@ async function verifyModelDefaults(projectId) {
     await effortSession.send("Emulation.setCPUThrottlingRate", { rate: 1 });
     await effortSession.detach();
   }
-  await expectModel("legacy-alpha", "无");
+  await expectModel("Legacy Alpha", "无");
   await send("Implicit history keeps old identity while configuring effort", {
     model: "legacy-alpha",
     effort: "none",
@@ -1556,7 +1554,7 @@ async function verifyModelDefaults(projectId) {
   );
   await chooseEffort("高", "ArrowLeft");
   await page.keyboard.press("Escape");
-  await expectModel("legacy-alpha", "高");
+  await expectModel("Legacy Alpha", "高");
   await send("Implicit explicit high preserves archived model identity", {
     model: "legacy-alpha",
     effort: "high",
@@ -1571,7 +1569,7 @@ async function verifyModelDefaults(projectId) {
     "implicit history cold reopen",
   );
   await selectConversation(page, implicit);
-  await expectModel("legacy-alpha", "高");
+  await expectModel("Legacy Alpha", "高");
   assert.equal(
     (await readCoreThread(implicit)).desktop.configuration.defaultModelRevision,
     implicitConfig.defaultModelRevision,
@@ -1582,9 +1580,9 @@ async function verifyModelDefaults(projectId) {
     "implicit history cold reopen cannot replay requests",
   );
   await createProjectConversation(page, "workspace");
-  await expectModel("Legacy Beta", "高");
-  await send("New conversation uses changed concrete default", {
-    model: "legacy-beta",
+  await expectModel("Legacy Alpha", "高");
+  await send("New conversation remembers last accepted model after cold reopen", {
+    model: "legacy-alpha",
     effort: "high",
     hasEffort: true,
   });
@@ -1994,15 +1992,7 @@ async function runFullModelSelection() {
     "the selected model remains visible when credentials are missing",
   );
   await page.getByTestId("chat-input").fill("REJECTED_MODEL_DRAFT");
-  assert.equal(await button("发送").isEnabled(), true, "Core owns submission validation");
-  await button("发送").click();
-  await page.waitForFunction(
-    () =>
-      document
-        .querySelector('[data-testid="chat-input"]')
-        ?.textContent?.includes("REJECTED_MODEL_DRAFT") &&
-      !document.querySelector('button[aria-label="发送"]')?.disabled,
-  );
+  assert.equal(await button("发送").isDisabled(), true, "a model must be selected before sending");
   assert.match(await page.getByTestId("chat-input").innerText(), /REJECTED_MODEL_DRAFT/);
   await page.getByTestId("chat-input").fill("");
   assert.equal(
@@ -2648,8 +2638,8 @@ async function runFullModelSelection() {
   assert.match(await button("选择模型").innerText(), /env-model/);
   assert.equal(
     await button("选择模型").locator('[aria-label="模型不可用"]').count(),
-    1,
-    "confirmed invalidity is marked inside the model label",
+    0,
+    "model selection does not add an unavailable warning to the trigger",
   );
   recordCheck(
     "Core credential states and saved enablement remain separate from drafts and pending apply; Composer explicitly selects and executes another available model",
@@ -2934,7 +2924,6 @@ try {
     "../../core/engine/src/desktop/model_selection.rs",
     "../../core/engine/src/desktop/queue.rs",
     "../../core/protocol/src/desktop.rs",
-    "renderer/src/settings/NewSessionModelSetting.tsx",
     "renderer/src/settings/ModelSettings.css",
     "renderer/src/settings/ModelEditor.tsx",
     "renderer/src/TaskDraft.tsx",

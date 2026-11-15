@@ -526,8 +526,7 @@ class ProjectConnections {
       project.executionError = execution.executionReady
         ? null
         : (execution.executionError ?? "执行配置不可用，历史仍可查看。");
-      if (!project.executionError)
-        await this.host.providers.reconcileProject(project, { refreshModels: false });
+      await this.host.providers.reconcileProject(project, { refreshModels: false });
       this.requireConnection(project, client);
       if (!observeOnly && !project.executionError) {
         trace.advance("providers");

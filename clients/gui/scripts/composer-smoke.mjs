@@ -497,6 +497,8 @@ try {
     "provider catalog",
   );
   await page.getByRole("button", { name: "新会话工作区", exact: true }).waitFor();
+  await page.getByTestId("composer-model-trigger").click();
+  await page.getByRole("radio", { name: "fixture", exact: true }).click();
   let readyObservation;
   try {
     await until(async () => {

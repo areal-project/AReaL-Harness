@@ -486,8 +486,9 @@ test("remembered model and effort survive checking or unavailable catalog entrie
   assert.equal(resolveNewConversationModel([], last, true).candidate, undefined);
   assert.equal(resolveNewConversationModel([fallback], last, false).candidate.modelId, "chosen");
   const confirmed = resolveNewConversationModel([fallback], last);
-  assert.equal(confirmed.candidate.modelId, "default");
-  assert.equal(confirmed.notice, "model-unavailable");
+  assert.equal(confirmed.candidate, undefined);
+  assert.equal(confirmed.notice, undefined);
+  assert.equal(resolveNewConversationModel([fallback], null).candidate, undefined);
 });
 
 test("known official effort rules do not apply to a custom gateway with the same model name", async () => {

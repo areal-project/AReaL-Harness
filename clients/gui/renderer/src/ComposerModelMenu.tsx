@@ -218,13 +218,7 @@ export function ComposerModelMenu({
           }
         >
           <span className="composer-model-name">{label}</span>
-          {model?.unavailableReason && (
-            <TitleTooltip title={model.unavailableReason}>
-              <span className="text-destructive" aria-label={model.unavailableReason}>
-                !
-              </span>
-            </TitleTooltip>
-          )}
+
           <MenuChevronIcon size={14} aria-hidden="true" />
         </PopoverTrigger>
         <PopoverContent

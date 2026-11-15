@@ -312,24 +312,6 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
     ([field, source]) =>
       field.startsWith("model.") && ["env", "cli"].includes((source as Data).kind),
   );
-  const defaultModel = state.value?.defaultModel;
-  const isDefault = (providerId: string, modelId: string) =>
-    defaultModel?.providerId === providerId && defaultModel?.modelId === modelId;
-  const changeDefault = (providerId: string, modelId: string) =>
-    run(async () => {
-      try {
-        state.accept(
-          await api({
-            operation: "defaultAndApply",
-            expectedRevision: state.value?.revision,
-            model: { providerId, modelId },
-          }),
-        );
-      } catch (cause) {
-        await state.refresh();
-        throw cause;
-      }
-    });
   const subscriptionModels = accountModels.filter((model) =>
     `${model.displayName ?? model.name ?? ""} ${model.id}`
       .toLowerCase()
@@ -565,35 +547,6 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
                       <div className="provider-model-label">
                         <strong>{model.displayName || model.name || model.id}</strong>
                       </div>
-                      {isDefault("areal_openai", model.id) && (
-                        <span className="provider-model-default">
-                          {t("settings.modelSettings.fallbackDefault")}
-                        </span>
-                      )}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          render={
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              aria-label={t("settings.modelSettings.moreActionsForModelValue", {
-                                value0: model.displayName || model.name || model.id,
-                              })}
-                              disabled={busy}
-                            />
-                          }
-                        >
-                          <MoreHorizontal size={16} />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            disabled={busy || !accountReady || isDefault("areal_openai", model.id)}
-                            onClick={() => void changeDefault("areal_openai", model.id)}
-                          >
-                            {t("settings.modelSettings.setAsFallbackDefault")}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
                     </div>
                   ))}
                   {!subscriptionModels.length && (
@@ -850,11 +803,6 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
                               <small>{model.id}</small>
                             )}
                           </div>
-                          {isDefault(provider.id, model.id) && (
-                            <span className="provider-model-default">
-                              {t("settings.modelSettings.fallbackDefault")}
-                            </span>
-                          )}
                           {probe[model.id] && (
                             <small>{t("settings.modelSettings.connected")}</small>
                           )}
@@ -917,18 +865,7 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
                                 <Unplug size={14} />
                                 {t("settings.modelSettings.testConnection")}
                               </DropdownMenuItem>
-                              <DropdownMenuItem
-                                disabled={
-                                  busy ||
-                                  dirty ||
-                                  !provider.enabled ||
-                                  !model.enabled ||
-                                  isDefault(provider.id, model.id)
-                                }
-                                onClick={() => void changeDefault(provider.id, model.id)}
-                              >
-                                {t("settings.modelSettings.setAsFallbackDefault")}
-                              </DropdownMenuItem>
+
                               <DropdownMenuItem
                                 aria-label={t("settings.modelSettings.editModelValue", {
                                   value0: model.id,

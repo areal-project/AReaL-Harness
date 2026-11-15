@@ -121,7 +121,11 @@ function fixture({
     providerUpdating: false,
     onChange() {},
     async restartProject(target, { expectedRevision } = {}) {
-      if (!readOnly) throw new Error("configuration must never restart healthy Core");
+      if (!readOnly && !unsupported)
+        throw new Error("configuration must never restart healthy Core");
+      calls.push(["restart"]);
+      project.client.capabilities.methods = [readMethod, applyMethod];
+      unsupported = false;
       assert.equal(target, project);
       assert.equal(expectedRevision, service.config.value.revision);
       readOnly = false;
@@ -326,4 +330,55 @@ test("provider list returns the current catalog without waiting for credentials 
     f.service.closed = true;
     clearTimeout(f.service.reconciliationTimer);
   }
+});
+
+test("an idle older service is replaced automatically without replaying model commands", async () => {
+  const f = fixture({ unsupported: true });
+  await f.service.restoreConfigurationService(f.project);
+  assert.equal(f.calls.filter(([method]) => method === "restart").length, 1);
+  assert.equal(f.service.supportsConfiguration(f.project), true);
+  assert.equal(f.operations.size, 0);
+  assert.equal(f.backend.providerUpdating, false);
+});
+
+test("automatic service replacement waits for work and unresolved applications", async () => {
+  for (const options of [{ busy: true }, {}]) {
+    const f = fixture({ unsupported: true, ...options });
+    if (!options.busy) f.service.pendingApplications.set("p", { requestId: "unresolved" });
+    await f.service.restoreConfigurationService(f.project);
+    assert.equal(f.calls.filter(([method]) => method === "restart").length, 0);
+    assert.equal(f.service.supportsConfiguration(f.project), false);
+  }
+});
+
+test("connection reconciliation schedules idle replacement outside its own application queue", async (t) => {
+  const f = fixture({ unsupported: true });
+  t.after(() => f.service.close());
+  const replaced = Promise.withResolvers();
+  const restart = f.backend.restartProject;
+  f.backend.restartProject = async (...args) => {
+    assert.equal(f.service.projectApplications.size, 0);
+    await restart(...args);
+    replaced.resolve();
+  };
+  await f.service.reconcileProject(f.project);
+  assert.equal(f.project.providerError, null);
+  assert.equal(f.service.applicationState(f.project).kind, "deferred");
+  await Promise.race([
+    replaced.promise,
+    new Promise((_, reject) => {
+      const timer = setTimeout(() => reject(new Error("replacement was not scheduled")), 1000);
+      t.after(() => clearTimeout(timer));
+    }),
+  ]);
+  assert.equal(f.service.supportsConfiguration(f.project), true);
+});
+
+test("a replacement that still lacks capabilities fails once instead of restarting repeatedly", async () => {
+  const f = fixture({ unsupported: true });
+  f.backend.restartProject = async () => f.calls.push(["restart"]);
+  await f.service.restoreConfigurationService(f.project);
+  assert.equal(f.service.applicationState(f.project).kind, "failed");
+  assert.doesNotMatch(f.project.providerError, /Core/);
+  assert.equal(f.backend.providerUpdating, false);
 });
