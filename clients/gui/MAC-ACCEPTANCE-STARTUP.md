@@ -14,6 +14,22 @@ pnpm --dir clients/gui exec node -e 'console.log(require("electron/package.json"
 
 预期：GUI session、WindowServer 都显示 `ready`，Electron 版本与待验收构建一致。
 
+如果 Electron 直接执行 `--version` 返回 `SIGABRT / exit 134`，先确认命令是在已登录的 macOS 图形桌面终端中执行，而不是后台代理、SSH 或无交互的 launchd 上下文。系统崩溃报告中若出现以下调用栈，说明进程尚未获得 AppKit 的交互式应用注册上下文，不能作为项目启动代码失败：
+
+```text
+RegisterApplication
+NSMenuBarPresentationInstance
+_NSGetAggregateUIMode
+```
+
+可用下面的命令收集最近一份报告的关键字段：
+
+```bash
+latest="$(find "$HOME/Library/Logs/DiagnosticReports" -maxdepth 1 -name 'Electron-*.ips' -print | sort | tail -1)"
+echo "$latest"
+head -c 12000 "$latest" | grep -E 'app_version|os_version|signal|termination|RegisterApplication|NSMenuBarPresentationInstance' || true
+```
+
 ## 启动页与真实历史会话
 
 ```bash
