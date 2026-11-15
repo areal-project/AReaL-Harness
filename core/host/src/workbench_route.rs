@@ -1303,7 +1303,9 @@ fn validate_backend_result(method: &str, value: &Value) -> Result<()> {
 impl Backend {
     async fn ensure(&self, host: &Rc<Host>, input: Ensure) -> Result<Value> {
         let (key, launch) = launch(host, input.clone())?;
-        if let Some(credentials) = &input.environment_credentials {
+        if let Some(credentials) = &input.environment_credentials
+            && !credentials.is_empty()
+        {
             let allowed = environment_credential_names(&launch.options)?;
             ensure!(
                 credentials.keys().all(|name| allowed.contains(name)),

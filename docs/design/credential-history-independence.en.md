@@ -2,7 +2,7 @@
 
 # Credential upgrade reliability and independent history reads
 
-Status: proposal, not implemented. This document separates source findings from an unconfirmed user installation failure.
+Status: base history access and execution admission are separated in source. Real Keychain upgrade acceptance remains outstanding. This document separates the source fix from the unconfirmed user installation failure.
 
 ## Intent and decisions
 
@@ -105,4 +105,6 @@ Implement diagnostics and upgrade evidence first, then base startup/history sepa
 
 ## Evidence limits
 
-Current source, signing changes, and three external implementations were inspected. `node --test clients/gui/scripts/macos-signing-paths.test.mjs services/workbench/test/shared-credentials.test.cjs` passed all 11 tests. These cover existing signing arguments and credential projection logic, not replacement installation or the affected user's failure. No real secrets or user data were modified. Old/new package acceptance and the proposed product implementation remain outstanding.
+Source, signing changes, and three external implementations were inspected. Host no longer gates project startup on the saved credential list. When configuration or deployment is unavailable, Core opens the registered history directory and disables execution admission. The shared UI preserves draft editing and offers recovery actions. Configuration repair rebuilds the service through existing lifecycle receipts without replaying submissions. Failed deployment preparation preserves original launch records; credential failures preserve original slots.
+
+Deterministic tests cover malformed configuration, stale credential references, pending credential migration, history reads, execution rejection, configuration recovery, and shared UI state. Signed old/new package replacement, system authorization dialogs, and complete mobile/relay journeys still require separate acceptance. Source tests do not prove recovery of the affected user's Keychain entry. No real secrets or user data were modified.

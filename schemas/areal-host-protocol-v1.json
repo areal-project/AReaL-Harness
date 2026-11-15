@@ -1301,6 +1301,9 @@
         },
         "no_deployment_mcp": {
           "type": "boolean"
+        },
+        "history_only": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -16944,25 +16947,58 @@
     "LocalBackendCredentialNamesResult": {
       "type": "object",
       "properties": {
-        "names": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-        "configurationError": { "type": "boolean" }
+        "names": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "configurationError": {
+          "type": "boolean"
+        }
       },
-      "required": ["names"],
+      "required": [
+        "names"
+      ],
       "additionalProperties": false,
       "examples": [
-        { "names": ["FIXTURE_MODEL_API_KEY"] },
-        { "names": [], "configurationError": true }
+        {
+          "names": [
+            "FIXTURE_MODEL_API_KEY"
+          ]
+        },
+        {
+          "names": [],
+          "configurationError": true
+        }
       ]
     },
     "LocalBackendCredentialNamesRequest": {
       "type": "object",
       "properties": {
-        "version": { "type": "integer", "const": 1 },
-        "id": { "type": "string", "minLength": 1 },
-        "method": { "type": "string", "const": "backend.credentialNames" },
-        "params": { "$ref": "#/$defs/LocalBackendEnsureParams" }
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "backend.credentialNames"
+        },
+        "params": {
+          "$ref": "#/$defs/LocalBackendEnsureParams"
+        }
       },
-      "required": ["version", "id", "method", "params"],
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params"
+      ],
       "additionalProperties": false,
       "examples": [
         {

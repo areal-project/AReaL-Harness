@@ -415,6 +415,23 @@ try {
   await mkdir(ws2);
   const other = await ensure(["--workspace", ws2]);
   assert.notEqual(other.serviceId, current.serviceId);
+  const historyWriter = await client(other);
+  const { thread: archivedThread } = await historyWriter.call("areal/thread/start", {
+    requestId: crypto.randomUUID(),
+    cwd: ws2,
+  });
+  await historyWriter.call("areal/turn/start", {
+    requestId: crypto.randomUUID(),
+    threadId: archivedThread.id,
+    input: [{ type: "text", text: "history survives missing providers" }],
+  });
+  await historyWriter.waitEvent("turn/completed", (p) => p.threadId === archivedThread.id);
+  const archived = (
+    await historyWriter.call("thread/read", {
+      threadId: archivedThread.id,
+      includeTurns: true,
+    })
+  ).thread;
   await rejected(
     () => ensure(["--workspace", ws2, "--data-dir", current.dataDir]),
     /bound to a different workspace|dataDir already registered/s,
@@ -425,6 +442,92 @@ try {
   await writeFile(empty, "schema_version = 1\n");
   const unconfigured = await ensure(["--workspace", ws2, "--config", empty, "--no-auto-restart"]);
   await stop(unconfigured);
+  setPhase("history-without-execution-configuration");
+  await writeFile(empty, "schema_version = 2\n[model.providers.broken\n");
+  const requestsBeforeRead = requests.length;
+  const historyService = await ensure([
+    "--workspace",
+    ws2,
+    "--config",
+    empty,
+    "--data-dir",
+    other.dataDir,
+  ]);
+  const historyReader = await client(historyService);
+  const readStatus = await historyReader.call("areal/server/status", {});
+  assert.equal(readStatus.readReady, true);
+  assert.equal(readStatus.executionReady, false);
+  assert.equal(readStatus.acceptingWork, false);
+  const reread = (
+    await historyReader.call("thread/read", {
+      threadId: archivedThread.id,
+      includeTurns: true,
+    })
+  ).thread;
+  assert.deepEqual(reread.turns, archived.turns);
+  await rejected(
+    () =>
+      historyReader.call("areal/turn/start", {
+        requestId: crypto.randomUUID(),
+        threadId: archivedThread.id,
+        input: [{ type: "text", text: "must not execute with broken configuration" }],
+      }),
+    /EXECUTION_CONFIGURATION_UNAVAILABLE|closed/i,
+  );
+  assert.equal(requests.length, requestsBeforeRead);
+  await stop(historyService);
+  await writeFile(
+    empty,
+    `${await readFile(config, "utf8")}api_key_env = "AREAL_CREDENTIAL_missing_fixture"\n`,
+  );
+  const missingKeyService = await ensure([
+    "--workspace",
+    ws2,
+    "--config",
+    empty,
+    "--data-dir",
+    other.dataDir,
+  ]);
+  const missingKeyReader = await client(missingKeyService);
+  assert.equal((await missingKeyReader.call("areal/server/status", {})).executionReady, false);
+  assert.deepEqual(
+    (
+      await missingKeyReader.call("thread/read", {
+        threadId: archivedThread.id,
+        includeTurns: true,
+      })
+    ).thread.turns,
+    archived.turns,
+  );
+  await rejected(
+    () =>
+      missingKeyReader.call("areal/turn/start", {
+        requestId: crypto.randomUUID(),
+        threadId: archivedThread.id,
+        input: [{ type: "text", text: "must not execute without credentials" }],
+      }),
+    /EXECUTION_CONFIGURATION_UNAVAILABLE/,
+  );
+  assert.equal(requests.length, requestsBeforeRead);
+  await stop(missingKeyService);
+  await writeFile(empty, await readFile(config));
+  const repaired = await ensure([
+    "--workspace",
+    ws2,
+    "--config",
+    empty,
+    "--data-dir",
+    other.dataDir,
+  ]);
+  const repairedClient = await client(repaired);
+  assert.equal((await repairedClient.call("areal/server/status", {})).executionReady, true);
+  await repairedClient.call("areal/turn/start", {
+    requestId: crypto.randomUUID(),
+    threadId: archivedThread.id,
+    input: [{ type: "text", text: "execution after configuration repair" }],
+  });
+  await repairedClient.waitEvent("turn/completed", (p) => p.threadId === archivedThread.id);
+  await stop(repaired);
   setPhase("cancel-stop-and-history-recovery");
   await second.call("areal/turn/start", {
     requestId: crypto.randomUUID(),

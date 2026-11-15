@@ -65,6 +65,8 @@ use tracing::{Instrument, info_span};
 
 #[derive(Clone, Debug)]
 pub struct Limits {
+    /// 基础读取服务不能启动执行；恢复执行部署后由正常服务接管。
+    pub execution_enabled: bool,
     pub session_catalog: areal_config::SessionCatalog,
     pub inspection_permissions: areal_config::InspectionPermissions,
     pub goals: goals::Policy,
@@ -121,6 +123,7 @@ pub struct Limits {
 impl Default for Limits {
     fn default() -> Self {
         Self {
+            execution_enabled: true,
             session_catalog: {
                 #[cfg(feature = "test-support")]
                 {
@@ -711,6 +714,10 @@ impl Engine {
             )?
         };
         let desktop = desktop::Desktop::open(root)?;
+        desktop
+            .lifecycle
+            .execution_enabled
+            .store(limits.execution_enabled, Ordering::Release);
         let goals = goals::Goals::open(root, &threads)?;
         let permission_file = root.join("desktop/permissions.json");
         let project_permissions = if permission_file.exists() {

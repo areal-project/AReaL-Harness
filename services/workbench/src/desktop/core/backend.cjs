@@ -414,7 +414,11 @@ class CoreBackend {
     /** @type {typeof import("@areal/workbench-service/host-library-store")} */
     const { createHostLibraryStore } = require("@areal/workbench-service/host-library-store");
     return this.library.useStore({
-      ...createHostLibraryStore({ ...this.hostLibrary, binary: this.binary, library: this.home }),
+      ...createHostLibraryStore({
+        ...this.hostLibrary,
+        binary: this.binary,
+        library: this.home,
+      }),
       required,
     });
   }
@@ -579,27 +583,41 @@ class CoreBackend {
     const scratch = binding.scratchDir;
     await mkdir(scratch, { recursive: true, mode: 0o700 });
     trace.advance("resources");
-    const resourceDeployment = await this.resources.deployment(project);
+    let historyOnly = false;
+    const resourceDeployment = await this.resources.deployment(project).catch(() => {
+      historyOnly = true;
+      return { path: undefined, profile: undefined, fingerprint: "unavailable" };
+    });
     project.resourceProfile = resourceDeployment.profile;
     project.resourceFingerprint = resourceDeployment.fingerprint;
     trace.advance("provider_prepare");
-    await this.providers.prepare();
-    trace.advance("provider_config");
-    await this.providers.config.current();
+    let providerReady = false;
+    try {
+      await this.providers.prepare();
+      trace.advance("provider_config");
+      await this.providers.config.current();
+      providerReady = true;
+    } catch (error) {
+      // 执行配置失败留在设置诊断中；Core 用已登记的数据目录提供历史读取。
+      project.providerError = desktopError(error).message;
+    }
     project.providerRevision = null;
     delete project.providerSnapshot;
     trace.advance("hooks");
-    const hookDeployment = await this.hooks.launch();
+    const hookDeployment = await this.hooks.launch().catch(() => {
+      historyOnly = true;
+      return { value: {}, revision: "unavailable" };
+    });
     project.hookRevision = null;
     const genUiExtensions = join(directory, "desktop-tool-extensions.json");
     await writeFile(genUiExtensions, JSON.stringify({ ...hookDeployment.value, genUi: true }), {
       mode: 0o600,
     });
-    const providerEnvironment = this.providers.environment();
+    const providerEnvironment = providerReady ? this.providers.environment() : {};
     /** @type {NodeJS.ProcessEnv} */
     const hookEnvironment = this.hooks.environment();
     const credentials = Object.fromEntries(
-      this.providers.snapshot().data.flatMap(({ apiKeyEnv }) => {
+      (providerReady ? this.providers.snapshot().data : []).flatMap(({ apiKeyEnv }) => {
         const value = apiKeyEnv ? hookEnvironment[apiKeyEnv] : undefined;
         return apiKeyEnv && !apiKeyEnv.startsWith("AREAL_CREDENTIAL_") && value
           ? [[apiKeyEnv, value]]
@@ -654,6 +672,7 @@ class CoreBackend {
         read_only_path: [],
         task_credential_command: [],
         no_deployment_mcp: false,
+        history_only: historyOnly,
       },
     };
     return { launchInputs, credentials, dataDir, hookDeployment };
@@ -702,6 +721,7 @@ class CoreBackend {
       trace.advance("configuration_recheck");
       if (
         launch &&
+        !launch.launchInputs.options.history_only &&
         !project.binaryUpdatePending &&
         (await this.hooks.current()).revision === launch.hookDeployment.revision
       )

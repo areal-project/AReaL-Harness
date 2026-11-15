@@ -68,6 +68,10 @@ pub struct LocalArgs {
     #[arg(long)]
     #[serde(default)]
     pub no_deployment_mcp: bool,
+    /// 仅装配历史读取；执行部署修复后通过既有生命周期重新启动。
+    #[arg(long, hide = true)]
+    #[serde(default)]
+    pub history_only: bool,
 }
 
 impl LocalArgs {
@@ -109,6 +113,7 @@ impl LocalArgs {
         }
         for (name, enabled) in [
             ("no-deployment-mcp", self.no_deployment_mcp),
+            ("history-only", self.history_only),
             ("allow-write", self.allow_write),
             ("allow-network", self.allow_network),
             ("allow-concurrent-writes", self.allow_concurrent_writes),
@@ -280,7 +285,11 @@ impl LaunchSpec {
             },
         };
         // 共享服务与 launcher 的管理模式一致；缺少模型凭据不能阻止连接和设置恢复。
-        let config = areal_config::load_management_config(&inputs)?;
+        let (config, execution_error) = if args.history_only {
+            (areal_config::load_read_config(&inputs)?, None)
+        } else {
+            areal_config::load_service_config(&inputs)?
+        };
         let root = context.home.clone();
         let workspace_key = storage::digest(workspace.as_os_str().as_encoded_bytes());
         let mapping = root
@@ -338,6 +347,14 @@ impl LaunchSpec {
         resolved.workspace = Some(workspace.clone());
         resolved.data_dir = Some(data.clone());
         resolved.config = config.config_file.clone();
+        resolved.history_only |= execution_error.is_some();
+        if resolved.history_only {
+            resolved.desktop_config = None;
+            resolved.workgroup_policy = None;
+            resolved.workgroup_toolchain = None;
+            resolved.task_credential_command.clear();
+            resolved.read_only_path.clear();
+        }
         for path in [
             &mut resolved.scratch,
             &mut resolved.workgroup_policy,
@@ -347,9 +364,18 @@ impl LaunchSpec {
         .into_iter()
         .flatten()
         {
-            *path = path
-                .canonicalize()
-                .with_context(|| format!("resolve launch path {}", path.display()))?;
+            match path.canonicalize() {
+                Ok(canonical) => *path = canonical,
+                Err(_) if args.data_dir.is_some() && !args.history_only => {
+                    let mut read_args = args.clone();
+                    read_args.history_only = true;
+                    return Self::in_context(&read_args, bin_dir.clone(), context);
+                }
+                Err(cause) => {
+                    return Err(cause)
+                        .with_context(|| format!("resolve launch path {}", path.display()));
+                }
+            }
         }
         for path in resolved
             .read_only_path
@@ -371,7 +397,17 @@ impl LaunchSpec {
             ("workgroup", resolved.workgroup_policy.as_ref()),
         ] {
             if let Some(path) = path {
-                files.insert(key, (path, storage::file_digest(path)?));
+                match storage::file_digest(path) {
+                    Ok(digest) => {
+                        files.insert(key, (path, digest));
+                    }
+                    Err(_) if args.data_dir.is_some() && !args.history_only => {
+                        let mut read_args = args.clone();
+                        read_args.history_only = true;
+                        return Self::in_context(&read_args, bin_dir.clone(), context);
+                    }
+                    Err(cause) => return Err(cause),
+                }
             }
         }
         let mut components = BTreeMap::new();
@@ -404,7 +440,7 @@ impl LaunchSpec {
             (
                 "permissions",
                 json!({"policy":config.permissions,"scratch":resolved.scratch,
-                    "readOnlyPaths":resolved.read_only_path,"taskCredentialCommands":resolved.task_credential_command,"noDeploymentMcp":resolved.no_deployment_mcp,
+                    "readOnlyPaths":resolved.read_only_path,"taskCredentialCommands":resolved.task_credential_command,"noDeploymentMcp":resolved.no_deployment_mcp,"historyOnly":resolved.history_only,
                     "sandbox":args.sandbox_profile.as_deref().unwrap_or("full-access"),"allowConcurrentWrites":args.allow_concurrent_writes}),
             ),
             (

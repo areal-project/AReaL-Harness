@@ -59,6 +59,7 @@ function snapshotProject(backend, project) {
       })),
     outcomes: live?.outcomes ?? {},
     models: live ? backend.providers.catalog(live.models ?? [], live) : [],
+    executionError: live?.executionError ?? null,
     profiles: live?.profiles ?? [],
     lastAcceptedModel:
       live && backend.providers.manages(live)

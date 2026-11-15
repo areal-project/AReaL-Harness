@@ -15,6 +15,7 @@ function fixture({
   unsupported = false,
   unacceptedError,
   credentials = {},
+  readOnly = false,
 } = {}) {
   const calls = [];
   const original = {
@@ -53,7 +54,10 @@ function fixture({
       capabilities: { methods: unsupported ? [] : [readMethod, applyMethod] },
       async request(method, params) {
         calls.push([method, structuredClone(params)]);
-        if (method === "areal/server/status") return { restartSafe: true };
+        if (method === "areal/server/status")
+          return { restartSafe: true, executionReady: !readOnly };
+        if (method === readMethod && readOnly)
+          throw new Error("execution configuration is unavailable");
         if (method === readMethod)
           return {
             ...structuredClone(proof),
@@ -116,8 +120,12 @@ function fixture({
     resourcesUpdating: false,
     providerUpdating: false,
     onChange() {},
-    async restartProject() {
-      throw new Error("configuration must never restart Core");
+    async restartProject(target, { expectedRevision } = {}) {
+      if (!readOnly) throw new Error("configuration must never restart healthy Core");
+      assert.equal(target, project);
+      assert.equal(expectedRevision, service.config.value.revision);
+      readOnly = false;
+      proof = { ...proof, applied: { revision: expectedRevision, sequence: 0 } };
     },
   };
   const service = new AppProviders(backend, {});
@@ -172,6 +180,14 @@ function fixture({
     },
   };
 }
+
+test("saving configuration restores execution from a history-only service", async () => {
+  const f = fixture({ readOnly: true });
+  const result = await f.service.saveAndApply(f.request);
+  assert.equal(result.pendingApply, false);
+  assert.equal(f.project.providerRevision, result.revision);
+  assert.equal(f.operations.size, 0, "no apply is replayed against the unavailable controller");
+});
 
 test("provider apply fences new commands while an admitted read and its own startup finish", async () => {
   const f = fixture();

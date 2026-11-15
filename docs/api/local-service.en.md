@@ -10,6 +10,8 @@ TUI and the Web launcher activate projects through the shared Host. Ordinary `ar
 
 ## Public entry points
 
+Registered projects read history from their fixed data directory without requiring valid provider configuration, credentials, or execution deployment. `areal/server/status` exposes separate `readReady` and `executionReady` fields. If execution preparation fails, `configuration.error` supplies diagnostics while history and receipts remain accessible through existing authorization. Sending returns `EXECUTION_CONFIGURATION_UNAVAILABLE` without a model request. Repair restores execution through the existing safe restart flow; successful reads neither settle UNKNOWN receipts nor replay submissions. Store corruption, project identity errors, and authorization failures remain errors.
+
 ```sh
 target/debug/areal service ensure --workspace /absolute/workspace --json
 target/debug/areal service list --json

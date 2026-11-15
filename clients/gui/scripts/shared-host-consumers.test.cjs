@@ -48,6 +48,46 @@ test("launch keeps named environment credentials outside persistent launch input
   assert.equal(launch.launchInputs.options.data_dir, binding.dataDir);
 });
 
+test("invalid provider configuration preserves the registered history launch", async (t) => {
+  const home = await makeTempDir("areal-history-config-");
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const project = { id: "project", root: join(home, "workspace") };
+  const binding = {
+    workspace: project.root,
+    dataDir: join(home, "original-store"),
+    scratchDir: join(home, "project", "scratch"),
+  };
+  const backend = {
+    home,
+    configHome: home,
+    userHome: home,
+    config: join(home, "config.toml"),
+    host: { resolve: () => binding },
+    resources: { deployment: async () => ({}) },
+    providers: {
+      prepare: async () => {},
+      config: {
+        current: async () => {
+          throw new Error("invalid model configuration");
+        },
+      },
+      snapshot: () => assert.fail("invalid configuration must not supply execution credentials"),
+      environment: () => ({}),
+    },
+    hooks: {
+      launch: async () => ({ value: {}, revision: "fixture" }),
+      environment: () => ({}),
+    },
+  };
+  const launch = await CoreBackend.prototype.prepareServiceLaunch.call(backend, project, {
+    advance() {},
+  });
+  assert.equal(launch.launchInputs.options.data_dir, binding.dataDir);
+  assert.equal(launch.launchInputs.configPath, backend.config);
+  assert.deepEqual(launch.credentials, {});
+  assert.match(project.providerError, /invalid model configuration/);
+});
+
 test("foreign CLI launch and thread creation retain Core configuration ownership", async () => {
   const project = { id: "cli", root: "/fixture/workspace", pending: [] };
   const descriptor = { endpoint: "ws://fixture", generation: "original-generation" };
@@ -173,7 +213,11 @@ test("rediscovering the same Core generation preserves an in-flight observer ide
       client: {
         status: async () => ({
           projects: [
-            { registration: { projectId: project.id }, state: "ready", service: descriptor },
+            {
+              registration: { projectId: project.id },
+              state: "ready",
+              service: descriptor,
+            },
           ],
         }),
       },
@@ -259,7 +303,7 @@ test("managed binary upgrade settles the original service before retrying launch
   const backend = Object.assign(Object.create(CoreBackend.prototype), {
     providers: { manages: () => true },
     prepareServiceLaunch: async () => ({
-      launchInputs: {},
+      launchInputs: { options: {} },
       credentials: {},
       hookDeployment: { revision: "hooks" },
     }),
@@ -312,7 +356,7 @@ test("binary recovery never bypasses an unsettled update or unrelated conflict",
     );
     const backend = Object.assign(Object.create(CoreBackend.prototype), {
       providers: { manages: () => scenario !== "foreign" },
-      prepareServiceLaunch: async () => ({ launchInputs: {} }),
+      prepareServiceLaunch: async () => ({ launchInputs: { options: {} } }),
       host: {
         ensure: async () => {
           attempts++;
@@ -345,12 +389,17 @@ test("a definitively busy old service stays readable while its upgrade waits", a
   let attempts = 0;
   const backend = Object.assign(Object.create(CoreBackend.prototype), {
     providers: { manages: () => true },
-    prepareServiceLaunch: async () => ({ launchInputs: {}, hookDeployment: { revision: "hooks" } }),
+    prepareServiceLaunch: async () => ({
+      launchInputs: { options: {} },
+      hookDeployment: { revision: "hooks" },
+    }),
     hooks: { current: async () => ({ revision: "hooks" }) },
     host: {
       ensure: async () => {
         attempts++;
-        throw Object.assign(new Error("version mismatch"), { code: "CORE_BINARY_UPDATE_REQUIRED" });
+        throw Object.assign(new Error("version mismatch"), {
+          code: "CORE_BINARY_UPDATE_REQUIRED",
+        });
       },
       observe: async () => ({ descriptor: old, token: "fixture" }),
     },

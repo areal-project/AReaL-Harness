@@ -200,9 +200,11 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
             ? t("settings.modelSettings.credentialMigrating")
             : credentialErrors?.[item.id] === "storageLocked"
               ? t("settings.modelSettings.keychainLocked")
-              : state.value?.credentialStates?.[item.id] === "unavailable"
-                ? t("settings.modelSettings.missingCredentials")
-                : t("settings.modelSettings.available");
+              : credentialErrors?.[item.id] === "storageMissing"
+                ? t("settings.modelSettings.storedCredentialMissing")
+                : state.value?.credentialStates?.[item.id] === "unavailable"
+                  ? t("settings.modelSettings.missingCredentials")
+                  : t("settings.modelSettings.available");
   const dirty =
     key !== undefined ||
     (draft !== null &&
@@ -456,7 +458,10 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
                   void run(async () => {
                     try {
                       state.accept(
-                        await api({ operation: "apply", expectedRevision: state.value?.revision }),
+                        await api({
+                          operation: "apply",
+                          expectedRevision: state.value?.revision,
+                        }),
                       );
                     } finally {
                       await state.refresh();
@@ -545,7 +550,11 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
                 <div className="provider-connection-summary">
                   <span>{accountLabel || t("settings.modelSettings.chatgptSubscription")}</span>
                 </div>
-                <h3>{t("settings.modelSettings.modelCount", { count: accountModels.length })}</h3>
+                <h3>
+                  {t("settings.modelSettings.modelCount", {
+                    count: accountModels.length,
+                  })}
+                </h3>
                 {modelSearch}
                 <div
                   className="subscription-model-list provider-model-scroll"
@@ -651,7 +660,9 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
                     onValueChange={(value) => {
                       reveal.reset();
                       setKeyVisible(false);
-                      editConnection({ authentication: value as "apiKey" | "none" });
+                      editConnection({
+                        authentication: value as "apiKey" | "none",
+                      });
                       setError("");
                       if (value === "none") setKey(undefined);
                     }}
@@ -667,6 +678,9 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
                     )}
                     {provider.id && providerCredentialError === "storageLocked" && !key && (
                       <p role="status">{t("settings.modelSettings.keychainLocked")}</p>
+                    )}
+                    {provider.id && providerCredentialError === "storageMissing" && !key && (
+                      <p role="status">{t("settings.modelSettings.storedCredentialMissing")}</p>
                     )}
                     <ProviderApiKeySection
                       apiKeyConfigured={apiKeyConfigured}
@@ -704,7 +718,11 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
                       onClick={() =>
                         void saveThen(async (saved) => {
                           const model = saved.models.find((m: Data) => m.enabled);
-                          await api({ operation: "probe", id: saved.id, model: model.id });
+                          await api({
+                            operation: "probe",
+                            id: saved.id,
+                            model: model.id,
+                          });
                           setProbe((p) => ({ ...p, [model.id]: true }));
                           setMessage({
                             id: "settings.modelSettings.connectedToModelValue",
@@ -718,7 +736,9 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
                   </div>
                   <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
                     <span className="text-ui-base text-foreground-subtle">
-                      {t("settings.modelSettings.modelCount", { count: provider.models.length })}
+                      {t("settings.modelSettings.modelCount", {
+                        count: provider.models.length,
+                      })}
                     </span>
                     <div className="flex gap-2">
                       <Button
@@ -736,7 +756,11 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
                         onClick={() =>
                           setModelDraft({
                             model: withDefaultModelCapabilities(
-                              { id: "", enabled: true, parameters: {} },
+                              {
+                                id: "",
+                                enabled: true,
+                                parameters: {},
+                              },
                               provider.parameters,
                             ),
                             index: -1,
@@ -877,10 +901,15 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
                                       id: saved.id,
                                       model: model.id,
                                     });
-                                    setProbe((p) => ({ ...p, [model.id]: true }));
+                                    setProbe((p) => ({
+                                      ...p,
+                                      [model.id]: true,
+                                    }));
                                     setMessage({
                                       id: "settings.modelSettings.connectedToModelValue",
-                                      values: { value0: model.id },
+                                      values: {
+                                        value0: model.id,
+                                      },
                                     });
                                   })
                                 }
@@ -905,7 +934,12 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
                                   value0: model.id,
                                 })}
                                 disabled={busy}
-                                onClick={() => setModelDraft({ model, index })}
+                                onClick={() =>
+                                  setModelDraft({
+                                    model,
+                                    index,
+                                  })
+                                }
                               >
                                 <Pencil size={14} />
                                 {t("settings.modelSettings.editModel")}

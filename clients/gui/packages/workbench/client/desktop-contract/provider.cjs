@@ -205,11 +205,16 @@ function configurationProof(value) {
   if (!proofRecord(value)) throw new Error("Core 模型配置应用证明无效，请刷新核对。");
   return value;
 }
-/** @param {unknown} value @returns {{restartSafe:boolean}} */
+/** @param {unknown} value @returns {{restartSafe:boolean,executionReady:boolean,executionError:string|null}} */
 function serverStatus(value) {
   if (!record(value) || typeof value.restartSafe !== "boolean")
     throw new Error("Core 服务状态无效");
-  return { restartSafe: value.restartSafe };
+  const error = record(value.configuration) ? value.configuration.error : undefined;
+  return {
+    restartSafe: value.restartSafe,
+    executionReady: value.executionReady !== false,
+    executionError: typeof error === "string" ? error : null,
+  };
 }
 /** @param {unknown} value @returns {value is AcceptedModel} */
 function isAcceptedModel(value) {

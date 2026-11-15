@@ -162,7 +162,9 @@ class ProjectConnections {
             throw new Error("任务所有者已移除");
           this.requireConnection(project, client);
           if (!client.ready || (project.connectionGeneration ?? 0) !== generation)
-            throw Object.assign(new Error("连接已换代，请重试"), { code: "STALE_CONNECTION" });
+            throw Object.assign(new Error("连接已换代，请重试"), {
+              code: "STALE_CONNECTION",
+            });
           resolve({ ...connection, client });
         } catch (failure) {
           reject(failure);
@@ -513,9 +515,21 @@ class ProjectConnections {
         this.requireConnection(project, client);
       }
       trace.advance("provider_configuration");
-      await this.host.providers.reconcileProject(project, { refreshModels: false });
+      const execution = await client.request(
+        "areal/server/status",
+        {},
+        {
+          decode: require("./provider-contract.cjs").serverStatus,
+        },
+      );
       this.requireConnection(project, client);
-      if (!observeOnly) {
+      project.executionError = execution.executionReady
+        ? null
+        : (execution.executionError ?? "执行配置不可用，历史仍可查看。");
+      if (!project.executionError)
+        await this.host.providers.reconcileProject(project, { refreshModels: false });
+      this.requireConnection(project, client);
+      if (!observeOnly && !project.executionError) {
         trace.advance("providers");
         await this.host.providers.syncLocal(project);
         this.requireConnection(project, client);

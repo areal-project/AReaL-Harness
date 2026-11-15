@@ -76032,6 +76032,9 @@
         "draining": {
           "type": "boolean"
         },
+        "executionReady": {
+          "type": "boolean"
+        },
         "idleForMs": {
           "minimum": 0,
           "type": "integer"
@@ -76160,6 +76163,9 @@
         },
         "productVersion": {
           "type": "string"
+        },
+        "readReady": {
+          "type": "boolean"
         },
         "resources": {
           "items": {
@@ -76365,10 +76371,12 @@
         "compactions",
         "configuration",
         "draining",
+        "executionReady",
         "idleForMs",
         "lifecycle",
         "pendingQueueItems",
         "productVersion",
+        "readReady",
         "resources",
         "restartSafe",
         "runtime",
@@ -76805,6 +76813,9 @@
         "draining": {
           "type": "boolean"
         },
+        "executionReady": {
+          "type": "boolean"
+        },
         "idleForMs": {
           "minimum": 0,
           "type": "integer"
@@ -76933,6 +76944,9 @@
         },
         "productVersion": {
           "type": "string"
+        },
+        "readReady": {
+          "type": "boolean"
         },
         "resources": {
           "items": {
@@ -77138,10 +77152,12 @@
         "compactions",
         "configuration",
         "draining",
+        "executionReady",
         "idleForMs",
         "lifecycle",
         "pendingQueueItems",
         "productVersion",
+        "readReady",
         "resources",
         "restartSafe",
         "runtime",
