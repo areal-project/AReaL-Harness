@@ -22,11 +22,14 @@ endif
 	setup setup-node sdk-build script-test launcher-test workgroup-smoke unified-execution-smoke delegation-permissions-smoke capacity-workgroup local-service-smoke upgrade-smoke tui-upgrade-smoke \
 	verify-native integration-boundaries ci-preflight ci-gui-static ci-gui-health \
 	ci-gui-portable ci-core-contracts workflow-lint hooks-install check-changed baseline-diff agent-setup check-refs check-transitional check-rust-size lazy-mcp-compare \
-	training-export training-check training-smoke verification-evidence
+	training-export training-check training-smoke verification-evidence compare-journey-triage
 
 verification-evidence: ## 校验一份 ci-preflight 结构化 evidence 报告；REPORT=<report.json>
 	@test -n "$(REPORT)" || { echo 'REPORT is required' >&2; exit 2; }
 	python3 scripts/verification-evidence.py "$(REPORT)"
+
+compare-journey-triage: ## 对最近相关提交生成旅程分流新旧流程对照；ARGS 可传 --limit/--output
+	python3 scripts/compare-journey-triage.py $(ARGS)
 
 help: ## 显示常用操作（默认目标）
 	@printf '%s\n' '用法：make <target> [ARGS="..."]' ''
@@ -339,7 +342,6 @@ install: release ## 构建并安装完整运行时；PREFIX 指定前缀，DESTD
 gui-install: ## 安装 GUI 的公开锁定依赖（需 pnpm）
 	pnpm --dir clients/gui install --frozen-lockfile
 	pnpm --dir clients/gui --filter @areal/gui-desktop exec install-electron
-	pnpm --dir clients/gui --filter @areal/gui-desktop exec playwright-core install ffmpeg
 gui-build: ## 同步锁定依赖并构建 GUI renderer
 	pnpm --dir clients/gui install --frozen-lockfile
 	pnpm --dir clients/gui build

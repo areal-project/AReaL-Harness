@@ -305,6 +305,11 @@ def build_plan(paths, source, manifest):
         for journey in journeys
         if journey["id"] in affected_journeys
     }
+    journey_checks = {
+        journey["id"]: journey["checks"]
+        for journey in journeys
+        if journey["id"] in affected_journeys
+    }
 
     def add(
         name,
@@ -805,6 +810,7 @@ def build_plan(paths, source, manifest):
         "fallbackPaths": affected["unknown"],
         "affectedJourneys": affected_journeys,
         "journeyAuthorities": journey_authorities,
+        "journeyChecks": journey_checks,
         "items": items,
     }
     plan["planHash"] = hashlib.sha256(

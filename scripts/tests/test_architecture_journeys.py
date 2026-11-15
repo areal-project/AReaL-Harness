@@ -18,6 +18,7 @@ def load(name, filename):
 architecture = load("check_architecture", "check-architecture.py")
 journeys = load("check_journeys", "check-journeys.py")
 evidence = load("verification_evidence", "verification-evidence.py")
+triage = load("compare_journey_triage", "compare-journey-triage.py")
 
 
 class ArchitectureAndJourneys(unittest.TestCase):
@@ -81,6 +82,12 @@ class ArchitectureAndJourneys(unittest.TestCase):
         report["evidence"]["source"]["inputHash"] = "changed"
         with self.assertRaises(ValueError):
             evidence.validate(report)
+
+    def test_recent_triage_report_has_explicit_measurement_limits(self):
+        report = triage.compare(1)
+        self.assertEqual(report["schemaVersion"], 1)
+        self.assertEqual(report["sampleSize"], 1)
+        self.assertIn("human minutes", report["measurement"]["old"])
 
 
 if __name__ == "__main__":

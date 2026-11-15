@@ -21,6 +21,9 @@ def validate(report):
     result_ids = {result["id"] for result in report.get("results", [])}
     if any(check.get("id") not in result_ids for check in evidence["checks"]):
         raise ValueError("verification evidence references an unknown check")
+    for journey in evidence["journeys"]:
+        if journey.get("status") not in {"passed", "failed", "blocked", "pending", "not-selected"}:
+            raise ValueError("verification evidence has an invalid journey status")
     return evidence
 
 

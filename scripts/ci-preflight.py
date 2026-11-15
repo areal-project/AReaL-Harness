@@ -109,6 +109,9 @@ def validate_evidence(report):
     result_ids = {result["id"] for result in report["results"]}
     if any(check.get("id") not in result_ids for check in evidence.get("checks", [])):
         raise ValueError("verification evidence references an unknown check")
+    for journey in evidence.get("journeys", []):
+        if journey.get("status") not in {"passed", "failed", "blocked", "pending", "not-selected"}:
+            raise ValueError("verification evidence has an invalid journey status")
 
 
 def matching_core(root=ROOT):
@@ -337,7 +340,15 @@ def run_plan(
                 key: identity.get(key)
                 for key in ("baseRevision", "sourceRevision", "headRevision", "inputHash")
             },
-            "journeys": plan.get("affectedJourneys", []),
+            "journeys": [
+                {
+                    "id": journey_id,
+                    "requiredChecks": plan.get("journeyChecks", {}).get(journey_id, []),
+                    "observedChecks": [],
+                    "status": "pending",
+                }
+                for journey_id in plan.get("affectedJourneys", [])
+            ],
             "authorities": sorted(
                 {
                     authority
@@ -500,6 +511,24 @@ def run_plan(
         report["evidence"]["checks"].append(
             {"id": result["id"], "status": result["status"], "authority": "ci-preflight"}
         )
+        for journey in report["evidence"]["journeys"]:
+            required = journey["requiredChecks"]
+            matching = [
+                result
+                for result in results
+                if any(result["id"].endswith(check) for check in required)
+            ]
+            journey["observedChecks"] = [result["id"] for result in matching]
+            if not matching:
+                journey["status"] = "not-selected"
+            elif any(result["status"] == "failed" for result in matching):
+                journey["status"] = "failed"
+            elif any(result["status"] == "blocked" for result in matching):
+                journey["status"] = "blocked"
+            elif len(matching) < len(required):
+                journey["status"] = "pending"
+            else:
+                journey["status"] = "passed"
         report.pop("activeItem", None)
         print(json.dumps(result), flush=True)
         report["elapsedMs"] = round((time.monotonic() - started) * 1000)
