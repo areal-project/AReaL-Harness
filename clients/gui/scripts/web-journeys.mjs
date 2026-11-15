@@ -6,7 +6,7 @@
 // Linux 没有显示服务时用 xvfb-run 包一层；浏览器下载不到时设 AREAL_CHROMIUM 指向已装好的 Chromium。
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -18,6 +18,11 @@ import {
   startModel,
 } from "./support/journey-fixture.mjs";
 import { expectFeedback, inspectPage, recordToasts } from "./ux-checks.mjs";
+import {
+  cleanupSyntheticHostKeychain,
+  closeSmokeApplication,
+  stopAndAssertFixtureHost,
+} from "./application-cleanup.mjs";
 
 const outIndex = process.argv.indexOf("--out");
 const shots = resolve(
@@ -35,6 +40,7 @@ const scene = await createScene("areal-web-");
 let browser;
 let page;
 let desktop;
+let cleanupFailure;
 const shot = (step) => page.screenshot({ path: join(shots, `web-${step}.png`) });
 const unknownSend = { armed: false, dropped: false, requestId: null };
 
@@ -341,6 +347,7 @@ try {
 
   assert.deepEqual(pageErrors, [], "页面没有未捕获异常");
 } catch (error) {
+  console.error("旅程失败：", error);
   if (page) {
     await page.screenshot({ path: join(shots, "web-failure.png") }).catch(() => {});
     const text = await page
@@ -352,10 +359,29 @@ try {
   throw error;
 } finally {
   await browser?.close();
-  await desktop?.close();
-  await scene.dispose();
-  model.close();
+  try {
+    if (desktop) {
+      const pid = desktop.app.process().pid;
+      await closeSmokeApplication(desktop.app);
+      await stopAndAssertFixtureHost(coreBin, desktop.env, shots, { pid });
+      await cleanupSyntheticHostKeychain(desktop.env.AREAL_HARNESS_SERVICE_HOME, scene.scratch);
+      await writeFile(
+        join(shots, "cleanup.json"),
+        JSON.stringify({ electronPid: pid, stopped: true }),
+      );
+      await rm(scene.scratch, { recursive: true, force: true, maxRetries: 5 });
+    } else {
+      await scene.dispose();
+    }
+  } catch (error) {
+    await writeFile(join(shots, "cleanup-error.txt"), String(error)).catch(() => {});
+    cleanupFailure = error;
+    console.error("旅程清理失败：", error);
+  } finally {
+    model.close();
+  }
 }
+if (cleanupFailure) throw cleanupFailure;
 const failed = results.filter((result) => result.problems.length);
 console.log(`${results.length - failed.length}/${results.length} 步通过；截图在 ${shots}`);
 process.exit(failed.length ? 1 : 0);

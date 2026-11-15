@@ -1,4 +1,55 @@
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+
+let hostClientModule;
+export async function libraryCommand(page, params) {
+  hostClientModule ??= createRequire(
+    new URL("../../packages/gen-ui/package.json", import.meta.url),
+  )("esbuild")
+    .build({
+      entryPoints: [fileURLToPath(new URL("../../packages/client/src/index.ts", import.meta.url))],
+      bundle: true,
+      write: false,
+      format: "iife",
+      globalName: "SmokeHostClient",
+      platform: "browser",
+    })
+    .then(({ outputFiles }) => outputFiles[0].text);
+  await page.evaluate(await hostClientModule);
+  return page.evaluate(async (params) => {
+    let client;
+    try {
+      // Playwright 的求值上下文加载生产客户端，保持页面 CSP 和传输实现不变。
+      const { HostClient } = globalThis.SmokeHostClient;
+      const bootstrap = await window.arealDesktop.getHostTicket();
+      client = new HostClient({
+        bootstrap: async () => bootstrap,
+        origin: "areal-ui://app",
+        writes: true,
+      });
+      await client.retry();
+      const commandId = crypto.randomUUID();
+      const reply = await client.workbench(
+        "library.command",
+        { sourceId: bootstrap.preferredSourceId, ...params },
+        commandId,
+      );
+      if (
+        reply?.commandId !== commandId ||
+        reply.method !== "library.command" ||
+        reply.admissionState !== "accepted" ||
+        reply.submissionUnknown !== false ||
+        !reply.receipt
+      )
+        throw new Error("Library command receipt is not confirmed");
+      return reply.receipt;
+    } finally {
+      client?.close();
+      delete globalThis.SmokeHostClient;
+    }
+  }, params);
+}
 
 // 冒烟脚本共用的等待与桌面桥。等的是权威快照、回执或观测值满足条件，不是固定时长。
 export async function until(
@@ -42,6 +93,7 @@ export async function until(
 export function desktopBridge(currentPage) {
   const state = () => currentPage().evaluate(() => window.arealDesktop.snapshot());
   const call = async (name, params) => {
+    if (name === "library") return libraryCommand(currentPage(), params);
     const reply = await currentPage().evaluate(
       ({ name, params }) => window.arealDesktop.command(name, params),
       { name, params },

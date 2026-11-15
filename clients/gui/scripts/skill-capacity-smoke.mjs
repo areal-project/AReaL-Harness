@@ -248,11 +248,27 @@ try {
   const overflow = join(capacity.home, "overflow.json");
   await writeFile(overflow, JSON.stringify(oversized));
   let startupError;
-  await assert.rejects(start(capacity, { path: overflow }), (error) => {
-    startupError = error.stderr || error.message;
-    assert.match(error.stderr || error.message, /skills 513 \(limit 512\)/);
-    return true;
-  });
+  // Host 可退回历史只读；容量边界在真正加载部署的 Core 启动入口验证。
+  await assert.rejects(
+    executeCore(
+      binary,
+      [
+        "app-server",
+        "--config",
+        config,
+        "--data-dir",
+        join(capacity.home, "overflow-state"),
+        "--desktop-config",
+        overflow,
+      ],
+      { env: environment, cwd: capacity.root, timeout: 30000 },
+    ),
+    (error) => {
+      startupError = error.stderr || error.message;
+      assert.match(error.stderr || error.message, /skills 513 \(limit 512\)/);
+      return true;
+    },
+  );
   await writeFile(join(scratch, "core-overflow-stderr.txt"), startupError);
   checks.push(
     "GUI and real Core accept 512 and reject 513 registered versions without overwriting the saved GUI deployment",

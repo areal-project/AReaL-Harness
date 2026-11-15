@@ -152,6 +152,8 @@ for (const key of [
   delete env[key];
 for (const key of Object.keys(env))
   if (key.startsWith("AREAL_HARNESS_") && key !== "AREAL_HARNESS_SERVICE_HOME") delete env[key];
+// 夹具配置显式传入，避免开发版隔离配置根使该目录被忽略。
+env.AREAL_CORE_CONFIG = config;
 const noProxy = [env.NO_PROXY, env.no_proxy, "127.0.0.1", "localhost"].filter(Boolean).join(",");
 env.NO_PROXY = noProxy;
 env.no_proxy = noProxy;

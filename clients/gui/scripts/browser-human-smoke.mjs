@@ -250,6 +250,7 @@ for (const key of [
   "AREAL_HARNESS_CONFIG",
 ])
   delete env[key];
+env.AREAL_CORE_CONFIG = join(userHome, ".areal", "config.toml");
 if (packaged) delete env.AREAL_CORE_BIN;
 const startedAt = new Date().toISOString(),
   events = {},
@@ -411,6 +412,14 @@ try {
     "the app uses its expected bundled or source Core",
   );
   events.loadedCoreBinary = project.core.binary;
+  assert.ok(
+    project.models.some((model) => model.available),
+    "the isolated fixture configuration provides an executable model",
+  );
+  assert.ok(
+    project.profiles.some((profile) => profile.id === "fixture" && profile.revision === "v1"),
+    "the isolated fixture deployment is loaded before thread creation",
+  );
   projectId = project.id;
   const first = await command("create", {
     projectId,

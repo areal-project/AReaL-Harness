@@ -180,6 +180,12 @@ with urllib.request.urlopen(os.environ['AREAL_CLEANUP_TEST_URL'],timeout=2) as r
 `,
     );
     await chmod(binary, 0o700);
+    const host = spawn(process.execPath, ["-e", "setTimeout(() => process.exit(0), 1500)"], {
+      stdio: "ignore",
+    });
+    t.after(() => {
+      if (host.exitCode === null && host.signalCode === null) host.kill("SIGKILL");
+    });
     await assertApplicationStopped(
       binary,
       {
@@ -188,8 +194,8 @@ with urllib.request.urlopen(os.environ['AREAL_CLEANUP_TEST_URL'],timeout=2) as r
         NO_PROXY: [process.env.NO_PROXY, "127.0.0.1"].filter(Boolean).join(","),
         no_proxy: [process.env.no_proxy, "127.0.0.1"].filter(Boolean).join(","),
       },
-      null,
+      { hostPid: host.pid },
     );
-    assert.equal(calls, 1);
+    assert.ok(calls > 1, "cleanup waits for the original Host process to exit");
   },
 );

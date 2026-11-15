@@ -294,8 +294,8 @@ test(
     releaseApply.resolve();
     const applied = await applying;
     assert.deepEqual(stages, [
-      "areal/server/modelConfiguration/read",
       "areal/server/status",
+      "areal/server/modelConfiguration/read",
       "areal/server/modelConfiguration/apply",
       "areal/model/list",
     ]);
