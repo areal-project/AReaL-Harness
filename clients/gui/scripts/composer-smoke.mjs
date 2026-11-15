@@ -2138,13 +2138,14 @@ try {
     const goalTid = await page
       .locator("[data-testid=areal-workbench]")
       .getAttribute("data-thread-id");
-    assert.equal(project(await state()).state.threads[goalTid].goals.goal.objective, foldedGoal);
+    assert.equal((await readPasteThread(goalTid)).goals.goal.objective, foldedGoal);
     await button("移除附件 完成").waitFor({ state: "detached" });
     assert.equal(await button("移除附件 完成").count(), 0);
-    await until(
-      (s) => project(s).state.threads[goalTid]?.goals?.goal?.status !== "active",
-      "goal settles without progress",
-    );
+    await until(async () => {
+      const goal = (await readPasteThread(goalTid)).goals?.goal;
+      return goal?.status === "paused" && goal.reason === "progressUnreported" && !goal.settling;
+    }, "goal settles without progress");
+    await page.getByText("连续运行未报告进度，目标已暂停", { exact: true }).waitFor();
     await shot("04-inline-goal");
     checks.push(
       "new draft inline Goal consumes folded Text as the exact objective while skills and genuine file remain unsent",

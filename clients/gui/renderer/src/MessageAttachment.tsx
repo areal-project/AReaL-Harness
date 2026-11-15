@@ -458,8 +458,14 @@ export function SentAttachment({
       </span>
     );
   if (!media)
-    return part.type === "image" ? (
-      <AttachmentTile name={name} mime="image/*" url="" sent compact={compact} />
+    return part.type === "image" || part.type === "file" ? (
+      <AttachmentTile
+        name={name}
+        mime={part.type === "image" ? "image/*" : "application/octet-stream"}
+        url=""
+        sent
+        compact={compact}
+      />
     ) : (
       <span className="text-ui-sm text-foreground-subtle">读取附件…</span>
     );

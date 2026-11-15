@@ -553,7 +553,13 @@ async fn side_after_accepts_failed_and_interrupted_but_rejects_active() {
             expected
         );
         let side = call(&mut socket, 14, "areal/side/start", params).await;
-        assert!(side["result"].is_object(), "{side}");
+        if !side["result"].is_object() {
+            // 只在失败后读取夹具落盘状态，保留原时序并区分内存终态与持久化失败。
+            let persisted = std::fs::read_to_string(dir.path().join(format!("{source}.json")));
+            panic!(
+                "Side after {expected} turn {turn_id}: {side}; observed={read}; persisted={persisted:?}"
+            );
+        }
         let side_id = side["result"]["thread"]["id"].as_str().unwrap();
         fixture.engine.wait(side_id).await.unwrap();
         let history = call(

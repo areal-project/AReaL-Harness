@@ -23,6 +23,20 @@ describe("pending message attachments", () => {
     expect(html).not.toContain('src=""');
   });
 
+  it("keeps a file tile in place while media loads without offering download", () => {
+    const html = renderToStaticMarkup(
+      <SentAttachment
+        part={{ type: "file", name: "file.txt", url: "areal://blob/file" }}
+        projectId="project"
+        threadId="thread"
+        action={vi.fn<Action>() as Action}
+      />,
+    );
+    expect(html).toContain('data-message-attachment="file"');
+    expect(html).toContain("file.txt");
+    expect(html).not.toContain("下载附件 file.txt");
+  });
+
   it("renders the image and text together instead of only the filename", () => {
     const html = renderToStaticMarkup(
       <PendingMessageView

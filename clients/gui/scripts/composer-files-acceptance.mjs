@@ -354,6 +354,8 @@ export async function runComposerFilesAcceptance({
   );
   await createProjectConversation(page, "workspace");
   await selectConversation(page, tid);
+  // 返回对话会异步读取上一轮附件；等实际卡片出现再对后续消息进行悬停。
+  await page.getByTestId("user-attachments").getByText("中文.ts", { exact: true }).waitFor();
   await input().locator('[data-mention-category="files"]').waitFor();
   assert.equal(await input().textContent(), `前缀 ${selectedFile} `);
   await assertInlineFileHover(

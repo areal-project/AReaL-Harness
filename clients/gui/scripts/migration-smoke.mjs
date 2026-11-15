@@ -2,6 +2,7 @@ import { makeTempDir } from "./support/temp.mjs";
 import { cleanupSyntheticHostKeychain, closeSmokeApplication } from "./application-cleanup.mjs";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
 import assert from "node:assert/strict";
+import { readCoreThread } from "./support/core-observation.mjs";
 
 import { createRequire } from "node:module";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
@@ -1602,13 +1603,36 @@ try {
       await input().fill("保留未发送草稿");
       // Turn 可先进入 inProgress；必须等本次请求抵达，不能复用之前 Goal 的完成回调。
       finishBackground = undefined;
+      const beforeBackground = await readCoreThread({
+        binary,
+        env,
+        gui,
+        workspace,
+        project: project(await state()),
+        threadId: tid,
+      });
       await call("send", { projectId: pid, threadId: tid, text: "后台持续执行" });
-      await waitForSnapshot(
-        (s) => current(s).turns.at(-1)?.status === "inProgress" && finishBackground,
-        "background started",
-      );
-      const turnCount = current(await state()).turns.length;
-      const backgroundTurnId = current(await state()).turns.at(-1).id;
+      let backgroundThread;
+      await waitForSnapshot(async (s) => {
+        backgroundThread = await readCoreThread({
+          binary,
+          env,
+          gui,
+          workspace,
+          project: project(s),
+          threadId: tid,
+        });
+        return (
+          backgroundThread.turns.length === beforeBackground.turns.length + 1 &&
+          backgroundThread.turns.at(-1)?.status === "inProgress" &&
+          finishBackground
+        );
+      }, "background started");
+      const turnCount = backgroundThread.turns.length;
+      const backgroundTurnId = backgroundThread.turns.at(-1).id;
+      await page
+        .locator(`[data-turn-id="${backgroundTurnId}"][data-turn-status="inProgress"]`)
+        .waitFor();
       const requestCount = received.length;
       const adapter = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
       const applicationPid = app.process().pid;
