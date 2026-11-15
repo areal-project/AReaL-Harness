@@ -85,6 +85,14 @@
     "requires": ["electron", "core-binary", "git", "gui-build"]
   },
   {
+    "script": "test:macos-signing",
+    "layer": "contract",
+    "platforms": ["darwin"],
+    "areas": ["packaging"],
+    "requires": ["macos-tools"],
+    "platformReason": "Uses macOS codesign for resource-seal verification."
+  },
+  {
     "script": "test:macos-dmg",
     "layer": "contract",
     "platforms": ["darwin"],

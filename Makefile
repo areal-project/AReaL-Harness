@@ -341,7 +341,7 @@ gui-build: ## 同步锁定依赖并构建 GUI renderer
 	pnpm --dir clients/gui build
 gui: gui-build ## 启动桌面 GUI（先 make build）
 	pnpm --dir clients/gui start
-gui-package: ## 构建并签名、公证 macOS arm64 安装包（需 CSC_NAME 与 APPLE_KEYCHAIN_PROFILE）
+gui-package: ## 构建 macOS arm64 ad-hoc 本地安装包
 	pnpm --dir clients/gui dist
 gui-smoke: ## 隔离目录中验证真实 Electron/Core 和本地模型
 	pnpm --dir clients/gui test:e2e

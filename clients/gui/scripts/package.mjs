@@ -41,8 +41,8 @@ const { values: options } = parseArgs({
 });
 if (options.help) {
   console.log(
-    "Usage: pnpm --dir clients/gui run dist --platform mac --arch arm64 --formats dmg,zip --signing none|adhoc|developer-id [--output NEW_DIRECTORY] [--identity ID --keychain-profile PROFILE] [--skip-tests]\n" +
-      "dist builds release Core and GUI. Only native macOS arm64 is supported. none preserves input signatures; no launch trust is implied. developer-id requires both formats and performs notarization/acceptance (post-signing tests may be explicitly skipped). Never publishes. Resume pending Apple work with sign:mac --resume --output OUTPUT/signed.",
+    "Usage: pnpm --dir clients/gui run dist --platform mac --arch arm64 --formats dmg,zip --signing adhoc|developer-id|notarized|none [--output NEW_DIRECTORY] [--identity ID --keychain-profile PROFILE] [--skip-tests]\n" +
+      "dist builds release Core and GUI. Only native macOS arm64 is supported. none preserves input signatures; no launch trust is implied. Defaults to adhoc. developer-id signs without notarization; notarized performs Apple acceptance (functional tests may be explicitly skipped). Never publishes. Resume pending Apple work with sign:mac --resume --output OUTPUT/signed.",
   );
   process.exit(0);
 }
@@ -51,8 +51,11 @@ assert.ok(
   "Supported GUI target: mac/arm64 only; Linux/Windows and cross-compilation are not implemented",
 );
 const signing =
-  options.signing || (process.env.AREAL_GUI_UNSIGNED_LOCAL === "1" ? "none" : "developer-id");
-assert.ok(["none", "adhoc", "developer-id"].includes(signing), "Invalid --signing mode");
+  options.signing || (process.env.AREAL_GUI_UNSIGNED_LOCAL === "1" ? "none" : "adhoc");
+assert.ok(
+  ["none", "adhoc", "developer-id", "notarized"].includes(signing),
+  "Invalid --signing mode",
+);
 assert.ok(!options.formats || !options["dmg-only"], "Choose --formats or --dmg-only");
 const formats = (options.formats || (options["dmg-only"] ? "dmg" : "dmg,zip")).split(",");
 assert.ok(
@@ -61,7 +64,8 @@ assert.ok(
     formats.every((f) => ["dmg", "zip"].includes(f)),
   "--formats must contain dmg, zip or dmg,zip",
 );
-const developerId = signing === "developer-id";
+const notarized = signing === "notarized";
+const developerId = signing === "developer-id" || notarized;
 assert.ok(
   !options["skip-tests"] || developerId,
   "--skip-tests applies only to Developer ID package acceptance",
@@ -70,18 +74,18 @@ const identity = options.identity || process.env.CSC_NAME;
 const profile = options["keychain-profile"] || process.env.APPLE_KEYCHAIN_PROFILE;
 assert.ok(
   developerId || (!options.identity && !options["keychain-profile"]),
-  "Signing credentials require --signing developer-id",
+  "Signing credentials require --signing developer-id or notarized",
 );
 if (developerId) {
   assert.ok(formats.includes("dmg"), "Developer ID acceptance requires a DMG format");
   assert.ok(
-    identity && profile,
-    "Developer ID requires --identity and --keychain-profile (or CSC_NAME/APPLE_KEYCHAIN_PROFILE)",
+    identity && (!notarized || profile),
+    "Developer ID requires --identity; notarized also requires --keychain-profile (or CSC_NAME/APPLE_KEYCHAIN_PROFILE)",
   );
 }
 if (process.platform !== "darwin" || process.arch !== "arm64")
   throw new Error("Local package acceptance currently targets macOS arm64");
-const release = developerId || process.env.AREAL_GUI_RELEASE === "1";
+const release = notarized || process.env.AREAL_GUI_RELEASE === "1";
 const unsignedLocal = signing === "none";
 if (release)
   assert.equal(
@@ -433,7 +437,7 @@ try {
       );
 
       if (developerId) {
-        await timings.measure("notarize", () =>
+        await timings.measure(notarized ? "notarize" : "developer-id-sign", () =>
           execFileSync(
             process.execPath,
             [
@@ -444,10 +448,9 @@ try {
               join(output, "signed"),
               "--identity",
               identity,
-              "--keychain-profile",
-              profile,
+              ...(notarized ? ["--keychain-profile", profile] : ["--no-notarize"]),
               ...(options["skip-tests"] ? ["--skip-tests"] : []),
-              ...(options["dmg-only"] ? ["--dmg-only"] : []),
+              ...(!formats.includes("zip") ? ["--dmg-only"] : []),
             ],
             { cwd: root, stdio: "inherit" },
           ),

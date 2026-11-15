@@ -112,6 +112,7 @@ function summary() {
   return {
     status: state.phase,
     output,
+    signingMode: state.noNotarize ? "developer-id" : "notarized",
     submissions: state.notarization,
     artifacts: state.artifacts,
     packagedGui: state.packagedGui,
@@ -145,6 +146,7 @@ async function main() {
       "history-source": { type: "string" },
       resume: { type: "boolean" },
       "skip-tests": { type: "boolean" },
+      "no-notarize": { type: "boolean" },
       "dmg-only": { type: "boolean" },
       "wait-seconds": { type: "string", default: "60" },
     },
@@ -158,15 +160,18 @@ async function main() {
         "  [--history-source /absolute/areal-core] (default: installed GUI history)\n\n" +
         "Resume: --resume --output /absolute/existing-directory [--wait-seconds 60]\n" +
         "Identity/profile can also use CSC_NAME / APPLE_KEYCHAIN_PROFILE.\n" +
-        "Requires macOS, Xcode notarytool, installed project dependencies and an existing\n" +
-        "AReaL Core GUI .app. Copies input; produces notarized ZIP/DMG and JSON evidence.\n" +
-        "[--skip-tests] explicitly skips desktop/model acceptance, recorded in evidence; signing/notarization checks still run.\n" +
+        "Requires macOS arm64, installed project dependencies and an existing\n" +
+        "AReaL Core GUI .app. Copies input; produces signed ZIP/DMG and JSON evidence. Notarization requires Xcode notarytool.\n" +
+        "[--no-notarize] signs locally without Apple submission; functional journeys are selected separately.\n" +
+        "[--skip-tests] skips history/desktop/model acceptance, recorded in evidence; artifact checks still run.\n" +
         "Exit 0: complete; 2: Apple still processing (resume); 1: failed, inspect logs.\n" +
         "Never publishes, changes update feeds, creates credentials, or replaces the source app.",
     );
     return;
   }
   assert.equal(process.platform, "darwin", "macOS is required");
+  assert.equal(process.arch, "arm64", "Only native macOS arm64 is supported");
+  assert.ok(!options.resume || !options["no-notarize"], "Resume uses the saved signing mode");
   assert.ok(options.output, "--output is required");
   const wait = Number(options["wait-seconds"]);
   assert.ok(Number.isInteger(wait) && wait >= 1 && wait <= 3600, "--wait-seconds must be 1..3600");
@@ -190,7 +195,9 @@ async function main() {
       "Signing was interrupted. Inspect logs and start with a new output directory.",
     );
     assert.equal(
-      state.historyPreflight?.passed,
+      state.historyPreflight?.passed === true ||
+        state.skipTests === true ||
+        state.noNotarize === true,
       true,
       "Candidate has no pre-sign history acceptance; start a new signing run",
     );
@@ -204,6 +211,10 @@ async function main() {
       }
       console.log(JSON.stringify(summary(), null, 2));
       return;
+    }
+    if (options["skip-tests"]) {
+      state.skipTests = true;
+      save();
     }
     assertApp();
   } else {
@@ -241,41 +252,47 @@ async function main() {
       "darwin/arm64",
       "This command currently supports macOS arm64 packages",
     );
-    // 在访问签名身份、Apple 或创建输出前，使用候选包验证私有历史副本。
-    const historySource = resolve(
-      options["history-source"] ||
-        join(homedir(), "Library/Application Support/AReaL Harness GUI/areal-core"),
-    );
-    const history = run(process.execPath, [
-      join(desktop, "scripts/history-copy-smoke.mjs"),
-      "--source",
-      historySource,
-      "--executable",
-      join(source, "Contents/MacOS/AReaL Harness GUI"),
-    ]);
-    const historyPreflight = JSON.parse(history.stdout.trim().split("\n").at(-1));
-    assert.equal(historyPreflight.passed, true, "History preflight failed");
-    const historyEvidence = readJSON(historyPreflight.evidence);
-    assert.equal(historyEvidence.passed, true);
-    assert.equal(
-      historyEvidence.coreSha256,
-      manifest.files["bin/areal"],
-      "History preflight used a different Core",
-    );
-    assert.equal(
-      hash(join(source, manifestRelative)),
-      inputManifestSha256,
-      "Input manifest changed during preflight",
-    );
-    assert.equal(
-      hash(join(source, "Contents/Resources/areal-core/bin/areal")),
-      historyEvidence.coreSha256,
-      "Core changed during preflight",
-    );
+    let historyPreflight = "skipped-by-request";
+    if (!options["skip-tests"] && !options["no-notarize"]) {
+      // 在访问签名身份、Apple 或创建输出前，使用候选包验证私有历史副本。
+      const historySource = resolve(
+        options["history-source"] ||
+          join(homedir(), "Library/Application Support/AReaL Harness GUI/areal-core"),
+      );
+      const history = run(process.execPath, [
+        join(desktop, "scripts/history-copy-smoke.mjs"),
+        "--source",
+        historySource,
+        "--executable",
+        join(source, "Contents/MacOS/AReaL Harness GUI"),
+      ]);
+      historyPreflight = JSON.parse(history.stdout.trim().split("\n").at(-1));
+      assert.equal(historyPreflight.passed, true, "History preflight failed");
+      const historyEvidence = readJSON(historyPreflight.evidence);
+      assert.equal(historyEvidence.passed, true);
+      assert.equal(
+        historyEvidence.coreSha256,
+        manifest.files["bin/areal"],
+        "History preflight used a different Core",
+      );
+      assert.equal(
+        hash(join(source, manifestRelative)),
+        inputManifestSha256,
+        "Input manifest changed during preflight",
+      );
+      assert.equal(
+        hash(join(source, "Contents/Resources/areal-core/bin/areal")),
+        historyEvidence.coreSha256,
+        "Core changed during preflight",
+      );
+    }
     const identity = options.identity || process.env.CSC_NAME;
     const profile = options["keychain-profile"] || process.env.APPLE_KEYCHAIN_PROFILE;
     assert.ok(identity && identity !== "-", "A Developer ID Application identity is required");
-    assert.ok(profile && !profile.startsWith("-"), "A Keychain profile is required");
+    assert.ok(
+      options["no-notarize"] || (profile && !profile.startsWith("-")),
+      "A Keychain profile is required for notarization",
+    );
     // Resolve only an exact valid identity, never an ambiguous substring.
     const inventory = timings.measureSync("resolve-signing-identity", () =>
       execFileSync("/usr/bin/security", ["find-identity", "-v", "-p", "codesigning"], {
@@ -292,13 +309,14 @@ async function main() {
     );
     const teamId = /^Developer ID Application: .+ \(([A-Z0-9]{10})\)$/.exec(matches[0][2])?.[1];
     assert.ok(teamId, "The certificate must be Developer ID Application");
-    timings.measureSync("validate-notary-profile", () =>
-      execFileSync(
-        "/usr/bin/xcrun",
-        ["notarytool", "history", "--keychain-profile", profile, "--output-format", "json"],
-        { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-      ),
-    );
+    if (!options["no-notarize"])
+      timings.measureSync("validate-notary-profile", () =>
+        execFileSync(
+          "/usr/bin/xcrun",
+          ["notarytool", "history", "--keychain-profile", profile, "--output-format", "json"],
+          { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+        ),
+      );
     const builderRequire = createRequire(require.resolve("electron-builder"));
     const { signAsync } = builderRequire("@electron/osx-sign");
     mkdirSync(output);
@@ -318,6 +336,8 @@ async function main() {
       coreSourceRevision: manifest.sourceRevision,
       inputManifestSha256,
       historyPreflight,
+      noNotarize: options["no-notarize"] === true,
+      skipTests: options["skip-tests"] === true,
       dmgOnly: options["dmg-only"] === true,
       notarization: {},
       startedAt: new Date().toISOString(),
@@ -362,9 +382,16 @@ async function main() {
         join(desktop, "../../services/workbench/src/desktop/core/bundle.cjs"),
       ).verifyCoreBundle(join(app, "Contents/Resources"), { hashes: true }),
     );
-    timings.measureSync("archive-app-submission", () =>
-      run("/usr/bin/ditto", ["-c", "-k", "--keepParent", app, join(output, "app-submission.zip")]),
-    );
+    if (!state.noNotarize)
+      timings.measureSync("archive-app-submission", () =>
+        run("/usr/bin/ditto", [
+          "-c",
+          "-k",
+          "--keepParent",
+          app,
+          join(output, "app-submission.zip"),
+        ]),
+      );
     state.phase = "signed";
     save();
   }
@@ -483,22 +510,25 @@ async function main() {
     dmg = join(output, stem + ".dmg"),
     dmgOnly = state.dmgOnly === true;
   if (
+    !state.noNotarize &&
     !(await timings.measure("notarize-app", () =>
       notarize("zip", join(output, "app-submission.zip")),
     ))
   )
     return;
   if (state.phase === "signed") {
-    run("/usr/bin/xcrun", ["stapler", "staple", app]);
-    run("/usr/bin/xcrun", ["stapler", "validate", app]);
-    assertApp();
-    run("/usr/sbin/spctl", ["--assess", "--type", "execute", "--verbose=2", app]);
+    if (!state.noNotarize) {
+      run("/usr/bin/xcrun", ["stapler", "staple", app]);
+      run("/usr/bin/xcrun", ["stapler", "validate", app]);
+      assertApp();
+      run("/usr/sbin/spctl", ["--assess", "--type", "execute", "--verbose=2", app]);
+    }
     timings.measureSync("verify-core-bundle", () =>
       require(
         join(desktop, "../../services/workbench/src/desktop/core/bundle.cjs"),
       ).verifyCoreBundle(join(app, "Contents/Resources"), { hashes: true }),
     );
-    if (options["skip-tests"]) {
+    if (options["skip-tests"] || state.skipTests || state.noNotarize) {
       state.packagedGui = "skipped-by-request";
       state.packagedModelSelection = "skipped-by-request";
     } else {
@@ -541,33 +571,36 @@ async function main() {
     save();
   }
   if (!dmgOnly) assert.equal(hash(zip), state.zipSha256, "Final ZIP changed");
-  if (
-    state.phase !== "finalizing" &&
-    !(await timings.measure("notarize-dmg", () => notarize("dmg", dmg)))
-  )
-    return;
-  const dmgLog = readJSON(join(output, "dmg-notary-log.json"));
-  assert.equal(dmgLog.status, "Accepted", "DMG must have an accepted Apple receipt");
-  assert.equal(dmgLog.sha256, state.notarization.dmg.sha256, "DMG receipt digest mismatch");
   run("/usr/bin/codesign", ["--verify", "--strict", dmg]);
   const dmgDetail = run("/usr/bin/codesign", ["--display", "--verbose=4", dmg]).stderr;
   assert.equal(/^CDHash=(.+)$/m.exec(dmgDetail)?.[1], state.dmgCdhash, "Signed DMG changed");
-  // Stapling changes DMG bytes. Persist the finalization boundary so a retry
-  // after this point validates the ticket instead of comparing upload bytes.
-  state.phase = "finalizing";
-  save();
-  run("/usr/bin/xcrun", ["stapler", "staple", dmg]);
-  run("/usr/bin/xcrun", ["stapler", "validate", dmg]);
-  run("/usr/bin/codesign", ["--verify", "--strict", dmg]);
-  run("/usr/sbin/spctl", [
-    "--assess",
-    "--type",
-    "open",
-    "--context",
-    "context:primary-signature",
-    "--verbose=2",
-    dmg,
-  ]);
+
+  if (!state.noNotarize) {
+    if (
+      state.phase !== "finalizing" &&
+      !(await timings.measure("notarize-dmg", () => notarize("dmg", dmg)))
+    )
+      return;
+    const dmgLog = readJSON(join(output, "dmg-notary-log.json"));
+    assert.equal(dmgLog.status, "Accepted", "DMG must have an accepted Apple receipt");
+    assert.equal(dmgLog.sha256, state.notarization.dmg.sha256, "DMG receipt digest mismatch");
+    // Stapling changes DMG bytes. Persist the finalization boundary so a retry
+    // after this point validates the ticket instead of comparing upload bytes.
+    state.phase = "finalizing";
+    save();
+    run("/usr/bin/xcrun", ["stapler", "staple", dmg]);
+    run("/usr/bin/xcrun", ["stapler", "validate", dmg]);
+    run("/usr/bin/codesign", ["--verify", "--strict", dmg]);
+    run("/usr/sbin/spctl", [
+      "--assess",
+      "--type",
+      "open",
+      "--context",
+      "context:primary-signature",
+      "--verbose=2",
+      dmg,
+    ]);
+  }
   const mount = join(output, "verify-mount");
   mkdirSync(mount, { recursive: true });
   run("/usr/bin/hdiutil", ["attach", dmg, "-readonly", "-nobrowse", "-mountpoint", mount]);
@@ -575,8 +608,10 @@ async function main() {
   try {
     const inside = join(mount, state.appName);
     run("/usr/bin/codesign", ["--verify", "--deep", "--strict", inside]);
-    run("/usr/bin/xcrun", ["stapler", "validate", inside]);
-    run("/usr/sbin/spctl", ["--assess", "--type", "execute", "--verbose=2", inside]);
+    if (!state.noNotarize) {
+      run("/usr/bin/xcrun", ["stapler", "validate", inside]);
+      run("/usr/sbin/spctl", ["--assess", "--type", "execute", "--verbose=2", inside]);
+    }
   } catch (error) {
     failure = error;
   } finally {

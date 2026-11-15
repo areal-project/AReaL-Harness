@@ -382,7 +382,7 @@ GUI Main 与桌面后台的观察连接断开，或首次启动等待超时但�
 ```sh
 pnpm --dir clients/gui run dist --platform mac --arch arm64 --formats dmg,zip --signing none
 pnpm --dir clients/gui run dist --platform mac --arch arm64 --formats dmg --signing adhoc
-pnpm --dir clients/gui run dist --platform mac --arch arm64 --formats dmg,zip --signing developer-id --identity "$CSC_NAME" --keychain-profile "$APPLE_KEYCHAIN_PROFILE"
+pnpm --dir clients/gui run dist --platform mac --arch arm64 --formats dmg,zip --signing notarized --identity "$CSC_NAME" --keychain-profile "$APPLE_KEYCHAIN_PROFILE"
 ```
 
 打包按输入与输出内容摘要复用 GUI 构建；回执缺失、输入变化或产物损坏时自动重建。依赖仍按锁文件同步一次。`dist --signing none` 可复用输入一致且全部二进制通过原构建回执校验的 release Core；`package-evidence.json` 分别记录整包源码与 Core 实际构建提交，不将旧 Core 标成新提交。正式签名保留严格提交校验。`package-timings.json` 记录各阶段耗时、缓存命中与总耗时；本次暂存目录在成功或异常退出时清理。同一工作树的并行打包被锁拒绝，异常强杀后需先核对锁的所有者再清理。
@@ -391,11 +391,11 @@ Relay 的 `node_modules` 通过独立资源映射打包，避免 electron-builde
 
 内部 Relay 测试包可在打包时设置 `AREAL_GUI_RELAY_CA_CERT=/absolute/ca.pem`，将自签名 CA 公共证书内置到应用。仅 Relay 的 HTTPS 登记与 WSS 连接额外信任该 CA，仍校验证书链、有效期和主机名；登记码由用户在客户端填写。CA 私钥不得进入包。手机端仍需自行安装并信任同一 CA，再扫码并在电脑确认设备授权。
 
-`dist` 和 `make gui-package` 默认要求 Developer ID 签名与公证（`CSC_NAME`、`APPLE_KEYCHAIN_PROFILE`）；本地候选需显式指定 `--signing adhoc` 或 `--signing none`，不能作为正式升级包。内置 Host 的签名标识跨构建保持稳定，以保留钥匙串授权身份。从旧 ad-hoc 或不同标识的包切换时仍可能需要一次钥匙串授权，不要删除已有凭据条目。开发 GUI 默认使用按资料目录隔离的 `~/.areal-dev/<hash>` Host 与配置目录；显式环境变量仍优先，测试须指定隔离路径。
+`dist` 和 `make gui-package` 默认构建 Mac arm64 ad-hoc 本地包，不改版本、不安装、不发布。三档通过 `--signing` 选择：`adhoc` 本地测试；`developer-id --identity "$CSC_NAME"` 使用 Developer ID Application 签名、不公证，用于钥匙串与身份相关验收；`notarized --identity "$CSC_NAME" --keychain-profile "$APPLE_KEYCHAIN_PROFILE"` 正式签名公证。实际访问钥匙串的应用及内置 Host 使用稳定签名身份；从 ad-hoc 切换仍可能需要一次授权，不删除已有凭据。
 
-`--formats` 可选 `dmg`、`zip` 或 `dmg,zip`；`--output` 指定全新目录，默认生成独立时间戳目录，拒绝覆盖。`none` 不做分发签名，保留输入已有签名；原生 Helper 构建仍使用 ad-hoc 签名，不保证应用签名有效或可启动；DMG 仅对字节完全一致的双份 Framework 去重。`adhoc` 是本地签名，不做公证。`developer-id` 复用现有签名、公证及安装包验收，要求两种格式；最终产物位于输出的 `signed/`，Apple 尚在处理时退出 2，使用 `pnpm --dir clients/gui run sign:mac --resume --output /absolute/output/signed` 恢复，不能重新提交未知状态的请求。此命令不发布。
+`--formats` 可选 `dmg`、`zip` 或 `dmg,zip`，Developer ID 两档要求包含 DMG；`--output` 指定全新目录。签名后的最终产物位于 `signed/`。`none` 仅作为保留输入签名的诊断模式，不保证可启动。正式档 Apple 尚在处理时退出 2，用 `sign:mac --resume --output /absolute/output/signed` 恢复原提交。
 
-仅需签名、公证和归档时，Developer ID 命令可加 `--skip-tests`；恢复同一公证时也可用 `sign:mac --resume --skip-tests --output ...`。它跳过签名后的桌面 smoke 与模型专项，回执标记为 `skipped-by-request`；签名、Apple 公证、stapling、Gatekeeper、Core 完整性及 DMG 体积检查仍执行。签名前的历史输入预检保留。此模式不能宣称功能验收通过，正式发布整理仍要求测试通过。
+正式档可加 `--skip-tests`，跳过历史副本、桌面和模型功能验收，并持久记录该选择供恢复使用；签名、Core 完整性、Apple 公证、stapling、Gatekeeper 和最终 DMG 检查仍执行。本地 Developer ID 档不自动运行这些功能旅程，按任务选择验收；不调用 Apple 公证服务。跳过测试不表示功能验收通过。直接对已有 app 签名可用 `sign:mac --no-notarize --app ... --output ... --identity ...`。
 
 当前支持矩阵只有 **macOS arm64 原生构建**；Linux、Windows、x64 和跨平台构建显式报错，待各平台打包及服务所有者实现后接入同一入口。ZIP 不受 DMG 体积预算限制。DMG 在本地导出及正式发布整理时统一检查 **≤250 MiB（262,144,000 字节）**，超出即失败；不得绕过专用导出器临时创建交付镜像。可单独检查现有产物：`node clients/gui/scripts/dmg-size.mjs /absolute/package.dmg`。GUI CI 保留 DMG 暂存测试，不执行完整 release DMG 打包；安装包由本地构建、验收并上传。候选构建成功不等于安装或 GUI 功能验收通过。
 

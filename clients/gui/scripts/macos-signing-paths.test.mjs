@@ -153,17 +153,37 @@ test("Developer ID Core signing retains credential identities across build bytes
   }
 });
 
-test("default packaging stops before building when distribution signing credentials are absent", async () => {
-  const { spawnSync } = await import("node:child_process");
+test("local default needs no credentials while notarized requires them", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "areal-package-default-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
   const env = { ...process.env };
-  for (const name of ["CSC_NAME", "APPLE_KEYCHAIN_PROFILE", "AREAL_GUI_UNSIGNED_LOCAL"])
+  for (const name of [
+    "CSC_NAME",
+    "APPLE_KEYCHAIN_PROFILE",
+    "AREAL_GUI_UNSIGNED_LOCAL",
+    "AREAL_GUI_RELEASE",
+  ])
     delete env[name];
-  const result = spawnSync(process.execPath, [new URL("./package.mjs", import.meta.url).pathname], {
+  const script = new URL("./package.mjs", import.meta.url).pathname;
+  const local = spawnSync(process.execPath, [script, "--output", root], {
     env,
     encoding: "utf8",
+    timeout: 10000,
   });
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Developer ID requires --identity and --keychain-profile/);
+  assert.notEqual(local.status, 0);
+  assert.match(
+    local.stderr,
+    process.platform === "darwin" && process.arch === "arm64"
+      ? /Package output already exists/
+      : /macOS arm64/,
+  );
+  const formal = spawnSync(process.execPath, [script, "--signing", "notarized"], {
+    env,
+    encoding: "utf8",
+    timeout: 10000,
+  });
+  assert.notEqual(formal.status, 0);
+  assert.match(formal.stderr, /Developer ID requires --identity/);
 });
 
 test("distribution signing selects native code once and leaves data to the resource seal", async (t) => {
@@ -286,6 +306,120 @@ test(
       assert.equal(record.command[1], "--verify");
       assert.ok(record.durationMs >= 0);
       assert.notEqual(record.exitCode, 0);
+    }
+  },
+);
+
+test(
+  "local signing and skipped formal acceptance keep distinct Apple boundaries",
+  { skip: process.platform !== "darwin" || process.arch !== "arm64" },
+  async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "areal-sign-modes-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const app = join(root, "Fixture.app");
+    await mkdir(join(app, "Contents/Frameworks/Electron Framework.framework"), { recursive: true });
+    await mkdir(join(app, "Contents/Resources/areal-core"), { recursive: true });
+    await writeFile(
+      join(app, "Contents/Resources/areal-core/manifest.json"),
+      JSON.stringify({ apiVersion: "areal.core.v1", platform: "darwin/arm64", files: {} }),
+    );
+    const preload = join(root, "native-boundaries.cjs");
+    await writeFile(
+      preload,
+      `
+const fs = require('node:fs');
+const path = require('node:path');
+const cp = require('node:child_process');
+const Module = require('node:module');
+const original = Module._load;
+Module._load = function(name, ...args) {
+  if (name === '@electron/osx-sign') return { signAsync: async () => {} };
+  if (name.endsWith('/desktop/core/bundle.cjs')) return { verifyCoreBundle: () => ({}) };
+  return original.call(this, name, ...args);
+};
+function call(bin, args) {
+  fs.appendFileSync(process.env.MODE_CALLS, JSON.stringify([bin, ...args]) + '\\n');
+  if (bin === process.execPath) throw new Error('Unexpected functional test');
+  if (bin.endsWith('/xcrun')) {
+    if (process.env.LOCAL_MODE === '1') throw new Error('Local signing contacted Apple');
+    const id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+    if (args[1] === 'submit') {
+      const digest = require('node:crypto').createHash('sha256').update(fs.readFileSync(args[2])).digest('hex');
+      global.receiptDigest = digest;
+      return { stdout: JSON.stringify({id}) };
+    }
+    if (args[1] === 'wait') return {stdout: JSON.stringify({status: 'Accepted'})};
+    if (args[1] === 'log') fs.writeFileSync(args.at(-1), JSON.stringify({jobId: id, sha256: global.receiptDigest, status: 'Accepted'}));
+    return {stdout: '{}'};
+  }
+  if (bin.endsWith('/plutil')) return { stdout: JSON.stringify({ CFBundleIdentifier: 'org.areal.harness.gui', CFBundleShortVersionString: '1.0.0' }) };
+  if (bin.endsWith('/security')) return { stdout: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA "Developer ID Application: Fixture (AAAAAAAAAA)"' };
+  if (bin.endsWith('/ditto')) {
+    if (args[0] === '-c') fs.writeFileSync(args.at(-1), 'archive');
+    else fs.cpSync(args[0], args[1], { recursive: true });
+  }
+  return { stdout: '', stderr: 'TeamIdentifier=AAAAAAAAAA\\nflags=0x10000(runtime)\\nCDHash=fixture' };
+}
+cp.execFileSync = (bin, args) => call(bin, args).stdout;
+cp.spawnSync = (bin, args, options) => {
+  const result = { status: 0, ...call(bin, args) };
+  if (typeof options?.stdio?.[1] === 'number') fs.writeSync(options.stdio[1], result.stdout || '');
+  return result;
+};
+Module.syncBuiltinESMExports();
+Module.registerHooks({ load(url, context, next) {
+  if (url.endsWith('/macos-signing-paths.mjs')) return { format: 'module', shortCircuit: true, source: 'export const signCoreTools = async () => []; export const createSigningFilter = () => () => false;' };
+  if (url.endsWith('/macos-dmg.mjs')) return { format: 'module', shortCircuit: true, source: 'import {writeFileSync} from "node:fs"; export async function buildMacOSDmg({destination}) {writeFileSync(destination, "dmg");return {};}' };
+  return next(url, context);
+}});
+`,
+    );
+    for (const local of [true, false]) {
+      const output = join(root, local ? "local" : "formal");
+      const calls = join(root, local ? "local-calls" : "formal-calls");
+      const result = spawnSync(
+        process.execPath,
+        [
+          "--require",
+          preload,
+          new URL("./notarize-macos.mjs", import.meta.url).pathname,
+          "--app",
+          app,
+          "--output",
+          output,
+          "--identity",
+          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          ...(local ? ["--no-notarize"] : ["--skip-tests", "--keychain-profile", "fixture"]),
+        ],
+        {
+          encoding: "utf8",
+          env: { ...process.env, MODE_CALLS: calls, LOCAL_MODE: local ? "1" : "0" },
+        },
+      );
+      const commands = (await readFile(calls, "utf8")).trim().split("\n").map(JSON.parse);
+      assert.ok(!commands.some(([bin]) => bin === process.execPath));
+      if (local) {
+        assert.equal(result.status, 0, result.stderr);
+        const state = JSON.parse(await readFile(join(output, "notarization.json"), "utf8"));
+        assert.equal(state.phase, "complete");
+        assert.deepEqual(state.notarization, {});
+        assert.equal(state.packagedGui, "skipped-by-request");
+        assert.ok(commands.some(([bin, flag]) => bin.endsWith("/codesign") && flag === "--verify"));
+        assert.ok(
+          commands.some(([bin, action]) => bin.endsWith("/hdiutil") && action === "attach"),
+        );
+        assert.ok(!commands.some(([bin]) => bin.endsWith("/xcrun") || bin.endsWith("/spctl")));
+      } else {
+        assert.equal(result.status, 0, result.stderr);
+        const state = JSON.parse(await readFile(join(output, "notarization.json"), "utf8"));
+        assert.equal(state.phase, "complete");
+        assert.equal(state.skipTests, true);
+        assert.equal(state.packagedModelSelection, "skipped-by-request");
+        assert.equal(state.notarization.zip.status, "Accepted");
+        assert.equal(state.notarization.dmg.status, "Accepted");
+        assert.ok(commands.some(([bin, action]) => bin.endsWith("/xcrun") && action === "stapler"));
+        assert.ok(commands.some(([bin]) => bin.endsWith("/spctl")));
+      }
     }
   },
 );
