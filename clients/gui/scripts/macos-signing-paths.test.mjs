@@ -113,35 +113,38 @@ test("a failed nested signature prevents sealing an incomplete local app", async
   );
 });
 
-test("Developer ID Core signing replaces build-derived identifiers with stable tool identities", async (t) => {
+test("Developer ID Core signing retains credential identities across build bytes and locations", async (t) => {
   const { signCoreTools } = await import("./macos-signing-paths.mjs");
   const { createHash } = await import("node:crypto");
   const root = await mkdtemp(join(tmpdir(), "areal-core-signing-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const files = {};
-  for (const name of [
-    "bin/areal",
-    "libexec/areal/areal-runtime",
-    "libexec/areal/areal-runtime-fs",
-  ]) {
-    await mkdir(join(root, name, ".."), { recursive: true });
-    await writeFile(join(root, name), "fixture");
-    files[name] = createHash("sha256").update("fixture").digest("hex");
+  for (const build of ["previous", "successor"]) {
+    const directory = join(root, build);
+    const files = {};
+    for (const name of [
+      "bin/areal",
+      "libexec/areal/areal-runtime",
+      "libexec/areal/areal-runtime-fs",
+    ]) {
+      await mkdir(join(directory, name, ".."), { recursive: true });
+      await writeFile(join(directory, name), build);
+      files[name] = createHash("sha256").update(build).digest("hex");
+    }
+    const calls = [];
+    const manifest = { files };
+    await signCoreTools({
+      directory,
+      manifest,
+      identity: "test-identity",
+      run: (_command, args) => calls.push(args),
+    });
+    const signs = calls.filter((args) => args.includes("--sign"));
+    assert.deepEqual(
+      signs.map((args) => args[args.indexOf("--identifier") + 1]),
+      ["org.areal.harness.core", "org.areal.harness.runtime", "org.areal.harness.runtime-fs"],
+    );
+    assert.ok(signs.every((args) => args.includes("--timestamp") && args.includes("runtime")));
   }
-  const calls = [];
-  const manifest = { files };
-  await signCoreTools({
-    directory: root,
-    manifest,
-    identity: "test-identity",
-    run: (_command, args) => calls.push(args),
-  });
-  const signs = calls.filter((args) => args.includes("--sign"));
-  assert.deepEqual(
-    signs.map((args) => args[args.indexOf("--identifier") + 1]),
-    ["org.areal.harness.core", "org.areal.harness.runtime", "org.areal.harness.runtime-fs"],
-  );
-  assert.ok(signs.every((args) => args.includes("--timestamp") && args.includes("runtime")));
 });
 
 test("default packaging stops before building when distribution signing credentials are absent", async () => {

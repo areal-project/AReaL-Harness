@@ -2,7 +2,7 @@
 
 # Credential upgrade reliability and independent history reads
 
-Status: base history access and execution admission are separated in source. Real Keychain upgrade acceptance remains outstanding. This document separates the source fix from the unconfirmed user installation failure.
+Status: history access and execution admission are separated in source. Isolated signed-package replacement reproduces an access failure when signing identity changes. The accepted product boundary permits entering the Key once after this transition, then preserves signing identity and credential namespace.
 
 ## Intent and decisions
 
@@ -18,14 +18,35 @@ A statically supported failure path is: an old launch reference survives provide
 
 Upgrade-related possibilities:
 
-1. **Access identity changes.** `credential_io.rs` accesses Keychain through a child of the current Core executable. The old signing script did not explicitly set a stable Core identifier. Commit `c5da41135b1e2e5a2aa5898e50f6b950953a7390` adds stable identifiers, including `org.areal.harness.core`, and isolates development Hosts. Build-derived identity changes are a concrete access-continuity risk, but the affected old/new packages, designated requirements, TeamIdentifier, Identifier, and OSStatus must establish the user's cause. A new stable identifier does not automatically repair old item permissions.
+1. **Access identity changes.** `credential_io.rs` accesses Keychain through a child of the current Core executable. Tested old packages use identifier `areal`; the successor uses `org.areal.harness.core`, with the same signing team. Commit `c5da41135b1e2e5a2aa5898e50f6b950953a7390` explicitly changes that identifier. The claim that these old packages used build-hash-derived identifiers is unsupported. The successor fails the old designated requirement and reads old entries with `errSecAuthFailed` (-25293), while its newly created entries work. A new stable identity does not inherit old-entry authorization.
 2. **Namespace changes.** Keychain service names use `org.areal.host.v1.<canonical Host home digest>`. Slots also depend on sourceId, reference, and entryId. Application paths are not directly part of this service name; changing Host home/Space or source metadata can select different records. Replacing only the application should preserve access when these identities remain unchanged. Space isolation is intentional; do not search other Spaces automatically.
 3. **Incomplete legacy import.** Electron safeStorage ciphertext is decrypted by the original GUI and imported into Host Vault. Source identity, slots, and receipts must agree. Authorization denial or interrupted import must remain recoverable rather than appearing unconfigured.
 4. **Collapsed diagnostics.** `credential_io.rs` maps item-not-found to no value and other OSStatus values to `storageLocked`. Host reduces `storageLocked/storageMissing` to absent credentials. Workbench preserves locked/pending projections but does not expose missing entries equally distinctly. The final startup error loses the reason.
 
 Retain the useful existing foundations: system storage, one Host owner, revisioned slots, write/read-back verification, and operation receipts. Confirmed design gaps are insufficient error classification, coupling of reads to execution assembly, and treating historical launch references as current prerequisites. No evidence here establishes that replacement installation actively deletes secrets.
 
-### Evidence still needed
+### Isolated signed-package replacement
+
+The primary test extracts final ZIPs for `a2337873` and `fbf7b732`, both GUI version `0.1.19`, and uses one temporary installation path and Host home. Packaged Hosts write random synthetic credentials without logging values. System `HOME` remains unchanged to locate the login Keychain; AReaL configuration, GUI, Host, and execution directories are isolated. Replacing system `HOME` with a temporary directory makes the default Keychain unavailable; that initial fixture failure is not an upgrade failure.
+
+| Check | Result |
+| --- | --- |
+| Old package writes, reads noninteractively, restarts and reads again | Success; value digests match |
+| `a2337873` → `fbf7b732`, identifier `areal` → `org.areal.harness.core` | Old entry read returns -25293 |
+| Host/source/slot before and after replacement | Host ID, sourceId, entryId, revision and old slot digest stay unchanged; migration remains completed |
+| Successor writes and reads a fresh entry | Success; the login Keychain is not globally unavailable |
+| Successor satisfies old designated requirement | No; the original binary satisfies it |
+| Same-identifier control, `a2337873` → `ebeafdf4`, different binaries both identified as `areal` | Old entry remains readable without authorization; revision unchanged |
+
+This pair establishes a signing identity transition causing old-entry authorization failure, without deleting entries or losing migration records. The screenshot does not establish that the reporting user ran these exact builds. Strict signatures and stapled tickets validate for both primary packages; local Gatekeeper assessment returns `Unnotarized Developer ID`, so this is not complete distribution acceptance. Interactive reading produced no actionable authorization dialog on the observed desktop and timed out in the client; unlock recovery is unverified. Test Hosts are stopped through their protocol, and synthetic Keychain entries are deleted by exact service/account.
+
+### Accepted upgrade boundary
+
+After switching to `org.areal.harness.core`, users may enter their Key once in provider settings. Subsequent releases retain that identifier and signing team: do not revert to `areal`, derive identities from builds, or let development binaries take over distribution Hosts. Normal replacement preserves Host home/Space, sourceId, reference, and slot. A new Space is an explicit isolation operation and does not inherit secrets from other Spaces.
+
+Future signed-package acceptance writes a synthetic Key with the predecessor, replaces the application at the same path, and reads it noninteractively with the successor while checking its digest, revision, and receipts. Product version, source revision, and binary digest changes must not change credential access identity. Changes to team, signing identity, or namespace require explicit migration acceptance instead of being treated as ordinary replacement.
+
+### Correlating the original user report
 
 Obtain the affected old/new versions, installation channels, and packages. Collect only sanitized metadata: signature identifiers and designated requirements, Host home identity digest, sourceId, reference, slot revision, registered-entry status, OSStatus, migration phase, and original receipts. Never output secret values, tokens, complete environments, or unfiltered configuration.
 
@@ -73,7 +94,7 @@ Read readiness must not start queues, Goals, or schedules. New sends, continuati
 
 Distinguish available, notConfigured, missingEntry, interactionRequired, accessDenied, migrationPending, referenceUnresolved, and storageError internally, reusing current codes and adding structured detail where needed. Classify OSStatus from documented meanings; unknown errors remain storageError. Clients receive status, provider/reference association, and permitted recovery actions, never secrets.
 
-Keep the existing Keychain backend and service namespace in this scope. Preserve Space isolation and source/slot identity; application versions/build hashes must not determine lookup identity. Retain stable Core signing identifiers and validate actual old/new designated requirements. For previously unstable identities, expose explicit system authorization; successful access restores the same slot rather than deleting it or inventing a replacement reference.
+Keep the current Keychain backend and service namespace. Preserve Space isolation and source/slot identity; versions and build hashes must not select credential identities. Retain the current fixed Core signing identifier. The transition from old `areal` identity permits entering the Key once; do not add automatic old-identity readers or cross-Space secret discovery for this transition.
 
 Background reads remain noninteractive. “Unlock credentials” explicitly enables interaction. Missing entries can be re-entered for the correct provider; unresolved references require selecting a valid provider for future execution. Read failures never delete ciphertext/slots or persist empty cache values as user clearing. Keep existing migration transactions and receipts; add upgrade acceptance rather than another migration mechanism.
 
@@ -107,4 +128,4 @@ Implement diagnostics and upgrade evidence first, then base startup/history sepa
 
 Source, signing changes, and three external implementations were inspected. Host no longer gates project startup on the saved credential list. When configuration or deployment is unavailable, Core opens the registered history directory and disables execution admission. The shared UI preserves draft editing and offers recovery actions. Configuration repair rebuilds the service through existing lifecycle receipts without replaying submissions. Failed deployment preparation preserves original launch records; credential failures preserve original slots.
 
-Deterministic tests cover malformed configuration, stale credential references, pending credential migration, history reads, execution rejection, configuration recovery, and shared UI state. Signed old/new package replacement, system authorization dialogs, and complete mobile/relay journeys still require separate acceptance. Source tests do not prove recovery of the affected user's Keychain entry. No real secrets or user data were modified.
+Deterministic tests cover malformed configuration, stale credential references, pending credential migration, history reads, execution rejection, configuration recovery, and shared UI state. Signed-package replacement and same-identity control have the scope described above. System authorization recovery, a complete mobile journey, and correlation with the reporting user's builds remain unverified. No real secrets or real AReaL data were accessed or modified.

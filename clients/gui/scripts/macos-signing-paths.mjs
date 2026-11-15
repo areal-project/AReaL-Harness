@@ -63,7 +63,7 @@ export async function signCoreTools({ directory, manifest, identity, run }) {
       "--force",
       "--sign",
       identity,
-      // Rust linker 的默认标识含构建哈希，升级后会改变钥匙串访问身份。
+      // 发行标识是钥匙串访问契约；不可随版本或构建改变，改名须先验收旧条目的访问。
       "--identifier",
       identifiers[relative],
       "--options",

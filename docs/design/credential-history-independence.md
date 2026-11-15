@@ -2,7 +2,7 @@
 
 # 凭据升级可靠性与历史读取独立性
 
-状态：基础读取与执行准入分离已实现；覆盖升级的真实 Keychain 验收仍待完成。本文区分源码修复与尚未确认的用户安装包根因。
+状态：基础读取与执行准入分离已实现；签名实包的隔离 Keychain 覆盖验收已复现身份切换导致的访问失败。产品接受切换新版后重新配置一次 Key，之后保持签名身份和凭据命名空间稳定。
 
 ## 目标与决定
 
@@ -20,14 +20,35 @@
 
 ### 覆盖升级为什么可能表现成密钥丢失
 
-1. **访问身份变化。** `credential_io.rs` 通过当前 Core 可执行文件的子进程访问 macOS Keychain。旧签名脚本没有显式固定 Core identifier；提交 `c5da41135b1e2e5a2aa5898e50f6b950953a7390` 已改成 `org.areal.harness.core` 等稳定标识，并隔离开发 Host。旧构建衍生标识随二进制变化，是升级后访问授权变化的具体风险。它仍需升级前后实包的 designated requirement、TeamIdentifier、Identifier 和系统状态码确认，不能由修复提交反推该用户根因。固定新标识也不自动修复旧条目的授权。
+1. **访问身份变化。** `credential_io.rs` 通过当前 Core 可执行文件的子进程访问 macOS Keychain。实测旧包的 identifier 是 `areal`，新包是 `org.areal.harness.core`，团队相同。提交 `c5da41135b1e2e5a2aa5898e50f6b950953a7390` 显式改变了这个标识；不能再将这组旧包描述为“标识随构建哈希变化”。新版不满足旧版 designated requirement，读取旧条目返回 `errSecAuthFailed`（-25293），而新版新建条目可读。固定新标识不能自动继承旧条目的访问权限。
 2. **命名空间变化。** Keychain service 是 `org.areal.host.v1.<canonical Host home digest>`；slot 还依赖 sourceId、reference 和 entryId。应用路径不直接进入该 service，但 Host home/Space、来源记录变化会使查询指向另一个位置。单纯替换应用、保持这些身份不变，不应使存储项消失。新 Space 的隔离本身是合理行为，不应自动跨 Space 查找密钥。
 3. **旧存储导入未完成。** 旧 Electron safeStorage 密文经原 GUI 的解密入口导入 Host Vault，迁移回执、来源和 slot 必须对应。拒绝授权或导入中断需要呈现为待恢复，不能当作用户从未配置。
 4. **错误信息被压缩。** `credential_io.rs` 将 item-not-found 映射成空值，其他 OSStatus 归为 `storageLocked`；`server.rs` 将 `storageLocked/storageMissing` 降为无值。工作台 `model-config.cjs::refreshCredentials` 为 locked/pending 保留状态，但 missing 没有同等明确的独立投影。最终启动错误无法说明是哪一种情况。
 
 现有方向有合理基础：系统安全存储、Host 单所有者、版本化 slot、写入回读和操作回执均应保留。已确认的设计缺口是错误分类不足、历史与执行装配耦合，以及历史启动引用被当成当前必需依赖。尚未发现可据此认定“覆盖安装主动删除密钥”的证据。
 
-### 用户问题的下一步取证
+### 签名包隔离覆盖验收
+
+主验收从最终 ZIP 提取旧包 `a2337873` 和新包 `fbf7b732`，二者 GUI 版本均为 `0.1.19`。使用同一临时安装路径和 Host home，仅通过包内 Host 写入随机合成凭据；秘密不进入日志。系统 `HOME` 保持原值以定位登录钥匙串，AReaL 的配置、GUI、Host 和执行目录单独隔离。把系统 `HOME` 也改成临时目录会导致默认钥匙串不存在，该失败属于夹具前置条件，不能算升级故障。
+
+| 检查 | 结果 |
+| --- | --- |
+| 旧包写入、非交互读取、重启再读 | 成功，值摘要一致 |
+| `a2337873` → `fbf7b732`，`areal` → `org.areal.harness.core` | 旧条目读取返回 -25293 |
+| 升级前后 Host/source/slot | Host ID、sourceId、entryId、revision 与旧 slot 文件摘要保持一致；迁移仍为 completed |
+| 新版写入并读取新条目 | 成功，证明登录钥匙串并非整体不可用 |
+| 新版满足旧 designated requirement | 不满足；旧版自身满足 |
+| 同标识对照 `a2337873` → `ebeafdf4`，不同二进制、均为 `areal` | 覆盖后旧条目直接可读，revision 不变 |
+
+这组实包已证实签名身份切换触发旧条目的 Keychain 授权失败，未发生条目删除或迁移记录丢失。尚不能仅凭原截图确定报障用户使用了同一组构建。两包严格签名及 stapler 票据校验通过；本机 Gatekeeper 评估返回 `Unnotarized Developer ID`，因此本验收不作为完整分发安装验收。交互读取未在当前桌面出现可操作授权窗口，并在客户端超时，不能承诺解锁按钮已经验证可恢复此情形。测试 Host 均通过停止协议清理，合成 Keychain 条目按精确 service/account 删除。
+
+### 已接受的升级边界
+
+切换到 `org.areal.harness.core` 后允许用户在供应商设置中重新配置一次 Key。后续发行保留该 identifier 和同一签名团队，不能回退为 `areal`、按构建生成新标识，或让开发构建接管发行 Host。普通覆盖升级保持当前 Host home/Space、sourceId、reference 和 slot；新 Space 属于显式隔离操作，不承诺继承其他 Space 的密钥。
+
+后续签名包覆盖验收应在前版写入合成 Key，用后版在相同安装路径和数据身份下非交互读回并核对值摘要、revision 和原回执。应用版本、源码 revision 和二进制摘要变化不得改变凭据访问身份。确需变更团队、签名身份或数据命名空间时，应作为明确的迁移变更验收，不按普通覆盖升级放行。
+
+### 原报障用户的版本关联
 
 先收集应用旧/新版本及安装渠道，保留出问题的两个安装包。仅采集脱敏元数据：Core 签名标识与 designated requirement、Host home 身份摘要、sourceId、reference、slot revision、entry 是否登记、OSStatus、迁移阶段及原回执。禁止输出秘密值、token、完整环境或未过滤配置。
 
@@ -75,7 +96,7 @@
 
 内部需要表达 available、notConfigured、missingEntry、interactionRequired、accessDenied、migrationPending、referenceUnresolved、storageError 等不同原因，复用已有错误码并按必要范围扩充结构化细节。OSStatus 分类由系统 API 的明确含义决定；未知错误保留为 storageError，不能猜测用户拒绝或条目丢失。客户端只接收状态、provider/reference 关联和允许的恢复动作，不接收秘密。
 
-推荐本次不切换 Keychain 后端、不改变现有 service 命名空间。保留每 Space 隔离和持久 source/slot 身份；应用版本、构建哈希不能参与身份选择。发布链沿用已加入的固定 Core identifier，并验证新旧包的实际 designated requirement 可延续访问。若旧版本已使用不稳定身份，提供用户主动触发的系统授权入口；读取成功后恢复同一 slot，不自动删除或生成替代引用。
+不切换 Keychain 后端，不改变现有 service 命名空间。保留每 Space 隔离和持久 source/slot 身份；应用版本、构建哈希不能参与身份选择。发布链保留当前固定 Core identifier。旧 `areal` 身份到新版的切换允许重新配置一次 Key；不为此新增自动读取旧身份或跨 Space 搜索秘密的机制。
 
 后台读取保持非交互；用户点击“解锁凭据”才允许系统授权。缺失条目时在正确 provider 下重新录入；引用失效时选择有效供应商，只改变后续执行配置。任何读取失败都不删除旧密文/slot，也不能把缓存空值保存为用户清空操作。迁移沿用原事务与回执；新增升级验收，不另造迁移机制。
 
@@ -109,4 +130,4 @@ GUI、网页、手机共用 Host 的状态与历史能力；远程设备无凭�
 
 已完成源码、签名变更和三个外部项目的静态调查。Host 不再以保存的凭据列表阻断项目启动；配置或部署不可用时，Core 按已登记的数据目录开放历史读取并关闭执行准入。共享界面保留草稿编辑，展示恢复入口；配置恢复沿原生命周期回执重建服务，不重放旧提交。部署失败保留原启动记录，凭据失败保留原 slot。
 
-确定性测试覆盖配置损坏、旧凭据引用、迁移中的凭据、历史读取与发送拒绝、恢复配置及共享界面状态。真实签名旧/新包覆盖升级、系统授权弹窗、手机与中继完整旅程仍需独立验收；源码测试不证明该用户的钥匙串条目已恢复。未读取真实密钥或修改真实数据。
+确定性测试覆盖配置损坏、旧凭据引用、迁移中的凭据、历史读取与发送拒绝、恢复配置及共享界面状态。签名实包覆盖与同身份对照的范围见上文；系统授权恢复、手机完整旅程和原报障用户的版本关联仍未完成。未读取真实密钥或修改真实 AReaL 数据。
