@@ -32,6 +32,7 @@ import {
   readReviewComments,
   recordUnknownReviewSubmission,
   consumeReviewComments,
+  reviewContextParts,
 } from "./reviewComments.js";
 import type { Action, CommandParams, Data } from "./services.js";
 import {
@@ -134,7 +135,7 @@ export async function submitMessage(
         projectId,
         text: feedback ? (input.text ? `${input.text}\n\n${feedback}` : feedback) : input.text,
         attachments,
-        ...(comments.length ? { reviewComments: comments } : {}),
+        ...(comments.length ? { contextParts: reviewContextParts(comments) } : {}),
         ...(capturedReferences.length
           ? {
               conversationQuotes: conversationQuotes(

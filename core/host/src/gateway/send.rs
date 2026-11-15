@@ -18,7 +18,7 @@ struct Message {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     mcp_content: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    review_comments: Option<Vec<areal_protocol::ReviewComment>>,
+    context_parts: Option<Vec<areal_protocol::ContextPart>>,
 }
 #[derive(Serialize)]
 struct Semantic<'a> {
@@ -489,8 +489,8 @@ pub(super) fn rich_message_input(text: &str, values: &Value) -> Result<Vec<areal
         attachments: values.get("attachments").cloned(),
         conversation_quotes: values.get("conversationQuotes").cloned(),
         mcp_content: values.get("mcpContent").cloned(),
-        review_comments: values
-            .get("reviewComments")
+        context_parts: values
+            .get("contextParts")
             .cloned()
             .map(serde_json::from_value)
             .transpose()?,
@@ -498,33 +498,35 @@ pub(super) fn rich_message_input(text: &str, values: &Value) -> Result<Vec<areal
 }
 fn message_input(params: &Message) -> Result<Vec<areal_protocol::Input>> {
     use areal_protocol::Input;
-    if let Some(comments) = &params.review_comments {
-        ensure!(comments.len() <= 32, "reviewComments");
+    if let Some(parts) = &params.context_parts {
+        ensure!(parts.len() <= 32, "contextParts");
         ensure!(
-            comments.iter().all(|comment| {
-                comment.start > 0
-                    && comment.end >= comment.start
-                    && comment.end - comment.start <= 999
-                    && (comment.side == "additions" || comment.side == "deletions")
+            parts.iter().all(|part| match part {
+                areal_protocol::ContextPart::ReviewComment { comment } => {
+                    comment.start > 0
+                        && comment.end >= comment.start
+                        && comment.end - comment.start <= 999
+                        && (comment.side == "additions" || comment.side == "deletions")
+                }
             }),
-            "reviewComments"
+            "contextParts"
         );
         ensure!(
-            serde_json::to_vec(comments)
+            serde_json::to_vec(parts)
                 .map(|value| value.len() <= 2 * 1024 * 1024)
                 .unwrap_or(false),
-            "reviewComments"
+            "contextParts"
         );
     }
     let mut input = Vec::new();
     if !params.text.trim().is_empty() {
         let text = Input::text(params.text.clone());
-        input.push(match &params.review_comments {
-            Some(comments) => text.with_review_comments(comments.clone()),
+        input.push(match &params.context_parts {
+            Some(parts) => text.with_context_parts(parts.clone()),
             None => text,
         });
-    } else if let Some(comments) = &params.review_comments {
-        input.push(Input::text("").with_review_comments(comments.clone()));
+    } else if let Some(parts) = &params.context_parts {
+        input.push(Input::text("").with_context_parts(parts.clone()));
     }
     let quotes = match &params.conversation_quotes {
         None => Vec::new(),

@@ -42,7 +42,7 @@ describe("composer submission upload lifetime", () => {
       "send",
       expect.objectContaining({
         text: "please fix",
-        reviewComments: [comment],
+        contextParts: [{ type: "reviewComment", comment }],
       }),
     );
     const firstCall = action.mock.calls[0];

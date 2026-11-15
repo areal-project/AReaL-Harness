@@ -8342,12 +8342,12 @@
             "type": "object"
           }
         },
-        "reviewComments": {
+        "contextParts": {
           "type": "array",
-          "description": "gui-write-v1 only. Structured review comments retained with the user message.",
+          "description": "gui-write-v1 only. Structured context parts retained with the user message.",
           "maxItems": 32,
           "items": {
-            "$ref": "#/$defs/ReviewComment"
+            "$ref": "#/$defs/ContextPart"
           }
         }
       },
@@ -8358,24 +8358,99 @@
       ],
       "additionalProperties": false
     },
+    "ContextPart": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "reviewComment"
+          ]
+        },
+        "comment": {
+          "$ref": "#/$defs/ReviewComment"
+        }
+      },
+      "required": [
+        "type",
+        "comment"
+      ],
+      "additionalProperties": false
+    },
     "ReviewComment": {
       "type": "object",
       "properties": {
-        "id": { "type": "string", "maxLength": 65536 },
-        "path": { "type": "string", "maxLength": 65536 },
-        "root": { "type": "string", "maxLength": 65536 },
-        "scope": { "type": "string", "maxLength": 65536 },
-        "ref": { "type": "string", "maxLength": 65536 },
-        "token": { "type": "string", "maxLength": 65536 },
-        "head": { "type": "string", "maxLength": 65536 },
-        "base": { "type": "string", "maxLength": 65536 },
-        "side": { "type": "string", "enum": ["additions", "deletions"] },
-        "start": { "type": "integer", "minimum": 1 },
-        "end": { "type": "integer", "minimum": 1 },
-        "snippet": { "type": "string", "maxLength": 65536 },
-        "body": { "type": "string", "maxLength": 65536 }
+        "id": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "path": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "root": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "scope": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "ref": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "token": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "head": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "base": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "side": {
+          "type": "string",
+          "enum": [
+            "additions",
+            "deletions"
+          ]
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "snippet": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "body": {
+          "type": "string",
+          "maxLength": 65536
+        }
       },
-      "required": ["id", "path", "root", "scope", "ref", "token", "head", "base", "side", "start", "end", "snippet", "body"],
+      "required": [
+        "id",
+        "path",
+        "root",
+        "scope",
+        "ref",
+        "token",
+        "head",
+        "base",
+        "side",
+        "start",
+        "end",
+        "snippet",
+        "body"
+      ],
       "additionalProperties": false
     },
     "RemoteSessionSendResult": {
@@ -8982,12 +9057,12 @@
                     "type": "object"
                   }
                 },
-                "reviewComments": {
+                "contextParts": {
                   "type": "array",
-                  "description": "gui-write-v1 only. Structured review comments retained with the user message.",
+                  "description": "gui-write-v1 only. Structured context parts retained with the user message.",
                   "maxItems": 32,
                   "items": {
-                    "$ref": "#/$defs/ReviewComment"
+                    "$ref": "#/$defs/ContextPart"
                   }
                 }
               },

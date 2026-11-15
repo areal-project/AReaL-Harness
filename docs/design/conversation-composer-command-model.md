@@ -50,7 +50,7 @@ type ComposerContextPart = {
 ## 分阶段交付
 
 1. **阶段一（本次）**：命令判别联合、提交适配器、conversation quote 垂直切片；覆盖 Host-compatible send/steer/queue 选择、accepted/rejected/unknown 消费规则，并保持旧字段兼容。
-2. **阶段二（本次）**：把 Review comment 迁移为 `reviewComments` context part；Host/Core 只在结构化字段中传递，历史回显直接按类型渲染。模型适配只在边界生成带标签的文本投影，用户历史保留原始结构。
+2. **阶段二（本次）**：把 Review comment 迁移为 `contextParts` 中的 `reviewComment` part；Host/Core 只在结构化字段中传递，历史回显直接按类型渲染。模型适配只在边界生成带标签的文本投影，用户历史保留原始结构。
 3. **阶段三**：迁移浏览器批注、图片批注、Plugin intent 和 Skill；为每类部件声明 `persisted`、`modelProjection` 和 `editable`。
 4. **阶段四**：主会话、Side、Remote 共用 command adapter；各入口只提供目标身份、权限和 UI owner，删除重复的消费与 UNKNOWN 编排。
 
@@ -59,4 +59,4 @@ type ComposerContextPart = {
 - `ComposerSubmission.test.ts`：普通发送、steer、enqueue、UNKNOWN 后不消费上下文。
 - `ConversationComposer.test.tsx`：模型和上下文插槽仍由共享输入表面提供。
 - Remote/Side journey：相同 quote 在三条入口产生相同 Host 参数和历史回显。
-- Core/Host：现有 `conversationQuotes` 兼容测试保持通过；阶段二开始增加新结构化字段的 schema 与 history round-trip 测试。
+- Core/Host：现有 `conversationQuotes` 兼容测试保持通过；阶段二增加 `contextParts` schema、Host 转换与 Core history round-trip 测试。

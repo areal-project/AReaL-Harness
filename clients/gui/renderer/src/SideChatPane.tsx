@@ -30,6 +30,7 @@ import type { Action, Data } from "./services.js";
 import {
   attachedReviewComments,
   consumeReviewComments,
+  reviewContextParts,
   reviewCommentKey,
   useReviewComments,
 } from "./reviewComments.js";
@@ -542,7 +543,7 @@ function SideChatEditor({
           operation: "send",
           threadId: sideId,
           text: question,
-          ...(reviewComments.length ? { reviewComments } : {}),
+          ...(reviewComments.length ? { contextParts: reviewContextParts(reviewComments) } : {}),
         });
       } else {
         const requestId = crypto.randomUUID();
@@ -557,7 +558,7 @@ function SideChatEditor({
           requestId,
           ...(selection ? { selection } : {}),
           ...(anchor ? { anchor } : {}),
-          ...(reviewComments.length ? { reviewComments } : {}),
+          ...(reviewComments.length ? { contextParts: reviewContextParts(reviewComments) } : {}),
           ...sideStartConfiguration(draftConfig),
         });
         if (!mounted.current || !workspace.isCurrent(token, generation)) return;

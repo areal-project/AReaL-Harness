@@ -18,8 +18,8 @@ The first slice introduces typed `send`, `steer`, `queueEdit`, and `sideSend` co
 ## Staged delivery
 
 1. Type the command adapter and migrate conversation quotes while retaining `conversationQuotes` compatibility.
-2. Migrate review comments as a structured `reviewComments` part, retaining the structured value in history and generating the labelled text projection only at the model boundary.
+2. Migrate review comments as a `reviewComment` member of the structured `contextParts` field, retaining the structured value in history and generating the labelled text projection only at the model boundary.
 3. Migrate browser annotations, image annotations, plugin intent, and skills with explicit persistence and model-projection rules.
 4. Share the command adapter across main, side, and remote entry points while keeping each owner’s permissions and recovery policy explicit.
 
-The first slice is covered by renderer tests and the existing Host-compatible quote path. Later slices must add schema, Core history round-trip, reconnect, and cross-entry journey coverage.
+The first slice is covered by renderer tests and the existing Host-compatible quote path. This slice adds the Host schema, Core history round-trip, and shared main/side/remote submission coverage; later slices add reconnect and more context part kinds.

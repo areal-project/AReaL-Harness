@@ -1125,9 +1125,18 @@ mod observation_tests {
             "items": [{
                 "type": "userMessage",
                 "id": "user",
-                "content": [Input::text("please fix").with_review_comments(vec![comment])]
+                "content": [Input::text("please fix").with_context_parts(vec![areal_protocol::ContextPart::ReviewComment { comment }])]
             }]
         }))?);
+        let persisted = serde_json::to_value(&thread.turns[0])?;
+        assert_eq!(
+            persisted["items"][0]["content"][0]["contextParts"][0]["type"],
+            "reviewComment"
+        );
+        assert_eq!(
+            persisted["items"][0]["content"][0]["contextParts"][0]["comment"]["body"],
+            "Please extract this value."
+        );
         let messages = history(&thread, &engine.store)?;
         assert!(messages[0].text_content().starts_with("please fix"));
         assert!(

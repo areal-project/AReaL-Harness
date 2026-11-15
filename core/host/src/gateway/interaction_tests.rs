@@ -1419,7 +1419,7 @@ async fn gui_write_negotiation_accepts_desktop_rich_input_only_for_declaring_cli
     tokio::task::LocalSet::new()
         .run_until(async {
             let mut f = Fixture::new().await;
-            let rich = json!({"threadId":"thread","expectedConfigRevision":1,"text":"look","conversationQuotes":[{"text":"quoted"}],"reviewComments":[{"id":"comment","path":"src/app.ts","root":"/workspace","scope":"branch","ref":"main","token":"token","head":"head","base":"base","side":"additions","start":3,"end":3,"snippet":"const value = 1;","body":"Please extract this value."}],"attachments":[{"type":"image","url":"areal://blob/img_1"},{"type":"file","url":"areal://blob/doc-2","name":"spec.pdf","mimeType":"application/pdf","_meta":{"source":"snap"}}],"mcpContent":[{"type":"text","text":"tool note"}]});
+            let rich = json!({"threadId":"thread","expectedConfigRevision":1,"text":"look","conversationQuotes":[{"text":"quoted"}],"contextParts":[{"type":"reviewComment","comment":{"id":"comment","path":"src/app.ts","root":"/workspace","scope":"branch","ref":"main","token":"token","head":"head","base":"base","side":"additions","start":3,"end":3,"snippet":"const value = 1;","body":"Please extract this value."}}],"attachments":[{"type":"image","url":"areal://blob/img_1"},{"type":"file","url":"areal://blob/doc-2","name":"spec.pdf","mimeType":"application/pdf","_meta":{"source":"snap"}}],"mcpContent":[{"type":"text","text":"tool note"}]});
             let legacy = f.session("a");
             assert!(legacy.describe(false).get("writeLimits").is_none());
             let (legacy, result) = Fixture::dispatch(legacy, f.request("session.send", rich.clone(), Some(&uuid::Uuid::new_v4().to_string()))).await.unwrap();
@@ -1454,7 +1454,7 @@ async fn gui_write_negotiation_accepts_desktop_rich_input_only_for_declaring_cli
             assert_eq!(input[0]["type"], "text");
             assert_eq!(input[0]["text"], "look");
             assert_eq!(input[0]["text_elements"], json!([]));
-            assert_eq!(input[0]["reviewComments"][0]["body"], "Please extract this value.");
+            assert_eq!(input[0]["contextParts"][0]["comment"]["body"], "Please extract this value.");
             assert_eq!(input[1]["text"], "# userselect:\n```userselect\n[{\"text\":\"quoted\"}]\n```");
             assert_eq!(input[2], json!({"type":"image","url":"areal://blob/img_1","detail":null}));
             assert_eq!(input[3], json!({"type":"file","url":"areal://blob/doc-2","name":"spec.pdf","mime_type":"application/pdf"}));

@@ -67,6 +67,20 @@ impl ReviewComment {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
+#[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
+pub enum ContextPart {
+    ReviewComment { comment: ReviewComment },
+}
+
+impl ContextPart {
+    pub fn model_text(&self) -> String {
+        match self {
+            Self::ReviewComment { comment } => comment.model_text(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum TurnStatus {
     InProgress,
@@ -115,13 +129,13 @@ pub enum Input {
             skip_serializing_if = "Option::is_none"
         )]
         mcp_content: Option<Value>,
-        /// Structured review comments; rendered into model text only at the model boundary.
+        /// Structured context parts; rendered into model text only at the model boundary.
         #[serde(
             default,
-            rename = "reviewComments",
+            rename = "contextParts",
             skip_serializing_if = "Option::is_none"
         )]
-        review_comments: Option<Vec<ReviewComment>>,
+        context_parts: Option<Vec<ContextPart>>,
     },
     Image {
         url: String,
@@ -154,11 +168,11 @@ impl Input {
             text: text.into(),
             text_elements: Vec::new(),
             mcp_content: None,
-            review_comments: None,
+            context_parts: None,
         }
     }
 
-    pub fn with_review_comments(self, comments: Vec<ReviewComment>) -> Self {
+    pub fn with_context_parts(self, parts: Vec<ContextPart>) -> Self {
         match self {
             Self::Text {
                 text,
@@ -169,7 +183,7 @@ impl Input {
                 text,
                 text_elements,
                 mcp_content,
-                review_comments: Some(comments),
+                context_parts: Some(parts),
             },
             other => other,
         }
@@ -179,12 +193,12 @@ impl Input {
         match self {
             Self::Text {
                 text,
-                review_comments: Some(comments),
+                context_parts: Some(parts),
                 ..
-            } if !comments.is_empty() => {
-                let comments = comments
+            } if !parts.is_empty() => {
+                let comments = parts
                     .iter()
-                    .map(ReviewComment::model_text)
+                    .map(ContextPart::model_text)
                     .collect::<Vec<_>>()
                     .join("\n\n");
                 if text.is_empty() {
@@ -202,7 +216,7 @@ impl Input {
             text,
             text_elements: Vec::new(),
             mcp_content: Some(content),
-            review_comments: None,
+            context_parts: None,
         })
     }
     pub fn validate_mcp_content(&self) -> Result<(), String> {
@@ -939,7 +953,10 @@ mod review_comment_input_tests {
             snippet: "const value = 1;".into(),
             body: "Please extract this value.".into(),
         };
-        let input = Input::text("please fix").with_review_comments(vec![comment.clone()]);
+        let input =
+            Input::text("please fix").with_context_parts(vec![ContextPart::ReviewComment {
+                comment: comment.clone(),
+            }]);
         let encoded = serde_json::to_value(&input).unwrap();
         let decoded: Input = serde_json::from_value(encoded).unwrap();
         assert_eq!(decoded.as_text(), "please fix");

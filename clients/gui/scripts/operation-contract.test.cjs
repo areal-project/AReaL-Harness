@@ -36,14 +36,16 @@ test("Side model modes reject malformed references and ambiguous default selecti
     {},
     { resetModel: true },
     { model: { providerId: "p", modelId: "C" } },
-    { reviewComments },
+    { contextParts: [{ type: "reviewComment", comment: reviewComments[0] }] },
   ])
     assert.doesNotThrow(() => validateCommand("side", { ...start, ...extra }));
   for (const extra of [
     { resetModel: true, model: { providerId: "p", modelId: "C" } },
     { model: {} },
     { workspaceAccess: "write" },
-    { reviewComments: [{ ...reviewComments[0], side: "invalid" }] },
+    {
+      contextParts: [{ type: "reviewComment", comment: { ...reviewComments[0], side: "invalid" } }],
+    },
   ])
     assert.throws(() => validateCommand("side", { ...start, ...extra }));
 });
