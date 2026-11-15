@@ -1,4 +1,5 @@
 import { installHostTransportBarrier } from "./support/host-transport-barrier.mjs";
+import { prepareRecording } from "./prepare-recording.mjs";
 import { readCoreThread as observeCoreThread } from "./support/core-observation.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
@@ -25,6 +26,7 @@ const root = resolve(gui, "../..");
 const desktop = join(gui, "app");
 const require = createRequire(join(desktop, "package.json"));
 const { _electron: electron } = require("playwright-core");
+prepareRecording();
 const binary = process.env.AREAL_CORE_BIN || join(root, "target/debug/areal");
 const evidenceRoot = join(root, ".scratch", "gui-evidence");
 await mkdir(evidenceRoot, { recursive: true });

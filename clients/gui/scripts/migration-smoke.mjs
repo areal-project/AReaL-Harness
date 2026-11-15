@@ -1,4 +1,5 @@
 import { makeTempDir } from "./support/temp.mjs";
+import { prepareRecording } from "./prepare-recording.mjs";
 import { cleanupSyntheticHostKeychain, closeSmokeApplication } from "./application-cleanup.mjs";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
 import assert from "node:assert/strict";
@@ -464,7 +465,10 @@ async function shot(name) {
   frames.push(name + ".png");
 }
 async function launch() {
-  if (journey) await mkdir(join(scratch, "video"), { recursive: true });
+  if (journey && !motionMode) {
+    prepareRecording();
+    await mkdir(join(scratch, "video"), { recursive: true });
+  }
   app = await electron.launch({
     ...(journey && !motionMode
       ? { recordVideo: { dir: join(scratch, "video"), size: { width: 1509, height: 949 } } }

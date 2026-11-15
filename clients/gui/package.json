@@ -29,6 +29,7 @@
     "start": "node scripts/start.mjs",
     "package": "node scripts/package.mjs",
     "dist": "node scripts/package.mjs --build",
+    "prepare:recording": "node scripts/prepare-recording.mjs",
     "verify": "vp run verify-suite",
     "test:macos-signing": "node --test scripts/macos-signing-paths.test.mjs",
     "test:macos-dmg": "node --test scripts/dmg-size.test.mjs scripts/macos-dmg.test.mjs",

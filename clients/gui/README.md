@@ -391,6 +391,8 @@ Relay 的 `node_modules` 通过独立资源映射打包，避免 electron-builde
 
 内部 Relay 测试包可在打包时设置 `AREAL_GUI_RELAY_CA_CERT=/absolute/ca.pem`，将自签名 CA 公共证书内置到应用。仅 Relay 的 HTTPS 登记与 WSS 连接额外信任该 CA，仍校验证书链、有效期和主机名；登记码由用户在客户端填写。CA 私钥不得进入包。手机端仍需自行安装并信任同一 CA，再扫码并在电脑确认设备授权。
 
+打包依赖由 `make gui-install` 准备，仅安装锁定依赖与 Electron，不安装 Playwright FFmpeg。使用 Playwright `recordVideo` 的连续录屏验收在启动录屏前自行准备 FFmpeg；也可单独运行 `pnpm --dir clients/gui run prepare:recording`。普通启动、升级验收及应用内 MediaRecorder 不依赖这个测试编码器。构建、签名和验收继续使用现有 `dist`、`sign:mac`、`test:*` 入口，不在产品 CLI 中复制一套开发工作流。
+
 `dist` 和 `make gui-package` 默认构建 Mac arm64 ad-hoc 本地包，不改版本、不安装、不发布。三档通过 `--signing` 选择：`adhoc` 本地测试；`developer-id --identity "$CSC_NAME"` 使用 Developer ID Application 签名、不公证，用于钥匙串与身份相关验收；`notarized --identity "$CSC_NAME" --keychain-profile "$APPLE_KEYCHAIN_PROFILE"` 正式签名公证。实际访问钥匙串的应用及内置 Host 使用稳定签名身份；从 ad-hoc 切换仍可能需要一次授权，不删除已有凭据。
 
 `--formats` 可选 `dmg`、`zip` 或 `dmg,zip`，Developer ID 两档要求包含 DMG；`--output` 指定全新目录。签名后的最终产物位于 `signed/`。`none` 仅作为保留输入签名的诊断模式，不保证可启动。正式档 Apple 尚在处理时退出 2，用 `sign:mac --resume --output /absolute/output/signed` 恢复原提交。
