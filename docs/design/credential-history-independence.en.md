@@ -40,6 +40,12 @@ The primary test extracts final ZIPs for `a2337873` and `fbf7b732`, both GUI ver
 
 This pair establishes a signing identity transition causing old-entry authorization failure, without deleting entries or losing migration records. The screenshot does not establish that the reporting user ran these exact builds. Strict signatures and stapled tickets validate for both primary packages; local Gatekeeper assessment returns `Unnotarized Developer ID`, so this is not complete distribution acceptance. Interactive reading produced no actionable authorization dialog on the observed desktop and timed out in the client; unlock recovery is unverified. Test Hosts are stopped through their protocol, and synthetic Keychain entries are deleted by exact service/account.
 
+### Focused acceptance of the new stable identity
+
+Two distinct Core binaries from `a2337873` and `ebeafdf4` were copied into temporary directories and re-signed with the same Developer ID and `org.areal.harness.core`. Both use hardened runtime and Apple timestamps and pass strict signature verification. The successor satisfies the predecessor's designated requirement. Through the real Host → Keychain path, one temporary installation path and isolated Host home exercised initial write, predecessor restart, replacement read, and successor restart/read. All reads were noninteractive, value digests matched, revision remained 1, and the original slot digest and sourceId were unchanged. A fresh successor entry was also readable.
+
+The signed Core SHA-256 values are `f8ac6b0f8da208046fbf97ac2b3898af7402ae91296c56b85bae3cbe34806064` and `32692b049a25e3e468540d2f9bec85e7eee33fd9a1a3b9bbeb7472bc2bf779a7`. All four test Hosts exited through the stop protocol. Both synthetic Keychain entries were deleted by exact service/account and verified absent. This focused test establishes credential continuity under the new signing identity using re-signed Core copies; it does not validate current source, a complete GUI package, notarization, or automatic updates.
+
 ### Accepted upgrade boundary
 
 After switching to `org.areal.harness.core`, users may enter their Key once in provider settings. Subsequent releases retain that identifier and signing team: do not revert to `areal`, derive identities from builds, or let development binaries take over distribution Hosts. Normal replacement preserves Host home/Space, sourceId, reference, and slot. A new Space is an explicit isolation operation and does not inherit secrets from other Spaces.

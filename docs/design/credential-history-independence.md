@@ -42,6 +42,12 @@
 
 这组实包已证实签名身份切换触发旧条目的 Keychain 授权失败，未发生条目删除或迁移记录丢失。尚不能仅凭原截图确定报障用户使用了同一组构建。两包严格签名及 stapler 票据校验通过；本机 Gatekeeper 评估返回 `Unnotarized Developer ID`，因此本验收不作为完整分发安装验收。交互读取未在当前桌面出现可操作授权窗口，并在客户端超时，不能承诺解锁按钮已经验证可恢复此情形。测试 Host 均通过停止协议清理，合成 Keychain 条目按精确 service/account 删除。
 
+### 新版固定身份的专项验收
+
+复用 `a2337873` 与 `ebeafdf4` 的两份不同 Core 二进制，在临时副本上用同一 Developer ID 和 `org.areal.harness.core` 重新签名，均带 hardened runtime 与 Apple 时间戳，严格签名验证通过。后版满足前版 designated requirement。通过真实 Host → Keychain 链路，在同一临时安装路径和隔离 Host home 下完成前版写入、前版重启、覆盖后读取、后版重启再读取；所有读取均为非交互，值摘要一致，revision 保持 1，原 slot 文件摘要与 sourceId 不变。后版另建条目也可读。
+
+签名后的两份 Core SHA-256 分别为 `f8ac6b0f8da208046fbf97ac2b3898af7402ae91296c56b85bae3cbe34806064` 和 `32692b049a25e3e468540d2f9bec85e7eee33fd9a1a3b9bbeb7472bc2bf779a7`。四次测试 Host 均通过停止协议退出，两条合成 Keychain 条目按精确 service/account 删除并确认不存在。本专项验证新版签名身份下的凭据连续性；使用的是重新签名的 Core 副本，不代表当前源码、完整 GUI 安装包、公证或自动更新验收。
+
 ### 已接受的升级边界
 
 切换到 `org.areal.harness.core` 后允许用户在供应商设置中重新配置一次 Key。后续发行保留该 identifier 和同一签名团队，不能回退为 `areal`、按构建生成新标识，或让开发构建接管发行 Host。普通覆盖升级保持当前 Host home/Space、sourceId、reference 和 slot；新 Space 属于显式隔离操作，不承诺继承其他 Space 的密钥。
