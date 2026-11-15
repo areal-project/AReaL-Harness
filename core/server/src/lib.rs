@@ -286,14 +286,6 @@ async fn run_configured(mut args: Args, diagnostic: Option<ConfigCommand>) -> Re
             None,
         )
     };
-    if args.service_info.is_some() && execution_error.is_none() {
-        if resolved.model.name.is_empty() || resolved.model.endpoint.is_empty() {
-            execution_error = Some("Select an available model; history remains readable".into());
-        } else if resolved.model.credential(&inputs).is_err() {
-            execution_error =
-                Some("Model credentials are unavailable; history remains readable".into());
-        }
-    }
     let mut extensions = match tool_extensions::load(resolved.tool_extensions_file.as_deref()) {
         Ok(extensions) => extensions,
         Err(_) if args.service_info.is_some() => {
@@ -357,7 +349,13 @@ async fn run_configured(mut args: Args, diagnostic: Option<ConfigCommand>) -> Re
     let model = if execution_error.is_some() {
         Arc::new(areal_engine::model::UnconfiguredModel) as Arc<dyn areal_engine::model::Model>
     } else {
-        match reload::model(&config.model, &inputs, &config.data_dir, management) {
+        // 缺少所选模型或凭据仍需初始化目录和配置入口；执行准入由具体模型拒绝。
+        match reload::model(
+            &config.model,
+            &inputs,
+            &config.data_dir,
+            management || args.service_info.is_some(),
+        ) {
             Ok(model) => model,
             Err(_) if args.service_info.is_some() => {
                 execution_error =
