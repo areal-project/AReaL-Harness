@@ -953,6 +953,12 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
       restored.turns.map((turn) => turn.id),
       [turnId],
     );
+    const restoredUserMessage = restored.turns[0].items.find((item) => item.type === "userMessage");
+    assert.equal(
+      restoredUserMessage.content.find((part) => part.type === "text").contextParts[0].comment.body,
+      "Remote structured review comment",
+      "Remote 重开历史保留结构化 contextParts",
+    );
     const originalDetails = await readTurnToolDetails({
       command: call,
       readThread: async () => thread(await state()),

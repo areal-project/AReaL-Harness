@@ -35,6 +35,39 @@ const scene = await createScene("areal-web-");
 let browser;
 let page;
 const shot = (step) => page.screenshot({ path: join(shots, `web-${step}.png`) });
+const unknownSend = { armed: false, dropped: false, requestId: null };
+
+// The browser talks to the real Host loopback socket.  For one explicit
+// acceptance case, discard only the response to a send that Host has already
+// accepted, then close the owned proxy pair.  This produces the same UNKNOWN
+// boundary as a lost browser response without replaying the command.
+function dropOneAcceptedSend(socket) {
+  const server = socket.connectToServer();
+  const pending = new Set();
+  socket.onMessage((message) => {
+    const envelope = JSON.parse(message.toString());
+    if (
+      unknownSend.armed &&
+      envelope.method === "session.send" &&
+      envelope.params?.text === "触发 UNKNOWN 核对"
+    ) {
+      unknownSend.armed = false;
+      unknownSend.requestId = envelope.params?.requestId ?? null;
+      pending.add(envelope.id);
+    }
+    server.send(message);
+  });
+  server.onMessage((message) => {
+    const envelope = JSON.parse(message.toString());
+    if (pending.has(envelope.id) && envelope.result && !envelope.error) {
+      pending.delete(envelope.id);
+      unknownSend.dropped = true;
+      void Promise.allSettled([socket.close(), server.close()]);
+      return;
+    }
+    socket.send(message);
+  });
+}
 
 try {
   // 引导：桌面第一次启动时登记资料库来源并让 Host 记住后台启动参数，然后关闭。
@@ -54,6 +87,7 @@ try {
     viewport: { width: 1440, height: 900 },
     locale: "zh-CN",
   });
+  await context.routeWebSocket(/\/host\/socket$/, dropOneAcceptedSend);
   await context.addInitScript(recordToasts);
   page = await context.newPage();
   page.setDefaultTimeout(20_000);
@@ -150,6 +184,43 @@ try {
   await sentMainComment.waitFor();
   await sentMainComment.click();
   await page.getByText(mainComment.body, { exact: true }).waitFor();
+
+  // 旅程 W2b：真实 Host 已受理但浏览器丢失回执。自动核对原 requestId
+  // 后只消费该评论，历史里的结构化 part 仍来自 Core 的权威快照。
+  const unknownComment = {
+    ...mainComment,
+    id: "web-unknown-review-comment",
+    body: "网页 UNKNOWN 后核对的评论",
+  };
+  await page.evaluate(
+    ({ key, comment }) => {
+      localStorage.setItem(key, JSON.stringify({ comments: [comment], attachedIds: [comment.id] }));
+      window.dispatchEvent(new CustomEvent("areal-review-comments-change", { detail: key }));
+    },
+    { key: mainReviewKey, comment: unknownComment },
+  );
+  unknownSend.armed = true;
+  await input.fill("触发 UNKNOWN 核对");
+  await sendReady(page);
+  await input.press("Enter");
+  await page.waitForFunction(
+    (key) => JSON.parse(localStorage.getItem(key) || "{}").submission?.requestId,
+    mainReviewKey,
+    { timeout: 60_000 },
+  );
+  await page.reload();
+  await page.getByTestId("chat-input").first().waitFor({ timeout: 60_000 });
+  await page.getByText("网页 UNKNOWN 后核对的评论", { exact: true }).waitFor({ timeout: 60_000 });
+  assert.equal(unknownSend.dropped, true, "真实 Host send 回执被丢失并进入 UNKNOWN 旅程");
+  await page.waitForFunction(
+    (key) => {
+      const value = JSON.parse(localStorage.getItem(key) || '{"comments":[]}');
+      return value.comments.length === 0 && value.submission === undefined;
+    },
+    mainReviewKey,
+    { timeout: 60_000 },
+  );
+  record(await inspectPage(page, "W2b UNKNOWN 原请求核对"));
   await shot("done");
   record(await inspectPage(page, "W2 本轮完成"));
 
@@ -194,6 +265,19 @@ try {
   await sentSideComment.waitFor();
   await sentSideComment.click();
   await sidePane.getByText(sideComment.body, { exact: true }).waitFor();
+  // Side 页面重载再打开，评论从 Host/Core 投影的历史重新回显。
+  await page.reload();
+  await page.getByTestId("chat-input").first().waitFor({ timeout: 60_000 });
+  await input.fill("/side");
+  await page
+    .getByRole("option", { name: /\/side/ })
+    .first()
+    .click();
+  await page
+    .getByTestId("side-chat-pane")
+    .getByRole("button", { name: "已发送的 1 个评论", exact: true })
+    .click();
+  await page.getByTestId("side-chat-pane").getByText(sideComment.body, { exact: true }).waitFor();
   await shot("side-chat");
   record(await inspectPage(page, "W6 侧边聊天"));
   const sideApproval = sidePane.locator('.decision-card[data-interaction="approval"]');
