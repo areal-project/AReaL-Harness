@@ -69,6 +69,8 @@
     "test:subscription-send": "node scripts/subscription-send-smoke.mjs",
     "test:provider-hot-apply": "node scripts/provider-hot-apply-smoke.mjs",
     "test:context-usage": "node scripts/context-usage-smoke.mjs",
+    "test:desktop-upgrade": "node scripts/desktop-upgrade-smoke.mjs",
+    "test:desktop-upgrade-unit": "node --test scripts/desktop-upgrade.test.cjs",
     "test:model-selection": "node scripts/model-selection-smoke.mjs",
     "test:history-compat": "node scripts/history-copy-smoke.mjs",
     "test:history-cleanup": "node --test scripts/history-copy-smoke.test.mjs scripts/application-cleanup.test.mjs",

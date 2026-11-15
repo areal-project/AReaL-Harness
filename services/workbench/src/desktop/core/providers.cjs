@@ -1058,11 +1058,8 @@ class AppProviders {
           if (!this.manages(project)) continue;
           if (this.closed || this.backend.closing) break;
           const state = this.applicationState(project);
-          if (project.client?.ready && ["deferred", "unknown"].includes(state.kind)) {
-            if (!this.supportsConfiguration(project))
-              await this.restoreConfigurationService(project);
-            else await this.reconcileProject(project);
-          }
+          if (project.client?.ready && ["deferred", "unknown"].includes(state.kind))
+            await this.reconcileProject(project);
         }
       })()
         .catch(() => {})
@@ -1759,44 +1756,6 @@ class AppProviders {
     );
   }
   /** @param {CoreProject} project */
-  async restoreConfigurationService(project) {
-    if (this.closed || this.backend.closing || this.pendingApplications.has(project.id)) return;
-    if (
-      this.backend.providerUpdating ||
-      this.backend.resourcesUpdating ||
-      this.backend.activeCommands ||
-      this.backend.starting.size ||
-      this.backend.hasWork()
-    )
-      return;
-    const target = this.target(project);
-    const snapshot = await this.config.current();
-    try {
-      const status = await target.client.request(
-        "areal/server/status",
-        {},
-        {
-          decode: providerContract.serverStatus,
-        },
-      );
-      this.requireTarget(target);
-      if (!status.restartSafe || this.closed || this.backend.closing) return;
-      await this.acquireUpdate("正在完成当前操作。");
-      try {
-        this.requireTarget(target);
-        if (this.closed || this.backend.closing) return;
-        // 通过现有停止回执切换后台；在项目应用队列外执行，避免重连等待自己。
-        await this.backend.restartProject(project, { expectedRevision: snapshot.revision });
-        if (!this.supportsConfiguration(project))
-          throw new Error("应用暂时无法完成连接，请重启应用后重试。");
-      } finally {
-        this.backend.providerUpdating = false;
-      }
-    } catch (error) {
-      this.applicationFailed(this.target(project), snapshot.revision, error);
-    }
-  }
-  /** @param {CoreProject} project */
   reconcileProject(project, { refreshModels = true } = {}) {
     if (!this.manages(project)) return Promise.resolve();
     const target = this.target(project);
@@ -1812,12 +1771,8 @@ class AppProviders {
           try {
             if (this.closed || this.backend.closing) return;
             this.requireTarget(target);
-            if (!this.supportsConfiguration(project)) {
-              project.providerRevision = undefined;
-              project.providerError = null;
-              this.requestReconciliation();
-              return;
-            }
+            if (!this.supportsConfiguration(project))
+              throw new Error("应用连接尚未就绪，请重新打开应用后重试。");
             const reconciled = await this.inspectPending(target, undefined, {
               refreshModels,
             });

@@ -518,6 +518,7 @@ mod tests {
             auth_file: service.home.join("host/auth.json"),
             pid: std::process::id(),
             executable_version: "9.0.0".into(),
+            executable_digest: None,
         };
         storage::write(&service.home.join("host/host.json"), &identity).unwrap();
         assert!(

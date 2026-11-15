@@ -462,6 +462,7 @@ mod tests {
                 auth_file: home.join("host/auth.json"),
                 pid: std::process::id(),
                 executable_version: "fixture".into(),
+                executable_digest: None,
             };
             storage::write(&home.join("host/host.json"), &identity).unwrap();
             storage::write(&identity.auth_file, &"synthetic-auth").unwrap();

@@ -802,6 +802,10 @@ function startDesktop() {
             home: cfg.serviceOptions(app).hostHome,
             binary: cfg.serviceOptions(app).binary,
             profile: app.getPath("userData"),
+            ready: async () => {
+              await serviceBackend.init({ automatic: true });
+              if (!serviceBackend.status.connected) throw new Error("应用连接尚未就绪");
+            },
             trusted,
           });
           if (process.platform === "darwin")

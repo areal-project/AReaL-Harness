@@ -62,6 +62,7 @@ impl Fixture {
                 auth_file: home.join("host/auth.json"),
                 pid: std::process::id(),
                 executable_version: "fixture".into(),
+                executable_digest: None,
             },
             bin: home.clone(),
             token: "isolated-auth-fixture".into(),

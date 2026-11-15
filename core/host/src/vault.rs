@@ -1005,6 +1005,7 @@ mod tests {
             auth_file: home.join("host/auth.json"),
             pid: std::process::id(),
             executable_version: "fixture".into(),
+            executable_digest: None,
         };
         storage::write(&home.join("host/host.json"), &identity).unwrap();
         storage::write(&identity.auth_file, &"synthetic-auth").unwrap();
@@ -1197,6 +1198,7 @@ mod tests {
             socket_path: f.migration.vault.home.join("socket"),
             auth_file: f.migration.vault.home.join("auth"),
             executable_version: "fixture".into(),
+            executable_digest: None,
         };
         let result = tokio::time::timeout(std::time::Duration::from_secs(5), async {
             let receipt = remote.dispatch_async("remote.replace", json!({"requestId":request,"expectedGeneration":"generation","expectedRevision":0,"sourceId":f.slot.source_id().unwrap(),"config":{"identity":noise,"devices":[]}}), "fixture", "generation", &f.migration, &[]).await?;
@@ -1306,6 +1308,7 @@ mod tests {
                 auth_file: root.path().join("auth"),
                 pid: std::process::id(),
                 executable_version: "fixture".into(),
+                executable_digest: None,
             },
             "fixture",
         );

@@ -359,7 +359,7 @@ class SharedCoreBackend {
         this.scheduleReconnect();
         return;
       }
-      // 只恢复观察连接：不调用 initialize，不启动 Core、不重放任何未知提交。
+      // 复用启动交接和权威快照恢复；未知提交始终按原回执核查。
       this.connecting = (async () => {
         const control = await this.readControl();
         if (control?.state) {
@@ -747,12 +747,32 @@ class SharedCoreBackend {
       singletonHeld: true,
     });
     try {
+      const { ensureDesktopHost, desktopBuildIdentity } = require("@areal/client/desktop-upgrade");
+      const serviceIdentity = await require("./service-config.cjs").serviceIdentity({
+        ...options,
+        binary: options.binary,
+      });
+      const buildIdentity = await desktopBuildIdentity(serviceIdentity, [
+        join(__dirname, ".."),
+        this.app.isPackaged
+          ? join(process.resourcesPath, "areal-gui")
+          : join(__dirname, "../../../renderer/dist"),
+      ]);
+      const completeUpgrade = await ensureDesktopHost(source.client, {
+        home: options.hostHome,
+        binary: options.binary,
+        serviceIdentity,
+        buildIdentity,
+        closed: () => this.disposed === true,
+      });
+      source.client.close();
       if (recover) await source.client.connect(options.hostHome);
       else await source.init({ deferCredentials: true });
       const owner = await source.ensureBackend(options, process.env);
       if (this.disposed) throw new Error("GUI 连接已关闭");
       if (!(await this.attach({ expectedIdentity: owner.identity })))
         throw new Error("Host 后台尚未就绪");
+      await completeUpgrade();
       this.backendUpdate = undefined;
     } finally {
       source.close();

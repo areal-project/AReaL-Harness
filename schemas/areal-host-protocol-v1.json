@@ -1582,6 +1582,10 @@
         "executableVersion": {
           "type": "string"
         },
+        "executableDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
         "capabilities": {
           "type": "array",
           "items": {

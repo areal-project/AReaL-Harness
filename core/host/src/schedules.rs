@@ -446,6 +446,7 @@ pub(super) mod tests {
                 auth_file: home.join("auth"),
                 pid: std::process::id(),
                 executable_version: "fixture".into(),
+                executable_digest: None,
             },
             token: "fixture".into(),
             slots: RefCell::new(BTreeMap::from([(

@@ -1070,6 +1070,24 @@
     "notes": "Business journeys in Chromium against the real Host web endpoint: browser approval, open project by path, send, approval with queued input, completion, reload, settings. Electron only bootstraps the library source once and is closed before the web journeys run."
   },
   {
+    "script": "test:desktop-upgrade-unit",
+    "layer": "contract",
+    "platforms": ["darwin"],
+    "platformReason": "Uses isolated real Host processes under /private/tmp.",
+    "areas": ["lifecycle", "desktop"],
+    "requires": ["core-binary"],
+    "notes": "Build identity replacement and recovery of the original stop receipt. AREAL_UPGRADE_OLD_BIN can select an earlier packaged Host."
+  },
+  {
+    "script": "test:desktop-upgrade",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "Uses macOS application bundles and isolated test Keychain entries.",
+    "areas": ["lifecycle", "conversation", "draft"],
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
+    "notes": "Requires an installed old app or AREAL_UPGRADE_OLD_APP; AREAL_UPGRADE_NEW_APP selects the candidate. Copies the old app and uses isolated data and a local model to verify full backend handoff, interrupted execution, automatic history and draft recovery, and no replay."
+  },
+  {
     "script": "test:history-upgrade",
     "layer": "e2e",
     "platforms": ["darwin"],

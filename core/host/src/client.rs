@@ -607,6 +607,7 @@ mod tests {
                 auth_file: host_dir.join("auth.json"),
                 pid: std::process::id(),
                 executable_version: version.into(),
+                executable_digest: None,
             };
             storage::write(&host_dir.join("host.json"), &identity).unwrap();
             storage::write(&identity.auth_file, &"fixture-token").unwrap();

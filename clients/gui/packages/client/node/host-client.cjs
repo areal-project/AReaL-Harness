@@ -78,6 +78,9 @@ class HostClient {
     /** @type {string[]} */
     this.capabilities = [];
     this.home = "";
+    /** @type {{pid:number}|undefined} */ this.identity = undefined;
+    /** @type {{executableVersion:string,executableDigest?:string}|undefined} */ this.hello =
+      undefined;
     /** @type {((event:unknown)=>void)|null} */ this.desktopCoreEvent = null;
     /** @type {(()=>void)|null} */ this.desktopCoreClosed = null;
     /** @type {Map<string,HostJournal>} */
@@ -144,6 +147,8 @@ class HostClient {
     this.hostId = hello.hostId;
     this.generation = hello.generation;
     this.capabilities = hello.capabilities;
+    this.identity = descriptor;
+    this.hello = hello;
     this.#intentKey = token;
     return hello;
   }
@@ -608,12 +613,15 @@ class HostJournal {
 }
 module.exports = { HostClient, executeHost };
 
-/** 原生外壳只可运行Host自身的安装/离线回执命令，不能借此启动Core。
+/** 原生外壳只可读取版本及运行 Host 安装/离线回执命令，不能借此启动 Core。
  * @param {string} binary @param {string[]} args @param {{env:NodeJS.ProcessEnv,timeout?:number,maxBuffer?:number}} options @returns {Promise<{stdout:string,stderr:string}>} */
 function executeHost(binary, args, options) {
   if (
-    args[0] !== "host" ||
-    !["install", "uninstall", "service-status", "operation"].includes(args[1] ?? "") ||
+    !(
+      (args.length === 1 && args[0] === "--version") ||
+      (args[0] === "host" &&
+        ["install", "uninstall", "service-status", "operation"].includes(args[1] ?? ""))
+    ) ||
     !isAbsolute(binary)
   )
     return Promise.reject(new Error("Unsupported native Host command"));

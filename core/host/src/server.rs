@@ -326,6 +326,7 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
         auth_file: directory.join("auth.json"),
         pid: std::process::id(),
         executable_version: env!("CARGO_PKG_VERSION").into(),
+        executable_digest: Some(storage::digest(&std::fs::read(std::env::current_exe()?)?)),
     };
     storage::write(&identity.auth_file, &token)?;
     let mut slots = BTreeMap::new();
@@ -491,7 +492,7 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
     let hello: Hello = serde_json::from_value(request.params)?;
     ensure!(hello.auth_token == host.token, "unauthorized");
     let response = if hello.protocol_versions.contains(&VERSION) {
-        json!({"version":VERSION,"id":request.id,"result":areal_protocol::host::LocalHelloResult { version: VERSION.into(), host_id: host.identity.host_id.clone(), generation: host.identity.generation.clone(), capabilities: CAPABILITIES.iter().map(|value| (*value).to_owned()).collect(), executable_version: host.identity.executable_version.clone() }})
+        json!({"version":VERSION,"id":request.id,"result":areal_protocol::host::LocalHelloResult { version: VERSION.into(), host_id: host.identity.host_id.clone(), generation: host.identity.generation.clone(), capabilities: CAPABILITIES.iter().map(|value| (*value).to_owned()).collect(), executable_version: host.identity.executable_version.clone(), executable_digest: host.identity.executable_digest.clone() }})
     } else {
         json!({"version":VERSION,"id":request.id,"error":{"code":"versionMismatch","message":"Host requires protocol version 1"}})
     };

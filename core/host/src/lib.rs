@@ -103,6 +103,8 @@ pub struct HostIdentity {
     pub auth_file: PathBuf,
     pub pid: u32,
     pub executable_version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executable_digest: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
