@@ -205,7 +205,8 @@
     "test:host-seed-copy": "node --test scripts/seed-host-copy.test.mjs scripts/seed-navigation-fixture.test.mjs",
     "lint:workbench-boundary": "node scripts/workbench-boundary.mjs",
     "report:knip": "knip --no-progress --no-exit-code --reporter compact",
-    "test:host-activation": "node scripts/host-activation-smoke.mjs"
+    "test:host-activation": "node scripts/host-activation-smoke.mjs",
+    "test:host-scheduled-hibernation": "node scripts/host-scheduled-hibernation-smoke.mjs"
   },
   "devDependencies": {
     "@areal/remote-client": "workspace:*",

@@ -1181,5 +1181,14 @@
     "areas": ["lifecycle", "conversation"],
     "requires": ["core-binary"],
     "notes": "Host-native cold activation without Workbench, ready-generation reuse, explicit-stop preservation and Host cleanup."
+  },
+  {
+    "script": "test:host-scheduled-hibernation",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "Uses isolated real Core and Runtime with macOS permission presets.",
+    "areas": ["lifecycle", "tasks"],
+    "requires": ["core-binary"],
+    "notes": "Release hibernates an idle Core with a future schedule; Host timer wakes it and Core completes exactly one original occurrence without Workbench."
   }
 ]

@@ -191,11 +191,24 @@ pub(super) async fn run(host: Rc<Host>) {
     let mut interval = tokio::time::interval(Duration::from_secs(30));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut pending = BTreeMap::<String, String>::new();
+    let mut changes = host.changes.subscribe();
     loop {
-        interval.tick().await;
+        let changed = tokio::select! {
+            _ = interval.tick() => false,
+            _ = changes.changed() => true,
+        };
+        let release = storage::read_optional::<ReleasePolicy>(&host.home.join("host/release.json"))
+            .ok()
+            .flatten()
+            .is_some_and(|policy| policy.generation == host.identity.generation)
+            && !host.has_external_clients();
+        if changed && !release {
+            continue;
+        }
         if host.admission().is_err() {
             continue;
         }
+        let release = release && workbench_idle(&host).await;
         // 未确认的停止只核查原请求，不为下一次巡检换 ID。
         for (project, request) in pending.clone() {
             match host.reconcile(&request).await {
@@ -248,21 +261,28 @@ pub(super) async fn run(host: Rc<Host>) {
                     slot.idle.reset();
                     continue;
                 }
-                slot.idle.observe(idle, Instant::now(), TTL)
+                slot.idle.observe(
+                    idle,
+                    Instant::now(),
+                    if release { Duration::ZERO } else { TTL },
+                )
             };
             if !due {
                 continue;
             }
-            // 当前定时器仍由 Core 持有；目录未知或存在启用任务时继续保活。
+            // 只为即将到期或尚未结算的任务保活；未来计划由 Host 提前唤醒。
             if !host.schedules.suppressed(&id)
                 && !matches!(
-                    schedules::enabled_catalog(&host.bin, &registration).await,
+                    schedules::activation_due(&host.bin, &registration).await,
                     Ok(false)
                 )
             {
                 if let Some(slot) = host.slots.borrow_mut().get_mut(&id) {
                     slot.idle.reset();
                 }
+                continue;
+            }
+            if release && host.has_external_clients() {
                 continue;
             }
             let request = uuid::Uuid::new_v4().to_string();
@@ -292,6 +312,25 @@ pub(super) async fn run(host: Rc<Host>) {
             }
         }
     }
+}
+
+async fn workbench_idle(host: &Rc<Host>) -> bool {
+    let Ok(backend) = host.gateway.workbench.backend_status(host).await else {
+        return false;
+    };
+    if backend["owned"] != true {
+        return true;
+    }
+    host.gateway
+        .workbench
+        .backend_private("lifecycle.dependencies", json!({}))
+        .await
+        .is_ok_and(|value| {
+            value["clients"].as_u64() == Some(0)
+                && value["inflight"].as_u64() == Some(0)
+                && value["providerUpdating"] == false
+                && value["starting"].as_u64() == Some(0)
+        })
 }
 
 #[cfg(test)]

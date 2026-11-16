@@ -2,7 +2,7 @@
 
 # 架构与目录
 
-共享 Host 的[目标设计与阶段](../development/shared-host-spec.md)由 [ADR 0016](../adr/0016-shared-host.md)确定，契约见 [Host API](../api/host.md)。每用户 Rust Host 持有认证控制、项目监督、凭据、提交 journal、定时激活与执行准备，以及已实现的 Remote Gateway 和 provider subscription 传输；Core 保留执行和历史权威。GUI 默认连接 Host 监督的工作台后台；Main 提供原生 Browser/Computer 适配与在线通知，不再由界面偏好决定业务后台所有权。普通 GUI 退出保留 Host 与 Core，撤销该 Main 的连接资源。Host 按来源保存的休眠偏好保护真实运行中的工作。Host-owned 与 `legacyPending` 分别报告；旧后台仅经显式恢复路径检查和退役。Remote 方法按实际能力协商，不因入口可连接而推断所有客户端方法已受支持。
+共享 Host 的[目标设计与阶段](../development/shared-host-spec.md)由 [ADR 0016](../adr/0016-shared-host.md)确定，契约见 [Host API](../api/host.md)。每用户 Rust Host 持有认证控制、项目监督、凭据、提交 journal、定时激活与执行准备，以及已实现的 Remote Gateway 和 provider subscription 传输；Core 保留执行和历史权威。GUI 默认连接 Host 监督的工作台后台；Main 提供原生 Browser/Computer 适配与在线通知，不再由界面偏好决定业务后台所有权。普通 GUI 退出撤销该 Main 的连接资源，并登记按需求回收；其他客户端、在途任务、启用定时任务、远程入口或系统服务安装仍可保留 Host。空闲项目按十五分钟连续空闲窗口休眠，不改变用户调度意图。Host 按来源保存的休眠偏好保护真实运行中的工作。Host-owned 与 `legacyPending` 分别报告；旧后台仅经显式恢复路径检查和退役。Remote 方法按实际能力协商，不因入口可连接而推断所有客户端方法已受支持。
 
 AReaL-Harness 采用 **Clients → Core → Runtime** 分层。Core 是会话、Turn、模型循环与 Agent 状态的唯一所有者；Runtime 只处理执行权限、操作事实和资源生命周期。客户端不维护另一套权威历史。
 
@@ -204,7 +204,7 @@ GUI 的 `history-observation` 委托 `catalog-observation` 按项目、连接和
 
 ## 仓库目录
 
-桌面客户端归属见[迁移决策](../adr/0001-desktop-client-module.md)。`clients/gui` 的 Electron 外壳通过共享 Host 连接项目 Core，提供系统原生能力。关闭窗口保留应用；普通退出释放 GUI 连接及其桌面工具资源，并登记 Host 按需回收。其他客户端、活动工作、定时任务、远程接入或自启服务仍有需求时保留后台；无需求时经原停止回执清理退出。Core 连续空闲十五分钟后可休眠，尚依赖其计时的启用任务阻止回收。GUI 构建、数据隔离与本地包见 [GUI 指南](../../clients/gui/README.md)。iOS/Android Remote 客户端位于 `clients/mobile`，Web、iOS 与 Android 通过 `@areal/remote-client` 共享协议、命令核对与会话状态；平台分别提供 IndexedDB、Keychain 与 Android Keystore 持久化适配。执行和历史权威仍在电脑端 Core/Runtime。Android 使用共享移动入口和原生 Keystore 适配，构建、Origin、兼容性和验收边界见 [Android 开发指南](../development/android-development.md)。
+桌面客户端归属见[迁移决策](../adr/0001-desktop-client-module.md)。`clients/gui` 的 Electron 外壳通过共享 Host 连接项目 Core，提供系统原生能力。关闭窗口保留应用；普通退出释放 GUI 连接及其桌面工具资源，并登记 Host 按需回收。其他客户端、活动工作、定时任务、远程接入或自启服务仍有需求时保留后台；无需求时经原停止回执清理退出。Core 连续空闲十五分钟后可休眠，退出需求登记后可立即回收空闲项目；未来定时任务由 Host 按 published 的下一次触发时间唤醒 Core，即将到期或未结算的任务保活。GUI 构建、数据隔离与本地包见 [GUI 指南](../../clients/gui/README.md)。iOS/Android Remote 客户端位于 `clients/mobile`，Web、iOS 与 Android 通过 `@areal/remote-client` 共享协议、命令核对与会话状态；平台分别提供 IndexedDB、Keychain 与 Android Keystore 持久化适配。执行和历史权威仍在电脑端 Core/Runtime。Android 使用共享移动入口和原生 Keystore 适配，构建、Origin、兼容性和验收边界见 [Android 开发指南](../development/android-development.md)。
 
 GUI的混合消息采用可重建展示投影：Markdown沿Streamdown，严格版本化`areal-ui`数据由共享UI目录校验并以只读React组件展示，Gen UI/MCP仍由原隔离宿主处理。Core保留原始消息和制品权威，复制可使用同一文字投影；这不是持久历史迁移或可执行组件协议。审批和Ask User共享展示外壳，合法动作、草稿、提交锁与UNKNOWN核对仍归原请求控制器。
 
