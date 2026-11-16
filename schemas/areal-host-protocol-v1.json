@@ -66019,7 +66019,8 @@
         {
           "apiKey": "synthetic-example-only"
         }
-      ]
+      ],
+      "x-sensitive": true
     }
   },
   "x-current": {
