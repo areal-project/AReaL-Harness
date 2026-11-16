@@ -37,6 +37,7 @@ struct PendingReply {
     reply: oneshot::Sender<Result<CoreReply>>,
     snapshot_thread: Option<String>,
     snapshot_lease: Option<String>,
+    workbench_owned: bool,
 }
 pub(super) struct CoreObservation {
     pub events: broadcast::Receiver<CoreEvent>,
@@ -738,6 +739,15 @@ impl CoreSession {
         if self.terminal {
             return Ok(());
         }
+        self.require_snapshot_owner(host)?;
+        ensure!(
+            self.workbench_lease.borrow().as_deref() == lease,
+            unavailable()
+        );
+        ensure!(snapshot["thread"]["id"] == thread, "INVALID_RESPONSE");
+        self.publish_snapshot_progress(host, thread, snapshot)
+    }
+    fn require_snapshot_owner(self: &Rc<Self>, host: &Host) -> Result<()> {
         ensure!(
             self.shared_current(host)
                 && host
@@ -749,11 +759,30 @@ impl CoreSession {
                     .is_some_and(|current| Rc::ptr_eq(current, self)),
             unavailable()
         );
-        ensure!(
-            self.workbench_lease.borrow().as_deref() == lease,
-            unavailable()
-        );
-        ensure!(snapshot["thread"]["id"] == thread, "INVALID_RESPONSE");
+        Ok(())
+    }
+    fn accept_snapshot(
+        self: &Rc<Self>,
+        host: &Rc<Host>,
+        thread: &str,
+        snapshot: &Value,
+        lease: Option<&str>,
+        workbench_owned: bool,
+    ) -> Result<()> {
+        if !self.terminal && !workbench_owned && self.workbench_lease.borrow().as_deref() != lease {
+            // 工作台换租不撤销 Host 读者；旧快照仍不能写入新工作台的投影。
+            self.require_snapshot_owner(host)?;
+            ensure!(snapshot["thread"]["id"] == thread, "INVALID_RESPONSE");
+            return Ok(());
+        }
+        self.snapshot_progress(host, thread, snapshot, lease)
+    }
+    fn publish_snapshot_progress(
+        self: &Rc<Self>,
+        host: &Rc<Host>,
+        thread: &str,
+        snapshot: &Value,
+    ) -> Result<()> {
         if let Some(source) = host.gateway.workbench.active_source() {
             super::library_store::source_home(host, &source)?;
         }
@@ -810,6 +839,14 @@ impl CoreSession {
         Ok(self.request_with_barrier(method, params).await?.value)
     }
     async fn request_with_barrier(&self, method: &str, params: Value) -> Result<CoreReply> {
+        self.request_owned(method, params, false).await
+    }
+    async fn request_owned(
+        &self,
+        method: &str,
+        params: Value,
+        workbench_owned: bool,
+    ) -> Result<CoreReply> {
         ensure!(
             !self.closed.get() && self.pending.borrow().len() < MAX_PENDING,
             unavailable()
@@ -827,6 +864,7 @@ impl CoreSession {
                 reply: sender,
                 snapshot_thread,
                 snapshot_lease: self.workbench_lease.borrow().clone(),
+                workbench_owned,
             },
         );
         let _pending = Pending {
@@ -987,7 +1025,7 @@ async fn connect_authorized(
                                     let result = if let Some(error) = value.get("error") { Err(RpcFailure(error.clone()).into()) } else { value.get("result").cloned().map(|value| CoreReply { value, sequence: connection.event_sequence.get() }).ok_or_else(unavailable) };
                                     let result = result.and_then(|result| {
                                         if let Some(thread) = reply.snapshot_thread.as_deref() {
-                                            connection.snapshot_progress(&host, thread, &result.value, reply.snapshot_lease.as_deref())?;
+                                            connection.accept_snapshot(&host, thread, &result.value, reply.snapshot_lease.as_deref(), reply.workbench_owned)?;
                                         }
                                         Ok(result)
                                     });

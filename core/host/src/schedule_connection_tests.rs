@@ -336,6 +336,91 @@ async fn host_release_before_workbench_thread_start_receipt_preserves_subscripti
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn native_observation_survives_workbench_lease_replacement() {
+    observation_lease_replacement(false, false).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn replaced_workbench_observation_cannot_publish_its_snapshot() {
+    observation_lease_replacement(true, false).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn native_observation_still_rejects_core_replacement_during_workbench_attachment() {
+    observation_lease_replacement(false, true).await;
+}
+
+async fn observation_lease_replacement(workbench: bool, replace_service: bool) {
+    tokio::task::LocalSet::new().run_until(async {
+        let root = tempfile::tempdir().unwrap();
+        let host = Rc::new(super::super::schedules::tests::fixture(root.path()));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let service = service(&host, format!("ws://{}/", listener.local_addr().unwrap()));
+        let (writer, lifetime) = areal_local_service::OwnerLifetime::pair().unwrap();
+        host.slots.borrow_mut().get_mut("project").unwrap().writer = Some(writer);
+        host.slots.borrow_mut().get_mut("project").unwrap().lifetime = Some(Rc::new(lifetime));
+        let (observed, observation_due) = oneshot::channel();
+        let (release, released) = oneshot::channel();
+        let server = tokio::task::spawn_local(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_hdr_async(stream, ScheduleHeaders).await.unwrap();
+            let mut observed = Some(observed);
+            let mut held = None;
+            let mut released = Box::pin(released);
+            loop {
+                tokio::select! {
+                    _ = released.as_mut(), if held.is_some() => {
+                        let id = held.take().unwrap();
+                        send(&mut socket, json!({"id":id,"result":{"thread":{"id":"thread","turns":[]}}})).await;
+                    }
+                    call = socket.next() => {
+                        let Some(Ok(Message::Text(text))) = call else { break; };
+                        let call: Value = serde_json::from_str(&text).unwrap();
+                        if call.get("id").is_none() { continue; }
+                        if call["method"] == "areal/thread/observe" {
+                            held = Some(call["id"].clone());
+                            observed.take().unwrap().send(()).unwrap();
+                        } else {
+                            send(&mut socket, json!({"id":call["id"],"result":{}})).await;
+                        }
+                    }
+                }
+            }
+        });
+        let session = connect(host.clone(), "project", service).await.unwrap();
+        session.ready.set(true);
+        host.schedules.connections.sessions.borrow_mut().insert("project".into(), session.clone());
+        let attached = host.schedules.connections.workbench_attach(&host, "project", None).await.unwrap();
+        let original = attached["lease"].as_str().unwrap().to_owned();
+        let reading_host = host.clone();
+        let reading = tokio::task::spawn_local(async move {
+            let connections = &reading_host.schedules.connections;
+            if workbench {
+                connections.workbench_request(&reading_host, "project", &original, "areal/thread/observe", json!({"threadId":"thread"})).await
+            } else {
+                connections.remote_observe(&reading_host, "project", "first", "thread").await.map(|(value, _, _)| value)
+            }
+        });
+        observation_due.await.unwrap();
+        let replacement = host.schedules.connections.workbench_attach(&host, "project", None).await.unwrap();
+        assert_ne!(attached["lease"], replacement["lease"]);
+        assert_eq!(attached["connectionId"], replacement["connectionId"]);
+        if replace_service {
+            host.slots.borrow_mut().get_mut("project").unwrap().service.as_mut().unwrap().identity.generation = "replacement".into();
+        }
+        release.send(()).unwrap();
+        let result = reading.await.unwrap();
+        if workbench || replace_service {
+            assert_eq!(result.unwrap_err().downcast_ref::<crate::wire::Error>().unwrap().code, "scheduleHostUnavailable");
+        } else {
+            assert_eq!(result.unwrap()["thread"]["id"], "thread");
+        }
+        session.close();
+        server.await.unwrap();
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn shared_thread_subscription_survives_each_owner_release() {
     tokio::task::LocalSet::new().run_until(async {
         let root = tempfile::tempdir().unwrap();

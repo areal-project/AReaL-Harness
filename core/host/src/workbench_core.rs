@@ -493,7 +493,7 @@ impl Connections {
             } else {
                 None
             };
-        let result = session.request_with_barrier(method, params).await;
+        let result = session.request_owned(method, params, true).await;
         ensure!(
             session.shared_current(host)
                 && session.workbench_lease.borrow().as_deref() == Some(lease),
