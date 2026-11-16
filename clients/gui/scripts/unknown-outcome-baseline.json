@@ -54,6 +54,7 @@
   "core/host/src/journal.rs": 3,
   "core/host/src/loopback.rs": 3,
   "core/host/src/plugins.rs": 1,
+  "core/host/src/provider_config.rs": 1,
   "core/host/src/subscription/host.rs": 1,
   "core/host/src/task_catalog.rs": 7,
   "core/host/src/workbench_route.rs": 6,

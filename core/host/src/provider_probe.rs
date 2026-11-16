@@ -11,7 +11,7 @@ impl std::fmt::Display for Failure {
     }
 }
 impl std::error::Error for Failure {}
-fn failure(message: &'static str) -> anyhow::Error {
+pub(super) fn failure(message: &'static str) -> anyhow::Error {
     Failure(message).into()
 }
 pub(super) fn rejection(error: &anyhow::Error) -> Option<Value> {

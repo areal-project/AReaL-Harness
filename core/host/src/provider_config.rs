@@ -336,7 +336,16 @@ pub(super) async fn write(
             "requestId":command,"expectedGeneration":host.identity.generation,"expectedRevision":0,
             "slot":{"kind":"providerCredential","sourceId":source,"reference":reference},"value":key,
         }), &host.identity.generation, &host.migration).await?;
-        ensure!(receipt["state"] == "completed", "SUBMISSION_UNKNOWN");
+        match receipt["state"].as_str() {
+            Some("completed") => {}
+            Some("blocked") => {
+                return Err(super::provider_probe::failure(
+                    "供应商凭据未能保存，请检查系统安全存储后重试。",
+                ));
+            }
+            // 只有尚未结算的原 Vault 写入保留 UNKNOWN，不能重新写入凭据。
+            _ => anyhow::bail!("SUBMISSION_UNKNOWN"),
+        }
     }
     host.admission()?;
     ensure!(

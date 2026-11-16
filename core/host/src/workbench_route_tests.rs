@@ -1316,3 +1316,48 @@ async fn read_provider_http_head(stream: &mut tokio::net::TcpStream) -> Vec<u8> 
     }
     head
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn blocked_provider_credential_is_a_definitive_original_rejection() {
+    tokio::task::LocalSet::new().run_until(async {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let (mut host, input, source) = resumable_host(&root);
+        Rc::get_mut(&mut Rc::get_mut(&mut host).unwrap().migration).unwrap().vault = crate::vault::Vault::isolated_files(&host.home);
+        storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();
+        storage::write(&launch_record(&host), &input).unwrap();
+        let list = json!({"method":"providers.read","params":{"sourceId":source,"operation":"list"}});
+        let initial = backend_read(&host,"web:fixture",&list).await.unwrap();
+        let command = uuid::Uuid::new_v4().to_string();
+        let reference = format!("AREAL_CREDENTIAL_{}",command.replace('-',""));
+        let entry = uuid::Uuid::new_v4().to_string();
+        let receipt = json!({"requestId":command,"method":"vault.replace","state":"blocked",
+            "slot":{"kind":"providerCredential","sourceId":source,"reference":reference},
+            "previousRevision":0,"entryId":entry,
+            "error":{"code":"storageMissing","message":"private storage diagnostic"}});
+        let receipt_path = host.home.join("host/vault-operations").join(format!("{command}.json"));
+        storage::private_dir(receipt_path.parent().unwrap()).unwrap();
+        storage::write(&receipt_path,&receipt).unwrap();
+        let request = json!({"method":"providers.command","commandId":command,"params":{
+            "sourceId":source,"operation":"save","expectedRevision":initial["revision"],
+            "authentication":"apiKey","apiKey":"synthetic-rejected-provider-key",
+            "provider":{"name":"Blocked","baseUrl":"https://example.invalid/v1","protocol":"responses",
+                "models":[{"id":"fixture","enabled":true,"parameters":{}}]}}});
+        for result in [backend_command(&host,"web:fixture",&request).await,
+            backend_receipt(&host,"web:fixture",&command).map(Option::unwrap)] {
+            let error = result.unwrap_err();
+            let wire = error.downcast_ref::<crate::wire::Error>().unwrap();
+            assert_eq!(wire.code,"RESOURCE_UNAVAILABLE");
+            let text = &wire.message;
+            assert!(!text.contains("private storage diagnostic"));
+            assert!(!text.contains("synthetic-rejected-provider-key"));
+        }
+        let (_, journal) = host.journal.native_snapshot(&format!("workbench-{}",storage::digest(b"web:fixture"))).unwrap();
+        assert_eq!(journal["outcomes"][&command]["submissionUnknown"],false);
+        assert_eq!(journal["outcomes"][&command]["admissionState"],"rejected");
+        assert_eq!(storage::read::<Value>(&receipt_path).unwrap(),receipt);
+        assert_eq!(backend_read(&host,"web:fixture",&list).await.unwrap()["revision"],initial["revision"]);
+        assert!(host.gateway.workbench.backend.running.borrow().is_none());
+        assert!(host.slots.borrow().values().all(|slot|slot.service.is_none()));
+    }).await;
+}
