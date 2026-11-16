@@ -28,8 +28,14 @@ class HostProtocolSchemaTests(unittest.TestCase):
         changed["$defs"]["RemoteReady"]["properties"]["methods"]["items"]["enum"].remove(
             "session.create"
         )
-        with self.assertRaisesRegex(ValueError, "remoteLegacy.*session.create"):
+        with self.assertRaisesRegex(ValueError, "remoteLegacy.*drift"):
             GEN.check_inventory(changed, ROOT)
+        for name in ("RemoteReady", "RemoteDescription"):
+            for bound in ("minItems", "maxItems"):
+                changed = copy.deepcopy(self.schema)
+                changed["$defs"][name]["properties"]["methods"][bound] -= 1
+                with self.assertRaisesRegex(ValueError, f"remoteLegacy {name}.*bounds"):
+                    GEN.check_inventory(changed, ROOT)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for name in (

@@ -7670,11 +7670,12 @@
               "task.question.reply",
               "task.read",
               "turn.stop",
-              "work.list"
+              "work.list",
+              "project.activate"
             ]
           },
-          "minItems": 24,
-          "maxItems": 24,
+          "minItems": 25,
+          "maxItems": 25,
           "uniqueItems": true
         },
         "limits": {
@@ -7733,7 +7734,8 @@
             "task.question.reply",
             "task.read",
             "turn.stop",
-            "work.list"
+            "work.list",
+            "project.activate"
           ],
           "limits": {
             "applicationMessageBytes": 8388608,
@@ -11796,8 +11798,8 @@
               "project.activate"
             ]
           },
-          "minItems": 24,
-          "maxItems": 24,
+          "minItems": 25,
+          "maxItems": 25,
           "uniqueItems": true
         },
         "limits": {

@@ -353,6 +353,18 @@ def check_inventory(document, root):
             declared = set(
                 document["$defs"]["RemoteReady"]["properties"]["methods"]["items"]["enum"]
             )
+            for name in ("RemoteReady", "RemoteDescription"):
+                methods = document["$defs"][name]["properties"]["methods"]
+                if (
+                    set(methods["items"]["enum"]) != actual
+                    or methods.get("minItems") != len(actual)
+                    or methods.get("maxItems") != len(actual)
+                ):
+                    raise ValueError(
+                        f"remoteLegacy {name} method inventory or bounds drift: "
+                        f"missing={sorted(actual - set(methods['items']['enum']))}, "
+                        f"stale={sorted(set(methods['items']['enum']) - actual)}"
+                    )
         else:
             declared = set(document["x-current"][transport]["methods"])
         if actual != declared:
