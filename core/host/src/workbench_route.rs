@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     cell::{Cell, RefCell},
+    os::fd::AsRawFd,
     path::{Path, PathBuf},
     rc::{Rc, Weak},
     time::{Duration, Instant},
@@ -1468,10 +1469,20 @@ impl Backend {
         let entry = discover_backend(&host.bin).await?;
         let data = host.home.join("workbench");
         areal_local_service::storage::private_dir(&data)?;
+        let owner = crate::workbench_owner::BackendOwner::acquire(
+            Path::new(
+                launch.options["home"]
+                    .as_str()
+                    .context("backend home missing")?,
+            ),
+            &host.identity,
+        )?;
         let bootstrap = json!({
             "appRoot": launch.app_root,
             "options": launch.options,
             "retired": self.ownership.borrow().as_ref().map(|(_, value)| value.clone()),
+            "owner": owner.identity,
+            "leaseFd": owner.lease.as_raw_fd(),
         });
         let (workbench, ready) = Workbench::start_with(
             &entry.runtime,
@@ -1479,6 +1490,7 @@ impl Backend {
             &data,
             reverse(host),
             Some(("backend.start", bootstrap)),
+            &[owner.lease.as_raw_fd()],
         )
         .await?;
         let service = ready
@@ -1493,6 +1505,7 @@ impl Backend {
                     .is_some_and(|value| !value.is_empty()),
             "invalid workbench ready frame"
         );
+        owner.ready(&service)?;
         Ok((
             workbench,
             json!({
@@ -1513,10 +1526,18 @@ fn retire_backend_record(options: &Value, owner: &Value) -> Result<()> {
         return Ok(());
     };
     let record: Value = serde_json::from_slice(&bytes)?;
+    let persisted = areal_local_service::storage::read_optional::<Value>(
+        &Path::new(home).join("backend-owner.json"),
+    )?;
     // 子进程关闭异常或被强制结束时未必执行 finally；Host 等到退出后只结算自己持有的身份。
     if ["pid", "identity", "desktopGeneration"]
         .iter()
         .all(|key| record[key] == owner[key])
+        && persisted.is_some_and(|persisted| {
+            persisted["owner"]["hostId"] == owner["hostId"]
+                && persisted["owner"]["generation"] == owner["generation"]
+                && record["owner"] == persisted["owner"]
+        })
     {
         std::fs::remove_file(path)?;
     }

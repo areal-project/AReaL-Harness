@@ -76,17 +76,6 @@ async function desktopBuildIdentity(serviceIdentity, roots) {
   return hash.digest("hex");
 }
 
-/** @param {number} pid */
-function alive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if (hasCode(error, "ESRCH")) return false;
-    throw error;
-  }
-}
-
 /** @param {Upgrade} record @param {Receipt} receipt */
 function validateReceipt(record, receipt) {
   if (
@@ -214,18 +203,22 @@ async function ensureDesktopHost(client, options) {
         continue;
       }
       client.close();
+      record.phase = "starting";
+      await publish(path, record, true);
       const deadline = Date.now() + 30000;
-      while (alive(record.pid)) {
+      for (;;) {
         checkOpen();
+        // 新 Host 只有取得同一 home 的独占锁才能认证发布新代际；PID 可能已被其他进程复用。
+        if (!client.socket)
+          await client.connectOrStart(options.home, binary, { waitForLock: true });
+        if (client.hostId !== record.hostId)
+          throw new Error("应用交接的 Host 身份已变化，原记录已保留");
+        if (client.generation !== record.generation) break;
+        client.close();
         if (Date.now() >= deadline)
           throw new Error("应用正在完成退出，请稍后重新打开；原交接记录已保留");
         await delay(100);
       }
-      record.phase = "starting";
-      await publish(path, record, true);
-      // 新 Host 获得原独占锁后才能发布身份；不删除锁或发现文件。
-      checkOpen();
-      if (!client.socket) await client.connectOrStart(options.home, binary);
       if (
         record.targetDigest !== targetDigest ||
         record.targetIdentity !== options.buildIdentity ||

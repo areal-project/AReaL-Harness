@@ -339,7 +339,8 @@ async function start({ input, output }) {
   if (first.done || Buffer.byteLength(first.value) >= MAX_FRAME) throw new Error("INVALID_PARAMS");
   const frame = JSON.parse(first.value);
   if (frame.version !== 1 || frame.method !== "backend.start") throw new Error("INVALID_PARAMS");
-  const { appRoot, options, retired } = frame.params;
+  const { appRoot, options, retired, owner, leaseFd } = frame.params;
+  if (owner) require("node:fs").fstatSync(leaseFd);
   const calls = new Map();
   let callSequence = 0;
   /** @param {string} call @param {unknown} params */
@@ -425,10 +426,11 @@ async function start({ input, output }) {
         await unlink(path);
     }
     // 启动前拒绝抢占任何未由本 Host 确认退役的后台。
-    await writeFile(path, JSON.stringify({ state: "starting", pid: process.pid }), {
-      mode: 0o600,
-      flag: "wx",
-    });
+    await writeFile(
+      path,
+      JSON.stringify({ state: "starting", pid: process.pid, ...(owner ? { owner } : {}) }),
+      { mode: 0o600, flag: "wx" },
+    );
     claimed = true;
     const encryption = {
       isEncryptionAvailable: () => true,
@@ -446,7 +448,10 @@ async function start({ input, output }) {
     );
     cleanupDesktop = desktop;
     desktop.backend.cloud.encryption = encryption;
-    metadata = await desktop.adapter.listen({ initialized: true });
+    metadata = {
+      ...(await desktop.adapter.listen({ initialized: true })),
+      ...(owner ? { owner } : {}),
+    };
     await writeFile(path, JSON.stringify(metadata), { mode: 0o600 });
     output.write(
       JSON.stringify({

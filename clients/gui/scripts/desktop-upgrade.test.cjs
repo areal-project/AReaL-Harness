@@ -276,3 +276,32 @@ test("an unfinished health check resumes the replacement instead of replacing it
   )();
   assert.equal(f.client.generation, generation);
 });
+
+for (const denied of [false, true]) {
+  test(`handoff recovery ignores a reused PID${denied ? " even when probing it would deny permission" : ""}`, async (t) => {
+    const f = await fixture(t);
+    await ensureDesktopHost(f.client, f.options);
+    const generation = f.client.generation;
+    f.client.close();
+    const path = join(f.home, "host/desktop-upgrade.json");
+    const record = JSON.parse(await readFile(path));
+    // 原 Host 已退出；历史 PID 现在指向另一个仍存活的进程。
+    record.pid = process.pid;
+    await writeFile(path, JSON.stringify(record), { mode: 0o600 });
+    const kill = process.kill;
+    t.after(() => {
+      process.kill = kill;
+    });
+    if (denied)
+      process.kill = (pid, signal) => {
+        if (pid === record.pid && signal === 0)
+          throw Object.assign(new Error("fixture probe denied"), { code: "EPERM" });
+        return kill(pid, signal);
+      };
+    await (
+      await ensureDesktopHost(f.client, f.options)
+    )();
+    assert.equal(f.client.generation, generation);
+    await assert.rejects(access(path), { code: "ENOENT" });
+  });
+}

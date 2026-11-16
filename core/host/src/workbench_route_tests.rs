@@ -116,6 +116,98 @@ fn resumable_host(root: &Path) -> (Rc<Host>, Ensure, String) {
     (Rc::new(host), input, source_id)
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn successor_host_recovers_a_crashed_backend_discovery() {
+    tokio::task::LocalSet::new().run_until(async {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let (old, input, _) = resumable_host(&root);
+        let runner = root.join("services/workbench/src/backend-main.cjs");
+        let source = r#"
+const fs = require('node:fs');
+const lines = require('node:readline').createInterface({input:process.stdin});
+lines.on('line', line => {
+ const frame = JSON.parse(line);
+ if (frame.method === 'backend.start') {
+  const service = {pid:process.pid,identity:'backend',desktopGeneration:String(process.pid),owner:frame.params.owner};
+  fs.writeFileSync(frame.params.options.home+'/service.json',JSON.stringify(service),{flag:'wx',mode:0o600});
+  console.log(JSON.stringify({version:1,event:'ready',methods:['crash'],service}));
+ } else if (frame.method === 'crash') process.kill(process.pid,'SIGKILL');
+});
+lines.on('close',()=>process.exit(0));
+"#;
+        std::fs::write(&runner, source).unwrap();
+        old.gateway.workbench.ensure_backend(&old, input).await.unwrap();
+        let child = old.gateway.workbench.backend.running.borrow().clone().unwrap();
+        assert!(child.request("crash", json!({}), json!({})).await.is_err());
+        child.stop().await.unwrap();
+        let original = std::fs::read(root.join("data/service.json")).unwrap();
+        let host_id = old.identity.host_id.clone();
+        drop(child);
+        drop(old);
+        let (mut next, input, _) = resumable_host(&root);
+        Rc::get_mut(&mut next).unwrap().identity.host_id = host_id;
+        std::fs::write(&runner, source).unwrap();
+        let owner = next.gateway.workbench.ensure_backend(&next, input).await.unwrap();
+        assert_ne!(std::fs::read(root.join("data/service.json")).unwrap(), original);
+        assert_eq!(owner["generation"], next.identity.generation);
+        next.gateway.workbench.stop_backend().await;
+        assert!(!root.join("data/service.json").exists());
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn inherited_backend_lease_blocks_another_host_after_parent_handle_closes() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let root = root.path().canonicalize().unwrap();
+            let (old, input, _) = resumable_host(&root);
+            old.gateway
+                .workbench
+                .ensure_backend(&old, input)
+                .await
+                .unwrap();
+            let lease =
+                areal_local_service::storage::open_private(&root.join("data/backend.lock"), false)
+                    .unwrap();
+            assert!(
+                fs2::FileExt::try_lock_exclusive(&lease).is_err(),
+                "the child must retain the lease after Backend::start returns"
+            );
+            old.gateway.workbench.stop_backend().await;
+            fs2::FileExt::try_lock_exclusive(&lease).unwrap();
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn successor_host_recovers_a_claim_left_before_ready() {
+    tokio::task::LocalSet::new().run_until(async {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let (old, input, _) = resumable_host(&root);
+        let runner = root.join("services/workbench/src/backend-main.cjs");
+        std::fs::write(&runner, r#"
+const fs=require('node:fs');
+require('node:readline').createInterface({input:process.stdin}).on('line',line=>{
+ const frame=JSON.parse(line);
+ fs.writeFileSync(frame.params.options.home+'/service.json',JSON.stringify({state:'starting',pid:process.pid,owner:frame.params.owner}),{flag:'wx',mode:0o600});
+ process.kill(process.pid,'SIGKILL');
+});
+"#).unwrap();
+        assert!(old.gateway.workbench.ensure_backend(&old, input).await.is_err());
+        assert!(root.join("data/service.json").exists());
+        let host_id = old.identity.host_id.clone();
+        drop(old);
+        let (mut next, input, _) = resumable_host(&root);
+        Rc::get_mut(&mut next).unwrap().identity.host_id = host_id;
+        next.gateway.workbench.ensure_backend(&next, input).await.unwrap();
+        assert!(!root.join("data/service.json").exists(), "the fixture successor publishes no discovery file");
+        next.gateway.workbench.stop_backend().await;
+    }).await;
+}
+
 #[test]
 fn gui_environment_credentials_are_limited_to_configured_non_vault_names() {
     let root = tempfile::tempdir().unwrap();
@@ -234,7 +326,7 @@ const lines = require('node:readline').createInterface({input:process.stdin});
 lines.on('line', line => {
     const frame = JSON.parse(line);
     if (frame.method !== 'backend.start') return;
-    const service = {pid:process.pid, identity:'owned-backend', desktopGeneration:'owned-generation'};
+    const service = {pid:process.pid, identity:'owned-backend', desktopGeneration:'owned-generation', owner:frame.params.owner};
     fs.writeFileSync(frame.params.options.home + '/service.json', JSON.stringify(service), {flag:'wx',mode:0o600});
     console.log(JSON.stringify({version:1,event:'ready',methods:[],service}));
 });
@@ -441,7 +533,7 @@ async fn backend_business_errors_preserve_only_codes_supported_by_the_host() {
         std::fs::create_dir(&data).unwrap();
         let (backend, _) = Workbench::start_with(&runtime, &runner, root.path(), reverse(&host), Some(("backend.start", json!({
             "appRoot":app,"options":{"home":data,"userHome":root.path()},
-        })))).await.unwrap();
+        }))), &[]).await.unwrap();
         for (code, expected) in [(json!("COMMAND_CONFLICT"), "COMMAND_CONFLICT"), (json!("TURN_BUSY"), "TURN_BUSY"), (json!("MIGRATION_PENDING"), "MIGRATION_PENDING"), (json!("migrationBlocked"), "migrationBlocked"), (json!("ENOENT"), "CORE_UNAVAILABLE"), (json!(-32602), "CORE_UNAVAILABLE")] {
             assert_eq!(backend.request("providers.read", json!({"code":code}), json!({})).await.unwrap_err().to_string(), expected);
         }

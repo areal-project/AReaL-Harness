@@ -29,6 +29,7 @@ mod subscription;
 mod vault;
 mod wire;
 mod workbench;
+mod workbench_owner;
 use areal_local_service::LocalArgs;
 use areal_protocol::service::Service;
 pub use client::{Client, Subscription};
@@ -39,6 +40,7 @@ use serde_json::Value;
 pub use server::{HostExit, RunOptions, run, run_managed};
 pub use service::ServiceInstallation;
 pub use service_run::offline_service_status;
+pub use service_run::run_when_available;
 use std::{collections::BTreeMap, path::PathBuf};
 
 pub const VERSION: u32 = 1;

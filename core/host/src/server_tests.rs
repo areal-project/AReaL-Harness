@@ -1,4 +1,5 @@
 use super::*;
+use fs2::FileExt;
 #[test]
 #[cfg(target_os = "macos")]
 fn prior_boot_host_activation_records_adoption_without_settling_history() {
@@ -801,6 +802,54 @@ async fn activation_preserves_status_errors_without_attempting_launch() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn handoff_start_waits_for_the_original_host_lock_before_publishing_a_generation() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let home = root.path().join("home");
+            storage::private_dir(&home).unwrap();
+            let lease = storage::open_private(&home.join("host.lock"), true).unwrap();
+            lease.try_lock_exclusive().unwrap();
+            let bin_dir = std::env::current_exe()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .to_path_buf();
+            let starting = tokio::task::spawn_local(run_local_mode(
+                RunOptions {
+                    home: home.clone(),
+                    bin_dir,
+                },
+                false,
+                true,
+            ));
+            tokio::task::yield_now().await;
+            assert!(!starting.is_finished());
+            assert!(!home.join("host/host.json").exists());
+            drop(lease);
+            let client = loop {
+                if let Ok(client) = Client::connect_at(home.clone()).await {
+                    break client;
+                }
+                tokio::task::yield_now().await;
+            };
+            client
+                .stop(
+                    &uuid::Uuid::new_v4().to_string(),
+                    &client.identity().generation,
+                    StopStrategy::IfIdle,
+                )
+                .await
+                .unwrap();
+            assert!(matches!(
+                starting.await.unwrap().unwrap(),
+                HostExit::Stopped
+            ));
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn authenticated_registry_receipts_survive_restart_without_activation() {
     tokio::task::LocalSet::new().run_until(async {
         let root=tempfile::tempdir().unwrap();let home=root.path().join("home");let workspace=root.path().join("workspace");std::fs::create_dir(&workspace).unwrap();
@@ -809,7 +858,7 @@ async fn authenticated_registry_receipts_survive_restart_without_activation() {
         let client=loop {if let Ok(client)=Client::connect_at(home.clone()).await {break client;}tokio::task::yield_now().await;};
         let run_record=std::fs::read(home.join("host/service-run.json")).unwrap();
         assert!(matches!(run_local(RunOptions {home:home.clone(),bin_dir:bin.clone()}).await.unwrap(),HostExit::AlreadyRunning));
-        assert!(matches!(run_local_mode(RunOptions {home:home.clone(),bin_dir:bin.clone()},true).await.unwrap(),HostExit::AlreadyRunning));
+        assert!(matches!(run_local_mode(RunOptions {home:home.clone(),bin_dir:bin.clone()},true,false).await.unwrap(),HostExit::AlreadyRunning));
         assert_eq!(std::fs::read(home.join("host/service-run.json")).unwrap(),run_record);
         let identity=client.identity().clone();assert!(client.status().await.unwrap().projects.is_empty());
         let mut bad=BufReader::new(UnixStream::connect(&identity.socket_path).await.unwrap());
@@ -862,7 +911,7 @@ async fn authenticated_registry_receipts_survive_restart_without_activation() {
         let stop_id=uuid::Uuid::new_v4().to_string();let stop=client.stop(&stop_id,&identity.generation,StopStrategy::IfIdle).await.unwrap();assert_eq!(stop["state"],"completed");assert!(matches!(task.await.unwrap().unwrap(),HostExit::Stopped));
         assert!(!home.join("host/host.json").exists());
         let stopped_record=std::fs::read(home.join("host/stop.json")).unwrap();
-        match run_local_mode(RunOptions {home:home.clone(),bin_dir:bin.clone()},true).await.unwrap() {
+        match run_local_mode(RunOptions {home:home.clone(),bin_dir:bin.clone()},true,false).await.unwrap() {
             HostExit::Stopped => {},
             HostExit::AlreadyRunning => panic!("stopped Host retained its exclusive lock"),
         }

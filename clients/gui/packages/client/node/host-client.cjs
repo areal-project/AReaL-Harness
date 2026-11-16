@@ -152,8 +152,8 @@ class HostClient {
     this.#intentKey = token;
     return hello;
   }
-  /** @param {string} home @param {string} binary */
-  async connectOrStart(home, binary) {
+  /** @param {string} home @param {string} binary @param {{waitForLock?:boolean}} [options] */
+  async connectOrStart(home, binary, { waitForLock = false } = {}) {
     await prepareHostHome(home);
     try {
       return await this.connect(home);
@@ -170,7 +170,7 @@ class HostClient {
       await log.close();
       throw new Error("Host log must be private and owned by this user");
     }
-    const child = spawn(binary, ["host", "run"], {
+    const child = spawn(binary, ["host", "run", ...(waitForLock ? ["--wait-for-lock"] : [])], {
       env: {
         ...Object.fromEntries(
           [

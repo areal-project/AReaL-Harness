@@ -52,7 +52,6 @@ use crate::{
 use anyhow::{Context, Result, ensure};
 use areal_local_service::{LifetimeWriter, OwnerLifetime, storage};
 use areal_protocol::service::{Owner, Service, State, StopOperation, StopOperationState};
-use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -272,22 +271,22 @@ pub async fn run(options: RunOptions) -> Result<HostExit> {
 }
 pub async fn run_managed(options: RunOptions) -> Result<HostExit> {
     tokio::task::LocalSet::new()
-        .run_until(run_local_mode(options, true))
+        .run_until(run_local_mode(options, true, false))
         .await
 }
 async fn run_local(options: RunOptions) -> Result<HostExit> {
-    run_local_mode(options, false).await
+    run_local_mode(options, false, false).await
 }
-async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> {
+pub(crate) async fn run_local_mode(
+    options: RunOptions,
+    managed: bool,
+    wait_for_lock: bool,
+) -> Result<HostExit> {
     let home = storage::prepare_host_home(&options.home)?;
-    let lock = Arc::new(storage::open_private(&home.join("host.lock"), true)?);
-    match lock.try_lock_exclusive() {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-            return Ok(HostExit::AlreadyRunning);
-        }
-        Err(e) => return Err(e.into()),
-    }
+    let Some(lock) = crate::service_run::acquire_host_lock(&home, wait_for_lock).await? else {
+        return Ok(HostExit::AlreadyRunning);
+    };
+    let lock = Arc::new(lock);
     let directory = home.join("host");
     storage::private_dir(&directory)?;
     let Some(delay) = crate::service_run::ServiceRun::prepare(&home, managed)? else {

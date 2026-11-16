@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use std::{
     cell::{Cell, RefCell},
     collections::{BTreeSet, HashMap},
-    os::fd::OwnedFd,
+    os::fd::{OwnedFd, RawFd},
     path::Path,
     process::Stdio,
     rc::Rc,
@@ -58,7 +58,7 @@ impl Workbench {
         data: &Path,
         reverse: Reverse,
     ) -> Result<Self> {
-        Ok(Self::start_with(runtime, runner, data, reverse, None)
+        Ok(Self::start_with(runtime, runner, data, reverse, None, &[])
             .await?
             .0)
     }
@@ -71,6 +71,7 @@ impl Workbench {
         data: &Path,
         reverse: Reverse,
         bootstrap: Option<(&str, Value)>,
+        inherited: &[RawFd],
     ) -> Result<(Self, Value)> {
         let (reader, writer) = std::os::unix::net::UnixStream::pair()?;
         reader.set_nonblocking(true)?;
@@ -79,7 +80,7 @@ impl Workbench {
             .and_then(|(_, params)| params["options"]["userHome"].as_str())
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| data.to_path_buf());
-        let mut command = TrustedCommand::supervised(runtime, &[])?;
+        let mut command = TrustedCommand::supervised(runtime, inherited)?;
         command
             .arg(runner)
             .env_clear()
@@ -521,6 +522,7 @@ lines.on("close", () => process.exit(0));
                     root.path(),
                     reverse,
                     Some(("backend.start", json!({"appRoot":"approot"}))),
+                    &[],
                 )
                 .await
                 .unwrap();
@@ -563,6 +565,7 @@ lines.on("close",()=>process.exit(0));
                     root.path(),
                     reverse,
                     Some(("backend.start", json!({}))),
+                    &[],
                 )
                 .await
                 .unwrap();
@@ -581,7 +584,7 @@ lines.on("close",()=>process.exit(0));
                 let runner = root.path().join("crash.cjs");
                 std::fs::write(&runner, "process.exit(1);\n").unwrap();
                 let reverse: Reverse = Rc::new(|_, _| Box::pin(async { bail!("FORBIDDEN") }));
-                let error = Workbench::start_with(&node, &runner, root.path(), reverse, None)
+                let error = Workbench::start_with(&node, &runner, root.path(), reverse, None, &[])
                     .await
                     .err()
                     .unwrap();

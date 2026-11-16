@@ -270,6 +270,14 @@
     "notes": "Isolated real GUI startup, explicit Host stop, GUI exit and reopen through both the settings switch and application menu."
   },
   {
+    "script": "test:crash-recovery",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["lifecycle", "desktop"],
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
+    "notes": "Isolated GUI recovery after the owned Host and Workbench crash with discovery retained."
+  },
+  {
     "script": "test:host-handoff",
     "layer": "e2e",
     "platforms": ["darwin"],
