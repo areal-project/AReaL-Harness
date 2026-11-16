@@ -1609,17 +1609,13 @@ class AppProviders {
         );
         this.requireTarget(target);
         if (!status.restartSafe) throw new Error("任务或终端正在运行，完成后再保存；修改仍保留。");
-        if (status.executionReady === false) {
-          if (this.pendingApplications.has(project.id))
-            throw new Error("原模型配置操作结果尚未确认，请先核对原回执。");
-          target.readOnly = true;
-          return;
-        }
-        if (
-          !["areal/server/modelConfiguration/read", "areal/server/modelConfiguration/apply"].every(
-            (method) => target.client.capabilities?.methods?.includes(method),
-          )
-        ) {
+        if (!this.supportsConfiguration(project)) {
+          if (!status.executionReady) {
+            if (this.pendingApplications.has(project.id))
+              throw new Error("原模型配置操作结果尚未确认，请先核对原回执。");
+            target.readOnly = true;
+            return;
+          }
           project.providerError = "请更新 Core 后再应用模型配置。";
           throw new Error(project.providerError);
         }

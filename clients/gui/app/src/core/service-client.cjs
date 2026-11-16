@@ -359,25 +359,8 @@ class SharedCoreBackend {
         this.scheduleReconnect();
         return;
       }
-      // 复用启动交接和权威快照恢复；未知提交始终按原回执核查。
-      this.connecting = (async () => {
-        const control = await this.readControl();
-        if (control?.state) {
-          this.controlState = control.state;
-          this.reconnectBlocked = true;
-          this.connectionState = {
-            state: "unavailable",
-            recovery: "check",
-            message: "后台操作已保留，请检查原请求后继续。",
-          };
-          this.onChange();
-          return;
-        }
-        this.loadReferences(control);
-        await this.initializeHostBackend({ recover: true });
-        for (const reference of this.lifecycleReferences.values())
-          await this.readLifecycle(reference);
-      })()
+      // 自动重连与显式启动共用回执核查入口，不能先启动替代后台再检查原操作。
+      void this.init({ automatic: true })
         .catch(
           /** @param {unknown} error */ (error) => {
             if (
@@ -396,10 +379,7 @@ class SharedCoreBackend {
             this.onChange();
           },
         )
-        .finally(() => {
-          this.connecting = null;
-          this.scheduleReconnect();
-        });
+        .finally(() => this.scheduleReconnect());
     }, delay);
     this.reconnectTimer.unref?.();
   }
@@ -676,7 +656,7 @@ class SharedCoreBackend {
         }
       }
       this.reconnectBlocked = false;
-      await this.initialize();
+      await this.initialize({ recover: automatic });
       if (reconnectHost) {
         this.hostReferences.clear();
         this.hostReceipts.clear();
@@ -710,14 +690,14 @@ class SharedCoreBackend {
       });
     return this.connecting;
   }
-  /** @returns {Promise<void>} */
-  async initialize() {
+  /** @param {{recover?:boolean}} [options] @returns {Promise<void>} */
+  async initialize({ recover = false } = {}) {
     const trace = startupTrace("service.initialize");
     try {
       await mkdir(this.home, { recursive: true, mode: 0o700 });
       this.home = await realpath(this.home);
       if (this.disposed) throw new Error("GUI 连接已关闭");
-      await this.initializeHostBackend();
+      await this.initializeHostBackend({ recover });
       trace.finish("ok");
     } catch (error) {
       trace.finish("error", error);

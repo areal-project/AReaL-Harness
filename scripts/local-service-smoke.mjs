@@ -489,7 +489,10 @@ try {
     other.dataDir,
   ]);
   const missingKeyReader = await client(missingKeyService);
-  assert.equal((await missingKeyReader.call("areal/server/status", {})).executionReady, false);
+  assert.equal((await missingKeyReader.call("areal/server/status", {})).executionReady, true);
+  const missingProof = await missingKeyReader.call("areal/server/modelConfiguration/read", {
+    expectedGeneration: missingKeyService.generation,
+  });
   assert.deepEqual(
     (
       await missingKeyReader.call("thread/read", {
@@ -499,35 +502,43 @@ try {
     ).thread.turns,
     archived.turns,
   );
-  await rejected(
-    () =>
-      missingKeyReader.call("areal/turn/start", {
-        requestId: crypto.randomUUID(),
-        threadId: archivedThread.id,
-        input: [{ type: "text", text: "must not execute without credentials" }],
-      }),
-    /EXECUTION_CONFIGURATION_UNAVAILABLE/,
-  );
+  for (const [method, params] of [
+    ["areal/thread/start", { requestId: crypto.randomUUID(), cwd: ws2 }],
+    ["thread/start", { cwd: ws2 }],
+  ]) {
+    await rejected(() => missingKeyReader.call(method, params), /CREDENTIAL_UNAVAILABLE/);
+  }
   assert.equal(requests.length, requestsBeforeRead);
-  await stop(missingKeyService);
   await writeFile(empty, await readFile(config));
-  const repaired = await ensure([
-    "--workspace",
-    ws2,
-    "--config",
-    empty,
-    "--data-dir",
-    other.dataDir,
-  ]);
-  const repairedClient = await client(repaired);
-  assert.equal((await repairedClient.call("areal/server/status", {})).executionReady, true);
-  await repairedClient.call("areal/turn/start", {
+  const repairedDocument = await cli(["config", "models", "read", "--config", empty]);
+  const repairRequest = crypto.randomUUID();
+  await missingKeyReader.call("areal/server/modelConfiguration/apply", {
+    requestId: repairRequest,
+    expectedGeneration: missingKeyService.generation,
+    expectedApplied: missingProof.applied,
+    targetRevision: repairedDocument.revision,
+    credentials: {},
+  });
+  const repairedProof = await missingKeyReader.call("areal/server/modelConfiguration/read", {
+    requestId: repairRequest,
+    expectedGeneration: missingKeyService.generation,
+  });
+  assert.equal(repairedProof.operation.state, "applied");
+  assert.equal(repairedProof.applied.revision, repairedDocument.revision);
+  const repaired = await cli(["service", "status", "--instance", missingKeyService.serviceId]);
+  assert.equal(repaired.generation, missingKeyService.generation);
+  assert.equal(repaired.corePid, missingKeyService.corePid);
+  const { thread: repairedThread } = await missingKeyReader.call("areal/thread/start", {
     requestId: crypto.randomUUID(),
-    threadId: archivedThread.id,
+    cwd: ws2,
+  });
+  await missingKeyReader.call("areal/turn/start", {
+    requestId: crypto.randomUUID(),
+    threadId: repairedThread.id,
     input: [{ type: "text", text: "execution after configuration repair" }],
   });
-  await repairedClient.waitEvent("turn/completed", (p) => p.threadId === archivedThread.id);
-  await stop(repaired);
+  await missingKeyReader.waitEvent("turn/completed", (p) => p.threadId === repairedThread.id);
+  await stop(missingKeyService);
   setPhase("cancel-stop-and-history-recovery");
   await second.call("areal/turn/start", {
     requestId: crypto.randomUUID(),

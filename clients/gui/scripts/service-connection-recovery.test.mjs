@@ -864,6 +864,44 @@ for (const scenario of [
   });
 }
 
+for (const mode of ["pending", "partial", "unknown"]) {
+  test(`automatic reconnect checks the original ${mode} lifecycle without starting a replacement`, async (t) => {
+    const f = await fixture(t, {
+      service: { targets: [{ projectId: "p", serviceId: "s", generation: "g" }] },
+    });
+    await f.publish();
+    await f.connectMain();
+    f.setStop(mode);
+    const result = await f.backend.stopService(true);
+    const requestId = result.operation.requestId;
+    const before = await readFile(f.backend.controlPath);
+    await f.backend.shutdown();
+    const backend = new SharedCoreBackend({ app: { getPath: () => f.home }, home: f.home });
+    t.after(() => backend.shutdown());
+    backend.identity = "fixture";
+    const checked = Promise.withResolvers();
+    const readLifecycle = backend.readLifecycle.bind(backend);
+    backend.readLifecycle = async (reference) => {
+      const receipt = await readLifecycle(reference);
+      checked.resolve(receipt);
+      return receipt;
+    };
+    // 断开的观察连接不能证明原生命周期已结算；从真实回执文件核查。
+    backend.attach = async () => false;
+    let replacements = 0;
+    backend.initializeHostBackend = async () => {
+      replacements++;
+    };
+    backend.scheduleReconnect();
+    await checked.promise;
+    await backend.connecting;
+    assert.equal(replacements, 0, "unsettled lifecycle cannot start a new backend");
+    assert.equal(backend.lifecycleReferences.has(requestId), true);
+    assert.deepEqual(await readFile(backend.controlPath), before);
+    assert.equal(f.calls.filter((call) => call.method === "lifecycleRequest").length, 1);
+  });
+}
+
 test("an unknown command is never replayed when its observer reconnects", async (t) => {
   const f = await fixture(t);
   await f.publish();

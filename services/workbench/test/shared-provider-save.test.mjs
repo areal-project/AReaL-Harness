@@ -51,7 +51,7 @@ function fixture({
     configurations: { running: { model: "old-model" } },
     client: {
       ready: true,
-      capabilities: { methods: unsupported ? [] : [readMethod, applyMethod] },
+      capabilities: { methods: unsupported || readOnly ? [] : [readMethod, applyMethod] },
       async request(method, params) {
         calls.push([method, structuredClone(params)]);
         if (method === "areal/server/status")
@@ -191,6 +191,23 @@ test("saving configuration restores execution from a history-only service", asyn
   assert.equal(result.pendingApply, false);
   assert.equal(f.project.providerRevision, result.revision);
   assert.equal(f.operations.size, 0, "no apply is replayed against the unavailable controller");
+});
+
+test("unavailable execution retains an advertised configuration repair without restarting Core", async () => {
+  const f = fixture();
+  const request = f.project.client.request.bind(f.project.client);
+  f.project.client.request = (method, params) =>
+    method === "areal/server/status"
+      ? Promise.resolve({ restartSafe: true, executionReady: false })
+      : request(method, params);
+  const result = await f.service.saveAndApply(f.request);
+  assert.equal(result.pendingApply, false);
+  assert.equal(f.project.providerRevision, result.revision);
+  assert.equal(f.operations.size, 1);
+  assert.equal(
+    f.calls.some(([method]) => method === "restart"),
+    false,
+  );
 });
 
 test("provider apply fences new commands while an admitted read and its own startup finish", async () => {

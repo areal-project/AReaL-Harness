@@ -286,15 +286,7 @@ async fn run_configured(mut args: Args, diagnostic: Option<ConfigCommand>) -> Re
             None,
         )
     };
-    // 单模型配置依赖默认模型；托管目录由每个模型检查凭据，保留配置和其他模型的入口。
-    if args.service_info.is_some() && !resolved.model_catalog_managed && execution_error.is_none() {
-        if resolved.model.name.is_empty() || resolved.model.endpoint.is_empty() {
-            execution_error = Some("Select an available model; history remains readable".into());
-        } else if resolved.model.credential(&inputs).is_err() {
-            execution_error =
-                Some("Model credentials are unavailable; history remains readable".into());
-        }
-    }
+    // 模型与凭据由具体执行配置准入；单模型和托管目录都保留历史、配置控制器与修复入口。
     let mut extensions = match tool_extensions::load(resolved.tool_extensions_file.as_deref()) {
         Ok(extensions) => extensions,
         Err(_) if args.service_info.is_some() => {
