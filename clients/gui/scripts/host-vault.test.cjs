@@ -319,6 +319,79 @@ test("subscription initialization reports network failures separately and keeps 
   await assert.rejects(new AppProviders(f.backend).init(), /凭据来源元数据无效/);
 });
 
+test("unused subscription stays read-only until explicit login initializes the original owner", async (t) => {
+  const f = await fixture(t);
+  const state = {
+    owner: "legacy",
+    generation: "fixture-generation",
+    accountEpoch: 0,
+    accountRevision: 0,
+    transportRevision: 0,
+    endpoint: null,
+    activeAccountId: null,
+    accounts: [],
+    authenticated: false,
+    availability: "unavailable",
+    refreshing: false,
+    state: "signed_out",
+    email: null,
+    planType: null,
+    modelError: null,
+    models: [],
+    diagnostic: null,
+    login: null,
+    error: null,
+    billing: "subscription",
+    catalog: null,
+  };
+  const calls = [];
+  let allowWrites = false;
+  f.backend.host.client.requireCapability = (name) => assert.equal(name, "subscriptionOwnerV1");
+  f.backend.host.client.request = async (method, params) => {
+    calls.push({ method, params });
+    if (method === "subscription.read") return structuredClone(state);
+    assert(allowWrites, "ordinary startup and status must not initialize a secret transport");
+    if (method === "subscription.handoff") {
+      assert.equal(params.expectedAccountRevision, 0);
+      assert.equal(params.expectedTransportRevision, 0);
+      state.owner = "nativeV1";
+      state.transportRevision = 1;
+      state.endpoint = "http://127.0.0.1:12345/responses";
+    } else {
+      assert.equal(method, "subscription.command");
+      assert.equal(params.action.kind, "begin");
+    }
+    return { requestId: params.requestId, state: "completed", result: structuredClone(state) };
+  };
+  const app = new AppProviders(f.backend);
+  f.backend.providers = app;
+  t.after(() => app.close());
+  await app.init();
+  const service = await app.openai();
+  await app.prepare();
+  assert.equal((await service.refresh()).state, "signed_out");
+  assert.equal((await app.chatgpt({ operation: "status" })).authenticated, false);
+  await service.refresh();
+  assert(calls.every((call) => call.method === "subscription.read"));
+  assert.equal(f.writes.length, 0);
+  await assert.rejects(readFile(join(f.home, "subscription-operations.json")), {
+    code: "ENOENT",
+  });
+  allowWrites = true;
+  await service.command({ operation: "login" });
+  assert.equal(calls.filter((call) => call.method === "subscription.handoff").length, 1);
+  assert.deepEqual(
+    calls
+      .filter((call) => call.method === "subscription.command")
+      .map((call) => call.params.action.kind),
+    ["begin"],
+  );
+  assert.deepEqual(
+    JSON.parse(await readFile(join(f.home, "subscription-operations.json"), "utf8")).pending,
+    [],
+  );
+});
+
 test("GUI leaves subscription transport with Host and stores ordinary provider credentials", async (t) => {
   const f = await fixture(t);
   const native = {

@@ -5,6 +5,22 @@ const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
 const { setTimeout: delay } = require("node:timers/promises");
 const contract = require("@areal/workbench/desktop-contract/provider");
+const UNCLAIMED_OWNER = "legacy";
+
+/** @param {unknown} state */
+function unused(state) {
+  return (
+    contract.record(state) &&
+    state.owner === UNCLAIMED_OWNER &&
+    state.accountRevision === 0 &&
+    state.transportRevision === 0 &&
+    state.activeAccountId === null &&
+    Array.isArray(state.accounts) &&
+    state.accounts.length === 0 &&
+    state.endpoint === null &&
+    state.state === "signed_out"
+  );
+}
 
 /** @param {NodeJS.ProcessEnv} environment */
 async function networkInput(environment) {
@@ -67,9 +83,12 @@ class NativeAccount {
 }
 
 class NativeSubscription {
-  /** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend */
-  constructor(backend) {
+  /** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend @param {InstanceType<typeof import('./host-vault.cjs').HostVault>} vault */
+  constructor(backend, vault) {
     this.backend = backend;
+    this.vault = vault;
+    /** @type {Promise<void>|undefined} */ this.activating = undefined;
+    this.activatedGeneration = "";
     this.id = "areal_openai";
     this.account = new NativeAccount(this);
     this.openaiAccount = this.account;
@@ -96,7 +115,7 @@ class NativeSubscription {
         { code: "legacyPending", requestId: backend.host.retirement.requestId },
       );
     backend.host.client.requireCapability("subscriptionOwnerV1");
-    const service = new NativeSubscription(backend);
+    const service = new NativeSubscription(backend, vault);
     try {
       const saved = JSON.parse(
         await readFile(join(backend.home, "subscription-operations.json"), "utf8"),
@@ -116,38 +135,62 @@ class NativeSubscription {
     }
     await service.settle();
     const sourceId = backend.host.sourceId;
-    let state = await backend.host.client.request("subscription.read", { sourceId });
-    if (service.outcomeUnknown) {
+    const state = await backend.host.client.request("subscription.read", { sourceId });
+    if (service.outcomeUnknown || unused(state)) {
       service.accept(state);
       return service;
     }
-    const network = await networkInput(backend.hooks.environment());
-    if (state.owner !== "nativeV1") {
-      // 原 Vault 回执必须先结算；Host 还会核对旧版本和真实端口释放。
-      await vault.ready({ kind: "subscriptionAccount", sourceId, providerId: "openai" });
-      await vault.ready({ kind: "subscriptionTransport", sourceId });
-      state = await backend.host.client.request("subscription.read", { sourceId });
-      await service.submit("subscription.handoff", {
-        sourceId,
-        migrationId: backend.host.migrationId,
-        expectedAccountRevision: state.accountRevision,
-        expectedTransportRevision: state.transportRevision,
-        network,
-      });
-    } else {
-      service.accept(state);
-      await service.action({
-        kind: "configureNetwork",
-        network,
-        expectedTransportRevision: state.transportRevision,
-      });
-    }
-    await service.read();
+    await service.activate();
     return service;
+  }
+  activate() {
+    if (this.activating) return this.activating;
+    if (this.latest?.owner === "nativeV1" && this.activatedGeneration === this.latest.generation)
+      return Promise.resolve();
+    const work = (async () => {
+      await this.settle();
+      if (this.outcomeUnknown) throw new Error("原订阅操作的效果尚未确认，请先检查当前账号状态。");
+      const sourceId = this.backend.host.sourceId;
+      let state = await this.backend.host.client.request("subscription.read", { sourceId });
+      const network = await networkInput(this.backend.hooks.environment());
+      if (state.owner !== "nativeV1") {
+        // 原 Vault 回执必须先结算；Host 还会核对旧版本和真实端口释放。
+        await this.vault.ready({
+          kind: "subscriptionAccount",
+          sourceId,
+          providerId: "openai",
+        });
+        await this.vault.ready({ kind: "subscriptionTransport", sourceId });
+        state = await this.backend.host.client.request("subscription.read", { sourceId });
+        await this.submit("subscription.handoff", {
+          sourceId,
+          migrationId: this.backend.host.migrationId,
+          expectedAccountRevision: state.accountRevision,
+          expectedTransportRevision: state.transportRevision,
+          network,
+        });
+      } else {
+        this.accept(state);
+        await this.action({
+          kind: "configureNetwork",
+          network,
+          expectedTransportRevision: state.transportRevision,
+        });
+      }
+      await this.read();
+      this.activatedGeneration = this.latest.generation;
+    })().finally(() => {
+      this.activating = undefined;
+    });
+    this.activating = work;
+    return work;
   }
   save() {
     const write = this.writes.then(() =>
-      this.backend.save("subscription-operations.json", { version: 1, pending: this.pending }),
+      this.backend.save("subscription-operations.json", {
+        version: 1,
+        pending: this.pending,
+      }),
     );
     this.writes = write.catch(() => {});
     return write;
@@ -261,7 +304,11 @@ class NativeSubscription {
   /** @param {any} state */
   accept(state) {
     if (
-      !(state.owner === "nativeV1" || (state.owner === "legacy" && this.outcomeUnknown)) ||
+      !(
+        state.owner === "nativeV1" ||
+        unused(state) ||
+        (state.owner === UNCLAIMED_OWNER && this.outcomeUnknown)
+      ) ||
       !Number.isSafeInteger(state.accountEpoch)
     )
       throw new Error("Host 订阅来源不可用");
@@ -312,7 +359,7 @@ class NativeSubscription {
       const recovering = this.pending.length > 0;
       await this.settle();
       const snapshot = await this.read();
-      if (recovering || this.outcomeUnknown) return snapshot;
+      if (recovering || this.outcomeUnknown || unused(this.latest)) return snapshot;
       await this.action({ kind: "refreshCatalog", force: false });
       return this.read();
     })().finally(() => {
@@ -322,6 +369,7 @@ class NativeSubscription {
     return work;
   }
   async ready() {
+    await this.activate();
     await this.read();
     if (!this.endpoint) throw new Error("Host 订阅传输不可用");
   }
@@ -344,6 +392,7 @@ class NativeSubscription {
   }
   /** @param {any} request */
   async command(request) {
+    await this.activate();
     if (request.operation === "login")
       return this.action({
         kind: "begin",

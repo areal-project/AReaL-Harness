@@ -348,6 +348,8 @@ Host 项目启动也采用非交互凭据读取。槽不可读时本次启动不
 
 `subscription.read.owner` 为 `legacy` 或 `nativeV1`，始终包含 `sourceId`、`generation`、`accountRevision` 与 `transportRevision`。原生状态另含 `accountEpoch`、既有账户状态、`accounts`、`catalog` 与 `endpoint`。`login` 中的 `{loginId,authUrl}` 供本机 UI 打开授权流程。`applied` 按 Host projectId 记录 `{accountEpoch,serviceId,generation,connectionId,providerRevision}`；来源已就绪不表示每个 Core 已应用成功。
 
+从未初始化订阅的来源（无 owner、账户与传输 revision 均为零）只读返回 `signed_out`；普通启动和状态读取不创建传输凭据或发起交接。首次显式订阅操作再沿 `subscription.handoff` 初始化。已有账户恢复与未决原操作的恢复规则不变。
+
 action 为 `begin`（`target:{kind:"current"|"newAccount"|"saved",accountId?}`）、`cancel`（`loginId`）、`select`（`accountId`）、`logout`、`forget`、`refreshCatalog`（`force?`）、`probe`（`model`）或 `configureNetwork`（`network,expectedTransportRevision`）。新账号授权可在 Core 忙碌时保存为未激活账户，保留原流。切换与注销沿用每个原 Core 的实时空闲检查，不承诺跨 Core 原子预留。
 
 `network` 为 `{proxies,extraCaPem,proxyUnavailable}`。`proxies` 仅接收 `HTTP_PROXY`、`http_proxy`、`HTTPS_PROXY`、`https_proxy`、`ALL_PROXY`、`all_proxy`、`NO_PROXY`、`no_proxy` 与 `AREAL_CHATGPT_SYSTEM_PROXY`。这些来源网络输入只保存在加密 transport 槽，不进入状态或普通操作日志。订阅意图同样使用当前 Host 认证 key 的分域 HMAC，操作文件不保存带代理密码等秘密的普通 SHA 摘要。OAuth 和模型目录有请求期限，推理 SSE 沿 Core、来源与账户 epoch 取消，没有覆盖整个推理的全局短时限。

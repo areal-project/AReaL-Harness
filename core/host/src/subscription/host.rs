@@ -168,7 +168,12 @@ impl Host {
             source.snapshot_async().await?
         } else {
             let mut value = SourceSubscription::stored_accounts_async(&self.migration, id).await?;
-            value.as_object_mut().unwrap().extend(json!({"accountEpoch":0,"authenticated":false,"state":"storage_locked","availability":"unavailable","refreshing":false,"email":null,"planType":null,"models":[],"modelError":null,"diagnostic":null,"login":null,"error":null,"billing":"subscription","catalog":null,"endpoint":null}).as_object().unwrap().clone());
+            let state = if owner.is_none() && account_revision == 0 && transport_revision == 0 {
+                "signed_out"
+            } else {
+                "storage_locked"
+            };
+            value.as_object_mut().unwrap().extend(json!({"accountEpoch":0,"authenticated":false,"state":state,"availability":"unavailable","refreshing":false,"email":null,"planType":null,"models":[],"modelError":null,"diagnostic":null,"login":null,"error":null,"billing":"subscription","catalog":null,"endpoint":null}).as_object().unwrap().clone());
             value
         };
         snapshot["owner"] = json!(if owner.is_some() {

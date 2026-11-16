@@ -174,6 +174,48 @@ fn resumable_host(root: &Path) -> (Rc<Host>, Ensure, String) {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn unused_subscription_reads_do_not_initialize_credentials() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let root = root.path().canonicalize().unwrap();
+            let (host, _, source) = resumable_host(&root);
+            let (socket, _peer) = std::os::unix::net::UnixStream::pair().unwrap();
+            let connection = crate::server::ConnectionGuard {
+                host: host.clone(),
+                id: "subscription-read".into(),
+                socket: socket.as_raw_fd(),
+            };
+            for _ in 0..2 {
+                let state = host
+                    .subscription_dispatch(
+                        "subscription.read",
+                        json!({"sourceId":source}),
+                        &connection,
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(state["state"], "signed_out");
+                assert_eq!(state["owner"], "legacy");
+                assert_eq!(state["accountRevision"], 0);
+                assert_eq!(state["transportRevision"], 0);
+                assert_eq!(state["accounts"], json!([]));
+                assert!(state["endpoint"].is_null());
+            }
+            assert!(
+                host.migration
+                    .vault
+                    .subscription_owner(&source)
+                    .unwrap()
+                    .is_none()
+            );
+            assert!(!host.home.join("host/subscription-operations").exists());
+            assert!(host.gateway.workbench.backend.running.borrow().is_none());
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn successor_host_recovers_a_crashed_backend_discovery() {
     tokio::task::LocalSet::new().run_until(async {
         let root = tempfile::tempdir().unwrap();
