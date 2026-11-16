@@ -2,6 +2,7 @@
 use super::Host;
 use crate::workbench::{Reverse, Workbench, restart_delay};
 use anyhow::{Context, Result, bail, ensure};
+use areal_local_service::storage;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -825,6 +826,20 @@ impl Supervisor {
         self.ensure_backend(host, input).await.map(|_| ())
     }
 
+    /// 原生领域只恢复经过校验的来源与配置输入，不为读取目录启动过渡后台。
+    pub(super) fn restore_source(&self, host: &Host) -> Result<()> {
+        if self.active_source().is_some() {
+            return Ok(());
+        }
+        let Some(input) = storage::read_optional::<Ensure>(&launch_record(host))? else {
+            return Ok(());
+        };
+        let (_, launch) = launch(host, input)?;
+        *self.backend.source.borrow_mut() = launch.source_id;
+        *self.backend.utility_options.borrow_mut() = Some(launch.options);
+        Ok(())
+    }
+
     /// 当前桌面后台的所有权：Main 用它区分“Host 监督的本机后台”和旧应用会话遗留的后台。
     pub(super) async fn backend_status(&self, host: &Rc<Host>) -> Result<Value> {
         self.backend.status(host)
@@ -1020,12 +1035,21 @@ pub(super) async fn backend_command(
         .as_str()
         .context("INVALID_PARAMS")?
         .to_owned();
-    let native = method == "worktree.command" && source == "host";
-    if !native {
+    let standalone_worktree = method == "worktree.command" && source == "host";
+    let native_task = method == "manage.command"
+        && super::task_catalog::mutation(params["operation"].as_str().unwrap_or("")).is_some();
+    if !standalone_worktree {
+        host.gateway.workbench.restore_source(host)?;
+        ensure!(
+            host.gateway.workbench.backend_has_source(&source),
+            "FORBIDDEN"
+        );
+    }
+    if !standalone_worktree && !native_task {
         host.gateway.workbench.resume_backend(host).await?;
     }
     let backend = host.gateway.workbench.backend.running.borrow().clone();
-    if !native {
+    if !standalone_worktree && !native_task {
         ensure!(
             backend.as_ref().is_some_and(|b| !b.closed()),
             "CAPABILITY_UNAVAILABLE"
@@ -1057,8 +1081,6 @@ pub(super) async fn backend_command(
         payload["requestId"] = json!(command);
     }
     // 导航、工作树与任务变更由 Host 执行；其他偏好沿工作台校验和 Host patch 写入。
-    let native_task = method == "manage.command"
-        && super::task_catalog::mutation(payload["operation"].as_str().unwrap_or("")).is_some();
     let library_navigation = method == "library.command"
         && (payload["operation"] != "settings"
             || payload["key"]
@@ -1207,7 +1229,7 @@ pub(super) async fn backend_read(
         )?,
         _ => bail!("methodNotFound"),
     };
-    host.gateway.workbench.resume_backend(host).await?;
+    host.gateway.workbench.restore_source(host)?;
     ensure!(
         host.gateway.workbench.backend.source.borrow().as_deref() == params["sourceId"].as_str(),
         "FORBIDDEN"

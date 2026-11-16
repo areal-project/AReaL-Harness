@@ -429,6 +429,51 @@ lines.on('close', () => process.exit(1));
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn native_catalog_reads_restore_saved_source_without_starting_workbench() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let root = root.path().canonicalize().unwrap();
+            let (host, input, source) = resumable_host(&root);
+            storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();
+            storage::write(&launch_record(&host), &input).unwrap();
+            std::fs::write(
+                root.join("services/workbench/src/backend-main.cjs"),
+                "throw new Error('native reads must not launch Node');",
+            )
+            .unwrap();
+            assert!(host.gateway.workbench.active_source().is_none());
+            for (method, operation) in [("tasks.read", "list"), ("worktree.read", "worktreeList")] {
+                let request =
+                    json!({"method":method,"params":{"sourceId":source,"operation":operation}});
+                let value = backend_read(&host, "web:fixture", &request).await.unwrap();
+                if method == "tasks.read" {
+                    assert_eq!(value["data"], json!([]));
+                    assert_eq!(value["errors"], json!([]));
+                    assert_eq!(value["hasMore"], false);
+                } else {
+                    assert_eq!(value["projects"], json!([]));
+                    assert_eq!(value["settings"]["branchPrefix"], "areal");
+                }
+                assert_eq!(host.gateway.workbench.active_source(), Some(source.clone()));
+                assert!(host.gateway.workbench.backend.running.borrow().is_none());
+                let mut forged = request;
+                forged["params"]["sourceId"] = json!("forged");
+                assert_eq!(
+                    backend_read(&host, "web:fixture", &forged)
+                        .await
+                        .unwrap_err()
+                        .to_string(),
+                    "FORBIDDEN"
+                );
+            }
+            assert!(host.gateway.workbench.utility_options(&source).is_ok());
+            assert!(!root.join("data/service.json").exists());
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn cold_backend_read_and_managed_requests_resume_the_persisted_launch() {
     tokio::task::LocalSet::new()
         .run_until(async {

@@ -83,6 +83,8 @@ Core 通过 `features.taskPrepareCreate` 声明创建前预约能力，Host 仅�
 
 `worktree.thread.prepare` 从原 Core 保存的部署中返回已应用的资源 profile 与 revision，后台仅据此恢复可重建投影。原创建绑定期间，资源检查仍比较当前选择与该部署；发生变化时保留原请求并拒绝继续，不隐式重启 Core 或把原绑定换到新代次。
 
+任务目录、任务管理与工作树目录读取仅从原启动记录恢复并校验来源和配置，不为此启动 Node。任务管理写入直接进入 Host/Core 原提交链；尚未迁移的工作台领域继续按需启动后台。
+
 `areal tasks` 与 `areal worktree` 经本机 Host 协议提供原生目录入口，不依赖 GUI 或 Node。CLI 默认使用 Host 原生来源 `host`；项目先经 `areal host` 登记。任务 list、preview、observe 对停止项目读取 published 目录并保留 unobserved，不启动 Core；observe 仅为已连接项目登记实时目录观察；私有任务观察只使用既有连接，不重新启动已停止项目。写操作保留领域 requestId，Host commandId 与创建 Worktree 的 requestId 分开，避免取消或打开原工作树时与创建回执冲突。
 
 CLI 打开带环境脚本的 Worktree 时，通过 `worktree open --agent id@revision` 显式选择已部署、允许线程进程的 Profile，执行项目仍受原并发写授权和进程预算约束；不由 Host 自动提权。`worktree --command-id <原 ID>` 可重复原参数核对已受理命令，不能换 ID 重放 UNKNOWN。 本机 CLI 的 `--source <已登记 GUI 来源>` 同样支持显式 Profile，但仍要求当前后台绑定该来源且启用 `worktree-rust`；关闭该 Rust 域时在准入前拒绝此参数。浏览器与远程继续使用不含 `agentProfile` 的公共合同。

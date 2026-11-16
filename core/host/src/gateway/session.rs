@@ -1146,7 +1146,7 @@ impl Session {
             let mut request = request.clone();
             if request["params"].is_object() && request["params"].get("sourceId").is_none() {
                 let workbench = &self.host.gateway.workbench;
-                workbench.resume_backend(&self.host).await?;
+                workbench.restore_source(&self.host)?;
                 let source = workbench.active_source();
                 request["params"]["sourceId"] = json!(source.context("CAPABILITY_UNAVAILABLE")?);
             }
