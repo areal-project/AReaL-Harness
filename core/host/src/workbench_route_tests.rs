@@ -963,7 +963,7 @@ async fn provider_configuration_writes_do_not_start_node_and_preserve_original_r
         let save = json!({"method":"providers.command","commandId":command,"params":{"sourceId":source,
             "operation":"saveAndApply","expectedRevision":initial["revision"],
             "provider":{"id":"fixture","name":" Renamed ","baseUrl":"https://example.invalid/custom/","protocol":"responses",
-                "models":[{"id":" fixture ","enabled":true,"parameters":{"serviceTier":"default"},
+                "models":[{"id":" fixture ","enabled":true,"parameters":{"serviceTier":"default"},"reportedContextWindowTokens":64000,
                     "capabilities":{"tools":false,"vision":true,"reasoning":false}}],"enabled":true,"parameters":{"serviceTier":"fast"}}}});
         // 模型配置保存不应被其他项目的执行状态或生命周期锁阻塞。
         let gate = host.slots.borrow()["project"].gate.clone();
@@ -974,6 +974,7 @@ async fn provider_configuration_writes_do_not_start_node_and_preserve_original_r
         assert_ne!(saved["receipt"]["revision"],initial["revision"]);
         assert_eq!(saved["receipt"]["data"][0]["parameters"]["serviceTier"],"fast");
         assert_eq!(saved["receipt"]["data"][0]["models"][0]["parameters"]["serviceTier"],"default");
+        assert_eq!(saved["receipt"]["data"][0]["models"][0]["reportedContextWindowTokens"],64000);
         assert_eq!(saved["receipt"]["data"][0]["models"][0]["capabilities"],json!({"tools":false,"vision":true,"reasoning":false}));
         assert_eq!(backend_command(&host,"web:fixture",&save).await.unwrap(),saved);
         let (_, intents) = host.journal.native_snapshot(&format!("model-configuration-{}",storage::digest(b"project"))).unwrap();
@@ -981,6 +982,14 @@ async fn provider_configuration_writes_do_not_start_node_and_preserve_original_r
         let current = backend_read(&host,"web:fixture",&list).await.unwrap();
         assert_eq!(current["data"][0]["baseUrl"],"https://example.invalid/custom/");
         assert_eq!(current["data"][0]["apiKeyEnv"],"CLI_FIXTURE_KEY");
+        for invalid_window in [json!(0),json!(2_000_001),json!(1.5)] {
+            let mut invalid = save.clone();
+            invalid["commandId"] = json!(uuid::Uuid::new_v4().to_string());
+            invalid["params"]["expectedRevision"] = current["revision"].clone();
+            invalid["params"]["provider"]["models"][0]["reportedContextWindowTokens"] = invalid_window;
+            assert_eq!(backend_command(&host,"web:fixture",&invalid).await.unwrap_err().to_string(),"INVALID_PARAMS");
+            assert_eq!(backend_read(&host,"web:fixture",&list).await.unwrap()["revision"],current["revision"]);
+        }
         let mut missing_key = save.clone();
         missing_key["commandId"] = json!(uuid::Uuid::new_v4().to_string());
         missing_key["params"]["expectedRevision"] = current["revision"].clone();

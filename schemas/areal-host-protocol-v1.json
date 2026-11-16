@@ -24461,6 +24461,11 @@
               },
               "capabilities": {
                 "$ref": "#/$defs/WorkbenchProviderCapabilities"
+              },
+              "reportedContextWindowTokens": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2000000
               }
             },
             "required": [

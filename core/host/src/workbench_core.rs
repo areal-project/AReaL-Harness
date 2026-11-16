@@ -101,7 +101,6 @@ const WORKBENCH_METHODS: &[&str] = &[
     "areal/request/read",
     "areal/server/drain",
     "areal/server/gc",
-    "areal/server/modelConfiguration/apply",
     "areal/server/modelConfiguration/read",
     "areal/server/status",
     "areal/side/close",
@@ -992,6 +991,25 @@ fn core_admission_command(method: &str, params: &Value) -> Option<(&'static str,
 #[cfg(test)]
 mod admission_translation_tests {
     use super::*;
+    #[test]
+    fn retired_node_configuration_writer_is_refused_before_connection_lookup() {
+        let root = tempfile::tempdir().unwrap();
+        let host = crate::server::schedules::tests::fixture(root.path());
+        assert_eq!(
+            host.schedules
+                .connections
+                .workbench_validate(
+                    &host,
+                    "project",
+                    "lease",
+                    "areal/server/modelConfiguration/apply",
+                    &json!({})
+                )
+                .unwrap_err()
+                .to_string(),
+            "FORBIDDEN"
+        );
+    }
     #[test]
     fn turn_submit_keeps_continue_turn_identity_and_edit_intent() {
         let input = json!({"threadId":"coordinator","intent":{"type":"continue","expectedTurnId":"original-turn"}});
