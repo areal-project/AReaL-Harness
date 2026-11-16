@@ -181,22 +181,55 @@ impl Session {
                 && request.get("commandId").is_none(),
             "INVALID_PARAMS"
         );
-        let mut result = self
-            .model_catalog(project, generation, || self.observed_model(project))
-            .await?;
-        // 输入框的权限菜单按这两项决定是否可选；桌面窗口原来从 Core 能力里直接读。
-        let caps = self
-            .rpc(project, generation, "areal/capabilities", json!({}))
-            .await?;
+        self.authorize(Some(project), "observe")?;
+        let (id, current) = self.project(project)?;
+        ensure!(current == generation, "RESYNC_REQUIRED");
+        let metadata = self
+            .host
+            .schedules
+            .connections
+            .model_metadata(&self.host, &id)?;
+        let mut result = if metadata.is_some() {
+            json!({"projectId":project,"gatewayGeneration":self.generation,
+                "grantRevision":self.grant["revision"]})
+        } else {
+            self.persisted_model_catalog(project, request)?
+        };
+        result["serviceGeneration"] = json!(generation);
+        let caps = metadata.as_ref().map(|value| &value["capabilities"]);
+        let source = if self.local {
+            let registration = self.host.slots.borrow()[&id].registration.clone();
+            self.host
+                .migration
+                .shared_credential_source(
+                    &registration,
+                    self.host.project_uses_shared_config(&registration),
+                )?
+                .unwrap_or_default()
+        } else {
+            self.source_id.clone()
+        };
+        if let Some(metadata) = &metadata {
+            let subscription = self.host.subscription_model_catalog(&source)?;
+            let models = metadata["models"]["data"]
+                .as_array()
+                .context("CORE_UNAVAILABLE")?;
+            let mut remembered = vec![metadata["models"]["lastAcceptedModel"]["model"].clone()];
+            remembered.extend(self.observed_model(project)?);
+            result["models"] = json!(catalog(models, subscription.as_ref(), &remembered));
+            result["lastAcceptedModel"] = metadata["models"]["lastAcceptedModel"].clone();
+        } else if let Some(models) = result["models"].as_array_mut() {
+            mark_checking(models);
+        }
+        result["lastAcceptedModel"] =
+            self.accepted_model(&source, result["lastAcceptedModel"].clone())?;
         if self.gui_read {
-            let profiles = self
-                .rpc(project, generation, "areal/profile/list", json!({}))
-                .await?;
+            let profiles = metadata.as_ref().map(|value| &value["profiles"]);
             result["profiles"] = json!(
-                profiles["data"]
-                    .as_array()
-                    .context("CORE_UNAVAILABLE")?
-                    .iter()
+                profiles
+                    .and_then(|profiles| profiles["data"].as_array())
+                    .into_iter()
+                    .flatten()
                     .map(|profile| projection::pick(
                         profile,
                         &[
@@ -238,12 +271,29 @@ impl Session {
         }
         self.authorize(Some(project), "observe")?;
         ensure!(self.project(project)?.1 == generation, "RESYNC_REQUIRED");
-        result["features"] = public_features(&caps);
+        if let Some(caps) = caps {
+            result["features"] = public_features(caps);
+        }
         ensure!(
             serde_json::to_vec(&result)?.len() <= 128 * 1024,
             "LIMIT_EXCEEDED"
         );
         Ok(result)
+    }
+
+    fn accepted_model(&self, source: &str, mut accepted: Value) -> Result<Value> {
+        if self.gui_read
+            && let Some(home) = self.host.migration.power_sources()?.get(source)
+        {
+            let saved: Option<areal_protocol::host::WorkbenchCreationAcceptedModel> =
+                storage::read_optional(&home.join("model-selection.json"))?;
+            if let Some(saved) = saved
+                && saved.accepted_at > accepted["acceptedAt"].as_i64().unwrap_or(0)
+            {
+                accepted = serde_json::to_value(saved)?;
+            }
+        }
+        Ok(accepted)
     }
 
     pub(super) async fn model_catalog(
@@ -274,24 +324,28 @@ impl Session {
             .host
             .subscription_model_catalog(&source)
             .map_err(|_| fail("CORE_UNAVAILABLE"))?;
-        let core = self
-            .rpc(project, generation, "areal/model/list", json!({}))
-            .await;
         self.authorize(Some(project), "observe")?;
-        ensure!(
-            self.project(project)
-                .is_ok_and(|(_, current)| current == generation)
-                && self
-                    .host
-                    .schedules
-                    .connections
-                    .shared_identity(&self.host, &id)
-                    .ok()
-                    .as_ref()
-                    == Some(&identity),
-            "RESYNC_REQUIRED"
-        );
-        let core = core?;
+        ensure!(self.project(project)?.1 == generation, "RESYNC_REQUIRED");
+        let core = if let Some(metadata) = self
+            .host
+            .schedules
+            .connections
+            .model_metadata(&self.host, &id)?
+        {
+            metadata["models"].clone()
+        } else {
+            // 历史正文不依赖模型配置是否可解析；模型设置页仍单独报告配置错误。
+            let mut saved = self
+                .persisted_model_catalog(
+                    project,
+                    &json!({"context":{"projectId":project},"params":{}}),
+                )
+                .unwrap_or_else(|_| json!({"models":[]}));
+            if let Some(models) = saved["models"].as_array_mut() {
+                mark_checking(models);
+            }
+            json!({"data":saved["models"],"lastAcceptedModel":null})
+        };
         let models = core["data"].as_array().context("CORE_UNAVAILABLE")?;
         let mut remembered = vec![core["lastAcceptedModel"]["model"].clone()];
         if subscription.as_ref().is_some_and(|value| {
@@ -318,24 +372,22 @@ impl Session {
                 == subscription,
             "RESYNC_REQUIRED"
         );
-        let mut accepted = core["lastAcceptedModel"].clone();
-        if self.gui_read
-            && let Some(home) = self.host.migration.power_sources()?.get(&source)
-        {
-            let saved: Option<areal_protocol::host::WorkbenchCreationAcceptedModel> =
-                storage::read_optional(&home.join("model-selection.json"))?;
-            if let Some(saved) = saved
-                && saved.accepted_at > accepted["acceptedAt"].as_i64().unwrap_or(0)
-            {
-                accepted = serde_json::to_value(saved)?;
-            }
-        }
+        let accepted = self.accepted_model(&source, core["lastAcceptedModel"].clone())?;
         let result = json!({"projectId":project,"gatewayGeneration":self.generation,"grantRevision":self.grant["revision"],"serviceGeneration":generation,"models":catalog(models, subscription.as_ref(), &remembered),"lastAcceptedModel":accepted});
         ensure!(
             serde_json::to_vec(&result)?.len() <= 128 * 1024,
             "LIMIT_EXCEEDED"
         );
         Ok(result)
+    }
+}
+
+fn mark_checking(models: &mut [Value]) {
+    for model in models {
+        if model["available"] == true {
+            model.as_object_mut().unwrap().remove("available");
+            model["availability"] = json!("checking");
+        }
     }
 }
 

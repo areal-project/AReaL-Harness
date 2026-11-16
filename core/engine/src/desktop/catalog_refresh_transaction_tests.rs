@@ -61,6 +61,7 @@ async fn provider_save_and_runtime_catalog_refresh_preserve_both_updates() {
     engine
         .install_discovered_skill_sources(root.path().into(), None)
         .unwrap();
+    let mut events = engine.subscribe_model_catalog();
     let (ready, release) = engine.store.pause_next_catalog_write();
     let provider = {
         let engine = engine.clone();
@@ -110,6 +111,19 @@ async fn provider_save_and_runtime_catalog_refresh_preserve_both_updates() {
     let (plugins, skills) = refresh.await.unwrap();
     plugins.unwrap();
     skills.unwrap();
+    let mut publications = vec![];
+    while let Ok(event) = events.try_recv() {
+        publications.push(event);
+    }
+    assert!(
+        publications.len() >= 2,
+        "provider and plugin Profile publication must invalidate cached metadata"
+    );
+    assert!(
+        publications
+            .iter()
+            .all(|event| event["method"] == "areal/model/catalogChanged")
+    );
     for catalog in [
         engine.desktop.catalog.read().unwrap().clone(),
         Catalog::load(&root.path().join("engine")).unwrap(),

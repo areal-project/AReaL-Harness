@@ -1,4 +1,6 @@
 use super::*;
+#[path = "connection_catalog.rs"]
+mod connection_catalog;
 #[path = "workbench_core.rs"]
 mod workbench_core;
 #[path = "workbench_frontend.rs"]
@@ -185,10 +187,18 @@ impl Connections {
         let session = sessions.get(id).ok_or_else(unavailable)?;
         ensure!(session.shared_current(host), unavailable());
         Ok(format!(
-            "{}:{}",
+            "{}:{}:{}",
             session.connection_id,
-            session.model_revision.get()
+            session.model_revision.get(),
+            session.catalog.published.get()
         ))
+    }
+    pub(super) fn model_metadata(&self, host: &Host, id: &str) -> Result<Option<Value>> {
+        let sessions = self.sessions.borrow();
+        let session = sessions.get(id).ok_or_else(unavailable)?;
+        ensure!(session.shared_current(host), unavailable());
+        session.catalog.request(session.model_revision.get());
+        Ok(session.catalog.snapshot(session.model_revision.get()))
     }
     pub(super) async fn remote_request(
         &self,
@@ -573,6 +583,7 @@ struct CoreSession {
     shell_revision: Cell<u64>,
     task_revision: Cell<u64>,
     model_revision: Cell<u64>,
+    catalog: connection_catalog::Catalog,
     observed: RefCell<BTreeMap<String, usize>>,
     workbench_observed: RefCell<BTreeMap<String, (String, u64)>>,
     workbench_claim_sequence: Cell<u64>,
@@ -902,6 +913,7 @@ async fn connect_authorized(
         shell_revision: Cell::new(0),
         task_revision: Cell::new(0),
         model_revision: Cell::new(0),
+        catalog: Default::default(),
         observed: RefCell::new(BTreeMap::new()),
         workbench_observed: RefCell::new(BTreeMap::new()),
         workbench_claim_sequence: Cell::new(0),
@@ -967,6 +979,14 @@ async fn connect_authorized(
                     }
                 }
                 _ = callbacks.join_next(), if !callbacks.is_empty() => {}
+                _ = connection.catalog.requested.notified(), if !connection.catalog.loading.get() && callbacks.len() < MAX_PENDING => {
+                    let host = host.clone();
+                    let connection = connection.clone();
+                    connection.catalog.loading.set(true);
+                    callbacks.spawn_local(async move {
+                        connection_catalog::hydrate(&host, &connection).await;
+                    });
+                }
             }
         }
     });

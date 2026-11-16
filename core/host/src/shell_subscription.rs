@@ -100,7 +100,19 @@ impl ReadModels {
                 revisions.insert(project.registration.project_id.clone(), revision);
             }
         }
-        let stamp = json!({"projects":status.projects,"sources":source_stamps,"revisions":revisions,"epoch":self.epoch.get(),
+        let model_revisions = revisions
+            .keys()
+            .map(|id| {
+                (
+                    id.clone(),
+                    host.schedules
+                        .connections
+                        .model_catalog_revision(host, id)
+                        .ok(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let stamp = json!({"projects":status.projects,"sources":source_stamps,"revisions":revisions,"models":model_revisions,"epoch":self.epoch.get(),
                 "observations":self.online.borrow().iter().map(|(id,online)|json!([id,online.revision,online.epoch])).collect::<Vec<_>>()});
         if let Some((previous, view)) = &*self.cached.borrow()
             && *previous == stamp

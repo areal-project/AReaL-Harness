@@ -369,6 +369,9 @@ impl Engine {
                     .map_err(invalid)?;
             }
             self.publish_plugin_snapshot(snapshot, catalog, diagnostics);
+            if changed {
+                self.emit_model_catalog_changed();
+            }
         }
         drop(_refresh);
         self.reconcile_plugin_connections().await?;

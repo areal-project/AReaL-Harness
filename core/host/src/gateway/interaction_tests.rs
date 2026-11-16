@@ -1372,15 +1372,35 @@ async fn stopped_project_models_are_native_redacted_and_do_not_activate_executio
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn native_project_catalog_rejects_a_generation_change_during_profile_read() {
+async fn native_project_catalog_returns_before_core_metadata_and_discards_old_generation() {
     tokio::task::LocalSet::new()
         .run_until(async {
             let mut f = Fixture::new().await;
             let mut session = f.session("a");
             session.gui_read = true;
             let request = f.request("project.models", json!({}), None);
-            let reading = Fixture::dispatch(session, request);
-            f.call("areal/model/list").await.reply(json!({"data":[]}));
+            let mut reading = Fixture::dispatch(session, request.clone());
+            let (mut session, first) =
+                tokio::time::timeout(Duration::from_millis(50), &mut reading)
+                    .await
+                    .expect("model menu must not wait for Core metadata")
+                    .unwrap();
+            assert!(first.unwrap()["models"].is_array());
+            let before = f
+                .host
+                .schedules
+                .connections
+                .model_catalog_revision(&f.host, "project")
+                .unwrap();
+            let models = f.call("areal/model/list").await;
+            // Core 不回答时，后续读取也必须直接返回；不创建第二批元数据请求。
+            assert!(
+                tokio::time::timeout(Duration::from_millis(50), session.request(&request))
+                    .await
+                    .unwrap()
+                    .is_ok()
+            );
+            models.reply(json!({"data":[{"providerId":"dynamic","modelId":"live"}]}));
             f.call("areal/capabilities")
                 .await
                 .reply(json!({"methods":[],"features":{}}));
@@ -1395,9 +1415,157 @@ async fn native_project_catalog_rejects_a_generation_change_during_profile_read(
                 .unwrap()
                 .identity
                 .generation = "replacement".into();
-            profiles.reply(json!({"data":[]}));
-            let (_, result) = reading.await.unwrap();
-            assert_eq!(result.unwrap_err().to_string(), "RESYNC_REQUIRED");
+            profiles.reply(json!({"data":[{"id":"old-profile","revision":"1"}]}));
+            assert_ne!(
+                f.host
+                    .schedules
+                    .connections
+                    .model_catalog_revision(&f.host, "project")
+                    .ok(),
+                Some(before)
+            );
+            f.reconnect().await;
+            let mut session = f.session("a");
+            session.gui_read = true;
+            let result = session.request(&request).await.unwrap();
+            assert!(!result.to_string().contains("old-profile"));
+            assert!(!result.to_string().contains("dynamic"));
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn session_model_projection_does_not_block_history_on_core_or_broken_desired_config() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            std::fs::write(f.host.home.join("config.toml"), "this is not valid toml").unwrap();
+            let session = f.session("a");
+            let result = tokio::time::timeout(
+                Duration::from_millis(50),
+                session.model_catalog(&f.alias, "core-generation", || Ok(None)),
+            )
+            .await
+            .expect("history model projection cannot wait for Core")
+            .unwrap();
+            assert_eq!(result["models"], json!([]));
+            let _pending = f.call("areal/model/list").await;
+            assert!(
+                session
+                    .project_models(
+                        &f.alias,
+                        "core-generation",
+                        &f.request("project.models", json!({}), None)
+                    )
+                    .await
+                    .is_err(),
+                "设置目录仍必须明确报告配置解析错误"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn project_model_metadata_publishes_only_the_current_revision_without_read_loops() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let mut session = f.session("a");
+            session.gui_read = true;
+            let request = f.request("project.models", json!({}), None);
+            let before = f.host.read_models.shell(&f.host).await.unwrap();
+            session.request(&request).await.unwrap();
+            let first = f.call("areal/model/list").await;
+            let mut changes = f.host.changes.subscribe();
+            let revision = f
+                .host
+                .schedules
+                .connections
+                .model_catalog_revision(&f.host, "project")
+                .unwrap();
+            first
+                .responses
+                .send(CoreResponse::Message(
+                    json!({"method":"areal/model/catalogChanged","params":{"revision":1}}),
+                ))
+                .unwrap();
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while f
+                    .host
+                    .schedules
+                    .connections
+                    .model_catalog_revision(&f.host, "project")
+                    .unwrap()
+                    == revision
+                {
+                    changes.changed().await.unwrap();
+                }
+            })
+            .await
+            .unwrap();
+            let checking = f
+                .host
+                .schedules
+                .connections
+                .model_catalog_revision(&f.host, "project")
+                .unwrap();
+            first.reply(json!({"data":[{"providerId":"outdated","modelId":"old"}]}));
+            f.call("areal/capabilities")
+                .await
+                .reply(json!({"methods":[],"features":{}}));
+            f.call("areal/profile/list")
+                .await
+                .reply(json!({"data":[{"id":"old","revision":"1"}]}));
+            let current = f.call("areal/model/list").await;
+            assert_eq!(
+                f.host
+                    .schedules
+                    .connections
+                    .model_catalog_revision(&f.host, "project")
+                    .unwrap(),
+                checking
+            );
+            let interim = session.request(&request).await.unwrap();
+            assert!(!interim.to_string().contains("outdated"));
+            current.reply(
+                json!({"data":[{"providerId":"dynamic","modelId":"current","available":true}]}),
+            );
+            f.call("areal/capabilities")
+                .await
+                .reply(json!({"methods":[],"features":{"permissionPresets":true}}));
+            f.call("areal/profile/list")
+                .await
+                .reply(json!({"data":[{"id":"current","revision":"2"}]}));
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while f
+                    .host
+                    .schedules
+                    .connections
+                    .model_catalog_revision(&f.host, "project")
+                    .unwrap()
+                    == checking
+                {
+                    changes.changed().await.unwrap();
+                }
+            })
+            .await
+            .unwrap();
+            let result = session.request(&request).await.unwrap();
+            assert_eq!(result["models"][0]["modelId"], "current");
+            assert_eq!(result["profiles"], json!([{"id":"current","revision":"2"}]));
+            assert_eq!(result["features"]["permissionPresets"], true);
+            let after = f.host.read_models.shell(&f.host).await.unwrap();
+            assert_ne!(
+                before.projects[0].model_catalog_revision, after.projects[0].model_catalog_revision,
+                "Shell 本地缓存必须反映元数据发布，客户端才能收到重读身份"
+            );
+            session.request(&request).await.unwrap();
+            assert!(
+                tokio::time::timeout(Duration::from_millis(25), f.calls.recv())
+                    .await
+                    .is_err(),
+                "读取已发布目录不能再触发刷新循环"
+            );
         })
         .await;
 }
@@ -1423,19 +1591,25 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
             for project in ["project".to_owned(), f.alias.clone()] {
                 let mut models = f.request("project.models", json!({}), None);
                 models["context"]["projectId"] = json!(project);
-                let listing = Fixture::dispatch(session, models);
-                f.call("areal/model/list")
-                    .await
-                    .reply(json!({"data":[{"providerId":"fixture","modelId":"model","capabilities":null}],
+                if project == "project" {
+                    let before = f.host.schedules.connections.model_catalog_revision(&f.host, "project").unwrap();
+                    let mut changes = f.host.changes.subscribe();
+                    let first = session.request(&models).await.unwrap();
+                    assert!(first["profiles"].as_array().unwrap().is_empty());
+                    f.call("areal/model/list").await.reply(json!({"data":[{"providerId":"fixture","modelId":"model","capabilities":null}],
                         "lastAcceptedModel":{"model":{"providerId":"fixture","modelId":"model"},"modelId":"model","acceptedAt":2,"reasoningEffort":null}}));
-                f.call("areal/capabilities")
-                    .await
-                    .reply(json!({"methods":["areal/side/create","areal/side/close","areal/side/start"],
+                    f.call("areal/capabilities").await.reply(json!({"methods":["areal/side/create","areal/side/close","areal/side/start"],
                         "features":{"permissionPresets":true,"sideExecutableV2":true,
                             "conversationDerivationV1":{"sideWorkspaceAccess":["readOnly"]}}}));
-                f.call("areal/profile/list").await.reply(json!({"data":[]}));
-                let (next, result) = listing.await.unwrap();
-                let result = result.unwrap();
+                    f.call("areal/profile/list").await.reply(json!({"data":[{"id":"reviewer","revision":"v1","private":"redacted"}]}));
+                    tokio::time::timeout(Duration::from_secs(5), async {
+                        while f.host.schedules.connections.model_catalog_revision(&f.host, "project").unwrap() == before {
+                            changes.changed().await.unwrap();
+                        }
+                    }).await.unwrap();
+                }
+                let result = session.request(&models).await.unwrap();
+                assert_eq!(result["profiles"], json!([{"id":"reviewer","revision":"v1"}]));
                 assert_eq!(result["models"][0]["modelId"], "model");
                 assert_eq!(result["lastAcceptedModel"]["acceptedAt"], 2);
                 assert!(f.host.gateway.workbench.active_source().is_none());
@@ -1451,7 +1625,6 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
                     areal_protocol::host::RemoteProjectModelsResult,
                 >(result.clone())
                 .is_ok());
-                session = next;
             }
             let mut send = f.request(
                 "session.send",
