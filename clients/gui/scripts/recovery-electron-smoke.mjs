@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { preparePrivateFixtureDirectories } from "./support/desktop-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -544,7 +545,13 @@ if (command === "doctor") {
   }
   try {
     await mkdir(workspace);
-    await mkdir(join(state, "user"));
+    await preparePrivateFixtureDirectories(state, [
+      env.AREAL_CORE_HOME,
+      env.AREAL_GUI_USER_DATA,
+      env.AREAL_CORE_USER_HOME,
+      env.AREAL_HARNESS_HOME,
+      env.AREAL_HARNESS_SERVICE_HOME,
+    ]);
     execFileSync("git", ["init", "-b", "main"], { cwd: workspace, stdio: "ignore" });
     model = createServer(async (request, response) => {
       try {

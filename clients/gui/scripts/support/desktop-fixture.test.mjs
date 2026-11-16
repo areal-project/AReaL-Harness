@@ -178,3 +178,36 @@ test("failure capture bounds a stalled projection and retains the original failu
     /failure projection capture timed out after 10000ms/,
   );
 });
+
+test("private fixture directories are created under umask 022 and checked on reuse", async (t) => {
+  const { mkdtemp, rm, stat, chmod, writeFile, readFile, symlink } =
+    await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { preparePrivateFixtureDirectories } = await import("./desktop-fixture.mjs");
+  const root = await mkdtemp(join(tmpdir(), "private-fixture-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const core = join(root, "nested", "core");
+  const mask = process.umask(0o022);
+  try {
+    await preparePrivateFixtureDirectories(root, [core]);
+  } finally {
+    process.umask(mask);
+  }
+  assert.equal((await stat(core)).mode & 0o777, 0o700);
+  await writeFile(join(core, "history"), "preserved");
+  await preparePrivateFixtureDirectories(root, [core]);
+  await chmod(core, 0o755);
+  await assert.rejects(preparePrivateFixtureDirectories(root, [core]), /expected 700, got 755/);
+  assert.equal(await readFile(join(core, "history"), "utf8"), "preserved");
+  assert.equal((await stat(core)).mode & 0o777, 0o755);
+  await symlink(core, join(root, "alias"));
+  await assert.rejects(
+    preparePrivateFixtureDirectories(root, [join(root, "alias", "child")]),
+    /real directory/,
+  );
+  await assert.rejects(
+    preparePrivateFixtureDirectories(root, [join(root, "..", "outside")]),
+    /outside fixture root/,
+  );
+});

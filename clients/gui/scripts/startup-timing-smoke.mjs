@@ -1,3 +1,4 @@
+import { preparePrivateFixtureDirectories } from "./support/desktop-fixture.mjs";
 import { artifactHashes } from "./support/performance-profile.mjs";
 import { startupResources, startupEnvironment, summarizeStartup } from "./startup-resources.mjs";
 import { makeTempDir } from "./support/temp.mjs";
@@ -100,6 +101,13 @@ async function until(predicate, label) {
 }
 
 async function launch(fixture, label, hideDuringRestore = false, preShowClose) {
+  await preparePrivateFixtureDirectories(scratch, [
+    fixture.home,
+    fixture.env.AREAL_GUI_USER_DATA,
+    fixture.env.AREAL_CORE_USER_HOME,
+    fixture.env.AREAL_HARNESS_HOME,
+    fixture.registry,
+  ]);
   const started = performance.now();
   let entry = join(fixture.gui, "app");
   if (preShowClose) {
@@ -474,9 +482,8 @@ try {
       registry = join(base, "registry");
     const workspace = join(base, "workspace"),
       user = join(base, "user");
-    await mkdir(workspace, { recursive: true });
-    await mkdir(home);
-    await mkdir(user);
+    await preparePrivateFixtureDirectories(scratch, [home, user]);
+    await mkdir(workspace);
     execFileSync("git", ["init", "-b", "main"], { cwd: workspace, stdio: "ignore" });
     const config = join(base, "config.toml");
     await writeFile(

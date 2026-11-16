@@ -1,3 +1,5 @@
+import { lstat, mkdir } from "node:fs/promises";
+import { relative, resolve, sep, isAbsolute } from "node:path";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -124,4 +126,40 @@ export function observationSummary(snapshot) {
       statuses: (queue.items ?? []).map((item) => item.status),
     })),
   }));
+}
+
+// 只准备调用方认领的隔离目录；已有目录不修权限，避免掩盖复制夹具的问题。
+export async function preparePrivateFixtureDirectories(root, directories) {
+  const base = resolve(root);
+  const paths = directories.map((directory) => {
+    const child = relative(base, resolve(directory));
+    if (!child || child === ".." || child.startsWith(`..${sep}`) || isAbsolute(child))
+      throw new Error(`Private directory is outside fixture root: ${directory}`);
+    return child.split(sep);
+  });
+  async function check(path) {
+    const info = await lstat(path);
+    if (!info.isDirectory() || info.isSymbolicLink())
+      throw new Error(`Private fixture path must be a real directory: ${path}`);
+    if (process.platform !== "win32") {
+      if (info.uid !== process.getuid())
+        throw new Error(`Private fixture directory must belong to current user: ${path}`);
+      const mode = info.mode & 0o777;
+      if (mode !== 0o700)
+        throw new Error(`Private fixture directory ${path}: expected 700, got ${mode.toString(8)}`);
+    }
+  }
+  await check(base);
+  for (const parts of paths) {
+    let current = base;
+    for (const part of parts) {
+      current = resolve(current, part);
+      try {
+        await mkdir(current, { mode: 0o700 });
+      } catch (error) {
+        if (error.code !== "EEXIST") throw error;
+      }
+      await check(current);
+    }
+  }
 }

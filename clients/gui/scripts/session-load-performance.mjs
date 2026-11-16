@@ -1,3 +1,4 @@
+import { preparePrivateFixtureDirectories } from "./support/desktop-fixture.mjs";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
@@ -31,8 +32,7 @@ const home = join(root, "host"),
   config = join(root, "config.toml");
 const safe = join(root, "safe-project"),
   blocked = join(root, "blocked-project");
-for (const p of [home, user, safe, blocked, ...Object.values(source)])
-  await mkdir(p, { mode: 0o700 });
+await preparePrivateFixtureDirectories(root, [home, user, safe, blocked, ...Object.values(source)]);
 const safeId = sha(safe).slice(0, 24),
   blockedId = sha(blocked).slice(0, 24);
 for (const id of [safeId, blockedId])
