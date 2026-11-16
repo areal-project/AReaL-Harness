@@ -327,13 +327,13 @@ try {
       const app = join(output, "package/mac-arm64/AReaL Harness GUI.app");
       // 与实际封装的字节绑定，签名前写入；安装路径和后续原生签名不参与内容身份。
       const resources = join(app, "Contents/Resources");
-      const identity = createHash("sha256")
+      const desktopIdentity = createHash("sha256")
         .update(await readFile(join(resources, "app.asar")))
         .update(await treeHash([join(resources, "areal-gui"), join(resources, "areal-workbench")]))
         .digest("hex");
       await writeFile(
         join(resources, "desktop-build.json"),
-        JSON.stringify({ version: 1, identity }) + "\n",
+        JSON.stringify({ version: 1, identity: desktopIdentity }) + "\n",
       );
       const backgroundService = await timings.measure("service-bundle", () =>
         stageMacOSService(app),
