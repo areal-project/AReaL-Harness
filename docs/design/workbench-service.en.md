@@ -28,7 +28,8 @@ Host reuses `workbench_route.rs` and `workbench.rs` to supervise analytics and t
 - Release layouts discover `Resources/areal-workbench` in the signed app, verify its signature and manifest, and use bundled Electron in Node mode. Source debug layouts can discover adjacent repository sources and Node on PATH without building a GUI package; release builds do not accept this source discovery path.
 - A `ready` frame reports methods and identity within 20 seconds. The first observed exit recovers immediately; subsequent failures within the 10-minute window use 1, 2, 4… second backoff, and five failures within 10 minutes stop automatic restart.
 - Main detach leaves the Host backend alive. Host stop closes its pipe; the backend drains in-flight operations and exits, with a five-second termination deadline for that child.
-- Restart waits for the old child to end. Cleanup is limited to the retired identity recorded by Host and must not overwrite another backend's `service.json`. Recovery rebuilds observations and snapshots without replaying writes.
+- After confirming child exit, Host removes `service.json` only when its PID, identity and desktop generation match the backend it owns. Child cleanup failures or forced termination must not leave that owned discovery record behind; records belonging to another backend remain untouched.
+- Reopening the GUI is an explicit connection: it checks the original stop receipt and may start a new backend after settlement. Automatic reconnect in the same stopped window preserves the stop intent. Unsettled receipts remain subject to reconciliation; recovery rebuilds observations and snapshots without replaying writes.
 
 ## Protocol and receipts
 

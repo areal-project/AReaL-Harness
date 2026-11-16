@@ -262,6 +262,14 @@
     "notes": "Isolated shared Host quit and reconnect. Remote identity recovery is opt-in and requires authorization for test Keychain writes on macOS."
   },
   {
+    "script": "test:stop-reopen",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["lifecycle", "desktop"],
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
+    "notes": "Isolated real GUI startup, explicit Host stop, GUI exit and reopen through both the settings switch and application menu."
+  },
+  {
     "script": "test:host-handoff",
     "layer": "e2e",
     "platforms": ["darwin"],

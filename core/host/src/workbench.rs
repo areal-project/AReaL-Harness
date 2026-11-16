@@ -289,11 +289,11 @@ impl Workbench {
     pub(crate) async fn stop(&self) -> Result<()> {
         self.writer.lock().await.take();
         let mut child = self.child.lock().await;
-        if tokio::time::timeout(Duration::from_secs(5), child.wait())
-            .await
-            .is_err()
-        {
-            child.kill().await?;
+        match tokio::time::timeout(Duration::from_secs(5), child.wait()).await {
+            Ok(result) => {
+                result?;
+            }
+            Err(_) => child.kill().await?,
         }
         Ok(())
     }

@@ -1434,12 +1434,20 @@ impl Backend {
     async fn stop(&self) {
         self.stopped.set(true);
         let _guard = self.starting.lock().await;
-        self.ownership.borrow_mut().take();
-        self.utility_options.borrow_mut().take();
+        let ownership = self.ownership.borrow_mut().take();
+        let options = self.utility_options.borrow_mut().take();
         self.environment_credentials.borrow_mut().take();
         let running = self.running.borrow_mut().take();
         if let Some(workbench) = running {
-            let _ = workbench.stop().await;
+            if workbench.stop().await.is_err() {
+                eprintln!("Workbench stop: child exit could not be confirmed");
+                return;
+            }
+            if let (Some((_, owner)), Some(options)) = (ownership, options)
+                && retire_backend_record(&options, &owner).is_err()
+            {
+                eprintln!("Workbench stop: discovery retirement could not be completed");
+            }
         }
     }
 
@@ -1496,6 +1504,23 @@ impl Backend {
             }),
         ))
     }
+}
+
+fn retire_backend_record(options: &Value, owner: &Value) -> Result<()> {
+    let home = options["home"].as_str().context("backend home missing")?;
+    let path = Path::new(home).join("service.json");
+    let Some(bytes) = areal_local_service::storage::read_bytes(&path)? else {
+        return Ok(());
+    };
+    let record: Value = serde_json::from_slice(&bytes)?;
+    // 子进程关闭异常或被强制结束时未必执行 finally；Host 等到退出后只结算自己持有的身份。
+    if ["pid", "identity", "desktopGeneration"]
+        .iter()
+        .all(|key| record[key] == owner[key])
+    {
+        std::fs::remove_file(path)?;
+    }
+    Ok(())
 }
 
 fn launch_record(host: &Host) -> PathBuf {

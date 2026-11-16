@@ -219,6 +219,67 @@ async fn invalid_model_configuration_does_not_prevent_backend_start() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn stopped_backend_retires_only_its_own_discovery_record_after_child_exit() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for changed in [None, Some("pid"), Some("identity"), Some("desktopGeneration")] {
+                let root = tempfile::tempdir().unwrap();
+                let root = root.path().canonicalize().unwrap();
+                let (host, input, _) = resumable_host(&root);
+                std::fs::write(
+                    root.join("services/workbench/src/backend-main.cjs"),
+                    r#"
+const fs = require('node:fs');
+const lines = require('node:readline').createInterface({input:process.stdin});
+lines.on('line', line => {
+    const frame = JSON.parse(line);
+    if (frame.method !== 'backend.start') return;
+    const service = {pid:process.pid, identity:'owned-backend', desktopGeneration:'owned-generation'};
+    fs.writeFileSync(frame.params.options.home + '/service.json', JSON.stringify(service), {flag:'wx',mode:0o600});
+    console.log(JSON.stringify({version:1,event:'ready',methods:[],service}));
+});
+// 真实退出，但保留发现记录，模拟关闭异常或来不及执行子进程 finally。
+lines.on('close', () => process.exit(1));
+"#,
+                )
+                .unwrap();
+                let path = root.join("data/service.json");
+                let owner = host
+                    .gateway
+                    .workbench
+                    .ensure_backend(&host, input)
+                    .await
+                    .unwrap();
+                let mut record: Value = areal_local_service::storage::read(&path).unwrap();
+                assert_eq!(record["pid"], owner["pid"]);
+                if let Some(field) = changed {
+                    record[field] = if field == "pid" {
+                        json!(std::process::id())
+                    } else {
+                        json!("another-owner")
+                    };
+                    areal_local_service::storage::write(&path, &record).unwrap();
+                }
+                host.gateway.workbench.stop_backend().await;
+                if changed.is_none() {
+                    assert!(
+                        !path.exists(),
+                        "a confirmed child exit must release its discovery record before the Host exits"
+                    );
+                } else {
+                    assert_eq!(
+                        areal_local_service::storage::read::<Value>(&path)
+                            .unwrap(),
+                        record,
+                        "stopping one backend must preserve a different discovery owner"
+                    );
+                }
+            }
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn cold_backend_read_and_managed_requests_resume_the_persisted_launch() {
     tokio::task::LocalSet::new()
         .run_until(async {

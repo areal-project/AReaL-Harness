@@ -803,7 +803,7 @@ function startDesktop() {
             binary: cfg.serviceOptions(app).binary,
             profile: app.getPath("userData"),
             ready: async () => {
-              await serviceBackend.init({ automatic: true });
+              await connectBackend();
               if (!serviceBackend.status.connected) throw new Error("应用连接尚未就绪");
             },
             trusted,
@@ -833,6 +833,12 @@ function startDesktop() {
             },
           });
           backend = serviceBackend;
+          let connectedOnce = false;
+          const connectBackend = async () => {
+            // 重新打开应用是显式连接；成功连接过的窗口才按自动重连保留停止意图。
+            await serviceBackend.init({ automatic: connectedOnce });
+            if (serviceBackend.status.connected) connectedOnce = true;
+          };
           const computerHost = (computer = new ComputerControl({
             helperPath: app.isPackaged
               ? join(process.resourcesPath, "computer-helper/AReaL Computer Helper.app")
@@ -1748,8 +1754,8 @@ function startDesktop() {
             const trace = startupTrace("gui.backend_init");
             trace.advance("initialize");
             try {
+              await connectBackend();
               await windowLoaded;
-              await serviceBackend.init({ automatic: true });
               trace.advance("initial_project");
               if (serviceBackend.status.connected && process.env.AREAL_CORE_WORKSPACE)
                 await serviceBackend.addProject(process.env.AREAL_CORE_WORKSPACE);
