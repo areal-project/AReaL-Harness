@@ -122,7 +122,7 @@ pub(super) async fn execute_with_options(
         for reference in references {
             credential_references.push(reference.clone());
             inputs.env.remove(OsString::from(&reference).as_os_str());
-            let value = host.migration.vault.dispatch_async("vault.read", json!({"slot":{"kind":"providerCredential","sourceId":source,"reference":reference},"interactionAllowed":false}), "", &host.migration).await;
+            let value = host.migration.vault.dispatch_async("vault.read", json!({"slot":{"kind":"providerCredential","sourceId":source,"reference":reference},"interactionAllowed":false}), &host.identity.generation, &host.migration).await;
             match value {
                 Ok(value) => {
                     if let Some(value) = value["value"].as_str() {

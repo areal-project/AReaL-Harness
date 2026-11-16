@@ -104,6 +104,7 @@ impl Slot {
 
 #[derive(Clone)]
 pub(crate) struct Vault {
+    provider_reads: Arc<Mutex<BTreeMap<String, ProviderRead>>>,
     flight: Arc<Mutex<BTreeMap<String, Value>>>,
     worker: bool,
     closing: Arc<AtomicBool>,
@@ -120,6 +121,14 @@ pub(crate) struct Vault {
     pub(crate) locked: std::cell::Cell<bool>,
     #[cfg(test)]
     pub(crate) before_write: Option<std::sync::Arc<dyn Fn() + Send + Sync>>,
+    #[cfg(test)]
+    backend_reads: Arc<std::sync::atomic::AtomicUsize>,
+}
+struct ProviderRead {
+    generation: String,
+    revision: u64,
+    entry_id: Option<String>,
+    value: Value,
 }
 struct FlightGuard {
     flight: Arc<Mutex<BTreeMap<String, Value>>>,
@@ -141,6 +150,7 @@ impl Vault {
         _identity: &crate::HostIdentity,
         _token: &str,
     ) {
+        self.provider_reads.lock().unwrap().clear();
         #[cfg(target_os = "macos")]
         {
             *self.authority.lock().unwrap() =
@@ -272,6 +282,7 @@ impl Vault {
             self.idle_notice.notified().await;
         }
         self.owner.lock().unwrap().take();
+        self.provider_reads.lock().unwrap().clear();
     }
     pub(crate) async fn dispatch_async(
         &self,
@@ -502,6 +513,10 @@ impl Vault {
         Ok(state)
     }
     fn save_state(&self, state: &SlotState) -> Result<()> {
+        self.provider_reads
+            .lock()
+            .unwrap()
+            .remove(&Self::slot_key(&serde_json::to_value(&state.slot)?)?);
         storage::private_dir(&self.home.join("host/vault-slots"))?;
         std::fs::File::open(self.home.join("host"))?.sync_all()?;
         storage::write(&self.state_path(&state.slot)?, state)
@@ -624,12 +639,39 @@ impl Vault {
             let read = |vault: &Self| {
                 let mut state = vault.state_seed(&input.slot, seed)?;
                 vault.recover(&mut state)?;
-                let value = match state.entry_id {
+                // 只复用本代非交互 provider 读取；先恢复并核对权威 revision，失败仍可重试。
+                let cache_key = if input.interaction_allowed == Some(false)
+                    && matches!(input.slot, Slot::ProviderCredential { .. })
+                {
+                    Some(Self::slot_key(&serde_json::to_value(&input.slot)?)?)
+                } else {
+                    None
+                };
+                if let Some(key) = &cache_key
+                    && let Some(cached) = vault.provider_reads.lock().unwrap().get(key)
+                    && cached.generation == generation
+                    && cached.revision == state.revision
+                    && cached.entry_id == state.entry_id
+                {
+                    return Ok(json!({"revision":state.revision,"value":cached.value}));
+                }
+                let value = match &state.entry_id {
                     Some(id) => vault
-                        .read(&id)?
+                        .read(id)?
                         .ok_or_else(|| error("storageMissing", "current vault entry is missing"))?,
                     None => Value::Null,
                 };
+                if let Some(key) = cache_key {
+                    vault.provider_reads.lock().unwrap().insert(
+                        key,
+                        ProviderRead {
+                            generation: generation.to_owned(),
+                            revision: state.revision,
+                            entry_id: state.entry_id,
+                            value: value.clone(),
+                        },
+                    );
+                }
                 Ok(json!({"revision":state.revision,"value":value}))
             };
             return if input.interaction_allowed == Some(false) {
@@ -838,6 +880,7 @@ impl Vault {
     }
     pub fn new(home: &Path) -> Self {
         Self {
+            provider_reads: Arc::new(Mutex::new(BTreeMap::new())),
             home: home.to_owned(),
             owner: Arc::new(Mutex::new(None)),
             #[cfg(target_os = "macos")]
@@ -854,11 +897,14 @@ impl Vault {
             locked: std::cell::Cell::new(false),
             #[cfg(test)]
             before_write: None,
+            #[cfg(test)]
+            backend_reads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
     }
     #[cfg(test)]
     pub fn isolated_files(home: &Path) -> Self {
         Self {
+            provider_reads: Arc::new(Mutex::new(BTreeMap::new())),
             home: home.to_owned(),
             owner: Arc::new(Mutex::new(None)),
             #[cfg(target_os = "macos")]
@@ -873,6 +919,7 @@ impl Vault {
             locked: std::cell::Cell::new(false),
             #[cfg(test)]
             before_write: None,
+            backend_reads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
     }
     pub fn write(&self, entry: &str, value: &Value) -> Result<()> {
@@ -930,6 +977,8 @@ impl Vault {
     pub fn read(&self, entry: &str) -> Result<Option<Value>> {
         self.idle()?;
         crate::wire::request_id(entry)?;
+        #[cfg(test)]
+        self.backend_reads.fetch_add(1, Ordering::Relaxed);
         #[cfg(test)]
         if self.locked.get() {
             return Err(error("storageLocked", "isolated vault is locked"));
@@ -1107,6 +1156,66 @@ mod tests {
                 &self.migration,
             )
         }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn noninteractive_provider_reads_reuse_only_current_generation_and_revision() {
+        let f = Fixture::new();
+        let vault = &f.migration.vault;
+        let slot = Slot::ProviderCredential {
+            source_id: f.slot.source_id().unwrap().into(),
+            reference: "AREAL_CREDENTIAL_cache_fixture".into(),
+        };
+        let replace = |revision, value| {
+            vault.dispatch("vault.replace", json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":"generation","slot":slot,"expectedRevision":revision,"value":value}), "generation", &f.migration).unwrap();
+        };
+        replace(0, json!("synthetic-first"));
+        let params = json!({"slot":slot,"interactionAllowed":false});
+        let read = |generation| {
+            vault.dispatch_async("vault.read", params.clone(), generation, &f.migration)
+        };
+        vault.locked.set(true);
+        for _ in 0..2 {
+            assert!(
+                read("generation")
+                    .await
+                    .unwrap_err()
+                    .to_string()
+                    .contains("storageLocked")
+            );
+        }
+        vault.locked.set(false);
+        let before = vault.backend_reads.load(Ordering::Relaxed);
+        let (first, second) = tokio::join!(read("generation"), read("generation"));
+        assert_eq!(first.unwrap(), second.unwrap());
+        assert_eq!(vault.backend_reads.load(Ordering::Relaxed) - before, 1);
+        vault
+            .dispatch_async(
+                "vault.read",
+                json!({"slot":slot}),
+                "generation",
+                &f.migration,
+            )
+            .await
+            .unwrap();
+        assert_eq!(vault.backend_reads.load(Ordering::Relaxed) - before, 2);
+        read("next-generation").await.unwrap();
+        assert_eq!(vault.backend_reads.load(Ordering::Relaxed) - before, 3);
+        replace(1, json!("synthetic-second"));
+        let before = vault.backend_reads.load(Ordering::Relaxed);
+        assert_eq!(
+            read("generation").await.unwrap()["value"],
+            "synthetic-second"
+        );
+        assert_eq!(vault.backend_reads.load(Ordering::Relaxed) - before, 1);
+        replace(2, Value::Null);
+        assert!(read("generation").await.unwrap()["value"].is_null());
+        let restarted = Vault::isolated_files(&vault.home);
+        restarted
+            .dispatch_async("vault.read", params, "generation", &f.migration)
+            .await
+            .unwrap();
+        assert_eq!(restarted.backend_reads.load(Ordering::Relaxed), 1);
     }
 
     #[tokio::test(flavor = "current_thread")]

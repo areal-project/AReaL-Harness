@@ -42,7 +42,7 @@ export function StartupScreen({
     state.restoration.failed ||
     state.connection?.state === "unavailable" ||
     !!state.lifecycle?.error;
-  const recovery = failed;
+  const delayed = state.delayed && !failed;
   const busy =
     state.backend.pending ||
     state.restoration.refreshing ||
@@ -82,15 +82,9 @@ export function StartupScreen({
           ) : (
             <>
               <p role={failed ? "alert" : "status"}>
-                {t(
-                  recovery
-                    ? state.delayed && !failed
-                      ? "startup.delayed"
-                      : "startup.failed"
-                    : "startup.loading",
-                )}
+                {t(failed ? "startup.failed" : delayed ? "startup.delayed" : "startup.loading")}
               </p>
-              {recovery && (
+              {failed && (
                 <>
                   <div className="startup-actions">
                     {state.restoration.failed && (

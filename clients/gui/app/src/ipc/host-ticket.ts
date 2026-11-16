@@ -15,15 +15,12 @@ export function registerHostTicket(options: {
   home: string;
   binary: string;
   profile: string;
-  ready(): Promise<void>;
   trusted(event: IpcMainInvokeEvent): unknown;
 }) {
   ipcMain.handle(hostTicketChannel, async (event, ...args: unknown[]) => {
     options.trusted(event);
     if (args.length) throw new Error("Host ticket takes no arguments");
-    // 桌面先完成整套后台交接，再让界面读取业务，避免复用旧包的启动记录。
-    await options.ready();
-    options.trusted(event);
+    // 票据只依赖 Rust Host；工作台初始化在后台进行，不能阻塞首屏拿到 shell 快照。
     const client = new HostClient();
     try {
       await client.connectOrStart(options.home, options.binary);
