@@ -221,19 +221,21 @@ async function ensureDesktopHost(client, options) {
           throw new Error("应用正在完成退出，请稍后重新打开；原交接记录已保留");
         await delay(100);
       }
-      if (record.targetDigest !== targetDigest || record.targetIdentity !== options.buildIdentity) {
-        // 重装可能替换原目标；先结算原停止并确认退出，再独立核对当前包，不能改绑原请求。
-        await unlink(path);
-        record = null;
-        continue;
-      }
       record.phase = "starting";
       await publish(path, record, true);
       // 新 Host 获得原独占锁后才能发布身份；不删除锁或发现文件。
       checkOpen();
       if (!client.socket) await client.connectOrStart(options.home, binary);
-      if (client.hello?.executableDigest !== targetDigest)
-        throw new Error("应用启动的版本不匹配，请重新打开应用");
+      if (
+        record.targetDigest !== targetDigest ||
+        record.targetIdentity !== options.buildIdentity ||
+        client.hello?.executableDigest !== targetDigest
+      ) {
+        // 原停止已结算；重装或其他客户端可能改变目标，交回正常身份检查，不能改绑原请求。
+        await unlink(path);
+        record = null;
+        continue;
+      }
       record.phase = "checking";
       await publish(path, record, true);
       return complete;

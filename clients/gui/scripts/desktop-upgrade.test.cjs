@@ -201,6 +201,42 @@ test("a changed install replaces an already published successor using a new stop
   await assert.rejects(access(path), { code: "ENOENT" });
 });
 
+test("an intervening Host build is checked independently of the settled original handoff", async (t) => {
+  const f = await fixture(t);
+  await ensureDesktopHost(f.client, f.options);
+  const path = join(f.home, "host/desktop-upgrade.json");
+  const original = JSON.parse(await readFile(path));
+  const successor = { generation: f.client.generation, pid: f.client.identity.pid };
+  f.client.close();
+  const connectOrStart = f.client.connectOrStart.bind(f.client);
+  let injected = false;
+  f.client.connectOrStart = async (...args) => {
+    await connectOrStart(...args);
+    if (f.client.generation === successor.generation && !injected) {
+      // 在真实后继 Host 的握手边界注入不同构建摘要；后续停止与代际切换仍由真实进程完成。
+      f.client.hello.executableDigest = "0".repeat(64);
+      injected = true;
+    }
+  };
+  const stops = [];
+  const stop = f.client.stop.bind(f.client);
+  f.client.stop = async (...args) => {
+    stops.push(args);
+    return stop(...args);
+  };
+  await (
+    await ensureDesktopHost(f.client, f.options)
+  )();
+  assert.equal(injected, true);
+  assert.equal(stops.length, 1);
+  assert.notEqual(stops[0][0], original.requestId);
+  assert.equal(stops[0][1], successor.generation);
+  assert.equal(alive(successor.pid), false);
+  assert.notEqual(f.client.generation, successor.generation);
+  assert.equal((await f.client.operation(original.requestId)).operation.state, "completed");
+  await assert.rejects(access(path), { code: "ENOENT" });
+});
+
 test("a malformed target digest is still rejected without retiring the handoff", async (t) => {
   const f = await fixture(t);
   await ensureDesktopHost(f.client, f.options);
