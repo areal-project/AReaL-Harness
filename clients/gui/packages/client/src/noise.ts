@@ -57,7 +57,7 @@ export function remoteReadConnection(
                 ? {
                     context: {
                       projectId: context.projectId,
-                      ...(method === "project.models"
+                      ...(["project.models", "project.activate"].includes(method)
                         ? {}
                         : {
                             serviceGeneration: context.serviceGeneration,

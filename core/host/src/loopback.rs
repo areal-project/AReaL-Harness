@@ -9,7 +9,7 @@ use areal_protocol::host::{
     LocalWebTicketParams, LocalWebTicketResult, LoopbackEndpoint, LoopbackHelloParams,
 };
 use bytes::Bytes;
-use futures_util::{SinkExt, StreamExt, future::LocalBoxFuture, stream::FuturesUnordered};
+use futures_util::{SinkExt, StreamExt};
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::{Request, Response, body::Incoming, service::service_fn};
 use hyper_util::rt::{TokioIo, TokioTimer};
@@ -36,6 +36,7 @@ use tokio_tungstenite::{
         protocol::{Role, WebSocketConfig},
     },
 };
+use tokio_util::task::AbortOnDropHandle;
 
 const METHODS: &[&str] = &[
     "host.status",
@@ -62,6 +63,7 @@ const WRITE_METHODS: &[&str] = &[
     "review.read",
     "attention.read",
     "project.models",
+    "project.activate",
     "command.read",
     "attachment.upload",
     "analytics.activity",
@@ -615,9 +617,8 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let writable = writer.is_some();
     let mut commands = VecDeque::new();
-    let mut queries: FuturesUnordered<LocalBoxFuture<'static, Value>> = FuturesUnordered::new();
-    let mut command: Option<LocalBoxFuture<'static, (super::gateway_owner::LocalSession, Value)>> =
-        None;
+    let mut queries = JoinSet::new();
+    let mut command: Option<AbortOnDropHandle<(super::gateway_owner::LocalSession, Value)>> = None;
     loop {
         // 业务请求保留同连接顺序与会话状态；等待后台时仍消费读取、事件和撤销授权。
         if command.is_none()
@@ -626,18 +627,22 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
             let mut local = writer.take().unwrap();
             let host = host.clone();
             let device = device_id.clone();
-            command = Some(Box::pin(async move {
-                let response = local_request(&host, &mut local, device.as_deref(), raw).await;
-                (local, response)
-            }));
+            // 读取分支也会等待共享锁；已进入的业务必须独立被轮询，断连仍取消本连接任务。
+            command = Some(AbortOnDropHandle::new(tokio::task::spawn_local(
+                async move {
+                    let response = local_request(&host, &mut local, device.as_deref(), raw).await;
+                    (local, response)
+                },
+            )));
         }
         tokio::select! {
-            Some(response) = queries.next(), if !queries.is_empty() => {
+            Some(response) = queries.join_next(), if !queries.is_empty() => {
+                let response = response.context("Host query task failed")?;
                 ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
                 send(&mut socket, &response).await?;
             }
             completed = async { command.as_mut().unwrap().await }, if command.is_some() => {
-                let (local, response) = completed;
+                let (local, response) = completed.context("Host command task failed")?;
                 command = None;
                 writer = Some(local);
                 ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
@@ -676,7 +681,7 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                                 let host = host.clone();
                                 let device = device_id.clone();
                                 let connection = connection_id.clone();
-                                queries.push(Box::pin(async move {
+                                queries.spawn_local(async move {
                                     // 这些查询不消费上传、分页令牌或选中会话；沿原工厂绑定同一主体与连接。
                                     let local = match &device {
                                         Some(device) => super::gateway_owner::LocalSession::browser(host.clone(), connection, device.clone()),
@@ -686,7 +691,7 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                                         Ok(mut local) => local_request(&host, &mut local, device.as_deref(), raw).await,
                                         Err(error) => json!({"version":VERSION,"id":id,"error":loopback_error(&raw, &error)}),
                                     }
-                                }));
+                                });
                             } else {
                                 commands.push_back(raw);
                             }

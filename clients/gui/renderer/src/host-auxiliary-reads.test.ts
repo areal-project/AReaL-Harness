@@ -16,7 +16,15 @@ describe("model catalog refresh", () => {
       query,
     } as unknown as HostClient;
     const catalogs = new Map();
-    refreshModelCatalogs(client, [{ projectId: "cold", state: "stopped" }], catalogs, () => {});
+    refreshModelCatalogs(
+      client,
+      [
+        { projectId: "cold", state: "stopped" },
+        { projectId: "unpublished", state: "legacyPending" },
+      ],
+      catalogs,
+      () => {},
+    );
     await vi.waitFor(() =>
       expect(catalogs.get("cold")?.value?.models).toEqual([{ modelId: "saved" }]),
     );

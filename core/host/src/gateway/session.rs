@@ -1,3 +1,5 @@
+#[path = "activate.rs"]
+mod activate;
 #[path = "artifacts.rs"]
 mod artifacts;
 #[path = "controls.rs"]
@@ -46,6 +48,7 @@ const METHODS: &[&str] = &[
     "session.control",
     "turn.stop",
     "project.models",
+    "project.activate",
     "device.push.register",
     "device.push.unregister",
     "host.describe",
@@ -117,6 +120,7 @@ impl RequestBudget {
             method,
             Some(
                 "interaction.respond"
+                    | "project.activate"
                     | "session.create"
                     | "session.send"
                     | "session.control"
@@ -1261,6 +1265,9 @@ impl Session {
             text(&request["context"], "projectId")?.to_owned()
         };
         self.authorize(Some(&project), "observe")?;
+        if method == "project.activate" {
+            return self.activate_project(&project, request).await;
+        }
         if method == "artifact.read" && native {
             let generation = text(&request["context"], "serviceGeneration")?;
             return self.conversation_media(&project, generation, params).await;

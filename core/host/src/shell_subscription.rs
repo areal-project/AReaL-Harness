@@ -8,6 +8,8 @@ use tokio::sync::Mutex;
 #[derive(Default)]
 pub(super) struct ReadModels {
     gate: Mutex<()>,
+    #[cfg(test)]
+    pub(super) read_started: tokio::sync::Notify,
     cached: RefCell<Option<(Value, ShellView)>>,
     online: RefCell<BTreeMap<String, Online>>,
 }
@@ -48,6 +50,8 @@ impl ReadModels {
     }
 
     async fn read(&self, host: &Host, fresh: bool) -> Result<ShellView> {
+        #[cfg(test)]
+        self.read_started.notify_one();
         let _guard = self.gate.lock().await;
         // Core 的创建事件可能只发给创建者；新订阅不能沿用其他连接的目录缓存。
         if fresh {

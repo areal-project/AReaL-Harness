@@ -337,7 +337,7 @@ it("projects execution read failures onto the logical project without changing t
   }
 });
 describe("Host renderer read authority", () => {
-  it.each([false, true, "leave"] as const)(
+  it.each([false, true, "leave", "pending"] as const)(
     "activates a persisted conversation on submit with concurrent shell refresh=%s",
     async (backgroundRefresh) => {
       const page = new EventTarget();
@@ -357,7 +357,7 @@ describe("Host renderer read authority", () => {
           identity: {
             ...base.identity,
             persistedHistory: true,
-            writeMethods: ["desktop.command", "session.send"],
+            writeMethods: ["project.activate", "session.send"],
           },
           transport: {
             ...base.transport,
@@ -404,13 +404,15 @@ describe("Host renderer read authority", () => {
               return base.transport.request(method, params, context);
             },
             async write(method, params, _context, commandId) {
-              if (method === "desktop.command") {
-                if (params.command !== "connect") return {};
+              if (method === "project.activate") {
                 events.push(method);
-                expect(params).toMatchObject({
-                  command: "connect",
-                  request: { projectId: "alias", threadId: "thread" },
-                });
+                expect(params).toEqual({});
+                if (backgroundRefresh === "pending")
+                  return {
+                    projectId: "canonical",
+                    state: "pending",
+                    activationId: "original-activation",
+                  };
                 if (backgroundRefresh === true) {
                   phase = "starting";
                   wire.send({
@@ -436,7 +438,7 @@ describe("Host renderer read authority", () => {
                   );
                 } else phase = "ready";
                 if (backgroundRefresh === "leave") await services.reads!.selectSession(null);
-                return {};
+                return { projectId: "canonical", state: "ready", serviceGeneration: "core-gen" };
               }
               events.push(method);
               expect(phase).toBe("ready");
@@ -467,13 +469,23 @@ describe("Host renderer read authority", () => {
           text: "continue",
           requestId: crypto.randomUUID(),
         });
+        if (backgroundRefresh === "pending") {
+          const error = await submitted.catch((error: unknown) => error);
+          expect(error).toMatchObject({
+            code: "ACTIVATION_PENDING",
+            activationId: "original-activation",
+          });
+          expect(error).not.toHaveProperty("submissionUnknown");
+          expect(events).toEqual(["project.activate"]);
+          return;
+        }
         if (backgroundRefresh === "leave") {
           await expect(submitted).rejects.toMatchObject({ code: "STALE_CONNECTION" });
-          expect(events).toEqual(["desktop.command"]);
+          expect(events).toEqual(["project.activate"]);
           return;
         }
         await submitted;
-        expect(events).toEqual(["desktop.command", "live-read", "session.send"]);
+        expect(events).toEqual(["project.activate", "live-read", "session.send"]);
       } finally {
         page.dispatchEvent(new Event("pagehide"));
         vi.unstubAllGlobals();

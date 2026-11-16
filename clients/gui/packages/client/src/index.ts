@@ -385,7 +385,9 @@ export class HostClient {
     return transport.write(
       method,
       params,
-      method === "project.models" ? { projectId } : this.#commandContext(projectId),
+      ["project.models", "project.activate"].includes(method)
+        ? { projectId }
+        : this.#commandContext(projectId),
     );
   }
   /**

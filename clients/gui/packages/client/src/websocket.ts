@@ -124,7 +124,7 @@ export async function connectWebSocket(
               ? {
                   context: {
                     projectId: context.projectId,
-                    ...(method === "project.models"
+                    ...(["project.models", "project.activate"].includes(method)
                       ? {}
                       : {
                           serviceGeneration: context.serviceGeneration,

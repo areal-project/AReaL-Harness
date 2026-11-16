@@ -649,6 +649,45 @@ async fn lagged_page_events_keep_the_loopback_connection_alive() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn shell_subscription_keeps_inflight_catalog_query_running() {
+    tokio::task::LocalSet::new().run_until(async {
+        let fixture = Fixture::start().await;
+        fixture.host.gateway.workbench.test_source("host");
+        storage::private_dir(&fixture.host.home.join("host/projects")).unwrap();
+        let workspace = fixture.host.home.join("workspace");
+        let data = fixture.host.home.join("data");
+        for path in [&workspace, &data] { storage::private_dir(path).unwrap(); }
+        fixture.client().await.register(&uuid::Uuid::new_v4().to_string(), crate::ProjectRegistration {
+            project_id: "project".into(), workspace, data_dir: data,
+            source: crate::ProjectSource::Cli, default_binding: false,
+        }).await.unwrap();
+        let ticket = fixture.client().await.web_ticket(ELECTRON_ORIGIN).await.unwrap();
+        let mut socket = connect(&ticket, ELECTRON_ORIGIN).await;
+        write(&mut socket, json!({"version":1,"id":"hello","method":"hello","params":{
+            "protocolVersions":[1],"capabilities":["gui-read-v1","gui-write-v1"],
+            "ticket":ticket.ticket,"expectedGeneration":ticket.generation
+        }})).await;
+        read(&mut socket).await;
+        let gate = fixture.host.gate("project").unwrap();
+        let changing = gate.write().await;
+        write(&mut socket, json!({"version":1,"id":"catalog","method":"tasks.read","params":{"sourceId":"host","operation":"list"}})).await;
+        // 目录查询已拿到共享读模型锁，正在等待项目状态；此时订阅也需要读模型。
+        let entered = tokio::time::timeout(Duration::from_secs(1), fixture.host.read_models.read_started.notified()).await;
+        assert!(entered.is_ok(), "catalog did not enter shared read model");
+        write(&mut socket, json!({"version":1,"id":"shell","method":"shell.subscribe","params":{}})).await;
+        tokio::time::timeout(Duration::from_secs(1), fixture.host.read_models.read_started.notified()).await.unwrap();
+        drop(changing);
+        let mut responses = BTreeMap::new();
+        for _ in 0..2 {
+            let response = read(&mut socket).await;
+            responses.insert(response["id"].as_str().unwrap().to_owned(), response);
+        }
+        assert!(responses["catalog"].get("error").is_none(), "{responses:?}");
+        assert_eq!(responses["shell"]["result"]["snapshot"]["projects"][0]["projectId"], "project");
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn pending_workbench_requests_do_not_block_queries_or_page_events() {
     tokio::task::LocalSet::new()
         .run_until(async {

@@ -97,6 +97,10 @@ impl ConversationReader {
             !thread_id.is_empty() && thread_id.len() <= 256,
             "INVALID_PARAMS"
         );
+        host.schedules
+            .connections
+            .ready(host, project, generation)
+            .await?;
         let (snapshot, barrier, observation) = host
             .schedules
             .connections

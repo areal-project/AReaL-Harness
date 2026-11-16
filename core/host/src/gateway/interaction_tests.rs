@@ -1292,6 +1292,58 @@ async fn conversation_open_discards_reply_after_grant_or_core_generation_changes
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn project_activation_requires_submit_but_not_manage_and_preserves_explicit_stop() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let f = Fixture::new().await;
+            f.grant("a", |grant| {
+                grant["capabilities"] = json!(["observe", "submit"])
+            });
+            let request = f.request("project.activate", json!({}), None);
+            let ready = f.session("a").request(&request).await.unwrap();
+            assert_eq!(ready["state"], "ready");
+            assert_eq!(ready["serviceGeneration"], "core-generation");
+            f.host.schedules.suppress("project", true).unwrap();
+            let stopped = f.session("a").request(&request).await.unwrap();
+            assert_eq!(stopped["state"], "blocked");
+            assert_eq!(stopped["reason"], "explicitlyStopped");
+            f.grant("a", |grant| grant["capabilities"] = json!(["observe"]));
+            assert_eq!(
+                f.session("a")
+                    .request(&request)
+                    .await
+                    .unwrap_err()
+                    .to_string(),
+                "FORBIDDEN"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn project_activation_reconciles_the_original_unknown_ensure_without_replay() {
+    tokio::task::LocalSet::new().run_until(async {
+        let f = Fixture::new().await;
+        let gate = f.host.gate("project").unwrap();
+        let _starting = gate.write().await;
+        { let mut slots = f.host.slots.borrow_mut(); let slot = slots.get_mut("project").unwrap();
+          slot.state = "starting".into(); slot.service = None; }
+        let original = uuid::Uuid::new_v4().to_string();
+        storage::write(&crate::wire::operation_path(&f.host.home, &original), &json!({
+            "digest":"original", "receipt":{"requestId":original,"method":"project.ensure","projectId":"project","state":"acceptedPending"},"evidence":{}
+        })).unwrap();
+        let request = f.request("project.activate", json!({}), None);
+        for _ in 0..2 {
+            let pending = f.session("a").request(&request).await.unwrap();
+            assert_eq!(pending["state"], "pending");
+            assert_eq!(pending["activationId"], original);
+        }
+        assert_eq!(storage::json_records(&f.host.home.join("host/operations"), false).unwrap().len(), 1);
+        assert!(f.host.gateway.workbench.active_source().is_none());
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn stopped_project_models_are_native_redacted_and_do_not_activate_execution() {
     tokio::task::LocalSet::new().run_until(async {
         let f = Fixture::new().await;

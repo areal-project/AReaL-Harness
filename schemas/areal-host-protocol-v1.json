@@ -11792,7 +11792,8 @@
               "task.question.reply",
               "task.read",
               "turn.stop",
-              "work.list"
+              "work.list",
+              "project.activate"
             ]
           },
           "minItems": 24,
@@ -12484,6 +12485,9 @@
         },
         {
           "$ref": "#/$defs/RemoteShellUnsubscribeRequest"
+        },
+        {
+          "$ref": "#/$defs/RemoteProjectActivateRequest"
         }
       ]
     },
@@ -12566,6 +12570,9 @@
         },
         {
           "$ref": "#/$defs/ReadSubscriptionClosed"
+        },
+        {
+          "$ref": "#/$defs/RemoteProjectActivateResult"
         }
       ]
     },
@@ -66035,6 +66042,91 @@
           "state": "armed"
         }
       ]
+    },
+    "RemoteProjectActivateParams": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "RemoteProjectActivateRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 64
+        },
+        "method": {
+          "type": "string",
+          "const": "project.activate"
+        },
+        "params": {
+          "$ref": "#/$defs/RemoteProjectActivateParams"
+        },
+        "context": {
+          "$ref": "#/$defs/RemoteExactContext"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params",
+        "context"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "example",
+          "method": "project.activate",
+          "params": {},
+          "context": {
+            "projectId": "example"
+          }
+        }
+      ]
+    },
+    "RemoteProjectActivateResult": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "activationId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "pending",
+            "blocked"
+          ]
+        },
+        "serviceGeneration": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "explicitlyStopped",
+            "activationIncomplete"
+          ]
+        }
+      },
+      "required": [
+        "projectId",
+        "state"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "projectId": "example",
+          "state": "blocked",
+          "reason": "explicitlyStopped"
+        }
+      ]
     }
   },
   "x-current": {
@@ -66648,6 +66740,11 @@
           "source": "core/host/src/workbench_route.rs",
           "capability": "gui-write-v1",
           "x-owner": "workbench"
+        },
+        "project.activate": {
+          "request": "#/$defs/RemoteProjectActivateRequest",
+          "result": "#/$defs/RemoteProjectActivateResult",
+          "source": "core/host/src/gateway/activate.rs"
         }
       },
       "hello": "#/$defs/RemoteHello",

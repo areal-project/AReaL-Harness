@@ -622,11 +622,21 @@ export function createHostReadServices(
               code: "STALE_CONNECTION",
             });
         };
-        const result = await hostCommand("connect", {
-          projectId: project.id,
-          threadId: params.threadId,
-        });
-        if (!result.ok) throw result.error;
+        const activation = await client.query("project.activate", project.hostProjectId, {});
+        if (!object(activation) || activation.projectId !== project.hostProjectId)
+          throw new Error("Invalid project activation response");
+        if (activation.state !== "ready")
+          throw Object.assign(
+            new Error(
+              activation.reason === "explicitlyStopped"
+                ? "项目已停止，请先恢复项目。"
+                : "项目启动尚未完成，消息尚未提交，草稿已保留。",
+            ),
+            {
+              code: activation.state === "pending" ? "ACTIVATION_PENDING" : "ACTIVATION_BLOCKED",
+              activationId: activation.activationId,
+            },
+          );
         requireOriginal();
         await client.refreshShell();
         requireOriginal();
