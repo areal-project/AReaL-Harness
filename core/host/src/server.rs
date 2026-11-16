@@ -10,6 +10,8 @@ mod space_import;
 #[path = "vault_liveness_tests.rs"]
 mod vault_liveness_tests;
 pub(crate) use gateway_owner::error_code;
+#[path = "idle.rs"]
+mod idle;
 #[path = "library_commands.rs"]
 mod library_commands;
 #[path = "library_service.rs"]
@@ -98,6 +100,7 @@ impl HostExit {
     }
 }
 struct Slot {
+    idle: idle::IdleWindow,
     registration: ProjectRegistration,
     // 状态与活动观察可以并行；激活、停止和凭据切换仍需独占项目。
     gate: Arc<RwLock<()>>,
@@ -111,6 +114,7 @@ struct Slot {
     imported_credentials: BTreeSet<String>,
 }
 struct Host {
+    clients: RefCell<BTreeSet<String>>,
     home: PathBuf,
     bin: PathBuf,
     identity: HostIdentity,
@@ -133,6 +137,7 @@ struct Host {
 impl Slot {
     fn imported(registration: ProjectRegistration) -> Self {
         Self {
+            idle: Default::default(),
             registration,
             gate: Arc::new(RwLock::new(())),
             writer: None,
@@ -153,6 +158,8 @@ struct ConnectionGuard {
 }
 impl Drop for ConnectionGuard {
     fn drop(&mut self) {
+        self.host.clients.borrow_mut().remove(&self.id);
+        self.host.changed();
         self.host
             .schedules
             .connections
@@ -334,6 +341,7 @@ pub(crate) async fn run_local_mode(
         slots.insert(
             registration.project_id.clone(),
             Slot {
+                idle: Default::default(),
                 registration,
                 gate: Arc::new(RwLock::new(())),
                 writer: None,
@@ -378,6 +386,7 @@ pub(crate) async fn run_local_mode(
         slots: RefCell::new(slots),
         stop: RefCell::new(stop),
         host_stop_gate: Mutex::new(()),
+        clients: Default::default(),
         changes,
         exit: Notify::new(),
         migration: migration.into(),
@@ -420,9 +429,12 @@ pub(crate) async fn run_local_mode(
     let gateway = gateway_owner::run(host.clone());
     let subscriptions = host.run_subscriptions();
     let power = power::run(host.clone());
+    // 生命周期巡检持有停止操作 future；堆上固定，避免把完整清理状态机叠进 Host 主循环栈。
+    let idle = Box::pin(idle::run(host.clone()));
+    let release = Box::pin(idle::release_unused(host.clone()));
     let discovery = crate::service_run::until_discovery_lost(&host.home, &host.identity.generation);
     tokio::pin!(scheduler, connections, gateway);
-    tokio::pin!(subscriptions, power, discovery);
+    tokio::pin!(subscriptions, power, discovery, idle, release);
     let orphaned = loop {
         tokio::select! {
             _=host.exit.notified()=>break false,
@@ -438,6 +450,8 @@ pub(crate) async fn run_local_mode(
             _=&mut gateway=>unreachable!("Gateway lives with the Host"),
             _=&mut subscriptions=>unreachable!("subscription owners live with the Host"),
             _=&mut power=>unreachable!("power protection lives with the Host"),
+            _=&mut idle=>unreachable!("idle collection lives with the Host"),
+            _=&mut release=>unreachable!("release policy lives with the Host"),
             connection=listener.accept()=> {let (stream,_)=connection?;let host=host.clone();tokio::task::spawn_local(async move {let _=connection_loop(host,stream).await;});}
         }
     };
@@ -513,6 +527,7 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
         id: uuid::Uuid::new_v4().to_string(),
         socket,
     };
+    host.clients.borrow_mut().insert(connection.id.clone());
     let mut subscription: Option<(String, u64)> = None;
     let mut changes = host.changes.subscribe();
     let mut tick = tokio::time::interval(Duration::from_secs(1));
@@ -1256,6 +1271,7 @@ impl Host {
             serde_json::from_value::<areal_protocol::host::LocalBackendEnsureParams>(
                 params.clone(),
             )?;
+            self.retain_for_gui()?;
             return self
                 .gateway
                 .workbench
@@ -1268,6 +1284,7 @@ impl Host {
         }
         if method == "web.ticket" {
             let input: areal_protocol::host::LocalWebTicketParams = serde_json::from_value(params)?;
+            let gui = input.origin == "areal-ui://app" && input.profile.is_some();
             let preferred = input
                 .profile
                 .as_deref()
@@ -1278,6 +1295,9 @@ impl Host {
                 .transpose()?
                 .flatten();
             let mut ticket = self.loopback.ticket(input)?;
+            if gui {
+                self.retain_for_gui()?;
+            }
             ticket.preferred_source_id = preferred;
             return Ok(serde_json::to_value(ticket)?);
         }
@@ -1414,6 +1434,7 @@ impl Host {
             "project.ensure" => self.ensure(serde_json::from_value(params)?).await,
             "project.stop" => self.stop_project(serde_json::from_value(params)?).await,
             "host.stop" => self.stop_host(serde_json::from_value(params)?).await,
+            "host.release" => self.release_when_unused(serde_json::from_value(params)?),
             "host.operation" => {
                 let query: OperationQuery = serde_json::from_value(params)?;
                 wire::request_id(&query.request_id)?;
@@ -1583,6 +1604,7 @@ impl Host {
             slots.insert(
                 r.project_id.clone(),
                 Slot {
+                    idle: Default::default(),
                     registration: r.clone(),
                     gate: Arc::new(RwLock::new(())),
                     writer: None,
@@ -1742,6 +1764,7 @@ impl Host {
                     })
             });
             if !reusing_ready {
+                slot.idle.reset();
                 slot.state = "starting".into();
             }
         }

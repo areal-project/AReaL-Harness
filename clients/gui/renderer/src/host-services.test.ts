@@ -337,6 +337,149 @@ it("projects execution read failures onto the logical project without changing t
   }
 });
 describe("Host renderer read authority", () => {
+  it.each([false, true, "leave"] as const)(
+    "activates a persisted conversation on submit with concurrent shell refresh=%s",
+    async (backgroundRefresh) => {
+      const page = new EventTarget();
+      vi.stubGlobal("window", page);
+      let phase = "stopped";
+      let persistedReads = 0;
+      const observedStates: string[] = [];
+      const events: string[] = [];
+      const wire = transport({
+        ...observation,
+        thread: { ...observation.thread, desktop: { configuration: { revision: 9 } } },
+      });
+      const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+        const base = await wire.factory(lifecycle);
+        return {
+          ...base,
+          identity: {
+            ...base.identity,
+            persistedHistory: true,
+            writeMethods: ["desktop.command", "session.send"],
+          },
+          transport: {
+            ...base.transport,
+            async request(method, params, context) {
+              if (method === "shell.subscribe") {
+                observedStates.push(phase);
+                return {
+                  ...identity,
+                  subscriptionId: "shell",
+                  snapshot: {
+                    projects: [
+                      {
+                        ...project,
+                        state: phase,
+                        serviceGeneration: phase === "ready" ? "core-gen" : undefined,
+                      },
+                    ],
+                    navigation: [navigation],
+                  },
+                };
+              }
+              if (method === "session.openPersisted") {
+                persistedReads++;
+                if (phase !== "stopped")
+                  throw Object.assign(Error("history busy during activation"), {
+                    code: "RESOURCE_BUSY",
+                  });
+                return {
+                  ...identity,
+                  ...context,
+                  serviceGeneration: "old-gen",
+                  threadId: params.threadId,
+                  snapshot: {
+                    ...observation,
+                    thread: { ...observation.thread, desktop: { configuration: { revision: 7 } } },
+                  },
+                  access: { kind: "persisted", readOnly: true, snapshotId: "saved" },
+                };
+              }
+              if (method === "session.open") {
+                events.push("live-read");
+                expect(phase).toBe("ready");
+              }
+              return base.transport.request(method, params, context);
+            },
+            async write(method, params, _context, commandId) {
+              if (method === "desktop.command") {
+                if (params.command !== "connect") return {};
+                events.push(method);
+                expect(params).toMatchObject({
+                  command: "connect",
+                  request: { projectId: "alias", threadId: "thread" },
+                });
+                if (backgroundRefresh === true) {
+                  phase = "starting";
+                  wire.send({
+                    ...identity,
+                    subscriptionId: "shell",
+                    event: "shell.invalidated",
+                    sequence: 1,
+                  });
+                  await vi.waitFor(() => expect(observedStates.at(-1)).toBe("starting"));
+                  expect(persistedReads).toBe(1);
+                  phase = "ready";
+                  wire.send({
+                    ...identity,
+                    subscriptionId: "shell",
+                    event: "shell.invalidated",
+                    sequence: 1,
+                  });
+                  await vi.waitFor(async () =>
+                    expect(
+                      (await services.snapshot()).projects[0].state.threads.thread
+                        ?.persistedHistory,
+                    ).not.toBe(true),
+                  );
+                } else phase = "ready";
+                if (backgroundRefresh === "leave") await services.reads!.selectSession(null);
+                return {};
+              }
+              events.push(method);
+              expect(phase).toBe("ready");
+              expect(params).toMatchObject({ expectedConfigRevision: 9 });
+              return {
+                admissionState: "accepted",
+                commandId,
+                method,
+                target: { threadId: "thread" },
+                nativeRequestId: commandId,
+              };
+            },
+          },
+        };
+      };
+      const services = createHostReadServices(undefined, options(factory));
+      try {
+        await until(services);
+        await services.reads!.selectSession({
+          projectId: "alias",
+          threadId: "thread",
+          persisted: true,
+        });
+        expect(events).toEqual([]);
+        const submitted = services.writes!.route("send", {
+          projectId: "alias",
+          threadId: "thread",
+          text: "continue",
+          requestId: crypto.randomUUID(),
+        });
+        if (backgroundRefresh === "leave") {
+          await expect(submitted).rejects.toMatchObject({ code: "STALE_CONNECTION" });
+          expect(events).toEqual(["desktop.command"]);
+          return;
+        }
+        await submitted;
+        expect(events).toEqual(["desktop.command", "live-read", "session.send"]);
+      } finally {
+        page.dispatchEvent(new Event("pagehide"));
+        vi.unstubAllGlobals();
+      }
+    },
+  );
   it("projects a stopped project's persisted history as read-only without marking it connected", async () => {
     const page = new EventTarget();
     vi.stubGlobal("window", page);

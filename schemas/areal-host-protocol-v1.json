@@ -12221,6 +12221,9 @@
         },
         {
           "$ref": "#/$defs/LocalWebRevokeRequest"
+        },
+        {
+          "$ref": "#/$defs/LocalHostReleaseRequest"
         }
       ]
     },
@@ -66072,6 +66075,90 @@
           "$ref": "#/$defs/WorkbenchManagedPluginDetail"
         }
       ]
+    },
+    "LocalHostReleaseParams": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "expectedGeneration": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "requestId",
+        "expectedGeneration"
+      ],
+      "additionalProperties": false
+    },
+    "LocalHostReleaseRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "host.release"
+        },
+        "params": {
+          "$ref": "#/$defs/LocalHostReleaseParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "version": 1,
+          "id": "example",
+          "method": "host.release",
+          "params": {
+            "requestId": "11111111-1111-4111-8111-111111111111",
+            "expectedGeneration": "example"
+          }
+        }
+      ]
+    },
+    "LocalHostReleaseResult": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "generation": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string",
+          "const": "armed"
+        }
+      },
+      "required": [
+        "requestId",
+        "generation",
+        "state"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "requestId": "11111111-1111-4111-8111-111111111111",
+          "generation": "example",
+          "state": "armed"
+        }
+      ]
     }
   },
   "x-current": {
@@ -66369,6 +66456,11 @@
           "request": "#/$defs/LocalRecoveryProviderImportRequest",
           "result": "#/$defs/RecoveryProviderImportResult",
           "source": "core/host/src/space.rs"
+        },
+        "host.release": {
+          "request": "#/$defs/LocalHostReleaseRequest",
+          "result": "#/$defs/LocalHostReleaseResult",
+          "source": "core/host/src/idle.rs"
         }
       },
       "framing": {

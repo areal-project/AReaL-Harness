@@ -60,6 +60,7 @@ async function fixture(t, extraCapabilities = []) {
               capabilities: [
                 ...extraCapabilities,
                 "activity",
+                "idleReleaseV1",
                 "stopOperations",
                 "guiImport",
                 "projects",
@@ -67,7 +68,9 @@ async function fixture(t, extraCapabilities = []) {
                 "scheduledPreparation",
               ],
             };
-          } else if (handler) result = await handler(request, socket);
+          } else if (request.method === "host.release")
+            result = { requestId: request.params.requestId, generation, state: "armed" };
+          else if (handler) result = await handler(request, socket);
           else result = { operation: operations.get(request.params.requestId) ?? null };
           if (!socket.destroyed)
             socket.write(JSON.stringify({ version: 1, id: request.id, result }) + "\n");
@@ -119,6 +122,25 @@ async function fixture(t, extraCapabilities = []) {
     },
   };
 }
+
+test("ordinary quit arms the original reclamation request without stopping a shared Host", async (t) => {
+  const f = await fixture(t);
+  await f.backend.completeApplicationQuit({ keepBackground: true });
+  const reopened = new SharedCoreBackend({
+    app: { getPath: () => f.profile },
+    home: f.home,
+    hostHome: f.hostHome,
+  });
+  await reopened.completeApplicationQuit({ keepBackground: true });
+  const requests = f.calls.filter((request) => request.method === "host.release");
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].params.requestId, requests[1].params.requestId);
+  assert.equal(requests[0].params.expectedGeneration, f.generation);
+  assert.equal(
+    f.calls.some((request) => request.method === "host.stop"),
+    false,
+  );
+});
 for (const action of ["prepare", "apply"]) {
   test(`Host update ${action} settles its original wrapped receipt after reconnect`, async (t) => {
     const f = await fixture(t, ["updates"]);

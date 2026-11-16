@@ -323,6 +323,8 @@ export class HostClient {
         b = find(value, id);
       return a?.serviceGeneration !== b?.serviceGeneration || a?.state !== b?.state;
     });
+    // 持久化快照在执行启动中仍可读；等 Core 就绪再切换，不能重开已经被执行占用的 Store。
+    if (this.#target?.persisted && after?.state !== "ready") return;
     if (
       !this.#target ||
       (before?.serviceGeneration === after?.serviceGeneration && before?.state === after?.state)
@@ -458,7 +460,7 @@ export class HostClient {
       target &&
       target.projectId === this.#target?.projectId &&
       target.threadId === this.#target.threadId &&
-      target.persisted === this.#target.persisted
+      (target.persisted === true) === (this.#target.persisted === true)
     ) {
       const session = this.#reads.session;
       if (

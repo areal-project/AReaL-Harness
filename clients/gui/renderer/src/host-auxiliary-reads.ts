@@ -99,6 +99,7 @@ export function refreshInspections(
   }
   const owner = flights;
   for (const project of projects) {
+    if (!project.state.connected) continue;
     for (const threadId of Object.keys(project.state.threads)) {
       const configuration = project.state.threads[threadId]?.desktop?.configuration;
       if (!object(configuration)) continue;

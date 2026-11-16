@@ -282,7 +282,8 @@ function ActiveConversation() {
     setError,
   } = useConversationContext();
   const { project, thread, threadId, library, snapshot, resourceAction } = session;
-  const readOnly = useReadOnly() || session.readOnly;
+  const platformReadOnly = useReadOnly();
+  const readOnly = platformReadOnly || session.readOnly;
   const conversationSubmitReadOnly = useConversationSubmitReadOnly();
   const conversationCreateReadOnly = useConversationCreateReadOnly();
   const panelOwner = `${project?.id ?? ""}:${threadId}`;
@@ -373,101 +374,106 @@ function ActiveConversation() {
           onAgent={(id) => showPanel(`agent:${id}`)}
         />
       )}
-      {!conversationSubmitReadOnly && !session.readOnly && (!thread.cloud || !readOnly) && (
-        <div className={empty ? "draft-composer" : "active-composer"}>
-          {empty && (
-            <div className="composer-project-bar">
-              <div className="composer-project-leading">
-                <div className="composer-project">
-                  <ProjectFolderIcon />
-                  <span>
-                    {library.projects?.[project.id]?.title ||
-                      (project.projectless
-                        ? thread?.title || t("operations.schedules.newTitle")
-                        : project.root.split("/").pop())}
-                  </span>
+      {!conversationSubmitReadOnly &&
+        (!session.readOnly ||
+          (!platformReadOnly &&
+            "persistedHistory" in thread &&
+            thread.persistedHistory === true)) &&
+        (!thread.cloud || !readOnly) && (
+          <div className={empty ? "draft-composer" : "active-composer"}>
+            {empty && (
+              <div className="composer-project-bar">
+                <div className="composer-project-leading">
+                  <div className="composer-project">
+                    <ProjectFolderIcon />
+                    <span>
+                      {library.projects?.[project.id]?.title ||
+                        (project.projectless
+                          ? thread?.title || t("operations.schedules.newTitle")
+                          : project.root.split("/").pop())}
+                    </span>
+                  </div>
+                  {!readOnly && (
+                    <ComposerWorkspaceContext
+                      project={project}
+                      threadId={thread?.id}
+                      cloud={!!thread.cloud}
+                      action={resourceAction}
+                      backendReady={snapshot.connection?.state === "ready"}
+                    />
+                  )}
                 </div>
-                {!readOnly && (
-                  <ComposerWorkspaceContext
-                    project={project}
-                    threadId={thread?.id}
-                    cloud={!!thread.cloud}
-                    action={resourceAction}
-                    backendReady={snapshot.connection?.state === "ready"}
-                  />
-                )}
               </div>
-            </div>
-          )}
-          {(pendingSide || sideError) && (
-            <FeedbackNotice
-              tone={pendingSide ? "warning" : "error"}
-              requestId={pendingSide?.requestId}
-              message={sideError || t("chat.side.createUnconfirmed")}
-              actions={
-                pendingSide && (
-                  <Button variant="ghost" size="sm" onClick={newSide}>
-                    {t("chat.side.inspectCreation")}
-                  </Button>
-                )
-              }
-            />
-          )}
-          {!thread.cloud && mcpWorkspace.contexts}
-          {!thread.cloud && mcpWorkspace.formsView}
-          {!thread.cloud && mcpMentionsOpen && (
-            <McpMentionsPicker
-              servers={mcpWorkspace.servers}
-              projectId={project.id}
-              threadId={thread.id}
-              action={resourceAction}
-              onClose={() => setMcpMentionsOpen(false)}
-            />
-          )}
-          {thread.cloud ? (
-            <CloudComposer
-              key={`${project.id}:${thread.id}`}
-              project={project}
-              thread={thread}
-              action={resourceAction}
-            />
-          ) : (
-            <Composer
-              surfaceLayout={workspaceView === "panel" ? "compact" : "default"}
-              surfacePlacement={empty ? "home" : "thread"}
-              onAnnotate={openImageAnnotation}
-              key={`${project.id}:${thread.id}`}
-              onMcpMention={() => setMcpMentionsOpen(true)}
-              appEntries={appEntries}
-              conversationReferences={conversationReferences}
-              project={project}
-              thread={thread}
-              executionBlocked={
-                snapshot.connection?.state !== "ready" ||
-                viewRefreshing ||
-                projectExecutionBlocked(snapshot.lifecycle, project.id)
-              }
-              action={action}
-              readAction={resourceAction}
-              onPanel={showPanel}
-              onSide={
-                !readOnly && canCreateSide
-                  ? async (text) => {
-                      await createSide(text);
-                    }
-                  : undefined
-              }
-              onNew={() => {
-                if (!conversationCreateReadOnly) void newTask();
-              }}
-              onOpenTask={(target) => {
-                surfaces.leaveSettings();
-                tasks.openTarget({ ...target, eventId: crypto.randomUUID() });
-              }}
-            />
-          )}
-        </div>
-      )}
+            )}
+            {(pendingSide || sideError) && (
+              <FeedbackNotice
+                tone={pendingSide ? "warning" : "error"}
+                requestId={pendingSide?.requestId}
+                message={sideError || t("chat.side.createUnconfirmed")}
+                actions={
+                  pendingSide && (
+                    <Button variant="ghost" size="sm" onClick={newSide}>
+                      {t("chat.side.inspectCreation")}
+                    </Button>
+                  )
+                }
+              />
+            )}
+            {!thread.cloud && mcpWorkspace.contexts}
+            {!thread.cloud && mcpWorkspace.formsView}
+            {!thread.cloud && mcpMentionsOpen && (
+              <McpMentionsPicker
+                servers={mcpWorkspace.servers}
+                projectId={project.id}
+                threadId={thread.id}
+                action={resourceAction}
+                onClose={() => setMcpMentionsOpen(false)}
+              />
+            )}
+            {thread.cloud ? (
+              <CloudComposer
+                key={`${project.id}:${thread.id}`}
+                project={project}
+                thread={thread}
+                action={resourceAction}
+              />
+            ) : (
+              <Composer
+                surfaceLayout={workspaceView === "panel" ? "compact" : "default"}
+                surfacePlacement={empty ? "home" : "thread"}
+                onAnnotate={openImageAnnotation}
+                key={`${project.id}:${thread.id}`}
+                onMcpMention={() => setMcpMentionsOpen(true)}
+                appEntries={appEntries}
+                conversationReferences={conversationReferences}
+                project={project}
+                thread={thread}
+                executionBlocked={
+                  snapshot.connection?.state !== "ready" ||
+                  viewRefreshing ||
+                  projectExecutionBlocked(snapshot.lifecycle, project.id)
+                }
+                action={action}
+                readAction={resourceAction}
+                onPanel={showPanel}
+                onSide={
+                  !readOnly && canCreateSide
+                    ? async (text) => {
+                        await createSide(text);
+                      }
+                    : undefined
+                }
+                onNew={() => {
+                  if (!conversationCreateReadOnly) void newTask();
+                }}
+                onOpenTask={(target) => {
+                  surfaces.leaveSettings();
+                  tasks.openTarget({ ...target, eventId: crypto.randomUUID() });
+                }}
+              />
+            )}
+          </div>
+        )}
     </>
   );
 }

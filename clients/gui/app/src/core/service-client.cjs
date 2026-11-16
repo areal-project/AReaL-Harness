@@ -7,7 +7,7 @@ const {
 } = require("@areal/workbench-service/desktop/core/receipt-contract.cjs");
 const { commandSemantics, desktopError } = require("@areal/workbench/desktop-contract");
 const { startupTrace } = require("@areal/workbench-service/desktop/core/startup-timing.cjs");
-const { randomUUID } = require("node:crypto");
+const { createHash, randomUUID } = require("node:crypto");
 const { mkdir, readFile, realpath, rm } = require("node:fs/promises");
 const { join } = require("node:path");
 const { HostClient, executeHost } = require("@areal/client/node");
@@ -1515,7 +1515,45 @@ class SharedCoreBackend {
   }
   /** @param {{keepBackground?:boolean}} [options] */
   async completeApplicationQuit({ keepBackground = false } = {}) {
-    if (keepBackground) return;
+    if (keepBackground) {
+      if (!this.options.hostHome) return;
+      if (
+        [...this.hostReferences.values()].some(
+          (reference) => this.hostReceipts.get(reference.requestId)?.state !== "completed",
+        ) ||
+        [...this.lifecycleReferences.values()].some(
+          (reference) => this.lifecycleReceipts.get(reference.requestId)?.phase !== "completed",
+        )
+      )
+        return;
+      const client = new HostClient();
+      try {
+        try {
+          // 退出只释放既有 Host；不能为了退出启动另一代后台。
+          await client.connect(this.options.hostHome);
+        } catch (error) {
+          if (["ENOENT", "ECONNREFUSED"].includes(String(desktopError(error).code))) return;
+          throw error;
+        }
+        // 同一 Host 代际和 GUI 来源跨重开复用原请求；响应丢失不能换 ID。
+        const digest = createHash("sha256")
+          .update(
+            JSON.stringify(["release", client.hostId, client.generation, this.options.guiProfile]),
+          )
+          .digest("hex");
+        const requestId = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-${digest.slice(12, 16)}-${digest.slice(16, 20)}-${digest.slice(20, 32)}`;
+        const released = await client.releaseWhenUnused(requestId);
+        if (
+          released.state !== "armed" ||
+          released.requestId !== requestId ||
+          released.generation !== client.generation
+        )
+          throw new Error("后台退出策略尚未确认，请核查原请求后重试。");
+        return;
+      } finally {
+        client.close();
+      }
+    }
     for (const reference of this.hostReferences.values()) {
       if (this.hostReceipts.get(reference.requestId)?.state !== "completed")
         throw Object.assign(new Error("原 Host 停止请求尚未完成"), {

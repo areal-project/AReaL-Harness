@@ -204,7 +204,7 @@ GUI 的 `history-observation` 委托 `catalog-observation` 按项目、连接和
 
 ## 仓库目录
 
-桌面客户端归属见[迁移决策](../adr/0001-desktop-client-module.md)。`clients/gui` 的 Electron 外壳通过共享 Host 连接项目 Core，提供系统原生能力。关闭窗口保留应用；普通退出释放 GUI 连接及其桌面工具资源，Host 继续监督 Core 和已受理工作。GUI 构建、数据隔离与本地包见 [GUI 指南](../../clients/gui/README.md)。iOS/Android Remote 客户端位于 `clients/mobile`，Web、iOS 与 Android 通过 `@areal/remote-client` 共享协议、命令核对与会话状态；平台分别提供 IndexedDB、Keychain 与 Android Keystore 持久化适配。执行和历史权威仍在电脑端 Core/Runtime。Android 使用共享移动入口和原生 Keystore 适配，构建、Origin、兼容性和验收边界见 [Android 开发指南](../development/android-development.md)。
+桌面客户端归属见[迁移决策](../adr/0001-desktop-client-module.md)。`clients/gui` 的 Electron 外壳通过共享 Host 连接项目 Core，提供系统原生能力。关闭窗口保留应用；普通退出释放 GUI 连接及其桌面工具资源，并登记 Host 按需回收。其他客户端、活动工作、定时任务、远程接入或自启服务仍有需求时保留后台；无需求时经原停止回执清理退出。Core 连续空闲十五分钟后可休眠，尚依赖其计时的启用任务阻止回收。GUI 构建、数据隔离与本地包见 [GUI 指南](../../clients/gui/README.md)。iOS/Android Remote 客户端位于 `clients/mobile`，Web、iOS 与 Android 通过 `@areal/remote-client` 共享协议、命令核对与会话状态；平台分别提供 IndexedDB、Keychain 与 Android Keystore 持久化适配。执行和历史权威仍在电脑端 Core/Runtime。Android 使用共享移动入口和原生 Keystore 适配，构建、Origin、兼容性和验收边界见 [Android 开发指南](../development/android-development.md)。
 
 GUI的混合消息采用可重建展示投影：Markdown沿Streamdown，严格版本化`areal-ui`数据由共享UI目录校验并以只读React组件展示，Gen UI/MCP仍由原隔离宿主处理。Core保留原始消息和制品权威，复制可使用同一文字投影；这不是持久历史迁移或可执行组件协议。审批和Ask User共享展示外壳，合法动作、草稿、提交锁与UNKNOWN核对仍归原请求控制器。
 

@@ -46,7 +46,14 @@ vi.mock("./components/ui/button.js", () => ({
 }));
 vi.mock("./i18n/IntlProvider.js", () => ({ useI18n: () => ({ t: (id: string) => id }) }));
 
-function fixture(plan = false, file = false, running = false, empty = false, web = false) {
+function fixture(
+  plan = false,
+  file = false,
+  running = false,
+  empty = false,
+  web = false,
+  persisted = false,
+) {
   const projectId = crypto.randomUUID();
   const key = `areal-gui:draft:${projectId}:thread`;
   const owner = JSON.stringify([projectId, "thread", false]);
@@ -54,6 +61,7 @@ function fixture(plan = false, file = false, running = false, empty = false, web
   const config = { revision: 1, options: planModeOptions(plan) };
   const thread = {
     id: "thread",
+    ...(persisted ? { persistedHistory: true } : {}),
     turns: empty
       ? []
       : [
@@ -81,7 +89,7 @@ function fixture(plan = false, file = false, running = false, empty = false, web
         models: [],
         pending: [],
         configurations: { thread: config },
-        state: { connected: true, threads: { thread }, interactions: {}, queues: {} },
+        state: { connected: !persisted, threads: { thread }, interactions: {}, queues: {} },
       },
       thread,
       action: action as Action,
@@ -104,6 +112,15 @@ function fixture(plan = false, file = false, running = false, empty = false, web
 }
 
 describe("Composer reading intent across unknown boundaries", () => {
+  it("allows drafting and submitting from persisted history without claiming a live connection", async () => {
+    const f = fixture(false, false, false, false, false, true);
+    expect(observed.composer?.disabled).toBe(false);
+    observed.submit!("wake and continue");
+    await vi.waitFor(() => expect(f.action).toHaveBeenCalledOnce());
+    expect(f.action.mock.calls[0][0]).toBe("send");
+    await vi.waitFor(() => expect(sending.has(f.key)).toBe(false));
+    readingViews.delete(f.owner);
+  });
   it.each(["upload", "configure", "send"] as const)(
     "keeps intent only when %s reaches send",
     async (boundary) => {

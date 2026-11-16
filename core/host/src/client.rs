@@ -214,6 +214,13 @@ impl Client {
     pub async fn activity(&self) -> Result<Activity> {
         self.call("host.activity", json!({})).await
     }
+    pub async fn release_when_unused(&self, request_id: &str) -> Result<Value> {
+        self.call(
+            "host.release",
+            json!({"requestId":request_id,"expectedGeneration":self.identity.generation}),
+        )
+        .await
+    }
     pub async fn update_status(&self) -> Result<Value> {
         self.call("host.updateStatus", json!({})).await
     }

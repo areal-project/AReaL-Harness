@@ -269,7 +269,8 @@ export function useSessionNavigation(
                     throw error;
                 }
                 if (!current()) return;
-                if (persisted && services.capabilities?.mutations === false) {
+                // 阅读停止项目到此完成；写入入口再唤醒执行，导航不预热重进程。
+                if (persisted) {
                   setRestoration({ ...owner, pending: false, error: "" });
                   return;
                 }
@@ -418,6 +419,8 @@ export function useSessionNavigation(
       snapshot.connection?.state !== "ready"
     )
       return;
+    // Host 读取客户端会在执行就绪后升级持久化订阅；导航不能在换代中再开一条读取。
+    if (thread && "persistedHistory" in thread && thread.persistedHistory === true) return;
     const previous = restorationAttempt.current;
     const owner = {
       projectId: project.id,

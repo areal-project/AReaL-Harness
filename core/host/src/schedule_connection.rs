@@ -399,6 +399,11 @@ fn emit_workbench_event(host: &Host, project: &str, lease: &str, event: &Value) 
 }
 
 fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
+    if connection.shared_current(host)
+        && let Some(slot) = host.slots.borrow_mut().get_mut(&connection.project_id)
+    {
+        slot.idle.reset();
+    }
     if value["method"] == "areal/model/catalogChanged" && connection.shared_current(host) {
         connection
             .model_revision

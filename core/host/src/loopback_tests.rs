@@ -69,6 +69,7 @@ impl Fixture {
             slots: RefCell::new(BTreeMap::new()),
             stop: RefCell::new(None),
             host_stop_gate: Mutex::new(()),
+            clients: Default::default(),
             changes,
             exit: Notify::new(),
             migration: migration.into(),

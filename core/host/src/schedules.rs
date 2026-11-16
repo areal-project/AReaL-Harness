@@ -333,7 +333,10 @@ async fn activate(host: &Host, id: &str) -> Result<()> {
     result?;
     Ok(())
 }
-async fn enabled_catalog(bin: &Path, registration: &ProjectRegistration) -> Result<bool> {
+pub(super) async fn enabled_catalog(
+    bin: &Path,
+    registration: &ProjectRegistration,
+) -> Result<bool> {
     let mut command = TrustedCommand::supervised(&bin.join("areal"), &[])?;
     command
         .env_clear()
@@ -455,6 +458,7 @@ pub(super) mod tests {
             )])),
             stop: RefCell::new(None),
             host_stop_gate: Mutex::new(()),
+            clients: Default::default(),
             changes,
             exit: Notify::new(),
             migration: crate::migration::Migration::new(&home).unwrap().into(),

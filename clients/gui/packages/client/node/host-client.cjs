@@ -215,6 +215,11 @@ class HostClient {
     this.requireCapability("activity");
     return this.request("host.activity", {});
   }
+  /** @param {string} requestId */
+  releaseWhenUnused(requestId) {
+    this.requireCapability("idleReleaseV1");
+    return this.request("host.release", { requestId, expectedGeneration: this.generation });
+  }
   /** @param {string} requestId @param {string} generation @param {'ifIdle'|'cancel'} strategy */
   stop(requestId, generation, strategy) {
     this.requireCapability("stopOperations");

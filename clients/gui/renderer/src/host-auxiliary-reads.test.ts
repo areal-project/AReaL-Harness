@@ -95,6 +95,7 @@ it("retries a failed configuration inspection for the same revision", async () =
     {
       id: "p",
       state: {
+        connected: true,
         threads: {
           t: { desktop: { configuration: { revision: 2, defaultModelRevision: "original" } } },
         },
@@ -119,7 +120,7 @@ it("does not install an inspection from an older revision or connection", async 
   const project = {
     id: "p",
     core: { serviceGeneration: "g" },
-    state: { threads: { t: { desktop: { configuration: { revision: 1 } } } } },
+    state: { connected: true, threads: { t: { desktop: { configuration: { revision: 1 } } } } },
   };
   const inspections = new Map<
     string,
@@ -148,6 +149,7 @@ it("bounds background inspections so history cannot exhaust Host command admissi
     {
       id: "p",
       state: {
+        connected: true,
         threads: Object.fromEntries(
           Array.from({ length: 40 }, (_, i) => [
             `t${i}`,

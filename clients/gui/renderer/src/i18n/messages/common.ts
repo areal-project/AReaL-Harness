@@ -305,8 +305,8 @@ export const commonMessages = {
     en: "Migration is pending. Other projects remain available.",
   },
   "common.navigation.persistedHistory": {
-    "zh-CN": "当前为只读历史，项目运行状态尚未恢复。",
-    en: "Read-only history. The project's execution state has not been restored.",
+    "zh-CN": "当前显示已保存的历史，发送时恢复会话。",
+    en: "Showing saved history. Sending a message resumes the conversation.",
   },
   "common.navigation.migrationRecovery": {
     "zh-CN": "请先停止旧版本的任务并退出旧版本，再重新打开此项目检查迁移状态。",

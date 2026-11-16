@@ -77,6 +77,7 @@
     "test:context-usage": "node scripts/context-usage-smoke.mjs",
     "test:desktop-upgrade": "node scripts/desktop-upgrade-smoke.mjs",
     "test:desktop-upgrade-unit": "node --test scripts/desktop-upgrade.test.cjs",
+    "test:host-idle": "node scripts/host-idle-smoke.mjs",
     "test:model-selection": "node scripts/model-selection-smoke.mjs",
     "test:history-compat": "node scripts/history-copy-smoke.mjs",
     "test:history-cleanup": "node --test scripts/history-copy-smoke.test.mjs scripts/application-cleanup.test.mjs",

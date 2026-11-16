@@ -295,7 +295,8 @@ export function Composer({
     hadQuestion.current = questions.length > 0;
   }, [questions.length]);
   const baseDisabled =
-    !project.state?.connected ||
+    (!project.state?.connected &&
+      !("persistedHistory" in thread && thread.persistedHistory === true)) ||
     !!project.observationErrors?.[thread.id] ||
     archived ||
     (busy && !configuring) ||

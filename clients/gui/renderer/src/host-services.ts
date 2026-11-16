@@ -599,6 +599,39 @@ export function createHostReadServices(
           },
         };
       }
+      if (
+        project &&
+        typeof params.threadId === "string" &&
+        project.state.threads[params.threadId]?.persistedHistory === true &&
+        ["send", "configure", "media"].includes(name)
+      ) {
+        const original = readingWindow?.session;
+        const connection = client.snapshot();
+        const requireOriginal = () => {
+          const selected = client.readsSnapshot().sessionTarget;
+          const current = client.snapshot();
+          if (
+            !original ||
+            connection.connection !== "ready" ||
+            current.connection !== "ready" ||
+            current.identity.connectionId !== connection.identity.connectionId ||
+            selected?.projectId !== original.projectId ||
+            selected?.threadId !== params.threadId
+          )
+            throw Object.assign(new Error("会话已切换，输入已保留。"), {
+              code: "STALE_CONNECTION",
+            });
+        };
+        const result = await hostCommand("connect", {
+          projectId: project.id,
+          threadId: params.threadId,
+        });
+        if (!result.ok) throw result.error;
+        requireOriginal();
+        await client.refreshShell();
+        requireOriginal();
+        await reads.selectSession({ projectId: project.id, threadId: params.threadId });
+      }
       const target = hostTarget(params);
       if (!target) return undefined;
       try {

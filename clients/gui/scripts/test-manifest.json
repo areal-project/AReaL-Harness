@@ -1111,6 +1111,15 @@
     "notes": "Build identity replacement and recovery of the original stop receipt. AREAL_UPGRADE_OLD_BIN can select an earlier packaged Host."
   },
   {
+    "script": "test:host-idle",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "Uses isolated real Core/Runtime processes and the production idle TTL on macOS.",
+    "areas": ["lifecycle"],
+    "requires": ["core-binary"],
+    "notes": "Runs for approximately sixteen minutes: idle hibernation, real process exit, preserved scheduling intent, and reactivation of the same project."
+  },
+  {
     "script": "test:desktop-upgrade",
     "layer": "e2e",
     "platforms": ["darwin"],

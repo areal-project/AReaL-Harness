@@ -126,6 +126,8 @@ struct PageConnection {
 }
 impl Drop for PageConnection {
     fn drop(&mut self) {
+        self.host.clients.borrow_mut().remove(&self.connection);
+        self.host.changed();
         self.host
             .gateway
             .workbench
@@ -519,6 +521,7 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
             .iter()
             .any(|capability| capability == "persistedHistoryV1");
     let connection_id = uuid::Uuid::new_v4().to_string();
+    host.clients.borrow_mut().insert(connection_id.clone());
     let _pages = PageConnection {
         host: host.clone(),
         connection: connection_id.clone(),

@@ -4,21 +4,29 @@ import { afterEach, expect, it, vi } from "vite-plus/test";
 import type { PlatformServices, Snapshot } from "../services.js";
 import { useSessionNavigation } from "./useSessionNavigation.js";
 
-const seed = vi.hoisted(() => ({ snapshot: undefined as Snapshot | undefined }));
+const seed = vi.hoisted(() => ({
+  snapshot: undefined as Snapshot | undefined,
+  selectedProject: undefined as string | undefined,
+  stateIndex: 0,
+}));
 vi.mock("react", async (original) => {
   const react = await original<typeof import("react")>();
   return {
     ...react,
-    useState: (initial: unknown) =>
-      react.useState(
-        seed.snapshot && initial && typeof initial === "object" && "projects" in initial
-          ? seed.snapshot
-          : initial,
-      ),
+    useState: (initial: unknown) => {
+      const selected = seed.stateIndex++ === 2 && seed.selectedProject;
+      return react.useState(
+        selected ||
+          (seed.snapshot && initial && typeof initial === "object" && "projects" in initial
+            ? seed.snapshot
+            : initial),
+      );
+    },
   };
 });
 afterEach(() => {
   seed.snapshot = undefined;
+  seed.selectedProject = undefined;
   vi.unstubAllGlobals();
 });
 
@@ -87,34 +95,53 @@ function fixture(
     navigation = useSessionNavigation(services, vi.fn());
     return null;
   }
+  seed.stateIndex = 0;
   renderToStaticMarkup(createElement(Harness));
   if (!navigation) throw Error("Navigation not mounted");
   return { navigation, command, selectSession, recoverPersistedHistory, events, services };
 }
 const owner = { projectId: "saved-project", threadId: "old-thread", connectionGeneration: 0 };
 
-it("shows persisted history before the selected execution finishes connecting", async () => {
-  let release!: () => void;
-  const connected = new Promise<void>((resolve) => {
-    release = resolve;
+it("reads stopped project history without activating its execution", async () => {
+  const f = fixture(
+    true,
+    async () => {
+      throw Error("reading history must not activate Core");
+    },
+    false,
+    true,
+  );
+  await f.navigation.selectConversation(owner.projectId, owner.threadId);
+  expect(f.events).toEqual(["read"]);
+  expect(f.selectSession).toHaveBeenCalledExactlyOnceWith({
+    projectId: owner.projectId,
+    threadId: owner.threadId,
+    persisted: true,
   });
-  const f = fixture(true, () => connected, false, true);
-  const opening = f.navigation.selectConversation(owner.projectId, owner.threadId);
-  try {
-    await vi.waitFor(() => expect(f.events).toEqual(["read", "connect"]));
-    expect(f.selectSession).toHaveBeenCalledWith({
-      projectId: owner.projectId,
-      threadId: owner.threadId,
-      persisted: true,
-    });
-  } finally {
-    release();
-    await opening;
-  }
-  expect(f.selectSession.mock.calls.map(([target]) => target)).toEqual([
-    { projectId: owner.projectId, threadId: owner.threadId, persisted: true },
-    { projectId: owner.projectId, threadId: owner.threadId },
-  ]);
+});
+
+it("does not reopen a persisted reader while its execution changes generation", async () => {
+  seed.selectedProject = owner.projectId;
+  seed.snapshot = {
+    connection: { state: "ready" },
+    projects: [
+      {
+        id: owner.projectId,
+        root: "/fixture",
+        core: { connectionGeneration: "starting-generation" },
+        state: {
+          connected: false,
+          threads: { [owner.threadId]: { id: owner.threadId, persistedHistory: true } },
+        },
+      },
+    ],
+  };
+  const f = fixture(true, async () => {}, false, true);
+  await f.navigation.restoreConversation(owner, "connect");
+  f.navigation.synchronizeRestoration();
+  await Promise.resolve();
+  expect(f.selectSession).toHaveBeenCalledTimes(1);
+  expect(f.command).not.toHaveBeenCalled();
 });
 
 it("uses the live reader when persisted history is locked", async () => {
@@ -154,12 +181,12 @@ it("does not reopen an old conversation after its delayed connection completes",
   const connected = new Promise<void>((resolve) => {
     release = resolve;
   });
-  const f = fixture(true, () => connected, false, true);
+  const f = fixture(true, () => connected);
   const first = f.navigation.selectConversation(owner.projectId, owner.threadId);
-  await vi.waitFor(() => expect(f.events).toEqual(["read", "connect"]));
+  await vi.waitFor(() => expect(f.events).toEqual(["connect"]));
   const second = f.navigation.selectConversation(owner.projectId, "new-thread");
   try {
-    await vi.waitFor(() => expect(f.selectSession).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(f.events).toEqual(["connect", "connect"]));
   } finally {
     release();
     await Promise.all([first, second]);
@@ -247,7 +274,7 @@ it("keeps a user-stopped project blocked until explicit resume", async () => {
   expect(f.selectSession).toHaveBeenCalledTimes(1);
 });
 
-it("opens a persisted read-only history when the old owner blocks activation", async () => {
+it("reads persisted history without probing a blocked execution owner", async () => {
   const f = fixture(
     true,
     async () => {
@@ -262,7 +289,7 @@ it("opens a persisted read-only history when the old owner blocks activation", a
     threadId: owner.threadId,
     persisted: true,
   });
-  expect(f.command).toHaveBeenCalledTimes(1);
+  expect(f.command).not.toHaveBeenCalled();
 });
 
 it.each([
@@ -278,7 +305,7 @@ it.each([
   expect(f.selectSession).not.toHaveBeenCalled();
 });
 
-it("retains the original unknown activation after showing persisted history", async () => {
+it("does not attempt an uncertain activation when persisted history is available", async () => {
   const f = fixture(
     true,
     async () => {
@@ -292,7 +319,7 @@ it("retains the original unknown activation after showing persisted history", as
     true,
   );
   await f.navigation.selectConversation(owner.projectId, owner.threadId);
-  expect(f.command).toHaveBeenCalledTimes(1);
+  expect(f.command).not.toHaveBeenCalled();
   expect(f.selectSession).toHaveBeenCalledExactlyOnceWith({
     projectId: owner.projectId,
     threadId: owner.threadId,

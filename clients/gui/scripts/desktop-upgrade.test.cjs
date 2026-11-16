@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const { join, resolve } = require("node:path");
 const { readFile, writeFile, mkdir, access } = require("node:fs/promises");
 const { randomUUID } = require("node:crypto");
+const { tmpdir } = require("node:os");
 const { setTimeout: delay } = require("node:timers/promises");
 const { trackedMkdtemp } = require("./support/host-cleanup.cjs");
 const { HostClient } = require("../packages/client/node/host-client.cjs");
@@ -14,7 +15,7 @@ const {
 const binary = resolve(process.env.AREAL_CORE_BIN || "../../target/debug/areal");
 
 test("packaged build identity uses its sealed manifest without reading source trees", async () => {
-  const home = await trackedMkdtemp("/private/tmp/areal-build-identity-");
+  const home = await trackedMkdtemp(join(tmpdir(), "areal-build-identity-"));
   const manifest = join(home, "desktop-build.json");
   await writeFile(manifest, JSON.stringify({ version: 1, identity: "a".repeat(64) }));
   const first = await desktopBuildIdentity("service-a", [join(home, "absent")], manifest);

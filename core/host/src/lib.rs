@@ -57,6 +57,7 @@ pub const CAPABILITIES: &[&str] = &[
     "remoteGatewayV1",
     "subscriptionOwnerV1",
     "activity",
+    "idleReleaseV1",
     "scheduledActivation",
     "scheduledPreparation",
     "powerV1",
