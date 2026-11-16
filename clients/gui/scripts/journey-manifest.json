@@ -11,12 +11,17 @@
         "clients/gui/scripts/support/journey-fixture.mjs",
         "clients/gui/renderer/src/DraftComposer.tsx",
         "clients/gui/renderer/src/ComposerQueue.tsx",
-        "clients/gui/renderer/src/Messages.tsx",
-        "clients/gui/renderer/src/components/messages/**"
+        "clients/gui/scripts/web-journeys.mjs",
+        "clients/gui/scripts/journey-manifest.json"
       ],
       "authorities": ["host", "core", "runtime"],
       "terminalFacts": ["requestAccepted", "turnSettled", "visibleResult"],
-      "checks": ["test:ux-journeys", "test:conversation-reading"]
+      "checks": [
+        "smoke:test:ux-journeys",
+        "smoke:test:web-journeys",
+        "smoke:test:conversation-reading"
+      ],
+      "boundaries": ["request-admission", "history-projection", "provider-configuration"]
     },
     {
       "id": "unknown-receipt-recovery",
@@ -25,15 +30,7 @@
       "paths": [
         "clients/gui/scripts/service-reopen-smoke.mjs",
         "clients/gui/scripts/history-copy-smoke.mjs",
-        "clients/gui/scripts/application-cleanup.mjs",
-        "clients/gui/scripts/support/desktop-fixture.mjs",
-        "clients/gui/packages/client/node/host-client.cjs",
-        "core/host/src/client.rs",
-        "core/host/src/server.rs",
-        "core/host/src/service.rs",
-        "core/app-server/src/**",
-        "runtime/supervisor/**",
-        "runtime/daemon/**"
+        "clients/gui/scripts/journey-manifest.json"
       ],
       "authorities": ["host", "core", "runtime"],
       "terminalFacts": [
@@ -42,7 +39,94 @@
         "noReplay",
         "cleanupSettled"
       ],
-      "checks": ["test:history-compat", "test:service-reopen", "test:conversation-reading"]
+      "checks": [
+        "smoke:test:history-compat",
+        "smoke:test:service-reopen",
+        "smoke:test:conversation-reading"
+      ],
+      "boundaries": ["request-admission", "host-lifecycle", "history-projection"]
+    },
+    {
+      "id": "host-stop-reopen",
+      "title": "显式停止共享 Host 并重开桌面",
+      "surfaces": ["desktop"],
+      "paths": [
+        "clients/gui/scripts/gui-stop-reopen-smoke.mjs",
+        "clients/gui/scripts/journey-manifest.json"
+      ],
+      "boundaries": ["host-lifecycle"],
+      "authorities": ["host", "workbench"],
+      "terminalFacts": [
+        "stopReceiptSettled",
+        "originalProcessesExited",
+        "newGenerationObserved",
+        "cleanupSettled"
+      ],
+      "checks": ["smoke:test:stop-reopen"]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "request-admission",
+      "paths": [
+        "core/host/src/gateway/**",
+        "core/host/src/client.rs",
+        "core/host/src/server.rs",
+        "core/host/src/service.rs",
+        "core/app-server/src/**",
+        "core/protocol/src/**",
+        "clients/gui/packages/client/**",
+        "clients/gui/scripts/support/host-transport-barrier.mjs",
+        "clients/gui/scripts/support/core-observation.mjs",
+        "schemas/areal-host-protocol-v1.json",
+        "schemas/areal-core-v1.json",
+        "services/workbench/src/desktop/core/submission-recovery.cjs"
+      ]
+    },
+    {
+      "id": "host-lifecycle",
+      "paths": [
+        "core/host/src/client.rs",
+        "core/host/src/server.rs",
+        "core/host/src/service.rs",
+        "core/host/src/launch.rs",
+        "core/host/src/workbench*.rs",
+        "core/service-host/src/**",
+        "core/server/src/**",
+        "runtime/supervisor/**",
+        "runtime/daemon/**",
+        "clients/gui/app/src/core/service-*.cjs",
+        "clients/gui/app/src/core/startup-*.cjs",
+        "clients/gui/scripts/application-cleanup.mjs",
+        "clients/gui/scripts/support/desktop-fixture.mjs",
+        "core/host/src/gateway/stop.rs",
+        "schemas/local-service-v1.json",
+        "clients/gui/app/src/core/main.cjs",
+        "clients/gui/app/src/core/host-lifecycle.cjs",
+        "clients/gui/app/src/core/lifecycle.cjs",
+        "services/workbench/src/desktop/core/lifecycle*.cjs",
+        "services/workbench/src/desktop/core/resource-recovery.cjs"
+      ]
+    },
+    {
+      "id": "history-projection",
+      "paths": [
+        "clients/gui/renderer/src/host-history-cache.ts",
+        "clients/gui/renderer/src/host-watched-history.ts",
+        "clients/gui/renderer/src/serviceGeneration.ts",
+        "clients/gui/renderer/src/Messages.tsx",
+        "clients/gui/renderer/src/components/messages/**",
+        "services/workbench/src/desktop/core/history-*.cjs"
+      ]
+    },
+    {
+      "id": "provider-configuration",
+      "paths": [
+        "core/server/src/lib.rs",
+        "services/workbench/src/desktop/core/provider*.cjs",
+        "core/host/src/library*.rs",
+        "clients/gui/packages/workbench/client/desktop-contract/provider.cjs"
+      ]
     }
   ]
 }

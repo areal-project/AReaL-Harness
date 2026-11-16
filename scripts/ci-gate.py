@@ -11,6 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("ci_scope", ROOT / "scripts/ci-scope.py")
 scope = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(scope)
+spec = importlib.util.spec_from_file_location(
+    "verification_evidence", ROOT / "scripts/verification-evidence.py"
+)
+evidence = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(evidence)
 
 
 def validate(plan, reports, groups, ci_run=None, platform=None):
@@ -22,6 +27,10 @@ def validate(plan, reports, groups, ci_run=None, platform=None):
     failures = []
     actual = {}
     for report in reports:
+        try:
+            evidence.validate(report, plan)
+        except (ValueError, KeyError, TypeError) as error:
+            failures.append("invalid verification evidence: " + str(error))
         if report.get("status") not in {"passed", "not-applicable"}:
             failures.append("report is incomplete, failed or invalidated")
         identity = report.get("identity", {})
@@ -115,9 +124,23 @@ def main():
         (os.environ.get("GITHUB_RUN_ID"), os.environ.get("GITHUB_RUN_ATTEMPT")),
     )
     failures += validate_jobs(plan, args.workflow, json.loads(os.environ.get("NEEDS_JSON", "{}")))
+    try:
+        journeys = evidence.summarize(
+            plan,
+            [result for report in reports for result in report.get("results", [])],
+            "invalidated" if failures else None,
+        )
+    except ValueError as error:
+        failures.append(str(error))
+        journeys = []
     print(
         json.dumps(
-            {"planHash": plan["planHash"], "failures": failures, "passed": not failures},
+            {
+                "planHash": plan["planHash"],
+                "failures": failures,
+                "passed": not failures,
+                "journeys": journeys,
+            },
             ensure_ascii=False,
             indent=2,
         )

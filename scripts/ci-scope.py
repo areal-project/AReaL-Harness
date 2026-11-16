@@ -2,6 +2,7 @@
 
 import fnmatch
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -9,6 +10,11 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 JOURNEY_MANIFEST = ROOT / "clients/gui/scripts/journey-manifest.json"
+spec = importlib.util.spec_from_file_location(
+    "journey_registry", ROOT / "scripts/check-journeys.py"
+)
+journey_registry = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(journey_registry)
 SCOPES = {
     "gui": [
         "design/**",
@@ -290,16 +296,9 @@ def build_plan(paths, source, manifest):
     """计划不接收环境能力；缺少前提只能产生 blocked，不能删项。"""
     affected = impact(paths)
     items = []
-    journeys = json.loads(JOURNEY_MANIFEST.read_text())["journeys"]
-    affected_journeys = sorted(
-        {
-            journey["id"]
-            for journey in journeys
-            if any(
-                fnmatch.fnmatchcase(path, pattern) for path in paths for pattern in journey["paths"]
-            )
-        }
-    )
+    registry = journey_registry.load_manifest(JOURNEY_MANIFEST)
+    journeys = registry["journeys"]
+    affected_journeys = sorted(journey_registry.affected(paths, registry))
     journey_authorities = {
         journey["id"]: journey["authorities"]
         for journey in journeys
@@ -310,6 +309,7 @@ def build_plan(paths, source, manifest):
         for journey in journeys
         if journey["id"] in affected_journeys
     }
+    required_journey_checks = {check for checks in journey_checks.values() for check in checks}
 
     def add(
         name,
@@ -781,7 +781,7 @@ def build_plan(paths, source, manifest):
                 expected={platform: scripts[shard::2] for platform, scripts in core_tests.items()},
             )
         for entry in manifest:
-            if entry.get("ciSmoke"):
+            if entry.get("ciSmoke") or "smoke:" + entry["script"] in required_journey_checks:
                 add(
                     "smoke:" + entry["script"],
                     ["pnpm", "--dir", "clients/gui", "run", entry["script"]],
@@ -789,8 +789,9 @@ def build_plan(paths, source, manifest):
                     ("gui-core-build", renderer, "gui-design-build", desktop),
                     tuple(sorted(set(entry["requires"]) - {"core-binary", "gui-build"}))
                     + ("node-24.22.1",),
-                    platforms=("darwin",),
+                    platforms=tuple(p for p in entry["platforms"] if p == "darwin"),
                 )
+    journey_registry.validate_checks(registry, items, affected_journeys)
     production_tasks = {
         "macos:desktop": "desktop-build",
         "macos:ui": "ui-build",
@@ -819,6 +820,21 @@ def build_plan(paths, source, manifest):
     return plan
 
 
+def smoke_matrix(plan, manifest):
+    entries = {entry["script"]: entry for entry in manifest}
+    return {
+        "include": [
+            {
+                "scenario": entries[item["command"][-1]].get("ciSmoke")
+                or item["command"][-1].removeprefix("test:"),
+                "script": item["command"][-1],
+            }
+            for item in plan["items"]
+            if item["group"] == "smoke"
+        ]
+    }
+
+
 def require_result(needed, result):
     # 不适用必须由成功的路径判定明确声明，取消和意外 skip 都失败。
     return result == ("success" if needed else "skipped")
@@ -836,13 +852,7 @@ if __name__ == "__main__":
     args.output.write_text(json.dumps(plan, indent=2, ensure_ascii=False) + "\n")
     groups = {item["group"] for item in plan["items"]}
     manifest = json.loads((ROOT / "clients/gui/scripts/test-manifest.json").read_text())
-    matrix = {
-        "include": [
-            {"scenario": entry["ciSmoke"], "script": entry["script"]}
-            for entry in manifest
-            if entry.get("ciSmoke")
-        ]
-    }
+    matrix = smoke_matrix(plan, manifest)
     host = [
         {
             "os": "ubuntu-24.04",
