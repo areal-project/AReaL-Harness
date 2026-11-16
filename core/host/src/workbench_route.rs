@@ -678,25 +678,14 @@ impl Supervisor {
         source: &str,
         connection: Value,
     ) -> Result<Value> {
-        self.resume_backend(host).await?;
-        ensure!(self.backend_has_source(source), "FORBIDDEN");
-        let backend = self
-            .backend
-            .running
-            .borrow()
-            .clone()
-            .context("CAPABILITY_UNAVAILABLE")?;
-        let result = backend
-            .request(
-                "providers.command",
-                json!({"operation":"discover","connection":connection}),
-                json!({"principal":"local"}),
-            )
-            .await?;
-        serde_json::from_value::<areal_protocol::host::WorkbenchProviderValue>(result.clone())
-            .context("INVALID_RESPONSE")?;
-        Ok(result)
+        super::provider_probe::command(
+            host,
+            source,
+            &json!({"operation":"discover","connection":connection}),
+        )
+        .await
     }
+
     /// 启动或复用桌面后台，返回它的身份（不含票据）。
     pub(super) async fn ensure_backend(&self, host: &Rc<Host>, input: Ensure) -> Result<Value> {
         self.backend.ensure(host, input).await.map_err(|error| {
@@ -829,6 +818,16 @@ impl Supervisor {
     }
 }
 
+fn backend_rejection(receipt: &Value, error: &Value) -> anyhow::Error {
+    if receipt["method"] == "providers.command" && error["code"] == "RESOURCE_UNAVAILABLE" {
+        return crate::wire::error(
+            "RESOURCE_UNAVAILABLE",
+            error["message"].as_str().unwrap_or("供应商连接不可用"),
+        );
+    }
+    super::task_catalog::TaskRejection(error.clone()).into()
+}
+
 /// 跨项目写复用 Host journal。受理后没有可证明的结果就保持 UNKNOWN，重复请求只读原回执。
 pub(super) fn backend_receipt(
     host: &Host,
@@ -842,8 +841,10 @@ pub(super) fn backend_receipt(
     {
         return Err(anyhow::anyhow!("{code}"));
     }
-    if let Some(error) = receipt.as_ref().and_then(|value| value.get("error")) {
-        return Err(super::task_catalog::TaskRejection(error.clone()).into());
+    if let Some(value) = &receipt
+        && let Some(error) = value.get("error")
+    {
+        return Err(backend_rejection(value, error));
     }
     Ok(receipt)
 }
@@ -928,7 +929,7 @@ pub(super) async fn backend_command(
             return Err(anyhow::anyhow!("{code}"));
         }
         if let Some(error) = original.get("error") {
-            return Err(super::task_catalog::TaskRejection(error.clone()).into());
+            return Err(backend_rejection(&original, error));
         }
         original.as_object_mut().unwrap().remove("semanticDigest");
         return Ok(original);
@@ -959,8 +960,9 @@ pub(super) async fn backend_command(
             "FORBIDDEN"
         );
     }
-    let native_provider =
-        method == "providers.command" && super::provider_config::native_write(&params);
+    let native_provider = method == "providers.command"
+        && (super::provider_config::native_write(&params)
+            || super::provider_probe::native(&params));
     if !standalone_worktree && !native_task && !native_provider {
         host.gateway.workbench.resume_backend(host).await?;
     }
@@ -1007,11 +1009,15 @@ pub(super) async fn backend_command(
     } else if method == "worktree.command" {
         super::worktree_catalog::command(host, &source, payload).await
     } else if native_provider {
-        host.gateway
-            .workbench
-            .providers
-            .write(host, &source, &command, &payload)
-            .await
+        if super::provider_probe::native(&payload) {
+            super::provider_probe::command(host, &source, &payload).await
+        } else {
+            host.gateway
+                .workbench
+                .providers
+                .write(host, &source, &command, &payload)
+                .await
+        }
     } else if native_task {
         payload["sourceId"] = json!(source);
         super::task_catalog::command(host, &payload).await
@@ -1037,7 +1043,11 @@ pub(super) async fn backend_command(
         Err(error) => match native_task
             .then(|| super::task_catalog::definitive_task_rejection(&error))
             .flatten()
-        {
+            .or_else(|| {
+                native_provider
+                    .then(|| super::provider_probe::rejection(&error))
+                    .flatten()
+            }) {
             Some(error) => {
                 json!({"commandId":command,"method":method,"sourceId":source,"admissionState":"rejected","submissionUnknown":false,"error":error,"semanticDigest":digest})
             }
@@ -1063,7 +1073,7 @@ pub(super) async fn backend_command(
         return Err(error);
     }
     if let Some(error) = receipt.get("error") {
-        return Err(super::task_catalog::TaskRejection(error.clone()).into());
+        return Err(backend_rejection(&receipt, error));
     }
     receipt.as_object_mut().unwrap().remove("semanticDigest");
     Ok(receipt)

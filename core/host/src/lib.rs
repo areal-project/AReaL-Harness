@@ -13,6 +13,7 @@ pub use history_snapshot::{HistorySnapshot, read_history_snapshot};
 mod launch;
 mod local_relay;
 mod migration;
+mod network;
 mod remote_state;
 mod schedule_admission;
 mod schedule_resources;

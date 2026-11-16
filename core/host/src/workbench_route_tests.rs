@@ -1138,3 +1138,168 @@ async fn online_provider_save_commits_desired_configuration_without_waiting_for_
         close();server.abort();
     }).await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn provider_discovery_uses_native_transport_without_node_or_secret_receipts() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    tokio::task::LocalSet::new().run_until(async {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let (host, input, source) = resumable_host(&root);
+        storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();
+        storage::write(&launch_record(&host), &input).unwrap();
+        host.gateway.workbench.restore_source(&host).unwrap();
+        std::fs::write(root.join("services/workbench/src/backend-main.cjs"), "throw new Error('provider networking must not launch Node');").unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}/v1", listener.local_addr().unwrap());
+        let server = tokio::task::spawn_local(async move {
+            let (mut stream,_) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            loop {
+                let mut bytes = [0;4096];let n = stream.read(&mut bytes).await.unwrap();assert!(n>0);
+                request.extend_from_slice(&bytes[..n]);
+                if request.windows(4).any(|b|b==b"\r\n\r\n") { break; }
+                assert!(request.len()<16384);
+            }
+            let text = String::from_utf8(request).unwrap();
+            assert!(text.starts_with("GET /v1/models HTTP/1.1\r\n"));
+            assert!(text.to_ascii_lowercase().contains("authorization: bearer synthetic-discovery-secret"));
+            let body = json!({"data":[{"id":"fixture","context_window":64000},
+                {"id":"echo-synthetic-discovery-secret"},{"id":"fixture","context_window":64000},
+                {"id":"other","context_window":2_000_001}]}).to_string();
+            stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).as_bytes()).await.unwrap();
+        });
+        let command = uuid::Uuid::new_v4().to_string();
+        let request = json!({"method":"providers.command","commandId":command,"params":{"sourceId":source,"operation":"discover",
+            "connection":{"baseUrl":base,"protocol":"responses","credential":{"kind":"draft","value":"synthetic-discovery-secret"}}}});
+        let receipt = backend_command(&host,"web:fixture",&request).await.unwrap();
+        assert_eq!(receipt["submissionUnknown"],false);
+        assert_eq!(receipt["receipt"],json!({"models":["fixture","other"],"modelParameters":{"fixture":{"contextWindowTokens":64000}}}));
+        server.await.unwrap();
+        assert_eq!(backend_command(&host,"web:fixture",&request).await.unwrap(),receipt);
+        let mut conflict = request.clone();conflict["params"]["connection"]["credential"]["value"]=json!("changed-secret");
+        assert_eq!(backend_command(&host,"web:fixture",&conflict).await.unwrap_err().to_string(),"COMMAND_CONFLICT");
+        let journal = host.journal.native_snapshot(&format!("workbench-{}",storage::digest(b"web:fixture"))).unwrap().1;
+        assert!(!journal.to_string().contains("synthetic-discovery-secret"));
+        assert!(host.gateway.workbench.backend.running.borrow().is_none());
+        assert!(host.slots.borrow().values().all(|slot|slot.service.is_none()));
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn provider_network_rejection_is_definitive_and_original_receipt_never_resends() {
+    use tokio::io::AsyncWriteExt;
+    tokio::task::LocalSet::new().run_until(async {
+        let root = tempfile::tempdir().unwrap();let root=root.path().canonicalize().unwrap();
+        let (host,input,source)=resumable_host(&root);
+        storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();storage::write(&launch_record(&host),&input).unwrap();
+        host.gateway.workbench.restore_source(&host).unwrap();
+        let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();let url=format!("http://{}/v1",listener.local_addr().unwrap());
+        let server=tokio::task::spawn_local(async move {
+            let (mut stream,_)=listener.accept().await.unwrap();let _head=read_provider_http_head(&mut stream).await;
+            stream.write_all(b"HTTP/1.1 302 Found\r\nLocation: /must-not-follow\r\nContent-Length: 16\r\nConnection: close\r\n\r\nprivate-key-echo").await.unwrap();
+        });
+        let command=uuid::Uuid::new_v4().to_string();
+        let request=json!({"method":"providers.command","commandId":command,"params":{"sourceId":source,"operation":"discover",
+            "connection":{"baseUrl":url,"protocol":"responses","credential":{"kind":"none"}}}});
+        let original=backend_command(&host,"web:fixture",&request).await.unwrap_err();
+        let projected = |error:&anyhow::Error| { let error=error.downcast_ref::<crate::wire::Error>().unwrap();json!({"code":error.code,"message":error.message}) };
+        let failure=projected(&original);assert_eq!(failure["code"],"RESOURCE_UNAVAILABLE");
+        server.await.unwrap();
+        let repeated=backend_command(&host,"web:fixture",&request).await.unwrap_err();
+        assert_eq!(projected(&repeated),failure);
+        let queried=backend_receipt(&host,"web:fixture",&command).unwrap_err();
+        assert_eq!(projected(&queried),failure);
+        let journal=host.journal.native_snapshot(&format!("workbench-{}",storage::digest(b"web:fixture"))).unwrap().1;
+        assert!(journal["pending"].as_array().unwrap().is_empty());assert_eq!(journal["outcomes"][command]["admissionState"],"rejected");
+        assert!(!journal.to_string().contains("private-key-echo"));assert!(host.gateway.workbench.backend.running.borrow().is_none());
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn provider_save_discovers_models_natively_before_canonical_write() {
+    use tokio::io::AsyncWriteExt;
+    tokio::task::LocalSet::new().run_until(async {
+        let root=tempfile::tempdir().unwrap();let root=root.path().canonicalize().unwrap();
+        let (mut host,input,source)=resumable_host(&root);
+        Rc::get_mut(&mut Rc::get_mut(&mut host).unwrap().migration).unwrap().vault=crate::vault::Vault::isolated_files(&host.home);
+        storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();storage::write(&launch_record(&host),&input).unwrap();
+        std::fs::create_dir(root.join(".areal")).unwrap();
+        std::fs::write(root.join(".areal/config.toml"),"schema_version=1\n[model]\nprovider='fixture'\nname='fixture'\n[model.providers.fixture]\nendpoint='https://example.invalid/v1/responses'\nprotocol='responses'\nmodels=[{id='fixture'}]\n").unwrap();
+        std::fs::write(root.join("services/workbench/src/backend-main.cjs"),"throw new Error('auto discovery must not start Node');").unwrap();
+        let initial=backend_read(&host,"web:fixture",&json!({"method":"providers.read","params":{"sourceId":source,"operation":"list"}})).await.unwrap();
+        let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();let url=format!("http://{}/v1",listener.local_addr().unwrap());
+        let server=tokio::task::spawn_local(async move {
+            for _ in 0..2 {
+            let (mut stream,_)=listener.accept().await.unwrap();let head=read_provider_http_head(&mut stream).await;
+            assert!(String::from_utf8(head).unwrap().to_ascii_lowercase().contains("authorization: bearer synthetic-native-saved-discovery"));
+            let body=json!({"data":[{"id":"discovered","context_window":64000}]}).to_string();
+            stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).as_bytes()).await.unwrap();
+            }
+        });
+        let command=uuid::Uuid::new_v4().to_string();let request=json!({"method":"providers.command","commandId":command,"params":{"sourceId":source,"operation":"saveAndApply",
+            "expectedRevision":initial["revision"],"authentication":"apiKey","apiKey":"synthetic-native-saved-discovery","provider":{"name":"Native discovered","baseUrl":url,"protocol":"responses","models":[]}}});
+        let saved=backend_command(&host,"web:fixture",&request).await.unwrap();assert_eq!(saved["submissionUnknown"],false);
+        let provider=saved["receipt"]["data"].as_array().unwrap().iter().find(|row|row["name"]=="Native discovered").unwrap();
+        assert_eq!(provider["models"][0]["id"],"discovered");assert_eq!(provider["models"][0]["reportedContextWindowTokens"],64000);
+        assert_eq!(provider["models"][0]["capabilities"],json!({"tools":true,"vision":false,"reasoning":true}));
+        assert_eq!(saved["receipt"]["defaultModel"],initial["defaultModel"]);
+        assert!(!saved.to_string().contains("synthetic-native-saved-discovery"));
+        assert!(!std::fs::read_to_string(root.join(".areal/config.toml")).unwrap().contains("synthetic-native-saved-discovery"));
+        let provider_id=provider["id"].clone();
+        assert_eq!(backend_command(&host,"web:fixture",&request).await.unwrap(),saved);
+        let discover=json!({"method":"providers.command","commandId":uuid::Uuid::new_v4().to_string(),"params":{"sourceId":source,"operation":"discover",
+            "connection":{"baseUrl":url,"protocol":"responses","credential":{"kind":"saved","providerId":provider_id,"expectedRevision":saved["receipt"]["revision"]}}}});
+        let discovered=backend_command(&host,"web:fixture",&discover).await.unwrap();
+        assert_eq!(discovered["receipt"]["models"],json!(["discovered"]));
+        server.await.unwrap();
+        assert_eq!(backend_command(&host,"web:fixture",&discover).await.unwrap(),discovered);
+        let mut stale=discover;stale["commandId"]=json!(uuid::Uuid::new_v4().to_string());stale["params"]["connection"]["credential"]["expectedRevision"]=initial["revision"].clone();
+        assert_eq!(backend_command(&host,"web:fixture",&stale).await.unwrap_err().to_string(),"TARGET_CHANGED");
+        assert!(host.gateway.workbench.backend.running.borrow().is_none());
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn provider_network_deadline_closes_original_request_and_does_not_replay() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    tokio::task::LocalSet::new().run_until(async {
+        let root=tempfile::tempdir().unwrap();let root=root.path().canonicalize().unwrap();let (host,input,source)=resumable_host(&root);
+        storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();storage::write(&launch_record(&host),&input).unwrap();host.gateway.workbench.restore_source(&host).unwrap();
+        let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();let url=format!("http://{}/v1",listener.local_addr().unwrap());
+        let entered=Rc::new(tokio::sync::Notify::new());let signal=entered.clone();
+        let server=tokio::task::spawn_local(async move {
+            let (mut stream,_)=listener.accept().await.unwrap();let _head=read_provider_http_head(&mut stream).await;
+            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n").await.unwrap();
+            signal.notify_one();let mut bytes=[0;1];
+            match stream.read(&mut bytes).await {
+                Ok(0) => {},
+                Err(error) if error.kind()==std::io::ErrorKind::ConnectionReset => {},
+                result => panic!("timed-out request did not close its socket: {result:?}"),
+            }
+        });
+        let command=uuid::Uuid::new_v4().to_string();let request=json!({"method":"providers.command","commandId":command,"params":{"sourceId":source,"operation":"discover",
+            "connection":{"baseUrl":url,"protocol":"responses","credential":{"kind":"none"}}}});
+        let running={let host=host.clone();let request=request.clone();tokio::task::spawn_local(async move {backend_command(&host,"web:fixture",&request).await})};
+        tokio::time::timeout(Duration::from_secs(10),entered.notified()).await.unwrap();
+        tokio::time::pause();tokio::time::advance(Duration::from_secs(31)).await;
+        let failure=running.await.unwrap().unwrap_err();tokio::time::resume();
+        assert_eq!(failure.downcast_ref::<crate::wire::Error>().unwrap().code,"RESOURCE_UNAVAILABLE");
+        tokio::time::timeout(Duration::from_secs(5),server).await.unwrap().unwrap();
+        assert_eq!(backend_command(&host,"web:fixture",&request).await.unwrap_err().to_string(),failure.to_string());
+        assert_eq!(backend_receipt(&host,"web:fixture",&command).unwrap_err().to_string(),failure.to_string());
+        assert!(host.gateway.workbench.backend.running.borrow().is_none());
+    }).await;
+}
+
+async fn read_provider_http_head(stream: &mut tokio::net::TcpStream) -> Vec<u8> {
+    use tokio::io::AsyncReadExt;
+    let mut head = Vec::new();
+    while !head.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+        let mut bytes = [0; 4096];
+        let count = stream.read(&mut bytes).await.unwrap();
+        assert!(count > 0 && head.len() + count <= 16384);
+        head.extend_from_slice(&bytes[..count]);
+    }
+    head
+}

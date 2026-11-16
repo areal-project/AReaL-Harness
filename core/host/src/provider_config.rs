@@ -100,7 +100,7 @@ pub(super) fn native_write(request: &Value) -> bool {
     )
 }
 
-fn endpoint(base: &str, protocol: &str) -> Result<String> {
+pub(super) fn endpoint(base: &str, protocol: &str) -> Result<String> {
     let mut url = url::Url::parse(base).map_err(|_| anyhow::anyhow!("INVALID_PARAMS"))?;
     ensure!(
         matches!(url.scheme(), "http" | "https")

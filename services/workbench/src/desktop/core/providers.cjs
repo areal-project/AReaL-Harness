@@ -1,7 +1,7 @@
 // @ts-check
 "use strict";
 const { catalog, rejectModel, subscriptionAvailable } = require("./provider-model-catalog.cjs");
-const { testConnection, errorMessage } = require("./provider-probe.cjs");
+const { errorMessage } = require("./error-message.cjs");
 const { startupTrace } = require("./startup-timing.cjs");
 const diagnostics = require("./diagnostics.cjs");
 const { readFile } = require("node:fs/promises");
@@ -89,7 +89,6 @@ class AppProviders {
     this.closed = false;
     /** @type {Error|undefined} */
     this.subscriptionInitializationError = undefined;
-    this.saving = false;
   }
   async init() {
     await this.hostVault.init();
@@ -1156,7 +1155,7 @@ class AppProviders {
     const request = providerContract.readRequest("providers", rawRequest);
     if (request.operation === "list") {
       const snapshot = await this.config.catalog();
-      if (!this.saving && !this.backend.providerUpdating) {
+      if (!this.backend.providerUpdating) {
         // 目录展示不等待钥匙串或项目对账；后台继续核对原回执，不重放提交。
         void this.config
           .current()
@@ -1170,8 +1169,7 @@ class AppProviders {
       }
       return this.public(snapshot);
     }
-    if (this.saving || this.backend.providerUpdating)
-      throw new Error("模型配置正在保存，请稍后重试");
+    if (this.backend.providerUpdating) throw new Error("模型配置正在保存，请稍后重试");
     if (request.operation === "revealKey") {
       await this.config.current();
       if (request.expectedRevision !== this.value.revision)
@@ -1185,8 +1183,6 @@ class AppProviders {
         throw new Error("无法显示 API Key，请解锁系统安全存储后重试。");
       }
     }
-    if (request.operation === "probe" || request.operation === "discover")
-      return this.test(request);
     // 配置写入只经公共 Host providers.command 准入，私有桌面路径不再持有写入权。
     throw Object.assign(new Error("模型配置请通过 Host 保存或应用"), {
       code: "CAPABILITY_UNAVAILABLE",
@@ -1412,41 +1408,6 @@ class AppProviders {
         return state === "applied" ? "ok" : state === "failed" ? "failed" : "unknown";
       },
     );
-  }
-  /** @param {{id?:string,model?:unknown,operation:string,connection?:unknown}} request */
-  async test({ id, model, operation, connection: draft }) {
-    if (operation === "discover" && draft !== undefined) {
-      if (!providerContract.record(draft)) throw new Error("连接配置无效");
-      const endpoint = connection(draft.baseUrl, draft.protocol).endpoint;
-      const credential = draft.credential;
-      if (!providerContract.record(credential)) throw new Error("认证方式无效");
-      if (typeof draft.protocol !== "string") throw new Error("模型协议无效");
-      let apiKey;
-      if (credential?.kind === "none") apiKey = "";
-      else if (credential?.kind === "draft") apiKey = credentialValue(credential.value);
-      else if (credential?.kind === "saved") {
-        await this.config.current();
-        if (credential.expectedRevision !== this.value.revision)
-          throw new Error("供应商配置已变化，请刷新后重新获取模型");
-        const provider = this.value.data.find((item) => item.id === credential.providerId);
-        if (!provider) throw new Error("供应商已不存在，请刷新");
-        apiKey = this.key(provider);
-      } else throw new Error("认证方式无效");
-      if (credential.kind !== "none" && !apiKey)
-        throw new Error("请填写 API Key，或使用已保存的凭据");
-      return this.testConnection(
-        { endpoint, protocol: protocolToCore(draft.protocol) },
-        { operation, apiKey },
-      );
-    }
-    await this.config.current();
-    const provider = this.value.data.find((p) => p.id === id);
-    if (!provider) throw new Error("请先保存供应商");
-    return this.testConnection(provider, { model, operation });
-  }
-  /** @param {{endpoint:string,protocol:string,apiKeyEnv?:string,models?:import('./provider-contract.cjs').ModelConfig[]}} provider @param {{model?:unknown,operation:string,apiKey?:string}} request */
-  testConnection(provider, request) {
-    return testConnection(provider, request, this);
   }
 }
 module.exports = { AppProviders, connection };

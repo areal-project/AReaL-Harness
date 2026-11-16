@@ -30,6 +30,8 @@ mod power;
 mod provider_catalog;
 #[path = "provider_config.rs"]
 mod provider_config;
+#[path = "provider_probe.rs"]
+mod provider_probe;
 #[path = "schedule_connection.rs"]
 mod schedule_connection;
 #[path = "schedules.rs"]

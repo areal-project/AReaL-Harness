@@ -10,10 +10,10 @@ async fn explicit_backend_failure_settles_as_rejection_not_unknown() {
             .map(|path| path.join("node")).find(|path| path.is_file()).expect("Node is required for the workbench boundary test");
         let runner = root.path().join("refuse.cjs");
         std::fs::write(&runner, r#"
-            console.log(JSON.stringify({version:1,event:'ready',methods:['feedback.command','providers.command']}));
+            console.log(JSON.stringify({version:1,event:'ready',methods:['feedback.command']}));
             require('node:readline').createInterface({input:process.stdin}).on('line', (line) => {
               const request = JSON.parse(line);
-              console.log(JSON.stringify({version:1,id:request.id,error:{code:request.method === 'providers.command' ? 'PROVIDER_CREDENTIAL_REQUIRED' : 'TARGET_CHANGED'}}));
+              console.log(JSON.stringify({version:1,id:request.id,error:{code:'TARGET_CHANGED'}}));
             });
         "#).unwrap();
         let reverse: Reverse = Rc::new(|_, _| Box::pin(async { bail!("FORBIDDEN") }));
@@ -30,13 +30,6 @@ async fn explicit_backend_failure_settles_as_rejection_not_unknown() {
         let (_, snapshot) = host.journal.native_snapshot(&scope).unwrap();
         assert_eq!(snapshot["pending"], json!([]));
         assert_eq!(snapshot["outcomes"][&command]["admissionState"], "rejected");
-        let provider_command = uuid::Uuid::new_v4().to_string();
-        let provider = json!({"method":"providers.command","commandId":provider_command,"params":{"sourceId":"fixture","operation":"discover","connection":{"baseUrl":"https://example.invalid","protocol":"responses","credential":{"kind":"draft","value":"synthetic-private-key"}}}});
-        assert_eq!(backend_command(&host, "local", &provider).await.unwrap_err().to_string(), "PROVIDER_CREDENTIAL_REQUIRED");
-        assert_eq!(backend_receipt(&host, "local", &provider_command).unwrap_err().to_string(), "PROVIDER_CREDENTIAL_REQUIRED");
-        let (_, snapshot) = host.journal.native_snapshot(&scope).unwrap();
-        assert_eq!(snapshot["pending"], json!([]));
-        assert_eq!(snapshot["outcomes"][&provider_command]["admissionState"], "rejected");
         host.gateway.workbench.stop_backend().await;
     }).await;
 }
@@ -109,46 +102,6 @@ async fn lost_library_preference_reply_is_not_replayed() {
         assert_eq!(backend_receipt(&host, "local", &command).unwrap().unwrap()["submissionUnknown"], true);
         let other_method = json!({"method":"worktree.command","commandId":command,"params":{"sourceId":"fixture","operation":"worktreeSettings","worktreeRoot":"/isolated","branchPrefix":"fixture"}});
         assert_eq!(backend_command(&host, "local", &other_method).await.unwrap_err().to_string(), "COMMAND_CONFLICT");
-        host.gateway.workbench.stop_backend().await;
-    }).await;
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn lost_provider_reply_keeps_receipt_without_persisting_credentials() {
-    tokio::task::LocalSet::new().run_until(async {
-        let root = tempfile::tempdir().unwrap();
-        let host = Rc::new(crate::server::schedules::tests::fixture(root.path()));
-        let runtime = std::env::split_paths(&std::env::var_os("PATH").unwrap())
-            .map(|path| path.join("node")).find(|path| path.is_file()).expect("Node is required for the workbench boundary test");
-        let runner = root.path().join("lost-reply.cjs");
-        std::fs::write(&runner, r#"
-            const fs = require('node:fs');
-            console.log(JSON.stringify({version:1,event:'ready',methods:['providers.command']}));
-            require('node:readline').createInterface({input:process.stdin}).on('line', () => {
-              fs.appendFileSync(process.env.AREAL_WORKBENCH_DATA + '/effects', 'once\n');
-              process.exit(0);
-            });
-        "#).unwrap();
-        let reverse: Reverse = Rc::new(|_, _| Box::pin(async { bail!("FORBIDDEN") }));
-        let backend = Workbench::start(&runtime, &runner, root.path(), reverse).await.unwrap();
-        *host.gateway.workbench.backend.running.borrow_mut() = Some(Rc::new(backend));
-        *host.gateway.workbench.backend.source.borrow_mut() = Some("fixture".into());
-        let command = uuid::Uuid::new_v4().to_string();
-        let request = json!({"method":"providers.command","commandId":command,"params":{"sourceId":"fixture","operation":"discover","connection":{"baseUrl":"https://example.invalid","protocol":"responses","credential":{"kind":"draft","value":"synthetic-private-key"}}}});
-        let first = backend_command(&host, "local", &request).await.unwrap();
-        assert_eq!(first["submissionUnknown"], true);
-        assert_eq!(backend_command(&host, "local", &request).await.unwrap(), first);
-        assert_eq!(std::fs::read_to_string(root.path().join("effects")).unwrap(), "once\n");
-        let mut conflict = request.clone();
-        conflict["params"]["connection"]["credential"]["value"] = json!("rotated-private-key");
-        assert_eq!(backend_command(&host, "local", &conflict).await.unwrap_err().to_string(), "COMMAND_CONFLICT");
-        assert_eq!(backend_receipt(&host, "local", &command).unwrap().unwrap()["submissionUnknown"], true);
-        let other_method = json!({"method":"worktree.command","commandId":command,"params":{"sourceId":"fixture","operation":"worktreeSettings","worktreeRoot":"/isolated","branchPrefix":"fixture"}});
-        assert_eq!(backend_command(&host, "local", &other_method).await.unwrap_err().to_string(), "COMMAND_CONFLICT");
-        let scope = format!("workbench-{}", areal_local_service::storage::digest(b"local"));
-        let (_, snapshot) = host.journal.native_snapshot(&scope).unwrap();
-        assert_eq!(snapshot["pending"][0]["params"], json!({}));
-        assert!(!snapshot.to_string().contains("synthetic-private-key"));
         host.gateway.workbench.stop_backend().await;
     }).await;
 }

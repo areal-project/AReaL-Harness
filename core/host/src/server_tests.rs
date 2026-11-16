@@ -855,8 +855,15 @@ async fn authenticated_registry_receipts_survive_restart_without_activation() {
     tokio::task::LocalSet::new().run_until(async {
         let root=tempfile::tempdir().unwrap();let home=root.path().join("home");let workspace=root.path().join("workspace");std::fs::create_dir(&workspace).unwrap();
         let bin=std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
-        let task=tokio::task::spawn_local(run_local(RunOptions {home:home.clone(),bin_dir:bin.clone()}));
-        let client=loop {if let Ok(client)=Client::connect_at(home.clone()).await {break client;}tokio::task::yield_now().await;};
+        let mut task=tokio::task::spawn_local(run_local(RunOptions {home:home.clone(),bin_dir:bin.clone()}));
+        let client=tokio::time::timeout(Duration::from_secs(15),async {loop {
+            if let Ok(client)=Client::connect_at(home.clone()).await {break client;}
+            if task.is_finished() {
+                let exit=(&mut task).await.unwrap().unwrap_or_else(|error|panic!("initial startup failed before discovery: {error:#}"));
+                panic!("initial startup ended before discovery: {}",match exit {HostExit::Stopped=>"stopped",HostExit::AlreadyRunning=>"alreadyRunning"});
+            }
+            tokio::task::yield_now().await;
+        }}).await.expect("initial startup must publish discovery");
         let run_record=std::fs::read(home.join("host/service-run.json")).unwrap();
         assert!(matches!(run_local(RunOptions {home:home.clone(),bin_dir:bin.clone()}).await.unwrap(),HostExit::AlreadyRunning));
         assert!(matches!(run_local_mode(RunOptions {home:home.clone(),bin_dir:bin.clone()},true,false).await.unwrap(),HostExit::AlreadyRunning));
@@ -923,8 +930,15 @@ async fn authenticated_registry_receipts_survive_restart_without_activation() {
         assert_eq!(offline["stopIntent"],true);
         assert_eq!(storage::read::<String>(&home.join("host/identity.json")).unwrap(),identity.host_id);
         assert_eq!(crate::operation_offline(&home,&id).unwrap().unwrap(),receipt);
-        let restarted=tokio::task::spawn_local(run_local(RunOptions {home:home.clone(),bin_dir:bin}));
-        let next=loop {if let Ok(client)=Client::connect_at(home.clone()).await {break client;}tokio::task::yield_now().await;};
+        let mut restarted=tokio::task::spawn_local(run_local(RunOptions {home:home.clone(),bin_dir:bin}));
+        let next=tokio::time::timeout(Duration::from_secs(15),async {loop {
+            if let Ok(client)=Client::connect_at(home.clone()).await {break client;}
+            if restarted.is_finished() {
+                let exit=(&mut restarted).await.unwrap().unwrap_or_else(|error|panic!("restart failed before discovery: {error:#}"));
+                panic!("restart ended before discovery: {}",match exit {HostExit::Stopped=>"stopped",HostExit::AlreadyRunning=>"alreadyRunning"});
+            }
+            tokio::task::yield_now().await;
+        }}).await.expect("restart must publish discovery");
         assert_eq!(next.identity().host_id,identity.host_id);assert_ne!(next.identity().generation,identity.generation);assert_eq!(next.list().await.unwrap(),vec![registration]);assert_eq!(next.operation(&id).await.unwrap().unwrap(),receipt);assert_eq!(next.operation(&stop_id).await.unwrap().unwrap()["state"],"completed");assert_eq!(next.status().await.unwrap().state,"running");
         next.stop(&uuid::Uuid::new_v4().to_string(),&next.identity().generation,StopStrategy::IfIdle).await.unwrap();restarted.await.unwrap().unwrap();
     }).await;
