@@ -1685,7 +1685,7 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
   backend.providers.manages = () => false;
   backend.refreshAfterAdmission = async () => {};
   project.client.capabilities = {features:{permissionPresets:true}};
-  out({event:'ready',methods:['input.prepare','execution.prepare','execution.dispatch','creation.read']});
+  out({event:'ready',methods:['input.prepare','execution.prepare','execution.dispatch']});
   require('node:readline').createInterface({input:process.stdin}).on('line', async line => {
     const frame = JSON.parse(line);
     try {
@@ -1693,7 +1693,6 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         if(frame.error)pending.reject(Error(frame.error.code));else pending.resolve(frame.result);return; }
       if (frame.event === 'execution.cancel') { adapter.cancelHostExecution(frame.handle,frame.connection); return; }
       if (frame.event === 'pages.disconnect') { adapter.disconnectHostExecution(frame.connection); await hostCall('fixture.disconnected',{connection:frame.connection}); return; }
-      if (frame.method === 'creation.read') { out({id:frame.id,result:backend.worktrees.readThreadCreation(frame.params.projectId,frame.params.request)}); return; }
       if (frame.method === 'execution.prepare') {
         out({id:frame.id,result:await adapter.prepareHostExecution(frame.params,frame.context.connection)}); return;
       }

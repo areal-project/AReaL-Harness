@@ -526,53 +526,11 @@ impl Supervisor {
         );
         let alias = backend_project_alias(host, source, project)?;
         ensure!(params["projectId"] == alias, "RESYNC_REQUIRED");
-        if self.backend_has_source(source) {
-            let mut result =
-                super::worktree_catalog::read_thread_target(host, source, &alias, params.clone())
-                    .await?;
-            if result["state"] == "ready" {
-                let execution = result["executionProjectId"]
-                    .as_str()
-                    .context("INVALID_RESPONSE")?;
-                let registrations: Vec<_> = host
-                    .slots
-                    .borrow()
-                    .values()
-                    .map(|slot| slot.registration.clone())
-                    .collect();
-                let matches: Vec<_> = host
-                    .migration
-                    .remote_bindings(source, &registrations)?
-                    .into_iter()
-                    .filter(|(_, alias)| alias == execution)
-                    .collect();
-                ensure!(matches.len() == 1, "RESOURCE_UNAVAILABLE");
-                result["executionProjectId"] = json!(matches[0].0);
-            }
-            return Ok(result);
-        }
-
-        let backend = self
-            .backend
-            .running
-            .borrow()
-            .clone()
-            .context("CAPABILITY_UNAVAILABLE")?;
-        let mut result = backend
-            .request(
-                "creation.read",
-                json!({"projectId":alias,"request":params}),
-                json!({}),
-            )
-            .await?;
+        let mut result =
+            super::worktree_catalog::read_thread_target(host, source, &alias, params.clone())
+                .await?;
         ensure!(
-            self.backend.source.borrow().as_deref() == Some(source)
-                && self
-                    .backend
-                    .running
-                    .borrow()
-                    .as_ref()
-                    .is_some_and(|current| Rc::ptr_eq(current, &backend))
+            self.backend_has_source(source)
                 && backend_project_alias(host, source, project)? == alias,
             "RESYNC_REQUIRED"
         );

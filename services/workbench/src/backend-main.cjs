@@ -255,7 +255,6 @@ const privateMethods = [
   "execution.prepare",
   "execution.dispatch",
   "execution.complete",
-  "creation.read",
 ];
 /** @type {Record<string,string>} */
 const domains = {
@@ -649,11 +648,6 @@ async function start({ input, output }) {
           contract.validateCommandResponse(command, params, result);
           return result ?? null;
         }
-        if (request.method === "creation.read")
-          return desktop.backend.worktrees.readThreadCreation(
-            request.params.projectId,
-            request.params.request,
-          );
         if (request.method === "input.prepare")
           return prepareInput({ desktop, request: request.params });
         if (

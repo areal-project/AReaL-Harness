@@ -35463,56 +35463,6 @@
       ],
       "additionalProperties": false
     },
-    "WorkbenchCreationReadParams": {
-      "type": "object",
-      "properties": {
-        "projectId": {
-          "type": "string"
-        },
-        "request": {
-          "$ref": "#/$defs/WorkbenchDesktopCreateParams"
-        }
-      },
-      "required": [
-        "projectId",
-        "request"
-      ],
-      "additionalProperties": false
-    },
-    "WorkbenchCreationReadResult": {
-      "type": "object",
-      "properties": {
-        "state": {
-          "type": "string",
-          "enum": [
-            "unknown",
-            "ready",
-            "rejected"
-          ]
-        },
-        "threadId": {
-          "type": "string"
-        },
-        "requestId": {
-          "type": "string"
-        },
-        "executionProjectId": {
-          "type": "string"
-        },
-        "message": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "state"
-      ],
-      "additionalProperties": false,
-      "examples": [
-        {
-          "state": "unknown"
-        }
-      ]
-    },
     "WorkbenchCreationProfile": {
       "additionalProperties": false,
       "properties": {
@@ -46841,56 +46791,6 @@
         },
         "params": {
           "$ref": "#/$defs/WorkbenchPrivateExecutionDispatchParams"
-        },
-        "context": {
-          "type": "object",
-          "properties": {
-            "principal": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            },
-            "connection": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            }
-          },
-          "required": [],
-          "additionalProperties": false
-        }
-      },
-      "required": [
-        "version",
-        "id",
-        "method",
-        "params"
-      ],
-      "additionalProperties": false
-    },
-    "WorkbenchPrivateCreationReadParams": {
-      "$ref": "#/$defs/WorkbenchCreationReadParams"
-    },
-    "WorkbenchPrivateCreationReadResult": {
-      "$ref": "#/$defs/WorkbenchCreationReadResult"
-    },
-    "WorkbenchPrivateCreationReadRequest": {
-      "type": "object",
-      "properties": {
-        "version": {
-          "type": "integer",
-          "const": 1
-        },
-        "id": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "method": {
-          "type": "string",
-          "const": "creation.read"
-        },
-        "params": {
-          "$ref": "#/$defs/WorkbenchPrivateCreationReadParams"
         },
         "context": {
           "type": "object",
@@ -67022,13 +66922,6 @@
         "execution.dispatch": {
           "request": "#/$defs/WorkbenchPrivateExecutionDispatchRequest",
           "result": "#/$defs/WorkbenchPrivateExecutionDispatchResult",
-          "direction": "hostToWorkbench",
-          "x-owner": "workbench",
-          "source": "services/workbench/src/backend-main.cjs"
-        },
-        "creation.read": {
-          "request": "#/$defs/WorkbenchPrivateCreationReadRequest",
-          "result": "#/$defs/WorkbenchPrivateCreationReadResult",
           "direction": "hostToWorkbench",
           "x-owner": "workbench",
           "source": "services/workbench/src/backend-main.cjs"
