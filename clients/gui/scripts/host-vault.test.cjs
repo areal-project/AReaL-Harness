@@ -189,6 +189,8 @@ test("retired source credentials and legacy references restore from Host metadat
   const model = new ModelConfiguration(f.backend, f.vault);
   await model.init();
   assert.equal(model.legacy.data[0].apiKeyEnv, reference);
+  assert.deepEqual(model.environment(), {});
+  await model.refreshCredentials();
   assert.deepEqual(model.environment(), { [reference]: "synthetic-disabled-secret" });
   let writes = 0;
   model.execute = async () => ({
@@ -243,6 +245,7 @@ test("pending retirement blocks only subscription access and preserves ordinary 
   f.backend.providers = app;
   await assert.doesNotReject(app.init());
   await assert.doesNotReject(app.prepare());
+  await app.config.refreshCredentials();
   assert.equal(app.key({ apiKeyEnv: "AREAL_CREDENTIAL_arena" }), "ordinary-provider-fixture-key");
   assert.equal(app.subscription.availability, "unavailable");
   assert.equal(app.subscription.state, "storage_locked");
@@ -360,6 +363,7 @@ test("GUI leaves subscription transport with Host and stores ordinary provider c
   assert.equal(app.key({ apiKeyEnv: reference }), "synthetic-api-key");
   const reopened = new ModelConfiguration(f.backend, f.vault);
   await reopened.init();
+  await reopened.refreshCredentials();
   assert.equal(reopened.key({ apiKeyEnv: reference }), "synthetic-api-key");
   const metadata = await readFile(join(f.home, "host-vault-operations.json"), "utf8");
   assert(!metadata.includes("synthetic-api-key"));
