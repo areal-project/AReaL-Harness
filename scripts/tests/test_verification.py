@@ -291,6 +291,20 @@ class VerificationTests(unittest.TestCase):
             "Renderer build inputs differ", " ".join(self.doctor("workbench.json", False)["errors"])
         )
 
+    def test_shared_provider_metadata_invalidates_both_build_inputs(self):
+        core_before = verification.source_input_hash(self.root)
+        gui_before = verification.gui_inputs(self.root)
+        definitions = self.root / "schemas/provider-config/definitions.json"
+        definitions.parent.mkdir(parents=True)
+        definitions.write_text("[]\n")
+        self.assertNotEqual(core_before, verification.source_input_hash(self.root))
+        self.assertNotEqual(gui_before, verification.gui_inputs(self.root))
+        core_before = verification.source_input_hash(self.root)
+        gui_before = verification.gui_inputs(self.root)
+        definitions.write_text('[{"id":"custom-compatible"}]\n')
+        self.assertNotEqual(core_before, verification.source_input_hash(self.root))
+        self.assertNotEqual(gui_before, verification.gui_inputs(self.root))
+
     def test_renderer_snapshot_survives_rebuild_and_refuses_overwrite(self):
         destination = self.root / "private renderer"
         args = ("snapshot-renderer", "--source-dir", self.renderer, "--output-dir", destination)

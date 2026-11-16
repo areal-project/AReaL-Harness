@@ -256,7 +256,6 @@
     "packages/gen-ui/ports.ts": 15,
     "packages/gen-ui/references.ts": 82,
     "packages/gen-ui/stateStorage.ts": 180,
-    "packages/provider-config/connections.cjs": 51,
     "packages/remote/src/channel.mjs": 220,
     "packages/remote/src/raster.mjs": 135,
     "packages/remote/src/relay-codec.mjs": 108,

@@ -67,6 +67,8 @@ importers:
         specifier: 1.4.0
         version: 1.4.0(@types/node@26.6.4)(@vitest/ui@5.0.5)(esbuild@0.28.2)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)
 
+  ../../schemas/provider-config: {}
+
   ../../services/workbench:
     dependencies:
       '@areal/browser-automation':
@@ -83,7 +85,7 @@ importers:
         version: link:../../clients/gui/packages/gen-ui
       '@areal/provider-config':
         specifier: workspace:*
-        version: link:../../clients/gui/packages/provider-config
+        version: link:../../schemas/provider-config
       '@areal/remote':
         specifier: workspace:*
         version: link:../../clients/gui/packages/remote
@@ -160,7 +162,7 @@ importers:
         version: link:../packages/gen-ui
       '@areal/provider-config':
         specifier: workspace:*
-        version: link:../packages/provider-config
+        version: link:../../../schemas/provider-config
       '@areal/remote':
         specifier: workspace:*
         version: link:../packages/remote
@@ -310,8 +312,6 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
 
-  packages/provider-config: {}
-
   packages/remote:
     dependencies:
       '@chainsafe/libp2p-noise':
@@ -415,7 +415,7 @@ importers:
         version: link:../packages/gen-ui
       '@areal/provider-config':
         specifier: workspace:*
-        version: link:../packages/provider-config
+        version: link:../../../schemas/provider-config
       '@areal/remote':
         specifier: workspace:*
         version: link:../packages/remote

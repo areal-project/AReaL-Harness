@@ -91,6 +91,8 @@ Opening a worktree with environment scripts from the CLI requires `worktree open
 
 The decreasing `workbenchConvergeLines` budget covers the library, submission recovery, history observation, lifecycle operations, service protocol, task catalog, task draft, and worktree modules. Other existing JavaScript uses exact retained paths. New and renamed files count by default; neither the budget nor retained-path classification may grow to hide migration code. Methods must still appear in the schema, Host allowlist, and service ready inventory. Private reverse calls are not public RPC entry points.
 
+Provider presets and public connection metadata live in `schemas/provider-config`. Rust and clients share the same definitions; definition changes invalidate both Core and GUI build identities.
+
 ## Library and analytics
 
 Host is the sole writer of `library.json`; navigation changes execute directly in a Host transaction. When the backend changes settings it submits patches through `library.patch` and rereads and recomputes on conflict.

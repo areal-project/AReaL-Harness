@@ -1,5 +1,5 @@
 import { useI18n } from "../i18n/IntlProvider.js";
-import definitions from "../../../packages/provider-config/definitions.json";
+import definitions from "@areal/provider-config/definitions.json";
 const templates = definitions.filter((item) => item.kind === "api");
 import type { Data } from "../services.js";
 import type { ReactNode } from "react";

@@ -48,6 +48,8 @@ Host 与服务通过私有 Unix socket pair 传送逐行 JSON，带 `version: 1`
 
 `providers.read/command` 复用供应商列表、模型发现、探测、保存、应用、默认模型和删除，绑定本机浏览器的 manage 授权及来源。`revealKey` 不向浏览器开放。Host journal 只保存操作身份、语义摘要和结果，不保存原始参数；草稿 API Key 只经认证连接和后台私有管道传递，持久凭据仍由 HostVault 管理。
 
+供应商预设与连接投影的公共元数据位于 `schemas/provider-config`，Rust 与客户端共享同一份定义；修改定义同时使 Core 和 GUI 构建身份失效。
+
 启用 `pages` 领域后，`pages.command` 与 `pages.resource` 复用原 MCP Apps/Gen-UI 宿主，页面会话归已鉴权的 Host 连接。连接身份由 Host 注入，页面 token 不能跨连接使用；页面事件只发给原 owner。断开先撤销现有请求，再结算迟到打开回执与页面工具租约，不登记原生 `computerHost`，不写含页面参数的 journal。重连只能重新打开来源，不能收养旧 token 或重放未知页面请求。
 
 本机 `gui-write-v1` 及配对来源与后台一致的远程会话，在 send/enqueue 与 steer 受理前，经私有 `input.prepare` 复用后台 `genUiText` 的状态投影；只有 modelContent 进入有效输入，privateContent 保留在页面状态。Host 按原始请求去重，把准备后的输入冻结在原 journal 中；重复命令不重新读取状态。未绑定桌面后台的旧入口保持原行为，已绑定后台失联则明确失败。Host 项目 ID 先经已绑定 source 的权威绑定转为后台 alias，再由后台解析线程执行项目。

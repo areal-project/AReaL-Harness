@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { definitions, connectionMetadata } from "../packages/provider-config/connections.cjs";
+import { definitions, connectionMetadata } from "../../../schemas/provider-config/connections.cjs";
 import { ModelCatalog } from "../packages/chatgpt-provider/catalog.js";
 import {
   openaiRequest,
@@ -492,7 +492,8 @@ test("remembered model and effort survive checking or unavailable catalog entrie
 });
 
 test("known official effort rules do not apply to a custom gateway with the same model name", async () => {
-  const { resolvedModelCapabilities } = await import("../packages/provider-config/connections.cjs");
+  const { resolvedModelCapabilities } =
+    await import("../../../schemas/provider-config/connections.cjs");
   const model = { id: "gpt-6.1-sol" };
   assert.deepEqual(
     resolvedModelCapabilities({ endpoint: "https://api.openai.com/v1/responses" }, model)

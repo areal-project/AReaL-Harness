@@ -59,6 +59,7 @@ def gui_inputs(root):
                 "-z",
                 "clients/gui",
                 "services/workbench",
+                "schemas/provider-config",
             ],
             cwd=root,
         )
