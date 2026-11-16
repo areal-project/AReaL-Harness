@@ -289,6 +289,8 @@ endpoint="http://127.0.0.1:1/v1/chat/completions"
 protocol="chat-completions"
 api_key_env="AREAL_CREDENTIAL_saved"
 models=[{id="saved",enabled=true}]
+[trajectory]
+headers_env="FIXTURE_FEEDBACK_HEADERS"
 "#,
     )
     .unwrap();
@@ -296,6 +298,19 @@ models=[{id="saved",enabled=true}]
         environment_credential_names(&json!({"home":root.path(), "userHome":root.path()})).unwrap();
     assert_eq!(
         names.into_iter().collect::<Vec<_>>(),
+        vec!["FIXTURE_FEEDBACK_HEADERS", "FIXTURE_MODEL_API_KEY"]
+    );
+    let configured = std::fs::read_to_string(home.join("config.toml")).unwrap();
+    std::fs::write(
+        home.join("config.toml"),
+        configured.replace("FIXTURE_FEEDBACK_HEADERS", "AREAL_CREDENTIAL_saved"),
+    )
+    .unwrap();
+    assert_eq!(
+        environment_credential_names(&json!({"home":root.path(), "userHome":root.path()}))
+            .unwrap()
+            .into_iter()
+            .collect::<Vec<_>>(),
         vec!["FIXTURE_MODEL_API_KEY"]
     );
 }
@@ -307,12 +322,14 @@ async fn running_backend_accepts_updated_and_explicitly_cleared_environment_cred
         let root = root.path().canonicalize().unwrap();
         let (host, input, source) = resumable_host(&root);
         std::fs::create_dir(root.join(".areal")).unwrap();
-        std::fs::write(root.join(".areal/config.toml"), "schema_version=1\n[model]\nprovider='fixture'\nname='fixture'\n[model.providers.fixture]\nendpoint='http://127.0.0.1:1/'\nprotocol='responses'\napi_key_env='FIXTURE_KEY'\n").unwrap();
+        std::fs::write(root.join(".areal/config.toml"), "schema_version=1\n[model]\nprovider='fixture'\nname='fixture'\n[model.providers.fixture]\nendpoint='http://127.0.0.1:1/'\nprotocol='responses'\napi_key_env='FIXTURE_KEY'\n[trajectory]\nheaders_env='FIXTURE_HEADERS'\n").unwrap();
         host.gateway.workbench.ensure_backend(&host, input.clone()).await.unwrap();
         let mut wire = serde_json::to_value(&input).unwrap();
-        wire["environmentCredentials"] = json!({"FIXTURE_KEY":"secret"});
+        wire["environmentCredentials"] = json!({"FIXTURE_KEY":"secret","FIXTURE_HEADERS":"Authorization=Bearer synthetic-header"});
         host.gateway.workbench.ensure_backend(&host, serde_json::from_value(wire.clone()).unwrap()).await.unwrap();
         assert_eq!(host.gateway.workbench.environment_credentials(&source).get("FIXTURE_KEY").map(String::as_str), Some("secret"));
+        assert_eq!(host.gateway.workbench.environment_credentials(&source).get("FIXTURE_HEADERS").map(String::as_str), Some("Authorization=Bearer synthetic-header"));
+        assert!(!std::fs::read_to_string(launch_record(&host)).unwrap().contains("synthetic-header"));
         host.gateway.workbench.ensure_backend(&host, input.clone()).await.unwrap();
         assert_eq!(host.gateway.workbench.environment_credentials(&source).get("FIXTURE_KEY").map(String::as_str), Some("secret"));
         wire["environmentCredentials"] = json!({});

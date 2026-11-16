@@ -1483,6 +1483,7 @@ fn environment_credential_names(options: &Value) -> Result<std::collections::BTr
         .into_iter()
         .filter_map(|provider| provider.api_key_env)
         .chain(resolved.model.api_key_env)
+        .chain(resolved.trajectory.headers_env)
         .filter(|name| !name.starts_with("AREAL_CREDENTIAL_"))
         .collect())
 }
