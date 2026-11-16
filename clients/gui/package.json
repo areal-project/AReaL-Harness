@@ -19,7 +19,7 @@
     "test:ux-journeys": "node scripts/ux-journeys.mjs",
     "test:session-load-performance": "node scripts/session-load-performance.mjs",
     "test:web-journeys": "node scripts/web-journeys.mjs",
-    "test:script-units": "node --test scripts/update.test.cjs scripts/task-catalog.test.cjs scripts/isolated-electron-identity.test.mjs scripts/package-users.test.cjs scripts/development-service-routing.test.mjs scripts/support/performance-fixture.test.mjs scripts/support/desktop-fixture.test.mjs scripts/support/core-observation.test.mjs scripts/support/host-transport-barrier.test.mjs",
+    "test:script-units": "node --test scripts/support/acceptance-binary.test.mjs scripts/update.test.cjs scripts/task-catalog.test.cjs scripts/isolated-electron-identity.test.mjs scripts/package-users.test.cjs scripts/development-service-routing.test.mjs scripts/support/performance-fixture.test.mjs scripts/support/desktop-fixture.test.mjs scripts/support/core-observation.test.mjs scripts/support/host-transport-barrier.test.mjs",
     "test:manifest": "node --test scripts/test-manifest.test.mjs scripts/test-selection.test.mjs scripts/test-repeat.test.mjs",
     "test:unit": "vp test run",
     "test:content-reading": "node scripts/conversation-content-reading-smoke.mjs",

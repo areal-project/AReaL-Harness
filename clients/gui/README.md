@@ -327,6 +327,8 @@ Composer 保留所选及最后受理模型，目录确认中不显示不可用�
 
 `make build` 的开发 profile 单独优化 `sha2` 依赖，减少服务启动时校验大型调试二进制的开销。Core 和 Runtime 仍逐次校验完整文件内容，不以路径或修改时间缓存代替内容指纹。业务代码保留开发构建的调试行为，release profile 不变。
 
+先执行 `make build` 和 `pnpm --dir clients/gui build`，再运行 `pnpm --dir clients/gui run test:startup` 或 `pnpm --dir clients/gui run test:recovery-electron`（不额外追加 `-- run`）。两者默认使用当前仓库 `target/debug/areal`，保留源码 Host 发现工作台服务所需的目录结构；可用 `AREAL_CORE_BIN` 显式选择同版本构建，旧版本在打开窗口前拒绝。验收运行期间不要重新构建产物。
+
 `AREAL_CORE_BIN=/absolute/path/to/areal pnpm --dir clients/gui run test:startup` 使用隔离的真实 Electron、Core 和 Runtime，默认执行五次保留合成历史的进程冷启动，验证模型可用性、历史恢复、无重复提交和退出清理。设置 `AREAL_STARTUP_BASELINE_BIN` 可交替比较两个独立构建；`AREAL_STARTUP_ROUNDS` 控制轮数。脚本保留逐轮日志、截图和 manifest，不清除系统缓存，不使用真实供应商或用户凭据。
 
 运行测量前，用 `node --test clients/gui/scripts/support/performance-fixture.test.mjs` 核对夹具请求分类。标题和下一条提示预测都属于辅助请求，即使上下文含有流式负载标记，也不得计为另一条主流。此检查通过真实 HTTP SSE 校验主流的 200 段增量和完整正文。
