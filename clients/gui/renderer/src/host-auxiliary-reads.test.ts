@@ -9,6 +9,19 @@ import {
 afterEach(() => vi.useRealTimers());
 
 describe("model catalog refresh", () => {
+  it("reads a stopped project's model catalog without a Core generation", async () => {
+    const query = vi.fn().mockResolvedValue({ models: [{ modelId: "saved" }] });
+    const client = {
+      snapshot: () => ({ connection: "ready", identity: { connectionId: "connection" } }),
+      query,
+    } as unknown as HostClient;
+    const catalogs = new Map();
+    refreshModelCatalogs(client, [{ projectId: "cold", state: "stopped" }], catalogs, () => {});
+    await vi.waitFor(() =>
+      expect(catalogs.get("cold")?.value?.models).toEqual([{ modelId: "saved" }]),
+    );
+    expect(query).toHaveBeenCalledExactlyOnceWith("project.models", "cold", {});
+  });
   it("refreshes a project catalog when another client changes its revision", async () => {
     const pending: ((value: unknown) => void)[] = [];
     const client = {

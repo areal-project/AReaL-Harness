@@ -530,48 +530,6 @@ impl Supervisor {
         Ok(Some(result))
     }
 
-    pub(super) async fn creation_catalog(
-        &self,
-        host: &Rc<Host>,
-        project: &str,
-    ) -> Result<Option<Value>> {
-        // 拉不起后台时按没有桌面后台处理，不挡住不需要桌面工具的提交。
-        let _ = self.resume_backend(host).await;
-        let Some(source) = self.backend.source.borrow().clone() else {
-            return Ok(None);
-        };
-        // 不在桌面资料库里的项目（如 `areal host ensure` 登记的）由 Core 自己的模型目录回答。
-        let alias = match backend_project_alias(host, &source, project) {
-            Err(error) if error.to_string() == "RESOURCE_UNAVAILABLE" => return Ok(None),
-            alias => alias?,
-        };
-        let backend = self
-            .backend
-            .running
-            .borrow()
-            .clone()
-            .context("CAPABILITY_UNAVAILABLE")?;
-        let result = backend
-            .request("creation.catalog", json!({"projectId":alias}), json!({}))
-            .await?;
-        ensure!(
-            self.backend.source.borrow().as_deref() == Some(source.as_str())
-                && self
-                    .backend
-                    .running
-                    .borrow()
-                    .as_ref()
-                    .is_some_and(|current| Rc::ptr_eq(current, &backend))
-                && backend_project_alias(host, &source, project)? == alias,
-            "RESYNC_REQUIRED"
-        );
-        ensure!(
-            result["models"].is_array() && result["profiles"].is_array(),
-            "INVALID_RESPONSE"
-        );
-        Ok(Some(result))
-    }
-
     pub(super) async fn read_creation(
         &self,
         host: &Rc<Host>,

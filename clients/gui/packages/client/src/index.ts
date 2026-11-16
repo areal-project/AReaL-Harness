@@ -59,7 +59,7 @@ export type ReadConnectionIdentity = {
 export type HostCommandResult =
   | { admissionState: "unknown"; commandId: string; transportError: string }
   | (JsonObject & { commandId?: string });
-export type HostCommandContext = { projectId: string; serviceGeneration: string };
+export type HostCommandContext = { projectId: string; serviceGeneration?: string };
 export type ReadConnection = {
   transport: ReadTransport;
   identity: ReadConnectionIdentity;
@@ -382,7 +382,11 @@ export class HostClient {
   async query(method: string, projectId: string, params: JsonObject) {
     const transport = this.#transport;
     if (!transport?.write || !this.writable(method)) throw new Error("Host writes unavailable");
-    return transport.write(method, params, this.#commandContext(projectId));
+    return transport.write(
+      method,
+      params,
+      method === "project.models" ? { projectId } : this.#commandContext(projectId),
+    );
   }
   /**
    * 附件分块交给 Host，再由 Host 存进 Core；返回 areal://blob/ 引用。

@@ -256,7 +256,6 @@ const privateMethods = [
   "execution.dispatch",
   "execution.complete",
   "creation.read",
-  "creation.catalog",
 ];
 /** @type {Record<string,string>} */
 const domains = {
@@ -572,109 +571,6 @@ async function start({ input, output }) {
           )
             throw Error("Library dependency limit reached");
           return { cloudThreads, pendingProjects };
-        }
-        if (request.method === "creation.catalog") {
-          // Host 比工作台先看到 Core 就绪；连接进行中时等它读完配置档，免得界面拿到空目录。
-          await desktop.backend.starting.get(request.params.projectId)?.catch(() => {});
-          const project = desktop.backend.projects.get(request.params.projectId);
-          if (!project?.client) throw Error("Creation catalog unavailable");
-          const client = project.client;
-          const serviceId = project.service?.serviceId;
-          const generation = project.service?.generation;
-          const current = () =>
-            desktop.backend.projects.get(request.params.projectId) === project &&
-            project.client === client &&
-            project.service?.serviceId === serviceId &&
-            project.service?.generation === generation;
-          // 对账在后台继续；当前 Core 确认的目录无需等待其他项目的配置应用。
-          const coreModels = await client.request(
-            "areal/model/list",
-            {},
-            {
-              decode: appRequire("@areal/workbench/desktop-contract/provider").models,
-            },
-          );
-          if (!current()) throw Error("Creation catalog connection changed");
-          await desktop.backend.providers.acceptModelSelection(coreModels.lastAcceptedModel);
-          if (!current()) throw Error("Creation catalog connection changed");
-          /** @param {Record<string,unknown>} value @param {string[]} fields */
-          const pick = (value, fields) =>
-            Object.fromEntries(
-              fields.filter((key) => value?.[key] !== undefined).map((key) => [key, value[key]]),
-            );
-          const managed = desktop.backend.providers.manages(project);
-          const modelFields = [
-            "providerId",
-            "providerName",
-            "modelId",
-            "providerRevision",
-            "isDefault",
-            "credentialState",
-            "displayName",
-            "parameters",
-            "contextWindowTokens",
-            "maxOutputTokens",
-            "reasoningEffortOptions",
-            "capabilities",
-            "available",
-            "availability",
-            "unavailableReason",
-          ];
-          const models = desktop.backend.providers
-            .catalog(coreModels.data, project)
-            .slice(0, 200)
-            .map((model) => {
-              const value = pick(model, modelFields);
-              if (value.parameters)
-                value.parameters = pick(/** @type {Record<string,unknown>} */ (value.parameters), [
-                  "temperature",
-                  "maxOutputTokens",
-                  "contextWindowTokens",
-                  "reasoningEffort",
-                  "reasoningSummary",
-                  "serviceTier",
-                ]);
-              if (value.capabilities)
-                value.capabilities = pick(
-                  /** @type {Record<string,unknown>} */ (value.capabilities),
-                  ["tools", "vision", "reasoning", "reasoningEffortOptions"],
-                );
-              return value;
-            });
-          const profiles = (Array.isArray(project.profiles) ? project.profiles : []).map(
-            (profile) =>
-              pick(profile, [
-                "id",
-                "revision",
-                "displayName",
-                "instructions",
-                "model",
-                "readOnly",
-                "skills",
-                "workflow",
-                "toolAllowlist",
-                "approvalTools",
-                "allowThreadProcesses",
-                "allowConnectionProcesses",
-                "allowPluginSkills",
-                "requiredModalities",
-              ]),
-          );
-          const accepted = managed ? desktop.backend.providers.lastAcceptedModel : null;
-          const defaultProfile = managed
-            ? (project.resourceProfile ?? desktop.backend.defaultProfile)
-            : null;
-          return {
-            models,
-            profiles,
-            defaultProfile: defaultProfile ? pick(defaultProfile, ["id", "revision"]) : null,
-            lastAcceptedModel: accepted
-              ? {
-                  ...pick(accepted, ["modelId", "reasoningEffort", "acceptedAt"]),
-                  model: accepted.model ? pick(accepted.model, ["providerId", "modelId"]) : null,
-                }
-              : null,
-          };
         }
         if (request.method === "desktop.command") {
           const { command, request: params } = request.params ?? {};

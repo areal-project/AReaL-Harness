@@ -53,7 +53,6 @@ export function refreshModelCatalogs(
   const connection = client.snapshot();
   if (connection.connection !== "ready") return;
   for (const project of projects) {
-    if (project.state !== "ready") continue;
     const scope = JSON.stringify([connection.identity.connectionId, project.serviceGeneration]);
     const identity = `${scope}#${stale.epoch}#${String(project.modelCatalogRevision ?? "")}`;
     const previous = catalogs.get(project.projectId);

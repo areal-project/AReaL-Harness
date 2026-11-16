@@ -1,4 +1,5 @@
 use super::*;
+use areal_local_service::storage;
 use std::collections::BTreeSet;
 
 fn catalog(core: &[Value], subscription: Option<&Value>, remembered: &[Value]) -> Vec<Value> {
@@ -45,6 +46,15 @@ fn catalog(core: &[Value], subscription: Option<&Value>, remembered: &[Value]) -
                     "reasoningEffortOptions",
                     "available",
                     "unavailableReason",
+                    "providerName",
+                    "providerRevision",
+                    "isDefault",
+                    "credentialState",
+                    "availability",
+                    "parameters",
+                    "contextWindowTokens",
+                    "maxOutputTokens",
+                    "capabilities",
                 ],
             );
             let entry = metadata
@@ -65,12 +75,100 @@ fn catalog(core: &[Value], subscription: Option<&Value>, remembered: &[Value]) -
             if value.get("displayName").is_none() {
                 value["displayName"] = model["modelId"].clone();
             }
+            for (field, keys) in [
+                (
+                    "parameters",
+                    &[
+                        "temperature",
+                        "maxOutputTokens",
+                        "contextWindowTokens",
+                        "reasoningEffort",
+                        "reasoningSummary",
+                        "serviceTier",
+                    ][..],
+                ),
+                (
+                    "capabilities",
+                    &["tools", "vision", "reasoning", "reasoningEffortOptions"][..],
+                ),
+            ] {
+                if value[field].is_object() {
+                    value[field] = projection::pick(&value[field], keys);
+                } else {
+                    value.as_object_mut().unwrap().remove(field);
+                }
+            }
             value
         })
         .collect()
 }
 
 impl Session {
+    pub(super) fn persisted_model_catalog(&self, project: &str, request: &Value) -> Result<Value> {
+        ensure!(
+            exact(&request["context"], &["projectId"])
+                && exact(&request["params"], &[])
+                && request.get("commandId").is_none(),
+            "INVALID_PARAMS"
+        );
+        self.authorize(Some(project), "observe")?;
+        let id = self.project_id(project)?;
+        let registration = self.host.slots.borrow()[&id].registration.clone();
+        let path = self
+            .host
+            .home
+            .join("host/launch")
+            .join(storage::digest(id.as_bytes()))
+            .join("inputs.json");
+        let mut inputs: crate::LaunchInputs =
+            storage::read_optional(&path)?.unwrap_or(crate::LaunchInputs {
+                workspace: registration.workspace.clone(),
+                cwd: registration.workspace.clone(),
+                config_home: self.host.home.clone(),
+                homedir: None,
+                config_path: None,
+                deployment_path: None,
+                schedule_preparation: None,
+                environment: Default::default(),
+                credential_names: vec![],
+                options: Default::default(),
+            });
+        let source = self
+            .host
+            .migration
+            .shared_credential_source(&registration, self.host.uses_shared_host_config(&inputs))?;
+        let references = source
+            .as_deref()
+            .map(|source| self.host.migration.vault.provider_references(source))
+            .transpose()?
+            .unwrap_or_default()
+            .into_iter()
+            .collect::<Vec<_>>();
+        // 目录只用凭据来源元数据；不解锁钥匙串，也不把“保存过”当成当前可用。
+        let credentials = self.host.gateway.workbench.project_environment_credentials(
+            &registration,
+            source.as_deref(),
+            &mut inputs.credential_names,
+        );
+        let config = areal_config::models::read(
+            &crate::launch::config_inputs(&self.host.home, &inputs, &credentials),
+            &references,
+        )?;
+        let subscription = self.host.subscription_model_catalog(if self.local {
+            source.as_deref().unwrap_or("")
+        } else {
+            &self.source_id
+        })?;
+        let models = configured_models(&config);
+        let value = json!({"projectId":project,"gatewayGeneration":self.generation,
+            "grantRevision":self.grant["revision"], "models":catalog(&models, subscription.as_ref(), &[])});
+        ensure!(
+            serde_json::to_vec(&value)?.len() <= 128 * 1024,
+            "LIMIT_EXCEEDED"
+        );
+        Ok(value)
+    }
+
     pub(super) async fn project_models(
         &self,
         project: &str,
@@ -83,42 +181,69 @@ impl Session {
                 && request.get("commandId").is_none(),
             "INVALID_PARAMS"
         );
-        let mut result = self.project_catalog(project, generation).await?;
+        let mut result = self
+            .model_catalog(project, generation, || self.observed_model(project))
+            .await?;
         // 输入框的权限菜单按这两项决定是否可选；桌面窗口原来从 Core 能力里直接读。
         let caps = self
             .rpc(project, generation, "areal/capabilities", json!({}))
             .await?;
+        if self.gui_read {
+            let profiles = self
+                .rpc(project, generation, "areal/profile/list", json!({}))
+                .await?;
+            result["profiles"] = json!(
+                profiles["data"]
+                    .as_array()
+                    .context("CORE_UNAVAILABLE")?
+                    .iter()
+                    .map(|profile| projection::pick(
+                        profile,
+                        &[
+                            "id",
+                            "revision",
+                            "displayName",
+                            "instructions",
+                            "model",
+                            "readOnly",
+                            "skills",
+                            "workflow",
+                            "toolAllowlist",
+                            "approvalTools",
+                            "allowThreadProcesses",
+                            "allowConnectionProcesses",
+                            "allowPluginSkills",
+                            "requiredModalities",
+                        ]
+                    ))
+                    .collect::<Vec<_>>()
+            );
+            let id = self.project_id(project)?;
+            let saved: Option<crate::LaunchInputs> = storage::read_optional(
+                &self
+                    .host
+                    .home
+                    .join("host/launch")
+                    .join(storage::digest(id.as_bytes()))
+                    .join("inputs.json"),
+            )?;
+            result["defaultProfile"] = saved
+                .as_ref()
+                .map(crate::launch::remote_profile)
+                .transpose()?
+                .flatten()
+                .map(serde_json::to_value)
+                .transpose()?
+                .unwrap_or(Value::Null);
+        }
         self.authorize(Some(project), "observe")?;
         ensure!(self.project(project)?.1 == generation, "RESYNC_REQUIRED");
         result["features"] = public_features(&caps);
+        ensure!(
+            serde_json::to_vec(&result)?.len() <= 128 * 1024,
+            "LIMIT_EXCEEDED"
+        );
         Ok(result)
-    }
-
-    async fn project_catalog(&self, project: &str, generation: &str) -> Result<Value> {
-        if self.local && self.gui_write {
-            let id = self.project_id(project)?;
-            if let Some(catalog) = self
-                .host
-                .gateway
-                .workbench
-                .creation_catalog(&self.host, &id)
-                .await?
-            {
-                self.authorize(Some(project), "observe")?;
-                ensure!(self.project(project)?.1 == generation, "RESYNC_REQUIRED");
-                let mut result = json!({"projectId":project,"gatewayGeneration":self.generation,"grantRevision":self.grant["revision"],"serviceGeneration":generation});
-                for key in ["models", "profiles", "defaultProfile", "lastAcceptedModel"] {
-                    result[key] = catalog[key].clone();
-                }
-                ensure!(
-                    serde_json::to_vec(&result)?.len() <= 128 * 1024,
-                    "LIMIT_EXCEEDED"
-                );
-                return Ok(result);
-            }
-        }
-        self.model_catalog(project, generation, || self.observed_model(project))
-            .await
     }
 
     pub(super) async fn model_catalog(
@@ -133,9 +258,21 @@ impl Session {
             .schedules
             .connections
             .shared_identity(&self.host, &id)?;
+        let source = if self.local {
+            let registration = self.host.slots.borrow()[&id].registration.clone();
+            self.host
+                .migration
+                .shared_credential_source(
+                    &registration,
+                    self.host.project_uses_shared_config(&registration),
+                )?
+                .unwrap_or_default()
+        } else {
+            self.source_id.clone()
+        };
         let subscription = self
             .host
-            .subscription_model_catalog(&self.source_id)
+            .subscription_model_catalog(&source)
             .map_err(|_| fail("CORE_UNAVAILABLE"))?;
         let core = self
             .rpc(project, generation, "areal/model/list", json!({}))
@@ -176,18 +313,57 @@ impl Session {
         );
         ensure!(
             self.host
-                .subscription_model_catalog(&self.source_id)
+                .subscription_model_catalog(&source)
                 .map_err(|_| fail("CORE_UNAVAILABLE"))?
                 == subscription,
             "RESYNC_REQUIRED"
         );
-        let result = json!({"projectId":project,"gatewayGeneration":self.generation,"grantRevision":self.grant["revision"],"serviceGeneration":generation,"models":catalog(models, subscription.as_ref(), &remembered)});
+        let mut accepted = core["lastAcceptedModel"].clone();
+        if self.gui_read
+            && let Some(home) = self.host.migration.power_sources()?.get(&source)
+        {
+            let saved: Option<areal_protocol::host::WorkbenchCreationAcceptedModel> =
+                storage::read_optional(&home.join("model-selection.json"))?;
+            if let Some(saved) = saved
+                && saved.accepted_at > accepted["acceptedAt"].as_i64().unwrap_or(0)
+            {
+                accepted = serde_json::to_value(saved)?;
+            }
+        }
+        let result = json!({"projectId":project,"gatewayGeneration":self.generation,"grantRevision":self.grant["revision"],"serviceGeneration":generation,"models":catalog(models, subscription.as_ref(), &remembered),"lastAcceptedModel":accepted});
         ensure!(
             serde_json::to_vec(&result)?.len() <= 128 * 1024,
             "LIMIT_EXCEEDED"
         );
         Ok(result)
     }
+}
+
+fn configured_models(config: &areal_config::models::ModelConfiguration) -> Vec<Value> {
+    config.data.iter().filter(|provider| provider.enabled).flat_map(|provider| {
+        let stored = matches!(config.credential_sources.get(&provider.id),
+            Some(areal_config::models::CredentialSource::Stored));
+        let available = matches!(config.credential_states.get(&provider.id),
+            Some(areal_config::models::CredentialState::Available | areal_config::models::CredentialState::NotRequired));
+        provider.models.iter().filter(|model| model.enabled).map(move |model| {
+            let mut value = json!({"providerId":provider.id, "modelId":model.id,
+                "providerName":provider.name, "providerRevision":null,
+                "displayName":model.display_name.as_deref().unwrap_or(&model.id),
+                "parameters":model.parameters.overlay(&provider.parameters),
+                "isDefault":config.default_model.as_ref().is_some_and(|selected|
+                    selected.provider_id == provider.id && selected.model_id == model.id),
+                "credentialState":if stored {json!("checking")} else {serde_json::to_value(config.credential_states.get(&provider.id)).unwrap_or(Value::Null)},
+                "reasoningEffortOptions": model.capabilities.as_ref()
+                    .and_then(|caps| caps.reasoning_effort_options.clone()).unwrap_or_default()});
+            if let Some(capabilities) = &model.capabilities {
+                value["capabilities"] = serde_json::to_value(capabilities).unwrap();
+            }
+            if !stored {
+                value["available"] = json!(available);
+            }
+            value
+        })
+    }).collect()
 }
 
 /// 只投影 Core 当前连接公开声明的功能，界面据此显示入口；不据此授权。
@@ -244,7 +420,7 @@ mod tests {
         assert_eq!(models.len(), 200);
         assert_eq!(
             models[0],
-            json!({"providerId":"provider","modelId":"model-0","displayName":"model-0","available":false,"reasoningEffortOptions":["high"],"unavailableReason":"Unavailable"})
+            json!({"providerId":"provider","modelId":"model-0","providerRevision":1,"displayName":"model-0","available":false,"reasoningEffortOptions":["high"],"unavailableReason":"Unavailable"})
         );
         assert!(!serde_json::to_string(&models).unwrap().contains("private-"));
         assert!(catalog(&[], None, &[]).is_empty());

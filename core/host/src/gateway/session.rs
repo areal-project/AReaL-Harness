@@ -943,9 +943,10 @@ impl Session {
                 method,
                 params,
             )
-            .await?;
+            .await;
         self.authorize(Some(alias), "observe")?;
         ensure!(self.project(alias)?.1 == generation, "RESYNC_REQUIRED");
+        let result = result?;
         ensure!(
             serde_json::to_vec(&result)?.len() <= 4 * 1024 * 1024,
             "RESOURCE_UNAVAILABLE"
@@ -1285,6 +1286,9 @@ impl Session {
         if matches!(method, "task.pause" | "task.question.reply") {
             let generation = text(&request["context"], "serviceGeneration")?;
             return self.task_command(&project, generation, request).await;
+        }
+        if method == "project.models" && self.project(&project).is_err() {
+            return self.persisted_model_catalog(&project, request);
         }
         let (_, generation) = self.project(&project)?;
         match method {

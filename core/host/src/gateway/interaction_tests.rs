@@ -1292,6 +1292,65 @@ async fn conversation_open_discards_reply_after_grant_or_core_generation_changes
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn stopped_project_models_are_native_redacted_and_do_not_activate_execution() {
+    tokio::task::LocalSet::new().run_until(async {
+        let f = Fixture::new().await;
+        std::fs::write(f.host.home.join("config.toml"), "schema_version=2\n[model]\nprovider='fixture'\nname='saved-model'\n[model.providers.fixture]\nname='Saved provider'\nendpoint='https://private.example/v1/responses'\nprotocol='responses'\nmodels=[{id='saved-model',display_name='Saved model',parameters={}}]\n").unwrap();
+        {
+            let mut slots = f.host.slots.borrow_mut();
+            let slot = slots.get_mut("project").unwrap();
+            slot.state = "stopped".into();
+            slot.service = None;
+        }
+        let mut session = f.session("a");
+        let request = f.request("project.models", json!({}), None);
+        let result = session.request(&request).await.unwrap();
+        assert_eq!(result["models"][0]["modelId"], "saved-model");
+        assert_eq!(result["models"][0]["displayName"], "Saved model");
+        assert!(!result.to_string().contains("private.example"));
+        assert!(result.get("serviceGeneration").is_none());
+        assert!(result.get("features").is_none());
+        assert!(f.host.gateway.workbench.active_source().is_none());
+        assert_eq!(f.host.slots.borrow()["project"].state, "stopped");
+        assert!(serde_json::from_value::<areal_protocol::host::RemoteProjectModelsResult>(result).is_ok());
+        let mut denied = request;
+        denied["context"]["projectId"] = json!("not-granted");
+        assert_eq!(session.request(&denied).await.unwrap_err().to_string(), "FORBIDDEN");
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn native_project_catalog_rejects_a_generation_change_during_profile_read() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let mut session = f.session("a");
+            session.gui_read = true;
+            let request = f.request("project.models", json!({}), None);
+            let reading = Fixture::dispatch(session, request);
+            f.call("areal/model/list").await.reply(json!({"data":[]}));
+            f.call("areal/capabilities")
+                .await
+                .reply(json!({"methods":[],"features":{}}));
+            let profiles = f.call("areal/profile/list").await;
+            f.host
+                .slots
+                .borrow_mut()
+                .get_mut("project")
+                .unwrap()
+                .service
+                .as_mut()
+                .unwrap()
+                .identity
+                .generation = "replacement".into();
+            profiles.reply(json!({"data":[]}));
+            let (_, result) = reading.await.unwrap();
+            assert_eq!(result.unwrap_err().to_string(), "RESYNC_REQUIRED");
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
     tokio::task::LocalSet::new()
         .run_until(async {
@@ -1315,15 +1374,19 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
                 let listing = Fixture::dispatch(session, models);
                 f.call("areal/model/list")
                     .await
-                    .reply(json!({"data":[{"providerId":"fixture","modelId":"model"}]}));
+                    .reply(json!({"data":[{"providerId":"fixture","modelId":"model","capabilities":null}],
+                        "lastAcceptedModel":{"model":{"providerId":"fixture","modelId":"model"},"modelId":"model","acceptedAt":2,"reasoningEffort":null}}));
                 f.call("areal/capabilities")
                     .await
                     .reply(json!({"methods":["areal/side/create","areal/side/close","areal/side/start"],
                         "features":{"permissionPresets":true,"sideExecutableV2":true,
                             "conversationDerivationV1":{"sideWorkspaceAccess":["readOnly"]}}}));
+                f.call("areal/profile/list").await.reply(json!({"data":[]}));
                 let (next, result) = listing.await.unwrap();
                 let result = result.unwrap();
                 assert_eq!(result["models"][0]["modelId"], "model");
+                assert_eq!(result["lastAcceptedModel"]["acceptedAt"], 2);
+                assert!(f.host.gateway.workbench.active_source().is_none());
                 let features = &result["features"];
                 assert_eq!(features["permissionPresets"], true);
                 assert_eq!(features["permissionFullAccess"], false);

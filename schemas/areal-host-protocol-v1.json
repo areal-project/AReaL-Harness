@@ -8075,7 +8075,6 @@
         "projectId",
         "gatewayGeneration",
         "grantRevision",
-        "serviceGeneration",
         "models"
       ],
       "additionalProperties": false,
@@ -35634,79 +35633,6 @@
       ],
       "additionalProperties": false
     },
-    "WorkbenchCreationCatalogParams": {
-      "type": "object",
-      "properties": {
-        "projectId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "projectId"
-      ],
-      "additionalProperties": false
-    },
-    "WorkbenchCreationCatalogResult": {
-      "type": "object",
-      "properties": {
-        "models": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/RemoteModel"
-          }
-        },
-        "profiles": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/WorkbenchCreationProfile"
-          }
-        },
-        "defaultProfile": {
-          "anyOf": [
-            {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "x-maxUtf8Bytes": 128
-                },
-                "revision": {
-                  "type": "string",
-                  "minLength": 1,
-                  "x-maxUtf8Bytes": 128
-                }
-              },
-              "required": [
-                "id",
-                "revision"
-              ],
-              "additionalProperties": false
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "lastAcceptedModel": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/WorkbenchCreationAcceptedModel"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "models",
-        "profiles",
-        "defaultProfile",
-        "lastAcceptedModel"
-      ],
-      "additionalProperties": false
-    },
     "WorkbenchManagedTaskRunNowReceipt": {
       "type": "object",
       "additionalProperties": false,
@@ -47004,56 +46930,6 @@
         },
         "params": {
           "$ref": "#/$defs/WorkbenchPrivateCreationReadParams"
-        },
-        "context": {
-          "type": "object",
-          "properties": {
-            "principal": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            },
-            "connection": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            }
-          },
-          "required": [],
-          "additionalProperties": false
-        }
-      },
-      "required": [
-        "version",
-        "id",
-        "method",
-        "params"
-      ],
-      "additionalProperties": false
-    },
-    "WorkbenchPrivateCreationCatalogParams": {
-      "$ref": "#/$defs/WorkbenchCreationCatalogParams"
-    },
-    "WorkbenchPrivateCreationCatalogResult": {
-      "$ref": "#/$defs/WorkbenchCreationCatalogResult"
-    },
-    "WorkbenchPrivateCreationCatalogRequest": {
-      "type": "object",
-      "properties": {
-        "version": {
-          "type": "integer",
-          "const": 1
-        },
-        "id": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "method": {
-          "type": "string",
-          "const": "creation.catalog"
-        },
-        "params": {
-          "$ref": "#/$defs/WorkbenchPrivateCreationCatalogParams"
         },
         "context": {
           "type": "object",
@@ -67164,13 +67040,6 @@
         "creation.read": {
           "request": "#/$defs/WorkbenchPrivateCreationReadRequest",
           "result": "#/$defs/WorkbenchPrivateCreationReadResult",
-          "direction": "hostToWorkbench",
-          "x-owner": "workbench",
-          "source": "services/workbench/src/backend-main.cjs"
-        },
-        "creation.catalog": {
-          "request": "#/$defs/WorkbenchPrivateCreationCatalogRequest",
-          "result": "#/$defs/WorkbenchPrivateCreationCatalogResult",
           "direction": "hostToWorkbench",
           "x-owner": "workbench",
           "source": "services/workbench/src/backend-main.cjs"

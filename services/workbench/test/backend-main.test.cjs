@@ -30,24 +30,6 @@ async function fixture(t, retired, projectionFixture = false) {
       if (typeof lifetime.hostCall !== "function") throw Error("Host ownership must precede backend initialization");
       if (options.sourceSingletonHeld !== false || options.applicationOwner) throw Error('wrong owner');
       const backend = { home: options.home, hostCall: lifetime.hostCall, host: { sourceId: 'fixture-source' }, cloud: {}, addProject: async (path) => 'project:' + path };
-      if (typeof options.retired === 'string' && options.retired.startsWith('catalog')) {
-        const accepted = { acceptedAt: 2, model: { providerId: 'p', modelId: 'm' }, modelId: 'm', reasoningEffort: 'xhigh' };
-        backend.starting = new Map();
-        const project = { service: { serviceId: 'service-p', generation: 'generation-p' }, client: { request: async () => {
-          if (options.retired === 'catalog-generation') project.service.generation = 'replacement';
-          if (options.retired === 'catalog-service') project.service.serviceId = 'replacement';
-          if (options.retired === 'catalog-client') project.client = {};
-          if (options.retired === 'catalog-project') backend.projects.set('p', {});
-          return { data: [{ providerId: 'p', modelId: 'confirmed', available: true }], lastAcceptedModel: accepted };
-        } }, profiles: [] };
-        backend.projects = new Map([['p', project]]);
-        backend.providers = { lastAcceptedModel: null, settled: async () => {
-          if (options.retired === 'catalog-pending') await new Promise(() => {});
-        }, manages: () => true, catalog: (models) => models, acceptModelSelection: async (value) => {
-          if (options.retired === 'catalog-selection-generation') project.service.generation = 'replacement';
-          backend.providers.lastAcceptedModel = value;
-        } };
-      }
       if (options.projectionFixture) {
         const { CoreWorktrees } = require(${JSON.stringify(require.resolve("../src/desktop/core/worktrees.cjs"))});
         backend.worktrees = new CoreWorktrees(backend);
@@ -127,77 +109,6 @@ async function fixture(t, retired, projectionFixture = false) {
         }) + "\n",
       ),
   };
-}
-
-test("creation catalog publishes the latest Core accepted model", async (t) => {
-  const f = await fixture(t, "catalog");
-  const ready = f.line();
-  f.start();
-  await ready;
-  const reply = f.line();
-  f.child.stdin.write(
-    JSON.stringify({
-      version: 1,
-      id: "catalog",
-      method: "creation.catalog",
-      params: { projectId: "p" },
-    }) + "\n",
-  );
-  const frame = JSON.parse((await reply)[0]);
-  assert.ok(frame.result, JSON.stringify(frame));
-  assert.equal(frame.result.lastAcceptedModel.modelId, "m");
-  assert.equal(frame.result.lastAcceptedModel.reasoningEffort, "xhigh");
-  f.child.stdin.end();
-  assert.deepEqual(await f.exited, [0, null]);
-});
-
-test(
-  "creation catalog returns confirmed Core models while reconciliation is pending",
-  { timeout: 1500 },
-  async (t) => {
-    const f = await fixture(t, "catalog-pending");
-    const ready = f.line();
-    f.start();
-    await ready;
-    const reply = f.line();
-    f.child.stdin.write(
-      JSON.stringify({
-        version: 1,
-        id: "catalog",
-        method: "creation.catalog",
-        params: { projectId: "p" },
-      }) + "\n",
-    );
-    const frame = JSON.parse((await reply)[0]);
-    assert.deepEqual(frame.result.models, [
-      { providerId: "p", modelId: "confirmed", available: true },
-    ]);
-    assert.equal(frame.result.lastAcceptedModel.modelId, "m");
-    f.child.stdin.end();
-    assert.deepEqual(await f.exited, [0, null]);
-  },
-);
-
-for (const identity of ["generation", "service", "client", "project", "selection-generation"]) {
-  test(`creation catalog rejects a changed ${identity} before publishing`, async (t) => {
-    const f = await fixture(t, `catalog-${identity}`);
-    const ready = f.line();
-    f.start();
-    await ready;
-    const reply = f.line();
-    f.child.stdin.write(
-      JSON.stringify({
-        version: 1,
-        id: "catalog",
-        method: "creation.catalog",
-        params: { projectId: "p" },
-      }) + "\n",
-    );
-    const frame = JSON.parse((await reply)[0]);
-    assert.deepEqual(frame.error, { code: "CORE_UNAVAILABLE" });
-    f.child.stdin.end();
-    assert.deepEqual(await f.exited, [0, null]);
-  });
 }
 
 test("后台发布身份但不泄露票据，Host EOF 等待关闭并清理本代元数据", async (t) => {
