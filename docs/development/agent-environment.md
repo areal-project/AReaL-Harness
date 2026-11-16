@@ -32,7 +32,7 @@ make baseline-diff BASE=... CMD='pnpm --dir clients/gui exec vp test run' PREPAR
 
 ## 体积
 
-`make check-rust-size`（`make check-changed` 已包含）要求 Rust 产品代码单文件不超过 1500 行；存量超限的 27 个文件登记在 `scripts/check-rust-size-baseline.json`，不得超过登记行数，拆分后运行 `python3 scripts/check-rust-size.py --write` 收紧。GUI 各区域的行数预算由 `gui-health` 检查。
+`make check-rust-size`（`make check-changed` 已包含）输出 `AGENT_OPTIMIZATION_SIGNAL`，提示 Rust 产品代码中超过 1500 行参考线或相对观察快照增长的文件。它是 Agent 的拆分和职责优化信号，不是失败门禁；`scripts/check-rust-size-baseline.json` 只作为增长对照，拆分或删减后可运行 `python3 scripts/check-rust-size.py --write` 更新观察快照。GUI 各区域的行数预算由 `gui-health` 检查。
 
 ## 验证分层
 

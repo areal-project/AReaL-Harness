@@ -32,7 +32,7 @@ Runs the same command on the base commit and the working tree and lists only cas
 
 ## Size
 
-`make check-rust-size` (part of `make check-changed`) caps Rust product files at 1500 lines. The 27 files already over it are recorded in `scripts/check-rust-size-baseline.json` and may not grow past the recorded size; after splitting, run `python3 scripts/check-rust-size.py --write`. GUI line budgets are checked by `gui-health`.
+`make check-rust-size` (part of `make check-changed`) emits an `AGENT_OPTIMIZATION_SIGNAL` for Rust product files above the 1500-line guideline or growing relative to the observation snapshot. It is an Agent refactoring signal rather than a failing gate. `scripts/check-rust-size-baseline.json` is only a growth reference; after splitting or reducing files, run `python3 scripts/check-rust-size.py --write` to refresh the snapshot. GUI line budgets are checked by `gui-health`.
 
 ## Verification layers
 
