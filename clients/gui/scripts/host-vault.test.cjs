@@ -398,9 +398,12 @@ test("GUI leaves subscription transport with Host and stores ordinary provider c
     owner: "nativeV1",
     generation: "fixture-generation",
     accountEpoch: 0,
+    accountRevision: 0,
     transportRevision: 1,
     endpoint: "http://127.0.0.1:12345/responses",
     authenticated: false,
+    activeAccountId: null,
+    accounts: [],
     availability: "unavailable",
     refreshing: false,
     state: "signed_out",
@@ -430,8 +433,13 @@ test("GUI leaves subscription transport with Host and stores ordinary provider c
   t.after(() => app.close());
   assert.equal(app.openaiToken, "");
   assert.equal(app.transport, undefined);
-  assert.equal((await app.openai()).endpoint, native.endpoint);
-  assert(calls.some((call) => call.method === "subscription.command"));
+  const service = await app.openai();
+  assert.equal(service.endpoint, native.endpoint);
+  await service.refresh();
+  assert(calls.every((call) => call.method === "subscription.read"));
+  await service.ready();
+  await service.ready();
+  assert.equal(calls.filter((call) => call.method === "subscription.command").length, 1);
   const reference = await app.config.credential("synthetic-api-key");
   assert.equal(app.key({ apiKeyEnv: reference }), "synthetic-api-key");
   const reopened = new ModelConfiguration(f.backend, f.vault);

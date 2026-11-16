@@ -8,17 +8,19 @@ const contract = require("@areal/workbench/desktop-contract/provider");
 const UNCLAIMED_OWNER = "legacy";
 
 /** @param {unknown} state */
-function unused(state) {
+function passive(state) {
   return (
     contract.record(state) &&
-    state.owner === UNCLAIMED_OWNER &&
-    state.accountRevision === 0 &&
-    state.transportRevision === 0 &&
+    state.authenticated === false &&
     state.activeAccountId === null &&
     Array.isArray(state.accounts) &&
     state.accounts.length === 0 &&
-    state.endpoint === null &&
-    state.state === "signed_out"
+    state.state === "signed_out" &&
+    (state.owner === "nativeV1" ||
+      (state.owner === UNCLAIMED_OWNER &&
+        state.accountRevision === 0 &&
+        state.transportRevision === 0 &&
+        state.endpoint === null))
   );
 }
 
@@ -136,7 +138,7 @@ class NativeSubscription {
     await service.settle();
     const sourceId = backend.host.sourceId;
     const state = await backend.host.client.request("subscription.read", { sourceId });
-    if (service.outcomeUnknown || unused(state)) {
+    if (service.outcomeUnknown || passive(state)) {
       service.accept(state);
       return service;
     }
@@ -306,7 +308,7 @@ class NativeSubscription {
     if (
       !(
         state.owner === "nativeV1" ||
-        unused(state) ||
+        passive(state) ||
         (state.owner === UNCLAIMED_OWNER && this.outcomeUnknown)
       ) ||
       !Number.isSafeInteger(state.accountEpoch)
@@ -359,7 +361,7 @@ class NativeSubscription {
       const recovering = this.pending.length > 0;
       await this.settle();
       const snapshot = await this.read();
-      if (recovering || this.outcomeUnknown || unused(this.latest)) return snapshot;
+      if (recovering || this.outcomeUnknown || passive(this.latest)) return snapshot;
       await this.action({ kind: "refreshCatalog", force: false });
       return this.read();
     })().finally(() => {

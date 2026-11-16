@@ -348,7 +348,7 @@ Host 项目启动也采用非交互凭据读取。槽不可读时本次启动不
 
 `subscription.read.owner` 为 `legacy` 或 `nativeV1`，始终包含 `sourceId`、`generation`、`accountRevision` 与 `transportRevision`。原生状态另含 `accountEpoch`、既有账户状态、`accounts`、`catalog` 与 `endpoint`。`login` 中的 `{loginId,authUrl}` 供本机 UI 打开授权流程。`applied` 按 Host projectId 记录 `{accountEpoch,serviceId,generation,connectionId,providerRevision}`；来源已就绪不表示每个 Core 已应用成功。
 
-从未初始化订阅的来源（无 owner、账户与传输 revision 均为零）只读返回 `signed_out`；普通启动和状态读取不创建传输凭据或发起交接。首次显式订阅操作再沿 `subscription.handoff` 初始化。已有账户恢复与未决原操作的恢复规则不变。
+从未初始化订阅的来源（无 owner、账户与传输 revision 均为零）只读返回 `signed_out`；普通启动和状态读取不创建传输凭据或发起交接。已接管但未登录且没有账户的来源也只读现有状态，不重新配置传输网络。显式订阅操作再按需初始化或配置传输，首次接管沿 `subscription.handoff`。已有账户恢复与未决原操作的恢复规则不变。
 
 action 为 `begin`（`target:{kind:"current"|"newAccount"|"saved",accountId?}`）、`cancel`（`loginId`）、`select`（`accountId`）、`logout`、`forget`、`refreshCatalog`（`force?`）、`probe`（`model`）或 `configureNetwork`（`network,expectedTransportRevision`）。新账号授权可在 Core 忙碌时保存为未激活账户，保留原流。切换与注销沿用每个原 Core 的实时空闲检查，不承诺跨 Core 原子预留。
 
