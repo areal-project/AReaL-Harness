@@ -72,6 +72,7 @@
     "test:send-admission": "node scripts/send-admission-smoke.mjs",
     "test:subscription-send": "node scripts/subscription-send-smoke.mjs",
     "test:provider-hot-apply": "node scripts/provider-hot-apply-smoke.mjs",
+    "test:provider-startup-recovery": "node scripts/provider-startup-recovery.mjs",
     "test:context-usage": "node scripts/context-usage-smoke.mjs",
     "test:desktop-upgrade": "node scripts/desktop-upgrade-smoke.mjs",
     "test:desktop-upgrade-unit": "node --test scripts/desktop-upgrade.test.cjs",

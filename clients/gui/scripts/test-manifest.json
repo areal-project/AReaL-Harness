@@ -360,6 +360,14 @@
     "requires": ["electron", "core-binary", "gui-build", "git"]
   },
   {
+    "script": "test:provider-startup-recovery",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["provider"],
+    "requires": ["browser", "gui-build"],
+    "notes": "Production settings components with synthetic read failures and reconnects; verifies catalog and subscription recovery without discarding an unsaved draft."
+  },
+  {
     "script": "test:context-usage",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],

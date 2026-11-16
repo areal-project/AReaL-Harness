@@ -46,11 +46,19 @@ import "./ModelSettings.css";
 import type { Action, CommandParams, Data } from "../services.js";
 
 const CHATGPT = "chatgpt";
-export function ModelSettings({ action, subscription }: { action: Action; subscription?: Data }) {
+export function ModelSettings({
+  action,
+  subscription,
+  connectionState = "ready",
+}: {
+  action: Action;
+  subscription?: Data;
+  connectionState?: string;
+}) {
   const { t } = useI18n();
   const navigate = useGuardedNavigation();
   const api = <P extends CommandParams<"providers">>(request: P) => action("providers", request);
-  const state = useResource(() => api({ operation: "list" }), "application");
+  const state = useResource(() => api({ operation: "list" }), `application:${connectionState}`);
   const [loadedSubscription, setLoadedSubscription] = useState<Data>();
   const account = subscription ?? loadedSubscription;
   const accountModels: Data[] = account?.models ?? [];
@@ -524,6 +532,7 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
               <ChatGPTSubscription
                 action={action}
                 status={subscription}
+                connectionState={connectionState}
                 onStatusChange={setLoadedSubscription}
               />
             </div>

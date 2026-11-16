@@ -39,16 +39,21 @@ export function subscriptionStatusLabel(t: Translate, state: string) {
 export function ChatGPTSubscription({
   action,
   status,
+  connectionState = "ready",
   onStatusChange,
 }: {
   action: Action;
   status?: Data;
+  connectionState?: string;
   onStatusChange?: (status: Data) => void;
 }) {
   const { t } = useI18n();
   const api = <P extends CommandParams<"chatgpt">>(request: P) =>
     action("chatgpt", { ...request, provider: "openai" });
-  const resource = useResource(() => api({ operation: "status" }), "chatgpt-subscription-openai");
+  const resource = useResource(
+    () => api({ operation: "status" }),
+    `chatgpt-subscription-openai:${connectionState}`,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState<UiMessage>();

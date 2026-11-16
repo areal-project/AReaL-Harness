@@ -60,7 +60,8 @@ class ModelConfiguration {
     } catch (error) {
       if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
-    await this.refreshCredentials(metadata.references);
+    // 初始化只登记来源；执行、保存和核验仍通过 current/execute 读取凭据，不阻塞工作台就绪。
+    this.references = new Set(metadata.references);
   }
   /** @param {string[]} [references] */
   async refreshCredentials(references) {

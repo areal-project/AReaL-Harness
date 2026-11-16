@@ -1,9 +1,60 @@
 "use strict";
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
+const { mkdtemp, rm } = require("node:fs/promises");
+const { tmpdir } = require("node:os");
+const { join } = require("node:path");
 const { ModelConfiguration } = require("../src/desktop/core/model-config.cjs");
 const { catalog } = require("../src/desktop/core/provider-model-catalog.cjs");
 const { configurePluginValues } = require("../src/desktop/core/plugin-configuration.cjs");
+
+test("initialization and catalog stay available before execution credentials can be read", async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "areal-model-init-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const reference = "AREAL_CREDENTIAL_saved";
+  const source = {
+    sourceId: "source",
+    credentials: { references: [reference], migratedConfigPaths: [] },
+  };
+  const snapshot = {
+    path: join(home, "config.toml"),
+    revision: "fixture",
+    data: [],
+    defaultModel: null,
+    credentialStates: {},
+    credentialSources: {},
+    effective: {},
+  };
+  let vaultAvailable = false;
+  const config = new ModelConfiguration(
+    {
+      home,
+      host: {
+        sourceId: source.sourceId,
+        state: source,
+        client: { sourceState: async () => source },
+      },
+      hostCall: async () => structuredClone(snapshot),
+    },
+    {
+      read: async () => {
+        if (!vaultAvailable) throw new Error("credential service unavailable");
+        return { value: "synthetic-secret" };
+      },
+    },
+  );
+
+  await config.init();
+  assert.equal(config.references.has(reference), true);
+  assert.deepEqual(await config.catalog(), { ...snapshot, refreshing: true });
+  assert.equal(config.value, undefined);
+  await assert.rejects(config.current(), /credential service unavailable/);
+  assert.equal(config.value, undefined);
+
+  vaultAvailable = true;
+  assert.deepEqual(await config.current(), snapshot);
+  assert.equal(config.key({ apiKeyEnv: reference }), "synthetic-secret");
+});
 
 test("missing saved entry remains distinct from an unconfigured key and can be recovered", async () => {
   const reference = "AREAL_CREDENTIAL_saved";
