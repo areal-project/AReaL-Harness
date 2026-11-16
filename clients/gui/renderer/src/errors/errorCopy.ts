@@ -32,6 +32,7 @@ export const ERROR_CODES = {
   RESOURCE_UNAVAILABLE: { action: "refresh", retryable: false },
   RESOURCE_BUSY: { action: "retry", retryable: true },
   NOT_FOUND: { action: "refresh", retryable: false },
+  PROJECT_NOT_FOUND: { message: "errors.NOT_FOUND", action: "refresh", retryable: false },
   TARGET_CHANGED: { action: "refresh", retryable: false },
   TURN_BUSY: { action: "none", retryable: false },
   SUBMISSION_UNKNOWN: { action: "refresh", retryable: false },

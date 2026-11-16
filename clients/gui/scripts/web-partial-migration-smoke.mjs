@@ -281,24 +281,26 @@ try {
   );
   if (persistedMode) {
     await web
-      .getByText("当前为只读历史，项目运行状态尚未恢复。", { exact: true })
+      .getByText("当前显示已保存的历史，发送时恢复会话。", { exact: true })
       .waitFor({ timeout: 30000 });
     await web
       .getByText("HISTORY_TERMINAL_INTERRUPTED", { exact: false })
       .waitFor({ timeout: 30000 });
-    assert.equal(
-      await web
-        .getByRole("button", { name: "发送", exact: true })
-        .isEnabled()
-        .catch(() => false),
-      false,
-    );
+    const input = web.getByTestId("chat-input");
+    assert.equal(await input.getAttribute("contenteditable"), "true");
+    await input.fill("UNSENT_PERSISTED_DRAFT");
+    assert.equal(await input.textContent(), "UNSENT_PERSISTED_DRAFT");
+    await web.waitForFunction(() => {
+      const send = document.querySelector('[data-testid="chat-send-button"]');
+      return send instanceof HTMLButtonElement && !send.disabled;
+    });
+    assert.equal(await web.getByRole("button", { name: "发送", exact: true }).isEnabled(), true);
     assert.equal(
       sha(await readFile(join(source.coreHome, safeId, "state", `${fixtureId}.json`))),
       persistedDigest,
       "persisted Store changed while reading",
     );
-    evidence.checks.push({ stage: "persisted-history-visible-and-send-unavailable" });
+    evidence.checks.push({ stage: "persisted-history-visible-and-draft-editable" });
   }
   const wireDeadline = Date.now() + 15000;
   const matchingOpen = () => {
