@@ -79,6 +79,9 @@ pub(super) async fn execute_with_options(
     }
     let mut inputs = inputs(&options)?;
     let mut stored = Vec::new();
+    let mut credential_values = BTreeMap::new();
+    let mut credential_errors = BTreeMap::new();
+    let mut credential_references = Vec::new();
     if operation == "modelsCatalog" {
         for (name, value) in host.gateway.workbench.environment_credentials(source) {
             inputs.env.insert(name.into(), value.into());
@@ -117,12 +120,14 @@ pub(super) async fn execute_with_options(
         }
         let references = host.migration.vault.provider_references(source)?;
         for reference in references {
+            credential_references.push(reference.clone());
             inputs.env.remove(OsString::from(&reference).as_os_str());
             let value = host.migration.vault.dispatch_async("vault.read", json!({"slot":{"kind":"providerCredential","sourceId":source,"reference":reference},"interactionAllowed":false}), "", &host.migration).await;
             match value {
                 Ok(value) => {
                     if let Some(value) = value["value"].as_str() {
                         inputs.env.insert(reference.clone().into(), value.into());
+                        credential_values.insert(reference.clone(), value.to_owned());
                         stored.push(reference);
                     }
                 }
@@ -131,7 +136,13 @@ pub(super) async fn execute_with_options(
                         .downcast_ref::<crate::wire::Error>()
                         .is_some_and(|error| {
                             matches!(error.code, "storageLocked" | "storageMissing")
-                        }) => {}
+                        }) =>
+                {
+                    credential_errors.insert(
+                        reference,
+                        error.downcast_ref::<crate::wire::Error>().unwrap().code,
+                    );
+                }
                 Err(error) => return Err(error),
             }
         }
@@ -151,7 +162,15 @@ pub(super) async fn execute_with_options(
                     &stored,
                 )?
             };
-            Ok(serde_json::to_value(value)?)
+            // 仅供受监督工作台的私有反向调用；凭据不进入公共目录或配置文件。
+            Ok(json!({
+                "snapshot": value,
+                "credentials": {
+                    "references": credential_references,
+                    "values": credential_values,
+                    "errors": credential_errors
+                }
+            }))
         }
         // show 使用与 Core 管理诊断相同的加载器；validate 只校验页面已读到的扩展文档。
         "configShow" => {

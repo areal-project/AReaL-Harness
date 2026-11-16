@@ -1836,11 +1836,6 @@ class CoreBackend {
     }
     switch (name) {
       case "connect":
-        await this.worktrees.connectExecutions(
-          "logicalProjectId" in request && typeof request.logicalProjectId === "string"
-            ? request.logicalProjectId
-            : project.id,
-        );
         return this.snapshot();
       case "prediction": {
         if (!project.client?.capabilities?.methods?.includes("areal/thread/prediction"))
@@ -1877,11 +1872,6 @@ class CoreBackend {
         return manage(this, project, request, context);
       case "list":
         await this.listThreads(project);
-        await this.worktrees.connectExecutions(
-          "logicalProjectId" in request && typeof request.logicalProjectId === "string"
-            ? request.logicalProjectId
-            : project.id,
-        );
         break;
       case "open":
         await this.openThread(project, request.threadId);

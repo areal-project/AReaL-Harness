@@ -9,6 +9,31 @@ const { createRequire } = require("node:module");
 const requireApp = createRequire(join(__dirname, "../app/package.json"));
 const { CoreBackend } = requireApp("@areal/workbench-service/desktop/core/backend.cjs");
 
+for (const name of ["connect", "list"])
+  test(`${name} does not start sibling worktrees`, async () => {
+    const started = [];
+    const backend = {
+      worktrees: {
+        assertAvailable() {},
+        connectExecutions: async () => started.push("sibling"),
+      },
+      lifecycleOperations: { resumeScheduling: async () => {} },
+      worktreeAdmission: { admit: async () => {} },
+      start: async (id) => {
+        started.push(id);
+        return { id };
+      },
+      listThreads: async () => {},
+      snapshot: () => ({ projects: [] }),
+    };
+    await CoreBackend.prototype.dispatchCommand.call(
+      backend,
+      { name, request: { projectId: "selected" } },
+      {},
+    );
+    assert.deepEqual(started, ["selected"]);
+  });
+
 test("native Worktree binds the Host-prepared Core without recalculating its deployment", async (t) => {
   const home = await mkdtemp(join(tmpdir(), "areal-prepared-worktree-"));
   t.after(() => rm(home, { recursive: true, force: true }));

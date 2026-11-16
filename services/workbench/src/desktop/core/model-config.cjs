@@ -123,7 +123,6 @@ class ModelConfiguration {
 
   /** @param {'read'|'write'} operation @param {import('./provider-contract.cjs').ModelUpdate} [request] */
   async execute(operation, request) {
-    await this.refreshCredentials();
     let value;
     try {
       if (!this.backend.hostCall) throw new Error("Host 模型配置能力不可用");
@@ -153,7 +152,38 @@ class ModelConfiguration {
       throw new Error(`${detail}配置若已变化，请刷新核对后再操作。`);
     }
     try {
-      return modelSnapshot(value);
+      if (!record(value) || !record(value.credentials)) throw new Error();
+      const { references, values, errors } = value.credentials;
+      if (!strings(references) || !record(values) || !record(errors)) throw new Error();
+      /** @type {Record<string,string>} */
+      const keys = {};
+      /** @type {Map<string,string>} */
+      const failures = new Map();
+      for (const [reference, secret] of Object.entries(values)) {
+        if (!references.includes(reference) || typeof secret !== "string") throw new Error();
+        keys[reference] = secret;
+      }
+      for (const [reference, code] of Object.entries(errors)) {
+        if (
+          !references.includes(reference) ||
+          typeof code !== "string" ||
+          !["storageLocked", "storageMissing", "migrationPending"].includes(code)
+        )
+          throw new Error();
+        failures.set(reference, code);
+      }
+      const snapshot = modelSnapshot(value.snapshot);
+      // 私有 Host 回执中的凭据只进入执行缓存；公开快照只保留单独解码的 snapshot。
+      this.references = new Set(references);
+      this.vault.keys = keys;
+      this.credentialErrors = failures;
+      this.vault.locked = new Set(
+        [...failures].filter(([, code]) => code === "storageLocked").map(([id]) => id),
+      );
+      this.vault.pending = new Set(
+        [...failures].filter(([, code]) => code === "migrationPending").map(([id]) => id),
+      );
+      return snapshot;
     } catch {
       throw new Error("Core 返回了无效的模型配置");
     }

@@ -26,8 +26,21 @@ function fixture(
   native: boolean,
   connect: (resume: boolean) => Promise<void>,
   recoveryOnly = false,
+  persistedHistory = false,
 ) {
-  vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+  seed.snapshot ??= {
+    connection: { state: "ready" },
+    projects: [{ id: owner.projectId, root: "/fixture", state: { connected: false, threads: {} } }],
+  };
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) =>
+      key === "areal-gui:project"
+        ? owner.projectId
+        : key === `areal-gui:thread:${owner.projectId}`
+          ? owner.threadId
+          : null,
+    setItem: () => {},
+  });
   const events: string[] = [];
   const command = vi.fn(async (name: string, params: Record<string, unknown>) => {
     events.push(name);
@@ -49,15 +62,17 @@ function fixture(
       },
     };
   });
-  const selectSession = vi.fn(async () => {
-    events.push("read");
-  });
+  const selectSession = vi.fn(
+    async (_target: { projectId: string; threadId: string; persisted?: boolean } | null) => {
+      events.push("read");
+    },
+  );
   const services = {
     capabilities: { native, mutations: true },
     workbench: { call: command },
     reads: {
       selectSession,
-      status: () => ({ connection: "ready", identity: { persistedHistory: true } }),
+      status: () => ({ connection: "ready", identity: { persistedHistory } }),
     },
   } as unknown as PlatformServices;
   const recoverPersistedHistory = vi.fn(
@@ -74,9 +89,90 @@ function fixture(
   }
   renderToStaticMarkup(createElement(Harness));
   if (!navigation) throw Error("Navigation not mounted");
-  return { navigation, command, selectSession, recoverPersistedHistory, events };
+  return { navigation, command, selectSession, recoverPersistedHistory, events, services };
 }
 const owner = { projectId: "saved-project", threadId: "old-thread", connectionGeneration: 0 };
+
+it("shows persisted history before the selected execution finishes connecting", async () => {
+  let release!: () => void;
+  const connected = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const f = fixture(true, () => connected, false, true);
+  const opening = f.navigation.selectConversation(owner.projectId, owner.threadId);
+  try {
+    await vi.waitFor(() => expect(f.events).toEqual(["read", "connect"]));
+    expect(f.selectSession).toHaveBeenCalledWith({
+      projectId: owner.projectId,
+      threadId: owner.threadId,
+      persisted: true,
+    });
+  } finally {
+    release();
+    await opening;
+  }
+  expect(f.selectSession.mock.calls.map(([target]) => target)).toEqual([
+    { projectId: owner.projectId, threadId: owner.threadId, persisted: true },
+    { projectId: owner.projectId, threadId: owner.threadId },
+  ]);
+});
+
+it("uses the live reader when persisted history is locked", async () => {
+  const f = fixture(true, async () => {}, false, true);
+  f.selectSession.mockRejectedValueOnce(
+    Object.assign(Error("history locked"), { code: "PERSISTED_HISTORY_UNAVAILABLE" }),
+  );
+  await f.navigation.selectConversation(owner.projectId, owner.threadId);
+  expect(f.events.filter((event) => event !== "library")).toEqual(["connect", "read"]);
+  expect(f.selectSession).toHaveBeenLastCalledWith({
+    projectId: owner.projectId,
+    threadId: owner.threadId,
+  });
+});
+
+it("keeps persisted history read-only when execution activation is unavailable", async () => {
+  const f = fixture(
+    false,
+    async () => {
+      throw Error("unexpected activation");
+    },
+    false,
+    true,
+  );
+  f.services.capabilities!.mutations = false;
+  await f.navigation.selectConversation(owner.projectId, owner.threadId);
+  expect(f.command).not.toHaveBeenCalled();
+  expect(f.selectSession).toHaveBeenCalledExactlyOnceWith({
+    projectId: owner.projectId,
+    threadId: owner.threadId,
+    persisted: true,
+  });
+});
+
+it("does not reopen an old conversation after its delayed connection completes", async () => {
+  let release!: () => void;
+  const connected = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const f = fixture(true, () => connected, false, true);
+  const first = f.navigation.selectConversation(owner.projectId, owner.threadId);
+  await vi.waitFor(() => expect(f.events).toEqual(["read", "connect"]));
+  const second = f.navigation.selectConversation(owner.projectId, "new-thread");
+  try {
+    await vi.waitFor(() => expect(f.selectSession).toHaveBeenCalledTimes(2));
+  } finally {
+    release();
+    await Promise.all([first, second]);
+  }
+  expect(f.selectSession).not.toHaveBeenCalledWith({
+    projectId: owner.projectId,
+    threadId: owner.threadId,
+  });
+  expect(f.selectSession).toHaveBeenLastCalledWith({
+    projectId: owner.projectId,
+    threadId: "new-thread",
+  });
+});
 
 it("connects a stopped execution when its logical project is already connected", async () => {
   seed.snapshot = {
@@ -114,7 +210,10 @@ it.each([true, false])(
     const opening = f.navigation.restoreConversation(owner, "connect");
     try {
       await vi.waitFor(() =>
-        expect(f.command).toHaveBeenCalledWith("connect", { projectId: owner.projectId }),
+        expect(f.command).toHaveBeenCalledWith("connect", {
+          projectId: owner.projectId,
+          threadId: owner.threadId,
+        }),
       );
       expect(f.selectSession).not.toHaveBeenCalled();
     } finally {
@@ -135,19 +234,28 @@ it("keeps a user-stopped project blocked until explicit resume", async () => {
   });
   await f.navigation.restoreConversation(owner, "connect");
   expect(f.selectSession).not.toHaveBeenCalled();
-  expect(f.command).toHaveBeenCalledWith("connect", { projectId: owner.projectId });
+  expect(f.command).toHaveBeenCalledWith("connect", {
+    projectId: owner.projectId,
+    threadId: owner.threadId,
+  });
   await f.navigation.restoreConversation(owner, "connect", { resumeScheduling: true });
   expect(f.command).toHaveBeenLastCalledWith("connect", {
     projectId: owner.projectId,
+    threadId: owner.threadId,
     resumeScheduling: true,
   });
   expect(f.selectSession).toHaveBeenCalledTimes(1);
 });
 
 it("opens a persisted read-only history when the old owner blocks activation", async () => {
-  const f = fixture(true, async () => {
-    throw Object.assign(Error("old owner"), { code: "migrationBlocked" });
-  });
+  const f = fixture(
+    true,
+    async () => {
+      throw Object.assign(Error("old owner"), { code: "migrationBlocked" });
+    },
+    false,
+    true,
+  );
   await f.navigation.restoreConversation(owner, "connect");
   expect(f.selectSession).toHaveBeenCalledWith({
     projectId: owner.projectId,
@@ -168,6 +276,28 @@ it.each([
   });
   await f.navigation.restoreConversation(owner, "connect");
   expect(f.selectSession).not.toHaveBeenCalled();
+});
+
+it("retains the original unknown activation after showing persisted history", async () => {
+  const f = fixture(
+    true,
+    async () => {
+      throw Object.assign(Error("activation result unknown"), {
+        code: "migrationBlocked",
+        submissionUnknown: true,
+        commandId: "original",
+      });
+    },
+    false,
+    true,
+  );
+  await f.navigation.selectConversation(owner.projectId, owner.threadId);
+  expect(f.command).toHaveBeenCalledTimes(1);
+  expect(f.selectSession).toHaveBeenCalledExactlyOnceWith({
+    projectId: owner.projectId,
+    threadId: owner.threadId,
+    persisted: true,
+  });
 });
 
 it("opens history on an already connected project without launching it again", async () => {

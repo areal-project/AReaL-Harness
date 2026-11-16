@@ -9,14 +9,14 @@ use areal_protocol::host::{
     LocalWebTicketParams, LocalWebTicketResult, LoopbackEndpoint, LoopbackHelloParams,
 };
 use bytes::Bytes;
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{SinkExt, StreamExt, future::LocalBoxFuture, stream::FuturesUnordered};
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::{Request, Response, body::Incoming, service::service_fn};
 use hyper_util::rt::{TokioIo, TokioTimer};
 use serde_json::{Value, json};
 use std::{
     cell::RefCell,
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
     convert::Infallible,
     io::Read,
     path::{Path, PathBuf},
@@ -91,6 +91,7 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_TICKETS: usize = 64;
 const MAX_CONNECTIONS: usize = 32;
 const MAX_WATCHED: usize = 4;
+const MAX_PENDING_COMMANDS: usize = 16;
 const ELECTRON_ORIGIN: &str = "areal-ui://app";
 type Socket = WebSocketStream<TokioIo<hyper::upgrade::Upgraded>>;
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -607,8 +608,36 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
     let mut watched: Vec<super::conversation_read::ConversationReader> = Vec::new();
     let mut tick = tokio::time::interval(Duration::from_millis(500));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let writable = writer.is_some();
+    let mut commands = VecDeque::new();
+    let mut queries: FuturesUnordered<LocalBoxFuture<'static, Value>> = FuturesUnordered::new();
+    let mut command: Option<LocalBoxFuture<'static, (super::gateway_owner::LocalSession, Value)>> =
+        None;
     loop {
+        // 业务请求保留同连接顺序与会话状态；等待后台时仍消费读取、事件和撤销授权。
+        if command.is_none()
+            && let Some(raw) = commands.pop_front()
+        {
+            let mut local = writer.take().unwrap();
+            let host = host.clone();
+            let device = device_id.clone();
+            command = Some(Box::pin(async move {
+                let response = local_request(&host, &mut local, device.as_deref(), raw).await;
+                (local, response)
+            }));
+        }
         tokio::select! {
+            Some(response) = queries.next(), if !queries.is_empty() => {
+                ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
+                send(&mut socket, &response).await?;
+            }
+            completed = async { command.as_mut().unwrap().await }, if command.is_some() => {
+                let (local, response) = completed;
+                command = None;
+                writer = Some(local);
+                ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
+                send(&mut socket, &response).await?;
+            }
             event = page_events.recv() => {
                 let event = match event {
                     Ok(event) => event,
@@ -632,30 +661,33 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                     Message::Text(bytes) => {
                         ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
                         let raw: Value = serde_json::from_str(&bytes)?;
-                        if let Some(local) = writer.as_mut().filter(|_| raw["method"].as_str().is_some_and(|method| WRITE_METHODS.contains(&method))) {
+                        if writable && raw["method"].as_str().is_some_and(|method| WRITE_METHODS.contains(&method)) {
                             let id = raw["id"].as_str().filter(|id| !id.is_empty() && id.len() <= 64).context("invalid request")?.to_owned();
-                            let result = async {
-                                ensure!(raw["version"] == VERSION, wire::error("unsupportedVersion","Host requires version 1"));
-                                let object = raw.as_object().context("INVALID_PARAMS")?;
-                                ensure!(object.keys().all(|key| matches!(key.as_str(), "version"|"id"|"method"|"params"|"context"|"commandId")), "INVALID_PARAMS");
-                                if let Some(device) = &device_id {
-                                    ensure!(host.loopback.browser_method_permitted(device, raw["method"].as_str().unwrap_or_default()), "FORBIDDEN");
-                                }
-                                let mut envelope = raw.clone();
-                                envelope.as_object_mut().unwrap().remove("version");
-                                local.request(&envelope).await
-                            }.await;
-                            ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
-                            let response=match result {
-                                Ok(value)=>json!({"version":VERSION,"id":id,"result":value}),
-                                Err(error)=>{
-                                    json!({"version":VERSION,"id":id,"error":loopback_error(&raw, &error)})
-                                },
-                            };
-                            send(&mut socket,&response).await?;
+                            if commands.len() + usize::from(command.is_some()) + queries.len() >= MAX_PENDING_COMMANDS {
+                                send(&mut socket, &json!({"version":VERSION,"id":id,
+                                    "error":loopback_error(&raw, &anyhow::anyhow!("LIMIT_EXCEEDED"))
+                                })).await?;
+                            } else if independent_query(&raw) {
+                                let host = host.clone();
+                                let device = device_id.clone();
+                                let connection = connection_id.clone();
+                                queries.push(Box::pin(async move {
+                                    // 这些查询不消费上传、分页令牌或选中会话；沿原工厂绑定同一主体与连接。
+                                    let local = match &device {
+                                        Some(device) => super::gateway_owner::LocalSession::browser(host.clone(), connection, device.clone()),
+                                        None => super::gateway_owner::LocalSession::new(host.clone(), connection),
+                                    };
+                                    match local {
+                                        Ok(mut local) => local_request(&host, &mut local, device.as_deref(), raw).await,
+                                        Err(error) => json!({"version":VERSION,"id":id,"error":loopback_error(&raw, &error)}),
+                                    }
+                                }));
+                            } else {
+                                commands.push_back(raw);
+                            }
                             continue;
                         }
-                        if let (None, Some(id)) = (writer.as_ref(), raw["method"].as_str().filter(|method| WRITE_METHODS.contains(method)).and(raw["id"].as_str())) {
+                        if let (false, Some(id)) = (writable, raw["method"].as_str().filter(|method| WRITE_METHODS.contains(method)).and(raw["id"].as_str())) {
                             send(&mut socket,&json!({"version":VERSION,"id":id,"error":read_error(&wire::error("methodNotFound","method is not available on this connection"))})).await?;
                             continue;
                         }
@@ -816,6 +848,64 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn independent_query(raw: &Value) -> bool {
+    matches!(
+        raw["method"].as_str(),
+        Some(
+            "project.models"
+                | "providers.read"
+                | "tasks.read"
+                | "manage.read"
+                | "worktree.read"
+                | "trajectory.read"
+                | "feedback.read"
+                | "plugins.read"
+        )
+    ) || (raw["method"] == "desktop.command"
+        && raw["params"]["command"] == "chatgpt"
+        && raw["params"]["request"]["operation"] == "status")
+}
+
+async fn local_request(
+    host: &Host,
+    local: &mut super::gateway_owner::LocalSession,
+    device: Option<&str>,
+    raw: Value,
+) -> Value {
+    let result = async {
+        ensure!(host.loopback.current(device), "FORBIDDEN");
+        ensure!(
+            raw["version"] == VERSION,
+            wire::error("unsupportedVersion", "Host requires version 1")
+        );
+        let object = raw.as_object().context("INVALID_PARAMS")?;
+        ensure!(
+            object.keys().all(|key| matches!(
+                key.as_str(),
+                "version" | "id" | "method" | "params" | "context" | "commandId"
+            )),
+            "INVALID_PARAMS"
+        );
+        if let Some(device) = device {
+            ensure!(
+                host.loopback
+                    .browser_method_permitted(device, raw["method"].as_str().unwrap_or_default()),
+                "FORBIDDEN"
+            );
+        }
+        let mut envelope = raw.clone();
+        envelope.as_object_mut().unwrap().remove("version");
+        local.request(&envelope).await
+    }
+    .await;
+    match result {
+        Ok(value) => json!({"version":VERSION,"id":raw["id"],"result":value}),
+        Err(error) => {
+            json!({"version":VERSION,"id":raw["id"],"error":loopback_error(&raw, &error)})
+        }
+    }
 }
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

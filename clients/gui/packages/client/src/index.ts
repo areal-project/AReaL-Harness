@@ -123,7 +123,7 @@ export class HostClient {
   #connectedHost?: string;
   #mediaQueue = Promise.resolve();
   #wake = () => {
-    if (this.#state.connection !== "ready") this.retry();
+    if (this.#state.connection === "offline") this.retry();
   };
   #restore = (event: PageTransitionEvent) => {
     if (event.persisted) this.retry();

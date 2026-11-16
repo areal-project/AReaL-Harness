@@ -378,24 +378,6 @@ class CoreWorktrees {
     await this.backend.openThread(execution, result.threadId);
     return { threadId: result.threadId, requestId: request.requestId };
   }
-  /** @param {string} logicalId */
-  async connectExecutions(logicalId) {
-    return Promise.allSettled(
-      this.owners(logicalId)
-        .filter(
-          (p) =>
-            p.id !== logicalId &&
-            ![...this.records.values()].some(
-              (value) =>
-                value.executionProjectId === p.id &&
-                (value.deleted ||
-                  value.deletion?.status === "running" ||
-                  value.deletion?.status === "unknown"),
-            ),
-        )
-        .map((p) => this.backend.start(p.id)),
-    );
-  }
   /** @param {ProjectSnapshot} project @param {import("@areal/workbench/core-model-contract").CoreThread} thread */
   decorate(project, thread) {
     const b = this.backend,

@@ -59,6 +59,32 @@ const status = {
   capabilities: [],
 };
 
+test("focus and online events preserve an in-flight Host handshake", async () => {
+  const events = new EventTarget();
+  const signals = [];
+  const rejectors = [];
+  const client = new HostClient({
+    origin,
+    bootstrap: async () => {},
+    events,
+    transport: ({ signal }) => {
+      signals.push(signal);
+      return new Promise((_resolve, reject) => rejectors.push(reject));
+    },
+  });
+  const connecting = client.retry();
+  try {
+    events.dispatchEvent(new Event("focus"));
+    events.dispatchEvent(new Event("online"));
+    assert.equal(signals.length, 1);
+    assert.equal(signals[0].aborted, false);
+  } finally {
+    client.close();
+    for (const reject of rejectors) reject(new Error("fixture closed"));
+    await connecting;
+  }
+});
+
 async function server(t, respond) {
   const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await once(server, "listening");

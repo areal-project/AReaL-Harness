@@ -238,7 +238,7 @@ export function useSessionNavigation(
             if (!current()) return;
           }
           if (services.reads && !services.recoverPersistedHistory) {
-            // Host 读取不启动项目；GUI 和网页都先由后台连接，再打开历史订阅。
+            // 停止的项目先读持久化历史；执行连接继续核验凭据，不挡住历史首屏。
             const target = conversationProject(
               restorationProjects.current.find((item) => item.id === owner.projectId),
               owner.threadId,
@@ -252,14 +252,36 @@ export function useSessionNavigation(
                 !options.resumeScheduling &&
                 connection.connection === "ready" &&
                 connection.identity.persistedHistory === true;
-              try {
-                if (canReadPersisted && services.capabilities?.mutations === false)
-                  persisted = true;
-                else
-                  await resourceAction("connect", {
+              if (canReadPersisted) {
+                try {
+                  await services.reads.selectSession({
                     projectId: owner.projectId,
-                    ...(options.resumeScheduling ? { resumeScheduling: true } : {}),
+                    threadId: owner.threadId,
+                    persisted: true,
                   });
+                  persisted = true;
+                } catch (error) {
+                  if (
+                    !["PERSISTED_HISTORY_UNAVAILABLE", "RESOURCE_BUSY"].includes(
+                      String((error as RecoveryFailure)?.code),
+                    )
+                  )
+                    throw error;
+                }
+                if (!current()) return;
+                if (persisted && services.capabilities?.mutations === false) {
+                  setRestoration({ ...owner, pending: false, error: "" });
+                  return;
+                }
+              }
+              try {
+                await resourceAction("connect", {
+                  projectId: owner.projectId,
+                  threadId: owner.threadId,
+                  ...(options.resumeScheduling ? { resumeScheduling: true } : {}),
+                });
+                if (!current()) return;
+                persisted = false;
               } catch (error) {
                 const failure = error as RecoveryFailure;
                 if (

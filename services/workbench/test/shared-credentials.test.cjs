@@ -8,6 +8,45 @@ const { ModelConfiguration } = require("../src/desktop/core/model-config.cjs");
 const { catalog } = require("../src/desktop/core/provider-model-catalog.cjs");
 const { configurePluginValues } = require("../src/desktop/core/plugin-configuration.cjs");
 
+test("execution snapshots reuse Host credential reads without exposing them in public state", async () => {
+  const reference = "AREAL_CREDENTIAL_saved";
+  const snapshot = {
+    path: "/fixture/config.toml",
+    revision: "fixture",
+    data: [],
+    defaultModel: null,
+    credentialStates: {},
+    credentialSources: {},
+    effective: {},
+  };
+  const config = new ModelConfiguration(
+    {
+      projects: new Map(),
+      host: {
+        sourceId: "source",
+        client: {
+          sourceState: async () => ({
+            sourceId: "source",
+            credentials: { references: [reference] },
+          }),
+        },
+      },
+      hostCall: async () => ({
+        snapshot,
+        credentials: {
+          references: [reference],
+          values: { [reference]: "synthetic-secret" },
+          errors: {},
+        },
+      }),
+    },
+    { read: () => assert.fail("Host already read the credential") },
+  );
+  assert.deepEqual(await config.current(), snapshot);
+  assert.equal(config.key({ apiKeyEnv: reference }), "synthetic-secret");
+  assert.equal(JSON.stringify(config.public()).includes("synthetic-secret"), false);
+});
+
 test("initialization and catalog stay available before execution credentials can be read", async (t) => {
   const home = await mkdtemp(join(tmpdir(), "areal-model-init-"));
   t.after(() => rm(home, { recursive: true, force: true }));
@@ -34,7 +73,19 @@ test("initialization and catalog stay available before execution credentials can
         state: source,
         client: { sourceState: async () => source },
       },
-      hostCall: async () => structuredClone(snapshot),
+      hostCall: async (_method, request) => {
+        if (request.operation === "modelsCatalog") return structuredClone(snapshot);
+        if (!vaultAvailable) throw new Error("credential service unavailable");
+        return {
+          snapshot: structuredClone(snapshot),
+          credentials: {
+            references: [reference],
+            values: { [reference]: "synthetic-secret" },
+            errors: {},
+          },
+        };
+      },
+      providers: { redact: (text) => text },
     },
     {
       read: async () => {

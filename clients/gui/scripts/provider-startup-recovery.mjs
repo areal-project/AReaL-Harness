@@ -93,11 +93,13 @@ try {
       { connection, count },
     );
   await calls("unavailable", 1);
-  await page.getByText("Fixture disconnected").first().waitFor();
+  const disconnected = "与桌面应用的连接断开了。你的内容已保留，重新连接后再试。";
+  await page.getByText(disconnected, { exact: true }).first().waitFor();
+  assert.equal(await page.getByText("Fixture disconnected", { exact: true }).count(), 0);
   await page.evaluate(() => window.setConnection("ready"));
   await calls("ready", 1);
   await page.getByText("Fixture Provider", { exact: true }).first().waitFor();
-  await page.waitForFunction(() => !document.body.innerText.includes("Fixture disconnected"));
+  await page.waitForFunction((text) => !document.body.innerText.includes(text), disconnected);
   await page.getByText("Fixture Provider", { exact: true }).first().click();
   const name = page.getByLabel("供应商名称");
   await name.fill("Edited fixture");
@@ -105,7 +107,7 @@ try {
   await calls("unavailable", 2);
   await page.evaluate(() => window.setConnection("ready"));
   await calls("ready", 2);
-  await page.waitForFunction(() => !document.body.innerText.includes("Fixture disconnected"));
+  await page.waitForFunction((text) => !document.body.innerText.includes(text), disconnected);
   assert.equal(
     await name.inputValue(),
     "Edited fixture",

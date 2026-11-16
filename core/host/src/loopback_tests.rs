@@ -648,6 +648,160 @@ async fn lagged_page_events_keep_the_loopback_connection_alive() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn pending_workbench_requests_do_not_block_queries_or_page_events() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for blocked_method in ["providers.read", "desktop.command"] {
+                let fixture = Fixture::start().await;
+                let runner = fixture.host.home.join("blocked.cjs");
+                std::fs::write(
+                    &runner,
+                    r#"
+            const out = frame => console.log(JSON.stringify({version:1,...frame}));
+            out({event:'ready',methods:['providers.read','desktop.command']});
+            let pending;
+            require('node:readline').createInterface({input:process.stdin}).on('line', line => {
+                const frame = JSON.parse(line);
+                if (frame.method && pending === undefined) {
+                    pending = frame.id;
+                    out({call:'blocked',id:'gate',params:{}});
+                } else if (frame.method) {
+                    out({id:frame.id,result:{models:[]}});
+                } else if (frame.id === 'gate') {
+                    out({id:pending,result:{models:[]}});
+                }
+            });
+        "#,
+                )
+                .unwrap();
+                let entered = Rc::new(Notify::new());
+                let released = Rc::new(Notify::new());
+                let reverse: crate::workbench::Reverse = {
+                    let entered = entered.clone();
+                    let released = released.clone();
+                    Rc::new(move |method, _| {
+                        let entered = entered.clone();
+                        let released = released.clone();
+                        Box::pin(async move {
+                            assert_eq!(method, "blocked");
+                            entered.notify_one();
+                            released.notified().await;
+                            Ok(Value::Null)
+                        })
+                    })
+                };
+                let node = std::process::Command::new("which")
+                    .arg("node")
+                    .output()
+                    .unwrap();
+                assert!(
+                    node.status.success(),
+                    "Node is required for workbench tests"
+                );
+                let node = PathBuf::from(String::from_utf8(node.stdout).unwrap().trim());
+                let backend =
+                    crate::workbench::Workbench::start(&node, &runner, &fixture.host.home, reverse)
+                        .await
+                        .unwrap();
+                fixture
+                    .host
+                    .gateway
+                    .workbench
+                    .bind_test_backend(backend, "fixture");
+                let ticket = fixture
+                    .client()
+                    .await
+                    .web_ticket(ELECTRON_ORIGIN)
+                    .await
+                    .unwrap();
+                let mut socket = connect(&ticket, ELECTRON_ORIGIN).await;
+                write(
+                    &mut socket,
+                    json!({"version":1,"id":"hello","method":"hello","params":{
+                        "protocolVersions":[1],"capabilities":["gui-read-v1","gui-write-v1"],
+                        "ticket":ticket.ticket,"expectedGeneration":ticket.generation
+                    }}),
+                )
+                .await;
+                let owner = read(&mut socket).await["result"]["connectionId"].clone();
+                let slow_params = if blocked_method == "providers.read" {
+                    json!({"sourceId":"fixture","operation":"list"})
+                } else {
+                    json!({"command":"connect","request":{"projectId":"selected"}})
+                };
+                write(
+                    &mut socket,
+                    json!({"version":1,"id":"slow","method":blocked_method,
+            "params":slow_params}),
+                )
+                .await;
+                tokio::time::timeout(Duration::from_secs(2), entered.notified())
+                    .await
+                    .unwrap();
+                if blocked_method == "desktop.command" {
+                    write(
+                        &mut socket,
+                        json!({"version":1,"id":"second","method":"desktop.command",
+                "params":{"command":"connect","request":{"projectId":"second"}}}),
+                    )
+                    .await;
+                }
+                // 确认目标请求已进入后台且尚未释放，再检查同连接的安全读取与事件。
+                write(
+                    &mut socket,
+                    json!({"version":1,"id":"fast","method":"host.status","params":{}}),
+                )
+                .await;
+                write(
+                    &mut socket,
+                    json!({"version":1,"id":"catalog","method":"providers.read",
+            "params":{"sourceId":"fixture","operation":"list"}}),
+                )
+                .await;
+                super::super::workbench_route::reverse(&fixture.host)(
+                    "pages.event".into(),
+                    json!({"connection":owner,"token":"while-blocked","notification":{}}),
+                )
+                .await
+                .unwrap();
+                let progress = tokio::time::timeout(Duration::from_secs(1), async {
+                    let mut status = false;
+                    let mut event = false;
+                    let mut catalog = false;
+                    while !status || !event || !catalog {
+                        let packet = read(&mut socket).await;
+                        assert_ne!(packet["id"], "slow");
+                        assert_ne!(
+                            packet["id"], "second",
+                            "mutations must preserve connection order"
+                        );
+                        status |=
+                            packet["id"] == "fast" && packet["result"]["hostId"] == ticket.host_id;
+                        event |= packet["method"] == "pages.event"
+                            && packet["params"]["token"] == "while-blocked";
+                        catalog |=
+                            packet["id"] == "catalog" && packet["result"]["models"] == json!([]);
+                    }
+                })
+                .await;
+                released.notify_one();
+                if progress.is_ok() {
+                    assert_eq!(read(&mut socket).await["id"], "slow");
+                    if blocked_method == "desktop.command" {
+                        assert_eq!(read(&mut socket).await["id"], "second");
+                    }
+                }
+                fixture.host.gateway.workbench.stop_backend().await;
+                assert!(
+                    progress.is_ok(),
+                    "a pending workbench request blocked the read/event loop"
+                );
+            }
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn only_desktop_tickets_negotiate_local_writes() {
     tokio::task::LocalSet::new().run_until(async {
         let fixture = Fixture::start().await;

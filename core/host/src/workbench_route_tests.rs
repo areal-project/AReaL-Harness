@@ -702,7 +702,7 @@ async fn provider_catalog_reads_configuration_without_opening_credentials() {
         &host,
         &source,
         json!({"operation":"modelsCatalog"}),
-        input.options,
+        input.options.clone(),
     )
     .await
     .unwrap();
@@ -712,4 +712,27 @@ async fn provider_catalog_reads_configuration_without_opening_credentials() {
     assert_eq!(result["credentialSources"]["fixture"], "stored");
     assert!(!result.to_string().contains("synthetic-secret"));
     eprintln!("provider catalog elapsed: {:?}", started.elapsed());
+    let execution = crate::server::workbench_utility::execute_with_options(
+        &host,
+        &source,
+        json!({"operation":"modelsRead"}),
+        input.options,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        execution["snapshot"]["credentialStates"]["fixture"],
+        "available"
+    );
+    assert!(
+        !execution["snapshot"]
+            .to_string()
+            .contains("synthetic-secret")
+    );
+    assert_eq!(execution["credentials"]["references"], json!([reference]));
+    assert_eq!(
+        execution["credentials"]["values"][reference],
+        "synthetic-secret"
+    );
+    assert_eq!(execution["credentials"]["errors"], json!({}));
 }
