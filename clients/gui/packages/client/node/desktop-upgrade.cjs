@@ -160,8 +160,10 @@ async function ensureDesktopHost(client, options) {
       !Number.isSafeInteger(record.pid) ||
       record.pid <= 0 ||
       !["stopping", "starting", "checking"].includes(record.phase) ||
-      record.targetDigest !== targetDigest ||
-      record.targetIdentity !== options.buildIdentity)
+      typeof record.targetDigest !== "string" ||
+      !/^[a-f0-9]{64}$/i.test(record.targetDigest) ||
+      typeof record.targetIdentity !== "string" ||
+      !record.targetIdentity)
   )
     throw new Error("应用交接记录无效");
   const complete = async () => {
@@ -218,6 +220,12 @@ async function ensureDesktopHost(client, options) {
         if (Date.now() >= deadline)
           throw new Error("应用正在完成退出，请稍后重新打开；原交接记录已保留");
         await delay(100);
+      }
+      if (record.targetDigest !== targetDigest || record.targetIdentity !== options.buildIdentity) {
+        // 重装可能替换原目标；先结算原停止并确认退出，再独立核对当前包，不能改绑原请求。
+        await unlink(path);
+        record = null;
+        continue;
       }
       record.phase = "starting";
       await publish(path, record, true);

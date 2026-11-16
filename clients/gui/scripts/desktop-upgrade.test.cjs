@@ -109,6 +109,110 @@ test("closing after stop resumes the original receipt without a second stop", as
   assert.equal((await f.client.operation(before.requestId)).operation.state, "completed");
 });
 
+for (const changed of ["build identity", "Core digest"]) {
+  test(`reinstalling with a changed ${changed} settles the interrupted handoff`, async (t) => {
+    const f = await fixture(t);
+    let closed = false;
+    const stop = f.client.stop.bind(f.client);
+    f.client.stop = async (...args) => {
+      const receipt = await stop(...args);
+      closed = true;
+      return receipt;
+    };
+    await assert.rejects(
+      ensureDesktopHost(f.client, { ...f.options, closed: () => closed }),
+      /交接/,
+    );
+    f.client.close();
+    const path = join(f.home, "host/desktop-upgrade.json");
+    const original = JSON.parse(await readFile(path));
+    const options = { ...f.options };
+    if (changed === "build identity") options.buildIdentity = "reinstalled-build";
+    else
+      await writeFile(path, JSON.stringify({ ...original, targetDigest: "0".repeat(64) }), {
+        mode: 0o600,
+      });
+    f.client.stop = async () => {
+      throw new Error("must not dispatch a second stop");
+    };
+    await (
+      await ensureDesktopHost(f.client, options)
+    )();
+    assert.equal(alive(f.original.pid), false);
+    assert.equal((await f.client.operation(original.requestId)).operation.state, "completed");
+    assert.equal(
+      JSON.parse(await readFile(join(f.home, "host/desktop-build.json"))).identity,
+      options.buildIdentity,
+    );
+    await assert.rejects(access(path), { code: "ENOENT" });
+  });
+}
+
+test("a changed install preserves an unconfirmed original handoff", async (t) => {
+  const f = await fixture(t);
+  await ensureDesktopHost(f.client, f.options);
+  const successor = { generation: f.client.generation, pid: f.client.identity.pid };
+  f.client.close();
+  const path = join(f.home, "host/desktop-upgrade.json");
+  const record = JSON.parse(await readFile(path));
+  record.requestId = randomUUID();
+  const before = JSON.stringify(record);
+  await writeFile(path, before, { mode: 0o600 });
+  f.client.stop = async () => {
+    throw new Error("must not replace an unconfirmed handoff");
+  };
+  await assert.rejects(
+    ensureDesktopHost(f.client, { ...f.options, buildIdentity: "reinstalled-build" }),
+    /应用交接结果尚未确认/,
+  );
+  assert.equal(await readFile(path, "utf8"), before);
+  assert.equal(alive(successor.pid), true);
+  assert.equal(f.client.generation, successor.generation);
+});
+
+test("a changed install replaces an already published successor using a new stop request", async (t) => {
+  const f = await fixture(t);
+  await ensureDesktopHost(f.client, f.options);
+  const path = join(f.home, "host/desktop-upgrade.json");
+  const original = JSON.parse(await readFile(path));
+  const successor = { generation: f.client.generation, pid: f.client.identity.pid };
+  await writeFile(
+    join(f.home, "host/desktop-build.json"),
+    JSON.stringify({ generation: successor.generation, identity: f.options.buildIdentity }),
+    { mode: 0o600 },
+  );
+  f.client.close();
+  const stops = [];
+  const stop = f.client.stop.bind(f.client);
+  f.client.stop = async (...args) => {
+    stops.push(args);
+    return stop(...args);
+  };
+  const options = { ...f.options, buildIdentity: "reinstalled-build" };
+  await (
+    await ensureDesktopHost(f.client, options)
+  )();
+  assert.equal(stops.length, 1);
+  assert.notEqual(stops[0][0], original.requestId);
+  assert.equal(stops[0][1], successor.generation);
+  assert.equal((await f.client.operation(original.requestId)).operation.state, "completed");
+  assert.equal(alive(successor.pid), false);
+  assert.notEqual(f.client.generation, successor.generation);
+  await assert.rejects(access(path), { code: "ENOENT" });
+});
+
+test("a malformed target digest is still rejected without retiring the handoff", async (t) => {
+  const f = await fixture(t);
+  await ensureDesktopHost(f.client, f.options);
+  f.client.close();
+  const path = join(f.home, "host/desktop-upgrade.json");
+  const record = JSON.parse(await readFile(path));
+  const before = JSON.stringify({ ...record, targetDigest: 42 });
+  await writeFile(path, before, { mode: 0o600 });
+  await assert.rejects(ensureDesktopHost(f.client, f.options), /应用交接记录无效/);
+  assert.equal(await readFile(path, "utf8"), before);
+});
+
 test("a lost stop response is recovered through the original receipt", async (t) => {
   const f = await fixture(t);
   const stop = f.client.stop.bind(f.client);

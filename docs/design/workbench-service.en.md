@@ -30,6 +30,7 @@ Host reuses `workbench_route.rs` and `workbench.rs` to supervise analytics and t
 - Main detach leaves the Host backend alive. Host stop closes its pipe; the backend drains in-flight operations and exits, with a five-second termination deadline for that child.
 - After confirming child exit, Host removes `service.json` only when its PID, identity and desktop generation match the backend it owns. Child cleanup failures or forced termination must not leave that owned discovery record behind; records belonging to another backend remain untouched.
 - Reopening the GUI is an explicit connection: it checks the original stop receipt and may start a new backend after settlement. Automatic reconnect in the same stopped window preserves the stop intent. Unsettled receipts remain subject to reconciliation; recovery rebuilds observations and snapshots without replaying writes.
+- Reinstalling a different build after an interrupted handoff first reconciles the original stop receipt and confirms the original Host has exited, then checks the current installation. Unconfirmed results retain the handoff record; the original request is never rebound to the new package.
 
 ## Protocol and receipts
 
