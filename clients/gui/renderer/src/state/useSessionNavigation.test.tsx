@@ -1,10 +1,26 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, expect, it, vi } from "vite-plus/test";
-import type { PlatformServices } from "../services.js";
+import type { PlatformServices, Snapshot } from "../services.js";
 import { useSessionNavigation } from "./useSessionNavigation.js";
 
-afterEach(() => vi.unstubAllGlobals());
+const seed = vi.hoisted(() => ({ snapshot: undefined as Snapshot | undefined }));
+vi.mock("react", async (original) => {
+  const react = await original<typeof import("react")>();
+  return {
+    ...react,
+    useState: (initial: unknown) =>
+      react.useState(
+        seed.snapshot && initial && typeof initial === "object" && "projects" in initial
+          ? seed.snapshot
+          : initial,
+      ),
+  };
+});
+afterEach(() => {
+  seed.snapshot = undefined;
+  vi.unstubAllGlobals();
+});
 
 function fixture(
   native: boolean,
@@ -61,6 +77,31 @@ function fixture(
   return { navigation, command, selectSession, recoverPersistedHistory, events };
 }
 const owner = { projectId: "saved-project", threadId: "old-thread", connectionGeneration: 0 };
+
+it("connects a stopped execution when its logical project is already connected", async () => {
+  seed.snapshot = {
+    connection: { state: "ready" },
+    projects: [
+      {
+        id: owner.projectId,
+        root: "/main",
+        core: { connectionGeneration: "main-generation" },
+        state: { connected: true, threads: {} },
+        summaries: [
+          {
+            id: owner.threadId,
+            executionRoot: "/worktree",
+            executionConnected: false,
+            executionCore: { connectionGeneration: "worktree-generation" },
+          },
+        ],
+      },
+    ],
+  };
+  const f = fixture(true, async () => {});
+  await f.navigation.selectConversation(owner.projectId, owner.threadId);
+  expect(f.events.filter((event) => event !== "library")).toEqual(["connect", "read"]);
+});
 
 it.each([true, false])(
   "connects a stopped saved project before Host history on native=%s",

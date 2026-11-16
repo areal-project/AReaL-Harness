@@ -32,7 +32,11 @@ export type Fresh<T> =
   | { state: "loading" | "unavailable"; previous?: T; error?: string }
   | { state: "stale"; value: T; error?: string }
   | { state: "fresh"; value: T };
-export type ReadSnapshot = { shell: Fresh<ShellRead>; session: Fresh<SessionRead> };
+export type ReadSnapshot = {
+  shell: Fresh<ShellRead>;
+  session: Fresh<SessionRead>;
+  sessionTarget?: { projectId: string; threadId: string; serviceGeneration?: string };
+};
 export const SESSION_READ_CACHE_MS = 3 * 60 * 1000;
 export const SESSION_READ_CACHE_LIMIT = 8;
 export function sessionReadKey(

@@ -290,6 +290,8 @@ export function createHostSnapshotProjector(
       historyVersion: number;
       fresh: boolean;
       sessionFreshness?: string;
+      sessionState?: ReturnType<HostClient["readsSnapshot"]>["session"];
+      sessionTarget?: ReturnType<HostClient["readsSnapshot"]>["sessionTarget"];
       outcomes?: Record<string, JsonObject>;
       tasks?: Record<string, unknown>;
       watched: Observation["thread"][];
@@ -378,6 +380,13 @@ export function createHostSnapshotProjector(
           : undefined;
       const displayVersion = selectedSession ? historyVersion : 0;
       const sessionFreshness = selectedSession ? client.readsSnapshot().session.state : undefined;
+      const reads = client.readsSnapshot();
+      const sessionTarget =
+        reads.sessionTarget?.projectId === project.projectId &&
+        reads.sessionTarget.serviceGeneration === project.serviceGeneration
+          ? reads.sessionTarget
+          : undefined;
+      const sessionState = sessionTarget ? reads.session : undefined;
       if (
         cached &&
         cached.source === project &&
@@ -388,6 +397,8 @@ export function createHostSnapshotProjector(
         cached.historyVersion === displayVersion &&
         cached.fresh === fresh &&
         cached.sessionFreshness === sessionFreshness &&
+        cached.sessionState === sessionState &&
+        cached.sessionTarget === sessionTarget &&
         cached.outcomes === outcomes &&
         cached.tasks === projectTasks &&
         cached.watched.length === sideThreads.length &&
@@ -573,7 +584,24 @@ export function createHostSnapshotProjector(
         pending: [],
         outcomes: outcomes ?? {},
         error: null,
-        observationErrors: {},
+        conversationReads:
+          sessionTarget && sessionState
+            ? {
+                [sessionTarget.threadId]: {
+                  state: sessionState.state,
+                  connectionGeneration: sessionTarget.serviceGeneration ?? "",
+                },
+              }
+            : {},
+        observationErrors:
+          sessionTarget && sessionState && "error" in sessionState && sessionState.error
+            ? {
+                [sessionTarget.threadId]: {
+                  message: sessionState.error,
+                  connectionGeneration: sessionTarget.serviceGeneration ?? "",
+                },
+              }
+            : {},
         attention: project.attention,
       };
       projectViews.set(project.projectId, {
@@ -585,6 +613,8 @@ export function createHostSnapshotProjector(
         historyVersion: displayVersion,
         fresh,
         sessionFreshness,
+        sessionState,
+        sessionTarget,
         outcomes,
         tasks: projectTasks,
         watched: sideThreads,
@@ -615,6 +645,8 @@ export function createHostSnapshotProjector(
             owners.flatMap((owner) => Object.entries(owner.configurations)),
           ),
           outcomes: Object.assign({}, ...owners.map((owner) => owner.outcomes)),
+          conversationReads: Object.assign({}, ...owners.map((owner) => owner.conversationReads)),
+          observationErrors: Object.assign({}, ...owners.map((owner) => owner.observationErrors)),
           summaries: owners.flatMap((owner) => owner.summaries),
           summariesLoaded: owners.every((owner) => owner.summariesLoaded),
           state: {

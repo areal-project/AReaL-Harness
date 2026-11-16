@@ -203,6 +203,139 @@ function options(factory: NonNullable<HostClientOptions["transport"]>): HostClie
     transport: factory,
   };
 }
+
+it("projects a failed initial read with its owner and clears it on a successful retry", async () => {
+  const page = new EventTarget();
+  vi.stubGlobal("window", page);
+  let fail = true;
+  let readGate: Promise<void> | undefined;
+  const wire = transport();
+  const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+    const base = await wire.factory(lifecycle);
+    return {
+      ...base,
+      transport: {
+        ...base.transport,
+        async request(method, params, context) {
+          if (method === "session.open" && fail) throw Error("history read failed");
+          if (method === "session.open") await readGate;
+          return base.transport.request(method, params, context);
+        },
+      },
+    };
+  };
+  const services = createHostReadServices(undefined, options(factory));
+  try {
+    await until(services);
+    await expect(
+      services.reads!.selectSession({ projectId: "alias", threadId: "thread" }),
+    ).rejects.toThrow("history read failed");
+    const failed = (await services.snapshot()).projects[0];
+    expect(failed.observationErrors.thread).toMatchObject({
+      message: "history read failed",
+      connectionGeneration: "core-gen",
+    });
+    expect(failed.conversationReads.thread.state).toBe("unavailable");
+    fail = false;
+    let release!: () => void;
+    readGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const retry = services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
+    try {
+      const loading = (await services.snapshot()).projects[0];
+      expect(loading.observationErrors).toEqual({});
+      expect(loading.conversationReads.thread.state).toBe("loading");
+    } finally {
+      release();
+      await retry;
+    }
+    const recovered = (await services.snapshot()).projects[0];
+    expect(recovered.observationErrors).toEqual({});
+    expect(recovered.conversationReads.thread.state).toBe("fresh");
+    expect(recovered.state.threads.thread.id).toBe("thread");
+    fail = true;
+    wire.send({ ...identity, event: "session.invalidated", sequence: 1 });
+    await vi.waitFor(async () =>
+      expect((await services.snapshot()).projects[0].observationErrors.thread).toMatchObject({
+        message: "history read failed",
+        connectionGeneration: "core-gen",
+      }),
+    );
+    expect((await services.snapshot()).projects[0].state.threads.thread.id).toBe("thread");
+    wire.send({
+      ...identity,
+      subscriptionId: "shell",
+      event: "shell.updated",
+      sequence: 1,
+      delta: {
+        projects: { upsert: [{ ...project, serviceGeneration: "new-gen" }], remove: [] },
+        navigation: { upsert: [], remove: [] },
+      },
+    });
+    await vi.waitFor(async () =>
+      expect((await services.snapshot()).projects[0].observationErrors.thread).toMatchObject({
+        connectionGeneration: "new-gen",
+      }),
+    );
+  } finally {
+    page.dispatchEvent(new Event("pagehide"));
+    vi.unstubAllGlobals();
+  }
+});
+
+it("projects execution read failures onto the logical project without changing their generation", async () => {
+  const page = new EventTarget();
+  vi.stubGlobal("window", page);
+  const execution = {
+    ...project,
+    projectId: "execution",
+    alias: undefined,
+    logicalProjectId: project.projectId,
+    workspace: "/worktree",
+    serviceGeneration: "execution-gen",
+    summaries: {
+      ...project.summaries,
+      items: [{ ...project.summaries.items[0], id: "worktree-thread" }],
+    },
+  };
+  const wire = transport(observation, undefined, {
+    projects: [project, execution],
+    navigation: [navigation],
+  });
+  const services = createHostReadServices(
+    undefined,
+    options(async (lifecycle) => {
+      const base = await wire.factory(lifecycle);
+      return {
+        ...base,
+        transport: {
+          ...base.transport,
+          async request(method, params, context) {
+            if (method === "session.open") throw Error("execution history unavailable");
+            return base.transport.request(method, params, context);
+          },
+        },
+      };
+    }),
+  );
+  try {
+    await until(services);
+    await expect(
+      services.reads!.selectSession({ projectId: "alias", threadId: "worktree-thread" }),
+    ).rejects.toThrow("execution history unavailable");
+    const snapshot = await services.snapshot();
+    expect(snapshot.projects).toHaveLength(1);
+    expect(snapshot.projects[0].observationErrors["worktree-thread"]).toMatchObject({
+      message: "execution history unavailable",
+      connectionGeneration: "execution-gen",
+    });
+    expect(snapshot.projects[0].observationErrors.thread).toBeUndefined();
+  } finally {
+    page.dispatchEvent(new Event("pagehide"));
+    vi.unstubAllGlobals();
+  }
+});
 describe("Host renderer read authority", () => {
   it("projects a stopped project's persisted history as read-only without marking it connected", async () => {
     const page = new EventTarget();

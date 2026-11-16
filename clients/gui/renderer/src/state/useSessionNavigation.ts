@@ -25,6 +25,26 @@ type RestorationAttempt = RestorationOwner & {
   promise: Promise<void>;
 };
 
+function conversationProject(project: Snapshot["projects"][number] | undefined, threadId: string) {
+  const execution =
+    project?.state?.threads[threadId] ??
+    project?.summaries?.find((summary: { id: string }) => summary.id === threadId);
+  return project && (execution?.executionRoot || execution?.worktree?.directory)
+    ? {
+        ...project,
+        logicalRoot: project.root,
+        root: execution.executionRoot ?? execution.worktree.directory,
+        core: { ...project.core, ...execution.executionCore },
+        state: {
+          ...project.state,
+          connected: execution.executionConnected ?? project.state?.connected,
+          hostState: execution.executionHostState ?? project.state?.hostState,
+        },
+        error: execution.executionError ?? project.error,
+      }
+    : project;
+}
+
 export function useSessionNavigation(
   services: PlatformServices,
   onError: (message: string) => void,
@@ -98,24 +118,7 @@ export function useSessionNavigation(
     ? undefined
     : (snapshot.projects.find((p) => p.id === projectId) ??
       (snapshot.connection?.state === "ready" ? projects.find((p) => !p.projectless) : undefined));
-  const executionThread =
-    logicalProject?.state?.threads[threadId] ??
-    logicalProject?.summaries?.find((summary: { id: string }) => summary.id === threadId);
-  const project =
-    logicalProject && (executionThread?.executionRoot || executionThread?.worktree?.directory)
-      ? {
-          ...logicalProject,
-          logicalRoot: logicalProject.root,
-          root: executionThread.executionRoot ?? executionThread.worktree.directory,
-          core: { ...logicalProject.core, ...executionThread.executionCore },
-          state: {
-            ...logicalProject.state,
-            connected: executionThread.executionConnected ?? logicalProject.state?.connected,
-            hostState: executionThread.executionHostState ?? logicalProject.state?.hostState,
-          },
-          error: executionThread.executionError ?? logicalProject.error,
-        }
-      : logicalProject;
+  const project = conversationProject(logicalProject, threadId);
   const thread = project?.state?.threads[threadId];
   const restorationOwner: RestorationOwner = {
     projectId: project?.id ?? "",
@@ -236,7 +239,10 @@ export function useSessionNavigation(
           }
           if (services.reads && !services.recoverPersistedHistory) {
             // Host 读取不启动项目；GUI 和网页都先由后台连接，再打开历史订阅。
-            const target = restorationProjects.current.find((item) => item.id === owner.projectId);
+            const target = conversationProject(
+              restorationProjects.current.find((item) => item.id === owner.projectId),
+              owner.threadId,
+            );
             let persisted = false;
             let connectError: unknown;
             if (operation === "connect" && !target?.state?.connected) {
@@ -414,16 +420,14 @@ export function useSessionNavigation(
     setProjectId(pid);
     setThreadId(id);
     localStorage.setItem(`areal-gui:thread:${pid}`, id);
-    const target = snapshot.projects.find((item) => item.id === pid);
+    const target = conversationProject(
+      snapshot.projects.find((item) => item.id === pid),
+      id,
+    );
     const owner = {
       projectId: pid,
       threadId: id,
-      connectionGeneration:
-        target?.state?.threads?.[id]?.executionCore?.connectionGeneration ??
-        target?.summaries?.find((summary: { id: string }) => summary.id === id)?.executionCore
-          ?.connectionGeneration ??
-        target?.core?.connectionGeneration ??
-        0,
+      connectionGeneration: target?.core?.connectionGeneration ?? 0,
     };
     selectedRestoration.current = owner;
     await restoreConversation(owner, target?.state?.connected ? "open" : "connect");

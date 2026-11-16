@@ -4,6 +4,7 @@ import {
   useConversationCreateReadOnly,
 } from "../PlatformReadContext.js";
 import React from "react";
+import { DelayedVisible } from "@areal/ui";
 import { projectUserState } from "../state/userStates.js";
 import { ComposerSurface } from "../prompt-editor/ComposerSurface.js";
 import { Button } from "../components/ui/button.js";
@@ -166,7 +167,11 @@ function ConversationContent() {
                     />
                   ) : loadState.kind === "starting" ? (
                     <p>{t(loadState.message)}</p>
-                  ) : null)}
+                  ) : (
+                    <DelayedVisible active>
+                      <p>{t(loadState.message)}</p>
+                    </DelayedVisible>
+                  ))}
                 {loadState.kind === "failed" && (
                   <Button
                     variant="outline"

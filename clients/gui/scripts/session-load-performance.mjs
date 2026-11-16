@@ -12,6 +12,10 @@ const root = await realpath(await trackedMkdtemp("/tmp/areal-web-partial-"));
 const gui = resolve(fileURLToPath(new URL("..", import.meta.url))),
   binary = resolve(process.env.AREAL_CORE_BIN ?? join(gui, "../../target/debug/areal"));
 const expected = process.env.AREAL_SESSION_CORE_SHA256;
+const access = process.env.AREAL_SESSION_ACCESS ?? "observe";
+assert(["observe", "write"].includes(access), "AREAL_SESSION_ACCESS must be observe or write");
+const runs = Number(process.env.AREAL_SESSION_RUNS ?? 21);
+assert(Number.isInteger(runs) && runs > 0 && runs <= 21);
 if (expected) assert.match(expected, /^[a-f0-9]{64}$/);
 const sha = (b) => createHash("sha256").update(b).digest("hex");
 const actualSha = sha(await readFile(binary));
@@ -64,12 +68,16 @@ const evidence = {
   root,
   scope: "synthetic partial GUI import, real Host and Web, no credentials or model requests",
   coreSha256: actualSha,
+  access,
+  runs,
+  diagnostic: runs !== 21,
   rendererInputHash: JSON.parse(
     await readFile(join(gui, "renderer/dist/verification-build.json"), "utf8"),
   ).inputHash,
   checks: [],
   pids: {},
   wire: [],
+  rpc: [],
   cleanup: {},
   error: null,
   firstFailure: null,
@@ -199,9 +207,13 @@ try {
   const wire = [];
   evidence.samples = samples;
   evidence.wire = wire;
-  for (let run = 0; run < 21; run++) {
+  const clockStart = performance.now();
+  for (let run = 0; run < runs; run++) {
     browser = await chromium.launch({ headless: true, channel: "chrome" });
     web = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await web.addLocatorHandler(web.getByRole("button", { name: "稍后处理" }), async (later) => {
+      await later.click();
+    });
     await web.addInitScript(() => {
       window.__latencyLongtasks = [];
       window.__latencyClicks = [];
@@ -229,20 +241,45 @@ try {
         ),
       ).observe({ type: "longtask", buffered: true });
     });
-    const pending = new Set();
+    const pending = new Map();
+    const timings = new Map();
     web.on("websocket", (socket) => {
       socket.on("framesent", ({ payload }) => {
         try {
           const frame = JSON.parse(String(payload));
-          if (frame.method === "session.open") pending.add(String(frame.id));
+          if (typeof frame.method === "string" && frame.id != null)
+            timings.set(String(frame.id), {
+              method: frame.method,
+              sentMs: performance.now() - clockStart,
+            });
+          if (["hello", "session.open", "session.openPersisted"].includes(frame.method))
+            pending.set(String(frame.id), frame.method);
         } catch {}
       });
       socket.on("framereceived", ({ payload }) => {
         try {
           const frame = JSON.parse(String(payload));
-          if (!pending.delete(String(frame.id))) return;
+          const timing = timings.get(String(frame.id));
+          if (timing) {
+            timings.delete(String(frame.id));
+            evidence.rpc.push({
+              run,
+              ...timing,
+              responseMs: performance.now() - clockStart,
+              error: !!frame.error,
+            });
+          }
+          const method = pending.get(String(frame.id));
+          if (!method) return;
+          pending.delete(String(frame.id));
+          if (method === "hello") {
+            const capabilities = frame.result?.negotiatedCapabilities;
+            evidence.checks.push({ stage: "negotiated-capabilities", run, capabilities });
+            return;
+          }
           const thread = frame.result?.snapshot?.thread;
           wire.push({
+            method,
             bytes: Buffer.byteLength(String(payload)),
             turns: thread?.turns?.length,
             last: thread?.turns?.at(-1)?.items?.[0]?.text?.slice(0, 32),
@@ -259,12 +296,10 @@ try {
     await client.request("web.approve", {
       requestId: challenge.requestId,
       expectedGeneration: client.generation,
-      scopes: ["observe"],
+      scopes: access === "write" ? ["observe", "manage"] : ["observe"],
     });
     await web.getByRole("button", { name: "检查批准状态" }).click();
     await web.getByTestId(`task-item-${created.threadId}`).waitFor({ timeout: 60000 });
-    const later = web.getByRole("button", { name: "稍后处理" });
-    if (await later.isVisible()) await later.click();
     const switches = run === 0 ? 83 : 1;
     for (let i = 0; i < switches; i++) {
       const long = i % 2 === 0;
@@ -349,6 +384,13 @@ try {
   evidence.wire = wire;
   evidence.reached.push("browser-samples");
   evidence.unreached.shift();
+  assert(
+    evidence.checks.filter((item) => item.stage === "negotiated-capabilities").length >= runs &&
+      evidence.checks
+        .filter((item) => item.stage === "negotiated-capabilities")
+        .every((item) => item.capabilities?.includes("gui-write-v1") === (access === "write")),
+    `unexpected negotiated capabilities for ${access}`,
+  );
   assert(
     wire.some(
       (entry) =>
@@ -499,6 +541,7 @@ try {
   console.log(
     JSON.stringify({
       root,
+      diagnostic: evidence.diagnostic,
       checks: evidence.checks,
       statistics: evidence.statistics,
       firstFailure: evidence.firstFailure,

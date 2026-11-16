@@ -27,3 +27,18 @@ test("a failed open shows its own reason with retry, never a stopped-project hin
     settings: true,
   });
 });
+
+test.each([
+  ["loading", "reading"],
+  ["fresh", "failed"],
+  ["unavailable", "failed"],
+  [undefined, "reading"],
+] as const)("connected project without a conversation and read state %s", (readState, kind) => {
+  expect(
+    conversationLoadState(
+      { state: { connected: true } },
+      { ...idle, currentRestoration: { pending: false }, conversationReadState: readState },
+      false,
+    ).kind,
+  ).toBe(kind);
+});

@@ -14,6 +14,7 @@ export function conversationLoadState(
     restorationFailed: boolean;
     viewRefreshing: boolean;
     currentRestoration?: { pending?: boolean };
+    conversationReadState?: string;
   },
   settings: boolean,
 ): ConversationLoadState {
@@ -45,5 +46,16 @@ export function conversationLoadState(
           settings: false,
         }
       : { kind: "starting", message: "startup.connectingProject" };
+  if (
+    input.attemptSettled &&
+    ["fresh", "unavailable"].includes(startup.conversationReadState ?? "")
+  )
+    return {
+      kind: "failed",
+      message: "common.conversation.unavailable",
+      detail: input.failure,
+      retry: true,
+      settings: input.settings,
+    };
   return { kind: "reading", message: "startup.readingConversation" };
 }

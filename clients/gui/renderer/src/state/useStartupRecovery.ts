@@ -29,6 +29,11 @@ export function useStartupRecovery(
     ? restoration
     : undefined;
   const observationFailure = project?.observationErrors?.[threadId];
+  const conversationRead = project?.conversationReads?.[threadId];
+  const conversationReadState =
+    conversationRead?.connectionGeneration === restorationOwner.connectionGeneration
+      ? conversationRead.state
+      : undefined;
   const currentObservationFailure =
     observationFailure &&
     (observationFailure.connectionGeneration === undefined ||
@@ -101,5 +106,6 @@ export function useStartupRecovery(
     startupReady,
     projectFailureReady,
     restorationNoticeId,
+    conversationReadState,
   };
 }

@@ -159,7 +159,7 @@ export class HostClient {
     for (const listener of this.#listeners) listener();
   }
   #publishReads(state: ReadSnapshot) {
-    this.#reads = state;
+    this.#reads = { sessionTarget: this.#reads.sessionTarget, ...state };
     for (const listener of this.#readListeners) listener();
   }
   /** 在选中会话之外再观察一个会话（如侧边讨论）；返回的函数结束观察。 */
@@ -498,6 +498,9 @@ export class HostClient {
     timing?.mark("cache", !!cached);
     this.#publishReads({
       ...this.#reads,
+      sessionTarget: target
+        ? { ...target, serviceGeneration: project?.serviceGeneration }
+        : undefined,
       session: cached ? { state: "stale", value: cached } : { state: "loading" },
     });
     if (target && this.#transport) await this.#openSession();
@@ -531,6 +534,12 @@ export class HostClient {
       target.persisted === true &&
       this.#state.connection === "ready" &&
       this.#state.identity.persistedHistory === true;
+    const previousSession = previous(this.#reads.session);
+    this.#publishReads({
+      ...this.#reads,
+      sessionTarget: { ...target, serviceGeneration: project?.serviceGeneration },
+      session: previousSession ? { state: "stale", value: previousSession } : { state: "loading" },
+    });
     if (!project || (!persisted && (!project.serviceGeneration || project.state !== "ready"))) {
       this.#publishReads({
         ...this.#reads,
