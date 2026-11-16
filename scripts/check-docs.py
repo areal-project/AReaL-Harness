@@ -61,6 +61,9 @@ def main():
     checked = 0
     for name in sorted(set(files)):
         path = ROOT / name
+        # 冻结的上游 cc-blender-skills 快照在运行时校验字节哈希，不修改其原始链接。
+        if name.startswith("integrations/blender-harness/payload/cc-blender-skills/"):
+            continue
         if path.suffix != ".md" or not path.is_file():
             continue
         checked += 1

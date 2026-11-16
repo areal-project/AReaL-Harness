@@ -1,0 +1,475 @@
+def capture_native_terminal(output, threads, process, started, timed_out, stopping, stage):
+    import json
+    import os
+    import time
+    turns = [turn for thread in threads for turn in thread.get('turns', [])]
+    receipt = {'status': 'ERROR', 'implementation': 'rust-core-runtime', 'receipt_phase': 'TERMINAL_CAPTURED_COLLECTION_PENDING', 'exit_code': process.returncode, 'turn_statuses': [turn.get('status') for turn in turns], 'error': [turn.get('error') for turn in turns], 'duration_ms': int((time.monotonic() - started) * 1000), 'collection': {'status': 'PENDING', 'stage': stage}, 'observed_runner_timeout': bool(timed_out), 'observed_external_interruption': bool(stopping), 'raw': {'outcome': {'schema': 'areal.envarena-outcome.v1', 'code': 'HARNESS_INTERNAL_ERROR', 'class': 'infrastructure', 'source': 'runner_collection', 'details': {'reason': 'terminal_archive_pending', 'stage': stage}}}}
+    pending = output / '.native-receipt.capture.tmp'
+    with pending.open('w') as stream:
+        json.dump(receipt, stream)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(pending, output / 'native-receipt.json')
+'EnvArena adapter for the native TUI/Core/Runtime; owns no model loop.'
+import hashlib
+import base64
+import json
+import os
+from pathlib import Path
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+from outcomes import finalize
+
+def write_json(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + '.tmp')
+    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2))
+    temporary.replace(path)
+
+def prepare_input(query, assets=Path('/problem_assets'), allowed_names=None):
+    from image_ingress import prepare, MIMES
+    helper=Path(__file__).resolve().parent/'image-ingress-helper'
+    sources=[]
+    if assets.is_dir():
+        for path in sorted(assets.iterdir()):
+            if allowed_names is not None and path.name not in allowed_names:
+                continue
+            if path.suffix.lower() in MIMES:
+                if path.is_symlink() or not path.is_file():raise ValueError('Regular approved image required')
+                sources.append((str(path),path.read_bytes(),MIMES[path.suffix.lower()]))
+            elif path.suffix.lower() in {'.gif','.bmp','.tif','.tiff'}:
+                raise ValueError('Unsupported input image must be normalized before execution')
+    return prepare(query,sources,helper,'36378ef011508d2f6b087bcbe6cc139571a3b17f33910dd686178f66449fd3c8')
+
+def find_node(nvm_root=Path('/usr/local/nvm')):
+    source = shutil.which('node')
+    if source:
+        return Path(source)
+    candidates = sorted((path for path in nvm_root.glob('versions/node/*/bin/node') if path.is_file() and os.access(path, os.X_OK)))
+    if len(candidates) > 1:
+        raise RuntimeError('Multiple nvm Node versions without an active Node in PATH')
+    return candidates[0] if candidates else None
+
+def prepare_utilities(root):
+    if os.environ.get('IS_SANDBOX') != '1' or not os.environ.get('ARENA_TASK_ID'):
+        raise RuntimeError('This adapter requires an EnvArena sandbox')
+    for name in ('bwrap', 'rg'):
+        source = root / 'bin' / ('bwrap' if name == 'bwrap' else 'tools/rg')
+        target = Path('/usr/bin/bwrap') if name == 'bwrap' else Path('/usr/local/bin/rg')
+        if not target.exists():
+            shutil.copy2(source, target)
+            target.chmod(493)
+    for source in (root / 'lib').iterdir():
+        target = Path('/lib') / source.name
+        if not target.exists():
+            shutil.copy2(source, target)
+    node = find_node()
+    for name in ('node', 'npm', 'npx'):
+        sibling = node.parent / name if node else None
+        source = str(sibling) if sibling and sibling.exists() else shutil.which(name)
+        target = Path('/usr/local/bin') / name
+        if source and (not target.exists()):
+            if target.is_symlink():
+                target.unlink()
+            target.symlink_to(source)
+    subprocess.run(['/usr/bin/bwrap', '--unshare-all', '--ro-bind', '/', '/', '--', '/bin/true'], check=True, timeout=20)
+    return {'node': str(node) if node else None}
+
+def project_item(item):
+    kind = item['type']
+    identity = item['id']
+    if kind == 'userMessage':
+        content = []
+        for part in item['content']:
+            if part['type'] == 'text':
+                content.append({'type': 'text', 'text': part['text']})
+            else:
+                content.append({'type': 'text', 'text': '[Input media] ' + json.dumps(part)})
+        return [{'type': 'user', 'message': {'id': identity, 'role': 'user', 'content': content}}]
+    if kind == 'agentMessage':
+        return [{'type': 'assistant', 'message': {'id': identity, 'role': 'assistant', 'content': [{'type': 'text', 'text': item['text']}]}}]
+    if kind == 'reasoning':
+        thinking_text = ''.join(item.get('content') or [])
+        if thinking_text:
+            return [{'type': 'assistant', 'message': {'id': identity, 'role': 'assistant', 'content': [{'type': 'thinking', 'thinking': thinking_text}]}}]
+        return [{'type': 'core_item', 'item': item}]
+    if kind == 'modelContext':
+        value = item['value']
+        if value.get('type') == 'chat_reasoning':
+            return [{'type': 'assistant', 'message': {'id': identity, 'role': 'assistant', 'content': [{'type': 'thinking', 'thinking': value['reasoning_content']}]}}]
+        return [{'type': 'model_context', 'item': item}]
+    if kind == 'dynamicToolCall':
+        return [{'type': 'assistant', 'message': {'id': identity, 'role': 'assistant', 'content': [{'type': 'tool_use', 'id': item['callId'], 'name': item['tool'], 'input': item['arguments']}]}}, {'type': 'user', 'message': {'id': identity + '-result', 'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': item['callId'], 'is_error': not item.get('success'), 'content': json.dumps(item.get('contentItems'), ensure_ascii=False)}]}}]
+    return [{'type': 'core_item', 'item': item}]
+
+
+def emit_public_progress(event):
+    """Emit tool metadata only; never tool arguments, output or model text."""
+    message = event.get('message', {})
+    if not isinstance(message, dict):
+        return
+    content = message.get('content', [])
+    if not isinstance(content, list):
+        return
+    allowed = {'run_command','read_process','fs_read','fs_list','fs_write',
+        'read_file','write_file','skill_read','skill_list','image_read'}
+    for part in content:
+        if not isinstance(part, dict):
+            continue
+        kind = part.get('type')
+        if kind == 'tool_use':
+            name = part.get('name')
+            record = {'kind':'tool_call','tool':name if isinstance(name,str) and name in allowed else 'other'}
+        elif kind == 'tool_result':
+            value = part.get('is_error')
+            record = {'kind':'tool_result','is_error':value if type(value) is bool else None}
+        else:
+            continue
+        record['observed_at_unix_ms'] = int(time.time()*1000)
+        print('CC_NATIVE_PROGRESS '+json.dumps(record,sort_keys=True),flush=True)
+
+def project(data, trajectory, seen):
+    threads = []
+    for path in sorted(data.glob('*.json')):
+        thread = json.loads(path.read_text())['thread']
+        threads.append(thread)
+        for turn in thread.get('turns', []):
+            items = turn['items']
+            for (index, item) in enumerate(items):
+                identity = item['id']
+                if identity in seen or item.get('status') == 'inProgress':
+                    continue
+                if item['type'] == 'agentMessage' and index == len(items) - 1 and (turn['status'] == 'inProgress'):
+                    continue
+                for event in project_item(item):
+                    event.update({'thread_id': thread['id'], 'turn_id': turn['id']})
+                    trajectory.write(json.dumps(event, ensure_ascii=False) + '\n')
+                    emit_public_progress(event)
+                seen.add(identity)
+    trajectory.flush()
+    return threads
+
+def make_config(model, endpoint, timeout, settings=None):
+    settings = settings or {}
+    q = json.dumps
+    effort = os.environ.get('AREAL_ARENA_REASONING_EFFORT', settings.get('reasoning_effort', 'medium'))
+    temperature = os.environ.get('AREAL_ARENA_TEMPERATURE', settings.get('temperature', 1))
+    sampling = (f'reasoning_effort={q(effort)}\n' if effort is not None else '') + (f'temperature={float(temperature)}\n' if temperature is not None else '')
+    history_thinking = os.environ.get('AREAL_ARENA_HISTORY_THINKING', settings.get('history_thinking', 'preserve'))
+    max_request_bytes = int(settings.get('max_request_bytes', 33554432))
+    return f"""schema_version=1\n[model]\nprovider="arena"\nname={q(model)}\nhistory_thinking={q(history_thinking)}\nmax_request_bytes={max_request_bytes}\n{sampling}max_retries={int(settings.get('http_retries', 2))}\n[model.providers.arena]\nprotocol="chat-completions"\nendpoint={q(endpoint)}\napi_key_env="AREAL_API_KEY"\n[limits]\nstream_idle_timeout_seconds={int(settings.get('stream_idle_timeout_seconds', 900))}\nmax_completion_retries={int(settings.get('max_completion_retries', 0))}\nmax_history_bytes=134217728\nmax_output_bytes=16777216\nmax_tool_calls=0\ncontext_window_bytes={int(settings.get('context_window_bytes', 196608))}\ncontext_compaction_enabled=false\ncontext_recent_bytes={int(settings.get('context_recent_bytes', 65536))}\ncontext_window_tokens={int(settings.get('context_window_tokens', 0))}\ncontext_output_reserve_tokens={int(settings.get('context_output_reserve_tokens', 0))}\nmax_children_per_turn=0\nmax_agent_depth=0\n""" + ("\n[tools]\nextensions_file=" + q(settings["lab_extensions_file"]) + "\n" if settings.get("lab_extensions_file") else "")
+
+def model_connection():
+    model = os.environ.get('OPENAI_MODEL') or os.environ.get('ANTHROPIC_MODEL') or os.environ.get('MODEL_NAME')
+    base = os.environ.get('OPENAI_BASE_URL') or os.environ.get('ANTHROPIC_BASE_URL') or os.environ.get('LLM_BASE_URL')
+    key = os.environ.get('OPENAI_API_KEY') or os.environ.get('ANTHROPIC_AUTH_TOKEN') or os.environ.get('ANTHROPIC_API_KEY')
+    if not model or not base or (not key):
+        raise RuntimeError('Model must provide model name, gateway base URL and a credential')
+    base = base.rstrip('/')
+    return (model, base + ('/chat/completions' if base.endswith('/v1') else '/v1/chat/completions'), key)
+
+def has_tracked_changes(workspace):
+    result = subprocess.run(['git', '-c', 'core.fileMode=false', 'diff', '--quiet', '--no-ext-diff', '--no-textconv', 'HEAD', '--'], cwd=workspace, env={'PATH': '/usr/bin:/bin', 'GIT_OPTIONAL_LOCKS': '0'}, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=15)
+    if result.returncode not in (0, 1):
+        raise RuntimeError('Cannot inspect task workspace changes: ' + result.stderr.decode(errors='replace'))
+    return result.returncode == 1
+
+def completion_confirmed(turns):
+    if not turns:
+        return False
+    text = '\n'.join((item.get('text', '') for item in turns[-1].get('items', []) if item['type'] == 'agentMessage'))
+    return any((line.strip() in ('IMPLEMENTATION_COMPLETE', 'IMPLEMENTATION_BLOCKED', 'IMPLEMENTATION_NO_CHANGE') for line in text.splitlines()))
+
+def phase_clock(now=None, environ=None):
+    """Use the versioned loader's pre-extraction clock; never extend phase time."""
+    now = time.monotonic() if now is None else now
+    environ = os.environ if environ is None else environ
+    budget = int(environ.get('ARENA_AGENT_TIMEOUT_SEC', '14400'))
+    if budget < 1:
+        raise ValueError('Positive Arena phase budget required')
+    start = float(environ.get('AREAL_ARENA_PHASE_STARTED_MONOTONIC', now))
+    if not 0 <= now - start <= budget:
+        raise ValueError('Invalid versioned loader phase clock')
+    work = max(30, budget - 600)
+    stop_after = max(0, min(work + 15, budget - 120))
+    return (start, budget, work, stop_after)
+
+def prepare_bound_public_input(query):
+    workspace = Path(os.environ.get('ARENA_AGENT_WORKDIR') or os.environ.get('ARENA_WORKSPACE') or '/envarena/workspace')
+    materials = workspace / 'materials'
+    names = {'anchor.jpg', 'three-views.png'}
+    if materials.is_symlink() or not materials.is_dir():
+        raise ValueError('Approved public materials directory missing')
+    for name in names:
+        path = materials / name
+        if path.is_symlink() or not path.is_file() or path.stat().st_size == 0:
+            raise ValueError('Approved public input image missing: ' + name)
+    (parts, images) = prepare_input(query, assets=materials, allowed_names=names)
+    if {Path(image['path']).name for image in images} != names or len(images) != 2:
+        raise ValueError('Exactly the two approved public images required')
+    return (parts, images)
+
+def archive_bound_public_inputs(images, destination):
+    destination.mkdir(parents=True, exist_ok=True)
+    for image in images:
+        source = Path(image['path'])
+        if source.is_symlink() or hashlib.sha256(source.read_bytes()).hexdigest() != image['sha256']:
+            raise ValueError('Approved public image changed before raw archival')
+        shutil.copy2(source, destination / source.name)
+
+
+def inspect_blender_delivery(workspace, output, remaining):
+    """Inspect public scene delivery, never private scoring or quality thresholds."""
+    candidates=[Path(workspace)/'scene.blend',Path(output)/'scene.blend']
+    # Public contracts may name a nested scene. Resolve only paths inside the
+    # existing workspace/output; never accept an unrelated task checkpoint.
+    contract=Path(workspace)/'output-contract.json'
+    if contract.is_file() and contract.stat().st_size<=512*1024:
+        def paths(value):
+            if isinstance(value,str) and value.endswith('.blend'):yield value
+            elif isinstance(value,dict):
+                for child in value.values():yield from paths(child)
+            elif isinstance(value,list):
+                for child in value:yield from paths(child)
+        for name in paths(json.loads(contract.read_text())):
+            for base in (Path(workspace),Path(output)):
+                candidate=(base/name).resolve()
+                if candidate.is_relative_to(base.resolve()) and candidate not in candidates:candidates.append(candidate)
+    candidates=[p for p in candidates[:16] if p.is_file() and not p.is_symlink() and p.stat().st_size>0]
+    if not candidates:return {'status':'incomplete','reasons':['No required scene.blend has been delivered'],'scenes':[]}
+    if remaining<120:return {'status':'incomplete','reasons':['Insufficient native work budget for independent reopen'],'scenes':[]}
+    min_required_faces=500000
+    checks=[]
+    face_reasons=[]
+    for path in candidates[:4]:
+        script=("import bpy,json\n"
+            +"bpy.ops.wm.open_mainfile(filepath="+repr(str(path))+",use_scripts=False)\n"
+            +"scene=bpy.context.scene\n"
+            +"deps=bpy.context.evaluated_depsgraph_get()\n"
+            +"geometry=[o for o in scene.objects if o.type in {'MESH','CURVE','SURFACE','META','FONT','VOLUME','POINTCLOUD','CURVES','GREASEPENCIL'} and not o.hide_render]\n"
+            +"total_faces=0\n"
+            +"for o in scene.objects:\n"
+            +"    if o.type=='MESH' and o.data is not None and not o.hide_render:\n"
+            +"        eo=o.evaluated_get(deps)\n"
+            +"        me=eo.to_mesh()\n"
+            +"        total_faces+=len(me.polygons)\n"
+            +"        eo.to_mesh_clear()\n"
+            +"print('CC_BLENDER_DELIVERY='+json.dumps({'opened':True,'geometry_objects':len(geometry),'total_faces':total_faces,'min_required_faces':500000}))\n")
+        try:
+            process=subprocess.run(['blender','--background','--factory-startup','--disable-autoexec','--python-exit-code','1','--python-expr',script],
+                stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=min(90,max(1,remaining-30)))
+            lines=process.stdout.decode(errors='replace').splitlines()
+            probe=next((json.loads(line.split('=',1)[1]) for line in lines if line.startswith('CC_BLENDER_DELIVERY=')),{})
+            check={'path':str(path),'return_code':process.returncode,**probe}
+            checks.append(check)
+            if process.returncode==0 and probe.get('opened') and probe.get('geometry_objects',0)>0:
+                if int(probe.get('total_faces',0))>=min_required_faces:
+                    return {'status':'complete','reasons':[],'scenes':checks,'scope':'Independent open, nonempty geometry and total_faces >= 500000 closeout gate; original formal scoring unchanged'}
+                face_reasons.append(
+                    f"Delivered scene {path.name} has total_faces={int(probe.get('total_faces',0)):,} (< 500,000 mandatory minimum). "
+                    "Do NOT call bpy.ops.wm.save_as_mainfile directly; reopen scene.blend and save via "
+                    "finalize_and_save('scene.blend') from .agents/skills/harness-lab/lab_update_subpart.py so total_faces >= 500,000"
+                )
+        except (subprocess.TimeoutExpired,ValueError,OSError) as error:
+            checks.append({'path':str(path),'probe_error':type(error).__name__})
+    return {'status':'incomplete','reasons':face_reasons or ['Delivered scene did not pass independent Blender reopen/nonempty geometry inspection'],'scenes':checks}
+
+
+def inspect_delivery_in_closeout(workspace, output, phase_started, phase_budget):
+    # Native model work and continuations keep their existing deadline. This
+    # read-only reopen uses the Agent phase's already reserved closeout time.
+    phase_remaining = int(phase_budget - (time.monotonic() - phase_started))
+    check_budget = max(0, min(600, phase_remaining - 30))
+    delivery = inspect_blender_delivery(workspace, output, check_budget)
+    delivery['closeout_budget_seconds'] = check_budget
+    delivery['budget_source'] = 'Actual Agent phase remaining; native work deadline unchanged'
+    return delivery
+
+def main():
+    (started, phase_budget, timeout, stop_after) = phase_clock()
+    root = Path(__file__).resolve().parent
+    output = Path(os.environ['ARENA_AGENT_OUTPUT_DIR'])
+    output.mkdir(parents=True, exist_ok=True)
+    trajectory_path = Path(os.environ['ARENA_TRAJECTORY_PATH'])
+    trajectory_path.parent.mkdir(parents=True, exist_ok=True)
+    result = {'status': 'ERROR', 'implementation': 'rust-core-runtime', 'error': 'Runner did not complete'}
+    process = None
+    stopping = False
+    timed_out = False
+    adapter_error = False
+    threads = []
+
+    def stop(_signal, _frame):
+        nonlocal stopping
+        stopping = True
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    try:
+        write_json(output / 'runtime-utilities.json', prepare_utilities(root))
+        (model, endpoint, key) = model_connection()
+        settings_path = root / 'settings.json'
+        settings = json.loads(settings_path.read_text()) if settings_path.exists() else {}
+        lab_template = root / 'cc-blender-skills/harness-lab/extensions.template.json'
+        lab_extensions = root / 'harness-lab-extensions.json'
+        lab_extensions.write_text(lab_template.read_text())
+        settings['lab_extensions_file'] = str(lab_extensions)
+        settings.update({'context_window_bytes': 4194304, 'context_recent_bytes': 131072, 'history_thinking': 'preserve', 'max_request_bytes': 33554432})
+        settings['max_completion_retries'] = 2
+        profile = 'generic'
+        query = Path(os.environ['ARENA_QUERY_PATH']).read_text()
+        (inputs, images) = prepare_bound_public_input(query)
+        from cc_skill_support import append_instructions
+        inputs = append_instructions(inputs, root, output)
+        workspace = os.environ.get('ARENA_AGENT_WORKDIR') or os.environ.get('ARENA_WORKSPACE')
+        if not workspace and Path('/envarena/workspace').is_dir():
+            workspace = '/envarena/workspace'
+        if not workspace or not Path(workspace).is_dir():
+            raise RuntimeError('Missing Arena workspace')
+        write_json(output / 'runtime-utilities.json', {'workspace': workspace, 'budget_profile': 'swe-mm-256k', **json.loads((output / 'runtime-utilities.json').read_text())})
+        with tempfile.TemporaryDirectory(prefix='areal-arena-') as temp:
+            state = Path(temp)
+            data = state / 'core-data'
+            data.mkdir()
+            config = state / 'config.toml'
+            scratch = state / 'task-scratch'
+            scratch.mkdir()
+            delivery_checks = bool(settings.get('delivery_checks', False))
+            delivery = None
+            piggy = None
+            if delivery_checks or profile in ('swe', 'piggy'):
+                import delivery as delivery_module
+                verification = delivery_module.load_verification(root)
+            require_completion_marker = bool(settings.get('require_completion_marker', False))
+            config.write_text(make_config(model, endpoint, timeout, settings))
+            shutil.copy2(config, output / 'core-config.toml')
+            input_file = state / 'input.json'
+            write_json(input_file, inputs)
+            write_json(output / 'input-media.json', images)
+            write_json(output / 'input.json', inputs)
+            if images:
+                archive_bound_public_inputs(images, output / 'problem-assets')
+            environment = {k: v for (k, v) in os.environ.items() if not k.startswith('AREAL_HARNESS_') and k not in {'AREAL_MODEL', 'AREAL_MODEL_ENDPOINT', 'AREAL_MODEL_PROTOCOL'}}
+            environment['AREAL_API_KEY'] = key
+            environment['AREAL_NATIVE_LAUNCH_DIAGNOSTICS'] = str(output/'native-launch-exit.json')
+            environment['AREAL_HARNESS_HOME'] = str(state / 'home')
+            command = [sys.executable, str(root / 'launch.py'), '--bin-dir', str(root / 'bin'), '--tui', '--config', str(config), '--data-dir', str(data), '--workspace', workspace, '--scratch', str(scratch), '--allow-write', '--allow-network', '--allow-concurrent-writes', '--sandbox-profile', 'full-access', '--command-timeout-ms', '600000', '--command-output-bytes', '67108864', '--input-file', str(input_file)]
+            print('CC_NATIVE_PROGRESS '+json.dumps({'kind':'native_start','native_work_limit_seconds':timeout,'reasoning_effort':settings.get('reasoning_effort','medium')}),flush=True)
+            seen = set()
+            continuations = 0
+            max_continuations = 8
+            # Versioned scene delivery gate is bounded by the original native work deadline.
+            with trajectory_path.open('a') as trajectory, (output / 'tui.log').open('w') as log:
+                trajectory.write(json.dumps({'type': 'system', 'subtype': 'configuration', 'model': model, 'implementation': 'rust-core-runtime', 'protocol': 'chat-completions', 'system_prompt': (root / 'system-prompt.md').read_text(), 'parameters': {'temperature': settings.get('temperature', 1), 'reasoning_effort': settings.get('reasoning_effort', 'medium')}, 'task_profile': profile, 'images': images, 'timeout_seconds': timeout, 'network': 'inherit Arena offline policy'}) + '\n')
+                trajectory.flush()
+                while True:
+                    process = subprocess.Popen(command, stdout=log, stderr=log, env=environment)
+                    try:
+                        while process.poll() is None:
+                            project(data, trajectory, seen)
+                            if stopping or time.monotonic() - started > stop_after:
+                                timed_out = not stopping
+                                process.terminate()
+                                break
+                            time.sleep(1)
+                        try:
+                            process.wait(timeout=10)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.wait()
+                        threads = project(data, trajectory, seen)
+                    finally:
+                        if process.poll() is None:
+                            process.terminate()
+                            try:
+                                process.wait(timeout=10)
+                            except subprocess.TimeoutExpired:
+                                process.kill()
+                                process.wait()
+                        capture_native_terminal(output, threads, process, started, timed_out, stopping, 'core-data')
+                        shutil.copytree(data, output / 'core-data', dirs_exist_ok=True)
+                    turns = [turn for thread in threads for turn in thread.get('turns', [])]
+                    success = process.returncode == 0 and bool(turns) and all((t['status'] == 'completed' for t in turns))
+                    remaining = int(timeout - (time.monotonic() - started))
+                    if success:
+                        delivery = inspect_delivery_in_closeout(workspace, output, started, phase_budget)
+                        write_json(output / 'blender-delivery.json', delivery)
+                    if delivery_checks and success:
+                        delivery = delivery_module.inspect(workspace, scratch, turns, verification, protect_tests=bool(settings.get('protect_tests', True)))
+                        write_json(output / 'delivery.json', delivery)
+                    if piggy and success:
+                        delivery = piggy_module.inspect(piggy, scratch, turns, verification)
+                        write_json(output / 'delivery.json', delivery)
+                    if not success or stopping or remaining < 60 or (continuations >= max_continuations):
+                        break
+                    has_changes = has_tracked_changes(workspace) if delivery is None else False
+                    unfinished = require_completion_marker and (not completion_confirmed(turns))
+                    if delivery is not None:
+                        unfinished = delivery['status'] == 'incomplete'
+                        if delivery['status'] in ('complete', 'blocked'):
+                            break
+                    elif has_changes and (not unfinished):
+                        break
+                    if len(threads) != 1:
+                        raise RuntimeError('Continuation requires exactly one native Core thread')
+                    continuations += 1
+                    reason = 'Your previous response ended without an explicit implementation completion or blocker report.' if unfinished else 'Your previous turn ended without changes to tracked files.'
+                    if delivery is not None:
+                        reason = 'Delivery inspection found: ' + '; '.join(delivery['reasons'])
+                    feedback = reason + ' Continue the original implementation task from the existing workspace and conversation. Inspect the current diff, finish the intended implementation and run relevant available checks; do not stop after analysis or a plan. Preserve existing tests. Processes from the previous turn have been cleaned up; start any needed commands again. If the task is already satisfied or your fix uses only new files, verify that with concrete file and test evidence before finishing.'
+                    if delivery is not None:
+                        feedback = ('Your previous response ended, but actual Blender delivery is incomplete: ' + '; '.join(delivery['reasons'])
+                            + '. Continue this SAME original task and conversation using the existing workspace. Read the original output-contract.json and TASK.md. '
+                            + 'Create and save an editable scene.blend at the ORIGINAL required delivery path; reopen it with Blender and verify real geometry. '
+                            + 'Use the cc-blender-skill guidance already read, and read additional applicable Skills through tools when needed. '
+                            + 'Do not stop at reference analysis, environment probes, plans or a promise to continue. Do not change the task, references or scoring. '
+                            + 'Native work remaining: ' + str(remaining) + ' seconds. Save a usable initial scene immediately, then refine and finish within this remaining time. '
+                            + 'If something is blocked, attempt an in-scope repair and report the concrete failure honestly; no placeholder scene or fabricated completion.')
+                    if require_completion_marker:
+                        feedback += ' Finish with IMPLEMENTATION_COMPLETE on its own line and the actual change/test summary, or IMPLEMENTATION_BLOCKED on its own line with the concrete blocker.'
+                    command = command[:command.index('--input-file')] if '--input-file' in command else command[:command.index('--resume')]
+                    command += ['--resume', threads[0]['id'], '--prompt', feedback]
+                    config.write_text(make_config(model, endpoint, remaining, settings))
+                    shutil.copy2(config, output / ('core-config-continuation-%d.toml' % continuations))
+                    trajectory.write(json.dumps({'type': 'system', 'subtype': 'completion_continuation', 'reason': 'below_500k_face_gate' if (delivery and any('500,000 mandatory minimum' in r for r in delivery.get('reasons', []))) else ('missing_completion_report' if unfinished else 'no_tracked_changes'), 'index': continuations, 'thread_id': threads[0]['id'], 'remaining_seconds': remaining}) + '\n')
+                    trajectory.flush()
+                if piggy and success:
+                    if not delivery or delivery['status'] != 'complete':
+                        raise RuntimeError('Piggy delivery incomplete: ' + str(delivery))
+                    write_json(output / 'release-receipt.json', piggy_module.ship(piggy, scratch, output))
+                capture_native_terminal(output, threads, process, started, timed_out, stopping, 'scratch')
+                shutil.copytree(scratch, output / 'scratch', dirs_exist_ok=True, ignore=shutil.ignore_patterns('skills'))
+                usage = {key: sum(((t.get('usage') or {}).get(key, 0) for t in turns)) for key in ('inputTokens', 'outputTokens', 'cachedInputTokens')}
+                if success and (delivery is None or delivery.get('status') != 'complete'):
+                    success = False
+                result = {'status': 'OK' if success else 'ERROR', 'implementation': 'rust-core-runtime', 'exit_code': process.returncode, 'turn_statuses': [t['status'] for t in turns], 'usage': usage, 'image_count': len(images), 'continuations': continuations, 'duration_ms': int((time.monotonic() - started) * 1000), 'delivery': delivery}
+                if not success:
+                    result['error'] = [t.get('error') for t in turns] or 'No completed Core turn; see tui.log'
+                finalize(result, threads, timed_out=timed_out, interrupted=stopping)
+                trajectory.write(json.dumps({'type': 'result', 'subtype': 'success' if success else 'error', 'is_error': not success, 'num_turns': len(turns), 'usage': {'input_tokens': usage['inputTokens'], 'output_tokens': usage['outputTokens']}, 'duration_ms': result['duration_ms'], 'result': result}) + '\n')
+    except Exception as error:
+        adapter_error = True
+        result['status'] = 'ERROR'
+        result['error'] = str(error)
+        finalize(result, threads, timed_out=timed_out, interrupted=stopping, adapter_error=True)
+        print(str(error), file=sys.stderr, flush=True)
+        with trajectory_path.open('a') as trajectory:
+            trajectory.write(json.dumps({'type': 'result', 'subtype': 'error', 'is_error': True, 'result': result}) + '\n')
+    finally:
+        result['phase_clock'] = {'phase_budget_seconds': phase_budget, 'native_work_limit_seconds': timeout, 'terminate_after_seconds': stop_after, 'terminate_grace_seconds': 10, 'shared_loader_clock': 'AREAL_ARENA_PHASE_STARTED_MONOTONIC' in os.environ}
+        result['release'] = json.loads((root / 'manifest.json').read_text())
+        result['adapter_sha256'] = hashlib.sha256((root / 'runner').read_bytes()).hexdigest()
+        result['duration_ms'] = int((time.monotonic() - started) * 1000)
+        marker = finalize(result, threads, timed_out=timed_out, interrupted=stopping, adapter_error=adapter_error)
+        print(marker, flush=True)
+        if (output/'native-launch-exit.json').exists():
+            result['launcher_components'] = json.loads((output/'native-launch-exit.json').read_text())
+        write_json(output / 'native-receipt.json', result)
+        write_json(Path(os.environ['ARENA_OUTPUT_DIR']) / 'harness_result.json', result)
+        print(json.dumps(result), flush=True)
+    return 0 if result['status'] == 'OK' else 1
+if __name__ == '__main__':
+    raise SystemExit(main())

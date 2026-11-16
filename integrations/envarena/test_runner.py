@@ -217,6 +217,7 @@ class LazyInputTest(unittest.TestCase):
 
         default = tomllib.loads(runner.make_config("fixture", "http://localhost/v1", 30))
         self.assertFalse(default["limits"]["context_compaction_enabled"])
+        self.assertEqual(default["model"]["history_thinking"], "preserve")
         configured = tomllib.loads(
             runner.make_config(
                 "fixture",

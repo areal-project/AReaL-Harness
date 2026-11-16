@@ -1,0 +1,27 @@
+{
+  "adapter": "cc-blender-skill-v7/v1",
+  "candidate_id": "candidate-v108-fix-thinking",
+  "modify_parts": [
+    "C",
+    "O",
+    "S",
+    "T",
+    "W"
+  ],
+  "parent_sha256": "08a8fbfbc80a3d68e7325abb65f5ca82225934e5adc99a8a759a9fb903a05bd7",
+  "runtime_hooks": {
+    "C": "sdk-overlays/runner:settings",
+    "O": "tools.extensions_file:policy",
+    "S": "cc-skill-instructions.md",
+    "T": "tools.extensions_file:tools",
+    "W": "sdk-overlays/runner:continuation"
+  },
+  "schema": "cc-blender-skill-adapter/v1",
+  "settings": {
+    "context_recent_bytes": 131072,
+    "context_window_bytes": 4194304,
+    "history_thinking": "preserve",
+    "max_request_bytes": 33554432
+  },
+  "unsupported_parts": []
+}

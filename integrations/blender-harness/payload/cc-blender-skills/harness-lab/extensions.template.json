@@ -1,0 +1,131 @@
+{
+  "tools": [
+    {
+      "definition": {
+        "name": "lab_update_subpart",
+        "description": "Build or update high-density Blender architectural subparts (`total_faces >= 500,000` enforced via `finalize_and_save`) with closed-by-default curved roofs, outward-normal Boolean `arch_cut`, explicit `prism_xz/prism_yz/prism_xy`, `render_inspection_sheet`, `PartBMesh`, and 5 universal architectural subsystem modules.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "scene_path": {
+              "type": "string"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "sync_contract",
+                "upsert_subpart",
+                "delete_subpart"
+              ]
+            },
+            "role": {
+              "type": "string"
+            },
+            "subpart_name": {
+              "type": "string"
+            },
+            "python_code": {
+              "type": "string"
+            },
+            "script": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "scene_path"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "argv": [
+        "python3",
+        ".agents/skills/harness-lab/lab_update_subpart.py"
+      ],
+      "timeoutMs": 120000
+    },
+    {
+      "definition": {
+        "name": "lab_bmesh_frame_and_clay",
+        "description": "Core BMesh collector, orientation-safe LocalFrame/EllipticalFrame, C_n/D_4 symmetry replicators, dihedral crease auto-smooth, 6-tone neutral clay & unit-X normalizer.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "argv": [
+        "python3",
+        ".agents/skills/harness-lab/lab_bmesh_frame_and_clay.py"
+      ],
+      "timeoutMs": 30000
+    },
+    {
+      "definition": {
+        "name": "lab_roofs_domes_and_shells",
+        "description": "Closed-by-default East Asian curved hip/xieshan/gable/pyramidal/cross roofs, polygonal pagoda/conical roofs, corbel brick eaves, ribbed/bulbous/onion domes & spherical sail shells.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "argv": [
+        "python3",
+        ".agents/skills/harness-lab/lab_roofs_domes_and_shells.py"
+      ],
+      "timeoutMs": 30000
+    },
+    {
+      "definition": {
+        "name": "lab_columns_brackets_and_portals",
+        "description": "Entasis fluted classical columns, entablatures & pediments, 3D Chinese dougong rings/bays, Gothic splayed portals/rose windows & Persian pishtaq iwans.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "argv": [
+        "python3",
+        ".agents/skills/harness-lab/lab_columns_brackets_and_portals.py"
+      ],
+      "timeoutMs": 30000
+    },
+    {
+      "definition": {
+        "name": "lab_walls_arcades_and_facades",
+        "description": "Analytical arch curves, mitered 2D profile rings, boolean-free perforated walls with deep jamb reveals, equal-arc-length curved arcades & curtain/louver facades.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "argv": [
+        "python3",
+        ".agents/skills/harness-lab/lab_walls_arcades_and_facades.py"
+      ],
+      "timeoutMs": 30000
+    },
+    {
+      "definition": {
+        "name": "lab_towers_bridges_and_terraces",
+        "description": "Twisted ruled hyperboloid diagrids, exoskeletal suspension frames, occlusion-aware modular concrete clusters, stepped terraces/pyramids & humpback stone arch bridges.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "argv": [
+        "python3",
+        ".agents/skills/harness-lab/lab_towers_bridges_and_terraces.py"
+      ],
+      "timeoutMs": 30000
+    }
+  ],
+  "policy": {
+    "outputPageBytes": 32768,
+    "resultViews": {
+      "mode": "on",
+      "searchGroups": true,
+      "repeatLines": true,
+      "fileLines": true
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "operation": "remove_two_pass_limit_v1",
+  "source_sha256": "74d87498ad651e5576a40d83bc1391b728bdb0be6c84c215dbc98d9a109a1c4a",
+  "reduced_sha256": "5ff53be70430a39dc82eed77566f5273d0075a750c2e1719c1a5f07a9ff4268d",
+  "final_sha256": "f19a3ccc8c48a24d07b22309f522ea7c6f07caa8835fff22afc136f020e910cb",
+  "removed_text": "Perform\nat most two discretionary visual refinement passes before final delivery and\nvalidation; use further time for necessary functional/delivery repairs.",
+  "replacement_text": "Continue iterative visual and structural refinement passes (rendering and\ninspecting multi-view previews via image_read after each structural edit) until\nvisual and geometric discrepancies against the references are resolved within\nthe work clock."
+}

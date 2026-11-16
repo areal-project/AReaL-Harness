@@ -1,0 +1,55 @@
+{
+  "base_sdk_uri": "uploads/261012/2bcf6da3da84002b/areal-harness-0.1.4-oss-context-unlimit.pyz",
+  "base_sdk_destination": "native/image-preview-base.pyz",
+  "base_source_revision": "fc7b25685623b0201bdcda43daba71a06ec0f4cf",
+  "base_code_sha256": {
+    "runner": "b37fc0104c68aa0b43225136369e00325f149a9be1eb798164e99f950414bc4b",
+    "launch.py": "8cb0153563869a09dd9adf9b00a10653eb1ba2cd2775c02af40e7087f7cf3276",
+    "outcomes.py": "7b2b7512ab5ab529c2f9b737da2ea0fd136fd341f846f445ac9271522e06a637",
+    "bootstrap.py": "52e11c73d1fee3d06210b6fe0c70710d926755c1348ee9902ae037197115b1de",
+    "__main__.py": "f5ce5bcd4fe14ce2dea2a61b826155121b21f1c503ccc42ff0ceeba4ae345079"
+  },
+  "native_source_revision": "522ae18ab3bde68e02a03eaf3942050307062cf5",
+  "core_archive_sha256": "83298749be66017f9933a1d0261c58c68e7b7772b79ac3ee8d0d14d500169b0a",
+  "sdk_overlay_sha256": {
+    "runner": "e6f5590c417d38337cac2bff55661743cbfce945ec8862f72dec6bd5cb382b3d",
+    "image_ingress.py": "f61d0c33514592d4967d480ab0abd5a849d9d25101546cdd2ae4eeb9a1d5a9de",
+    "image-ingress-helper": "36378ef011508d2f6b087bcbe6cc139571a3b17f33910dd686178f66449fd3c8",
+    "launch.py": "195fb12873f20a0947ae60dc7445f18e11495c6d97228204c0b62db599f7c6f7"
+  },
+  "input_carrier_policy": {
+    "max_input_file_bytes": 4128768,
+    "core_frame_bytes": 4194304,
+    "rpc_envelope_reserve_bytes": 65536,
+    "model_context_bytes_unchanged": 2097152,
+    "original_files_unchanged": true,
+    "initial_history_contains_compressed_previews": true
+  },
+  "terminal_notification_policy": {
+    "capability": "compactTerminalNotifications",
+    "opt_in_headless_only": true,
+    "max_frame_bytes": 4194304,
+    "summary_only_if_oversized": true,
+    "durable_history_unchanged": true,
+    "terminal_id_status_error_preserved": true
+  },
+  "terminal_capture_policy": {
+    "phase": "TERMINAL_CAPTURED_COLLECTION_PENDING",
+    "status": "ERROR",
+    "atomic_before_archives": [
+      "core-data",
+      "scratch"
+    ],
+    "final_success_requires_original_complete_closeout": true
+  },
+  "input_ingress": {
+    "schema": "input-image-ingress/v1",
+    "helper_sha256": "36378ef011508d2f6b087bcbe6cc139571a3b17f33910dd686178f66449fd3c8",
+    "encoder": "same-native-model-request-preview",
+    "max_image_bytes": 262144,
+    "target_long_edge": 1536,
+    "jpeg_quality": 85,
+    "initial_compressed_before_core_frame": true,
+    "original_files_retained": true
+  }
+}

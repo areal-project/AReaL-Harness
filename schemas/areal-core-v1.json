@@ -1554,7 +1554,7 @@
               "type": "object"
             },
             {
-              "description": "模型显式返回的思考文本，独立于正文且不回放为模型输入。",
+              "description": "模型显式返回的思考文本，独立于正文；历史回放由模型策略决定。",
               "properties": {
                 "content": {
                   "default": [],
@@ -3822,7 +3822,7 @@
               "type": "object"
             },
             {
-              "description": "模型显式返回的思考文本，独立于正文且不回放为模型输入。",
+              "description": "模型显式返回的思考文本，独立于正文；历史回放由模型策略决定。",
               "properties": {
                 "content": {
                   "default": [],
@@ -4459,7 +4459,7 @@
               "type": "object"
             },
             {
-              "description": "模型显式返回的思考文本，独立于正文且不回放为模型输入。",
+              "description": "模型显式返回的思考文本，独立于正文；历史回放由模型策略决定。",
               "properties": {
                 "content": {
                   "default": [],
@@ -7695,7 +7695,7 @@
                           "type": "object"
                         },
                         {
-                          "description": "模型显式返回的思考文本，独立于正文且不回放为模型输入。",
+                          "description": "模型显式返回的思考文本，独立于正文；历史回放由模型策略决定。",
                           "properties": {
                             "content": {
                               "default": [],
@@ -8879,7 +8879,7 @@
                     "type": "object"
                   },
                   {
-                    "description": "模型显式返回的思考文本，独立于正文且不回放为模型输入。",
+                    "description": "模型显式返回的思考文本，独立于正文；历史回放由模型策略决定。",
                     "properties": {
                       "content": {
                         "default": [],
@@ -10041,7 +10041,7 @@
                     "type": "object"
                   },
                   {
-                    "description": "模型显式返回的思考文本，独立于正文且不回放为模型输入。",
+                    "description": "模型显式返回的思考文本，独立于正文；历史回放由模型策略决定。",
                     "properties": {
                       "content": {
                         "default": [],
@@ -19058,7 +19058,7 @@
                             "type": "object"
                           },
                           {
-                            "description": "模型显式返回的思考文本，独立于正文且不回放为模型输入。",
+                            "description": "模型显式返回的思考文本，独立于正文；历史回放由模型策略决定。",
                             "properties": {
                               "content": {
                                 "default": [],
@@ -22394,7 +22394,7 @@
                               "type": "object"
                             },
                             {
-                              "description": "模型显式返回的思考文本，独立于正文且不回放为模型输入。",
+                              "description": "模型显式返回的思考文本，独立于正文；历史回放由模型策略决定。",
                               "properties": {
                                 "content": {
                                   "default": [],
@@ -23569,7 +23569,7 @@
                         "type": "object"
                       },
                       {
-                        "description": "模型显式返回的思考文本，独立于正文且不回放为模型输入。",
+                        "description": "模型显式返回的思考文本，独立于正文；历史回放由模型策略决定。",
                         "properties": {
                           "content": {
                             "default": [],
@@ -40376,7 +40376,7 @@
                           "type": "object"
                         },
                         {
-                          "description": "模型显式返回的思考文本，独立于正文且不回放为模型输入。",
+                          "description": "模型显式返回的思考文本，独立于正文；历史回放由模型策略决定。",
                           "properties": {
                             "content": {
                               "default": [],
@@ -41585,7 +41585,7 @@
                     "type": "object"
                   },
                   {
-                    "description": "模型显式返回的思考文本，独立于正文且不回放为模型输入。",
+                    "description": "模型显式返回的思考文本，独立于正文；历史回放由模型策略决定。",
                     "properties": {
                       "content": {
                         "default": [],
@@ -48856,7 +48856,7 @@
                             "type": "object"
                           },
                           {
-                            "description": "模型显式返回的思考文本，独立于正文且不回放为模型输入。",
+                            "description": "模型显式返回的思考文本，独立于正文；历史回放由模型策略决定。",
                             "properties": {
                               "content": {
                                 "default": [],
@@ -52180,7 +52180,7 @@
                           "type": "object"
                         },
                         {
-                          "description": "模型显式返回的思考文本，独立于正文且不回放为模型输入。",
+                          "description": "模型显式返回的思考文本，独立于正文；历史回放由模型策略决定。",
                           "properties": {
                             "content": {
                               "default": [],
@@ -55525,7 +55525,7 @@
                           "type": "object"
                         },
                         {
-                          "description": "模型显式返回的思考文本，独立于正文且不回放为模型输入。",
+                          "description": "模型显式返回的思考文本，独立于正文；历史回放由模型策略决定。",
                           "properties": {
                             "content": {
                               "default": [],
@@ -58878,7 +58878,7 @@
                           "type": "object"
                         },
                         {
-                          "description": "模型显式返回的思考文本，独立于正文且不回放为模型输入。",
+                          "description": "模型显式返回的思考文本，独立于正文；历史回放由模型策略决定。",
                           "properties": {
                             "content": {
                               "default": [],
@@ -60073,7 +60073,7 @@
                     "type": "object"
                   },
                   {
-                    "description": "模型显式返回的思考文本，独立于正文且不回放为模型输入。",
+                    "description": "模型显式返回的思考文本，独立于正文；历史回放由模型策略决定。",
                     "properties": {
                       "content": {
                         "default": [],
@@ -63515,7 +63515,7 @@
                     "type": "object"
                   },
                   {
-                    "description": "模型显式返回的思考文本，独立于正文且不回放为模型输入。",
+                    "description": "模型显式返回的思考文本，独立于正文；历史回放由模型策略决定。",
                     "properties": {
                       "content": {
                         "default": [],
@@ -64687,7 +64687,7 @@
               "type": "object"
             },
             {
-              "description": "模型显式返回的思考文本，独立于正文且不回放为模型输入。",
+              "description": "模型显式返回的思考文本，独立于正文；历史回放由模型策略决定。",
               "properties": {
                 "content": {
                   "default": [],

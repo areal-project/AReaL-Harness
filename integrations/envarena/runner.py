@@ -175,13 +175,17 @@ def make_config(model, endpoint, timeout, settings=None):
     sampling = (f"reasoning_effort={q(effort)}\n" if effort is not None else "") + (
         f"temperature={float(temperature)}\n" if temperature is not None else ""
     )
+    history_thinking = os.environ.get(
+        "AREAL_HARNESS_HISTORY_THINKING", settings.get("history_thinking", "preserve")
+    )
     return f"""schema_version=1
 [model]
 provider="arena"
 name={q(model)}
+history_thinking={q(history_thinking)}
 {sampling}max_output_tokens={int(os.environ.get("AREAL_ARENA_MAX_OUTPUT_TOKENS", settings.get("max_output_tokens", 16384)))}
 max_retries={int(settings.get("http_retries", 2))}
-max_request_bytes={int(settings.get("max_request_bytes", 16777216))}
+max_request_bytes={int(settings.get("max_request_bytes", 33554432))}
 [model.providers.arena]
 protocol="chat-completions"
 endpoint={q(endpoint)}
