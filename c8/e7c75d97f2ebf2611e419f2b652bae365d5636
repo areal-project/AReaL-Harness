@@ -1,0 +1,262 @@
+core/config/examples/config.toml
+  h_6c2b3e44508334 12-13
+integrations/blender-harness/package_blender_harness.py
+  h_6c2b3e44508334 1-44
+integrations/blender-harness/payload/CC-BLENDER-LICENSE
+  h_6c2b3e44508334 1-21
+integrations/blender-harness/payload/__main__.py
+  h_6c2b3e44508334 1-155
+integrations/blender-harness/payload/adapter-manifest.json
+  h_6c2b3e44508334 1-27
+integrations/blender-harness/payload/cc-blender-skills/EVALS_README.md
+  h_6c2b3e44508334 1-70
+integrations/blender-harness/payload/cc-blender-skills/animation-quality-gate/SKILL.md
+  h_6c2b3e44508334 1-46
+integrations/blender-harness/payload/cc-blender-skills/animation-quality-gate/scripts/animation_contact_sheet.py
+  h_6c2b3e44508334 1-39
+integrations/blender-harness/payload/cc-blender-skills/atlas-uv-fitting/SKILL.md
+  h_6c2b3e44508334 1-63
+integrations/blender-harness/payload/cc-blender-skills/atlas-uv-fitting/scripts/atlas_region_detector.py
+  h_6c2b3e44508334 1-37
+integrations/blender-harness/payload/cc-blender-skills/atlas-uv-fitting/scripts/atlas_region_mapper.py
+  h_6c2b3e44508334 1-41
+integrations/blender-harness/payload/cc-blender-skills/blender-animation/SKILL.md
+  h_6c2b3e44508334 1-311
+integrations/blender-harness/payload/cc-blender-skills/blender-animation/evals/evals.json
+  h_6c2b3e44508334 1-23
+integrations/blender-harness/payload/cc-blender-skills/blender-animation/references/overview.md
+  h_6c2b3e44508334 1-274
+integrations/blender-harness/payload/cc-blender-skills/blender-cameras/SKILL.md
+  h_6c2b3e44508334 1-309
+integrations/blender-harness/payload/cc-blender-skills/blender-cameras/evals/evals.json
+  h_6c2b3e44508334 1-23
+integrations/blender-harness/payload/cc-blender-skills/blender-cameras/references/overview.md
+  h_6c2b3e44508334 1-263
+integrations/blender-harness/payload/cc-blender-skills/blender-export/SKILL.md
+  h_6c2b3e44508334 1-354
+integrations/blender-harness/payload/cc-blender-skills/blender-export/evals/evals.json
+  h_6c2b3e44508334 1-28
+integrations/blender-harness/payload/cc-blender-skills/blender-export/references/overview.md
+  h_6c2b3e44508334 1-302
+integrations/blender-harness/payload/cc-blender-skills/blender-export/references/unreal-export.md
+  h_6c2b3e44508334 1-52
+integrations/blender-harness/payload/cc-blender-skills/blender-export/scripts/collision_preflight.py
+  h_6c2b3e44508334 1-184
+integrations/blender-harness/payload/cc-blender-skills/blender-export/scripts/multires_bake_export.py
+  h_6c2b3e44508334 1-144
+integrations/blender-harness/payload/cc-blender-skills/blender-lighting/SKILL.md
+  h_6c2b3e44508334 1-490
+integrations/blender-harness/payload/cc-blender-skills/blender-lighting/evals/evals.json
+  h_6c2b3e44508334 1-23
+integrations/blender-harness/payload/cc-blender-skills/blender-lighting/references/overview.md
+  h_6c2b3e44508334 1-269
+integrations/blender-harness/payload/cc-blender-skills/blender-materials/SKILL.md
+  h_6c2b3e44508334 1-500
+integrations/blender-harness/payload/cc-blender-skills/blender-materials/evals/evals.json
+  h_6c2b3e44508334 1-23
+integrations/blender-harness/payload/cc-blender-skills/blender-materials/references/overview.md
+  h_6c2b3e44508334 1-290
+integrations/blender-harness/payload/cc-blender-skills/blender-modeling/SKILL.md
+  h_6c2b3e44508334 1-369
+integrations/blender-harness/payload/cc-blender-skills/blender-modeling/evals/evals.json
+  h_6c2b3e44508334 1-23
+integrations/blender-harness/payload/cc-blender-skills/blender-modeling/references/overview.md
+  h_6c2b3e44508334 1-299
+integrations/blender-harness/payload/cc-blender-skills/blender-pro-workflow/SKILL.md
+  h_6c2b3e44508334 1-213
+integrations/blender-harness/payload/cc-blender-skills/blender-pro-workflow/evals/evals.json
+  h_6c2b3e44508334 1-23
+integrations/blender-harness/payload/cc-blender-skills/blender-pro-workflow/references/overview.md
+  h_6c2b3e44508334 1-251
+integrations/blender-harness/payload/cc-blender-skills/blender-rendering/SKILL.md
+  h_6c2b3e44508334 1-304
+integrations/blender-harness/payload/cc-blender-skills/blender-rendering/evals/evals.json
+  h_6c2b3e44508334 1-23
+integrations/blender-harness/payload/cc-blender-skills/blender-rendering/references/overview.md
+  h_6c2b3e44508334 1-297
+integrations/blender-harness/payload/cc-blender-skills/blender-skill-harmonizer/SKILL.md
+  h_6c2b3e44508334 1-116
+integrations/blender-harness/payload/cc-blender-skills/blender-skill-harmonizer/references/handoff-contracts.md
+  h_6c2b3e44508334 1-43
+integrations/blender-harness/payload/cc-blender-skills/blender-skill-harmonizer/scripts/skill_graph_audit.py
+  h_6c2b3e44508334 1-61
+integrations/blender-harness/payload/cc-blender-skills/blender-uv-texturing/SKILL.md
+  h_6c2b3e44508334 1-156
+integrations/blender-harness/payload/cc-blender-skills/blender-uv-texturing/evals/evals.json
+  h_6c2b3e44508334 1-47
+integrations/blender-harness/payload/cc-blender-skills/blender-uv-texturing/references/overview.md
+  h_6c2b3e44508334 1-25
+integrations/blender-harness/payload/cc-blender-skills/closed-surface-uv-coverage/SKILL.md
+  h_6c2b3e44508334 1-59
+integrations/blender-harness/payload/cc-blender-skills/closed-surface-uv-coverage/scripts/surface_texture_coverage_audit.py
+  h_6c2b3e44508334 1-77
+integrations/blender-harness/payload/cc-blender-skills/contour-to-mesh/SKILL.md
+  h_6c2b3e44508334 1-87
+integrations/blender-harness/payload/cc-blender-skills/contour-to-mesh/scripts/mask_to_mesh_recipe.py
+  h_6c2b3e44508334 1-86
+integrations/blender-harness/payload/cc-blender-skills/contour-to-mesh/scripts/source_locked_skin_recipe.py
+  h_6c2b3e44508334 1-120
+integrations/blender-harness/payload/cc-blender-skills/fit-repair-optimizer/SKILL.md
+  h_6c2b3e44508334 1-85
+integrations/blender-harness/payload/cc-blender-skills/fit-repair-optimizer/scripts/fit_repair_queue.py
+  h_6c2b3e44508334 1-60
+integrations/blender-harness/payload/cc-blender-skills/harness-lab/ARCHITECTURAL_MODELING_GUIDE.md
+  h_6c2b3e44508334 1-75
+integrations/blender-harness/payload/cc-blender-skills/harness-lab/extensions.template.json
+  h_6c2b3e44508334 1-131
+integrations/blender-harness/payload/cc-blender-skills/harness-lab/lab_bmesh_frame_and_clay.py
+  h_6c2b3e44508334 1-1149
+integrations/blender-harness/payload/cc-blender-skills/harness-lab/lab_columns_brackets_and_portals.py
+  h_6c2b3e44508334 1-518
+integrations/blender-harness/payload/cc-blender-skills/harness-lab/lab_roof_and_aperture_ops.py
+  h_6c2b3e44508334 1-927
+integrations/blender-harness/payload/cc-blender-skills/harness-lab/lab_roofs_domes_and_shells.py
+  h_6c2b3e44508334 1-678
+integrations/blender-harness/payload/cc-blender-skills/harness-lab/lab_towers_bridges_and_terraces.py
+  h_6c2b3e44508334 1-454
+integrations/blender-harness/payload/cc-blender-skills/harness-lab/lab_update_subpart.py
+  h_6c2b3e44508334 1-1343
+integrations/blender-harness/payload/cc-blender-skills/harness-lab/lab_walls_arcades_and_facades.py
+  h_6c2b3e44508334 1-442
+integrations/blender-harness/payload/cc-blender-skills/landmark-fit-repair/SKILL.md
+  h_6c2b3e44508334 1-56
+integrations/blender-harness/payload/cc-blender-skills/landmark-fit-repair/scripts/landmark_fit_report.py
+  h_6c2b3e44508334 1-28
+integrations/blender-harness/payload/cc-blender-skills/mascot-logo-reconstruction/SKILL.md
+  h_6c2b3e44508334 1-77
+integrations/blender-harness/payload/cc-blender-skills/multiview-constraint-solver/SKILL.md
+  h_6c2b3e44508334 1-45
+integrations/blender-harness/payload/cc-blender-skills/multiview-constraint-solver/scripts/view_constraint_report.py
+  h_6c2b3e44508334 1-83
+integrations/blender-harness/payload/cc-blender-skills/multiview-fit-loop/SKILL.md
+  h_6c2b3e44508334 1-52
+integrations/blender-harness/payload/cc-blender-skills/multiview-fit-loop/scripts/multiview_fit_report.py
+  h_6c2b3e44508334 1-108
+integrations/blender-harness/payload/cc-blender-skills/orbital-hud-motion/SKILL.md
+  h_6c2b3e44508334 1-51
+integrations/blender-harness/payload/cc-blender-skills/orbital-hud-motion/scripts/orbit_layout_manifest.py
+  h_6c2b3e44508334 1-22
+integrations/blender-harness/payload/cc-blender-skills/orthographic-registration/SKILL.md
+  h_6c2b3e44508334 1-45
+integrations/blender-harness/payload/cc-blender-skills/orthographic-registration/scripts/register_views.py
+  h_6c2b3e44508334 1-37
+integrations/blender-harness/payload/cc-blender-skills/quality-refinement-autoloop/SKILL.md
+  h_6c2b3e44508334 1-122
+integrations/blender-harness/payload/cc-blender-skills/quality-refinement-autoloop/scripts/ralph_autoloop_plan.py
+  h_6c2b3e44508334 1-48
+integrations/blender-harness/payload/cc-blender-skills/quality-refinement-autoloop/scripts/release_readiness_check.py
+  h_6c2b3e44508334 1-30
+integrations/blender-harness/payload/cc-blender-skills/quality-refinement-autoloop/scripts/sanitize_skill_contributions.py
+  h_6c2b3e44508334 1-32
+integrations/blender-harness/payload/cc-blender-skills/reference-analysis-validator/SKILL.md
+  h_6c2b3e44508334 1-67
+integrations/blender-harness/payload/cc-blender-skills/reference-analysis-validator/references/metrics-and-thresholds.md
+  h_6c2b3e44508334 1-42
+integrations/blender-harness/payload/cc-blender-skills/reference-analysis-validator/scripts/reference_manifest_compiler.py
+  h_6c2b3e44508334 1-113
+integrations/blender-harness/payload/cc-blender-skills/reference-analysis-validator/scripts/render_overlay_validator.py
+  h_6c2b3e44508334 1-77
+integrations/blender-harness/payload/cc-blender-skills/reference-look-calibration/SKILL.md
+  h_6c2b3e44508334 1-54
+integrations/blender-harness/payload/cc-blender-skills/reference-look-calibration/scripts/look_fit_report.py
+  h_6c2b3e44508334 1-79
+integrations/blender-harness/payload/cc-blender-skills/reference-to-3d/SKILL.md
+  h_6c2b3e44508334 1-197
+integrations/blender-harness/payload/cc-blender-skills/reference-to-3d/evals/evals.json
+  h_6c2b3e44508334 1-47
+integrations/blender-harness/payload/cc-blender-skills/reference-to-3d/references/overview.md
+  h_6c2b3e44508334 1-30
+integrations/blender-harness/payload/cc-blender-skills/reference-to-3d/scripts/silhouette_validator.py
+  h_6c2b3e44508334 1-68
+integrations/blender-harness/payload/cc-blender-skills/reference-to-3d/scripts/template_analyzer.py
+  h_6c2b3e44508334 1-110
+integrations/blender-harness/payload/cc-blender-skills/source-part-segmentation/SKILL.md
+  h_6c2b3e44508334 1-68
+integrations/blender-harness/payload/cc-blender-skills/source-part-segmentation/scripts/seeded_part_masks.py
+  h_6c2b3e44508334 1-121
+integrations/blender-harness/payload/cc-blender-skills/source-part-segmentation/scripts/segment_source_parts.py
+  h_6c2b3e44508334 1-64
+integrations/blender-harness/payload/cc-blender-skills/text-to-blender/SKILL.md
+  h_6c2b3e44508334 1-262
+integrations/blender-harness/payload/cc-blender-skills/text-to-blender/assets/v0.4.0-validation/README.md
+  h_6c2b3e44508334 1-15
+integrations/blender-harness/payload/cc-blender-skills/text-to-blender/assets/v0.6.0-round2-validation/README.md
+  h_6c2b3e44508334 1-30
+integrations/blender-harness/payload/cc-blender-skills/text-to-blender/assets/v0.7.0-bottle-validation/README.md
+  h_6c2b3e44508334 1-30
+integrations/blender-harness/payload/cc-blender-skills/text-to-blender/assets/v0.8.0-chair-validation/README.md
+  h_6c2b3e44508334 1-45
+integrations/blender-harness/payload/cc-blender-skills/text-to-blender/assets/v1.4.0-validation/README.md
+  h_6c2b3e44508334 1-13
+integrations/blender-harness/payload/cc-blender-skills/text-to-blender/evals/backend-scenarios.json
+  h_6c2b3e44508334 1-99
+integrations/blender-harness/payload/cc-blender-skills/text-to-blender/evals/evals.json
+  h_6c2b3e44508334 1-23
+integrations/blender-harness/payload/cc-blender-skills/text-to-blender/references/agent-hosts.md
+  h_6c2b3e44508334 1-100
+integrations/blender-harness/payload/cc-blender-skills/text-to-blender/references/assembly-order.md
+  h_6c2b3e44508334 1-109
+integrations/blender-harness/payload/cc-blender-skills/text-to-blender/references/blender-version-compat.md
+  h_6c2b3e44508334 1-72
+integrations/blender-harness/payload/cc-blender-skills/text-to-blender/references/common-object-dimensions.md
+  h_6c2b3e44508334 1-253
+integrations/blender-harness/payload/cc-blender-skills/text-to-blender/references/mcp-backends.md
+  h_6c2b3e44508334 1-114
+integrations/blender-harness/payload/cc-blender-skills/texture-driven-mesh-fitting/SKILL.md
+  h_6c2b3e44508334 1-57
+integrations/blender-harness/payload/cc-blender-skills/texture-driven-mesh-fitting/scripts/contour_correspondence_report.py
+  h_6c2b3e44508334 1-45
+integrations/blender-harness/payload/cc-blender-skills/texture-state-animation/SKILL.md
+  h_6c2b3e44508334 1-56
+integrations/blender-harness/payload/cc-blender-skills/texture-state-animation/scripts/texture_transition_plan.py
+  h_6c2b3e44508334 1-38
+integrations/blender-harness/payload/cc-blender-skills/wireframe-to-3d/SKILL.md
+  h_6c2b3e44508334 1-309
+integrations/blender-harness/payload/cc-blender-skills/wireframe-to-3d/evals/evals.json
+  h_6c2b3e44508334 1-23
+integrations/blender-harness/payload/cc-blender-skills/wireframe-to-3d/references/algorithms.md
+  h_6c2b3e44508334 1-680
+integrations/blender-harness/payload/cc-blender-skills/wireframe-to-3d/references/best-practices.md
+  h_6c2b3e44508334 1-849
+integrations/blender-harness/payload/cc-blender-skills/wireframe-to-3d/references/blender-patterns.md
+  h_6c2b3e44508334 1-712
+integrations/blender-harness/payload/cc-blender-skills/wireframe-to-3d/scripts/wireframe_analyzer.py
+  h_6c2b3e44508334 1-374
+integrations/blender-harness/payload/cc-skill-instructions.md
+  h_6c2b3e44508334 1-119
+integrations/blender-harness/payload/cc-skill-manifest.json
+  h_6c2b3e44508334 1-205
+integrations/blender-harness/payload/cc_skill_support.py
+  h_6c2b3e44508334 1-48
+integrations/blender-harness/payload/harness-lab-budget-migration.json
+  h_6c2b3e44508334 1-8
+integrations/blender-harness/payload/release-binding.json
+  h_6c2b3e44508334 1-55
+integrations/blender-harness/payload/sdk-overlays/image_ingress.py
+  h_6c2b3e44508334 1-56
+integrations/blender-harness/payload/sdk-overlays/launch.py
+  h_6c2b3e44508334 1-537
+integrations/blender-harness/payload/sdk-overlays/runner
+  h_6c2b3e44508334 1-475
+integrations/blender-harness/zip-modes.json
+  h_6c2b3e44508334 1-156
+integrations/envarena/runner.py
+  h_6c2b3e44508334 178-180,185,188
+integrations/envarena/test_runner.py
+  h_6c2b3e44508334 220
+schemas/areal-core-v1.json
+  h_6c2b3e44508334 1557,3825,4462,7698,8882,10044,19061,22397,23572,40379,41588,48859,52183,55528,58881,60076,63518,64690
+scripts/check-docs.py
+  h_6c2b3e44508334 64-66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c8e7c75d97f2ebf2611e419f2b652bae365d5636",
+  "prompts": {},
+  "humans": {
+    "h_6c2b3e44508334": {
+      "author": "jingrui.sjj <jingrui.sjj@antgroup.com>"
+    }
+  }
+}
