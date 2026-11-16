@@ -1411,6 +1411,7 @@ describe("Host renderer read authority", () => {
       commandId?: string;
     }> = [];
     let admissionState = "accepted";
+    let failShellRefresh = false;
     const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
       const opened = await wire.factory(lifecycle);
       return {
@@ -1421,6 +1422,11 @@ describe("Host renderer read authority", () => {
         },
         transport: {
           ...opened.transport,
+          async request(method, params, context) {
+            if (failShellRefresh && method === "shell.subscribe")
+              throw new Error("catalog unavailable");
+            return opened.transport.request(method, params, context);
+          },
           async write(method, params, context, commandId) {
             writes.push({ method, params, projectId: context?.projectId, commandId });
             return {
@@ -1462,6 +1468,12 @@ describe("Host renderer read authority", () => {
       },
     });
     expect(writes.at(-1)?.params).not.toHaveProperty("projectId");
+    failShellRefresh = true;
+    await expect(
+      call(services, "create", { ...creation, requestId: "22222222-2222-4222-8222-222222222222" }),
+    ).resolves.toEqual({ threadId: "thread", requestId: "22222222-2222-4222-8222-222222222222" });
+    failShellRefresh = false;
+
     const message = {
       projectId: "alias",
       threadId: "thread",

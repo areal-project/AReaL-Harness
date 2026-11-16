@@ -864,3 +864,30 @@ test("an in-flight stop rejects reconnect and keeps the new UNKNOWN reference du
   assert.equal(f.backend.hostReferences.has(requestId), true);
   assert.equal(f.calls.filter((request) => request.method === "host.stop").length, 1);
 });
+
+test("automatic initialization resumes after a definitively refused Host stop", async (t) => {
+  const f = await fixture(t);
+  const requestId = randomUUID();
+  const reference = {
+    kind: "stopHost",
+    requestId,
+    home: f.hostHome,
+    hostId: f.hostId,
+    generation: f.generation,
+    strategy: "cancel",
+  };
+  f.operations.set(requestId, { ...f.receipt(requestId, "blocked"), preparationInterrupted: true });
+  f.backend.hostReferences.set(requestId, reference);
+  await f.backend.persistReferences();
+  let starts = 0;
+  f.backend.initialize = async () => {
+    starts++;
+  };
+  await f.backend.init({ automatic: true });
+  assert.equal(starts, 1);
+  assert.equal(f.backend.hostReferences.size, 0);
+  assert.equal(
+    f.calls.some((request) => request.method === "host.stop"),
+    false,
+  );
+});

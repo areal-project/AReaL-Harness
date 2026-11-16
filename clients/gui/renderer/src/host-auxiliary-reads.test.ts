@@ -137,3 +137,38 @@ it("does not install an inspection from an older revision or connection", async 
   await Promise.resolve();
   expect(inspections.get("p:t")?.value).toEqual({ modelName: "current" });
 });
+
+it("bounds background inspections so history cannot exhaust Host command admission", async () => {
+  const replies: ((value: unknown) => void)[] = [];
+  const client = {
+    snapshot: () => ({ connection: "ready", identity: { connectionId: "connection" } }),
+    workbench: () => new Promise((resolve) => replies.push(resolve)),
+  } as unknown as HostClient;
+  const projects = [
+    {
+      id: "p",
+      state: {
+        threads: Object.fromEntries(
+          Array.from({ length: 40 }, (_, i) => [
+            `t${i}`,
+            { desktop: { configuration: { revision: 1 } } },
+          ]),
+        ),
+      },
+    },
+  ];
+  const inspections = new Map<
+    string,
+    { identity: string; scope?: string; value?: Record<string, unknown> }
+  >();
+  const refresh = () => refreshInspections(client, projects as never, inspections, refresh);
+  refresh();
+  expect(replies).toHaveLength(2);
+  for (let i = 0; i < 40; i++) {
+    replies[i]({ modelName: "model" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(replies.length - i - 1).toBeLessThanOrEqual(2);
+  }
+  expect(inspections.size).toBe(40);
+  expect([...inspections.values()].every((entry) => entry.value?.modelName === "model")).toBe(true);
+});

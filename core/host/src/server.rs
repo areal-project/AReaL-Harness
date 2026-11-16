@@ -929,7 +929,18 @@ impl Host {
             .join(format!("{}.json", storage::digest(id.as_bytes())))
     }
     fn receipt(&self, id: &str) -> Result<Option<Operation>> {
-        storage::read_optional(&wire::operation_path(&self.home, id))
+        let mut record: Option<Operation> =
+            storage::read_optional(&wire::operation_path(&self.home, id))?;
+        if let Some(record) = &mut record
+            && record.receipt["method"] == "host.stop"
+            && !record.receipt["projects"].is_array()
+        {
+            record.receipt = crate::restore_host_stop(
+                record.receipt.clone(),
+                storage::read_optional(&self.home.join("host/stop.json"))?,
+            );
+        }
+        Ok(record)
     }
     fn save(&self, id: &str, digest: &str, receipt: &Value) -> Result<()> {
         storage::write(
@@ -970,7 +981,12 @@ impl Host {
             }
             return Ok((digest, Some(operation.receipt)));
         }
-        let receipt = json!({"version":VERSION,"requestId":id,"method":method,"hostId":self.identity.host_id,"generation":self.identity.generation,"projectId":project_id,"state":"acceptedPending"});
+        let mut receipt = json!({"version":VERSION,"requestId":id,"method":method,"hostId":self.identity.host_id,"generation":self.identity.generation,"projectId":project_id,"state":"acceptedPending"});
+        if method == "host.stop" {
+            receipt["strategy"] = serde_json::to_value(params)?["strategy"].clone();
+            receipt["projects"] = json!([]);
+            receipt["preparationPending"] = json!(true);
+        }
         let evidence = if method == "projects.register" {
             let value = serde_json::to_value(params)?;
             json!({"registration":value["registration"],"created":!self.slots.borrow().contains_key(project_id),"bindExisting":value["bindExisting"]})
@@ -2411,7 +2427,8 @@ impl Host {
         }
         let (digest, _) = self.accepted(&input.request_id, "host.stop", &input, "")?;
         let mut receipt = json!({"version":VERSION,"requestId":input.request_id,"hostId":self.identity.host_id,"generation":self.identity.generation,"strategy":input.strategy,"state":"acceptedPending","projects":[],"localRelay":{"state":"acceptedPending"}});
-        storage::write(&self.home.join("host/stop.json"), &receipt)?;
+        receipt["preparationPending"] = json!(true);
+        self.save_host_stop(&input.request_id, &digest, &receipt)?;
         *self.stop.borrow_mut() = Some(receipt.clone());
         self.gateway.local_relay.quiesce(true);
         self.changed();
@@ -2443,6 +2460,10 @@ impl Host {
                 return Ok(receipt);
             }
         }
+        receipt
+            .as_object_mut()
+            .unwrap()
+            .remove("preparationPending");
         self.save_host_stop(&input.request_id, &digest, &receipt)?;
         for (i, service) in services.iter().enumerate() {
             receipt["projects"][i]["dispatch"] = json!("started");
@@ -2518,6 +2539,35 @@ impl Host {
             } else {
                 None
             };
+        if record.receipt["preparationPending"] == true {
+            // 已获得原停止锁且尚未派发任何目标，原准备已中断；拒绝原请求，不重放停止。
+            let strategy = record.receipt["strategy"].clone();
+            for target in record.receipt["projects"].as_array_mut().unwrap() {
+                ensure!(
+                    target["dispatch"] == "notStarted",
+                    "stop preparation contains a dispatched target"
+                );
+                target["receipt"] = json!({"version":VERSION,"requestId":target["requestId"],"projectId":target["projectId"],"serviceId":target["serviceId"],"serviceGeneration":target["serviceGeneration"],"strategy":strategy,"state":"blocked"});
+            }
+            record.receipt["state"] = json!(ReceiptState::Blocked);
+            record.receipt["preparationInterrupted"] = json!(true);
+            record
+                .receipt
+                .as_object_mut()
+                .unwrap()
+                .remove("preparationPending");
+            let current = self
+                .stop
+                .borrow()
+                .as_ref()
+                .is_some_and(|stop| stop["requestId"] == id);
+            if current {
+                self.save_host_stop(id, &record.digest, &record.receipt)?;
+            } else {
+                self.save(id, &record.digest, &record.receipt)?;
+            }
+            return Ok(Some(record.receipt));
+        }
         let project_ids: std::collections::BTreeSet<_> = record.receipt["projectId"]
             .as_str()
             .filter(|id| !id.is_empty())
@@ -2760,6 +2810,15 @@ pub(crate) fn settled_refusal(receipt: &Value) -> bool {
     let Some(targets) = receipt["projects"].as_array() else {
         return false;
     };
+    if ReceiptState::is(receipt, ReceiptState::Blocked)
+        && receipt["preparationInterrupted"] == true
+        && targets.iter().all(|target| {
+            target["dispatch"] == "notStarted"
+                && ReceiptState::is(&target["receipt"], ReceiptState::Blocked)
+        })
+    {
+        return true;
+    }
     matches!(
         ReceiptState::of(receipt),
         Some(ReceiptState::Blocked | ReceiptState::Partial)

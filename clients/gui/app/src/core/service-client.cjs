@@ -608,7 +608,11 @@ class SharedCoreBackend {
       if (this.hostReferences.size) {
         for (const reference of this.hostReferences.values()) await this.readHostStop(reference);
         if (
-          automatic ||
+          (automatic &&
+            [...this.hostReferences.values()].some(
+              (reference) =>
+                this.hostReceipts.get(reference.requestId)?.preparationInterrupted !== true,
+            )) ||
           [...this.hostReferences.values()].some(
             (reference) =>
               !["completed", "blocked"].includes(

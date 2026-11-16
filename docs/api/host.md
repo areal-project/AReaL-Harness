@@ -23,7 +23,7 @@ Host 默认监听 `127.0.0.1`，`AREAL_HOST_WEBSOCKET=0` 可关闭。首次选�
 
 WS 只接受 `/host/socket`，拒绝 query，精确校验 Host authority 与单个 Origin。首帧为 `{version:1,id,method:"hello",params:{protocolVersions:[1],capabilities,ticket,expectedGeneration}}`。未协商时仅支持 `host.status`；加入 `gui-read-v1` 后返回协商能力、连接身份、方法与资源上限。Unix 的既有 hello 和未协商 Remote 客户端的方法、字段和限制保持原样。HTTP header 上限 8 KiB，升级、首帧和发送各限时 10 秒，连接最多 32 个，帧和消息最多 1 MiB。
 
-回环连接上的工作台查询可与业务命令并发，响应按 `id` 关联，不保证返回顺序；写操作仍保留同连接的受理顺序。等待后台请求时继续处理会话读取和事件。每个连接最多保留 16 个在途或排队的业务请求，超额请求在派发前返回 `LIMIT_EXCEEDED`；这不改变已派发命令的回执与 UNKNOWN 恢复规则。
+回环连接上的工作台查询可与业务命令并发，响应按 `id` 关联，不保证返回顺序；写操作仍保留同连接的受理顺序。等待后台请求时继续处理会话读取和事件。每个连接最多保留 16 个在途或排队的业务请求，超额请求在派发前返回 `CAPACITY_EXCEEDED`；这不改变已派发命令的回执与 UNKNOWN 恢复规则。
 
 `gui-read-v1` 提供 `shell.subscribe`、`shell.unsubscribe`、`session.open`、`session.watch`、`session.history`、`subscription.close` 和 `artifact.read`。`session.watch` 与 `session.open` 参数和结果相同，但不替换当前选中会话，用于侧边聊天这类同时显示的会话，每个连接最多 4 个，事件、历史和关闭都按 subscriptionId 区分。项目条目的 `taskRevision` 在该项目每次任务更新时变化，客户端据此重读任务目录而不轮询；`modelCatalogRevision` 在模型目录变化时更新，客户端据此重读 `project.models`；导航条目的 `settings` 是资料库里除导航排序、代理和工作树之外的应用偏好。清单为快照加递增序号增量，使用 Host 的 canonical projectId；新订阅重新读取在线 Core 的目录，避免沿用其他连接创建会话前的缓存；已停止项目只读现有导航缓存，不启动 Core。导航限定在已提交来源，过滤凭据和业务配置。会话以 `{threadId,view:"conversation"}` 打开，context 绑定项目；保留 Core 原生快照、归档与继承来源，不转换为旧 Remote 摘要。历史按 own、inherited、reference 分页，默认及最大 128 KiB。媒体绑定当前订阅与 Core generation，经 Core 校验所属 Thread 后按块读取，最多 16 MiB。连接就绪与数据新鲜分开表示；序号缺口或失效要求重新打开订阅，不重放写操作。
 
@@ -148,6 +148,8 @@ Host 换代后，没有原子进程退出证明的未完成 Relay 目标保持 `
 `StopReceipt` 包含 `version:1`、`requestId`、`projectId`、`serviceId`、`serviceGeneration`、`strategy`、`state`，以及可选 `message`、`lifecycle`。状态沿用既有服务停止语义，即 `acceptedPending`、`blocked`、`admissionUnknown`、`settlementIncomplete`、`completed`。
 
 `HostStopReceipt` 包含 `version:1`、`requestId`、`hostId`、`generation`、`strategy`、`state`、`projects:StopTarget[]`。`StopTarget` 包含 `projectId`、`serviceId`、`serviceGeneration`、子操作 `requestId`、`dispatch:"notStarted"|"started"` 和可选 `receipt:StopReceipt`。`notStarted` 只表示 Host 尚未下发，不能伪装 Core 已受理。Host 在发送前持久化 `started`；崩溃后没有下层回执时按 UNKNOWN 对账，不假定未发送。汇总状态为 `acceptedPending`、`blocked`、`partial`、`admissionUnknown`、`settlementIncomplete` 或 `completed`。`partial` 表示至少一个目标完成且至少一个未完成；每个目标保留精确状态。`completed` 要求所有目标完成，且 Host 退出交接已持久化。已知忙碌拒绝为 `blocked`，不算 UNKNOWN。`admissionUnknown` 表示尚不能判定受理。UNKNOWN 只能用原 ID 查询，不能重放或自动改成新请求。
+
+停止准入在等待项目锁前保存策略与准备标记。原请求查询只有取得停止锁并证明未派发任何目标后，才把中断准备结算为拒绝；字段缺失的旧回执只从身份完全匹配的停止快照补全，快照缺失或不匹配仍保持未确认。恢复不会重放停止。
 
 Host 在排空前保存并 fsync 汇总目标集合与各子操作身份。停止意图禁止停止过程中的新激活。Core drain 仍负责权威空闲检查、取消与结算。Host 在冻结项目准入后取得目标集合，不承诺跨 Core 原子 drain。一个项目可能已结算，另一个才报告忙碌；Host 保持可查询并返回部分结果。空闲停止被拒绝后，只有所有已受理目标核查完成才可解除激活屏障。显式 Host 停止成功后保留耐久停止意图，防止服务管理器重启；后续显式本机启动可清除该意图。
 

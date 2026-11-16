@@ -665,7 +665,7 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                             let id = raw["id"].as_str().filter(|id| !id.is_empty() && id.len() <= 64).context("invalid request")?.to_owned();
                             if commands.len() + usize::from(command.is_some()) + queries.len() >= MAX_PENDING_COMMANDS {
                                 send(&mut socket, &json!({"version":VERSION,"id":id,
-                                    "error":loopback_error(&raw, &anyhow::anyhow!("LIMIT_EXCEEDED"))
+                                    "error":loopback_error(&raw, &anyhow::anyhow!("CAPACITY_EXCEEDED"))
                                 })).await?;
                             } else if independent_query(&raw) {
                                 let host = host.clone();

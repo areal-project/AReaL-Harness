@@ -565,12 +565,8 @@ export function createHostReadServices(
         threadTargets.set(`${project.id}:${result.threadId}`, execution);
         try {
           await client.refreshShell();
-        } catch (error) {
-          throw Object.assign(new Error("创建已受理，目录尚未同步，请核对原请求。"), {
-            cause: error,
-            requestId: commandId,
-            submissionUnknown: true,
-          });
+        } catch {
+          // 原创建已有确切回执；目录读取失败保留自身错误，不能把已确认创建改成 UNKNOWN。
         }
         return {
           routed: true,

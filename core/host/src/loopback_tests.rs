@@ -784,6 +784,15 @@ async fn pending_workbench_requests_do_not_block_queries_or_page_events() {
                     }
                 })
                 .await;
+                if progress.is_ok() && blocked_method == "desktop.command" {
+                    for index in 0..15 {
+                        write(&mut socket, json!({"version":1,"id":format!("capacity-{index}"),
+                            "method":"desktop.command","params":{"command":"connect","request":{"projectId":"queued"}}})).await;
+                    }
+                    let rejected = read(&mut socket).await;
+                    assert_eq!(rejected["id"], "capacity-14");
+                    assert_eq!(rejected["error"]["code"], "CAPACITY_EXCEEDED");
+                }
                 released.notify_one();
                 if progress.is_ok() {
                     assert_eq!(read(&mut socket).await["id"], "slow");

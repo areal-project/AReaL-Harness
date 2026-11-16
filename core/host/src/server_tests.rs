@@ -1408,3 +1408,59 @@ async fn restored_host_does_not_settle_an_old_relay_without_original_exit_eviden
     host.settle_local_relay(&mut current).await;
     assert_eq!(current["localRelay"]["state"], "completed");
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn interrupted_host_stop_preparation_recovers_without_replaying_stop() {
+    let directory = tempfile::tempdir().unwrap();
+    let home = directory.path().canonicalize().unwrap();
+    let (changes, _) = watch::channel(0);
+    let host = Host {
+        home: home.clone(),
+        bin: home.clone(),
+        identity: HostIdentity {
+            version: VERSION,
+            host_id: "same-host".into(),
+            generation: "replacement-generation".into(),
+            socket_path: home.join("socket"),
+            auth_file: home.join("auth"),
+            pid: std::process::id(),
+            executable_version: "fixture".into(),
+            executable_digest: None,
+        },
+        token: "fixture".into(),
+        slots: RefCell::new(BTreeMap::new()),
+        stop: RefCell::new(None),
+        host_stop_gate: Mutex::new(()),
+        changes,
+        exit: Notify::new(),
+        migration: crate::migration::Migration::new(&home).unwrap().into(),
+        journal: crate::journal::Journal::new(&home).unwrap(),
+        remote: crate::remote_state::RemoteState::new(&home),
+        gateway: gateway_owner::Gateway::default(),
+        subscriptions: subscriptions::Subscriptions::default(),
+        schedules: schedules::Schedules::load(&home).unwrap(),
+        power: power::Power::default(),
+        read_models: Default::default(),
+        loopback: loopback::Loopback::default(),
+    };
+    storage::private_dir(&home.join("host/operations")).unwrap();
+    let request = uuid::Uuid::new_v4().to_string();
+    let receipt = json!({"version":1,"requestId":request,"method":"host.stop","hostId":"same-host","generation":"original-generation","state":"acceptedPending","projectId":""});
+    let snapshot = json!({"version":1,"requestId":request,"hostId":"same-host","generation":"original-generation","strategy":"cancel","state":"acceptedPending","projects":[],"localRelay":{"state":"acceptedPending"}});
+    storage::write(
+        &wire::operation_path(&home, &request),
+        &Operation {
+            digest: "fixture".into(),
+            receipt,
+            evidence: Value::Null,
+        },
+    )
+    .unwrap();
+    storage::write(&home.join("host/stop.json"), &snapshot).unwrap();
+    *host.stop.borrow_mut() = Some(snapshot);
+    let result = host.reconcile(&request).await.unwrap().unwrap();
+    assert_eq!(result["strategy"], "cancel");
+    assert_eq!(result["projects"], json!([]));
+    assert_eq!(result["state"], "blocked");
+    assert!(host.stop.borrow().is_none());
+}

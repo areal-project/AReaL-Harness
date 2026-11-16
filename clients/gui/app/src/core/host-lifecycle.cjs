@@ -3,7 +3,7 @@
 const { executeHost } = require("@areal/client/node");
 /** @typedef {{kind:'stopHost',requestId:string,home:string,hostId:string,generation:string,strategy:'ifIdle'|'cancel'}} HostReference */
 /** @typedef {{projectId:string,serviceId:string,serviceGeneration:string,requestId:string,dispatch:'notStarted'|'started',receipt?:{version:1,requestId:string,projectId:string,serviceId:string,serviceGeneration:string,strategy:'ifIdle'|'cancel',state:string,message?:string}}} HostTarget */
-/** @typedef {{version:1,requestId:string,hostId:string,generation:string,strategy:'ifIdle'|'cancel',state:string,projects:HostTarget[]}} HostReceipt */
+/** @typedef {{version:1,requestId:string,hostId:string,generation:string,strategy:'ifIdle'|'cancel',state:string,preparationInterrupted?:boolean,projects:HostTarget[]}} HostReceipt */
 const states = new Set([
   "acceptedPending",
   "admissionUnknown",

@@ -13,6 +13,7 @@ const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 // 目录读取是后台补全，不把暂时未就绪的项目变成可见的五秒空白。
 const RETRY_MS = 1000;
+const inspectionFlights = new WeakMap<HostClient, { connectionId: string; count: number }>();
 
 // 每个连接一份：模型服务设置变化后加一，同一代 Core 的目录重读，重读期间继续显示旧目录。
 const stalenessByClient = new WeakMap<
@@ -91,6 +92,12 @@ export function refreshInspections(
 ) {
   const connection = client.snapshot();
   if (connection.connection !== "ready") return;
+  let flights = inspectionFlights.get(client);
+  if (!flights || flights.connectionId !== connection.identity.connectionId) {
+    flights = { connectionId: connection.identity.connectionId, count: 0 };
+    inspectionFlights.set(client, flights);
+  }
+  const owner = flights;
   for (const project of projects) {
     for (const threadId of Object.keys(project.state.threads)) {
       const configuration = project.state.threads[threadId]?.desktop?.configuration;
@@ -103,6 +110,8 @@ export function refreshInspections(
       ]);
       if (inspections.get(key)?.identity === identity && inspections.get(key)?.scope === scope)
         continue;
+      if (owner.count >= 2) continue;
+      owner.count++;
       const entry: { identity: string; scope: string; value?: Record<string, unknown> } = {
         identity,
         scope,
@@ -136,6 +145,10 @@ export function refreshInspections(
             inspections.delete(key);
             publish();
           }, RETRY_MS);
+        })
+        .finally(() => {
+          owner.count--;
+          publish();
         });
     }
   }
