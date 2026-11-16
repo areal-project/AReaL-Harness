@@ -44,8 +44,7 @@ class UserFeedback {
     }
   }
   /** @param {string} operation @param {Record<string,unknown>} [input] @returns {Promise<Record<string,unknown>>} */
-  async cli(operation, input) {
-    await this.backend.providers.config.refreshCredentials();
+  async receiver(operation, input) {
     if (!this.backend.hostCall) throw new Error("Host 评价接收端适配器不可用");
     try {
       const value = await this.backend.hostCall("workbench.utility", {
@@ -65,7 +64,7 @@ class UserFeedback {
     if (!force && this.cached && Date.now() - this.cached.at < 15000)
       return { ...this.cached.value, opted_in: this.enabled };
     if (!this.checking)
-      this.checking = this.cli("feedback-status")
+      this.checking = this.receiver("feedback-status")
         .then((value) => {
           const safe = {
             enabled: value.enabled === true,
@@ -322,7 +321,7 @@ class UserFeedback {
         await this.save(draft);
       }
       // 先固化请求；超时后的重试不带入新意见、新上下文或新身份。
-      const receipt = await this.cli("feedback-submit", draft.submission);
+      const receipt = await this.receiver("feedback-submit", draft.submission);
       if (
         !feedbackContract.feedbackReceipt(receipt) ||
         receipt.feedback_id !== draft.id ||

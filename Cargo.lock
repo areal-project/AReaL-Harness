@@ -279,6 +279,7 @@ dependencies = [
  "areal-plugins",
  "areal-protocol",
  "areal-runtime-host-tools",
+ "areal-trajectory",
  "axum",
  "base64 0.22.1",
  "bytes",

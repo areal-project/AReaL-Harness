@@ -1361,3 +1361,84 @@ async fn blocked_provider_credential_is_a_definitive_original_rejection() {
         assert!(host.slots.borrow().values().all(|slot|slot.service.is_none()));
     }).await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn feedback_receiver_uses_source_credentials_without_cli_node_or_core() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    tokio::task::LocalSet::new().run_until(async {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let (mut host, mut input, source) = resumable_host(&root);
+        Rc::get_mut(&mut Rc::get_mut(&mut host).unwrap().migration).unwrap().vault = crate::vault::Vault::isolated_files(&host.home);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}/v1/logs",listener.local_addr().unwrap());
+        let config_path = root.join("feedback.toml");
+        let spool = root.join("feedback-spool");
+        let reference = "AREAL_CREDENTIAL_feedback_fixture";
+        std::fs::write(&config_path,format!("schema_version=1\n[trajectory]\nenabled=true\nendpoint='{endpoint}'\nspool_dir='{}'\nheaders_env='{reference}'\n",spool.display())).unwrap();
+        input.options["config"] = json!(config_path);
+        storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();
+        storage::write(&launch_record(&host),&input).unwrap();
+        host.gateway.workbench.restore_source(&host).unwrap();
+        let config = areal_config::load_management_config(&super::super::workbench_utility::inputs(&input.options).unwrap()).unwrap();
+        storage::private_dir(&spool).unwrap();
+        storage::write(&spool.join("control.json"),&config.trajectory).unwrap();
+        let installation = uuid::Uuid::new_v4().to_string();
+        storage::write(&spool.join("installation.json"),&installation).unwrap();
+        host.migration.vault.dispatch_async("vault.replace",json!({"requestId":uuid::Uuid::new_v4().to_string(),
+            "expectedGeneration":host.identity.generation,"expectedRevision":0,
+            "slot":{"kind":"providerCredential","sourceId":source,"reference":reference},
+            "value":"Authorization=Bearer synthetic-feedback-secret"}),&host.identity.generation,&host.migration).await.unwrap();
+        let unused = host.migration.vault.dispatch_async("vault.replace",json!({"requestId":uuid::Uuid::new_v4().to_string(),
+            "expectedGeneration":host.identity.generation,"expectedRevision":0,
+            "slot":{"kind":"providerCredential","sourceId":source,"reference":"AREAL_CREDENTIAL_unrelated"},
+            "value":"unrelated-private-value"}),&host.identity.generation,&host.migration).await.unwrap();
+        std::fs::write(host.home.join("host/vault").join(format!("{}.json",unused["entryId"].as_str().unwrap())),"invalid unrelated vault entry").unwrap();
+        let server = tokio::task::spawn_local(async move {
+            let mut posts = 0;
+            for _ in 0..4 {
+                let (mut stream,_) = listener.accept().await.unwrap();
+                let mut bytes = Vec::new();
+                let (header_end,length) = loop {
+                    let mut chunk=[0;4096];let size=stream.read(&mut chunk).await.unwrap();assert!(size>0);bytes.extend_from_slice(&chunk[..size]);
+                    if let Some(end)=bytes.windows(4).position(|v|v==b"\r\n\r\n") {
+                        let header=String::from_utf8(bytes[..end].to_vec()).unwrap();
+                        assert!(header.to_ascii_lowercase().contains("authorization: bearer synthetic-feedback-secret"));
+                        let length=header.lines().find_map(|line|line.to_ascii_lowercase().strip_prefix("content-length:").map(|v|v.trim().parse::<usize>().unwrap())).unwrap_or(0);
+                        break (end+4,length);
+                    }
+                };
+                while bytes.len()<header_end+length {let mut chunk=[0;4096];let size=stream.read(&mut chunk).await.unwrap();assert!(size>0);bytes.extend_from_slice(&chunk[..size]);}
+                let response = if bytes.starts_with(b"GET /external-feedback/capabilities ") {
+                    json!({"schema_version":"arena.user-feedback/v1","enabled":true,"owner":"fixture-owner","max_context_bytes":16384})
+                } else {
+                    assert!(bytes.starts_with(b"POST /external-feedback "));
+                    posts+=1;
+                    let body:Value=serde_json::from_slice(&bytes[header_end..]).unwrap();
+                    assert_eq!(body["installation_id"],installation);
+                    assert!(body.get("expected_owner").is_none());
+                    json!({"feedback_id":body["feedback_id"],"rating":body["rating"]})
+                };
+                let body=response.to_string();stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).as_bytes()).await.unwrap();
+            }
+            assert_eq!(posts,1);
+        });
+        let status = super::super::workbench_utility::execute_with_options(&host,&source,json!({"operation":"feedbackStatus"}),input.options.clone()).await.unwrap();
+        assert_eq!(status["connected"],true);
+        assert!(!status.to_string().contains("synthetic-feedback-secret"));
+        let document=json!({"feedback_id":uuid::Uuid::new_v4().to_string(),"rating":"up","context":{},
+            "expected_destination":status["destination"],"expected_owner":status["account"],"expected_installation":status["installation"]});
+        let receipt=super::super::workbench_utility::execute_with_options(&host,&source,json!({"operation":"feedbackSubmit","document":document.to_string()}),input.options.clone()).await.unwrap();
+        assert_eq!(receipt["feedback_id"],document["feedback_id"]);
+        let mut changed=document;changed["expected_owner"]=json!("other-owner");
+        assert!(super::super::workbench_utility::execute_with_options(&host,&source,json!({"operation":"feedbackSubmit","document":changed.to_string()}),input.options.clone()).await.is_err());
+        server.await.unwrap();
+        let missing = std::fs::read_to_string(&config_path).unwrap().replace(reference,"AREAL_CREDENTIAL_missing");
+        std::fs::write(&config_path,&missing).unwrap();
+        assert_eq!(super::super::workbench_utility::execute_with_options(&host,&source,json!({"operation":"feedbackStatus"}),input.options.clone()).await.unwrap_err().to_string(),"feedback_credential_unavailable");
+        std::fs::write(&config_path,missing.replace("enabled=true","enabled=false")).unwrap();
+        assert_eq!(super::super::workbench_utility::execute_with_options(&host,&source,json!({"operation":"feedbackStatus"}),input.options).await.unwrap(),json!({"enabled":false,"connected":false}));
+        assert!(host.gateway.workbench.backend.running.borrow().is_none());
+        assert!(host.slots.borrow().values().all(|slot|slot.service.is_none()));
+    }).await;
+}

@@ -11,6 +11,23 @@ use std::{
 };
 
 pub(super) fn headers(config: &TrajectoryConfig) -> Result<HeaderMap> {
+    let environment = if config.headers_file.is_none() {
+        config
+            .headers_env
+            .as_ref()
+            .map(|name| std::env::var(name).map_err(|_| anyhow::anyhow!("credential_unavailable")))
+            .transpose()?
+    } else {
+        None
+    };
+    credential_headers(config, environment.as_deref())
+}
+
+/// Host 提供所属来源的环境值；文件凭据与头部校验仍由同一解析器负责。
+pub fn credential_headers(
+    config: &TrajectoryConfig,
+    environment: Option<&str>,
+) -> Result<HeaderMap> {
     let value = if let Some(path) = &config.headers_file {
         let file = OpenOptions::new()
             .read(true)
@@ -27,8 +44,8 @@ pub(super) fn headers(config: &TrajectoryConfig) -> Result<HeaderMap> {
         let mut value = String::new();
         file.take(16385).read_to_string(&mut value)?;
         value
-    } else if let Some(name) = &config.headers_env {
-        std::env::var(name).map_err(|_| anyhow::anyhow!("credential_unavailable"))?
+    } else if config.headers_env.is_some() {
+        environment.context("credential_unavailable")?.to_owned()
     } else {
         String::new()
     };

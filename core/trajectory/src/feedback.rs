@@ -46,7 +46,7 @@ fn feedback_endpoint(config: &TrajectoryConfig) -> Result<url::Url> {
     Ok(url)
 }
 
-fn active(config: &TrajectoryConfig) -> Result<bool> {
+pub fn is_active(config: &TrajectoryConfig) -> Result<bool> {
     if !config.enabled {
         return Ok(false);
     }
@@ -72,21 +72,46 @@ pub fn request(config: &TrajectoryConfig, input: Option<Value>) -> Result<Value>
 }
 
 async fn invoke(config: &TrajectoryConfig, input: Option<Value>) -> Result<Value> {
-    if !active(config)? {
+    if !is_active(config)? {
         anyhow::ensure!(input.is_none(), "feedback_export_disabled");
         return Ok(json!({"enabled":false,"connected":false}));
     }
-    let url = feedback_endpoint(config)?;
-    let identity = destination(config);
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(25))
         .build()?;
     let headers = worker::headers(config)?;
+    request_with_transport(config, input, Transport { client, headers }).await
+}
+
+pub struct Transport {
+    pub client: reqwest::Client,
+    pub headers: reqwest::header::HeaderMap,
+}
+
+/// 共享接收端协议；调用方绑定网络和凭据，不改变进程环境或创建另一套提交规则。
+pub async fn request_with_transport(
+    config: &TrajectoryConfig,
+    input: Option<Value>,
+    transport: Transport,
+) -> Result<Value> {
+    if !is_active(config)? {
+        anyhow::ensure!(input.is_none(), "feedback_export_disabled");
+        return Ok(json!({"enabled":false,"connected":false}));
+    }
+    let url = feedback_endpoint(config)?;
+    let identity = destination(config);
+    let Transport { client, headers } = transport;
     let Some(mut input) = input else {
         let mut caps = url;
         caps.set_path(&format!("{}/capabilities", caps.path()));
-        let response = match client.get(caps).headers(headers).send().await {
+        let response = match client
+            .get(caps)
+            .headers(headers)
+            .timeout(Duration::from_secs(25))
+            .send()
+            .await
+        {
             Ok(value) if value.status().is_success() => value,
             _ => return Ok(json!({"enabled":true,"connected":false})),
         };
@@ -108,6 +133,7 @@ async fn invoke(config: &TrajectoryConfig, input: Option<Value>) -> Result<Value
     let check = client
         .get(caps)
         .headers(headers.clone())
+        .timeout(Duration::from_secs(25))
         .send()
         .await
         .map_err(|_| anyhow::anyhow!("feedback_account_unavailable"))?;
@@ -146,6 +172,7 @@ async fn invoke(config: &TrajectoryConfig, input: Option<Value>) -> Result<Value
         .headers(headers)
         .header("content-type", "application/json")
         .body(bytes)
+        .timeout(Duration::from_secs(25))
         .send()
         .await
         .map_err(|_| anyhow::anyhow!("feedback_submission_unknown"))?;

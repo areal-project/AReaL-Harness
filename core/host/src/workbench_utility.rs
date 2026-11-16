@@ -116,14 +116,9 @@ pub(super) async fn execute_with_options(
         return models_catalog(host, source, &options);
     }
 
-    if matches!(
-        operation,
-        "modelsRead" | "feedbackStatus" | "feedbackSubmit"
-    ) {
-        if operation == "modelsRead" {
-            for (name, value) in host.gateway.workbench.environment_credentials(source) {
-                inputs.env.insert(name.into(), value.into());
-            }
+    if operation == "modelsRead" {
+        for (name, value) in host.gateway.workbench.environment_credentials(source) {
+            inputs.env.insert(name.into(), value.into());
         }
         let references = host.migration.vault.provider_references(source)?;
         for reference in references {
@@ -155,7 +150,12 @@ pub(super) async fn execute_with_options(
         }
     }
     if operation == "feedbackStatus" || operation == "feedbackSubmit" {
-        return feedback(host, &options, &inputs, operation, &params).await;
+        return tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            feedback(host, source, inputs, &params),
+        )
+        .await
+        .map_err(|_| anyhow::anyhow!("feedback outcome unknown"))?;
     }
     match operation {
         // 模型读取沿规范配置；写入只经公共 providers.command。
@@ -234,75 +234,89 @@ pub(super) async fn execute_with_options(
 
 async fn feedback(
     host: &Host,
-    options: &Value,
-    inputs: &ConfigInputs,
-    operation: &str,
+    source: &str,
+    mut inputs: ConfigInputs,
     params: &Value,
 ) -> Result<Value> {
-    use areal_local_service::native_process::TrustedCommand;
-    use std::{os::fd::OwnedFd, process::Stdio, time::Duration};
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    let data = if operation == "feedbackSubmit" {
+    let document = if params["operation"] == "feedbackSubmit" {
         let text = params["document"].as_str().context("INVALID_PARAMS")?;
         ensure!(text.len() <= (16 << 20) + (128 << 10), "LIMIT_EXCEEDED");
-        ensure!(
-            serde_json::from_str::<Value>(text)?.is_object(),
-            "INVALID_PARAMS"
-        );
-        text.as_bytes()
+        let value: Value = serde_json::from_str(text).context("INVALID_PARAMS")?;
+        ensure!(value.is_object(), "INVALID_PARAMS");
+        Some(value)
     } else {
-        &[]
+        None
     };
-    let mut command = TrustedCommand::supervised(&host.bin.join("areal"), &[])?;
-    command
-        .arg("trajectory")
-        .arg(if operation == "feedbackStatus" {
-            "feedback-status"
-        } else {
-            "feedback-submit"
-        });
-    if let Some(config) = options["config"].as_str() {
-        command.arg("--config").arg(config);
+    for (name, value) in host.gateway.workbench.environment_credentials(source) {
+        inputs.env.insert(name.into(), value.into());
     }
-    let (reader, writer) = std::os::unix::net::UnixStream::pair()?;
-    reader.set_nonblocking(true)?;
-    command
-        .env_clear()
-        .envs(&inputs.env)
-        .current_dir(&inputs.cwd)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::from(OwnedFd::from(writer)))
-        .stderr(Stdio::null())
-        .kill_on_drop(true);
-    let mut child = command.spawn().await?;
-    drop(command);
-    let mut stdin = child.stdin.take().context("feedback stdin missing")?;
-    let stdout = tokio::net::UnixStream::from_std(reader)?;
-    let result = tokio::time::timeout(Duration::from_secs(30), async {
-        let write = async {
-            stdin.write_all(data).await?;
-            drop(stdin);
-            Ok::<_, anyhow::Error>(())
-        };
-        let read = async {
-            let mut bytes = Vec::new();
-            stdout.take((2 << 20) + 1).read_to_end(&mut bytes).await?;
-            ensure!(bytes.len() <= 2 << 20, "LIMIT_EXCEEDED");
-            Ok::<_, anyhow::Error>(bytes)
-        };
-        // 子进程 stderr 不进入公开回执或日志，避免透出配置、地址或凭据。
-        let (_, bytes) = tokio::try_join!(write, read)?;
-        ensure!(child.wait().await?.success(), "feedback outcome unknown");
-        let value: Value = serde_json::from_slice(&bytes)?;
-        ensure!(value.is_object(), "invalid feedback receipt");
-        Ok::<_, anyhow::Error>(value)
-    })
-    .await;
-    match result {
-        Ok(Ok(value)) => Ok(value),
-        _ => {
-            let _ = child.kill().await;
-            anyhow::bail!("feedback outcome unknown")
+    let config = areal_config::load_management_config(&inputs)
+        .map_err(|_| anyhow::anyhow!("feedback_configuration_unavailable"))?
+        .trajectory;
+    if !areal_trajectory::feedback::is_active(&config)? {
+        ensure!(document.is_none(), "feedback_export_disabled");
+        return Ok(json!({"enabled":false,"connected":false}));
+    }
+    let profile = host.migration.source_profile(source)?;
+    if config.headers_file.is_none()
+        && let Some(reference) = &config.headers_env
+    {
+        let references = host.migration.vault.provider_references(source)?;
+        if references.contains(reference) {
+            inputs.env.remove(OsString::from(reference).as_os_str());
+            let value = host.migration.vault.dispatch_async("vault.read", json!({"slot":{
+                "kind":"providerCredential","sourceId":source,"reference":reference},"interactionAllowed":false}),
+                &host.identity.generation,&host.migration).await
+                .map_err(|_| anyhow::anyhow!("feedback_credential_unavailable"))?;
+            inputs.env.insert(
+                reference.into(),
+                value["value"]
+                    .as_str()
+                    .context("feedback_credential_unavailable")?
+                    .into(),
+            );
+        } else {
+            ensure!(
+                !reference.starts_with("AREAL_CREDENTIAL_"),
+                "feedback_credential_unavailable"
+            );
         }
     }
+    let headers = areal_trajectory::credential_headers(
+        &config,
+        config
+            .headers_env
+            .as_ref()
+            .and_then(|name| inputs.env.get(std::ffi::OsStr::new(name)))
+            .and_then(|value| value.to_str()),
+    )?;
+    let settings = super::library_store::read_source(host, source)?;
+    let environment = inputs
+        .env
+        .iter()
+        .filter_map(|(name, value)| Some((name.to_str()?.to_owned(), value.to_str()?.to_owned())))
+        .collect();
+    let network = crate::network::desktop(&settings["settings"], &environment)
+        .await
+        .map_err(|_| anyhow::anyhow!("feedback_network_unavailable"))?;
+    host.admission()?;
+    ensure!(
+        host.migration.source_profile(source)? == profile
+            && host.gateway.workbench.backend_has_source(source),
+        "TARGET_CHANGED"
+    );
+    let latest = areal_config::load_management_config(&inputs)
+        .map_err(|_| anyhow::anyhow!("feedback_configuration_unavailable"))?;
+    ensure!(
+        latest.trajectory.source_revision == config.source_revision,
+        "TARGET_CHANGED"
+    );
+    let client = crate::network::client(&network)
+        .map_err(|_| anyhow::anyhow!("feedback_network_unavailable"))?;
+    areal_trajectory::feedback::request_with_transport(
+        &config,
+        document,
+        areal_trajectory::feedback::Transport { client, headers },
+    )
+    .await
 }

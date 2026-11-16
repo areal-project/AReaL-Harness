@@ -19,6 +19,7 @@ use std::{
 
 pub use health::CaptureHealth;
 pub use processor::Processor;
+pub use worker::credential_headers;
 pub use worker::run_worker;
 
 #[derive(Clone, Copy)]

@@ -107,7 +107,7 @@ GUI 非原生资料库操作统一调用 `library.command`，保留原 `commandI
 
 后台入口不依赖 Electron。Main 经原有连接提供原生能力，系统加密通过 `encryptionRequest/encryptionResult` 回调；请求绑定持有能力的连接，其他客户端不能结算，断开后请求失败且不重放。原加密文件格式不变，解密失败不能覆盖旧文件。运行所需的解密值只在内存使用，不写入日志、URL、argv 或明文文件。真实 macOS safeStorage 与既有密文兼容需要独立的本机验收。
 
-`trajectory.read/command` 与 `feedback.read/command` 复用后台原实现，要求本机浏览器 manage 授权与来源匹配，写入沿用 Host 回执。轨迹状态不解密凭据，重试与反馈调用沿用后台的 HostVault 和供应商凭据环境；凭据不返回网页。接收端鉴权和实际反馈提交仍需独立验收。后台 attach 与工具能力登记不能替代原生工具的真实桌面验收。
+`trajectory.read/command` 与 `feedback.read/command` 复用后台原实现，要求本机浏览器 manage 授权与来源匹配，写入沿用 Host 回执。轨迹状态不解密凭据。反馈接收端传输由 Host 直接调用共享 Rust 轨迹库，不启动 CLI 或 Core；Host 只解析来源配置所引用的凭据，使用该来源网络设置，并在提交前核对目的地、账号与安装身份。Node 不再为这条调用刷新供应商凭据缓存；凭据不返回网页。接收端鉴权和实际反馈提交仍需独立验收。后台 attach 与工具能力登记不能替代原生工具的真实桌面验收。
 
 ## 验证边界
 

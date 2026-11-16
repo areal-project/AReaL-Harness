@@ -10,29 +10,38 @@ const { UserFeedback } = require("@areal/workbench-service/feedback");
 const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const { validateCommand } = require("@areal/workbench/desktop-contract");
 
-test("feedback refreshes Host credentials first and does not call Host after refresh fails", async () => {
-  let credential = "stale-fixture",
-    calls = 0;
+test("feedback delegates source credentials to Host and preserves uncertain submit outcomes", async () => {
+  const calls = [];
   const backend = {
-    hostCall: async () => {
-      calls++;
-      return { credential };
+    hostCall: async (method, params) => {
+      calls.push({ method, params });
+      return { enabled: false, connected: false };
     },
     providers: {
-      config: {
-        refreshCredentials: async () => {
-          credential = "rotated-fixture";
-        },
-      },
+      config: { refreshCredentials: () => assert.fail("Node must not read feedback credentials") },
     },
   };
   const feedback = new UserFeedback(backend);
-  assert.deepEqual(await feedback.cli("feedback-status"), { credential: "rotated-fixture" });
-  backend.providers.config.refreshCredentials = async () => {
-    throw new Error("Host unavailable");
+  assert.deepEqual(await feedback.receiver("feedback-status"), {
+    enabled: false,
+    connected: false,
+  });
+  assert.deepEqual(calls, [
+    { method: "workbench.utility", params: { operation: "feedbackStatus" } },
+  ]);
+  backend.hostCall = async () => {
+    throw new Error("synthetic private diagnostic");
   };
-  await assert.rejects(feedback.cli("feedback-status"), /Host unavailable/);
-  assert.equal(calls, 1);
+  await assert.rejects(
+    feedback.receiver("feedback-status"),
+    (error) =>
+      error.submissionUnknown === false && !error.message.includes("synthetic private diagnostic"),
+  );
+  await assert.rejects(
+    feedback.receiver("feedback-submit", { feedback_id: "original" }),
+    (error) =>
+      error.submissionUnknown === true && !error.message.includes("synthetic private diagnostic"),
+  );
 });
 
 const thread = () => ({
@@ -103,7 +112,7 @@ async function fixture(t) {
   };
   const feedback = new UserFeedback(backend);
   await feedback.init();
-  feedback.cli = async (operation, payload) => {
+  feedback.receiver = async (operation, payload) => {
     if (operation === "feedback-status")
       return {
         enabled: true,
@@ -322,9 +331,9 @@ test("polishing uses anchored independent Side and main continuation never enter
 test("unknown feedback submission reuses persisted original body despite newer editor input", async (t) => {
   const x = await fixture(t),
     draft = await x.prepare();
-  const original = x.feedback.cli;
+  const original = x.feedback.receiver;
   let failed = false;
-  x.feedback.cli = async (op, payload) => {
+  x.feedback.receiver = async (op, payload) => {
     if (op === "feedback-submit" && !failed) {
       failed = true;
       x.sent.push(structuredClone(payload));
@@ -372,7 +381,7 @@ test("opt-out, owner and destination changes prevent accidental delivery", async
     [{ destination: "another" }, /接收端已变化/],
     [{ installation: "00000000-0000-4000-8000-000000000002" }, /安装队列已变化/],
   ]) {
-    x.feedback.cli = async () => ({
+    x.feedback.receiver = async () => ({
       enabled: true,
       connected: true,
       destination: "destination",
@@ -391,7 +400,7 @@ test("opt-out, owner and destination changes prevent accidental delivery", async
       message,
     );
   }
-  x.feedback.cli = async () => ({
+  x.feedback.receiver = async () => ({
     enabled: true,
     connected: true,
     destination: "destination",

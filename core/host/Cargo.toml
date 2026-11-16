@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 areal-config.workspace = true
+areal-trajectory.workspace = true
 areal-engine.workspace = true
 areal-plugins.workspace = true
 areal-mcp.workspace = true
