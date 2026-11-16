@@ -13848,6 +13848,11 @@
         "settings": {
           "type": "object",
           "description": "资料库里除导航排序、代理和工作树外的应用偏好；只在本机连接上出现。"
+        },
+        "providerRevision": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Host 供应商配置、凭据诊断和在线应用证明的修订标识；变化时重读 providers.read。"
         }
       },
       "required": [

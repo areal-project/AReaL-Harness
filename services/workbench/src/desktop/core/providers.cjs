@@ -40,6 +40,14 @@ const { NativeSubscription } = require("./native-subscription.cjs");
 
 const { connection, modelParameters, modelCapabilities } = providerContract;
 
+/** @param {string} message */
+function configurationChanged(message) {
+  return Object.assign(new Error(message), {
+    code: "TARGET_CHANGED",
+    outcome: { kind: "noMutation" },
+  });
+}
+
 class AppProviders {
   /** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend */
   constructor(backend) {
@@ -1254,7 +1262,7 @@ class AppProviders {
     try {
       const current = await this.config.current();
       if (request.expectedRevision !== current.revision)
-        throw new Error("供应商配置已变化，请刷新后重新保存");
+        throw configurationChanged("供应商配置已变化，请刷新后重新保存");
       const next = structuredClone(current);
       if (request.operation === "default") {
         if (request.model != null && !providerContract.modelRef(request.model))
@@ -1905,7 +1913,7 @@ class AppProviders {
     try {
       previous = await this.config.current();
       if (request.expectedRevision !== previous.revision)
-        throw new Error("配置已变化，请刷新后重试。");
+        throw configurationChanged("配置已变化，请刷新后重试。");
       targets = await this.prepareProjects();
       written = await this.write(
         {
@@ -1931,6 +1939,13 @@ class AppProviders {
       if (result.pendingApply) throw new Error("Core 尚未确认配置。");
       return result;
     } catch (error) {
+      if (
+        !written &&
+        !candidate &&
+        providerContract.record(error) &&
+        error.code === "TARGET_CHANGED"
+      )
+        throw error;
       let rollbackError = null,
         restored = false;
       if (!written && candidate && previous) {
@@ -1984,7 +1999,7 @@ class AppProviders {
     try {
       const current = await this.config.current();
       if (request.expectedRevision !== current.revision)
-        throw new Error("供应商配置已变化，请刷新后重新应用");
+        throw configurationChanged("供应商配置已变化，请刷新后重新应用");
       const outcomes = await this.applyProjects(current);
       const failure = outcomes.find(
         (outcome) =>

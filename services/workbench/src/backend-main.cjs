@@ -266,7 +266,6 @@ const domains = {
   "trajectory.command": "trajectory",
   "feedback.read": "feedback",
   "feedback.command": "feedback",
-  "providers.read": "providers",
   "providers.command": "providers",
   "manage.read": "manage",
   "manage.command": "manage",

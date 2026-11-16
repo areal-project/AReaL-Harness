@@ -185,6 +185,33 @@ function fixture({
   };
 }
 
+test("a stale provider save is a definitive rejection before configuration changes", async () => {
+  for (const operation of [
+    "save",
+    "saveAndApply",
+    "remove",
+    "removeAndApply",
+    "default",
+    "defaultAndApply",
+    "apply",
+  ]) {
+    const f = fixture();
+    const request = operation.startsWith("save")
+      ? { ...f.request, operation }
+      : operation.startsWith("remove")
+        ? { operation, id: "demo" }
+        : { operation };
+    await assert.rejects(f.service.command({ ...request, expectedRevision: "stale" }), {
+      code: "TARGET_CHANGED",
+      outcome: { kind: "noMutation" },
+    });
+    assert.deepEqual(f.calls, []);
+    assert.deepEqual(f.service.config.value, f.original);
+    assert.equal(f.backend.providerUpdating, false);
+    await f.service.close();
+  }
+});
+
 test("missing provider credentials are a definitive rejection before configuration changes", async () => {
   const f = fixture();
   await assert.rejects(

@@ -250,7 +250,13 @@ export function createHostReadServices(
     librarySourceId = projection.sourceId;
     for (const listener of listeners) listener(snapshot);
     if (client.writable("project.models"))
-      refreshModelCatalogs(client, shell?.snapshot.projects ?? [], catalogs, publish);
+      refreshModelCatalogs(
+        client,
+        shell?.snapshot.projects ?? [],
+        catalogs,
+        publish,
+        snapshot.providerRevision,
+      );
     if (librarySourceId && client.writable("tasks.read"))
       refreshTaskDirectory(client, shell?.snapshot.projects ?? [], ids, taskState, publish);
     if (librarySourceId && client.writable("desktop.command"))

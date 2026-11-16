@@ -235,6 +235,11 @@ impl Plan {
     }
 }
 impl Migration {
+    pub(crate) fn source_credential_metadata(&self, source: &str) -> Result<Value> {
+        let record = self.profile_source(&self.source_profile(source)?)?;
+        self.credential_metadata(&record)
+    }
+
     pub(super) fn credential_metadata(&self, record: &Record) -> Result<Value> {
         let mut references = self.vault.provider_references(&record.source_id)?;
         for secret in &record.secrets {

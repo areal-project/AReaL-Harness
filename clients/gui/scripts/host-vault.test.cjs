@@ -316,45 +316,6 @@ test("subscription initialization reports network failures separately and keeps 
   await assert.rejects(new AppProviders(f.backend).init(), /凭据来源元数据无效/);
 });
 
-test("new configuration migration preserves exact legacy authentication and nonsecret receipt", async (t) => {
-  const f = await fixture(t);
-  f.state.credentials.legacyProviders = {
-    data: [
-      {
-        id: "anonymous",
-        name: "No key",
-        baseUrl: "https://model.invalid",
-        protocol: "responses",
-        enabled: true,
-        models: [],
-        parameters: {},
-      },
-    ],
-  };
-  f.state.credentials.references.push("AREAL_CREDENTIAL_anonymous");
-  const model = new ModelConfiguration(f.backend, f.vault);
-  await model.init();
-  const requests = [];
-  model.execute = async (operation, request) => {
-    requests.push({ operation, request });
-    return {
-      path: "/fixture/new.toml",
-      data: request?.data ?? [],
-      revision: "new",
-      defaultModel: null,
-    };
-  };
-  await model.current();
-  assert.equal(requests[1].request.data[0].apiKeyEnv, undefined);
-  assert.deepEqual(JSON.parse(await readFile(join(f.home, "model-config-migrations.json"))), [
-    "/fixture/new.toml",
-  ]);
-  assert.equal(
-    await readFile(join(f.home, "host-vault-operations.json"), "utf8").catch(() => "absent"),
-    "absent",
-  );
-});
-
 test("GUI leaves subscription transport with Host and stores ordinary provider credentials", async (t) => {
   const f = await fixture(t);
   const native = {

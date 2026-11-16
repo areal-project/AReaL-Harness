@@ -707,6 +707,7 @@ export function createHostSnapshotProjector(
       snapshot: {
         ...shellState,
         projects,
+        providerRevision: navigation?.providerRevision,
         revision: ++revision,
         connection: {
           state: fresh

@@ -198,6 +198,7 @@ function navigation(n: unknown): n is SourceNavigation {
   return (
     record(n) &&
     typeof n.sourceId === "string" &&
+    (n.providerRevision === undefined || typeof n.providerRevision === "string") &&
     ["available", "unknown"].includes(String(n.state)) &&
     Array.isArray(n.bindings) &&
     n.bindings.every(

@@ -443,7 +443,11 @@ async fn native_catalog_reads_restore_saved_source_without_starting_workbench() 
             )
             .unwrap();
             assert!(host.gateway.workbench.active_source().is_none());
-            for (method, operation) in [("tasks.read", "list"), ("worktree.read", "worktreeList")] {
+            for (method, operation) in [
+                ("tasks.read", "list"),
+                ("worktree.read", "worktreeList"),
+                ("providers.read", "list"),
+            ] {
                 let request =
                     json!({"method":method,"params":{"sourceId":source,"operation":operation}});
                 let value = backend_read(&host, "web:fixture", &request).await.unwrap();
@@ -451,9 +455,20 @@ async fn native_catalog_reads_restore_saved_source_without_starting_workbench() 
                     assert_eq!(value["data"], json!([]));
                     assert_eq!(value["errors"], json!([]));
                     assert_eq!(value["hasMore"], false);
-                } else {
+                } else if method == "worktree.read" {
                     assert_eq!(value["projects"], json!([]));
                     assert_eq!(value["settings"]["branchPrefix"], "areal");
+                } else {
+                    assert!(value["data"].is_array());
+                    assert_eq!(value["application"]["kind"], "saved");
+                    assert!(
+                        value["definitions"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .any(|row| row["id"] == "custom-compatible")
+                    );
+                    assert!(value.get("credentials").is_none());
                 }
                 assert_eq!(host.gateway.workbench.active_source(), Some(source.clone()));
                 assert!(host.gateway.workbench.backend.running.borrow().is_none());
@@ -474,7 +489,7 @@ async fn native_catalog_reads_restore_saved_source_without_starting_workbench() 
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn cold_backend_read_and_managed_requests_resume_the_persisted_launch() {
+async fn cold_native_provider_read_and_managed_requests_restore_the_persisted_launch() {
     tokio::task::LocalSet::new()
         .run_until(async {
             let root = tempfile::tempdir().unwrap();
@@ -491,10 +506,10 @@ async fn cold_backend_read_and_managed_requests_resume_the_persisted_launch() {
             let (host, _, _) = resumable_host(&root);
             let request =
                 json!({"method":"providers.read","params":{"sourceId":source,"operation":"list"}});
-            assert_eq!(
-                backend_read(&host, "web:fixture", &request).await.unwrap(),
-                json!({"models":[]})
-            );
+            let result = backend_read(&host, "web:fixture", &request).await.unwrap();
+            assert_eq!(result["projects"], json!([]));
+            assert_eq!(result["application"]["kind"], "saved");
+            assert!(host.gateway.workbench.backend.running.borrow().is_none());
             let mut forged = request.clone();
             forged["params"]["sourceId"] = json!("forged");
             assert_eq!(
@@ -597,7 +612,7 @@ async fn backend_business_errors_preserve_only_codes_supported_by_the_host() {
             "appRoot":app,"options":{"home":data,"userHome":root.path()},
         }))), &[]).await.unwrap();
         for (code, expected) in [(json!("COMMAND_CONFLICT"), "COMMAND_CONFLICT"), (json!("TURN_BUSY"), "TURN_BUSY"), (json!("MIGRATION_PENDING"), "MIGRATION_PENDING"), (json!("migrationBlocked"), "migrationBlocked"), (json!("ENOENT"), "CORE_UNAVAILABLE"), (json!(-32602), "CORE_UNAVAILABLE")] {
-            assert_eq!(backend.request("providers.read", json!({"code":code}), json!({})).await.unwrap_err().to_string(), expected);
+            assert_eq!(backend.request("feedback.read", json!({"code":code}), json!({})).await.unwrap_err().to_string(), expected);
         }
         backend.stop().await.unwrap();
     }).await;
@@ -787,4 +802,143 @@ async fn provider_catalog_reads_configuration_without_opening_credentials() {
         "synthetic-secret"
     );
     assert_eq!(execution["credentials"]["errors"], json!({}));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn native_provider_settings_publish_credential_checks_and_invalidate_same_reference() {
+    tokio::task::LocalSet::new().run_until(async {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let (mut host, input, source) = resumable_host(&root);
+        Rc::get_mut(&mut Rc::get_mut(&mut host).unwrap().migration).unwrap().vault = crate::vault::Vault::isolated_files(&host.home);
+        storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();
+        storage::write(&launch_record(&host), &input).unwrap();
+        std::fs::write(root.join("services/workbench/src/backend-main.cjs"), "throw new Error('provider settings must not launch Node');").unwrap();
+        std::fs::create_dir(root.join(".areal")).unwrap();
+        std::fs::write(root.join(".areal/config.toml"), "schema_version=1\n[model]\nprovider='fixture'\nname='fixture'\n[model.providers.fixture]\nendpoint='https://api.openai.com/v1/responses'\nprotocol='responses'\napi_key_env='AREAL_CREDENTIAL_fixture'\n[model.providers.raw]\nendpoint='https://example.invalid/custom/'\nprotocol='responses'\n").unwrap();
+        let registration = host.slots.borrow()["project"].registration.clone();
+        let launch = crate::LaunchInputs {
+            workspace:registration.workspace.clone(), cwd:registration.workspace, config_home:host.home.clone(),
+            homedir:Some(root.clone()), config_path:None, deployment_path:None, schedule_preparation:None,
+            environment:Default::default(), credential_names:vec![], options:Default::default(),
+        };
+        let launch_path = host.home.join("host/launch").join(storage::digest(b"project")).join("inputs.json");
+        storage::private_dir(launch_path.parent().unwrap()).unwrap();
+        storage::write(&launch_path, &launch).unwrap();
+        let slot = json!({"kind":"providerCredential","sourceId":source,"reference":"AREAL_CREDENTIAL_fixture"});
+        let replace = |revision, value|host.migration.vault.dispatch("vault.replace", json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":host.identity.generation,"slot":slot,"expectedRevision":revision,"value":value}), &host.identity.generation,&host.migration).unwrap();
+        replace(0, json!("synthetic-provider-secret"));
+        let request = json!({"method":"providers.read","params":{"sourceId":source,"operation":"list"}});
+        let mut changes = host.changes.subscribe();
+        let initial = backend_read(&host,"web:fixture",&request).await.unwrap();
+        assert_eq!(initial["credentialStates"]["fixture"], "checking");
+        assert_eq!(initial["projects"][0]["projectId"], storage::digest(b"host:project")[..24]);
+        assert_eq!(initial["data"][0]["baseUrl"], "https://api.openai.com/v1");
+        let raw = initial["data"].as_array().unwrap().iter().find(|row|row["id"]=="raw").unwrap();
+        assert_eq!(raw["baseUrl"], "https://example.invalid/custom/");
+        let first_revision = host.gateway.workbench.provider_revision(&host, &source).unwrap();
+        tokio::time::timeout(Duration::from_secs(5),changes.changed()).await.unwrap().unwrap();
+        let ready = backend_read(&host,"web:fixture",&request).await.unwrap();
+        assert_eq!(ready["credentialStates"]["fixture"], "available");
+        assert_eq!(ready["refreshing"], false);
+        assert_ne!(host.gateway.workbench.provider_revision(&host, &source).unwrap(), first_revision);
+        assert!(!ready.to_string().contains("synthetic-provider-secret"));
+        let ready_revision = host.gateway.workbench.provider_revision(&host, &source).unwrap();
+        replace(1, Value::Null);
+        let checking = backend_read(&host,"web:fixture",&request).await.unwrap();
+        assert_eq!(checking["credentialStates"]["fixture"], "checking");
+        assert_ne!(host.gateway.workbench.provider_revision(&host, &source).unwrap(), ready_revision);
+        tokio::time::timeout(Duration::from_secs(5),changes.changed()).await.unwrap().unwrap();
+        let missing = backend_read(&host,"web:fixture",&request).await.unwrap();
+        assert_eq!(missing["credentialStates"]["fixture"], "unavailable");
+        assert!(host.gateway.workbench.backend.running.borrow().is_none());
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn native_provider_settings_import_legacy_configuration_once_without_node() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let root = root.path().canonicalize().unwrap();
+            storage::private_dir(&root.join("data")).unwrap();
+            storage::write(
+                &root.join("data/providers.json"),
+                &json!({"data":[{
+            "id":"old","name":"Imported provider","baseUrl":"https://example.invalid/custom/",
+            "protocol":"responses","enabled":true,"parameters":{},
+            "models":[{"id":"fixture","enabled":true,"parameters":{}}]
+        }],"retired":[]}),
+            )
+            .unwrap();
+            let (host, input, source) = resumable_host(&root);
+            storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();
+            storage::write(&launch_record(&host), &input).unwrap();
+            std::fs::write(
+                root.join("services/workbench/src/backend-main.cjs"),
+                "throw new Error('provider import must not launch Node');",
+            )
+            .unwrap();
+            let request =
+                json!({"method":"providers.read","params":{"sourceId":source,"operation":"list"}});
+            let first = backend_read(&host, "web:fixture", &request).await.unwrap();
+            assert!(
+                first["data"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|provider| provider["id"] == "old")
+            );
+            let mut update = first.clone();
+            update["data"] = json!([]);
+            let options = host.gateway.workbench.utility_options(&source).unwrap();
+            let inputs = super::super::workbench_utility::inputs(&options).unwrap();
+            let current = areal_config::models::read(&inputs, &[]).unwrap();
+            areal_config::models::write(
+                &inputs,
+                areal_config::models::ModelConfigurationUpdate {
+                    expected_revision: current.revision,
+                    data: vec![],
+                    default_model: None,
+                },
+                &[],
+            )
+            .unwrap();
+            let second = backend_read(&host, "web:fixture", &request).await.unwrap();
+            assert!(
+                !second["data"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|provider| provider["id"] == "old")
+            );
+            assert!(host.gateway.workbench.backend.running.borrow().is_none());
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn native_provider_import_preserves_conflicting_current_configuration() {
+    tokio::task::LocalSet::new().run_until(async {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        storage::private_dir(&root.join("data")).unwrap();
+        storage::write(&root.join("data/providers.json"), &json!({"data":[{
+            "id":"old","name":"Saved name","baseUrl":"https://example.invalid/v1",
+            "protocol":"responses","enabled":true,"parameters":{},"models":[]
+        }]})).unwrap();
+        storage::private_dir(&root.join(".areal")).unwrap();
+        let path = root.join(".areal/config.toml");
+        let original = "schema_version=1\n[model.providers.old]\nname='Current name'\nendpoint='https://example.invalid/v1/responses'\nprotocol='responses'\n";
+        std::fs::write(&path, original).unwrap();
+        let (host, input, source) = resumable_host(&root);
+        storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();
+        storage::write(&launch_record(&host), &input).unwrap();
+        let error = backend_read(&host,"web:fixture",&json!({"method":"providers.read",
+            "params":{"sourceId":source,"operation":"list"}})).await.unwrap_err();
+        assert!(error.to_string().contains("conflicts with current model configuration"));
+        assert_eq!(std::fs::read_to_string(path).unwrap(), original);
+        assert!(!root.join("data/model-config-migrations.json").exists());
+        assert!(host.gateway.workbench.backend.running.borrow().is_none());
+    }).await;
 }

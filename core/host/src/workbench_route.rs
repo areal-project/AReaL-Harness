@@ -78,6 +78,7 @@ fn record_exit(failures: &RefCell<Vec<Instant>>) -> bool {
 #[derive(Default)]
 pub(super) struct Supervisor {
     analytics: Rc<super::analytics::Analytics>,
+    providers: Rc<super::provider_catalog::Providers>,
     /// 桌面后台：界面 Main 原来在进程内启动的 CoreBackend + DesktopService，改由 Host 监督。
     backend: Backend,
     page_events: RefCell<Option<tokio::sync::broadcast::Sender<Value>>>,
@@ -438,6 +439,11 @@ impl Supervisor {
     pub(super) fn backend_has_source(&self, source: &str) -> bool {
         self.backend.source.borrow().as_deref() == Some(source)
     }
+    pub(super) fn provider_revision(&self, host: &Host, source: &str) -> Option<String> {
+        self.backend_has_source(source)
+            .then(|| self.providers.revision(host, source).ok())
+            .flatten()
+    }
     pub(super) fn backend_source(&self) -> Option<String> {
         self.backend.source.borrow().clone()
     }
@@ -622,6 +628,11 @@ impl Supervisor {
                 .request(host, method, &params, &context)
                 .await;
         }
+        if method == "providers.read" {
+            self.restore_source(host)?;
+            let source = self.backend_source().context("CAPABILITY_UNAVAILABLE")?;
+            return self.providers.read(host, &source);
+        }
         if matches!(
             method,
             "library.command"
@@ -634,7 +645,6 @@ impl Supervisor {
                 | "feedback.command"
                 | "manage.read"
                 | "manage.command"
-                | "providers.read"
                 | "providers.command"
                 | "pages.command"
                 | "pages.resource"
@@ -754,6 +764,14 @@ impl Supervisor {
         let (_, launch) = launch(host, input)?;
         *self.backend.source.borrow_mut() = launch.source_id;
         *self.backend.utility_options.borrow_mut() = Some(launch.options);
+        if let Some(source) = self.backend_source() {
+            // 配置导入失败只由模型读取/执行报告，不阻塞任务目录与历史等独立读取。
+            let _ = super::provider_config::import_saved_configuration(
+                host,
+                &source,
+                &self.utility_options(&source)?,
+            );
+        }
         Ok(())
     }
 
@@ -1111,6 +1129,9 @@ pub(super) async fn backend_read(
         .to_owned();
     if method == "tasks.read" && host.gateway.workbench.backend_has_source(&source) {
         return super::task_catalog::read(host, &params).await;
+    }
+    if method == "providers.read" {
+        return host.gateway.workbench.providers.read(host, &source);
     }
     if method == "manage.read"
         && host.gateway.workbench.backend_has_source(&source)

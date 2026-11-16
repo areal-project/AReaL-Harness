@@ -69,6 +69,7 @@ impl ReadModels {
         for source in &sources {
             source_stamps.push(json!({
                 "sourceId":source.source_id,"home":source.core_home,"bindings":source.bindings,
+                "providers":host.gateway.workbench.provider_revision(host, &source.source_id),
                 "library":source_stamp(&source.core_home.join("library.json"), false)?,
                 "projects":source_stamp(&source.core_home.join("projects.json"), false)?,
                 "worktrees":source_stamp(&source.core_home.join("worktree-requests"), true)?
@@ -93,6 +94,12 @@ impl ReadModels {
             return Ok(view.clone());
         }
         let mut view = shell::snapshot(&status.projects, &sources)?;
+        for source in &mut view.navigation {
+            source.provider_revision = host
+                .gateway
+                .workbench
+                .provider_revision(host, &source.source_id);
+        }
         let mut complete = true;
         self.online
             .borrow_mut()
@@ -562,7 +569,12 @@ mod tests {
                 }],
             })
             .collect();
-        let view = shell::snapshot(&status, &sources).unwrap();
+        let mut view = shell::snapshot(&status, &sources).unwrap();
+        view.navigation
+            .iter_mut()
+            .find(|source| source.source_id == "selected")
+            .unwrap()
+            .provider_revision = Some("opaque-provider-revision".into());
         let scoped = serde_json::to_value(restrict(
             view.clone(),
             &(
@@ -574,6 +586,10 @@ mod tests {
         assert_eq!(scoped["projects"].as_array().unwrap().len(), 1);
         assert_eq!(scoped["navigation"].as_array().unwrap().len(), 1);
         assert_eq!(scoped["navigation"][0]["sourceId"], "selected");
+        assert_eq!(
+            scoped["navigation"][0]["providerRevision"],
+            "opaque-provider-revision"
+        );
         assert_eq!(
             serde_json::to_value(&view).unwrap()["navigation"][0]["settings"]["fileOpenTarget"],
             "/Applications/Private.app"

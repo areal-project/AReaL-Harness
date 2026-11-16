@@ -101,6 +101,7 @@ export type HostPrerequisite = {
 };
 export interface Snapshot {
   projects: Data[];
+  providerRevision?: string;
   subscription?: ChatGPTStatus;
   desktopCapabilities?: { currentCommands: boolean };
   power?: { enabled: boolean; active: boolean; error: string | null } | null;

@@ -865,6 +865,7 @@ fn independent_query(raw: &Value) -> bool {
         raw["method"].as_str(),
         Some(
             "project.models"
+                | "analytics.read"
                 | "providers.read"
                 | "tasks.read"
                 | "manage.read"

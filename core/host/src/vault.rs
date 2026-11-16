@@ -494,6 +494,20 @@ impl Vault {
             storage::digest(&serde_json::to_vec(slot)?)
         )))
     }
+    /// 目录失效只读版本与条目身份，不访问钥匙串，也不创建槽位。
+    pub(crate) fn provider_stamp(&self, source: &str) -> Result<Value> {
+        let mut stamps = BTreeMap::new();
+        for reference in self.provider_references(source)? {
+            let slot = Slot::ProviderCredential {
+                source_id: source.to_owned(),
+                reference: reference.clone(),
+            };
+            let state: SlotState = storage::read(&self.state_path(&slot)?)?;
+            ensure!(state.slot == slot, "vault slot metadata mismatch");
+            stamps.insert(reference, json!([state.revision, state.entry_id]));
+        }
+        Ok(json!(stamps))
+    }
     fn state(&self, slot: &Slot, migration: &Migration) -> Result<SlotState> {
         self.idle()?;
         self.state_seed(slot, migration.vault_seed(slot)?)

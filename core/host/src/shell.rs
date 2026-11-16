@@ -163,6 +163,8 @@ pub(crate) struct Section {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SourceNavigation {
     pub source_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_revision: Option<String>,
     pub state: NavigationState,
     pub bindings: Vec<NavigationBinding>,
     pub projects: BTreeMap<String, NavigationMetadata>,
@@ -426,6 +428,7 @@ pub(crate) fn snapshot(
             };
         }
         navigation.push(SourceNavigation {
+            provider_revision: None,
             source_id: source.source_id.clone(),
             state,
             bindings,

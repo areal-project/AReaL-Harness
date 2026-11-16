@@ -60,6 +60,26 @@ describe("model catalog refresh", () => {
     expect(catalogs.get("host")?.value).toEqual({ models: ["new"] });
   });
 
+  it("refreshes a cold project when Host publishes a provider revision", async () => {
+    const query = vi.fn().mockResolvedValue({ models: [{ modelId: "saved" }] });
+    const client = {
+      snapshot: () => ({ connection: "ready", identity: { connectionId: "connection" } }),
+      query,
+    } as unknown as HostClient;
+    const catalogs = new Map();
+    const projects = [{ projectId: "cold", state: "stopped" }];
+    refreshModelCatalogs(client, projects, catalogs, () => {}, "initial");
+    await Promise.resolve();
+    query.mockResolvedValue({ models: [{ modelId: "updated" }] });
+    refreshModelCatalogs(client, projects, catalogs, () => {}, "changed");
+    await vi.waitFor(() =>
+      expect(catalogs.get("cold")?.value?.models).toEqual([{ modelId: "updated" }]),
+    );
+    refreshModelCatalogs(client, projects, catalogs, () => {}, "changed");
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query).toHaveBeenLastCalledWith("project.models", "cold", {});
+  });
+
   it("retries a failed read after the back-off instead of keeping the generation empty", async () => {
     vi.useFakeTimers();
     let calls = 0;

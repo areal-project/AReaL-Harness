@@ -1,9 +1,6 @@
 // @ts-check
 "use strict";
-const { readFile } = require("node:fs/promises");
-const { join } = require("node:path");
 const { randomUUID } = require("node:crypto");
-const { isDeepStrictEqual } = require("node:util");
 const diagnostics = require("./diagnostics.cjs");
 const {
   record,
@@ -34,8 +31,8 @@ class ModelConfiguration {
   constructor(backend, hostVault) {
     this.backend = backend;
     this.hostVault = hostVault;
-    /** @type {{keys:Record<string,string>,migrated:string[],locked:Set<string>,pending:Set<string>}} */
-    this.vault = { keys: {}, migrated: [], locked: new Set(), pending: new Set() };
+    /** @type {{keys:Record<string,string>,locked:Set<string>,pending:Set<string>}} */
+    this.vault = { keys: {}, locked: new Set(), pending: new Set() };
     /** @type {Set<string>} */ this.references = new Set();
     /** @type {Map<string, string>} */ this.credentialErrors = new Map();
     /** @type {{data:Array<{id:string,name:string,baseUrl:string,protocol:string,enabled:boolean,models:import('./provider-contract.cjs').ModelConfig[],parameters:import('./provider-contract.cjs').ModelParameters,apiKeyEnv?:string}>,retired?:string[]}|undefined} */
@@ -49,17 +46,7 @@ class ModelConfiguration {
     const metadata = this.backend.host.state.credentials;
     if (!metadata || !strings(metadata.references) || !strings(metadata.migratedConfigPaths))
       throw new Error("Host 凭据来源元数据无效");
-    this.vault.migrated = [...metadata.migratedConfigPaths];
     if (metadata.legacyProviders) this.legacy = legacyProviders(metadata.legacyProviders);
-    try {
-      const paths = JSON.parse(
-        await readFile(join(this.backend.home, "model-config-migrations.json"), "utf8"),
-      );
-      if (!strings(paths)) throw new Error("模型配置迁移记录无效");
-      this.vault.migrated = [...new Set([...this.vault.migrated, ...paths])];
-    } catch (error) {
-      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
-    }
     // 初始化只登记来源；执行、保存和核验仍通过 current/execute 读取凭据，不阻塞工作台就绪。
     this.references = new Set(metadata.references);
   }
@@ -216,38 +203,7 @@ class ModelConfiguration {
   /** @returns {Promise<import('./provider-contract.cjs').ModelSnapshot>} */
   async read() {
     const previous = this.value;
-    let current = await this.execute("read");
-    if (this.legacy && !this.vault.migrated.includes(current.path)) {
-      const imported = this.legacy.data.map(
-        ({ id, name, baseUrl: url, protocol, enabled, models, parameters, apiKeyEnv }) => ({
-          id,
-          name,
-          endpoint: url + (protocol === "responses" ? "/responses" : "/chat/completions"),
-          protocol: protocolToCore(protocol),
-          enabled,
-          models,
-          parameters,
-          ...(apiKeyEnv ? { apiKeyEnv } : {}),
-        }),
-      );
-      for (const item of imported) {
-        const existing = current.data.find((p) => p.id === item.id);
-        if (existing && !isDeepStrictEqual(existing, item))
-          throw new Error(
-            `旧供应商与 Core 配置存在同 ID 冲突：${item.id}。请先调整文件中的 ID，再刷新。`,
-          );
-      }
-      current = await this.execute("write", {
-        expectedRevision: current.revision,
-        data: [
-          ...current.data,
-          ...imported.filter((item) => !current.data.some((p) => p.id === item.id)),
-        ],
-        defaultModel: current.defaultModel,
-      });
-      this.vault.migrated.push(current.path);
-      await this.backend.save("model-config-migrations.json", this.vault.migrated);
-    }
+    const current = await this.execute("read");
     if (this.value === previous) this.value = current;
     return this.value ?? current;
   }

@@ -691,14 +691,14 @@ async fn shell_subscription_keeps_inflight_catalog_query_running() {
 async fn pending_workbench_requests_do_not_block_queries_or_page_events() {
     tokio::task::LocalSet::new()
         .run_until(async {
-            for blocked_method in ["providers.read", "desktop.command"] {
+            for blocked_method in ["feedback.read", "desktop.command"] {
                 let fixture = Fixture::start().await;
                 let runner = fixture.host.home.join("blocked.cjs");
                 std::fs::write(
                     &runner,
                     r#"
             const out = frame => console.log(JSON.stringify({version:1,...frame}));
-            out({event:'ready',methods:['providers.read','desktop.command']});
+            out({event:'ready',methods:['feedback.read','desktop.command']});
             let pending;
             require('node:readline').createInterface({input:process.stdin}).on('line', line => {
                 const frame = JSON.parse(line);
@@ -764,8 +764,8 @@ async fn pending_workbench_requests_do_not_block_queries_or_page_events() {
                 )
                 .await;
                 let owner = read(&mut socket).await["result"]["connectionId"].clone();
-                let slow_params = if blocked_method == "providers.read" {
-                    json!({"sourceId":"fixture","operation":"list"})
+                let slow_params = if blocked_method == "feedback.read" {
+                    json!({"sourceId":"fixture","operation":"status"})
                 } else {
                     json!({"command":"connect","request":{"projectId":"selected"}})
                 };
@@ -794,8 +794,7 @@ async fn pending_workbench_requests_do_not_block_queries_or_page_events() {
                 .await;
                 write(
                     &mut socket,
-                    json!({"version":1,"id":"catalog","method":"providers.read",
-            "params":{"sourceId":"fixture","operation":"list"}}),
+                    json!({"version":1,"id":"catalog","method":"analytics.read","params":{}}),
                 )
                 .await;
                 super::super::workbench_route::reverse(&fixture.host)(
@@ -820,7 +819,7 @@ async fn pending_workbench_requests_do_not_block_queries_or_page_events() {
                         event |= packet["method"] == "pages.event"
                             && packet["params"]["token"] == "while-blocked";
                         catalog |=
-                            packet["id"] == "catalog" && packet["result"]["models"] == json!([]);
+                            packet["id"] == "catalog" && packet["result"]["tokens"] == 0;
                     }
                 })
                 .await;

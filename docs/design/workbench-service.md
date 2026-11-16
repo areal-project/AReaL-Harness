@@ -46,7 +46,9 @@ Host 与服务通过私有 Unix socket pair 传送逐行 JSON，带 `version: 1`
 
 `manage.read/command` 复用后台原实现，只开放有界的管理操作。读包含任务读取、调度上下文与预览、任务列表与收件箱、运行记录、插件（列表、详情、组件、hooks、MCP）、配置（服务状态、Profile、Skill）、进程列表与输出、执行与 Workgroup/Workflow。写包含任务编辑、暂停、恢复、取消、删除与停止在途 Run，线程归档、资源关闭、计划更新、权限撤销、空闲排空与 GC、执行应用与取消、Workgroup 取消、插件与 marketplace 管理、进程启动与终端写操作、上下文压缩。沿用后台查找执行 owner 及 Core 回执校验；客户端未提供领域 `requestId` 时用 Host `commandId`，保留原请求查询身份。终端写操作和上下文压缩属于提交行为，另需 `submit`；执行、Workgroup 取消与停止 Run 另需 `interrupt`。新建任务、回复问题、立即运行与新建会话要等 Host 工具中转落地后再开放；插件归档导入与归档选择属原生文件选择，插件凭据与连接、hook 与 tool 审批确认、MCP 表单与应用、GenUI 源、按路径或 URI 读取执行产物、供应商设置（独立 `providers` 域）和 Goal 编辑均不经 manage 提供。结果按结构联合校验，不能把它当作通用 RPC 入口。
 
-`providers.read/command` 复用供应商列表、模型发现、探测、保存、应用、默认模型和删除，绑定本机浏览器的 manage 授权及来源。`revealKey` 不向浏览器开放。Host journal 只保存操作身份、语义摘要和结果，不保存原始参数；草稿 API Key 只经认证连接和后台私有管道传递，持久凭据仍由 HostVault 管理。
+`providers.read` 直接由 Host 读取配置和共享预设，不启动 Node，也不等待钥匙串或 Core。后台只在已有 Core 连接上核验应用证明，并按配置、凭据版本及连接身份丢弃过期结果；完成后通过导航 `providerRevision` 通知客户端。`providers.command` 暂由工作台承接模型发现、探测、保存、应用、默认模型和删除，两者绑定本机浏览器的 manage 授权及来源。`revealKey` 不向浏览器开放。Host journal 只保存操作身份、语义摘要和结果，不保存原始参数；草稿 API Key 只经认证连接和后台私有管道传递，持久凭据仍由 HostVault 管理。
+
+旧桌面供应商由 Host 按原 `model-config-migrations.json` 路径标记一次导入；无需解锁凭据，同 ID 配置冲突保留原文件并报错，已导入路径不会重新添加用户删除的供应商。Node 的重复配置导入已移除。
 
 供应商预设与连接投影的公共元数据位于 `schemas/provider-config`，Rust 与客户端共享同一份定义；修改定义同时使 Core 和 GUI 构建身份失效。
 

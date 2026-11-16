@@ -44,6 +44,33 @@ pub(super) async fn execute(host: &Host, source: &str, params: Value) -> Result<
     execute_with_options(host, source, params, options).await
 }
 
+pub(super) fn models_catalog(host: &Host, source: &str, options: &Value) -> Result<Value> {
+    let mut inputs = inputs(options)?;
+    for (name, value) in host.gateway.workbench.environment_credentials(source) {
+        inputs.env.insert(name.into(), value.into());
+    }
+    let references: Vec<_> = host
+        .migration
+        .vault
+        .provider_references(source)?
+        .into_iter()
+        .collect();
+    for reference in &references {
+        inputs.env.remove(OsString::from(reference).as_os_str());
+    }
+    let mut value = serde_json::to_value(areal_config::models::read(&inputs, &references)?)?;
+    for (id, source) in value["credentialSources"]
+        .as_object()
+        .cloned()
+        .unwrap_or_default()
+    {
+        if source == "stored" {
+            value["credentialStates"][&id] = json!("checking");
+        }
+    }
+    Ok(value)
+}
+
 pub(super) async fn execute_with_options(
     host: &Host,
     source: &str,
@@ -77,36 +104,16 @@ pub(super) async fn execute_with_options(
             );
         }
     }
+    if matches!(operation, "modelsRead" | "modelsWrite") {
+        super::provider_config::import_saved_configuration(host, source, &options)?;
+    }
     let mut inputs = inputs(&options)?;
     let mut stored = Vec::new();
     let mut credential_values = BTreeMap::new();
     let mut credential_errors = BTreeMap::new();
     let mut credential_references = Vec::new();
     if operation == "modelsCatalog" {
-        for (name, value) in host.gateway.workbench.environment_credentials(source) {
-            inputs.env.insert(name.into(), value.into());
-        }
-        let references: Vec<_> = host
-            .migration
-            .vault
-            .provider_references(source)?
-            .into_iter()
-            .collect();
-        for reference in &references {
-            inputs.env.remove(OsString::from(reference).as_os_str());
-        }
-        let mut value = serde_json::to_value(areal_config::models::read(&inputs, &references)?)?;
-        // 沿用配置解析器选出的实际凭据来源，包含当前模型的环境覆盖。
-        for (id, source) in value["credentialSources"]
-            .as_object()
-            .cloned()
-            .unwrap_or_default()
-        {
-            if source == "stored" {
-                value["credentialStates"][&id] = json!("checking");
-            }
-        }
-        return Ok(value);
+        return models_catalog(host, source, &options);
     }
 
     if matches!(

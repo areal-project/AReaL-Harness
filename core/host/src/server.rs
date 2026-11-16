@@ -26,6 +26,10 @@ mod loopback;
 mod plugins;
 #[path = "power.rs"]
 mod power;
+#[path = "provider_catalog.rs"]
+mod provider_catalog;
+#[path = "provider_config.rs"]
+mod provider_config;
 #[path = "schedule_connection.rs"]
 mod schedule_connection;
 #[path = "schedules.rs"]

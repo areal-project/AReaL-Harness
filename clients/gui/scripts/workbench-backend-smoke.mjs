@@ -440,13 +440,13 @@ try {
       const sourceId = change.sourceId;
       const baseUrl = `http://127.0.0.1:${receiver.address().port}/v1`;
       const read = () => call("providers.read", { sourceId, operation: "list" });
-      const originalStatus = await backend.command("providers", { operation: "list" });
-      await writeFile(
-        join(root, "provider-public-status.json"),
-        JSON.stringify(originalStatus, null, 2),
-      );
       let status = await read();
-      assert.deepEqual(status, originalStatus);
+      require("../packages/workbench/client/desktop-contract.cjs").validateCommandResponse(
+        "providers",
+        { operation: "list" },
+        status,
+      );
+      await writeFile(join(root, "provider-public-status.json"), JSON.stringify(status, null, 2));
       const mutate = async (params) => {
         const commandId = randomUUID();
         const input = { sourceId, expectedRevision: status.revision, ...params };

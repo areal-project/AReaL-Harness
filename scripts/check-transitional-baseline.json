@@ -117,7 +117,7 @@
   "services/workbench/src/desktop/core/gui-host-projects.cjs": 6,
   "services/workbench/src/desktop/core/gui-source.cjs": 11,
   "services/workbench/src/desktop/core/lifecycle.cjs": 3,
-  "services/workbench/src/desktop/core/model-config.cjs": 6,
+  "services/workbench/src/desktop/core/model-config.cjs": 4,
   "services/workbench/src/desktop/core/native-remote.cjs": 2,
   "services/workbench/src/desktop/core/native-subscription.cjs": 3,
   "services/workbench/src/desktop/core/providers.cjs": 4,

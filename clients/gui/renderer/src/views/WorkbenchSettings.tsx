@@ -173,6 +173,7 @@ export function WorkbenchSettings({
         <ModelSettings
           action={action}
           subscription={snapshot.subscription}
+          providerRevision={snapshot.providerRevision}
           connectionState={snapshot.connection?.state ?? "connecting"}
         />
       ) : settingsTab === "会话配置" ? (

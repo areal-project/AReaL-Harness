@@ -49,16 +49,21 @@ const CHATGPT = "chatgpt";
 export function ModelSettings({
   action,
   subscription,
+  providerRevision,
   connectionState = "ready",
 }: {
   action: Action;
   subscription?: Data;
+  providerRevision?: string;
   connectionState?: string;
 }) {
   const { t } = useI18n();
   const navigate = useGuardedNavigation();
   const api = <P extends CommandParams<"providers">>(request: P) => action("providers", request);
-  const state = useResource(() => api({ operation: "list" }), `application:${connectionState}`);
+  const state = useResource(
+    () => api({ operation: "list" }),
+    `application:${connectionState}:${providerRevision ?? ""}`,
+  );
   const [loadedSubscription, setLoadedSubscription] = useState<Data>();
   const account = subscription ?? loadedSubscription;
   const accountModels: Data[] = account?.models ?? [];
@@ -266,23 +271,6 @@ export function ModelSettings({
       );
   }, [selected, picker, state.value, accountEnabled]);
   const application = state.value?.application;
-  const waitingForApplication =
-    application?.kind === "deferred" ||
-    application?.kind === "unknown" ||
-    state.value?.refreshing === true ||
-    Object.values(state.value?.credentialStates ?? {}).includes("checking");
-  useEffect(() => {
-    if (!waitingForApplication || busy) return;
-    let stopped = false;
-    let timer = setTimeout(async function refresh() {
-      await state.refresh();
-      if (!stopped) timer = setTimeout(refresh, 2000);
-    }, 2000);
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-    };
-  }, [waitingForApplication, busy, state.refresh]);
   const applicationMessage = !state.value
     ? ""
     : application?.kind === "unknown"
