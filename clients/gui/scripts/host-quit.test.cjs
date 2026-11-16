@@ -45,6 +45,99 @@ const active = {
   totalActiveTasks: 0,
 };
 
+function quitFixture() {
+  const { readFileSync } = require("node:fs");
+  const { runInNewContext } = require("node:vm");
+  const source = readFileSync(require.resolve("../app/src/core/main.cjs"), "utf8");
+  const events = [];
+  const suppressed = [];
+  let release;
+  const ready = new Promise((resolve) => {
+    release = resolve;
+  });
+  const frame = {};
+  const owner = { isDestroyed: () => false, mainFrame: frame };
+  const context = {
+    quitAttempt: null,
+    quitting: false,
+    exitReady: false,
+    quitRequestSequence: 0,
+    performance,
+    process,
+    setImmediate,
+    window: { isDestroyed: () => false },
+    backend: {
+      waitForApplicationReady: () => ready,
+      readHostActivity: async () => active,
+    },
+    confirmRendererQuit: async (attempt) => {
+      attempt.owner = owner;
+      attempt.frame = frame;
+      return true;
+    },
+    settleWindow: async () => {},
+    preview: { setPresentationSuppressed: (value) => suppressed.push(value) },
+    sendDesktopEvent: (_owner, channel, value) => events.push({ channel, value }),
+    diagnostics: { record: () => {} },
+    confirmHostQuit,
+    confirmHostStop,
+    dialog: {
+      showMessageBox: async () => {
+        assert.equal(events.at(-1).value.state, "idle", "native confirmation replaces progress");
+        return { response: 2 };
+      },
+    },
+    showMessageBox: async () => {
+      assert.equal(events.at(-1).value.state, "idle", "native confirmation replaces progress");
+      return { response: 2 };
+    },
+    announceWindowOpened: () => events.push({ channel: "opened" }),
+  };
+  runInNewContext(
+    source.slice(
+      source.indexOf("  function setQuitProgress("),
+      source.indexOf("  const { showMessageBox, showOpenDialog, showSaveDialog }"),
+    ) + "\nglobalThis.requestQuit = requestQuit;",
+    context,
+  );
+  return { context, events, release, suppressed };
+}
+
+test("quit reports checking before backend readiness and cancels back to idle", async () => {
+  const f = quitFixture();
+  const pending = f.context.requestQuit();
+  await new Promise(setImmediate);
+  assert.ok(
+    f.events.some((event) => event.value?.phase === "checking"),
+    "a pending backend must not leave quit without feedback",
+  );
+  assert.equal(f.context.requestQuit(), pending, "repeated quit joins the same attempt");
+  f.release();
+  assert.equal((await pending).canceled, true);
+  assert.equal(f.events.at(-1).value.state, "idle");
+  assert.equal(f.context.quitting, false);
+  assert.equal(f.context.quitAttempt, null);
+  assert.deepEqual(f.suppressed, [true, false]);
+});
+
+test("quit shows feedback before window cleanup and restores presentation on failure", async () => {
+  const f = quitFixture();
+  let fail;
+  f.context.settleWindow = () =>
+    new Promise((_resolve, reject) => {
+      fail = reject;
+    });
+  const pending = f.context.requestQuit();
+  await new Promise(setImmediate);
+  assert.equal(f.events.at(-1).value.phase, "checking");
+  assert.equal(f.context.quitting, false, "window cleanup retains IPC access");
+  fail(new Error("window cleanup failed"));
+  await assert.rejects(pending, /window cleanup failed/);
+  assert.equal(f.events.at(-1).value.state, "idle");
+  assert.equal(f.context.quitAttempt, null);
+  assert.deepEqual(f.suppressed, [true, false]);
+});
+
 test("idle quit detaches without a dialog or stop", async () => {
   const f = fixture(idle);
   assert.deepEqual(await confirmHostQuit(f.backend, f.notify), { keepBackground: true });

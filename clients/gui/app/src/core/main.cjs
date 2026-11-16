@@ -329,6 +329,7 @@ function startDesktop() {
     /** @param {Electron.MessageBoxOptions} options */
     const notify = async (options) => {
       recordQuitStage(attempt, "native-confirmation");
+      setQuitProgress(attempt, null);
       const answer = await (process.platform === "darwin" && intent !== "install"
         ? dialog.showMessageBox(options)
         : showMessageBox(options));
@@ -346,6 +347,12 @@ function startDesktop() {
         return { canceled: true };
       }
       if (!window || window.isDestroyed()) return { canceled: true };
+      // 检查和窗口清理也可能等待；先反馈，但保留清理所需的 IPC 准入。
+      if (intent !== "install") {
+        preview?.setPresentationSuppressed(true);
+        setQuitProgress(attempt, "checking");
+        recordQuitStage(attempt, "checking");
+      }
       await settleWindow(window);
       if (intent === "install") {
         beginQuit("checking");
@@ -748,7 +755,7 @@ function startDesktop() {
       createdWindow.on("close", (event) => {
         if (exitReady) return;
         event.preventDefault();
-        if (quitting || windowClosePromise) return;
+        if (quitting || quitAttempt?.phase || windowClosePromise) return;
         // A close-to-background still ends this createdWindow's Browser ownership. Fence
         // native callbacks before hiding; reopening creates fresh Pages on demand.
         browserWindowClosed = true;

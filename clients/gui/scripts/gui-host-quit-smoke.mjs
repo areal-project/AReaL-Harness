@@ -51,6 +51,8 @@ const { appendFileSync } = require('node:fs');
 const record = value => appendFileSync(${JSON.stringify(eventsPath)}, JSON.stringify(value) + '\\n');
 globalThis.responses = [];
 globalThis.holdStop = false;
+globalThis.holdReady = false;
+globalThis.failReady = false;
 require('electron').dialog.showMessageBox = async (...args) => {
  const options = args.at(-1);
  if (options.title === '允许本地开发站点') return { response: 1 };
@@ -60,6 +62,15 @@ require('electron').dialog.showMessageBox = async (...args) => {
  return { response };
 };
 const { SharedCoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/service-client.cjs"))});
+const ready = SharedCoreBackend.prototype.waitForApplicationReady;
+SharedCoreBackend.prototype.waitForApplicationReady = async function(...args) {
+ if (globalThis.holdReady) {
+  record({ event: 'ready-held' });
+  while (globalThis.holdReady) await new Promise(resolve => setTimeout(resolve, 20));
+ }
+ if (globalThis.failReady) throw new Error('QUIT_FIXTURE_READINESS_FAILURE');
+ return ready.apply(this, args);
+};
 const report = SharedCoreBackend.prototype.reportLifecycleError;
 SharedCoreBackend.prototype.reportLifecycleError = function(error) {
  record({ event: 'lifecycle-error', message: error?.message, stack: error?.stack });
@@ -296,6 +307,68 @@ try {
   await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
   await until(async () => project(await snapshot())?.state?.connected, "project ready");
   const first = await send("Keep this turn running while GUI quits.");
+  await responses([2]);
+  await app.evaluate(() => {
+    globalThis.holdReady = true;
+  });
+  await quit();
+  await until(
+    async () => (await events()).filter((e) => e.event === "ready-held").length === 1,
+    "quit readiness held",
+  );
+  const checking = page.getByRole("dialog", { name: "正在退出 AReaL Harness", exact: true });
+  try {
+    await checking.getByText("正在检查后台状态…", { exact: true }).waitFor({ timeout: 5000 });
+  } finally {
+    await page.screenshot({ path: join(scratch, "quit-checking.png") });
+  }
+  await quit();
+  await quit();
+  assert.equal(
+    (await events()).filter((e) => e.event === "ready-held").length,
+    1,
+    "Repeated quit shares readiness wait",
+  );
+  await app.evaluate(() => {
+    globalThis.holdReady = false;
+  });
+  await until(async () => (await events()).some((e) => e.event === "dialog"), "quit cancellation");
+  await checking.waitFor({ state: "hidden" });
+  assert.equal(child.exitCode, null, "Canceled quit keeps GUI alive");
+  assert.ok(
+    (await activity()).projects.some((item) => item.state === "observed" && item.activeTurns > 0),
+  );
+  checks.push(
+    "checking progress appears during readiness; repeated quit shares attempt and cancellation restores GUI",
+  );
+  await writeFile(eventsPath, "");
+  await app.evaluate(() => {
+    globalThis.holdReady = true;
+    globalThis.failReady = true;
+  });
+  await quit();
+  await until(
+    async () => (await events()).some((e) => e.event === "ready-held"),
+    "failure readiness held",
+  );
+  await checking.getByText("正在检查后台状态…", { exact: true }).waitFor();
+  await app.evaluate(() => {
+    globalThis.holdReady = false;
+  });
+  await until(
+    async () => (await events()).some((e) => e.message === "QUIT_FIXTURE_READINESS_FAILURE"),
+    "readiness failure reported",
+  );
+  await checking.waitFor({ state: "hidden" });
+  await app.evaluate(() => {
+    globalThis.failReady = false;
+  });
+  assert.equal(child.exitCode, null, "Readiness failure keeps GUI alive");
+  await page.getByTestId("chat-input").fill("Still editable after failed quit");
+  assert.match(await page.getByTestId("chat-input").innerText(), /Still editable/);
+  await page.getByTestId("chat-input").fill("");
+  checks.push("readiness failure clears checking progress and leaves editing usable");
+  await writeFile(eventsPath, "");
   const status = await host.status();
   corePids = status.projects
     .flatMap((item) => (item.service ? [item.service.hostPid, item.service.corePid] : []))
