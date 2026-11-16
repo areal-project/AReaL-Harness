@@ -438,9 +438,10 @@ pub(crate) async fn run_local_mode(
     // 生命周期巡检持有停止操作 future；堆上固定，避免把完整清理状态机叠进 Host 主循环栈。
     let idle = Box::pin(idle::run(host.clone()));
     let release = Box::pin(idle::release_unused(host.clone()));
+    let read_models = Box::pin(shell_subscription::run(host.clone()));
     let discovery = crate::service_run::until_discovery_lost(&host.home, &host.identity.generation);
     tokio::pin!(scheduler, connections, gateway);
-    tokio::pin!(subscriptions, power, discovery, idle, release);
+    tokio::pin!(subscriptions, power, discovery, idle, release, read_models);
     let orphaned = loop {
         tokio::select! {
             _=host.exit.notified()=>break false,
@@ -458,6 +459,7 @@ pub(crate) async fn run_local_mode(
             _=&mut power=>unreachable!("power protection lives with the Host"),
             _=&mut idle=>unreachable!("idle collection lives with the Host"),
             _=&mut release=>unreachable!("release policy lives with the Host"),
+            _=&mut read_models=>unreachable!("read projections live with the Host"),
             connection=listener.accept()=> {let (stream,_)=connection?;let host=host.clone();tokio::task::spawn_local(async move {let _=connection_loop(host,stream).await;});}
         }
     };
@@ -1036,10 +1038,17 @@ impl Host {
     }
     async fn status(&self) -> HostStatus {
         let ids: Vec<_> = self.slots.borrow().keys().cloned().collect();
-        let mut projects = Vec::new();
         for id in ids {
-            projects.push(self.project_status(&id).await);
+            self.project_status(&id).await;
         }
+        self.status_snapshot()
+    }
+    fn status_snapshot(&self) -> HostStatus {
+        let ids: Vec<_> = self.slots.borrow().keys().cloned().collect();
+        let mut projects: Vec<_> = ids
+            .iter()
+            .map(|id| self.project_status_snapshot(id))
+            .collect();
         for (registration, migration_id) in self.migration.pending_projects().unwrap_or_default() {
             if projects
                 .iter()
@@ -1215,8 +1224,12 @@ impl Host {
                 }
             }
         }
+        self.project_status_snapshot(id)
+    }
+    fn project_status_snapshot(&self, id: &str) -> ProjectStatus {
         let slots = self.slots.borrow();
         let slot = &slots[id];
+        let registration = slot.registration.clone();
         ProjectStatus {uses_shared_model_config:self.project_uses_shared_config(&registration),schedule_activation_suppressed:self.schedules.suppressed(id),schedule_activation_error:self.schedules.error(id),registration,state:slot.state.clone(),service:slot.service.clone().filter(|s|s.owner.as_ref()==Some(&self.owner()) && slot.writer.is_some() && slot.state=="ready"),migration:slot.migration.clone().or_else(||slot.service.as_ref().filter(|s|s.owner.is_none() && s.state==State::Ready).map(|s|json!({"serviceId":s.identity.service_id,"generation":s.identity.generation,"phase":"legacyPending"})))}
     }
     async fn dispatch_connection(

@@ -475,17 +475,33 @@ pub(crate) fn apply_observation(
         project.state == "ready" && project.service_generation.as_deref() == Some(generation),
         "shell observation generation changed"
     );
+    let items = decode_summaries(summaries)?;
+    project.summaries = Summaries::Fresh { items };
+    project.attention = attention_count
+        .map(|count| Attention::Fresh { count })
+        .unwrap_or(Attention::Unknown);
+    Ok(())
+}
+
+pub(crate) fn apply_cached_observation(
+    project: &mut ShellProject,
+    summaries: Vec<Value>,
+) -> Result<()> {
+    project.summaries = Summaries::Cached {
+        items: decode_summaries(summaries)?,
+    };
+    project.attention = Attention::Unknown;
+    Ok(())
+}
+
+fn decode_summaries(summaries: Vec<Value>) -> Result<Vec<NavigationSummary>> {
     let items: Vec<NavigationSummary> = summaries
         .into_iter()
         .map(serde_json::from_value)
         .collect::<std::result::Result<_, _>>()
         .context("invalid Core navigation summaries")?;
     validate_summaries(&items)?;
-    project.summaries = Summaries::Fresh { items };
-    project.attention = attention_count
-        .map(|count| Attention::Fresh { count })
-        .unwrap_or(Attention::Unknown);
-    Ok(())
+    Ok(items)
 }
 
 fn validate_summaries(items: &[NavigationSummary]) -> Result<()> {

@@ -1,13 +1,23 @@
 use super::Host;
 use crate::shell::{self, ShellProject, ShellView};
 use anyhow::{Context, Result, ensure};
+use futures_util::{StreamExt, stream::FuturesUnordered};
 use serde_json::{Value, json};
-use std::{cell::RefCell, collections::BTreeMap, os::unix::fs::MetadataExt};
+use std::{
+    cell::{Cell, RefCell},
+    collections::BTreeMap,
+    os::unix::fs::MetadataExt,
+    rc::Rc,
+    time::Duration,
+};
 use tokio::sync::Mutex;
 
 #[derive(Default)]
 pub(super) struct ReadModels {
     gate: Mutex<()>,
+    requested: tokio::sync::Notify,
+    used: Cell<bool>,
+    epoch: Cell<u64>,
     #[cfg(test)]
     pub(super) read_started: tokio::sync::Notify,
     cached: RefCell<Option<(Value, ShellView)>>,
@@ -15,6 +25,7 @@ pub(super) struct ReadModels {
 }
 #[derive(Clone)]
 struct Online {
+    epoch: u64,
     revision: (String, String, u64),
     summaries: Vec<Value>,
     attention: Option<u64>,
@@ -53,12 +64,15 @@ impl ReadModels {
         #[cfg(test)]
         self.read_started.notify_one();
         let _guard = self.gate.lock().await;
-        // Core 的创建事件可能只发给创建者；新订阅不能沿用其他连接的目录缓存。
+        // 首包只读本地投影；新订阅要求后台再次核验，旧目录在此期间只能标记为缓存。
         if fresh {
+            self.epoch.set(self.epoch.get() + 1);
             *self.cached.borrow_mut() = None;
-            self.online.borrow_mut().clear();
         }
-        let status = host.status().await;
+        if !self.used.replace(true) || fresh {
+            self.requested.notify_one();
+        }
+        let status = host.status_snapshot();
         let registrations: Vec<_> = status
             .projects
             .iter()
@@ -86,8 +100,8 @@ impl ReadModels {
                 revisions.insert(project.registration.project_id.clone(), revision);
             }
         }
-        let stamp =
-            json!({"projects":status.projects,"sources":source_stamps,"revisions":revisions});
+        let stamp = json!({"projects":status.projects,"sources":source_stamps,"revisions":revisions,"epoch":self.epoch.get(),
+                "observations":self.online.borrow().iter().map(|(id,online)|json!([id,online.revision,online.epoch])).collect::<Vec<_>>()});
         if let Some((previous, view)) = &*self.cached.borrow()
             && *previous == stamp
         {
@@ -100,72 +114,142 @@ impl ReadModels {
                 .workbench
                 .provider_revision(host, &source.source_id);
         }
-        let mut complete = true;
-        self.online
-            .borrow_mut()
-            .retain(|id, _| revisions.contains_key(id));
+        self.online.borrow_mut().retain(|id, _| {
+            status
+                .projects
+                .iter()
+                .any(|project| project.registration.project_id == *id)
+        });
         for project in &mut view.projects {
-            let Some(revision) = revisions.get(&project.project_id) else {
-                continue;
-            };
-            project.task_revision = host
-                .schedules
-                .connections
-                .task_revision(host, &project.project_id)
-                .ok();
-            project.model_catalog_revision = host
-                .schedules
-                .connections
-                .model_catalog_revision(host, &project.project_id)
-                .ok();
-            let cached = self
-                .online
-                .borrow()
-                .get(&project.project_id)
-                .filter(|value| value.revision == *revision)
-                .cloned();
-            let online = match cached {
-                Some(cached) => Some(cached),
-                None => match tokio::time::timeout(
-                    std::time::Duration::from_secs(10),
-                    read_online(host, &project.project_id, revision),
-                )
-                .await
+            if revisions.contains_key(&project.project_id) {
+                project.task_revision = host
+                    .schedules
+                    .connections
+                    .task_revision(host, &project.project_id)
+                    .ok();
+                project.model_catalog_revision = host
+                    .schedules
+                    .connections
+                    .model_catalog_revision(host, &project.project_id)
+                    .ok();
+            }
+            let cached = self.online.borrow().get(&project.project_id).cloned();
+            if let Some(online) = cached {
+                if online.epoch == self.epoch.get()
+                    && revisions.get(&project.project_id) == Some(&online.revision)
                 {
-                    Ok(Ok(value)) => Some(value),
-                    _ => {
-                        complete = false;
-                        None
-                    }
-                },
-            };
-            if let Some(online) = online
-                && shell::apply_observation(
-                    project,
-                    &revision.1,
-                    online.summaries.clone(),
-                    online.attention,
-                )
-                .is_ok()
-            {
-                if let Some(alias) = &project.alias
-                    && host.gateway.workbench.backend_has_source(&alias.source_id)
-                {
-                    super::library_service::record_summaries(
-                        host,
-                        &alias.source_id,
-                        &alias.project_id,
-                        &online.summaries,
+                    shell::apply_observation(
+                        project,
+                        &online.revision.1,
+                        online.summaries,
+                        online.attention,
                     )?;
+                } else {
+                    shell::apply_cached_observation(project, online.summaries)?;
                 }
-                self.online
-                    .borrow_mut()
-                    .insert(project.project_id.clone(), online);
             }
         }
-        // 读取期间的源变化不被标记成新鲜；下一次观察会重新读取。
-        *self.cached.borrow_mut() = complete.then(|| (stamp, view.clone()));
+        *self.cached.borrow_mut() = Some((stamp, view.clone()));
         Ok(view)
+    }
+
+    async fn hydrate(&self, host: &Host) -> Result<()> {
+        let before = serde_json::to_value(host.status_snapshot().projects)?;
+        let status = host.status().await;
+        if before != serde_json::to_value(&status.projects)? {
+            host.changed();
+        }
+        let registrations: Vec<_> = status
+            .projects
+            .iter()
+            .map(|project| project.registration.clone())
+            .collect();
+        let sources = host.migration.navigation_sources(&registrations)?;
+        let view = shell::snapshot(&status.projects, &sources)?;
+        let epoch = self.epoch.get();
+        let mut work = FuturesUnordered::new();
+        for project in view.projects {
+            if project.state != "ready" {
+                continue;
+            }
+            let id = project.project_id.clone();
+            let Ok(revision) = host.schedules.connections.shell_revision(host, &id) else {
+                continue;
+            };
+            if self
+                .online
+                .borrow()
+                .get(&id)
+                .is_some_and(|online| online.revision == revision && online.epoch == epoch)
+            {
+                continue;
+            }
+            work.push(async move {
+                let result = tokio::time::timeout(
+                    Duration::from_secs(10),
+                    read_online(host, &id, &revision, epoch),
+                )
+                .await;
+                (id, revision, project, result)
+            });
+        }
+        while let Some((id, revision, mut project, result)) = work.next().await {
+            let Ok(Ok(online)) = result else {
+                continue;
+            };
+            let _guard = self.gate.lock().await;
+            if self.epoch.get() != epoch
+                || host
+                    .schedules
+                    .connections
+                    .shell_revision(host, &id)
+                    .ok()
+                    .as_ref()
+                    != Some(&revision)
+            {
+                continue;
+            }
+            if shell::apply_observation(
+                &mut project,
+                &online.revision.1,
+                online.summaries.clone(),
+                online.attention,
+            )
+            .is_err()
+            {
+                continue;
+            }
+            if let Some(alias) = project.alias
+                && host.gateway.workbench.backend_has_source(&alias.source_id)
+                && super::library_service::record_summaries(
+                    host,
+                    &alias.source_id,
+                    &alias.project_id,
+                    &online.summaries,
+                )
+                .is_err()
+            {
+                continue;
+            }
+            self.online.borrow_mut().insert(id, online);
+            *self.cached.borrow_mut() = None;
+            host.changed();
+        }
+        Ok(())
+    }
+}
+
+pub(super) async fn run(host: Rc<Host>) {
+    let mut changes = host.changes.subscribe();
+    loop {
+        tokio::select! {
+            _ = host.read_models.requested.notified() => {},
+            _ = changes.changed() => {},
+            _ = tokio::time::sleep(Duration::from_secs(5)) => {},
+        }
+        if host.read_models.used.get() && host.admission().is_ok() {
+            let _ = host.read_models.hydrate(&host).await;
+        }
     }
 }
 
@@ -219,7 +303,12 @@ async fn pages(
     }
 }
 
-async fn read_online(host: &Host, id: &str, revision: &(String, String, u64)) -> Result<Online> {
+async fn read_online(
+    host: &Host,
+    id: &str,
+    revision: &(String, String, u64),
+    epoch: u64,
+) -> Result<Online> {
     let summaries = pages(
         host,
         id,
@@ -256,6 +345,7 @@ async fn read_online(host: &Host, id: &str, revision: &(String, String, u64)) ->
         "RESYNC_REQUIRED"
     );
     Ok(Online {
+        epoch,
         revision: revision.clone(),
         summaries,
         attention,
@@ -446,6 +536,12 @@ mod tests {
             }
             let added = Rc::new(Cell::new(false));
             let reads = Rc::new(Cell::new(0));
+            let invalid = Rc::new(Cell::new(false));
+            let server_invalid = invalid.clone();
+            let hold = Rc::new(Cell::new(false));
+            let entered = Rc::new(tokio::sync::Notify::new());
+            let released = Rc::new(tokio::sync::Notify::new());
+            let (server_hold, server_entered, server_released) = (hold.clone(), entered.clone(), released.clone());
             let (server_added, server_reads) = (added.clone(), reads.clone());
             let server = tokio::task::spawn_local(async move {
                 let (stream, _) = listener.accept().await.unwrap();
@@ -457,8 +553,13 @@ mod tests {
                         "initialize" => json!({}),
                         "areal/conversation/list" => {
                             server_reads.set(server_reads.get() + 1);
+                            if server_hold.get() {
+                                server_entered.notify_one();
+                                server_released.notified().await;
+                            }
                             let mut items = vec![json!({"id":"first","createdAt":1,"updatedAt":1,"desktop":{"archived":false}})];
                             if server_added.get() { items.push(json!({"id":"second","createdAt":2,"updatedAt":2,"desktop":{"archived":false}})); }
+                            if server_invalid.get() { items.push(items[0].clone()); }
                             json!({"data":items,"nextCursor":null})
                         },
                         "areal/work/overview" => json!({"data":[],"nextCursor":null}),
@@ -469,16 +570,67 @@ mod tests {
             });
             let close = host.schedules.connections.connect_test_core(host.clone(), "project", service).await.unwrap();
             let (mut original, first) = Subscription::open(&host, "first-browser").await.unwrap();
-            assert_eq!(first["snapshot"]["projects"][0]["summaries"]["items"].as_array().unwrap().len(), 1);
+            assert_ne!(first["snapshot"]["projects"][0]["summaries"]["state"], "fresh");
+            assert_eq!(reads.get(), 0, "the first snapshot does not wait for a Core directory");
+            host.read_models.hydrate(&host).await.unwrap();
+            let updated = original.refresh(&host).await.unwrap().unwrap();
+            assert_eq!(updated["delta"]["projects"]["upsert"][0]["summaries"]["state"], "fresh");
+            assert_eq!(updated["delta"]["projects"]["upsert"][0]["summaries"]["items"].as_array().unwrap().len(), 1);
             assert!(original.refresh(&host).await.unwrap().is_none());
             assert_eq!(reads.get(), 1, "unchanged subscriptions reuse their observation");
             added.set(true);
-            let (_, reopened) = Subscription::open(&host, "second-browser").await.unwrap();
-            assert_eq!(reopened["snapshot"]["projects"][0]["summaries"]["items"].as_array().unwrap().len(), 2);
-            assert_eq!(reads.get(), 2);
+            hold.set(true);
+            let (mut second, reopened) = Subscription::open(&host, "second-browser").await.unwrap();
+            assert_eq!(reopened["snapshot"]["projects"][0]["summaries"]["state"], "cached");
+            assert_eq!(reopened["snapshot"]["projects"][0]["summaries"]["items"].as_array().unwrap().len(), 1);
+            let reading = host.clone();
+            let hydration = tokio::task::spawn_local(async move {reading.read_models.hydrate(&reading).await.unwrap();});
+            entered.notified().await;
+            let (mut third, immediate) = tokio::time::timeout(Duration::from_millis(100),
+                Subscription::open(&host, "third-browser")).await.expect("a blocked Core read must not delay another subscriber").unwrap();
+            assert_eq!(immediate["snapshot"]["projects"][0]["summaries"]["state"], "cached");
+            assert_eq!(immediate["snapshot"]["projects"][0]["summaries"]["items"].as_array().unwrap().len(), 1);
+            hold.set(false);
+            released.notify_one();
+            hydration.await.unwrap();
+            assert!(third.refresh(&host).await.unwrap().is_none(), "an earlier subscription epoch cannot publish a fresh result");
+            host.read_models.hydrate(&host).await.unwrap();
+            let updated = second.refresh(&host).await.unwrap().unwrap();
+            assert_eq!(updated["delta"]["projects"]["upsert"][0]["summaries"]["state"], "fresh");
+            assert_eq!(updated["delta"]["projects"]["upsert"][0]["summaries"]["items"].as_array().unwrap().len(), 2);
+            assert_eq!(reads.get(), 3);
+            let latest = third.refresh(&host).await.unwrap().unwrap();
+            assert_eq!(latest["delta"]["projects"]["upsert"][0]["summaries"]["state"], "fresh");
+            assert_eq!(latest["delta"]["projects"]["upsert"][0]["summaries"]["items"].as_array().unwrap().len(), 2);
+            invalid.set(true);
+            let (mut fourth, cached) = Subscription::open(&host, "fourth-browser").await.unwrap();
+            assert_eq!(cached["snapshot"]["projects"][0]["summaries"]["state"], "cached");
+            host.read_models.hydrate(&host).await.unwrap();
+            assert!(fourth.refresh(&host).await.unwrap().is_none(), "an invalid Core directory must not poison the retained cache");
+            invalid.set(false);
+            host.read_models.hydrate(&host).await.unwrap();
+            assert_eq!(fourth.refresh(&host).await.unwrap().unwrap()["delta"]["projects"]["upsert"][0]["summaries"]["state"], "fresh");
             close();
             server.abort();
         }).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn first_shell_snapshot_does_not_wait_for_a_project_lifecycle_lock() {
+        let root = tempfile::tempdir().unwrap();
+        let host = super::super::schedules::tests::fixture(root.path());
+        let gate = host.slots.borrow()["project"].gate.clone();
+        let _guard = gate.write().await;
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(10),
+            Subscription::open(&host, "window"),
+        )
+        .await;
+        let (_, snapshot) = result
+            .expect("the local shell snapshot must not wait for Core lifecycle readiness")
+            .unwrap();
+        assert_eq!(snapshot["snapshot"]["projects"][0]["projectId"], "project");
+        assert!(!host.bin.exists());
     }
 
     #[tokio::test]
