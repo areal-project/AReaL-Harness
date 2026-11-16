@@ -58,9 +58,16 @@ async function publish(path, value, replace = false) {
   }
 }
 
-/** @param {string} serviceIdentity @param {string[]} roots */
-async function desktopBuildIdentity(serviceIdentity, roots) {
+/** @param {string} serviceIdentity @param {string[]} roots @param {string} [manifest] */
+async function desktopBuildIdentity(serviceIdentity, roots, manifest) {
   const hash = createHash("sha256").update(serviceIdentity);
+  if (manifest) {
+    // 发行资源受应用签名封印；启动只读构建清单，开发源码仍逐文件核对。
+    const value = JSON.parse(await readFile(manifest, "utf8"));
+    if (value?.version !== 1 || !/^[a-f0-9]{64}$/.test(value.identity))
+      throw new Error("应用构建清单无效");
+    return hash.update(value.identity).digest("hex");
+  }
   /** @param {string} directory */
   async function visit(directory) {
     const entries = await readdir(directory, { withFileTypes: true });

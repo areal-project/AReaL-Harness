@@ -739,12 +739,11 @@ class SharedCoreBackend {
         ...options,
         binary: options.binary,
       });
-      const buildIdentity = await desktopBuildIdentity(serviceIdentity, [
-        join(__dirname, ".."),
-        this.app.isPackaged
-          ? join(process.resourcesPath, "areal-gui")
-          : join(__dirname, "../../../renderer/dist"),
-      ]);
+      const buildIdentity = await desktopBuildIdentity(
+        serviceIdentity,
+        [join(__dirname, ".."), join(__dirname, "../../../renderer/dist")],
+        this.app.isPackaged ? join(process.resourcesPath, "desktop-build.json") : undefined,
+      );
       const completeUpgrade = await ensureDesktopHost(source.client, {
         home: options.hostHome,
         binary: options.binary,
