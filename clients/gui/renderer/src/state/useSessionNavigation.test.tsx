@@ -102,6 +102,15 @@ function fixture(
 }
 const owner = { projectId: "saved-project", threadId: "old-thread", connectionGeneration: 0 };
 
+it("opens a fresh draft in a stopped project without an empty Thread target", async () => {
+  const connect = vi.fn(async () => {});
+  const f = fixture(true, connect, false, true);
+  await f.navigation.selectConversation(owner.projectId, "");
+  expect(f.command).toHaveBeenCalledExactlyOnceWith("connect", { projectId: owner.projectId });
+  expect(connect).toHaveBeenCalledTimes(1);
+  expect(f.selectSession).toHaveBeenCalledExactlyOnceWith(null);
+});
+
 it("reads stopped project history without activating its execution", async () => {
   const f = fixture(
     true,
