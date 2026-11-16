@@ -319,5 +319,4 @@ fn manage_operations_that_admit_or_stop_work_need_their_own_capability() {
 #[test]
 fn backend_status_is_not_routed_to_external_clients() {
     assert!(!METHODS.contains(&"backend.ensure") && !METHODS.contains(&"backend.status"));
-    assert!(!CORE_METHODS.contains(&"backend.ensure"));
 }

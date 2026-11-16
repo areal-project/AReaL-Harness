@@ -878,7 +878,6 @@
   },
   "$workbenchRetainedSources": [
     "../../services/workbench/src/backend-main.cjs",
-    "../../services/workbench/src/backend.cjs",
     "../../services/workbench/src/channel.cjs",
     "../../services/workbench/src/desktop/bridge/filetree.js",
     "../../services/workbench/src/desktop/core/analytics.cjs",
@@ -963,13 +962,11 @@
     "../../services/workbench/src/desktop/core/worktree-environment.cjs",
     "../../services/workbench/src/desktop/core/worktree-resources.cjs",
     "../../services/workbench/src/desktop/workspace-files.js",
-    "../../services/workbench/src/domains/analytics.cjs",
     "../../services/workbench/src/domains/feedback-context.cjs",
     "../../services/workbench/src/domains/feedback.cjs",
     "../../services/workbench/src/domains/trajectory-apply.cjs",
     "../../services/workbench/src/domains/trajectory.cjs",
     "../../services/workbench/src/host-library-store.ts",
-    "../../services/workbench/src/main.cjs",
     "../../services/workbench/src/pages.cjs"
   ],
   "workbenchConvergeLines": {

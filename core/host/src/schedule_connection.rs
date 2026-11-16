@@ -522,7 +522,7 @@ fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
     }
     host.gateway
         .workbench
-        .core_event(&connection.project_id, &value);
+        .core_event(&host.home, &connection.project_id, &value);
     if let Some(lease) = connection.workbench_lease.borrow().as_deref() {
         let mut event = value.clone();
         event["sequence"] = json!(sequence);

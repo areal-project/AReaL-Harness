@@ -20,7 +20,7 @@ GUI upgrades await source and safe-project publication before starting the backe
 
 ## Supervision
 
-Host reuses `workbench_route.rs` and `workbench.rs` to supervise analytics and the desktop backend separately:
+Host reuses `workbench_route.rs` and `workbench.rs` to supervise the remaining desktop backend. Analytics belongs directly to Rust Host:
 
 - Authenticated local control methods `backend.ensure` and `backend.status` start/reuse the backend and return Host generation, PID and backend identity, without private connection tokens. Browsers cannot call them.
 - Startup options travel over the private pipe. The child receives a cleared environment with only required variables. The backend retains the user's home and takes data paths from explicit options.
@@ -95,7 +95,7 @@ The decreasing `workbenchConvergeLines` budget covers the library, submission re
 
 Host is the sole writer of `library.json`; navigation changes execute directly in a Host transaction. When the backend changes settings it submits patches through `library.patch` and rereads and recomputes on conflict.
 
-Analytics exposes `analytics.read`, `analytics.sync`, `analytics.activity` and `analytics.import`. Sync reads allowlisted `thread/list` and `thread/read` through Host's shared Core connections. Host forwards turn events without starting the service solely for an event. Clients report activity every five seconds and the service takes the union; legacy Main activity merges by daily maximum. Disabled domains retain their old analytics path.
+Rust Host directly provides `analytics.read`, `analytics.sync`, `analytics.activity` and `analytics.import`, without starting Node or a cold project Core. Sync reads only `thread/list` and `thread/read` through existing shared Core connections, checking the original connection generation. Core events update the projection directly. Activity takes the union of client reports, while legacy Main activity merges by daily maximum. The version 1 `workbench/analytics.json` shape remains unchanged. Unreadable files remain untouched with a visible error; changes flush in batches and when Host stops.
 
 All non-native GUI library operations use `library.command` and query `command.read` with the original `commandId`; missing receipts remain UNKNOWN and are never replayed. Host owns admission and receipts: it executes navigation changes directly and delegates other preferences to existing workbench validation and Host `library.patch` writes. Receipts retain the public navigation projection; preference values come from existing state subscriptions, keeping private configuration out of receipts. New non-native preferences extend this contract and validation without adding client routes. The old whole-library replacement method `library.write` has been removed. `desktop.command` rejects library operations, and Host unavailability never falls back to IPC. Only the computer-control enabled, provider and executable settings retain the Main permission owner.
 
@@ -103,7 +103,7 @@ All non-native GUI library operations use `library.command` and query `command.r
 
 The backend entry point has no Electron dependency. Main provides native capabilities through the existing connection, including system encryption through `encryptionRequest/encryptionResult`. Requests bind to the capability-owning connection, cannot be settled by another client, and fail without replay on disconnect. Existing encrypted file formats remain unchanged; decryption failure must not overwrite old files. Decrypted runtime values stay in memory, never logs, URLs, argv or plaintext files. Real macOS safeStorage and existing ciphertext compatibility require separate local acceptance.
 
-`trajectory.read/command` and `feedback.read/command` reuse the existing backend, require local browser manage authorization and a matching source, and journal writes through Host receipts. Trajectory status does not decrypt credentials; retry and feedback calls retain the backend's HostVault and provider credential environment. Credentials never return to the browser. The analytics service's `vault.read` still rejects every slot and is not the backend credential channel. Receiver authentication and actual feedback submission require separate acceptance. Backend attach and capability leases do not replace native tool acceptance on the desktop.
+`trajectory.read/command` and `feedback.read/command` reuse the existing backend, require local browser manage authorization and a matching source, and journal writes through Host receipts. Trajectory status does not decrypt credentials; retry and feedback calls retain the backend's HostVault and provider credential environment. Credentials never return to the browser. Receiver authentication and actual feedback submission require separate acceptance. Backend attach and capability leases do not replace native tool acceptance on the desktop.
 
 ## Validation boundaries
 

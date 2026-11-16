@@ -53,6 +53,7 @@ pub(crate) fn restart_delay(recent_failures: u32) -> Option<Duration> {
 }
 
 impl Workbench {
+    #[cfg(test)]
     pub(crate) async fn start(
         runtime: &Path,
         runner: &Path,
@@ -459,44 +460,6 @@ readline.createInterface({ input: process.stdin }).on("line", async (line) => {
                     "CAPABILITY_UNAVAILABLE"
                 );
                 workbench.stop().await.unwrap();
-            })
-            .await;
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn starts_the_shipped_service_entry() {
-        let Some(node) = node() else { return };
-        tokio::task::LocalSet::new()
-            .run_until(async {
-                let root = tempfile::tempdir().unwrap();
-                let runner = Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../../services/workbench/src/main.cjs")
-                    .canonicalize()
-                    .unwrap();
-                let reverse: Reverse = Rc::new(|_, _| Box::pin(async { bail!("FORBIDDEN") }));
-                let workbench = Workbench::start(&node, &runner, root.path(), reverse)
-                    .await
-                    .unwrap();
-                assert!(workbench.methods().contains("analytics.read"));
-                let turn = json!({"id":"t1","usage":{"inputTokens":4,"outputTokens":1,"cachedInputTokens":0}});
-                workbench
-                    .notify(
-                        "core.event",
-                        json!({"projectId":"p","method":"turn/completed","params":{"threadId":"a","turn":turn}}),
-                    )
-                    .await;
-                let summary = workbench
-                    .request("analytics.read", json!({}), json!({}))
-                    .await
-                    .unwrap();
-                assert_eq!(summary["tokens"], 5);
-                assert_eq!(summary["undatedTokens"], 0);
-                workbench.stop().await.unwrap();
-                let saved: Value = serde_json::from_slice(
-                    &std::fs::read(root.path().join("analytics.json")).unwrap(),
-                )
-                .unwrap();
-                assert_eq!(saved["turns"]["[\"p\",\"a\",\"t1\"]"]["usage"]["inputTokens"], 4);
             })
             .await;
     }

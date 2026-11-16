@@ -560,46 +560,6 @@ async fn backend_first_exit_recovers_immediately_but_repeated_exits_back_off() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn analytics_first_exit_recovers_immediately_but_repeated_exits_back_off() {
-    tokio::task::LocalSet::new()
-        .run_until(async {
-            let root = tempfile::tempdir().unwrap();
-            let (host, _, _) = resumable_host(&root.path().canonicalize().unwrap());
-            std::fs::write(
-                root.path().join("services/workbench/src/main.cjs"),
-                r#"
-            const out = frame => console.log(JSON.stringify({version:1,...frame}));
-            out({event:'ready',methods:['analytics.read']});
-            require('node:readline').createInterface({input:process.stdin}).on('line', line => {
-                const frame = JSON.parse(line);
-                if (frame.params.crash) process.exit(1);
-                out({id:frame.id,result:{pid:process.pid}});
-            });
-        "#,
-            )
-            .unwrap();
-            let request = |params| {
-                host.gateway
-                    .workbench
-                    .request(&host, "analytics.read", params, json!({}))
-            };
-            let original = request(json!({})).await.unwrap();
-            assert!(request(json!({"crash":true})).await.is_err());
-            let restarted = request(json!({})).await.unwrap();
-            assert_ne!(restarted, original);
-            assert!(request(json!({"crash":true})).await.is_err());
-            assert_eq!(
-                request(json!({})).await.unwrap_err().to_string(),
-                "CAPABILITY_UNAVAILABLE"
-            );
-            tokio::time::sleep(Duration::from_millis(1100)).await;
-            assert!(request(json!({})).await.is_ok());
-            host.gateway.workbench.stop().await;
-        })
-        .await;
-}
-
-#[tokio::test(flavor = "current_thread")]
 async fn backend_business_errors_preserve_only_codes_supported_by_the_host() {
     tokio::task::LocalSet::new().run_until(async {
         let root = tempfile::tempdir().unwrap();
@@ -727,38 +687,28 @@ async fn local_gui_source_worktree_profile_keeps_native_admission_and_identity()
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn reverse_calls_are_read_only_and_scoped_to_registered_projects() {
+async fn reverse_calls_reject_removed_analytics_ports() {
     let root = tempfile::tempdir().unwrap();
     let host = Rc::new(crate::server::schedules::tests::fixture(root.path()));
     let reverse = reverse(&host);
-    let listed = reverse("projects.list".into(), json!({})).await.unwrap();
-    assert_eq!(listed["projects"][0]["projectId"], "project");
-    for (call, params, code) in [
-        ("vault.read", json!({"slot":"x"}), "FORBIDDEN"),
+    for (call, params) in [
+        ("projects.list", json!({})),
         (
             "core.request",
-            json!({"projectId":"project","method":"turn/start","params":{}}),
-            "FORBIDDEN",
+            json!({"projectId":"project","method":"thread/read","params":{}}),
         ),
-        (
-            "core.request",
-            json!({"projectId":"other","method":"thread/read","params":{}}),
-            "NOT_FOUND",
-        ),
-        (
-            "core.request",
-            json!({"projectId":"project","method":"thread/read","extra":1}),
-            "INVALID_PARAMS",
-        ),
+        ("vault.read", json!({"slot":"x"})),
     ] {
-        let error = reverse(call.into(), params).await.unwrap_err();
-        assert_eq!(error.to_string(), code, "{call}");
+        assert_eq!(
+            reverse(call.into(), params).await.unwrap_err().to_string(),
+            "FORBIDDEN"
+        );
     }
 }
 
 #[test]
 fn restarts_back_off_and_stop_after_five_failures() {
-    let supervisor = Supervisor::default();
+    let supervisor = Backend::default();
     assert!(supervisor.admit().is_ok());
     supervisor.failures.borrow_mut().push(Instant::now());
     assert!(supervisor.admit().is_err());

@@ -35,8 +35,6 @@ pub(super) const METHODS: &[&str] = &[
     "pages.resource",
     "desktop.command",
 ];
-/// 服务经 `core.request` 可调用的 Core 方法：只读。
-const CORE_METHODS: &[&str] = &["thread/list", "thread/read"];
 /// manage 里会推动执行的管理写操作。manage 能力只表示“能管理本机后台”，
 /// 不能顺带成为提交、审批或中断的旁路，因此这些操作另需 submit。
 const MANAGE_SUBMIT_OPERATIONS: &[&str] = &[
@@ -65,8 +63,6 @@ pub(super) fn manage_capability(method: &str, params: &Value) -> Option<&'static
         .contains(&operation)
         .then_some("interrupt")
 }
-/// 转给服务的 Core 通知。
-const EVENTS: &[&str] = &["turn/started", "turn/completed", "item/completed"];
 const FAILURE_WINDOW: Duration = Duration::from_secs(600);
 
 // 退出由请求惰性发现，首次退出不能从“现在”开始退避而必然拒绝恢复。
@@ -81,10 +77,7 @@ fn record_exit(failures: &RefCell<Vec<Instant>>) -> bool {
 
 #[derive(Default)]
 pub(super) struct Supervisor {
-    running: RefCell<Option<Rc<Workbench>>>,
-    starting: tokio::sync::Mutex<()>,
-    failures: RefCell<Vec<Instant>>,
-    stopped: Cell<bool>,
+    analytics: Rc<super::analytics::Analytics>,
     /// 桌面后台：界面 Main 原来在进程内启动的 CoreBackend + DesktopService，改由 Host 监督。
     backend: Backend,
     page_events: RefCell<Option<tokio::sync::broadcast::Sender<Value>>>,
@@ -123,7 +116,7 @@ pub(super) struct Ensure {
     environment_credentials: Option<std::collections::BTreeMap<String, String>>,
 }
 
-/// 服务入口与运行时。打包后在已签名应用的 `Resources/areal-workbench`，用应用自带的 Electron。
+/// 剩余桌面后台入口；发行包使用签名资源内的运行时。
 pub(super) struct Entry {
     pub runtime: PathBuf,
     pub runner: PathBuf,
@@ -146,24 +139,6 @@ fn source_entry(bin: &Path, runner: &str) -> Option<Entry> {
         .map(|path| path.join("node"))
         .find_map(|path| path.is_file().then(|| path.canonicalize().ok()).flatten())?;
     Some(Entry { runtime, runner })
-}
-
-pub(super) async fn discover(bin: &Path) -> Result<Entry> {
-    if let Some(entry) = source_entry(bin, "main.cjs") {
-        return Ok(entry);
-    }
-    let bundle = crate::local_relay::discover_bundle(
-        bin,
-        "areal-workbench",
-        "src/main.cjs",
-        &["src/main.cjs", "src/channel.cjs"],
-        "CAPABILITY_UNAVAILABLE",
-    )
-    .await?;
-    Ok(Entry {
-        runtime: bundle.runtime,
-        runner: bundle.runner,
-    })
 }
 
 /// 桌面后台入口：同一个工作台资源包里的 `src/backend-main.cjs`，仍用应用自带的 Electron。
@@ -401,16 +376,11 @@ impl Supervisor {
         self.backend.source.borrow().clone()
     }
     pub(super) fn owns_client_process(&self, pid: u32) -> bool {
-        self.running
+        self.backend
+            .running
             .borrow()
             .as_ref()
             .is_some_and(|child| child.owns_process(pid))
-            || self
-                .backend
-                .running
-                .borrow()
-                .as_ref()
-                .is_some_and(|child| child.owns_process(pid))
     }
     pub(super) fn utility_options(&self, source: &str) -> Result<Value> {
         ensure!(
@@ -688,6 +658,12 @@ impl Supervisor {
         context: Value,
     ) -> Result<Value> {
         ensure!(METHODS.contains(&method), "methodNotFound");
+        if method.starts_with("analytics.") {
+            return self
+                .analytics
+                .request(host, method, &params, &context)
+                .await;
+        }
         if matches!(
             method,
             "library.command"
@@ -716,33 +692,16 @@ impl Supervisor {
             ensure!(!backend.closed(), "CAPABILITY_UNAVAILABLE");
             return backend.request(method, params, context).await;
         }
-        let workbench = self.running(host).await?;
-        workbench.request(method, params, context).await
+        bail!("methodNotFound")
     }
 
-    /// Core 通知只在服务已运行时转发；服务未启动不为此拉起。
-    pub(super) fn core_event(&self, project_id: &str, event: &Value) {
-        if !event["method"]
-            .as_str()
-            .is_some_and(|m| EVENTS.contains(&m))
-        {
-            return;
-        }
-        let Some(workbench) = self.running.borrow().clone() else {
-            return;
-        };
-        let body =
-            json!({"projectId":project_id,"method":event["method"],"params":event["params"]});
-        tokio::task::spawn_local(async move { workbench.notify("core.event", body).await });
+    /// 统计直接观察 Core 事实，不为事件启动工作台。
+    pub(super) fn core_event(&self, home: &Path, project_id: &str, event: &Value) {
+        self.analytics.observe(home, project_id, event);
     }
 
     pub(super) async fn stop(&self) {
-        self.stopped.set(true);
-        let _guard = self.starting.lock().await;
-        let running = self.running.borrow_mut().take();
-        if let Some(workbench) = running {
-            let _ = workbench.stop().await;
-        }
+        self.analytics.flush();
     }
 
     /// 启动或复用桌面后台，返回它的身份（不含票据）。
@@ -867,56 +826,6 @@ impl Supervisor {
                 .await;
         });
     }
-
-    async fn running(&self, host: &Rc<Host>) -> Result<Rc<Workbench>> {
-        let _guard = self.starting.lock().await;
-        ensure!(!self.stopped.get(), "CAPABILITY_UNAVAILABLE");
-        let current = self.running.borrow().clone();
-        let mut first_exit = false;
-        if let Some(workbench) = current {
-            if !workbench.closed() {
-                return Ok(workbench);
-            }
-            workbench.stop().await?;
-            self.running.borrow_mut().take();
-            first_exit = record_exit(&self.failures);
-        }
-        if !first_exit {
-            self.admit()?;
-        }
-        match self.start(host).await {
-            Ok(workbench) => {
-                let workbench = Rc::new(workbench);
-                *self.running.borrow_mut() = Some(workbench.clone());
-                Ok(workbench)
-            }
-            Err(_) => {
-                self.failures.borrow_mut().push(Instant::now());
-                bail!("CAPABILITY_UNAVAILABLE")
-            }
-        }
-    }
-
-    /// 10 分钟内失败 5 次后不再自动重启；之前按 1、2、4… 秒退避，未到时间直接报不可用。
-    fn admit(&self) -> Result<()> {
-        let mut failures = self.failures.borrow_mut();
-        failures.retain(|time| time.elapsed() < FAILURE_WINDOW);
-        let Some(last) = failures.last() else {
-            return Ok(());
-        };
-        ensure!(failures.len() < 5, "CAPABILITY_UNAVAILABLE");
-        let delay = restart_delay((failures.len() as u32).saturating_sub(2))
-            .context("CAPABILITY_UNAVAILABLE")?;
-        ensure!(last.elapsed() >= delay, "CAPABILITY_UNAVAILABLE");
-        Ok(())
-    }
-
-    async fn start(&self, host: &Rc<Host>) -> Result<Workbench> {
-        let entry = discover(&host.bin).await?;
-        let data = host.home.join("workbench");
-        areal_local_service::storage::private_dir(&data)?;
-        Workbench::start(&entry.runtime, &entry.runner, &data, reverse(host)).await
-    }
 }
 
 /// 跨项目写复用 Host journal。受理后没有可证明的结果就保持 UNKNOWN，重复请求只读原回执。
@@ -1040,6 +949,10 @@ pub(super) async fn backend_command(
         && super::task_catalog::mutation(params["operation"].as_str().unwrap_or("")).is_some();
     if !standalone_worktree {
         host.gateway.workbench.restore_source(host)?;
+        ensure!(
+            host.gateway.workbench.active_source().is_some(),
+            "CAPABILITY_UNAVAILABLE"
+        );
         ensure!(
             host.gateway.workbench.backend_has_source(&source),
             "FORBIDDEN"
@@ -1927,22 +1840,10 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
                 "core.request" if params.get("lease").is_some() => {
                     workbench_core_call(&host, &call, &params).await
                 }
-                "projects.list" => Ok(projects(&host)),
-                "core.request" => core_request(&host, &params).await,
                 _ => bail!("FORBIDDEN"),
             }
         })
     })
-}
-
-fn projects(host: &Host) -> Value {
-    let projects: Vec<_> = host
-        .slots
-        .borrow()
-        .values()
-        .map(|slot| json!({"projectId":slot.registration.project_id,"ready":slot.state == "ready"}))
-        .collect();
-    json!({ "projects": projects })
 }
 
 async fn workbench_core_call(host: &Rc<Host>, method: &str, params: &Value) -> Result<Value> {
@@ -1987,33 +1888,6 @@ async fn workbench_core_call(host: &Rc<Host>, method: &str, params: &Value) -> R
             lease,
             params["method"].as_str().context("INVALID_PARAMS")?,
             params["params"].clone(),
-        )
-        .await
-}
-
-async fn core_request(host: &Host, params: &Value) -> Result<Value> {
-    let object = params.as_object().context("INVALID_PARAMS")?;
-    ensure!(
-        object
-            .keys()
-            .all(|key| matches!(key.as_str(), "projectId" | "method" | "params")),
-        "INVALID_PARAMS"
-    );
-    let project = params["projectId"].as_str().context("INVALID_PARAMS")?;
-    let method = params["method"].as_str().context("INVALID_PARAMS")?;
-    ensure!(CORE_METHODS.contains(&method), "FORBIDDEN");
-    let body = params.get("params").cloned().unwrap_or_else(|| json!({}));
-    ensure!(body.is_object(), "INVALID_PARAMS");
-    ensure!(host.slots.borrow().contains_key(project), "NOT_FOUND");
-    let connections = &host.schedules.connections;
-    let (service, generation, connection) = connections.shared_identity(host, project)?;
-    connections
-        .remote_request(
-            host,
-            project,
-            (&service, &generation, &connection),
-            method,
-            body,
         )
         .await
 }

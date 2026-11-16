@@ -121,6 +121,14 @@ try {
     expectedGeneration: ticket.generation,
   });
   assert.ok(hello.writeMethods.includes("project.activate"));
+  const statistics = await rpc("analytics.read", {});
+  assert.equal(statistics.tokens, 0);
+  const imported = await rpc("analytics.import", {
+    state: { version: 1, since: 1, days: { "2026-11-05": 1250.5 }, turns: {}, skills: {} },
+  });
+  assert.equal(imported.activeMs, 1250.5);
+  assert.equal((await host.request("backend.status", {})).owned, false);
+  evidence.reached.push("Host reads and imports analytics over the product socket without Node");
   const activated = await rpc("project.activate", {}, { projectId });
   assert.equal(activated.state, "ready");
   assert.notEqual(activated.serviceGeneration, initial.generation);

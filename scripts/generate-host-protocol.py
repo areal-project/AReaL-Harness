@@ -313,7 +313,9 @@ def current_inventory(root):
     if not private:
         raise ValueError("Workbench private ready declaration moved; update inventory extractor")
     reverse = workbench[
-        workbench.index("pub(super) fn reverse(") : workbench.index("\nfn projects(")
+        workbench.index("pub(super) fn reverse(") : workbench.index(
+            "\nasync fn workbench_core_call("
+        )
     ]
     reverse_methods = set()
     for arm in re.findall(

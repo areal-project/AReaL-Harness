@@ -20,7 +20,7 @@ GUI 升级先等待来源和安全项目发布，再启动后台；原生凭据�
 
 ## 进程监督
 
-Host 复用 `workbench_route.rs` 与 `workbench.rs` 的监督机制，分别监督统计服务与桌面后台：
+Host 复用 `workbench_route.rs` 与 `workbench.rs` 的监督机制，承接尚未迁完的桌面后台；使用统计已由 Rust Host 直接持有：
 
 - 本机认证控制方法 `backend.ensure` 启动或复用后台，`backend.status` 返回 Host 代次、PID 与后台身份，不返回私有连接令牌。浏览器不能调用这两个控制方法。
 - 启动参数经私有管道传入；子进程清空环境后仅保留运行所需变量。后台使用原用户 home，数据目录以显式 options 为准。
@@ -95,7 +95,7 @@ CLI 打开带环境脚本的 Worktree 时，通过 `worktree open --agent id@rev
 
 Host 是 `library.json` 的唯一写者，导航整理直接在 Host 事务中执行；后台需要改设置时经 `library.patch` 提交补丁，冲突后重读重算。
 
-统计方法为 `analytics.read`、`analytics.sync`、`analytics.activity`、`analytics.import`。同步通过 Host 的共享 Core 连接白名单读取 `thread/list` 与 `thread/read`；Host 转发轮次事件但不为事件单独启动服务。客户端每 5 秒上报活跃状态，服务取并集；Main 旧活跃时间按天取较大值合并。未启用领域时保留旧统计路径。
+统计方法为 `analytics.read`、`analytics.sync`、`analytics.activity`、`analytics.import`，由 Rust Host 直接提供，不启动 Node 或冷项目 Core。同步只经现有共享 Core 连接读取 `thread/list` 与 `thread/read`，并核对原连接代际；事件直接更新统计投影。客户端活跃时间取并集，旧 Main 活跃时间按天取较大值合并；沿用 `workbench/analytics.json` 的 version 1 结构。无法读取的原文件保持只读并显示错误，后台批量落盘及 Host 停止时刷新。
 
 GUI 非原生资料库操作统一调用 `library.command`，保留原 `commandId` 经 `command.read` 核对结果；缺少回执保持 UNKNOWN，不重发。Host 拥有准入和回执：导航整理直接执行，其他偏好交给工作台保留原有校验，再经 Host `library.patch` 写入。回执沿用公开导航投影，偏好值从现有状态订阅读取，不把私有配置写入回执。新增非原生偏好只扩展该契约与现有校验，不新增客户端路由。旧的整份资料库替换接口 `library.write` 已移除。`desktop.command` 不接受资料库操作，Host 不可用时不回退 IPC。只有电脑控制的 enabled、provider、executable 三项设置保留 Main 权限所有者。
 
@@ -103,7 +103,7 @@ GUI 非原生资料库操作统一调用 `library.command`，保留原 `commandI
 
 后台入口不依赖 Electron。Main 经原有连接提供原生能力，系统加密通过 `encryptionRequest/encryptionResult` 回调；请求绑定持有能力的连接，其他客户端不能结算，断开后请求失败且不重放。原加密文件格式不变，解密失败不能覆盖旧文件。运行所需的解密值只在内存使用，不写入日志、URL、argv 或明文文件。真实 macOS safeStorage 与既有密文兼容需要独立的本机验收。
 
-`trajectory.read/command` 与 `feedback.read/command` 复用后台原实现，要求本机浏览器 manage 授权与来源匹配，写入沿用 Host 回执。轨迹状态不解密凭据，重试与反馈调用沿用后台的 HostVault 和供应商凭据环境；凭据不返回网页。统计服务的 `vault.read` 当前仍拒绝所有 slot，不能把它当作后台凭据通道。接收端鉴权和实际反馈提交仍需独立验收。后台 attach 与工具能力登记不能替代原生工具的真实桌面验收。
+`trajectory.read/command` 与 `feedback.read/command` 复用后台原实现，要求本机浏览器 manage 授权与来源匹配，写入沿用 Host 回执。轨迹状态不解密凭据，重试与反馈调用沿用后台的 HostVault 和供应商凭据环境；凭据不返回网页。接收端鉴权和实际反馈提交仍需独立验收。后台 attach 与工具能力登记不能替代原生工具的真实桌面验收。
 
 ## 验证边界
 

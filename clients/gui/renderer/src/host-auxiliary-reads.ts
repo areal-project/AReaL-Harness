@@ -53,6 +53,7 @@ export function refreshModelCatalogs(
   const connection = client.snapshot();
   if (connection.connection !== "ready") return;
   for (const project of projects) {
+    // 过渡：到 0.1.21 删；旧 GUI 来源退役后移除未发布项目的目录例外。
     if (project.state === "legacyPending") continue;
     const scope = JSON.stringify([connection.identity.connectionId, project.serviceGeneration]);
     const identity = `${scope}#${stale.epoch}#${String(project.modelCatalogRevision ?? "")}`;

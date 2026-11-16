@@ -10,6 +10,8 @@ mod space_import;
 #[path = "vault_liveness_tests.rs"]
 mod vault_liveness_tests;
 pub(crate) use gateway_owner::error_code;
+#[path = "analytics.rs"]
+mod analytics;
 #[path = "idle.rs"]
 mod idle;
 #[path = "library_commands.rs"]

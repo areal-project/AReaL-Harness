@@ -16722,8 +16722,8 @@
       "properties": {
         "state": {
           "x-opaque": true,
-          "x-source": "services/workbench/src/domains/analytics.cjs",
-          "description": "The desktop's legacy analytics.json shape (version 1); the workbench service validates every entry."
+          "x-source": "core/host/src/analytics.rs",
+          "description": "The desktop's legacy analytics.json shape (version 1); Host validates every entry."
         }
       },
       "required": [
@@ -43177,52 +43177,6 @@
             "params"
           ],
           "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "projectId": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            },
-            "method": {
-              "type": "string",
-              "const": "thread/list"
-            },
-            "params": {
-              "$ref": "urn:areal:core-protocol:v1#/requests/thread~1list"
-            }
-          },
-          "required": [
-            "projectId",
-            "method",
-            "params"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "projectId": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            },
-            "method": {
-              "type": "string",
-              "const": "thread/read"
-            },
-            "params": {
-              "$ref": "urn:areal:core-protocol:v1#/requests/thread~1read"
-            }
-          },
-          "required": [
-            "projectId",
-            "method",
-            "params"
-          ],
-          "additionalProperties": false
         }
       ]
     },
@@ -46960,68 +46914,6 @@
         "version",
         "id",
         "method",
-        "params"
-      ],
-      "additionalProperties": false
-    },
-    "WorkbenchPrivateProjectsListParams": {
-      "$ref": "#/$defs/EmptyParams"
-    },
-    "WorkbenchPrivateProjectsListResult": {
-      "type": "object",
-      "properties": {
-        "projects": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "projectId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
-              },
-              "ready": {
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "projectId",
-              "ready"
-            ],
-            "additionalProperties": false
-          },
-          "maxItems": 65536
-        }
-      },
-      "required": [
-        "projects"
-      ],
-      "additionalProperties": false
-    },
-    "WorkbenchPrivateProjectsListRequest": {
-      "type": "object",
-      "properties": {
-        "version": {
-          "type": "integer",
-          "const": 1
-        },
-        "id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 512
-        },
-        "call": {
-          "type": "string",
-          "const": "projects.list"
-        },
-        "params": {
-          "$ref": "#/$defs/WorkbenchPrivateProjectsListParams"
-        }
-      },
-      "required": [
-        "version",
-        "id",
-        "call",
         "params"
       ],
       "additionalProperties": false
@@ -67140,13 +67032,6 @@
           "direction": "hostToWorkbench",
           "x-owner": "workbench",
           "source": "services/workbench/src/backend-main.cjs"
-        },
-        "projects.list": {
-          "request": "#/$defs/WorkbenchPrivateProjectsListRequest",
-          "result": "#/$defs/WorkbenchPrivateProjectsListResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
         },
         "recovery.inspect": {
           "request": "#/$defs/WorkbenchPrivateRecoveryInspectRequest",
