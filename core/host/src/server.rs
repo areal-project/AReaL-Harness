@@ -114,7 +114,7 @@ struct Slot {
     imported_credentials: BTreeSet<String>,
 }
 struct Host {
-    clients: RefCell<BTreeSet<String>>,
+    clients: RefCell<BTreeMap<String, Option<u32>>>,
     home: PathBuf,
     bin: PathBuf,
     identity: HostIdentity,
@@ -487,8 +487,9 @@ async fn write_local_frame(
 }
 
 async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
+    let credentials = stream.peer_cred()?;
     ensure!(
-        stream.peer_cred()?.uid() == unsafe { libc::geteuid() },
+        credentials.uid() == unsafe { libc::geteuid() },
         "unauthorized peer"
     );
     let socket = std::os::fd::AsRawFd::as_raw_fd(&stream);
@@ -527,7 +528,10 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
         id: uuid::Uuid::new_v4().to_string(),
         socket,
     };
-    host.clients.borrow_mut().insert(connection.id.clone());
+    host.clients.borrow_mut().insert(
+        connection.id.clone(),
+        credentials.pid().and_then(|pid| u32::try_from(pid).ok()),
+    );
     let mut subscription: Option<(String, u64)> = None;
     let mut changes = host.changes.subscribe();
     let mut tick = tokio::time::interval(Duration::from_secs(1));

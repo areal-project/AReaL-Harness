@@ -399,6 +399,18 @@ impl Supervisor {
     pub(super) fn active_source(&self) -> Option<String> {
         self.backend.source.borrow().clone()
     }
+    pub(super) fn owns_client_process(&self, pid: u32) -> bool {
+        self.running
+            .borrow()
+            .as_ref()
+            .is_some_and(|child| child.owns_process(pid))
+            || self
+                .backend
+                .running
+                .borrow()
+                .as_ref()
+                .is_some_and(|child| child.owns_process(pid))
+    }
     pub(super) fn utility_options(&self, source: &str) -> Result<Value> {
         ensure!(
             self.backend.source.borrow().as_deref() == Some(source),

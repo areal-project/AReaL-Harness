@@ -37,6 +37,7 @@ fn reverse_error(error: &anyhow::Error) -> Value {
 }
 
 pub(crate) struct Workbench {
+    pid: Option<u32>,
     child: tokio::sync::Mutex<TrustedChild>,
     methods: BTreeSet<String>,
     pending: Pending,
@@ -148,6 +149,7 @@ impl Workbench {
             child.stdin.take().context("workbench stdin missing")?,
         )));
         let workbench = Self {
+            pid: child.id(),
             child: tokio::sync::Mutex::new(child),
             methods,
             pending: pending.clone(),
@@ -225,6 +227,10 @@ impl Workbench {
 
     pub(crate) fn closed(&self) -> bool {
         self.closed.get()
+    }
+
+    pub(crate) fn owns_process(&self, pid: u32) -> bool {
+        !self.closed() && self.pid == Some(pid)
     }
 
     pub(crate) async fn wait_closed(&self) {

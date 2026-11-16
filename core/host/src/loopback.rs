@@ -521,7 +521,9 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
             .iter()
             .any(|capability| capability == "persistedHistoryV1");
     let connection_id = uuid::Uuid::new_v4().to_string();
-    host.clients.borrow_mut().insert(connection_id.clone());
+    host.clients
+        .borrow_mut()
+        .insert(connection_id.clone(), None);
     let _pages = PageConnection {
         host: host.clone(),
         connection: connection_id.clone(),

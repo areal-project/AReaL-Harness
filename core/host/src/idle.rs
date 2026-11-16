@@ -17,6 +17,13 @@ struct ReleasePolicy {
 }
 
 impl Host {
+    pub(super) fn has_external_clients(&self) -> bool {
+        // 工作台是 Host 自己的子进程；只认启动时登记的 PID，不信任客户端声明的角色。
+        self.clients
+            .borrow()
+            .values()
+            .any(|pid| pid.is_none_or(|pid| !self.gateway.workbench.owns_client_process(pid)))
+    }
     pub(super) fn retain_for_gui(&self) -> Result<()> {
         let path = self.home.join("host/release.json");
         if storage::read_optional::<ReleasePolicy>(&path)?
@@ -72,7 +79,7 @@ async fn try_release(host: &Rc<Host>) -> Result<()> {
     let Some(mut policy) = storage::read_optional::<ReleasePolicy>(&path)? else {
         return Ok(());
     };
-    if policy.generation != host.identity.generation || !host.clients.borrow().is_empty() {
+    if policy.generation != host.identity.generation || host.has_external_clients() {
         return Ok(());
     }
     if let Some(receipt) = host.reconcile(&policy.stop_request_id).await? {
@@ -125,7 +132,7 @@ async fn try_release(host: &Rc<Host>) -> Result<()> {
                 }
             )
         })
-        || !host.clients.borrow().is_empty()
+        || host.has_external_clients()
     {
         return Ok(());
     }
@@ -392,7 +399,9 @@ mod tests {
         let host = Rc::new(schedules::tests::fixture(root.path()));
         host.slots.borrow_mut().clear();
         host.dispatch("host.release", json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":host.identity.generation})).await.unwrap();
-        host.clients.borrow_mut().insert("other-client".into());
+        host.clients
+            .borrow_mut()
+            .insert("other-client".into(), None);
         try_release(&host).await.unwrap();
         assert!(host.stop.borrow().is_none());
         host.clients.borrow_mut().remove("other-client");

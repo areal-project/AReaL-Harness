@@ -1,6 +1,63 @@
 use super::*;
 
 #[tokio::test(flavor = "current_thread")]
+async fn supervised_workbench_connection_is_not_an_external_client() {
+    tokio::task::LocalSet::new().run_until(async {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let (host, input, _) = resumable_host(&root);
+        let socket = root.join("host-client.sock");
+        let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+        let accepting = host.clone();
+        let server = tokio::task::spawn_local(async move {
+            loop {
+                let (stream, _) = listener.accept().await.unwrap();
+                let host = accepting.clone();
+                tokio::task::spawn_local(async move { let _ = crate::server::connection_loop(host, stream).await; });
+            }
+        });
+        storage_write_fixture(&root, &host, &socket);
+        let backend = host.gateway.workbench.ensure_backend(&host, input).await.unwrap();
+        let pid = backend["pid"].as_u64().unwrap() as u32;
+        assert!(host.clients.borrow().values().any(|value| *value == Some(pid)));
+        assert!(!host.has_external_clients(), "Host-owned Node must not veto release");
+        let mut external = tokio::net::UnixStream::connect(&socket).await.unwrap();
+        crate::wire::write(&mut external, &json!({"version":1,"id":"external","method":"hello","params":{"protocolVersions":[1],"capabilities":[],"authToken":host.token}})).await.unwrap();
+        let mut external = tokio::io::BufReader::new(external);
+        crate::wire::read(&mut external).await.unwrap().unwrap();
+        assert!(host.has_external_clients(), "an authenticated external client still retains Host");
+        drop(external);
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while host.has_external_clients() { tokio::task::yield_now().await; }
+        }).await.unwrap();
+        host.gateway.workbench.stop_backend().await;
+        server.abort();
+    }).await;
+}
+
+fn storage_write_fixture(root: &Path, host: &Host, socket: &Path) {
+    let runner = root.join("services/workbench/src/backend-main.cjs");
+    areal_local_service::storage::write(
+        &runner.with_extension("json"),
+        &json!({"socket":socket,"token":host.token}),
+    )
+    .unwrap();
+    std::fs::write(runner, r#"
+const config = require('./backend-main.json');
+const out = frame => console.log(JSON.stringify({version:1,...frame}));
+let connection;
+require('node:readline').createInterface({input:process.stdin}).on('line', line => {
+  const frame = JSON.parse(line);
+  if (frame.method !== 'backend.start') return;
+  connection = require('node:net').createConnection(config.socket, () => {
+    connection.write(JSON.stringify({version:1,id:'owned',method:'hello',params:{protocolVersions:[1],capabilities:[],authToken:config.token}})+'\n');
+  });
+  connection.once('data', () => out({event:'ready',methods:[],service:{pid:process.pid,identity:String(process.pid)}}));
+}).on('close', () => connection?.end());
+"#).unwrap();
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn task_rejection_is_recovered_for_original_workbench_command() {
     use futures_util::{SinkExt, StreamExt};
     use tokio_tungstenite::tungstenite::Message;
