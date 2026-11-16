@@ -56,16 +56,17 @@ impl Host {
 /// 客户端退出只登记回收意图；最后一个认证客户端断开且后台无需求后才停止共享 Host。
 pub(super) async fn release_unused(host: Rc<Host>) {
     let mut changes = host.changes.subscribe();
-    let mut reported = false;
+    let mut reported = String::new();
     loop {
-        match try_release(&host).await {
-            Err(error) => {
-                if !reported {
-                    eprintln!("Unused Host release deferred: {error}");
-                }
-                reported = true;
+        let reason = match try_release(&host).await {
+            Err(error) => format!("error: {error}"),
+            Ok(reason) => reason.into(),
+        };
+        if reason != reported {
+            if reason != "unarmed" {
+                eprintln!("Host release: {reason}");
             }
-            Ok(()) => reported = false,
+            reported = reason;
         }
         tokio::select! {
             _ = changes.changed() => {},
@@ -74,21 +75,21 @@ pub(super) async fn release_unused(host: Rc<Host>) {
     }
 }
 
-async fn try_release(host: &Rc<Host>) -> Result<()> {
+async fn try_release(host: &Rc<Host>) -> Result<&'static str> {
     let path = host.home.join("host/release.json");
     let Some(mut policy) = storage::read_optional::<ReleasePolicy>(&path)? else {
-        return Ok(());
+        return Ok("unarmed");
     };
     if policy.generation != host.identity.generation || host.has_external_clients() {
-        return Ok(());
+        return Ok("externalClients");
     }
     if let Some(receipt) = host.reconcile(&policy.stop_request_id).await? {
         if receipt["state"] == "completed" {
             host.exit.notify_one();
-            return Ok(());
+            return Ok("stopped");
         }
         if !settled_refusal(&receipt) {
-            return Ok(());
+            return Ok("originalStopPending");
         }
         policy.stop_request_id = uuid::Uuid::new_v4().to_string();
         storage::write(&path, &policy)?;
@@ -98,13 +99,13 @@ async fn try_release(host: &Rc<Host>) -> Result<()> {
         || host.gateway.pending.get() != 0
         || !host.gateway.peers.borrow().is_empty()
     {
-        return Ok(());
+        return Ok("backgroundConnectionOrService");
     }
     if host.remote.native_owner()?.is_some() {
         let remote = host.remote.snapshot(&host.migration)?;
         if remote["config"]["enabled"] == true || remote["config"]["relayLocal"]["enabled"] == true
         {
-            return Ok(());
+            return Ok("remoteEnabled");
         }
     }
     host.migration.vault.idle()?;
@@ -118,7 +119,7 @@ async fn try_release(host: &Rc<Host>) -> Result<()> {
         if dependencies["clients"].as_u64() != Some(0)
             || dependencies["inflight"].as_u64() != Some(0)
         {
-            return Ok(());
+            return Ok("workbenchClientsOrWrites");
         }
     }
     let activity = host.activity().await;
@@ -134,20 +135,20 @@ async fn try_release(host: &Rc<Host>) -> Result<()> {
         })
         || host.has_external_clients()
     {
-        return Ok(());
+        return Ok("activityUnknownOrBusy");
     }
     let registrations = host.registrations();
     for registration in registrations {
         if !host.schedules.suppressed(&registration.project_id)
             && schedules::enabled_catalog(&host.bin, &registration).await?
         {
-            return Ok(());
+            return Ok("enabledSchedule");
         }
     }
     if storage::read_optional::<ReleasePolicy>(&path)?
         .is_none_or(|current| current.stop_request_id != policy.stop_request_id)
     {
-        return Ok(());
+        return Ok("policyWithdrawn");
     }
     let receipt = host
         .stop_host(Stop {
@@ -162,7 +163,7 @@ async fn try_release(host: &Rc<Host>) -> Result<()> {
     if receipt["state"] == "completed" {
         host.exit.notify_one();
     }
-    Ok(())
+    Ok("stopDispatched")
 }
 
 const TTL: Duration = Duration::from_secs(15 * 60);

@@ -2462,13 +2462,16 @@ impl Host {
         let ids: Vec<_> = self.slots.borrow().keys().cloned().collect();
         let mut guards = Vec::new();
         for id in &ids {
+            eprintln!("Host stop preparation: acquiring project gate {id}");
             guards.push(self.gate(id)?.write_owned().await);
         }
+        eprintln!("Host stop preparation: project gates acquired");
         for id in &ids {
             self.check_pending(id, &input.request_id).await?;
         }
         let mut services = Vec::new();
         for id in ids {
+            eprintln!("Host stop preparation: reading service {id}");
             let instance = Self::service_id(&self.slots.borrow()[&id].registration);
             let service = match areal_local_service::status(&self.home, &instance).await {
                 Ok(service) => Some(service),
@@ -2476,6 +2479,7 @@ impl Host {
                     &storage::registry(&self.home, &instance)?.join("service.json"),
                 )?,
             };
+            eprintln!("Host stop preparation: service read {id}");
             if let Some(service) = service {
                 if service.state != State::Stopped || self.cleanup_proof(&service).await.is_err() {
                     receipt["projects"].as_array_mut().unwrap().push(json!({"projectId":id,"serviceId":instance,"serviceGeneration":service.identity.generation,"requestId":uuid::Uuid::new_v4().to_string(),"dispatch":"notStarted"}));
