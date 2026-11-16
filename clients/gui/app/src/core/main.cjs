@@ -1549,6 +1549,18 @@ function startDesktop() {
                   computerAdmissionSuspended = false;
                 }
               }
+              if (name === "providers" && params.operation === "revealKey") {
+                const value = await require("../ipc/generated/provider-key.cjs").revealProviderKey(
+                  {
+                    home: cfg.serviceOptions(app).hostHome,
+                    binary: cfg.serviceOptions(app).binary,
+                    profile: app.getPath("userData"),
+                    trusted: () => trusted(event),
+                  },
+                  params,
+                );
+                return { ok: true, value };
+              }
               // 非原生资料库写入只允许 Host 的带回执入口，不能从 IPC 绕过准入。
               if (name === "library")
                 throw Object.assign(new Error("资料库操作请通过 Host 提交"), {

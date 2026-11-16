@@ -5,6 +5,56 @@ use areal_config::models::{ModelConfigurationUpdate, ProviderConfig};
 use areal_local_service::storage;
 use serde_json::{Value, json};
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct RevealKey {
+    profile: std::path::PathBuf,
+    expected_generation: String,
+    id: String,
+    expected_revision: String,
+}
+
+/// 仅本机认证连接可显式查看一个供应商的密钥，秘密不进入命令 journal。
+pub(super) async fn reveal_key(host: &Host, input: RevealKey) -> Result<Value> {
+    host.generation(&input.expected_generation)?;
+    ensure!(
+        input.profile.is_absolute() && !input.id.is_empty() && input.id.len() <= 128,
+        "INVALID_PARAMS"
+    );
+    let profile = storage::canonical_pending(&input.profile)?;
+    let source = host
+        .migration
+        .navigation_source_id(&profile)?
+        .context("GUI_SOURCE_PENDING")?;
+    host.gateway.workbench.restore_source(host)?;
+    let options = host.gateway.workbench.utility_options(&source)?;
+    import_saved_configuration(host, &source, &options)?;
+    let current = super::workbench_utility::models_catalog(host, &source, &options)?;
+    ensure!(
+        current["revision"] == input.expected_revision,
+        "TARGET_CHANGED"
+    );
+    let provider = current["data"]
+        .as_array()
+        .context("RESOURCE_UNAVAILABLE")?
+        .iter()
+        .find(|value| value["id"] == input.id)
+        .context("RESOURCE_UNAVAILABLE")?;
+    let key = super::provider_probe::saved_key(host, &source, provider, true).await?;
+    ensure!(!key.is_empty(), "RESOURCE_UNAVAILABLE");
+    ensure!(
+        host.migration.navigation_source_id(&profile)?.as_deref() == Some(&source),
+        "TARGET_CHANGED"
+    );
+    let latest_options = host.gateway.workbench.utility_options(&source)?;
+    let latest = super::workbench_utility::models_catalog(host, &source, &latest_options)?;
+    ensure!(
+        latest["revision"] == input.expected_revision,
+        "TARGET_CHANGED"
+    );
+    Ok(json!({"apiKey":key}))
+}
+
 pub(super) fn import_saved_configuration(host: &Host, source: &str, options: &Value) -> Result<()> {
     let metadata = host.migration.source_credential_metadata(source)?;
     // 过渡：到 0.1.21 删；旧桌面配置完成停机导入后移除此来源读取。

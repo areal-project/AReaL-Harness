@@ -27,7 +27,9 @@ WS 只接受 `/host/socket`，拒绝 query，精确校验 Host authority 与单�
 
 `gui-read-v1` 提供 `shell.subscribe`、`shell.unsubscribe`、`session.open`、`session.watch`、`session.history`、`subscription.close` 和 `artifact.read`。`session.watch` 与 `session.open` 参数和结果相同，但不替换当前选中会话，用于侧边聊天这类同时显示的会话，每个连接最多 4 个，事件、历史和关闭都按 subscriptionId 区分。项目条目的 `taskRevision` 在该项目每次任务更新时变化，客户端据此重读任务目录而不轮询；`modelCatalogRevision` 在模型目录变化时更新，客户端据此重读 `project.models`；导航条目的可选 `providerRevision` 在供应商配置、凭据诊断或在线 Core 应用证明变化时更新，客户端据此重读 `providers.read`，无需设置页轮询；`settings` 是资料库里除导航排序、代理和工作树之外的应用偏好。清单为快照加递增序号增量，使用 Host 的 canonical projectId；首包只读取 Host 本地登记和导航缓存，不等待项目生命周期锁或在线 Core；新订阅在后台重新核验在线目录，核验前保持 cached/unknown，核验后通过原增量协议发布 fresh，避免沿用其他连接创建会话前的缓存。已停止项目只读现有导航缓存，不启动 Core。导航限定在已提交来源，过滤凭据和业务配置。会话以 `{threadId,view:"conversation"}` 打开，context 绑定项目；保留 Core 原生快照、归档与继承来源，不转换为旧 Remote 摘要。历史按 own、inherited、reference 分页，默认及最大 128 KiB。媒体绑定当前订阅与 Core generation，经 Core 校验所属 Thread 后按块读取，最多 16 MiB。连接就绪与数据新鲜分开表示；序号缺口或失效要求重新打开订阅，不重放写操作。
 
-Remote 的新读方法和原生会话格式只在 hello 协商 `gui-read-v1` 后提供，仍受现有设备项目授权约束；旧方法表仍为 24 项。共享客户端通过 Noise 或本机 WS 使用同一读模型。具体消息、字段与边界见 `schemas/areal-host-protocol-v1.json`。
+`providers.revealKey` 仅供本机认证 Unix 连接显式查看单个供应商的 API Key。Main 绑定可信桌面 profile，传入供应商 ID、配置 revision 和 Host generation；Host 解析已提交来源，读取前后核对配置 revision。该接口不走 journal，不向网页或远程公布，也不启动 Node 或 Core。
+
+Remote 的新读方法和原生会话格式只在 hello 协商 `gui-read-v1` 后提供，仍受现有设备项目授权约束；基础方法表为 25 项（含 `project.activate`）。共享客户端通过 Noise 或本机 WS 使用同一读模型。具体消息、字段与边界见 `schemas/areal-host-protocol-v1.json`。
 
 本机 WebSocket 协商 `persistedHistoryV1` 后，可对已登记且未运行的项目调用 `session.openPersisted`。Host 核对旧服务身份并取得启动、服务和 Store 锁，生成有大小上限的固定只读快照，不启动 Core 或 Runtime；响应标记 `access.readOnly` 和快照摘要，不改变项目状态或旧回执。历史分页及内容寻址附件绑定该订阅；不支持的继承视图和缺失资源明确返回错误。连接关闭、订阅关闭或项目归属改变后快照失效。此能力不授予发送、任务控制或项目接管权限。
 

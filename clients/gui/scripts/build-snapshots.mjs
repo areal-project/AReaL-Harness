@@ -27,7 +27,11 @@ results.push(
   await build({
     metafile: true,
     absWorkingDir: gui,
-    entryPoints: ["app/src/ipc/host-ticket.ts", "app/src/ipc/window-close.ts"],
+    entryPoints: [
+      "app/src/ipc/host-ticket.ts",
+      "app/src/ipc/window-close.ts",
+      "app/src/ipc/provider-key.ts",
+    ],
     outdir: "app/src/ipc/generated",
     outExtension: { ".js": ".cjs" },
     bundle: true,

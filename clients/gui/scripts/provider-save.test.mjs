@@ -184,48 +184,13 @@ function fixture({
   };
 }
 
-test("explicit key reveal is revision-bound and never writes or publishes a secret", async () => {
-  const f = fixture({ busy: true });
-  f.service.config.value.data[0].apiKeyEnv = "AREAL_CREDENTIAL_fixture";
-  f.service.config.key = (item) => {
-    assert.equal(item.id, "demo");
-    return "synthetic-reveal-key";
-  };
-  assert.deepEqual(
-    await f.service.command({ operation: "revealKey", id: "demo", expectedRevision: "old" }),
-    { apiKey: "synthetic-reveal-key" },
-  );
-  assert.equal(JSON.stringify(f.service.public()).includes("synthetic-reveal-key"), false);
-  assert.deepEqual(f.calls, []);
-  await assert.rejects(
-    f.service.command({ operation: "revealKey", id: "demo", expectedRevision: "stale" }),
-  );
-  await assert.rejects(
-    f.service.command({ operation: "revealKey", id: "missing", expectedRevision: "old" }),
-  );
-  await assert.rejects(
-    f.service.command({
-      operation: "revealKey",
-      id: "demo",
-      expectedRevision: "old",
-      reference: "OTHER_SECRET",
-    }),
-  );
-});
-
-test("key reveal returns a safe failure for missing or locked credentials", async () => {
+test("retired Node provider entry cannot reveal stored keys", async () => {
   const f = fixture();
-  const request = { operation: "revealKey", id: "demo", expectedRevision: "old" };
-  await assert.rejects(f.service.command(request));
-  f.service.config.value.data[0].apiKeyEnv = "AREAL_CREDENTIAL_fixture";
-  f.service.config.key = () => {
-    throw new Error("untrusted-synthetic-secret");
-  };
+  f.service.config.current = () => assert.fail("retired entry must not read credentials");
   await assert.rejects(
-    f.service.command(request),
-    (error) => !String(error.stack).includes("untrusted-synthetic-secret"),
+    f.service.command({ operation: "revealKey", id: "demo", expectedRevision: "old" }),
+    { code: "CAPABILITY_UNAVAILABLE" },
   );
-  assert.deepEqual(f.calls, []);
 });
 
 // Host 投影会按目录契约校验 Core 回执，夹具给出完整的目录行。

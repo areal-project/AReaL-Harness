@@ -65931,6 +65931,95 @@
           "reason": "explicitlyStopped"
         }
       ]
+    },
+    "LocalProviderRevealKeyParams": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "expectedRevision": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "profile",
+        "expectedGeneration",
+        "id",
+        "expectedRevision"
+      ],
+      "additionalProperties": false
+    },
+    "LocalProviderRevealKeyRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "providers.revealKey"
+        },
+        "params": {
+          "$ref": "#/$defs/LocalProviderRevealKeyParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "version": 1,
+          "id": "example",
+          "method": "providers.revealKey",
+          "params": {
+            "profile": "/isolated/gui",
+            "expectedGeneration": "example",
+            "id": "provider",
+            "expectedRevision": "example"
+          }
+        }
+      ]
+    },
+    "LocalProviderRevealKeyResult": {
+      "type": "object",
+      "properties": {
+        "apiKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16384,
+          "x-sensitive": true
+        }
+      },
+      "required": [
+        "apiKey"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "apiKey": "synthetic-example-only"
+        }
+      ]
     }
   },
   "x-current": {
@@ -66233,6 +66322,11 @@
           "request": "#/$defs/LocalHostReleaseRequest",
           "result": "#/$defs/LocalHostReleaseResult",
           "source": "core/host/src/idle.rs"
+        },
+        "providers.revealKey": {
+          "request": "#/$defs/LocalProviderRevealKeyRequest",
+          "result": "#/$defs/LocalProviderRevealKeyResult",
+          "source": "core/host/src/provider_config.rs"
         }
       },
       "framing": {

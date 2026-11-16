@@ -35,6 +35,14 @@ fn snapshot(host: &Host, source: &str) -> Result<Value> {
     super::workbench_utility::models_catalog(host, source, &options)
 }
 async fn key(host: &Host, source: &str, provider: &Value) -> Result<String> {
+    saved_key(host, source, provider, false).await
+}
+pub(super) async fn saved_key(
+    host: &Host,
+    source: &str,
+    provider: &Value,
+    interaction_allowed: bool,
+) -> Result<String> {
     let Some(reference) = provider["apiKeyEnv"].as_str() else {
         return Ok(String::new());
     };
@@ -43,7 +51,7 @@ async fn key(host: &Host, source: &str, provider: &Value) -> Result<String> {
         return Err(failure("供应商凭据不可用，请检查配置。"));
     }
     if references.contains(reference) {
-        let value=host.migration.vault.dispatch_async("vault.read",json!({"slot":{"kind":"providerCredential","sourceId":source,"reference":reference},"interactionAllowed":false}),&host.identity.generation,&host.migration).await
+        let value=host.migration.vault.dispatch_async("vault.read",json!({"slot":{"kind":"providerCredential","sourceId":source,"reference":reference},"interactionAllowed":interaction_allowed}),&host.identity.generation,&host.migration).await
             .map_err(|_|failure("无法读取供应商凭据，请解锁安全存储后重试。"))?;
         return credential(
             value["value"]

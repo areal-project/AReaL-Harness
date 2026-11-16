@@ -1021,6 +1021,19 @@ async fn provider_configuration_writes_do_not_start_node_and_preserve_original_r
             "kind":"providerCredential","sourceId":source,"reference":references.first().unwrap()},"interactionAllowed":false}),
             &host.identity.generation,&host.migration).await.unwrap();
         assert_eq!(key["value"],"synthetic-native-provider-secret");
+        let reveal = json!({"profile":input.profile,"expectedGeneration":host.identity.generation,
+            "id":"fixture","expectedRevision":keyed["receipt"]["revision"]});
+        assert_eq!(host.dispatch("providers.revealKey",reveal.clone()).await.unwrap()["apiKey"],
+            "synthetic-native-provider-secret");
+        let mut stale_reveal = reveal.clone();
+        stale_reveal["expectedRevision"] = initial["revision"].clone();
+        assert_eq!(host.dispatch("providers.revealKey",stale_reveal).await.unwrap_err().to_string(),"TARGET_CHANGED");
+        let mut other_profile = reveal.clone();
+        other_profile["profile"] = json!(root.join("other-profile"));
+        assert_eq!(host.dispatch("providers.revealKey",other_profile).await.unwrap_err().to_string(),"GUI_SOURCE_PENDING");
+        let mut wrong_generation = reveal;
+        wrong_generation["expectedGeneration"] = json!("stale");
+        assert!(host.dispatch("providers.revealKey",wrong_generation).await.is_err());
         let mut conflict = with_key.clone();
         conflict["params"]["apiKey"] = json!("changed-secret");
         assert_eq!(backend_command(&host,"web:fixture",&conflict).await.unwrap_err().to_string(),"COMMAND_CONFLICT");

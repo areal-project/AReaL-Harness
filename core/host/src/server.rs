@@ -1423,6 +1423,9 @@ impl Host {
     }
     async fn dispatch(&self, method: &str, params: Value) -> Result<Value> {
         match method {
+            "providers.revealKey" => {
+                provider_config::reveal_key(self, serde_json::from_value(params)?).await
+            }
             "recovery.importProvider" => self.import_provider(serde_json::from_value(params)?),
             "recovery.history" => {
                 crate::space::history::for_host(&self.home, serde_json::from_value(params)?).await

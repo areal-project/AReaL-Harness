@@ -339,6 +339,7 @@ export function openingAuthorization(run: Run, open: (url: string) => Promise<vo
  */
 export function desktopKeepsCommand(name: string, params: Record<string, unknown>) {
   const operation = String(params.operation ?? "");
+  if (name === "providers") return operation === "revealKey";
   if (name === "library")
     return (
       operation === "settings" &&

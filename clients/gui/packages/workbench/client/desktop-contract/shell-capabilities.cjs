@@ -71,6 +71,7 @@ const mainCommands = {
  * @type {Record<string, Capability>}
  */
 const desktopOperations = {
+  "providers.revealKey": { kind: "shell", reason: "用户显式查看本机安全存储里的单个供应商密钥" },
   "manage.pluginArchivePick": { kind: "shell", reason: "系统文件选择框选插件包" },
   "manage.pluginArchiveImport": { kind: "shell", reason: "导入刚在系统文件框里选中的插件包" },
   "manage.process*": { kind: "shell", reason: "本机终端进程绑定桌面窗口持有的终端会话" },

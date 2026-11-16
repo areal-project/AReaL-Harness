@@ -1170,19 +1170,6 @@ class AppProviders {
       return this.public(snapshot);
     }
     if (this.backend.providerUpdating) throw new Error("模型配置正在保存，请稍后重试");
-    if (request.operation === "revealKey") {
-      await this.config.current();
-      if (request.expectedRevision !== this.value.revision)
-        throw new Error("供应商配置已变化，请刷新后重新查看 API Key");
-      const provider = this.value.data.find((item) => item.id === request.id);
-      if (!provider?.apiKeyEnv) throw new Error("尚未配置可用的 API Key");
-      try {
-        const apiKey = await this.config.reveal(provider);
-        return { apiKey };
-      } catch {
-        throw new Error("无法显示 API Key，请解锁系统安全存储后重试。");
-      }
-    }
     // 配置写入只经公共 Host providers.command 准入，私有桌面路径不再持有写入权。
     throw Object.assign(new Error("模型配置请通过 Host 保存或应用"), {
       code: "CAPABILITY_UNAVAILABLE",
