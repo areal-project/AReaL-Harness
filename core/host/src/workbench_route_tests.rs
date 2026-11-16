@@ -942,3 +942,123 @@ async fn native_provider_import_preserves_conflicting_current_configuration() {
         assert!(host.gateway.workbench.backend.running.borrow().is_none());
     }).await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn provider_configuration_writes_do_not_start_node_and_preserve_original_receipts() {
+    tokio::task::LocalSet::new().run_until(async {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let (mut host, input, source) = resumable_host(&root);
+        Rc::get_mut(&mut Rc::get_mut(&mut host).unwrap().migration).unwrap().vault = crate::vault::Vault::isolated_files(&host.home);
+        host.slots.borrow_mut().get_mut("project").unwrap().registration.source =
+            crate::ProjectSource::Gui { profile: input.profile.clone(), legacy_project_id: "logical".into() };
+        storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();
+        storage::write(&launch_record(&host), &input).unwrap();
+        std::fs::write(root.join("services/workbench/src/backend-main.cjs"), "throw new Error('provider writes must not launch Node');").unwrap();
+        std::fs::create_dir(root.join(".areal")).unwrap();
+        std::fs::write(root.join(".areal/config.toml"), "schema_version=1\n[model]\nprovider='fixture'\nname='fixture'\n[model.providers.fixture]\nendpoint='https://example.invalid/custom/'\nprotocol='responses'\napi_key_env='CLI_FIXTURE_KEY'\nmodels=[{id='fixture'}]\n").unwrap();
+        let list = json!({"method":"providers.read","params":{"sourceId":source,"operation":"list"}});
+        let initial = backend_read(&host,"web:fixture",&list).await.unwrap();
+        let command = uuid::Uuid::new_v4().to_string();
+        let save = json!({"method":"providers.command","commandId":command,"params":{"sourceId":source,
+            "operation":"save","expectedRevision":initial["revision"],
+            "provider":{"id":"fixture","name":" Renamed ","baseUrl":"https://example.invalid/custom/","protocol":"responses",
+                "models":[{"id":" fixture ","enabled":true}],"enabled":true}}});
+        // 模型配置保存不应被其他项目的执行状态或生命周期锁阻塞。
+        let gate = host.slots.borrow()["project"].gate.clone();
+        let _busy = gate.write().await;
+        let saved = backend_command(&host,"web:fixture",&save).await.unwrap();
+        assert_eq!(saved["submissionUnknown"],false);
+        assert_eq!(saved["receipt"]["data"][0]["name"],"Renamed");
+        assert_ne!(saved["receipt"]["revision"],initial["revision"]);
+        assert_eq!(backend_command(&host,"web:fixture",&save).await.unwrap(),saved);
+        let current = backend_read(&host,"web:fixture",&list).await.unwrap();
+        assert_eq!(current["data"][0]["baseUrl"],"https://example.invalid/custom/");
+        assert_eq!(current["data"][0]["apiKeyEnv"],"CLI_FIXTURE_KEY");
+        let mut missing_key = save.clone();
+        missing_key["commandId"] = json!(uuid::Uuid::new_v4().to_string());
+        missing_key["params"]["expectedRevision"] = current["revision"].clone();
+        missing_key["params"]["provider"].as_object_mut().unwrap().remove("id");
+        missing_key["params"]["authentication"] = json!("apiKey");
+        assert_eq!(backend_command(&host,"web:fixture",&missing_key).await.unwrap_err().to_string(),"PROVIDER_CREDENTIAL_REQUIRED");
+        assert!(host.migration.vault.provider_references(&source).unwrap().is_empty());
+        let mut stale = save.clone();
+        stale["commandId"] = json!(uuid::Uuid::new_v4().to_string());
+        assert_eq!(backend_command(&host,"web:fixture",&stale).await.unwrap_err().to_string(),"TARGET_CHANGED");
+        assert_eq!(backend_receipt(&host,"web:fixture",stale["commandId"].as_str().unwrap()).unwrap_err().to_string(),"TARGET_CHANGED");
+        let select = json!({"method":"providers.command","commandId":uuid::Uuid::new_v4().to_string(),
+            "params":{"sourceId":source,"operation":"default","expectedRevision":current["revision"],
+                "model":{"providerId":"fixture","modelId":"fixture"}}});
+        let selected = backend_command(&host,"web:fixture",&select).await.unwrap();
+        assert_eq!(selected["receipt"]["defaultModel"],json!({"providerId":"fixture","modelId":"fixture"}));
+        let mut with_key = save.clone();
+        with_key["commandId"] = json!(uuid::Uuid::new_v4().to_string());
+        with_key["params"]["expectedRevision"] = selected["receipt"]["revision"].clone();
+        with_key["params"]["authentication"] = json!("apiKey");
+        with_key["params"]["apiKey"] = json!("synthetic-native-provider-secret");
+        let keyed = backend_command(&host,"web:fixture",&with_key).await.unwrap();
+        assert_eq!(backend_command(&host,"web:fixture",&with_key).await.unwrap(),keyed);
+        assert!(!keyed.to_string().contains("synthetic-native-provider-secret"));
+        assert!(!std::fs::read_to_string(root.join(".areal/config.toml")).unwrap().contains("synthetic-native-provider-secret"));
+        let references = host.migration.vault.provider_references(&source).unwrap();
+        assert_eq!(references.len(),1);
+        let key = host.migration.vault.dispatch_async("vault.read", json!({"slot":{
+            "kind":"providerCredential","sourceId":source,"reference":references.first().unwrap()},"interactionAllowed":false}),
+            &host.identity.generation,&host.migration).await.unwrap();
+        assert_eq!(key["value"],"synthetic-native-provider-secret");
+        let mut conflict = with_key.clone();
+        conflict["params"]["apiKey"] = json!("changed-secret");
+        assert_eq!(backend_command(&host,"web:fixture",&conflict).await.unwrap_err().to_string(),"COMMAND_CONFLICT");
+        let journal = host.journal.native_snapshot(&format!("workbench-{}",storage::digest(b"web:fixture"))).unwrap().1;
+        assert!(!journal.to_string().contains("synthetic-native-provider-secret"));
+        let remove = json!({"method":"providers.command","commandId":uuid::Uuid::new_v4().to_string(),
+            "params":{"sourceId":source,"operation":"remove","expectedRevision":keyed["receipt"]["revision"],"id":"fixture"}});
+        let removed = backend_command(&host,"web:fixture",&remove).await.unwrap();
+        assert!(removed["receipt"]["data"].as_array().unwrap().is_empty());
+        assert!(removed["receipt"]["defaultModel"].is_null());
+        assert!(host.gateway.workbench.backend.running.borrow().is_none());
+        assert!(host.journal.native_snapshot(&format!("workbench-{}",storage::digest(b"web:fixture"))).unwrap().1["pending"].as_array().unwrap().is_empty());
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn cold_provider_write_rejects_core_wakeup_during_vault_storage_before_config_mutation() {
+    tokio::task::LocalSet::new().run_until(async {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let (mut host, input, source) = resumable_host(&root);
+        let blocked = std::sync::Arc::new(tokio::sync::Notify::new());
+        let signal = blocked.clone();
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let released = std::sync::Mutex::new(released);
+        let mut vault = crate::vault::Vault::isolated_files(&host.home);
+        vault.before_write = Some(std::sync::Arc::new(move || {
+            signal.notify_one();
+            let _ = released.lock().unwrap().recv();
+        }));
+        Rc::get_mut(&mut Rc::get_mut(&mut host).unwrap().migration).unwrap().vault = vault;
+        host.slots.borrow_mut().get_mut("project").unwrap().registration.source =
+            crate::ProjectSource::Gui { profile: input.profile.clone(), legacy_project_id: "logical".into() };
+        storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();
+        storage::write(&launch_record(&host), &input).unwrap();
+        std::fs::create_dir(root.join(".areal")).unwrap();
+        let config = root.join(".areal/config.toml");
+        std::fs::write(&config,"schema_version=1\n[model]\nprovider='fixture'\nname='fixture'\n[model.providers.fixture]\nendpoint='https://example.invalid/v1/responses'\nprotocol='responses'\nmodels=[{id='fixture'}]\n").unwrap();
+        let initial = backend_read(&host,"web:fixture",&json!({"method":"providers.read","params":{"sourceId":source,"operation":"list"}})).await.unwrap();
+        let before = std::fs::read(&config).unwrap();
+        let command = uuid::Uuid::new_v4().to_string();
+        let request = json!({"method":"providers.command","commandId":command,"params":{"sourceId":source,
+            "operation":"save","expectedRevision":initial["revision"],"authentication":"apiKey","apiKey":"synthetic-racing-secret",
+            "provider":{"id":"fixture","name":"Changed","baseUrl":"https://example.invalid/v1","protocol":"responses","models":[{"id":"fixture"}]}}});
+        let writing = { let host = host.clone(); tokio::task::spawn_local(async move {
+            backend_command(&host,"web:fixture",&request).await
+        }) };
+        tokio::time::timeout(Duration::from_secs(5),blocked.notified()).await.unwrap();
+        host.slots.borrow_mut().get_mut("project").unwrap().state = "starting".into();
+        release.send(()).unwrap();
+        assert_eq!(writing.await.unwrap().unwrap_err().to_string(),"TARGET_CHANGED");
+        assert_eq!(std::fs::read(&config).unwrap(),before);
+        assert_eq!(backend_receipt(&host,"web:fixture",&command).unwrap_err().to_string(),"TARGET_CHANGED");
+        assert!(host.gateway.workbench.backend.running.borrow().is_none());
+    }).await;
+}

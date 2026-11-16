@@ -934,11 +934,17 @@ pub(super) async fn backend_command(
             "FORBIDDEN"
         );
     }
-    if !standalone_worktree && !native_task {
+    let native_provider = method == "providers.command"
+        && host
+            .gateway
+            .workbench
+            .providers
+            .cold_write(host, &source, &params)?;
+    if !standalone_worktree && !native_task && !native_provider {
         host.gateway.workbench.resume_backend(host).await?;
     }
     let backend = host.gateway.workbench.backend.running.borrow().clone();
-    if !standalone_worktree && !native_task {
+    if !standalone_worktree && !native_task && !native_provider {
         ensure!(
             backend.as_ref().is_some_and(|b| !b.closed()),
             "CAPABILITY_UNAVAILABLE"
@@ -979,6 +985,12 @@ pub(super) async fn backend_command(
         super::library_service::command(host, &source, payload).await
     } else if method == "worktree.command" {
         super::worktree_catalog::command(host, &source, payload).await
+    } else if native_provider {
+        host.gateway
+            .workbench
+            .providers
+            .write(host, &source, &command, &payload)
+            .await
     } else if native_task {
         payload["sourceId"] = json!(source);
         super::task_catalog::command(host, &payload).await

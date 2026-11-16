@@ -14,6 +14,7 @@ use std::{
 pub(super) struct Providers {
     checked: RefCell<Option<Checked>>,
     checking: Cell<bool>,
+    writing: tokio::sync::Mutex<()>,
 }
 struct Checked {
     stamp: Value,
@@ -98,6 +99,9 @@ fn targets(host: &Host, source: &str) -> Result<Vec<Target>> {
     }
     Ok(targets.into_values().collect())
 }
+pub(super) fn cold_targets(host: &Host, source: &str) -> Result<bool> {
+    Ok(targets(host, source)?.iter().all(|target| !target.running))
+}
 fn stamp(host: &Host, source: &str, snapshot: &Value, targets: &[Target]) -> Result<Value> {
     Ok(
         json!({"source":source,"catalog":snapshot,"credentials":host.migration.vault.provider_stamp(source)?,
@@ -106,7 +110,7 @@ fn stamp(host: &Host, source: &str, snapshot: &Value, targets: &[Target]) -> Res
             host.schedules.connections.model_catalog_revision(host, &target.id).ok()])).collect::<Vec<_>>()}),
     )
 }
-fn base_url(endpoint: &str) -> String {
+pub(super) fn base_url(endpoint: &str) -> String {
     let value = endpoint.strip_suffix('/').unwrap_or(endpoint);
     value
         .strip_suffix("/responses")
@@ -162,6 +166,20 @@ fn credentials_ready(proof: &Value, snapshot: &Value) -> bool {
         })
 }
 impl Providers {
+    pub(super) fn cold_write(&self, host: &Host, source: &str, request: &Value) -> Result<bool> {
+        Ok(super::provider_config::native_write(request) && cold_targets(host, source)?)
+    }
+    pub(super) async fn write(
+        self: &Rc<Self>,
+        host: &Rc<Host>,
+        source: &str,
+        command: &str,
+        request: &Value,
+    ) -> Result<Value> {
+        let _guard = self.writing.lock().await;
+        super::provider_config::write(host, source, command, request).await?;
+        self.read(host, source)
+    }
     pub(super) fn revision(&self, host: &Host, source: &str) -> Result<String> {
         let options = host.gateway.workbench.utility_options(source)?;
         let catalog = workbench_utility::models_catalog(host, source, &options)?;

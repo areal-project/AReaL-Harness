@@ -83,3 +83,215 @@ pub(super) fn import_saved_configuration(host: &Host, source: &str, options: &Va
     host.changed();
     Ok(())
 }
+
+/// 配置写入只依赖 Host 的来源与规范配置，不等待任何项目进入空闲。
+pub(super) fn native_write(request: &Value) -> bool {
+    match request["operation"].as_str() {
+        Some("remove" | "default") => true,
+        Some("save") => {
+            request["discoverModels"] != true
+                || request["provider"]["id"].is_string()
+                || request["provider"]["models"]
+                    .as_array()
+                    .is_some_and(|models| !models.is_empty())
+        }
+        _ => false,
+    }
+}
+
+fn endpoint(base: &str, protocol: &str) -> Result<String> {
+    let mut url = url::Url::parse(base).map_err(|_| anyhow::anyhow!("INVALID_PARAMS"))?;
+    ensure!(
+        matches!(url.scheme(), "http" | "https")
+            && url.host_str().is_some()
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.query().is_none()
+            && url.fragment().is_none(),
+        "INVALID_PARAMS"
+    );
+    let path = url.path().trim_end_matches('/');
+    let path = path
+        .strip_suffix("/responses")
+        .or_else(|| path.strip_suffix("/chat/completions"))
+        .unwrap_or(path)
+        .to_owned();
+    url.set_path(&path);
+    Ok(format!(
+        "{}{}",
+        url.as_str().trim_end_matches('/'),
+        if protocol == "responses" {
+            "/responses"
+        } else {
+            "/chat/completions"
+        }
+    ))
+}
+
+pub(super) async fn write(
+    host: &std::rc::Rc<Host>,
+    source: &str,
+    command: &str,
+    request: &Value,
+) -> Result<()> {
+    ensure!(native_write(request), "INVALID_PARAMS");
+    let options = host.gateway.workbench.utility_options(source)?;
+    import_saved_configuration(host, source, &options)?;
+    let current = workbench_utility::models_catalog(host, source, &options)?;
+    ensure!(
+        request["expectedRevision"] == current["revision"],
+        "TARGET_CHANGED"
+    );
+    let mut data: Vec<ProviderConfig> = serde_json::from_value(current["data"].clone())?;
+    let mut default_model: Option<areal_config::models::ModelRef> =
+        serde_json::from_value(current["defaultModel"].clone())?;
+    let mut credential = None;
+    match request["operation"].as_str() {
+        Some("default") => {
+            default_model =
+                serde_json::from_value(request["model"].clone()).context("INVALID_PARAMS")?
+        }
+        Some("remove") => {
+            let id = request["id"].as_str().context("INVALID_PARAMS")?;
+            ensure!(
+                data.iter().any(|provider| provider.id == id),
+                "TARGET_CHANGED"
+            );
+            data.retain(|provider| provider.id != id);
+            if default_model
+                .as_ref()
+                .is_some_and(|model: &areal_config::models::ModelRef| model.provider_id == id)
+            {
+                default_model = None;
+            }
+        }
+        Some("save") => {
+            let raw = &request["provider"];
+            let previous = raw["id"]
+                .as_str()
+                .map(|id| {
+                    data.iter()
+                        .find(|provider| provider.id == id)
+                        .cloned()
+                        .context("TARGET_CHANGED")
+                })
+                .transpose()?;
+            let protocol = match raw["protocol"].as_str() {
+                Some("responses") => "responses",
+                Some("chatCompletions") => "chat-completions",
+                _ => anyhow::bail!("INVALID_PARAMS"),
+            };
+            let base = raw["baseUrl"].as_str().context("INVALID_PARAMS")?;
+            let endpoint = if let Some(previous) = &previous
+                && super::provider_catalog::base_url(&previous.endpoint) == base
+                && serde_json::to_value(previous.protocol)? == protocol
+            {
+                previous.endpoint.clone()
+            } else {
+                endpoint(base, protocol)?
+            };
+            let mut models = raw["models"].as_array().context("INVALID_PARAMS")?.clone();
+            for model in &mut models {
+                model["id"] = json!(model["id"].as_str().context("INVALID_PARAMS")?.trim());
+                if let Some(name) = model["displayName"].as_str() {
+                    let name = name.trim().to_owned();
+                    if name.is_empty() {
+                        model.as_object_mut().unwrap().remove("displayName");
+                    } else {
+                        model["displayName"] = json!(name);
+                    }
+                }
+            }
+            let mut reference = previous
+                .as_ref()
+                .and_then(|provider| provider.api_key_env.clone());
+            if request["authentication"] == "none" {
+                reference = None;
+            } else if let Some(key) = request.get("apiKey") {
+                let key = key.as_str().context("INVALID_PARAMS")?;
+                ensure!(
+                    key.len() <= 16384 && key.bytes().all(|byte| (0x20..=0x7e).contains(&byte)),
+                    "INVALID_PARAMS"
+                );
+                let key = key.trim();
+                if !key.is_empty() {
+                    let name = format!("AREAL_CREDENTIAL_{}", command.replace('-', ""));
+                    credential = Some((name.clone(), key.to_owned()));
+                    reference = Some(name);
+                } else if request["authentication"] != "apiKey" {
+                    reference = None;
+                }
+            }
+            ensure!(
+                request["authentication"] != "apiKey" || reference.is_some(),
+                "PROVIDER_CREDENTIAL_REQUIRED"
+            );
+            let mut provider = json!({"id":previous.as_ref().map(|value|value.id.clone()).unwrap_or_else(||format!("app_{}", command.replace('-', ""))),
+                "name":raw["name"].as_str().context("INVALID_PARAMS")?.trim(),
+                "endpoint":endpoint,"protocol":protocol,"enabled":raw["enabled"] != false,"models":models,
+                "parameters":raw.get("parameters").cloned().unwrap_or_else(||json!({}))});
+            if let Some(reference) = reference {
+                provider["apiKeyEnv"] = json!(reference);
+            }
+            let provider: ProviderConfig =
+                serde_json::from_value(provider).context("INVALID_PARAMS")?;
+            if let Some(previous) = previous {
+                *data
+                    .iter_mut()
+                    .find(|provider| provider.id == previous.id)
+                    .unwrap() = provider;
+            } else {
+                data.push(provider);
+            }
+        }
+        _ => anyhow::bail!("INVALID_PARAMS"),
+    }
+    if let Some((reference, key)) = credential {
+        let receipt = host.migration.vault.dispatch_async("vault.replace", json!({
+            "requestId":command,"expectedGeneration":host.identity.generation,"expectedRevision":0,
+            "slot":{"kind":"providerCredential","sourceId":source,"reference":reference},"value":key,
+        }), &host.identity.generation, &host.migration).await?;
+        ensure!(receipt["state"] == "completed", "SUBMISSION_UNKNOWN");
+    }
+    host.admission()?;
+    ensure!(
+        host.gateway.workbench.backend_has_source(source),
+        "FORBIDDEN"
+    );
+    ensure!(
+        super::provider_catalog::cold_targets(host, source)?,
+        "TARGET_CHANGED"
+    );
+    let mut inputs = workbench_utility::inputs(&options)?;
+    for (name, value) in host.gateway.workbench.environment_credentials(source) {
+        inputs.env.insert(name.into(), value.into());
+    }
+    let references = host
+        .migration
+        .vault
+        .provider_references(source)?
+        .into_iter()
+        .collect::<Vec<_>>();
+    for reference in &references {
+        inputs.env.remove(std::ffi::OsStr::new(reference));
+    }
+    areal_config::models::write(
+        &inputs,
+        ModelConfigurationUpdate {
+            expected_revision: current["revision"]
+                .as_str()
+                .context("INVALID_RESPONSE")?
+                .to_owned(),
+            data,
+            default_model,
+        },
+        &references,
+    )
+    .map_err(|error| match error.kind {
+        areal_config::ConfigErrorKind::Conflict => anyhow::anyhow!("TARGET_CHANGED"),
+        areal_config::ConfigErrorKind::Io => error.into(),
+        _ => anyhow::anyhow!("INVALID_PARAMS"),
+    })?;
+    host.changed();
+    Ok(())
+}

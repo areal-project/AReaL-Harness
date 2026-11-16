@@ -31,7 +31,7 @@ async fn explicit_backend_failure_settles_as_rejection_not_unknown() {
         assert_eq!(snapshot["pending"], json!([]));
         assert_eq!(snapshot["outcomes"][&command]["admissionState"], "rejected");
         let provider_command = uuid::Uuid::new_v4().to_string();
-        let provider = json!({"method":"providers.command","commandId":provider_command,"params":{"sourceId":"fixture","operation":"save","expectedRevision":"initial","authentication":"apiKey","provider":{"name":"fixture","baseUrl":"https://example.invalid","protocol":"responses","models":[]}}});
+        let provider = json!({"method":"providers.command","commandId":provider_command,"params":{"sourceId":"fixture","operation":"saveAndApply","expectedRevision":"initial","authentication":"apiKey","provider":{"name":"fixture","baseUrl":"https://example.invalid","protocol":"responses","models":[]}}});
         assert_eq!(backend_command(&host, "local", &provider).await.unwrap_err().to_string(), "PROVIDER_CREDENTIAL_REQUIRED");
         assert_eq!(backend_receipt(&host, "local", &provider_command).unwrap_err().to_string(), "PROVIDER_CREDENTIAL_REQUIRED");
         let (_, snapshot) = host.journal.native_snapshot(&scope).unwrap();
@@ -134,7 +134,7 @@ async fn lost_provider_reply_keeps_receipt_without_persisting_credentials() {
         *host.gateway.workbench.backend.running.borrow_mut() = Some(Rc::new(backend));
         *host.gateway.workbench.backend.source.borrow_mut() = Some("fixture".into());
         let command = uuid::Uuid::new_v4().to_string();
-        let request = json!({"method":"providers.command","commandId":command,"params":{"sourceId":"fixture","operation":"save","expectedRevision":"initial","apiKey":"synthetic-private-key","provider":{"name":"fixture","baseUrl":"https://example.invalid","protocol":"responses","models":[]}}});
+        let request = json!({"method":"providers.command","commandId":command,"params":{"sourceId":"fixture","operation":"saveAndApply","expectedRevision":"initial","apiKey":"synthetic-private-key","provider":{"name":"fixture","baseUrl":"https://example.invalid","protocol":"responses","models":[]}}});
         let first = backend_command(&host, "local", &request).await.unwrap();
         assert_eq!(first["submissionUnknown"], true);
         assert_eq!(backend_command(&host, "local", &request).await.unwrap(), first);
