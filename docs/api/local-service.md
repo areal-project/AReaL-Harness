@@ -10,7 +10,7 @@ TUI 与 Web 启动入口通过共享 Host 激活项目。普通 `areal service e
 
 ## 公共入口
 
-已登记项目的历史读取使用固定的数据目录，不以供应商配置、密钥或执行部署完整为启动条件。`areal/server/status` 分别返回 `readReady` 与 `executionReady`；执行装配失败时，`configuration.error` 提供诊断，历史与回执仍通过原鉴权入口读取。发送返回 `EXECUTION_CONFIGURATION_UNAVAILABLE`，不发起模型请求。修复配置后沿已有安全重启流程恢复执行；读取成功不结算 UNKNOWN 回执，也不自动重发旧提交。Store 损坏、项目身份或权限错误仍正常失败。
+已登记项目的历史读取使用固定的数据目录，不以供应商配置、密钥或执行部署完整为启动条件。`areal/server/status` 分别返回 `readReady` 与 `executionReady`；执行装配失败时，`configuration.error` 提供诊断，历史与回执仍通过原鉴权入口读取。这类发送返回 `EXECUTION_CONFIGURATION_UNAVAILABLE`，不发起模型请求。单个模型或凭据不可用由具体请求准入拒绝，不关闭配置控制器；`executionReady` 表示执行部署已装配，不保证所选模型可执行。已声明配置管理能力的服务沿原修订和回执热应用修复；只有执行部署未装配的基础读取服务需要沿已有安全重启流程恢复。读取成功不结算 UNKNOWN 回执，也不自动重发旧提交。Store 损坏、项目身份或权限错误仍正常失败。
 
 ```sh
 target/debug/areal service ensure --workspace /absolute/workspace --json

@@ -618,6 +618,8 @@ class CiContracts(unittest.TestCase):
                     for script in item["expectedTests"][platform]
                 ]
             report["results"].append(result)
+        for report in grouped.values():
+            report["evidence"] = preflight.verification_evidence.build(plan, report)
         return plan, list(grouped.values())
 
     def test_shared_fixture_and_error_changes_select_their_contracts(self):
@@ -999,7 +1001,13 @@ class PreflightExecution(unittest.TestCase):
         shutil.copy2(ROOT / "Makefile", self.root / "Makefile")
         (self.root / "clients/gui").mkdir(parents=True)
         (self.root / "scripts").mkdir()
-        for name in ("ci-preflight.py", "check-changed.py", "ci-scope.py"):
+        for name in (
+            "ci-preflight.py",
+            "check-changed.py",
+            "ci-scope.py",
+            "check-journeys.py",
+            "verification-evidence.py",
+        ):
             shutil.copy2(ROOT / "scripts" / name, self.root / "scripts" / name)
         (self.root / "scripts/ci-fingerprint.py").write_text("print('{}')\n")
         self.bin = self.root / "bin"

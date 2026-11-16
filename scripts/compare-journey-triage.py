@@ -1,7 +1,6 @@
 """Compare old manual triage with the registered journey plan for recent commits."""
 
 import argparse
-import fnmatch
 import json
 from pathlib import Path
 import subprocess
@@ -42,14 +41,16 @@ def matching_report(commit, evidence_root):
     """Return a persisted report for a historical commit when one exists."""
     if evidence_root is None or not evidence_root.is_dir():
         return None
+    validator = importlib_load(ROOT / "scripts/verification-evidence.py", "triage_evidence")
     for path in sorted(evidence_root.glob("**/report.json")):
         try:
             report = json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError):
+            if report.get("identity", {}).get("sourceRevision") != commit:
+                continue
+            validator.validate(report, json.loads(path.with_name("plan.json").read_text()))
+        except (OSError, ValueError, KeyError, TypeError):
             continue
-        identity = report.get("identity", {})
-        if commit in {identity.get("sourceRevision"), identity.get("headRevision")}:
-            return report
+        return report
     return None
 
 
@@ -99,13 +100,7 @@ def compare(limit=10, evidence_root=None):
     considered = 0
     for commit, subject in recent_commits(limit * 4):
         paths = changed_paths(commit)
-        affected = [
-            journey["id"]
-            for journey in journey_manifest["journeys"]
-            if any(
-                fnmatch.fnmatchcase(path, pattern) for path in paths for pattern in journey["paths"]
-            )
-        ]
+        affected = scope_spec.journey_registry.affected(paths, journey_manifest)
         if not affected:
             continue
         considered += 1

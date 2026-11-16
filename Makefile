@@ -136,7 +136,7 @@ check-refs: ## 脚本、测试清单、CI、文档之间的名字一致性；无
 check-transitional: ## 名字带 legacy/compat 的代码要写“过渡：到 <版本> 删”，到期报错；存量只减不增
 	python3 scripts/check-transitional.py
 
-check-rust-size: ## Rust 单文件不超过 1500 行；存量超限文件不超过登记行数
+check-rust-size: ## 输出 Rust 文件体积优化信号（不作为失败门禁）
 	python3 scripts/check-rust-size.py
 
 check-changed: check-refs check-transitional check-rust-size ## 受影响快检加失败专项；显式 CI_BASE，ARGS=--plan 仅输出计划

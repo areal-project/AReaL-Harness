@@ -153,9 +153,9 @@ class ChangedChecks(unittest.TestCase):
                     }
                     <= names
                 )
-                self.assertEqual(
-                    {entry["script"] for entry in self.manifest if entry.get("ciSmoke")},
-                    {name.removeprefix("smoke:") for name in names if name.startswith("smoke:")},
+                self.assertTrue(
+                    {entry["script"] for entry in self.manifest if entry.get("ciSmoke")}
+                    <= {name.removeprefix("smoke:") for name in names if name.startswith("smoke:")}
                 )
         self.assertEqual(
             self.plan(["unmapped/new-driver.ts"])["fallbackPaths"], ["unmapped/new-driver.ts"]

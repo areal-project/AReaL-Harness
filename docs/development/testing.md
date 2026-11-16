@@ -106,6 +106,10 @@ GUI 的产物 job 完成必要构建与 RPC 校验后即可发布同一源码的
 
 `scripts/ci-scope.py` 是本地与 CI 共用的检查计划所有者；`check-changed` 解析一次 merge-base，合并暂存、未暂存与未跟踪路径，重命名两侧均纳入，部分暂存相互抵消也保留选检。计划登记命令、依赖、环境能力、平台和 manifest 子测试全集，并绑定 base/source/head 与输入摘要。共享 Rust、schema、锁文件、构建与 CI 变化扩大范围，未知代码保守扩大；比较基准不可用时不得放行。
 
+`clients/gui/scripts/journey-manifest.json` 把共享边界映射到关键旅程：Host/Core 请求准入与传输关联提交和 UNKNOWN 恢复；Host 生命周期关联恢复和显式停止／重开；Core 历史在客户端的投影关联提交后阅读与恢复；Host/工作台的模型配置关联提交旅程。修改这些共享路径会复用现有 smoke job 选入 `test:web-journeys`、`test:service-reopen`、`test:stop-reopen` 等已登记 runner，其余既有 smoke 保留。矩阵从同一计划生成；旅程的 `checks` 必须是准确的计划 ID，例如 `smoke:test:web-journeys`，未登记、重复或无法执行的映射会报错。`python3 scripts/check-journeys.py [路径…]` 校验登记并查看影响范围。
+
+旅程 evidence 由 `verification-evidence.py` 统一生成与校验，preflight、最终 gate 和历史分析复用。`requiredChecks`、`observedChecks`、`missingChecks` 逐 ID 对照；未执行项保持 `pending`，失败、阻塞、取消和输入失效保留其状态与原因。`make verification-evidence REPORT=<report.json>` 同时读取相邻 `plan.json`，核对完整的检查与旅程集合、状态、源码/输入/计划身份、平台及 CI run/attempt，拒绝遗漏或与结果不一致的摘要。历史分析只读取经校验且 `sourceRevision` 相符的报告；旧形状或缺计划的报告不能提供通过证据。旅程通过表示本轮所列 runner 通过；`surfaces` 和 `authorities` 是影响范围，不证明手机、中继、安装包或真机已验收。
+
 `check-changed` 默认运行计划的 `commit` 阶段，加上历史报告中尚未通过的项目及其依赖；`ARGS=--phase=full` 执行完整计划。推送钩子固定选择 `push` 阶段：运行适用的快速结构与静态检查及其构建依赖，完整调度器单测、慢套件和历史失败专项留在默认或完整入口与远端 CI。Clippy 已包含同范围 Rust 类型编译，推送阶段只运行其中的 lint 检查。未选项继续列为 pending，不代表通过。命令读取 `working-tree`，暂存内容影响选检和漂移检测；快检不证明部分暂存内容已执行验收。报告将未选的完整验收列为 `pendingRequired`，其他平台列为 `remoteRequired`。`passed` 只表示本轮所选项通过，`blocked`、`invalidated`、`failed` 均不得作为通过。
 
 失败专项自动读取 `target/ci/{preflight,changed,failures}/*/report.json`。只考虑当前 HEAD 祖先链中、比较基线之后（含当前 HEAD）的报告，按检查 ID 和平台取最近提交的结果，同一提交内按完成时间排序；尚未通过且仍在当前计划中的项目与其依赖进入本轮重验。其他分支和已合入基线的记录不参与，祖先提交晚结束的通过结果不能清除后续提交的失败。报告只提供选检线索，命令始终取自当前计划，旧通过结果不作本轮证据。远端报告需先下载到 `target/ci/failures/<attempt>/report.json`；也可使用 `ARGS='--failure-report /path/to/report.json'` 显式导入，跨分支报告会报错。其他平台的专项保留为远端待验收，本机缺能力的专项明确阻塞。
