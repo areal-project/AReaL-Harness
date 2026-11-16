@@ -1,6 +1,8 @@
 use super::*;
 #[path = "connection_catalog.rs"]
 mod connection_catalog;
+#[path = "model_application.rs"]
+mod model_application;
 #[path = "workbench_core.rs"]
 mod workbench_core;
 #[path = "workbench_frontend.rs"]
@@ -187,11 +189,28 @@ impl Connections {
         let session = sessions.get(id).ok_or_else(unavailable)?;
         ensure!(session.shared_current(host), unavailable());
         Ok(format!(
-            "{}:{}:{}",
+            "{}:{}:{}:{}",
             session.connection_id,
             session.model_revision.get(),
-            session.catalog.published.get()
+            session.catalog.published.get(),
+            session.model_application.revision.get()
         ))
+    }
+    pub(super) fn request_model_application(
+        &self,
+        host: &Host,
+        project: &str,
+        source: &str,
+        command: &str,
+        target: &str,
+    ) -> Result<()> {
+        model_application::intent(host, project, source, command, target)
+    }
+    pub(super) fn model_application(&self, host: &Host, id: &str) -> Result<Value> {
+        let sessions = self.sessions.borrow();
+        let session = sessions.get(id).ok_or_else(unavailable)?;
+        ensure!(session.shared_current(host), unavailable());
+        Ok(session.model_application.read())
     }
     pub(super) fn model_metadata(&self, host: &Host, id: &str) -> Result<Option<Value>> {
         let sessions = self.sessions.borrow();
@@ -584,6 +603,7 @@ struct CoreSession {
     task_revision: Cell<u64>,
     model_revision: Cell<u64>,
     catalog: connection_catalog::Catalog,
+    model_application: model_application::State,
     observed: RefCell<BTreeMap<String, usize>>,
     workbench_observed: RefCell<BTreeMap<String, (String, u64)>>,
     workbench_claim_sequence: Cell<u64>,
@@ -914,6 +934,7 @@ async fn connect_authorized(
         task_revision: Cell::new(0),
         model_revision: Cell::new(0),
         catalog: Default::default(),
+        model_application: Default::default(),
         observed: RefCell::new(BTreeMap::new()),
         workbench_observed: RefCell::new(BTreeMap::new()),
         workbench_claim_sequence: Cell::new(0),
@@ -1492,6 +1513,7 @@ async fn project(host: Rc<Host>, id: String) -> Result<()> {
         host.schedules.connections.changed.notify_waiters();
         host.changed();
         task_connection_ready(&host, &session);
+        let mut application = Box::pin(model_application::run(host.clone(), session.clone()));
         let mut changes = host.changes.subscribe();
         loop {
             if !session.current(&host) {
@@ -1503,6 +1525,7 @@ async fn project(host: Rc<Host>, id: String) -> Result<()> {
                 break;
             }
             tokio::select! {
+                _ = &mut application => return Err(unavailable()),
                 _ = session.refresh.notified() => {},
                 _ = changes.changed() => {},
                 _ = tokio::time::sleep(Duration::from_secs(1)) => {},

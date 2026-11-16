@@ -86,17 +86,18 @@ pub(super) fn import_saved_configuration(host: &Host, source: &str, options: &Va
 
 /// 配置写入只依赖 Host 的来源与规范配置，不等待任何项目进入空闲。
 pub(super) fn native_write(request: &Value) -> bool {
-    match request["operation"].as_str() {
-        Some("remove" | "default") => true,
-        Some("save") => {
-            request["discoverModels"] != true
-                || request["provider"]["id"].is_string()
-                || request["provider"]["models"]
-                    .as_array()
-                    .is_some_and(|models| !models.is_empty())
-        }
-        _ => false,
-    }
+    matches!(
+        request["operation"].as_str(),
+        Some(
+            "save"
+                | "remove"
+                | "default"
+                | "saveAndApply"
+                | "removeAndApply"
+                | "defaultAndApply"
+                | "apply"
+        )
+    )
 }
 
 fn endpoint(base: &str, protocol: &str) -> Result<String> {
@@ -133,7 +134,7 @@ pub(super) async fn write(
     source: &str,
     command: &str,
     request: &Value,
-) -> Result<()> {
+) -> Result<String> {
     ensure!(native_write(request), "INVALID_PARAMS");
     let options = host.gateway.workbench.utility_options(source)?;
     import_saved_configuration(host, source, &options)?;
@@ -142,6 +143,21 @@ pub(super) async fn write(
         request["expectedRevision"] == current["revision"],
         "TARGET_CHANGED"
     );
+    if request["operation"] == "apply" {
+        host.changed();
+        return Ok(current["revision"]
+            .as_str()
+            .context("INVALID_RESPONSE")?
+            .to_owned());
+    }
+    let mut request = request.clone();
+    let auto_discover = request["operation"] == "saveAndApply" || request["discoverModels"] == true;
+    if let Some(operation) = request["operation"]
+        .as_str()
+        .and_then(|op| op.strip_suffix("AndApply"))
+    {
+        request["operation"] = json!(operation.to_owned());
+    }
     let mut data: Vec<ProviderConfig> = serde_json::from_value(current["data"].clone())?;
     let mut default_model: Option<areal_config::models::ModelRef> =
         serde_json::from_value(current["defaultModel"].clone())?;
@@ -226,6 +242,25 @@ pub(super) async fn write(
                 request["authentication"] != "apiKey" || reference.is_some(),
                 "PROVIDER_CREDENTIAL_REQUIRED"
             );
+            if auto_discover && previous.is_none() && raw["enabled"] != false && models.is_empty() {
+                let key = credential.as_ref().map(|(_, key)| key.clone());
+                let discovered = host.gateway.workbench.discover_provider(host,source,json!({"baseUrl":base,
+                    "protocol":raw["protocol"],"credential":match key {Some(key)=>json!({"kind":"draft","value":key}),None=>json!({"kind":"none"})}})).await?;
+                let ids = discovered["models"]
+                    .as_array()
+                    .filter(|ids| !ids.is_empty())
+                    .context("INVALID_RESPONSE")?;
+                for id in ids {
+                    let id = id.as_str().context("INVALID_RESPONSE")?;
+                    let mut model = json!({"id":id,"enabled":true,"parameters":{},"capabilities":{"tools":true,"vision":false,"reasoning":true}});
+                    if let Some(window) =
+                        discovered["modelParameters"][id].get("contextWindowTokens")
+                    {
+                        model["reportedContextWindowTokens"] = window.clone();
+                    }
+                    models.push(model);
+                }
+            }
             let mut provider = json!({"id":previous.as_ref().map(|value|value.id.clone()).unwrap_or_else(||format!("app_{}", command.replace('-', ""))),
                 "name":raw["name"].as_str().context("INVALID_PARAMS")?.trim(),
                 "endpoint":endpoint,"protocol":protocol,"enabled":raw["enabled"] != false,"models":models,
@@ -258,10 +293,6 @@ pub(super) async fn write(
         host.gateway.workbench.backend_has_source(source),
         "FORBIDDEN"
     );
-    ensure!(
-        super::provider_catalog::cold_targets(host, source)?,
-        "TARGET_CHANGED"
-    );
     let mut inputs = workbench_utility::inputs(&options)?;
     for (name, value) in host.gateway.workbench.environment_credentials(source) {
         inputs.env.insert(name.into(), value.into());
@@ -275,7 +306,7 @@ pub(super) async fn write(
     for reference in &references {
         inputs.env.remove(std::ffi::OsStr::new(reference));
     }
-    areal_config::models::write(
+    let written = areal_config::models::write(
         &inputs,
         ModelConfigurationUpdate {
             expected_revision: current["revision"]
@@ -293,5 +324,5 @@ pub(super) async fn write(
         _ => anyhow::anyhow!("INVALID_PARAMS"),
     })?;
     host.changed();
-    Ok(())
+    Ok(written.revision)
 }

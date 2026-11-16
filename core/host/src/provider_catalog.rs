@@ -99,9 +99,6 @@ fn targets(host: &Host, source: &str) -> Result<Vec<Target>> {
     }
     Ok(targets.into_values().collect())
 }
-pub(super) fn cold_targets(host: &Host, source: &str) -> Result<bool> {
-    Ok(targets(host, source)?.iter().all(|target| !target.running))
-}
 fn stamp(host: &Host, source: &str, snapshot: &Value, targets: &[Target]) -> Result<Value> {
     Ok(
         json!({"source":source,"catalog":snapshot,"credentials":host.migration.vault.provider_stamp(source)?,
@@ -166,9 +163,6 @@ fn credentials_ready(proof: &Value, snapshot: &Value) -> bool {
         })
 }
 impl Providers {
-    pub(super) fn cold_write(&self, host: &Host, source: &str, request: &Value) -> Result<bool> {
-        Ok(super::provider_config::native_write(request) && cold_targets(host, source)?)
-    }
     pub(super) async fn write(
         self: &Rc<Self>,
         host: &Rc<Host>,
@@ -177,7 +171,25 @@ impl Providers {
         request: &Value,
     ) -> Result<Value> {
         let _guard = self.writing.lock().await;
-        super::provider_config::write(host, source, command, request).await?;
+        let target = super::provider_config::write(host, source, command, request).await?;
+        if request["operation"] == "apply"
+            || request["operation"]
+                .as_str()
+                .is_some_and(|op| op.ends_with("AndApply"))
+        {
+            for target_project in targets(host, source)?
+                .iter()
+                .filter(|target| !target.id.is_empty())
+            {
+                host.schedules.connections.request_model_application(
+                    host,
+                    &target_project.id,
+                    source,
+                    command,
+                    &target,
+                )?;
+            }
+        }
         self.read(host, source)
     }
     pub(super) fn revision(&self, host: &Host, source: &str) -> Result<String> {
@@ -224,10 +236,15 @@ impl Providers {
             if kind == "deferred" {
                 application["reason"] = json!(if target.identity.is_some() { "busy" } else { "disconnected" });
             }
+            if !applied && let Some(state) = proof.and_then(|proof|proof.get("modelApplication"))
+                && state["revision"] == revision
+                && matches!(state["kind"].as_str(),Some("unknown"|"deferred"|"failed")) {
+                application = state.clone();
+            }
             json!({"projectId":target.alias,"root":target.root,"connected":target.identity.is_some(),
-                "applied":applied,"error":null,"application":application})
+                "applied":applied,"error":application.get("message").cloned().unwrap_or(Value::Null),"application":application})
         }).collect();
-        snapshot["application"] = ["unknown", "deferred"].iter().find_map(|kind| {
+        snapshot["application"] = ["failed", "unknown", "deferred"].iter().find_map(|kind| {
             projects.iter().find(|row| row["application"]["kind"] == *kind)
                 .map(|row| row["application"].clone())
         }).unwrap_or_else(|| json!({"kind":if projects.iter().any(|row| row["applied"] == true) {"applied"} else {"saved"},
@@ -332,7 +349,7 @@ async fn check(
     )
     .await;
     for (id, service, generation, result) in results {
-        if let Ok(Ok(proof)) = result
+        if let Ok(Ok(mut proof)) = result
             && proof["serviceId"] == *service
             && proof["generation"] == *generation
             && serde_json::from_value::<areal_protocol::desktop::AppliedModelConfiguration>(
@@ -343,6 +360,11 @@ async fn check(
                 .is_ok()
             && proof["modelRevision"].is_string()
         {
+            proof["modelApplication"] = host
+                .schedules
+                .connections
+                .model_application(host, &id)
+                .unwrap_or(Value::Null);
             proofs.insert(id, proof);
         }
     }

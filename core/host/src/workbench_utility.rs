@@ -81,7 +81,7 @@ pub(super) async fn execute_with_options(
     let operation = params["operation"].as_str().context("INVALID_PARAMS")?;
     let fields: &[&str] = match operation {
         "modelsCatalog" | "modelsRead" | "configShow" | "feedbackStatus" => &["operation"],
-        "modelsWrite" | "configValidate" | "feedbackSubmit" => &["operation", "document"],
+        "configValidate" | "feedbackSubmit" => &["operation", "document"],
         "pluginSnapshot" => &["operation", "projectId", "pluginId"],
         "pluginDoctor" => &["operation", "projectId"],
         _ => anyhow::bail!("INVALID_PARAMS"),
@@ -104,7 +104,7 @@ pub(super) async fn execute_with_options(
             );
         }
     }
-    if matches!(operation, "modelsRead" | "modelsWrite") {
+    if operation == "modelsRead" {
         super::provider_config::import_saved_configuration(host, source, &options)?;
     }
     let mut inputs = inputs(&options)?;
@@ -118,9 +118,9 @@ pub(super) async fn execute_with_options(
 
     if matches!(
         operation,
-        "modelsRead" | "modelsWrite" | "feedbackStatus" | "feedbackSubmit"
+        "modelsRead" | "feedbackStatus" | "feedbackSubmit"
     ) {
-        if matches!(operation, "modelsRead" | "modelsWrite") {
+        if operation == "modelsRead" {
             for (name, value) in host.gateway.workbench.environment_credentials(source) {
                 inputs.env.insert(name.into(), value.into());
             }
@@ -158,17 +158,9 @@ pub(super) async fn execute_with_options(
         return feedback(host, &options, &inputs, operation, &params).await;
     }
     match operation {
-        // 模型目录读写仍由 areal-config 执行 revision 校验、配置解析与脱敏。
-        "modelsRead" | "modelsWrite" => {
-            let value = if operation == "modelsRead" {
-                areal_config::models::read(&inputs, &stored)?
-            } else {
-                areal_config::models::write(
-                    &inputs,
-                    serde_json::from_str(document(&params)?)?,
-                    &stored,
-                )?
-            };
+        // 模型读取沿规范配置；写入只经公共 providers.command。
+        "modelsRead" => {
+            let value = areal_config::models::read(&inputs, &stored)?;
             // 仅供受监督工作台的私有反向调用；凭据不进入公共目录或配置文件。
             Ok(json!({
                 "snapshot": value,

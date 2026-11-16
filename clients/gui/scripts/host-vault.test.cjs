@@ -488,7 +488,6 @@ test("foreign Host projects retain their own model and subscription authorities"
   await app.syncLocal(project);
   await app.reconcileProject(project);
   await app.refreshSubscription(project);
-  assert.deepEqual(await app.prepareProjects(), []);
   assert.throws(() => app.target(project), /其他来源/);
 });
 

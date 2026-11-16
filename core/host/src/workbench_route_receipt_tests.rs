@@ -31,7 +31,7 @@ async fn explicit_backend_failure_settles_as_rejection_not_unknown() {
         assert_eq!(snapshot["pending"], json!([]));
         assert_eq!(snapshot["outcomes"][&command]["admissionState"], "rejected");
         let provider_command = uuid::Uuid::new_v4().to_string();
-        let provider = json!({"method":"providers.command","commandId":provider_command,"params":{"sourceId":"fixture","operation":"saveAndApply","expectedRevision":"initial","authentication":"apiKey","provider":{"name":"fixture","baseUrl":"https://example.invalid","protocol":"responses","models":[]}}});
+        let provider = json!({"method":"providers.command","commandId":provider_command,"params":{"sourceId":"fixture","operation":"discover","connection":{"baseUrl":"https://example.invalid","protocol":"responses","credential":{"kind":"draft","value":"synthetic-private-key"}}}});
         assert_eq!(backend_command(&host, "local", &provider).await.unwrap_err().to_string(), "PROVIDER_CREDENTIAL_REQUIRED");
         assert_eq!(backend_receipt(&host, "local", &provider_command).unwrap_err().to_string(), "PROVIDER_CREDENTIAL_REQUIRED");
         let (_, snapshot) = host.journal.native_snapshot(&scope).unwrap();
@@ -134,13 +134,13 @@ async fn lost_provider_reply_keeps_receipt_without_persisting_credentials() {
         *host.gateway.workbench.backend.running.borrow_mut() = Some(Rc::new(backend));
         *host.gateway.workbench.backend.source.borrow_mut() = Some("fixture".into());
         let command = uuid::Uuid::new_v4().to_string();
-        let request = json!({"method":"providers.command","commandId":command,"params":{"sourceId":"fixture","operation":"saveAndApply","expectedRevision":"initial","apiKey":"synthetic-private-key","provider":{"name":"fixture","baseUrl":"https://example.invalid","protocol":"responses","models":[]}}});
+        let request = json!({"method":"providers.command","commandId":command,"params":{"sourceId":"fixture","operation":"discover","connection":{"baseUrl":"https://example.invalid","protocol":"responses","credential":{"kind":"draft","value":"synthetic-private-key"}}}});
         let first = backend_command(&host, "local", &request).await.unwrap();
         assert_eq!(first["submissionUnknown"], true);
         assert_eq!(backend_command(&host, "local", &request).await.unwrap(), first);
         assert_eq!(std::fs::read_to_string(root.path().join("effects")).unwrap(), "once\n");
         let mut conflict = request.clone();
-        conflict["params"]["apiKey"] = json!("rotated-private-key");
+        conflict["params"]["connection"]["credential"]["value"] = json!("rotated-private-key");
         assert_eq!(backend_command(&host, "local", &conflict).await.unwrap_err().to_string(), "COMMAND_CONFLICT");
         assert_eq!(backend_receipt(&host, "local", &command).unwrap().unwrap()["submissionUnknown"], true);
         let other_method = json!({"method":"worktree.command","commandId":command,"params":{"sourceId":"fixture","operation":"worktreeSettings","worktreeRoot":"/isolated","branchPrefix":"fixture"}});

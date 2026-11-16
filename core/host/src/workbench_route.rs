@@ -672,6 +672,31 @@ impl Supervisor {
         self.analytics.flush();
     }
 
+    pub(super) async fn discover_provider(
+        &self,
+        host: &Rc<Host>,
+        source: &str,
+        connection: Value,
+    ) -> Result<Value> {
+        self.resume_backend(host).await?;
+        ensure!(self.backend_has_source(source), "FORBIDDEN");
+        let backend = self
+            .backend
+            .running
+            .borrow()
+            .clone()
+            .context("CAPABILITY_UNAVAILABLE")?;
+        let result = backend
+            .request(
+                "providers.command",
+                json!({"operation":"discover","connection":connection}),
+                json!({"principal":"local"}),
+            )
+            .await?;
+        serde_json::from_value::<areal_protocol::host::WorkbenchProviderValue>(result.clone())
+            .context("INVALID_RESPONSE")?;
+        Ok(result)
+    }
     /// 启动或复用桌面后台，返回它的身份（不含票据）。
     pub(super) async fn ensure_backend(&self, host: &Rc<Host>, input: Ensure) -> Result<Value> {
         self.backend.ensure(host, input).await.map_err(|error| {
@@ -934,12 +959,8 @@ pub(super) async fn backend_command(
             "FORBIDDEN"
         );
     }
-    let native_provider = method == "providers.command"
-        && host
-            .gateway
-            .workbench
-            .providers
-            .cold_write(host, &source, &params)?;
+    let native_provider =
+        method == "providers.command" && super::provider_config::native_write(&params);
     if !standalone_worktree && !native_task && !native_provider {
         host.gateway.workbench.resume_backend(host).await?;
     }

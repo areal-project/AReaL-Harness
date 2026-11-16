@@ -1,8 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { AppProviders } from "../src/desktop/core/providers.cjs";
-import { CoreBackend } from "../src/desktop/core/backend.cjs";
-import { ProjectConnections } from "../src/desktop/core/project-connections.cjs";
 const readMethod = "areal/server/modelConfiguration/read";
 const applyMethod = "areal/server/modelConfiguration/apply";
 
@@ -185,154 +183,11 @@ function fixture({
   };
 }
 
-test("saving configuration restores execution from a history-only service", async () => {
-  const f = fixture({ readOnly: true });
-  const result = await f.service.saveAndApply(f.request);
-  assert.equal(result.pendingApply, false);
-  assert.equal(f.project.providerRevision, result.revision);
-  assert.equal(f.operations.size, 0, "no apply is replayed against the unavailable controller");
-});
-
-test("unavailable execution retains an advertised configuration repair without restarting Core", async () => {
-  const f = fixture();
-  const request = f.project.client.request.bind(f.project.client);
-  f.project.client.request = (method, params) =>
-    method === "areal/server/status"
-      ? Promise.resolve({ restartSafe: true, executionReady: false })
-      : request(method, params);
-  const result = await f.service.saveAndApply(f.request);
-  assert.equal(result.pendingApply, false);
-  assert.equal(f.project.providerRevision, result.revision);
-  assert.equal(f.operations.size, 1);
-  assert.equal(
-    f.calls.some(([method]) => method === "restart"),
-    false,
-  );
-});
-
-test("provider apply fences new commands while an admitted read and its own startup finish", async () => {
-  const f = fixture();
-  const { backend } = f;
-  const startup = Promise.withResolvers();
-  const readGate = Promise.withResolvers();
-  backend.starting = new Map();
-  backend.activeReadCommands = new Map();
-  backend.lifecycleOperations = {
-    blocking: () => null,
-    activeTargets: new Set(),
-    assertProject() {},
-    schedulingSuppressed: () => false,
-  };
-  backend.startProject = () => startup.promise;
-  const connections = new ProjectConnections(backend);
-  backend.connections = connections;
-  backend.dispatchCommand = async (_invocation, _context, owner) => {
-    await CoreBackend.prototype.start.call(backend, "p", { readOwner: owner });
-    return readGate.promise;
-  };
-  const read = CoreBackend.prototype.commandObserved.call(
-    backend,
-    "manage",
-    { operation: "mcpForms", projectId: "p", threadId: "t" },
-    {},
-  );
-  const save = f.service.saveAndApply(f.request);
-  assert.equal(backend.providerUpdating, true);
-  await assert.rejects(
-    CoreBackend.prototype.commandObserved.call(
-      backend,
-      "manage",
-      { operation: "mcpForms", projectId: "p", threadId: "t" },
-      {},
-    ),
-    /配置正在应用/,
-  );
-  assert.equal(
-    f.calls.some(([method]) => method === "write"),
-    false,
-  );
-  startup.resolve(f.project);
-  readGate.resolve({ data: [] });
-  await read;
-  await save;
-  assert.equal(backend.providerUpdating, false);
-  assert.equal(f.calls.filter(([method]) => method === "write").length, 1);
-});
-
-test("provider apply rejects active mutations and unrelated startup without retaining a fence", async () => {
-  const f = fixture();
-  f.backend.activeCommands = 1;
-  await assert.rejects(f.service.saveAndApply(f.request), /任务或操作正在进行/);
-  assert.equal(f.backend.providerUpdating, false);
-  f.backend.activeCommands = 0;
-  f.backend.starting = new Map([["other", Promise.resolve()]]);
-  await assert.rejects(f.service.saveAndApply(f.request), /任务或操作正在进行/);
-  assert.equal(f.backend.providerUpdating, false);
-});
-
-test("provider apply rechecks real work after a failed read and releases its fence", async () => {
-  const f = fixture();
-  const gate = Promise.withResolvers();
-  const read = { starts: new Set() };
-  f.backend.activeReadCommands = new Map([[gate.promise, read]]);
-  f.backend.activeCommands = 1;
-  const save = f.service.saveAndApply(f.request);
-  assert.equal(f.backend.providerUpdating, true);
-  f.backend.hasWork = () => true;
-  f.backend.activeCommands = 0;
-  f.backend.activeReadCommands.delete(gate.promise);
-  gate.reject(new Error("read failed"));
-  await assert.rejects(save, /任务或操作正在进行/);
-  assert.equal(f.backend.providerUpdating, false);
-  assert.equal(
-    f.calls.some(([method]) => method === "write"),
-    false,
-  );
-});
-
-test("provider apply rejects a replacement startup and releases its fence", async () => {
-  const f = fixture();
-  const read = Promise.withResolvers();
-  const original = Promise.withResolvers();
-  f.backend.activeReadCommands = new Map([[read.promise, { starts: new Set([original.promise]) }]]);
-  f.backend.activeCommands = 1;
-  f.backend.starting = new Map([["p", original.promise]]);
-  const save = f.service.saveAndApply(f.request);
-  f.backend.starting.set("p", new Promise(() => {}));
-  f.backend.activeCommands = 0;
-  f.backend.activeReadCommands.clear();
-  read.resolve();
-  original.resolve();
-  await assert.rejects(save, /任务或操作正在进行/);
-  assert.equal(f.backend.providerUpdating, false);
-});
-
-test("provider apply releases its fence when an admitted read never settles", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
-  const f = fixture();
-  const pending = new Promise(() => {});
-  f.backend.activeReadCommands = new Map([[pending, { starts: new Set() }]]);
-  f.backend.activeCommands = 1;
-  const save = f.service.saveAndApply(f.request);
-  t.mock.timers.tick(30000);
-  await assert.rejects(save, /任务或操作正在进行/);
-  assert.equal(f.backend.providerUpdating, false);
-});
-
-test("shared CLI project applies the saved model configuration", async () => {
-  const f = fixture();
-  f.backend.host.resolve = () => ({ sourceId: "cli", usesSharedModelConfig: true });
-  await f.service.command(f.request);
-  assert(f.calls.some(([method]) => method === applyMethod));
-});
-
 test("provider list returns the current catalog without waiting for credentials or project reconciliation", async () => {
   const f = fixture();
   const blocked = Promise.withResolvers();
   f.service.config.current = () => blocked.promise;
   f.service.config.catalog = async () => f.service.config.value;
-  f.service.pendingApplications.set("p", {});
-  f.service.reconcilePending = () => blocked.promise;
   try {
     const result = await Promise.race([
       f.service.command({ operation: "list" }),
@@ -341,7 +196,7 @@ test("provider list returns the current catalog without waiting for credentials 
       ),
     ]);
     assert.equal(result.data[0].name, "Original");
-    assert.equal(result.application.kind, "unknown");
+    assert.equal(result.application.kind, "applied");
   } finally {
     blocked.resolve(f.service.config.value);
     f.service.closed = true;
@@ -355,4 +210,17 @@ test("business reconciliation does not restart an incompatible service", async (
   assert.equal(f.calls.filter(([method]) => method === "restart").length, 0);
   assert.equal(f.service.applicationState(f.project).kind, "failed");
   assert.doesNotMatch(f.project.providerError, /Core|Host/);
+});
+
+test("private provider mutation is retired and reconciliation only reads Core proof", async () => {
+  const f = fixture();
+  f.service.requestReconciliation = () => {};
+  f.service.config.value = { ...f.original, revision: "desired" };
+  await assert.rejects(f.service.command(f.request), { code: "CAPABILITY_UNAVAILABLE" });
+  await f.service.reconcileProject(f.project);
+  assert.equal(f.project.providerRevision, "old");
+  assert.equal(f.service.applicationState(f.project).kind, "deferred");
+  assert(f.calls.some(([method]) => method === readMethod));
+  assert(!f.calls.some(([method]) => method === applyMethod || method === "write"));
+  await f.service.close();
 });

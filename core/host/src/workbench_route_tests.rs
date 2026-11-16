@@ -961,9 +961,10 @@ async fn provider_configuration_writes_do_not_start_node_and_preserve_original_r
         let initial = backend_read(&host,"web:fixture",&list).await.unwrap();
         let command = uuid::Uuid::new_v4().to_string();
         let save = json!({"method":"providers.command","commandId":command,"params":{"sourceId":source,
-            "operation":"save","expectedRevision":initial["revision"],
+            "operation":"saveAndApply","expectedRevision":initial["revision"],
             "provider":{"id":"fixture","name":" Renamed ","baseUrl":"https://example.invalid/custom/","protocol":"responses",
-                "models":[{"id":" fixture ","enabled":true}],"enabled":true}}});
+                "models":[{"id":" fixture ","enabled":true,"parameters":{"serviceTier":"default"},
+                    "capabilities":{"tools":false,"vision":true,"reasoning":false}}],"enabled":true,"parameters":{"serviceTier":"fast"}}}});
         // 模型配置保存不应被其他项目的执行状态或生命周期锁阻塞。
         let gate = host.slots.borrow()["project"].gate.clone();
         let _busy = gate.write().await;
@@ -971,7 +972,12 @@ async fn provider_configuration_writes_do_not_start_node_and_preserve_original_r
         assert_eq!(saved["submissionUnknown"],false);
         assert_eq!(saved["receipt"]["data"][0]["name"],"Renamed");
         assert_ne!(saved["receipt"]["revision"],initial["revision"]);
+        assert_eq!(saved["receipt"]["data"][0]["parameters"]["serviceTier"],"fast");
+        assert_eq!(saved["receipt"]["data"][0]["models"][0]["parameters"]["serviceTier"],"default");
+        assert_eq!(saved["receipt"]["data"][0]["models"][0]["capabilities"],json!({"tools":false,"vision":true,"reasoning":false}));
         assert_eq!(backend_command(&host,"web:fixture",&save).await.unwrap(),saved);
+        let (_, intents) = host.journal.native_snapshot(&format!("model-configuration-{}",storage::digest(b"project"))).unwrap();
+        assert_eq!(intents["outcomes"][&command]["method"],"host/modelConfiguration/intent");
         let current = backend_read(&host,"web:fixture",&list).await.unwrap();
         assert_eq!(current["data"][0]["baseUrl"],"https://example.invalid/custom/");
         assert_eq!(current["data"][0]["apiKeyEnv"],"CLI_FIXTURE_KEY");
@@ -987,7 +993,7 @@ async fn provider_configuration_writes_do_not_start_node_and_preserve_original_r
         assert_eq!(backend_command(&host,"web:fixture",&stale).await.unwrap_err().to_string(),"TARGET_CHANGED");
         assert_eq!(backend_receipt(&host,"web:fixture",stale["commandId"].as_str().unwrap()).unwrap_err().to_string(),"TARGET_CHANGED");
         let select = json!({"method":"providers.command","commandId":uuid::Uuid::new_v4().to_string(),
-            "params":{"sourceId":source,"operation":"default","expectedRevision":current["revision"],
+            "params":{"sourceId":source,"operation":"defaultAndApply","expectedRevision":current["revision"],
                 "model":{"providerId":"fixture","modelId":"fixture"}}});
         let selected = backend_command(&host,"web:fixture",&select).await.unwrap();
         assert_eq!(selected["receipt"]["defaultModel"],json!({"providerId":"fixture","modelId":"fixture"}));
@@ -1012,7 +1018,7 @@ async fn provider_configuration_writes_do_not_start_node_and_preserve_original_r
         let journal = host.journal.native_snapshot(&format!("workbench-{}",storage::digest(b"web:fixture"))).unwrap().1;
         assert!(!journal.to_string().contains("synthetic-native-provider-secret"));
         let remove = json!({"method":"providers.command","commandId":uuid::Uuid::new_v4().to_string(),
-            "params":{"sourceId":source,"operation":"remove","expectedRevision":keyed["receipt"]["revision"],"id":"fixture"}});
+            "params":{"sourceId":source,"operation":"removeAndApply","expectedRevision":keyed["receipt"]["revision"],"id":"fixture"}});
         let removed = backend_command(&host,"web:fixture",&remove).await.unwrap();
         assert!(removed["receipt"]["data"].as_array().unwrap().is_empty());
         assert!(removed["receipt"]["defaultModel"].is_null());
@@ -1022,7 +1028,7 @@ async fn provider_configuration_writes_do_not_start_node_and_preserve_original_r
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn cold_provider_write_rejects_core_wakeup_during_vault_storage_before_config_mutation() {
+async fn provider_write_preserves_desired_configuration_when_core_wakes_during_vault_storage() {
     tokio::task::LocalSet::new().run_until(async {
         let root = tempfile::tempdir().unwrap();
         let root = root.path().canonicalize().unwrap();
@@ -1045,7 +1051,6 @@ async fn cold_provider_write_rejects_core_wakeup_during_vault_storage_before_con
         let config = root.join(".areal/config.toml");
         std::fs::write(&config,"schema_version=1\n[model]\nprovider='fixture'\nname='fixture'\n[model.providers.fixture]\nendpoint='https://example.invalid/v1/responses'\nprotocol='responses'\nmodels=[{id='fixture'}]\n").unwrap();
         let initial = backend_read(&host,"web:fixture",&json!({"method":"providers.read","params":{"sourceId":source,"operation":"list"}})).await.unwrap();
-        let before = std::fs::read(&config).unwrap();
         let command = uuid::Uuid::new_v4().to_string();
         let request = json!({"method":"providers.command","commandId":command,"params":{"sourceId":source,
             "operation":"save","expectedRevision":initial["revision"],"authentication":"apiKey","apiKey":"synthetic-racing-secret",
@@ -1056,9 +1061,71 @@ async fn cold_provider_write_rejects_core_wakeup_during_vault_storage_before_con
         tokio::time::timeout(Duration::from_secs(5),blocked.notified()).await.unwrap();
         host.slots.borrow_mut().get_mut("project").unwrap().state = "starting".into();
         release.send(()).unwrap();
-        assert_eq!(writing.await.unwrap().unwrap_err().to_string(),"TARGET_CHANGED");
-        assert_eq!(std::fs::read(&config).unwrap(),before);
-        assert_eq!(backend_receipt(&host,"web:fixture",&command).unwrap_err().to_string(),"TARGET_CHANGED");
+        let saved = writing.await.unwrap().unwrap();
+        assert_eq!(saved["submissionUnknown"], false);
+        assert_eq!(saved["receipt"]["data"][0]["name"], "Changed");
+        assert_ne!(saved["receipt"]["application"]["kind"], "applied");
+        assert_eq!(backend_receipt(&host,"web:fixture",&command).unwrap().unwrap()["receipt"]["revision"], saved["receipt"]["revision"]);
+        let desired = backend_read(&host,"web:fixture",&json!({"method":"providers.read","params":{"sourceId":source,"operation":"list"}})).await.unwrap();
+        assert_eq!(desired["revision"], saved["receipt"]["revision"]);
+        assert_eq!(desired["data"][0]["name"], "Changed");
         assert!(host.gateway.workbench.backend.running.borrow().is_none());
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn online_provider_save_commits_desired_configuration_without_waiting_for_core() {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::Message;
+    tokio::task::LocalSet::new().run_until(async {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let (mut host, input, source) = resumable_host(&root);
+        Rc::get_mut(&mut Rc::get_mut(&mut host).unwrap().migration).unwrap().vault = crate::vault::Vault::isolated_files(&host.home);
+        host.slots.borrow_mut().get_mut("project").unwrap().registration.source =
+            crate::ProjectSource::Gui { profile: input.profile.clone(), legacy_project_id: "logical".into() };
+        storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();
+        storage::write(&launch_record(&host), &input).unwrap();
+        std::fs::write(root.join("services/workbench/src/backend-main.cjs"), "throw new Error('online provider save must not launch Node');").unwrap();
+        std::fs::create_dir(root.join(".areal")).unwrap();
+        std::fs::write(root.join(".areal/config.toml"),"schema_version=1\n[model]\nprovider='fixture'\nname='fixture'\n[model.providers.fixture]\nendpoint='https://example.invalid/v1/responses'\nprotocol='responses'\nmodels=[{id='fixture'}]\n").unwrap();
+        host.gateway.workbench.restore_source(&host).unwrap();
+        let initial = super::super::workbench_utility::models_catalog(&host,&source,&input.options).unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let registration = host.slots.borrow()["project"].registration.clone();
+        let service = areal_protocol::service::Service {
+            identity: areal_protocol::service::Identity { protocol_version:1,service_id:"online-fixture".into(),generation:"generation".into(),
+                workspace:registration.workspace,data_dir:registration.data_dir,config_fingerprint:"fixture".into() },
+            owner:Some(host.owner()),endpoint:format!("ws://{}/",listener.local_addr().unwrap()),web_url:String::new(),
+            auth_file:host.home.join("online-auth.json"),log_file:host.home.join("online-core.log"),host_pid:1,core_pid:2,state:areal_protocol::service::State::Ready,
+        };
+        storage::write(&service.auth_file,&json!({"principals":[{"id":"desktop-owner","token":"fixture"}]})).unwrap();
+        { let mut slots = host.slots.borrow_mut(); let slot = slots.get_mut("project").unwrap();slot.state="ready".into();slot.service=Some(service.clone()); }
+        let (received, mut requests) = tokio::sync::mpsc::unbounded_channel();
+        let server = tokio::task::spawn_local(async move {
+            let (stream,_) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            while let Some(Ok(Message::Text(text))) = socket.next().await {
+                let request:Value = serde_json::from_str(&text).unwrap();
+                if request["method"] == "initialize" {
+                    socket.send(Message::Text(json!({"id":request["id"],"result":{}}).to_string().into())).await.unwrap();
+                } else if request.get("id").is_some() {
+                    received.send(request).unwrap();
+                    // 已连接 Core 的应用证明一直未返回；保存不能等它，也不能伪称已经应用。
+                }
+            }
+        });
+        let close = host.schedules.connections.connect_test_core(host.clone(),"project",service).await.unwrap();
+        let request = json!({"method":"providers.command","commandId":uuid::Uuid::new_v4().to_string(),"params":{"sourceId":source,
+            "operation":"save","expectedRevision":initial["revision"],"provider":{"id":"fixture","name":"New desired",
+                "baseUrl":"https://example.invalid/v1","protocol":"responses","models":[{"id":"fixture"}]}}});
+        let saved = tokio::time::timeout(Duration::from_secs(1),backend_command(&host,"web:fixture",&request)).await
+            .expect("desired save cannot wait for execution preparation or a Core reply").unwrap();
+        assert_eq!(saved["submissionUnknown"],false);
+        assert_eq!(saved["receipt"]["data"][0]["name"],"New desired");
+        assert_ne!(saved["receipt"]["application"]["kind"],"applied");
+        assert_eq!(tokio::time::timeout(Duration::from_secs(5),requests.recv()).await.unwrap().unwrap()["method"],"areal/server/modelConfiguration/read");
+        assert!(host.gateway.workbench.backend.running.borrow().is_none());
+        close();server.abort();
     }).await;
 }

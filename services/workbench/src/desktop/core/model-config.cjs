@@ -108,14 +108,13 @@ class ModelConfiguration {
     );
   }
 
-  /** @param {'read'|'write'} operation @param {import('./provider-contract.cjs').ModelUpdate} [request] */
-  async execute(operation, request) {
+  /** @param {'read'} operation */
+  async execute(operation) {
     let value;
     try {
       if (!this.backend.hostCall) throw new Error("Host 模型配置能力不可用");
       value = await this.backend.hostCall("workbench.utility", {
-        operation: operation === "read" ? "modelsRead" : "modelsWrite",
-        ...(request ? { document: JSON.stringify(request) } : {}),
+        operation: "modelsRead",
       });
     } catch (error) {
       const failure = record(error) ? error : {};
@@ -304,7 +303,6 @@ class ModelConfiguration {
           applied:
             !!project.client?.ready &&
             !project.providerError &&
-            !this.backend.providers?.pendingApplications?.has(project.id) &&
             project.providerRevision === value.revision,
           error: project.providerError ?? null,
         })),
@@ -313,9 +311,7 @@ class ModelConfiguration {
         .some(
           (project) =>
             project.service &&
-            (project.providerRevision !== value.revision ||
-              project.providerError ||
-              this.backend.providers?.pendingApplications?.has(project.id)),
+            (project.providerRevision !== value.revision || project.providerError),
         ),
     };
   }

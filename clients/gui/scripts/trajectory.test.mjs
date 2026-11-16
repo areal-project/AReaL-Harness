@@ -166,149 +166,6 @@ async function backendFixture(t) {
   return backend;
 }
 
-test(
-  "pending background status does not block a real provider apply or count as work",
-  { timeout: 5000 },
-  async (t) => {
-    const backend = await backendFixture(t);
-    const pendingStatus = deferred(),
-      applyEntered = deferred(),
-      releaseApply = deferred();
-    t.after(() => {
-      pendingStatus.resolve(status);
-      releaseApply.resolve();
-    });
-    let reads = 0,
-      statusSettled = false;
-    backend.trajectory.command = (request) => {
-      validateCommand("trajectory", request);
-      assert.equal(request.operation, "status");
-      return ++reads === 1 ? pendingStatus.promise : Promise.resolve(status);
-    };
-    const stages = [];
-    const proof = {
-      serviceId: "service-project",
-      generation: "generation-project",
-      applied: { revision: "previous", sequence: 0 },
-      modelRevision: "model-previous",
-      credentialStates: {},
-    };
-    const project = {
-      id: "project",
-      root: join(tmpdir(), "trajectory-admission-project"),
-      pending: [],
-      model: { state: { threads: {}, queues: {} } },
-      service: { serviceId: proof.serviceId, generation: proof.generation },
-      providerRevision: "previous",
-      client: {
-        ready: true,
-        capabilities: {
-          methods: [
-            "areal/server/modelConfiguration/read",
-            "areal/server/modelConfiguration/apply",
-          ],
-        },
-        request: async (method, params) => {
-          stages.push(method);
-          if (method === "areal/server/modelConfiguration/read") {
-            assert.deepEqual(params, { expectedGeneration: proof.generation });
-            return proof;
-          }
-          if (method === "areal/server/status") return { restartSafe: true };
-          if (method === "areal/model/list") return { data: [] };
-          assert.equal(method, "areal/server/modelConfiguration/apply");
-          assert.equal(typeof params.requestId, "string");
-          assert.deepEqual(params, {
-            requestId: params.requestId,
-            expectedGeneration: proof.generation,
-            expectedApplied: proof.applied,
-            targetRevision: "current",
-            credentials: {},
-          });
-          applyEntered.resolve();
-          await releaseApply.promise;
-          const result = {
-            ...proof,
-            applied: { revision: "current", sequence: 1 },
-            modelRevision: "model-current",
-          };
-          return {
-            ...result,
-            operation: { requestId: params.requestId, state: "applied", result },
-          };
-        },
-      },
-    };
-    backend.projects.set(project.id, project);
-    backend.host.sourceId = "fixture-source";
-    backend.host.client.sourceState = async () => ({
-      sourceId: backend.host.sourceId,
-      credentials: { references: [] },
-    });
-    backend.host.bindings.set(project.id, {
-      projectId: project.id,
-      sourceId: backend.host.sourceId,
-      workspace: project.root,
-      dataDir: join(backend.home, "project"),
-      scratchDir: join(backend.home, "scratch"),
-      alias: { profile: backend.home, legacyProjectId: project.id },
-    });
-    // Host/Core I/O 用无凭据夹具；配置准入、应用回执校验和结果投影仍走真实实现。
-    backend.providers.config.execute = async (operation) => {
-      assert.equal(operation, "read");
-      return {
-        path: join(tmpdir(), "trajectory-admission.toml"),
-        revision: "current",
-        data: [],
-        defaultModel: null,
-      };
-    };
-    backend.restartProject = async () => {
-      throw new Error("model configuration must not restart Core");
-    };
-    const reading = backend.command("trajectory", { operation: "status" }).then((value) => {
-      statusSettled = true;
-      return value;
-    });
-    assert.equal(backend.activeCommands, 0);
-    const applying = backend.command("providers", {
-      operation: "apply",
-      expectedRevision: "current",
-    });
-    await Promise.race([
-      applyEntered.promise,
-      applying.then(() => {
-        throw new Error("apply completed before receipt");
-      }),
-    ]);
-    assert.equal(backend.providerUpdating, true);
-    assert.equal(statusSettled, false);
-    assert.deepEqual(await backend.command("trajectory", { operation: "status" }), status);
-    for (const [name, request] of [
-      ["trajectory", { operation: "retry" }],
-      ["send", { projectId: project.id, threadId: "thread", text: "fixture" }],
-    ]) {
-      await assert.rejects(backend.command(name, request), /配置正在应用/);
-    }
-    assert.equal(backend.activeCommands, 0);
-    releaseApply.resolve();
-    const applied = await applying;
-    assert.deepEqual(stages, [
-      "areal/server/status",
-      "areal/server/modelConfiguration/read",
-      "areal/server/modelConfiguration/apply",
-      "areal/model/list",
-    ]);
-    assert.equal(applied.pendingApply, false);
-    assert.equal(applied.projects[0].applied, true);
-    assert.equal(backend.providerUpdating, false);
-    assert.equal(statusSettled, false);
-    pendingStatus.resolve(status);
-    assert.deepEqual(await reading, status);
-    assert.equal(backend.activeCommands, 0);
-  },
-);
-
 test("read-only status keeps real validation and closing checks while retry keeps configuration gates", async (t) => {
   const { exporter } = await fixture(t);
   const backend = await backendFixture(t);
@@ -374,7 +231,7 @@ test("explicit retry and ordinary send still count as work and release admission
   assert.equal(backend.activeCommands, 1);
   await assert.rejects(
     backend.command("providers", { operation: "apply", expectedRevision: "fixture" }),
-    /请等待任务和操作完成/,
+    { code: "CAPABILITY_UNAVAILABLE" },
   );
   assert.deepEqual(await backend.command("trajectory", { operation: "status" }), status);
   assert.equal(backend.activeCommands, 1);
@@ -432,7 +289,7 @@ test("explicit retry and ordinary send still count as work and release admission
   assert.equal(backend.activeCommands, 1);
   await assert.rejects(
     backend.command("providers", { operation: "apply", expectedRevision: "fixture" }),
-    /请等待任务和操作完成/,
+    { code: "CAPABILITY_UNAVAILABLE" },
   );
   releaseSend.resolve();
   await sending;
