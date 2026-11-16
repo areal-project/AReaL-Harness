@@ -62,7 +62,7 @@ describe("model catalog refresh", () => {
     refresh();
     expect(calls).toBe(1);
     fail = false;
-    await vi.advanceTimersByTimeAsync(5000);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(calls).toBe(2);
     expect(catalogs.get("host")?.value).toMatchObject({ profiles: [{ id: "profile" }] });
     // 模型服务设置的应用状态变了：同一代也重读，重读期间旧目录还在；状态没变不重读。
@@ -104,7 +104,7 @@ it("retries a failed configuration inspection for the same revision", async () =
   const inspections = new Map<string, { identity: string; value?: Record<string, unknown> }>();
   const refresh = () => refreshInspections(client, projects as never, inspections, refresh);
   refresh();
-  await vi.advanceTimersByTimeAsync(5000);
+  await vi.advanceTimersByTimeAsync(1000);
   expect(calls).toBe(2);
   expect(inspections.get("p:t")?.value).toEqual({ modelName: "legacy-alpha" });
 });

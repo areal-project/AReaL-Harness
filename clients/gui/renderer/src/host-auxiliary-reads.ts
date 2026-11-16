@@ -11,7 +11,8 @@ type ShellProject = {
 
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
-const RETRY_MS = 5000;
+// 目录读取是后台补全，不把暂时未就绪的项目变成可见的五秒空白。
+const RETRY_MS = 1000;
 
 // 每个连接一份：模型服务设置变化后加一，同一代 Core 的目录重读，重读期间继续显示旧目录。
 const stalenessByClient = new WeakMap<
