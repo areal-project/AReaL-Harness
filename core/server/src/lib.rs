@@ -10,7 +10,6 @@ mod model_configuration;
 mod reload;
 mod telemetry;
 mod tool_extensions;
-pub mod trajectory;
 pub mod workgroup;
 
 fn engine_limits(config: &ResolvedCoreConfig) -> Limits {

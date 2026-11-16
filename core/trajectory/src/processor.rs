@@ -32,7 +32,7 @@ struct Shared {
     dropped: Arc<AtomicU64>,
     stopped: AtomicBool,
 }
-pub(crate) struct Processor {
+pub struct Processor {
     sender: mpsc::SyncSender<Work>,
     shared: Arc<Shared>,
     max_memory: usize,
@@ -77,11 +77,15 @@ fn value_bytes(v: &AnyValue) -> usize {
 impl Processor {
     #[cfg(test)]
     pub fn new(config: &TrajectoryConfig) -> Result<Self> {
-        Self::with_health(config, CaptureHealth::new(config))
+        Self::with_health(config, CaptureHealth::new(config), TEST_BUILD)
     }
 
-    pub(crate) fn with_health(config: &TrajectoryConfig, health: CaptureHealth) -> Result<Self> {
-        Self::start(config, health, |work| {
+    pub fn with_health(
+        config: &TrajectoryConfig,
+        health: CaptureHealth,
+        build: BuildIdentity,
+    ) -> Result<Self> {
+        Self::start(config, health, build, |work| {
             std::thread::Builder::new()
                 .name("areal-trajectory-spool".into())
                 .spawn(work)
@@ -92,6 +96,7 @@ impl Processor {
     fn start(
         config: &TrajectoryConfig,
         health: CaptureHealth,
+        build: BuildIdentity,
         spawn: impl FnOnce(Box<dyn FnOnce() + Send>) -> std::io::Result<()>,
     ) -> Result<Self> {
         let producer = format!(".producer-{}.lock", uuid::Uuid::new_v4());
@@ -121,11 +126,11 @@ impl Processor {
                     ))
                     .with_attribute(opentelemetry::KeyValue::new(
                         "service.build.revision",
-                        env!("AREAL_BUILD_REVISION"),
+                        build.revision,
                     ))
                     .with_attribute(opentelemetry::KeyValue::new(
                         "service.build.dirty",
-                        env!("AREAL_BUILD_DIRTY"),
+                        build.dirty,
                     ))
                     .with_attribute(opentelemetry::KeyValue::new(
                         "service.instance.id",
@@ -225,7 +230,7 @@ impl Processor {
             max_record: config.max_batch_bytes,
         })
     }
-    pub(crate) fn drop_counter(&self) -> Arc<AtomicU64> {
+    pub fn drop_counter(&self) -> Arc<AtomicU64> {
         self.shared.dropped.clone()
     }
     fn flush(&self, stop: bool, timeout: Duration) {
@@ -394,7 +399,7 @@ mod drop_counter_tests {
         let health = CaptureHealth::new(&config);
         health.activate();
         let started = std::time::Instant::now();
-        let result = Processor::start(&config, health.clone(), |_work| {
+        let result = Processor::start(&config, health.clone(), TEST_BUILD, |_work| {
             Err(std::io::Error::other("private-token /private/error/path"))
         });
         assert!(started.elapsed() < Duration::from_secs(1));

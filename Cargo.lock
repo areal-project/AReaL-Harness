@@ -189,6 +189,7 @@ dependencies = [
  "areal-protocol",
  "areal-server",
  "areal-service-host",
+ "areal-trajectory",
  "areal-tui",
  "clap",
  "fs2",
@@ -521,16 +522,12 @@ dependencies = [
  "areal-protocol",
  "areal-runtime-client",
  "areal-runtime-protocol",
+ "areal-trajectory",
  "clap",
- "fs2",
- "httpdate",
  "libc",
  "opentelemetry",
  "opentelemetry-otlp",
- "opentelemetry-proto",
  "opentelemetry_sdk",
- "prost",
- "reqwest 0.12.28",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -561,6 +558,29 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "tokio-util",
+ "uuid",
+]
+
+[[package]]
+name = "areal-trajectory"
+version = "0.1.20"
+dependencies = [
+ "anyhow",
+ "areal-config",
+ "fs2",
+ "httpdate",
+ "libc",
+ "opentelemetry",
+ "opentelemetry-proto",
+ "opentelemetry_sdk",
+ "prost",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "url",
  "uuid",
 ]
 

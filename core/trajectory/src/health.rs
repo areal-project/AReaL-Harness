@@ -25,7 +25,7 @@ struct Inner {
 }
 
 #[derive(Clone)]
-pub(crate) struct CaptureHealth(Arc<Inner>);
+pub struct CaptureHealth(Arc<Inner>);
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -93,7 +93,7 @@ fn failure(state: u8) -> Option<Failure> {
 }
 
 impl CaptureHealth {
-    pub(crate) fn new(config: &TrajectoryConfig) -> Self {
+    pub fn new(config: &TrajectoryConfig) -> Self {
         Self(Arc::new(Inner {
             identity: identity(config),
             pid: std::process::id(),
@@ -102,7 +102,7 @@ impl CaptureHealth {
         }))
     }
 
-    pub(crate) fn activate(&self) {
+    pub fn activate(&self) {
         *ACTIVE.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::downgrade(&self.0));
     }
 
@@ -119,7 +119,7 @@ impl CaptureHealth {
     }
 
     // 只能由采集线程或现有诊断后台调用；主启动和事件发射不等待磁盘。
-    pub(crate) fn persist(&self, config: &TrajectoryConfig) {
+    pub fn persist(&self, config: &TrajectoryConfig) {
         let state = self.0.state.load(Ordering::Acquire);
         if state == STARTING || state == self.0.persisted.load(Ordering::Acquire) {
             return;
@@ -252,7 +252,8 @@ mod tests {
         let failed = CaptureHealth::new(&original);
         failed.activate();
         let processor =
-            super::super::processor::Processor::with_health(&original, failed.clone()).unwrap();
+            super::super::processor::Processor::with_health(&original, failed.clone(), TEST_BUILD)
+                .unwrap();
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while snapshot(&original.spool_dir).unwrap().is_none() {
             assert!(

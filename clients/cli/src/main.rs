@@ -273,7 +273,7 @@ async fn main() {
         Some(Command::Config(args)) => areal_server::diagnose(*args).await,
         Some(Command::Trajectory(options)) => trajectory::run(options),
         Some(Command::TrajectoryWorker { spool_dir }) => {
-            areal_server::trajectory::run_worker(spool_dir).await
+            areal_trajectory::run_worker(spool_dir).await
         }
         Some(Command::Workgroup { command }) => {
             let executable = std::env::current_exe()

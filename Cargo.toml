@@ -1,5 +1,5 @@
 [workspace]
-members = ["core/host", "core/plugins", "core/mcp", "core/config", "core/protocol", "core/engine", "core/app-server", "core/server", "core/service-host", "core/local-service", "clients/tui", "clients/cli",
+members = ["core/host", "core/plugins", "core/mcp", "core/config", "core/protocol", "core/engine", "core/app-server", "core/server", "core/trajectory", "core/service-host", "core/local-service", "clients/tui", "clients/cli",
     "runtime/protocol", "runtime/host-tools", "runtime/client", "runtime/supervisor", "runtime/exec-native", "runtime/daemon", "runtime/fs-helper"]
 resolver = "2"
 
@@ -48,6 +48,7 @@ unicode-segmentation = "1.12.0"
 unicode-width = "0.2.2"
 areal-tui = { path = "clients/tui" }
 areal-server = { path = "core/server" }
+areal-trajectory = { path = "core/trajectory" }
 areal-service-host = { path = "core/service-host" }
 areal-plugins = { path = "core/plugins" }
 areal-mcp = { path = "core/mcp" }

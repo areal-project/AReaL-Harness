@@ -17,9 +17,21 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-pub(crate) use health::CaptureHealth;
-pub(crate) use processor::Processor;
+pub use health::CaptureHealth;
+pub use processor::Processor;
 pub use worker::run_worker;
+
+#[derive(Clone, Copy)]
+pub struct BuildIdentity {
+    pub revision: &'static str,
+    pub dirty: &'static str,
+}
+
+#[cfg(test)]
+const TEST_BUILD: BuildIdentity = BuildIdentity {
+    revision: "fixture",
+    dirty: "true",
+};
 
 fn now() -> u64 {
     SystemTime::now()
@@ -69,7 +81,7 @@ pub fn configure(config: &TrajectoryConfig) -> Result<()> {
 }
 
 // 后台初始化不能覆盖脚本刚暂停或更新的控制；校验与写入持有同一队列锁。
-pub(crate) fn configure_on_startup(config: &TrajectoryConfig) -> Result<()> {
+pub fn configure_on_startup(config: &TrajectoryConfig) -> Result<()> {
     configure_inner(config, true)
 }
 
