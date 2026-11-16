@@ -478,6 +478,9 @@ impl Model for MeteredModel {
     fn goal_id(&self) -> Option<&str> {
         Some(&self.budget.goal_id)
     }
+    fn history_thinking(&self) -> crate::model::HistoryThinking {
+        self.inner.history_thinking()
+    }
     fn check_work(&self) -> anyhow::Result<()> {
         self.budget.guard()?;
         self.inner.check_work()

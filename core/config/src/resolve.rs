@@ -9,6 +9,11 @@ use std::{
 
 const ENV: &[(&str, &str, &str)] = &[
     (
+        "AREAL_HARNESS_HISTORY_THINKING",
+        "",
+        "model.history_thinking",
+    ),
+    (
         "AREAL_HARNESS_SUMMARY_REASONING_EFFORT",
         "",
         "model.summary_reasoning_effort",
@@ -322,6 +327,11 @@ pub(crate) fn valid(field: &str, entry: &Entry) -> Result<()> {
                 return Err(reject("expected an environment variable name"));
             }
         }
+        "history_thinking" => {
+            if !matches!(value.as_str(), "preserve" | "omit") {
+                return Err(reject("history_thinking must be preserve or omit"));
+            }
+        }
         "reasoning_summary" => {
             if !matches!(value.as_str(), "auto" | "concise" | "detailed") {
                 return Err(reject("unsupported reasoning summary"));
@@ -587,6 +597,7 @@ pub(crate) fn load_mode(
         ("model.max_retries", "2"),
         ("model.max_request_bytes", "16777216"),
         ("model.responses_websocket", "false"),
+        ("model.history_thinking", "preserve"),
         ("limits.max_completion_retries", "0"),
         ("limits.watchdog_disable", "false"),
         ("logging.filter", "info"),
@@ -844,6 +855,10 @@ pub(crate) fn load_mode(
             .get("tools.extensions_file")
             .map(|v| PathBuf::from(&v.value)),
         model: SelectedModelConfig {
+            history_thinking: match values["model.history_thinking"].value.as_str() {
+                "omit" => HistoryThinking::Omit,
+                _ => HistoryThinking::Preserve,
+            },
             context_window_tokens: values
                 .get("model.context_window_tokens")
                 .map(|v| v.value.parse().unwrap()),

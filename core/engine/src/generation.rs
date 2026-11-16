@@ -182,7 +182,7 @@ impl Engine {
             let goal_instructions = self.goal_instructions(cell).await?;
             let (messages, thread_id, session_id, turn_id, turn_number) = {
                 let mut state = cell.state.lock().await;
-                let mut messages = history(&state.thread, &self.store)?;
+                let mut messages = crate::history::history_for(&state.thread, &self.store, model.as_ref())?;
                 // 每次请求的动态提示必须与其输出一起保留，后续只追加。
                 // 删除旧提示会破坏 encrypted reasoning 所对应的原始上下文。
                 let mut live_context = Vec::new();

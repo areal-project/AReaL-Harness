@@ -1,8 +1,110 @@
 //! 请求传输限额独立于 token 估算；拒绝时只保存大小和阶段。
 use super::*;
-use std::io::{self, Write};
+use sha2::{Digest, Sha256};
+use std::{
+    collections::HashMap,
+    io::{self, Write},
+    sync::{Mutex, OnceLock},
+};
 
 const MAX_REQUEST_ASSEMBLY_BYTES: usize = 128 * 1024 * 1024;
+const MAX_REQUEST_IMAGES: usize = 16;
+const RETAINED_INITIAL_IMAGES: usize = 2;
+const INLINE_IMAGE_COMPRESS_THRESHOLD: usize = 262_144;
+const MAX_PREVIEW_EDGE: u32 = 1536;
+
+fn preview_cache() -> &'static Mutex<HashMap<[u8; 32], String>> {
+    static CACHE: OnceLock<Mutex<HashMap<[u8; 32], String>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+pub(super) fn compress_image_bytes_if_large(raw: &[u8]) -> Option<String> {
+    if raw.len() <= INLINE_IMAGE_COMPRESS_THRESHOLD {
+        return None;
+    }
+    let digest: [u8; 32] = Sha256::digest(raw).into();
+    if let Some(cached) = preview_cache().lock().unwrap().get(&digest).cloned() {
+        return Some(cached);
+    }
+    let decoded = image::load_from_memory(raw).ok()?;
+    let resized = if decoded.width().max(decoded.height()) > MAX_PREVIEW_EDGE {
+        decoded.resize(
+            MAX_PREVIEW_EDGE,
+            MAX_PREVIEW_EDGE,
+            image::imageops::FilterType::Triangle,
+        )
+    } else {
+        decoded
+    };
+    let rgb = resized.to_rgb8();
+    let mut best = Vec::new();
+    for quality in [85u8, 70u8] {
+        let mut out = Vec::new();
+        if image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, quality)
+            .encode_image(&rgb)
+            .is_ok()
+        {
+            best = out;
+            if best.len() <= INLINE_IMAGE_COMPRESS_THRESHOLD {
+                break;
+            }
+        }
+    }
+    if best.is_empty() || best.len() >= raw.len() {
+        return None;
+    }
+    let data_url = format!("data:image/jpeg;base64,{}", STANDARD.encode(&best));
+    let mut cache = preview_cache().lock().unwrap();
+    if cache.len() >= 64 {
+        cache.clear();
+    }
+    cache.insert(digest, data_url.clone());
+    Some(data_url)
+}
+
+fn compress_data_url_if_large(url: &str) -> Option<String> {
+    let rest = url.strip_prefix("data:image/")?;
+    let (_, encoded) = rest.split_once(";base64,")?;
+    if encoded.len() <= INLINE_IMAGE_COMPRESS_THRESHOLD * 4 / 3 {
+        return None;
+    }
+    let raw = STANDARD.decode(encoded).ok()?;
+    compress_image_bytes_if_large(&raw)
+}
+
+/// 仅裁剪超出窗口的历史工具视图并对超大内联栅格图生成有界 JPEG 预览；持久历史不变。
+pub(super) fn bound_request_images(mut messages: Vec<Message>) -> Vec<Message> {
+    let total_images: usize = messages
+        .iter()
+        .flat_map(|m| &m.content)
+        .filter(|part| matches!(part, ContentPart::Image { .. }))
+        .count();
+    let keep_tail = MAX_REQUEST_IMAGES.saturating_sub(RETAINED_INITIAL_IMAGES);
+    let mut image_index = 0usize;
+    for message in &mut messages {
+        for part in &mut message.content {
+            if let ContentPart::Image { source, .. } = part {
+                let keep = total_images <= MAX_REQUEST_IMAGES
+                    || image_index < RETAINED_INITIAL_IMAGES
+                    || image_index + keep_tail >= total_images;
+                image_index += 1;
+                if !keep {
+                    *part = ContentPart::Text(
+                        "[Historical tool image omitted from model request view; durable history unchanged]"
+                            .into(),
+                    );
+                    continue;
+                }
+                if let MediaSource::Url(url) = source
+                    && let Some(compressed) = compress_data_url_if_large(url)
+                {
+                    *url = compressed;
+                }
+            }
+        }
+    }
+    messages
+}
 
 #[derive(Debug, thiserror::Error)]
 #[error(
@@ -130,8 +232,16 @@ impl HttpModel {
     ) -> Result<()> {
         let mut bytes = 0usize;
         for message in messages {
-            if message.provider_context.is_some() {
-                continue;
+            if let Some(context) = &message.provider_context {
+                if context["type"] == "chat_reasoning" {
+                    bytes = bytes.saturating_add(
+                        context["reasoning_content"]
+                            .as_str()
+                            .map_or(0, str::len),
+                    );
+                } else {
+                    continue;
+                }
             }
             for part in &message.content {
                 let size = match part {
@@ -140,6 +250,21 @@ impl HttpModel {
                         source: MediaSource::Url(url),
                     } if url.starts_with("data:audio/") => {
                         url.split_once(',').map_or(0, |(_, data)| data.len())
+                    }
+                    ContentPart::Image {
+                        source: MediaSource::LocalPath(path),
+                        ..
+                    } => {
+                        let metadata = tokio::fs::metadata(path)
+                            .await
+                            .context("cannot inspect local media")?;
+                        anyhow::ensure!(
+                            metadata.is_file() && metadata.len() <= MAX_LOCAL_MEDIA_BYTES as u64,
+                            "local media must be a regular file no larger than 16 MiB"
+                        );
+                        (metadata.len().min(INLINE_IMAGE_COMPRESS_THRESHOLD as u64) as usize)
+                            .div_ceil(3)
+                            * 4
                     }
                     ContentPart::Image { source, .. }
                     | ContentPart::Audio { source }

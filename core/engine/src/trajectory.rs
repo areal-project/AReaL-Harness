@@ -39,7 +39,8 @@ impl Operation {
             }
             ModelEvent::ToolCall(call) => self.output.push(json!({
                 "type": "tool_call", "id": call.id, "name": call.name,
-                "arguments": json_arguments(&call.arguments)
+                "arguments": json_arguments(&call.arguments),
+                "arguments_json": call.arguments,
             })),
             ModelEvent::ProviderContext(value) => self.output.push(json!({"type": "provider_context", "content": value})),
             ModelEvent::Binary { modality, mime_type, data } => self.output.push(json!({

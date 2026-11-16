@@ -347,6 +347,17 @@ pub(super) fn checkpoint_inputs(
     retained.into_iter().map(|i| inputs[i].clone()).collect()
 }
 
+pub(super) fn history_for(
+    thread: &Thread,
+    store: &store::Store,
+    model: &dyn model::Model,
+) -> anyhow::Result<Vec<Message>> {
+    Ok(model::project_history(
+        history(thread, store)?,
+        model.history_thinking(),
+    ))
+}
+
 pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<Vec<Message>> {
     let mut messages = Vec::new();
     let items: Vec<_> = thread.turns.iter().flat_map(|turn| &turn.items).collect();
@@ -429,16 +440,32 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
     // text is empty. Preserve that boundary: one assistant message contains
     // its text and all calls, followed by all results. Do not make a batch look
     // like the model observed call 1's result before deciding to make call 2.
+    let remaining: Vec<_> = items.into_iter().skip(start).collect();
     let mut assistant_index: Option<usize> = None;
+    let mut round_has_native_reasoning = false;
     let mut visuals = Vec::new();
     let mut response_calls = BTreeMap::<String, Value>::new();
-    for item in items.into_iter().skip(start) {
+    for (idx, item) in remaining.iter().copied().enumerate() {
         if matches!(
             item,
             Item::UserMessage { .. } | Item::AgentMessage { .. } | Item::AgentMedia { .. }
         ) {
             messages.append(&mut visuals);
             assistant_index = None;
+            round_has_native_reasoning = matches!(item, Item::AgentMessage { .. })
+                && remaining[idx + 1..]
+                    .iter()
+                    .take_while(|next| {
+                        !matches!(
+                            next,
+                            Item::UserMessage { .. }
+                                | Item::AgentMessage { .. }
+                                | Item::AgentMedia { .. }
+                        )
+                    })
+                    .any(|next| {
+                        matches!(next, Item::ModelContext { value, .. } if value["type"] == "reasoning")
+                    });
         }
         let message = match item {
             Item::UserMessage { content, .. } => Message {
@@ -451,7 +478,17 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
                 tool_call_id: None,
                 provider_context: None,
             },
-            Item::Reasoning { .. } => continue,
+            Item::Reasoning { content, .. } => {
+                if !round_has_native_reasoning {
+                    append_chat_reasoning(
+                        &mut messages,
+                        &mut assistant_index,
+                        item.id(),
+                        &content.concat(),
+                    );
+                }
+                continue;
+            }
             Item::ModelContext { value, .. } => {
                 if value["type"] == "areal_request_context" {
                     messages.append(&mut visuals);
@@ -478,9 +515,12 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
                     }
                     continue;
                 }
-                // Chat reasoning is archived for inspection, not replayed to
-                // either HTTP protocol or charged to its input context window.
                 if value["type"] == "chat_reasoning" {
+                    if !round_has_native_reasoning
+                        && let Some(text) = value["reasoning_content"].as_str()
+                    {
+                        append_chat_reasoning(&mut messages, &mut assistant_index, item.id(), text);
+                    }
                     continue;
                 }
                 // Keep opaque Responses context in its recorded order.
@@ -489,7 +529,7 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
                 message.provider_context = Some(value.clone());
                 message
             }
-            Item::AgentMessage { text, .. } if !text.is_empty() => {
+            Item::AgentMessage { text, .. } => {
                 assistant_index = Some(messages.len());
                 Message::text("assistant", text.clone())
             }
@@ -651,12 +691,42 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
                     provider_context: None,
                 }
             }
-            _ => continue,
         };
         messages.push(message);
     }
     messages.append(&mut visuals);
+    messages.retain(|m| {
+        m.role != "assistant"
+            || !m.text_content().is_empty()
+            || !m.tool_calls.is_empty()
+            || m.provider_context.is_some()
+            || m.content.iter().any(|p| !matches!(p, ContentPart::Text(_)))
+    });
     Ok(messages)
+}
+
+fn append_chat_reasoning(
+    messages: &mut Vec<Message>,
+    assistant_index: &mut Option<usize>,
+    source_id: &str,
+    text: &str,
+) {
+    if text.is_empty() {
+        return;
+    }
+    let index = *assistant_index.get_or_insert_with(|| {
+        messages.push(Message::text("assistant", ""));
+        messages.len() - 1
+    });
+    let context = messages[index].provider_context.get_or_insert_with(
+        || json!({"type":"chat_reasoning","id":source_id,"reasoning_content":""}),
+    );
+    let mut content = context["reasoning_content"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+    content.push_str(text);
+    context["reasoning_content"] = json!(content);
 }
 
 fn uploaded_content(
@@ -693,6 +763,66 @@ fn uploaded_content(
 #[cfg(test)]
 mod observation_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn thinking_projection_preserves_round_boundaries_tools_and_authoritative_history() {
+        let data = tempfile::tempdir().unwrap();
+        let engine = Engine::open(
+            data.path(),
+            Arc::new(model::UnconfiguredModel),
+            Limits::default(),
+        )
+        .unwrap();
+        let mut thread = engine.create("/workspace".into()).await.unwrap();
+        let call = |id: &str| json!({"type":"dynamicToolCall","id":id,"callId":id,"tool":"inspect","arguments":{},"status":"completed","success":true,"contentItems":[{"type":"inputText","text":"observation"}],"execution":{"runtimeEpoch":"epoch","scopeId":"scope","operationId":"op","outcome":"succeeded"}});
+        thread.turns.push(serde_json::from_value(json!({"id":"turn","status":"completed","items":[
+            {"type":"userMessage","id":"u1","content":[Input::text("question")]},
+            {"type":"agentMessage","id":"a1","text":""},
+            {"type":"reasoning","id":"r1","content":["R1🙂"," next"],"summary":["summary must not replace thinking"]},
+            call("c1"), call("c2"),
+            {"type":"agentMessage","id":"a2","text":"answer"},
+            {"type":"reasoning","id":"r2","content":["R2"]},
+            {"type":"userMessage","id":"u2","content":[Input::text("follow up")]},
+            {"type":"agentMessage","id":"a3","text":"earlier"},
+            {"type":"modelContext","id":"r3","value":{"type":"chat_reasoning","reasoning_content":"R3"}}
+        ]})).unwrap());
+        let original = serde_json::to_value(&thread).unwrap();
+        let preserved = history(&thread, &engine.store).unwrap();
+        assert_eq!(
+            preserved
+                .iter()
+                .map(|m| m.role.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "user",
+                "assistant",
+                "tool",
+                "tool",
+                "assistant",
+                "user",
+                "assistant"
+            ]
+        );
+        assert_eq!(preserved[1].tool_calls.len(), 2);
+        assert_eq!(
+            preserved[1].provider_context.as_ref().unwrap()["reasoning_content"],
+            "R1🙂 next"
+        );
+        assert_eq!(
+            preserved[4].provider_context.as_ref().unwrap()["reasoning_content"],
+            "R2"
+        );
+        assert_eq!(
+            preserved[6].provider_context.as_ref().unwrap()["reasoning_content"],
+            "R3"
+        );
+        let omitted = model::project_history(preserved.clone(), model::HistoryThinking::Omit);
+        assert!(omitted.iter().all(|m| m.provider_context.is_none()));
+        assert_eq!(omitted[1].tool_calls, preserved[1].tool_calls);
+        assert!(context::estimate_tokens(&preserved) > context::estimate_tokens(&omitted));
+        assert_eq!(serde_json::to_value(&thread).unwrap(), original);
+        engine.shutdown().await;
+    }
 
     #[test]
     fn receipts_keep_exact_partial_ranges_without_expired_handles_or_claimed_coverage() {

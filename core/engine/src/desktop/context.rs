@@ -26,7 +26,11 @@ impl Engine {
                 json!({"windowTokens":budget.window,"outputReserveTokens":budget.reserve,"inputLimitTokens":budget.input_limit,"targetTokens":budget.target,"windowSource":if model.capabilities().context_window_tokens.is_some(){"model"}else{"fallback"}})
             })
         });
-        let messages = history(&thread, &self.store).map_err(invalid)?;
+        let messages = match &model {
+            Some(model) => crate::history::history_for(&thread, &self.store, model.as_ref()),
+            None => history(&thread, &self.store),
+        }
+        .map_err(invalid)?;
         if offset > messages.len() {
             return Err(invalid("context offset exceeds message count"));
         }

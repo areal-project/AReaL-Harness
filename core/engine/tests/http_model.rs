@@ -18,6 +18,137 @@ use std::{
 };
 
 #[tokio::test]
+async fn thinking_modes_reach_http_across_turns_and_engine_restart() {
+    use areal_engine::model::{HistoryThinking, ModelOptions};
+    for protocol in [ModelProtocol::ChatCompletions, ModelProtocol::Responses] {
+        for policy in [HistoryThinking::Preserve, HistoryThinking::Omit] {
+            for inline in [false, true] {
+                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+                let calls = Arc::new(AtomicUsize::new(0));
+                let count = calls.clone();
+                let app = Router::new().route(
+                    "/",
+                    post(move |Json(body): Json<Value>| {
+                        let n = count.fetch_add(1, Ordering::SeqCst) + 1;
+                        let tx = tx.clone();
+                        async move {
+                            tx.send(body).unwrap();
+                            let visible = if inline {
+                                format!("<think>THOUGHT-{n}🙂</think>answer-{n}")
+                            } else {
+                                format!("answer-{n}")
+                            };
+                            let wire = match protocol {
+                                ModelProtocol::ChatCompletions if inline => format!(
+                                    "data: {}\n\ndata: [DONE]\n\n",
+                                    json!({"choices":[{"index":0,"delta":{"content":visible},"finish_reason":"stop"}],"usage":{"prompt_tokens":30,"completion_tokens":5}})
+                                ),
+                                ModelProtocol::ChatCompletions => format!(
+                                    "data: {}\n\ndata: [DONE]\n\n",
+                                    json!({"choices":[{"index":0,"delta":{"reasoning_content":format!("THOUGHT-{n}🙂"),"content":format!("answer-{n}")},"finish_reason":"stop"}],"usage":{"prompt_tokens":30,"completion_tokens":5}})
+                                ),
+                                ModelProtocol::Responses => {
+                                    let mut events = Vec::new();
+                                    if !inline {
+                                        events.push(format!(
+                                            "data: {}\n\n",
+                                            json!({"type":"response.reasoning_text.delta","item_id":format!("rs{n}"),"content_index":0,"delta":format!("THOUGHT-{n}🙂")})
+                                        ));
+                                    }
+                                    events.push(format!(
+                                        "data: {}\n\n",
+                                        json!({"type":"response.output_text.delta","delta":visible})
+                                    ));
+                                    let mut output = json!([]);
+                                    if !inline {
+                                        output.as_array_mut().unwrap().push(json!({
+                                            "type":"reasoning",
+                                            "id":format!("rs{n}"),
+                                            "summary":[],
+                                            "content":[{"type":"reasoning_text","text":format!("THOUGHT-{n}🙂")}],
+                                            "encrypted_content":format!("opaque-{n}")
+                                        }));
+                                    }
+                                    events.push(format!(
+                                        "data: {}\n\n",
+                                        json!({"type":"response.completed","response":{"id":format!("resp{n}"),"status":"completed","output":output,"usage":{"input_tokens":30,"output_tokens":5}}})
+                                    ));
+                                    events.concat()
+                                }
+                            };
+                            ([("content-type", "text/event-stream")], wire)
+                        }
+                    }),
+                );
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let endpoint = format!("http://{}/", listener.local_addr().unwrap());
+                let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+                let dir = tempfile::tempdir().unwrap();
+                let model = HttpModel::with_protocol(endpoint, "fixture".into(), None, protocol)
+                    .unwrap()
+                    .with_options(ModelOptions {
+                        history_thinking: policy,
+                        ..Default::default()
+                    })
+                    .unwrap();
+                let engine =
+                    Engine::open(dir.path(), Arc::new(model.clone()), Limits::default()).unwrap();
+                let thread = engine
+                    .create(dir.path().to_string_lossy().into())
+                    .await
+                    .unwrap();
+                for n in 1..=2 {
+                    engine
+                        .start(&thread.id, vec![Input::text("continue")])
+                        .await
+                        .unwrap();
+                    let done = engine.wait(&thread.id).await.unwrap();
+                    let turn = done.turns.last().unwrap();
+                    assert_eq!(turn.status, TurnStatus::Completed);
+                    if inline {
+                        assert!(turn.items.iter().any(|item| matches!(item, Item::AgentMessage { text, .. } if text == &format!("<think>THOUGHT-{n}🙂</think>answer-{n}"))));
+                    } else {
+                        assert!(turn.items.iter().any(|item| matches!(item, Item::Reasoning { content, .. } if content.concat() == format!("THOUGHT-{n}🙂"))));
+                    }
+                    let request = rx.recv().await.unwrap().to_string();
+                    assert_eq!(
+                        request.contains("THOUGHT-1🙂") || request.contains("opaque-1"),
+                        n > 1 && policy == HistoryThinking::Preserve
+                    );
+                    assert!(!request.contains(&format!("THOUGHT-{n}🙂")));
+                    if n > 1 {
+                        assert!(request.contains("answer-1"));
+                    }
+                }
+                engine.shutdown().await;
+                drop(engine);
+                let restored =
+                    Engine::open(dir.path(), Arc::new(model), Limits::default()).unwrap();
+                restored
+                    .start(&thread.id, vec![Input::text("after restart")])
+                    .await
+                    .unwrap();
+                let done = restored.wait(&thread.id).await.unwrap();
+                assert_eq!(done.turns.last().unwrap().status, TurnStatus::Completed);
+                let request = rx.recv().await.unwrap().to_string();
+                for n in 1..=2 {
+                    assert_eq!(
+                        request.contains(&format!("THOUGHT-{n}🙂"))
+                            || request.contains(&format!("opaque-{n}")),
+                        policy == HistoryThinking::Preserve
+                    );
+                }
+                assert!(request.contains("answer-1") && request.contains("answer-2"));
+                assert_eq!(calls.load(Ordering::SeqCst), 3);
+                restored.shutdown().await;
+                server.abort();
+                let _ = server.await;
+            }
+        }
+    }
+}
+
+#[tokio::test]
 async fn sampling_parameters_reach_solve_and_summary_http_requests_without_dropping_zero() {
     use areal_engine::model::{Message, Model, ModelOptions, RequestPurpose};
     use futures_util::StreamExt;

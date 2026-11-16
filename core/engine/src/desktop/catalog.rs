@@ -49,6 +49,7 @@ fn key(id: &str, revision: &str) -> String {
 /// 可信启动配置的执行投影；文件路径、解析和写入不进入 Engine。
 #[derive(Clone, Default)]
 pub struct ConfiguredModels {
+    pub history_thinking: model::HistoryThinking,
     pub providers: Vec<Provider>,
     pub provider_ids: BTreeSet<String>,
     pub parameters: BTreeMap<(String, String), ModelParameters>,
@@ -435,6 +436,12 @@ impl Engine {
         .map_err(invalid)?
         .with_options(model::ModelOptions {
             context_window_tokens: parameters.context_window_tokens,
+            history_thinking: self
+                .desktop
+                .configured_models
+                .read()
+                .unwrap()
+                .history_thinking,
             reasoning_effort: parameters.reasoning_effort.clone(),
             reasoning_summary: parameters.reasoning_summary.clone(),
             max_output_tokens: parameters.max_output_tokens,

@@ -505,6 +505,31 @@ async fn connection(
     let _ = writer.await;
 }
 
+fn compact_oversized_notification(mut value: Value) -> Value {
+    if value["method"] == "turn/completed" {
+        let encoded_len = serde_json::to_vec(&value).map_or(0, |b| b.len());
+        if encoded_len + 1024 > MAX_FRAME_BYTES
+            && let Some(turn) = value["params"]["turn"].as_object_mut()
+        {
+            let count = turn
+                .get("items")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len);
+            turn.insert("items".into(), json!([]));
+            turn.insert(
+                "terminalSummary".into(),
+                json!({
+                    "compactTerminalNotifications": true,
+                    "originalItemCount": count,
+                    "originalNotificationBytes": encoded_len,
+                    "durableHistoryUnchanged": true,
+                }),
+            );
+        }
+    }
+    value
+}
+
 impl Connection {
     fn send(&self, value: Value) {
         if value["method"]
@@ -513,6 +538,7 @@ impl Connection {
         {
             return;
         }
+        let value = compact_oversized_notification(value);
         // 丢失协议消息后不能继续伪装为完整流；关闭连接，由客户端重新读取历史。
         if self.tx.try_send(value).is_err() {
             self.stop.cancel();
@@ -530,7 +556,7 @@ impl Connection {
         }
         let events = engine.subscribe(id).await.map_err(map_error)?;
         self.forward(id, events);
-        Ok(())
+        Ok( () )
     }
     fn forward(&mut self, id: &str, mut events: broadcast::Receiver<Value>) {
         let task_filter = id.strip_prefix("task:").map(str::to_owned);
@@ -552,6 +578,7 @@ impl Connection {
                     Ok(event) => {
                         if task_filter.as_ref().is_some_and(|id| event["params"]["taskId"].as_str()!=Some(id)) { continue; }
                         if event["method"].as_str().is_some_and(|m| suppressed.contains(m)) { continue; }
+                        let event = compact_oversized_notification(event);
                         let _delivery = delivery.lock().await;
                         if subscription.is_cancelled() { break; }
                         if tx.try_send(event).is_err() { stop.cancel(); break; }

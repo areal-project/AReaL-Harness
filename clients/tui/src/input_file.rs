@@ -4,7 +4,7 @@ use std::{io::Read, path::Path};
 
 pub(super) fn read(path: &Path, receipt: Option<&Path>) -> Result<Vec<u8>> {
     let file = std::fs::File::open(path).context("read turn input file")?;
-    let limit = areal_protocol::MAX_FRAME_BYTES / 2;
+    let limit = areal_protocol::MAX_FRAME_BYTES - 65_536;
     let size = file.metadata()?.len();
     let mut bytes = Vec::new();
     if size <= limit as u64 {
@@ -17,7 +17,7 @@ pub(super) fn read(path: &Path, receipt: Option<&Path>) -> Result<Vec<u8>> {
             std::fs::write(receipt, serde_json::to_vec(&outcome)?)?;
         }
         anyhow::bail!(
-            "INPUT_ENVELOPE_TOO_LARGE: turn input file exceeds 2 MiB ({actual} > {limit}); supply a small task entry and read attachments with tools"
+            "INPUT_ENVELOPE_TOO_LARGE: turn input file exceeds RPC frame budget ({actual} > {limit}); supply a small task entry and read attachments with tools"
         );
     }
     Ok(bytes)
@@ -31,14 +31,11 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("input.json");
         let receipt = temp.path().join("error.json");
-        for size in [
-            areal_protocol::MAX_FRAME_BYTES / 2 - 1,
-            areal_protocol::MAX_FRAME_BYTES / 2,
-            areal_protocol::MAX_FRAME_BYTES / 2 + 1,
-        ] {
+        let limit = areal_protocol::MAX_FRAME_BYTES - 65_536;
+        for size in [limit - 1, limit, limit + 1] {
             std::fs::write(&path, vec![b' '; size]).unwrap();
             let result = read(&path, Some(&receipt));
-            assert_eq!(result.is_ok(), size <= areal_protocol::MAX_FRAME_BYTES / 2);
+            assert_eq!(result.is_ok(), size <= limit);
         }
         let value: serde_json::Value =
             serde_json::from_slice(&std::fs::read(receipt).unwrap()).unwrap();

@@ -339,6 +339,7 @@ fn walk(
                 "provider"
                     | "name"
                     | "reasoning_effort"
+                    | "history_thinking"
                     | "reasoning_summary"
                     | "summary_reasoning_effort"
             ]

@@ -203,6 +203,9 @@ impl Model for SharedModel {
     fn goal_id(&self) -> Option<&str> {
         self.inner.goal_id()
     }
+    fn history_thinking(&self) -> crate::model::HistoryThinking {
+        self.inner.history_thinking()
+    }
     fn check_work(&self) -> Result<()> {
         self.inner.check_work()
     }
@@ -510,6 +513,9 @@ fn repeated_failure(messages: &[Message]) -> bool {
 impl Model for ProgressModel {
     fn goal_id(&self) -> Option<&str> {
         self.inner.goal_id()
+    }
+    fn history_thinking(&self) -> crate::model::HistoryThinking {
+        self.inner.history_thinking()
     }
     fn check_work(&self) -> Result<()> {
         self.inner.check_work()

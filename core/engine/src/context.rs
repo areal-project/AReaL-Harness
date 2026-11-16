@@ -435,7 +435,7 @@ impl Engine {
             .map(|a| a.model.clone())
             .unwrap_or(configured);
         let budget = ContextBudget::resolve(&self.limits, model.as_ref())?;
-        let messages = history(&snapshot, &self.store)?;
+        let messages = crate::history::history_for(&snapshot, &self.store, model.as_ref())?;
         let before_bytes = message_bytes(&messages);
         let estimated_tokens =
             calibrated(estimate_tokens(&messages) + overhead_tokens, previous_usage);
@@ -484,8 +484,9 @@ impl Engine {
         // Cut only before a model round or a new user message. A round's opaque
         // reasoning, function calls and results always remain in the same group.
         for index in (previous..items.len()).rev() {
-            if matches!(items[index], Item::Reasoning { .. })
-                || matches!(items[index], Item::ModelContext { value, .. } if value["type"] == "chat_reasoning")
+            if model.history_thinking() == model::HistoryThinking::Omit
+                && (matches!(items[index], Item::Reasoning { .. })
+                    || matches!(items[index], Item::ModelContext { value, .. } if value["type"] == "chat_reasoning"))
             {
                 continue;
             }
@@ -563,7 +564,7 @@ impl Engine {
                 total_duration_ms: 0,
                 compactions: 0,
             });
-            let projected = history(&probe, &self.store)?;
+            let projected = crate::history::history_for(&probe, &self.store, model.as_ref())?;
             let projected_bytes = message_bytes(&projected);
             let saving = before_bytes.saturating_sub(projected_bytes);
             if saving < 1024 {
@@ -629,7 +630,7 @@ impl Engine {
                 turn.items.truncate(take);
                 left -= take;
             }
-            let mut input = summary_input(&history(&prefix, &self.store)?);
+            let mut input = summary_input(&crate::history::history_for(&prefix, &self.store, model.as_ref())?);
             if writing_target < 8000 {
                 // 这是写作目标而非硬截断；原有净缩减验证仍决定能否保存摘要。
                 input[0] = Message::text("system", format!("{}\nSummary writing target: {writing_target} UTF-8 bytes. Compress completed background into one sentence; prioritize current state, unresolved failures and the next action. Original user instructions and exact file receipts are retained separately, so do not copy their full lists. This tighter target supersedes the general length guidance above.", include_str!("summary-instructions.md")));
@@ -784,7 +785,7 @@ impl Engine {
             tracing::Span::current().record("gen_ai.output.messages", trajectory::messages(&[Message::text("assistant", &summary)]));
             let mut state = cell.state.lock().await;
             // 摘要等待期间允许 steer；净缩减必须与同一时刻的历史比较。
-            let commit_before_bytes = message_bytes(&history(&state.thread, &self.store)?);
+            let commit_before_bytes = message_bytes(&crate::history::history_for(&state.thread, &self.store, model.as_ref())?);
             let mut candidate = state.thread.clone();
             let mut cumulative_usage = snapshot
                 .context_checkpoint
@@ -809,7 +810,7 @@ impl Engine {
                     .as_ref()
                     .map_or(1, |checkpoint| checkpoint.compactions + 1),
             });
-            let after_history = history(&candidate, &self.store)?;
+            let after_history = crate::history::history_for(&candidate, &self.store, model.as_ref())?;
             let after_bytes = message_bytes(&after_history);
             let after_tokens = estimate_tokens(&after_history) + overhead_tokens;
             anyhow::ensure!(
