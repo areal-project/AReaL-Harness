@@ -248,6 +248,10 @@ export async function createNativeHostTransport(options: {
         if (closed) return Promise.reject(new Error("Native desktop attachment disconnected"));
         return calls.request("desktop.core.call", { attachmentId: attachment, call, params });
       },
+      command: (command: string, request: unknown) => {
+        if (closed) return Promise.reject(new Error("Native desktop attachment disconnected"));
+        return calls.request("desktop.command", { sourceId: options.sourceId, command, request });
+      },
       close,
       get closed() {
         return closed;

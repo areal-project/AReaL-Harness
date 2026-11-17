@@ -1190,11 +1190,50 @@ class SharedCoreBackend {
       );
     }
     const { guiOwned: _guiOwned, ...params } = request;
-    if (name === "connect" && this.status.selectedThreadObservation !== true)
+    if (
+      !this.nativeBrowserEpoch &&
+      name === "connect" &&
+      this.status.selectedThreadObservation !== true
+    )
       delete params.threadId;
     // 队列业务键跨 GUI/共享服务连接保留，外层丢失响应后也能只读核对。
     const semantics = commandSemantics(name, params);
     if (semantics.requestId) params[semantics.requestId] ??= randomUUID();
+    if (this.nativeBrowserEpoch) {
+      const epoch = this.nativeBrowserEpoch;
+      const source = this.nativeBrowserSource;
+      const transport = this.nativeBrowser;
+      if (!transport || transport.closed) throw new Error("Native desktop attachment unavailable");
+      try {
+        const value = await transport.command(
+          name,
+          name === "media" ? encodeMedia(params) : params,
+        );
+        if (
+          this.disposed ||
+          this.nativeBrowserEpoch !== epoch ||
+          this.nativeBrowserSource !== source
+        )
+          throw Object.assign(new Error("Original native source changed"), {
+            code: "RESYNC_REQUIRED",
+            submissionUnknown: semantics.effect === "mutation",
+          });
+        return name === "media" ? decodeMedia(value) : value;
+      } catch (error) {
+        if (semantics.effect === "mutation" && record(error)) {
+          if (semantics.requestId) error.requestId ??= params[semantics.requestId];
+          // 无Host拒绝证据的传输错误保留原提交，不能重新发送。
+          if (
+            !error.outcome &&
+            !["COMMAND_FAILED", "INVALID_PARAMS", "FORBIDDEN", "CORE_INCOMPATIBLE"].includes(
+              String(error.code ?? ""),
+            )
+          )
+            error.submissionUnknown = true;
+        }
+        throw error;
+      }
+    }
     const originalCore = operationCore(
       this.value.projects.find((project) => project.id === params.projectId),
       params,

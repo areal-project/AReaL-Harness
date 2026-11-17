@@ -1223,6 +1223,102 @@ test("projectless preparations use the native source without a Node connection",
   assert.equal(f.backend.connection, undefined);
 });
 
+test("a selected plugin archive imports on the persistent native source without Node", async (t) => {
+  const f = await fixture(t);
+  const { PluginArchives } = require("../app/src/core/plugin-archives.cjs");
+  const requestId = randomUUID();
+  f.setHandler(async (frame) => {
+    if (frame.method === "desktop.core.subscribe") return { attachmentId: "attachment" };
+    assert.equal(frame.method, "desktop.command");
+    assert.deepEqual(frame.params, {
+      sourceId: "source",
+      command: "manage",
+      request: {
+        operation: "pluginArchiveImport",
+        projectId: "project",
+        path: join(f.root, "plugin.zip"),
+        expectedRevision: 7,
+        requestId,
+      },
+    });
+    return { id: "imported-plugin" };
+  });
+  await f.backend.connectNativeBrowser({ home: f.hostHome, sourceId: "source" }, {});
+  t.after(() => f.backend.closeNativeBrowser());
+  f.backend.status.connected = true;
+  f.backend.status.commandContract =
+    require("@areal/workbench-service/desktop/core/service-protocol.cjs").COMMAND_CONTRACT;
+  f.backend.value.projects = [{ id: "project", root: f.root }];
+  const archives = new PluginArchives({
+    backend: f.backend,
+    choose: async () => ({ canceled: false, filePaths: [join(f.root, "plugin.zip")] }),
+  });
+  const selection = await archives.command(
+    { operation: "pluginArchivePick", projectId: "project" },
+    () => {},
+  );
+  assert.deepEqual(
+    await archives.command(
+      {
+        operation: "pluginArchiveImport",
+        projectId: "project",
+        selectionToken: selection.selectionToken,
+        requestId,
+        expectedRevision: 7,
+      },
+      () => {},
+    ),
+    { id: "imported-plugin" },
+  );
+  assert.equal(f.backend.connection, undefined);
+  const business = f.calls.filter((frame) => frame.method === "desktop.command");
+  assert.equal(business.length, 1);
+});
+
+test("native command late replies cannot settle a replacement source or replay a mutation", async (t) => {
+  const f = await fixture(t);
+  let release;
+  const reply = new Promise((resolve) => {
+    release = resolve;
+  });
+  let admitted;
+  const entered = new Promise((resolve) => {
+    admitted = resolve;
+  });
+  f.setHandler(async (frame) => {
+    if (frame.method === "desktop.core.subscribe") return { attachmentId: "attachment" };
+    assert.equal(frame.method, "desktop.command");
+    admitted();
+    await reply;
+    return { id: "imported-plugin" };
+  });
+  await f.backend.connectNativeBrowser({ home: f.hostHome, sourceId: "source" }, {});
+  t.after(() => f.backend.closeNativeBrowser());
+  f.backend.status.connected = true;
+  f.backend.status.commandContract =
+    require("@areal/workbench-service/desktop/core/service-protocol.cjs").COMMAND_CONTRACT;
+  const requestId = randomUUID();
+  const pending = f.backend.command("manage", {
+    operation: "pluginArchiveImport",
+    projectId: "project",
+    path: join(f.root, "plugin.zip"),
+    expectedRevision: 0,
+    requestId,
+  });
+  const rejected = assert.rejects(
+    pending,
+    (error) =>
+      error.code === "RESYNC_REQUIRED" &&
+      error.requestId === requestId &&
+      error.submissionUnknown === true,
+  );
+  await entered;
+  f.backend.nativeBrowserEpoch = {};
+  release();
+  await rejected;
+  assert.equal(f.calls.filter((frame) => frame.method === "desktop.command").length, 1);
+});
+
 test("resource settings use the native source without a Node connection", async (t) => {
   const f = await fixture(t);
   const request = { operation: "skills", scope: "user" };
