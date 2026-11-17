@@ -337,7 +337,15 @@ it("projects execution read failures onto the logical project without changing t
   }
 });
 describe("Host renderer read authority", () => {
-  it.each([false, true, "leave", "pending"] as const)(
+  it.each([
+    false,
+    true,
+    "leave",
+    "pending",
+    "desktop",
+    "desktop-leave",
+    "desktop-unavailable",
+  ] as const)(
     "activates a persisted conversation on submit with concurrent shell refresh=%s",
     async (backgroundRefresh) => {
       const page = new EventTarget();
@@ -454,7 +462,30 @@ describe("Host renderer read authority", () => {
           },
         };
       };
-      const services = createHostReadServices(undefined, options(factory));
+      let desktopState: Snapshot = { projects: [], connection: { state: "connecting" } };
+      const desktopListeners = new Set<(value: Snapshot) => void>();
+      const desktop: PlatformServices = {
+        snapshot: async () => desktopState,
+        onState: (listener) => {
+          desktopListeners.add(listener);
+          return () => desktopListeners.delete(listener);
+        },
+        chooseProject: async () => null,
+        command: async () => {
+          throw new Error("Native write invoked");
+        },
+        theme: async () => ({ dark: true, id: "dark" }),
+        onTheme: () => () => {},
+        preview: async () => {
+          throw new Error("Native preview invoked");
+        },
+      };
+      const waitsForDesktop =
+        typeof backgroundRefresh === "string" && backgroundRefresh.startsWith("desktop");
+      const services = createHostReadServices(
+        waitsForDesktop ? desktop : undefined,
+        options(factory),
+      );
       try {
         await until(services);
         await services.reads!.selectSession({
@@ -469,6 +500,27 @@ describe("Host renderer read authority", () => {
           text: "continue",
           requestId: crypto.randomUUID(),
         });
+        if (waitsForDesktop) {
+          await vi.waitFor(() => expect(desktopListeners.size).toBe(2));
+          expect(events).toEqual([]);
+          if (backgroundRefresh === "desktop-leave") await services.reads!.selectSession(null);
+          desktopState = {
+            projects: [],
+            connection: {
+              state: backgroundRefresh === "desktop-unavailable" ? "unavailable" : "ready",
+            },
+          };
+          for (const listener of desktopListeners) listener(desktopState);
+          if (backgroundRefresh !== "desktop") {
+            await expect(submitted).rejects.toMatchObject({
+              code:
+                backgroundRefresh === "desktop-leave" ? "STALE_CONNECTION" : "DESKTOP_UNAVAILABLE",
+            });
+            expect(events).toEqual([]);
+            expect(desktopListeners.size).toBe(1);
+            return;
+          }
+        }
         if (backgroundRefresh === "pending") {
           const error = await submitted.catch((error: unknown) => error);
           expect(error).toMatchObject({

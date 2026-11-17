@@ -628,6 +628,48 @@ export function createHostReadServices(
               code: "STALE_CONNECTION",
             });
         };
+        // 历史读取不等原生连接；恢复执行前须让 Main 完成工具 owner 握手。
+        if (desktop) {
+          await new Promise<void>((resolve, reject) => {
+            let unsubscribe = () => {};
+            let finished = false;
+            const finish = (error?: unknown) => {
+              if (finished) return;
+              finished = true;
+              clearTimeout(timer);
+              unsubscribe();
+              if (error) reject(error);
+              else resolve();
+            };
+            const timer = setTimeout(
+              () =>
+                finish(
+                  Object.assign(new Error("桌面工具连接尚未就绪，输入已保留。"), {
+                    code: "DESKTOP_UNAVAILABLE",
+                  }),
+                ),
+              15_000,
+            );
+            const check = (value: Snapshot) => {
+              if (finished) return;
+              try {
+                requireOriginal();
+                if (value.connection?.state === "ready") finish();
+                else if (value.connection?.state === "unavailable")
+                  finish(
+                    Object.assign(new Error("桌面工具连接不可用，输入已保留。"), {
+                      code: "DESKTOP_UNAVAILABLE",
+                    }),
+                  );
+              } catch (error) {
+                finish(error);
+              }
+            };
+            unsubscribe = desktop.onState(check);
+            void desktop.snapshot().then(check, finish);
+          });
+          requireOriginal();
+        }
         const activation = await client.query("project.activate", project.hostProjectId, {});
         if (!object(activation) || activation.projectId !== project.hostProjectId)
           throw new Error("Invalid project activation response");
