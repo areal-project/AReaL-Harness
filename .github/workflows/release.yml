@@ -1,243 +1,70 @@
 name: Release bundles
-
 on:
   workflow_dispatch:
-  pull_request:
-
 permissions:
   contents: read
-
-defaults:
-  run:
-    shell: bash
-
-concurrency:
-  group: release-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 jobs:
-  scope:
-    name: Determine applicable work
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      gui: ${{ steps.scope.outputs.gui }}
-      release: ${{ steps.scope.outputs.release }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - id: scope
-        run: python3 scripts/ci-scope.py
-
   bundle:
-    needs: scope
-    if: github.event_name == 'workflow_dispatch' && needs.scope.outputs.release == 'true'
-    name: Bundle and install (${{ matrix.target }})
+    name: Frozen musl bundle (${{ matrix.arm }})
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-15
-            target: aarch64-apple-darwin
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+          - arm: main
+            revision: 0c4526f2beb771820767032b9300467d7b6aa9c3
+          - arm: preskill
+            revision: 2b4c0d32ee1f7671b5d87f7ccb802ef99cb3afda
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          persist-credentials: false
+          ref: ${{ matrix.revision }}
           fetch-depth: 0
-      - name: Require merged release source
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          git fetch origin main
-          python3 scripts/release-source.py --revision "$(git rev-parse HEAD)"
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: '24.22.1'
-      - name: Build prerequisites
-        run: |
-          mkdir -p target/ci
-          exec > >(tee -a target/ci/release.log) 2>&1
-          if [ "$RUNNER_OS" = Linux ]; then
-            sudo apt-get update
-            sudo apt-get install -y cmake bubblewrap
-          elif ! command -v cmake; then
-            brew install cmake
-          fi
-          rustup show
-          npm ci --ignore-scripts
+          persist-credentials: false
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
-          key: release-${{ matrix.target }}
+          key: skillimpact-musl-${{ matrix.arm }}
           cache-on-failure: true
-      - name: Record tool and cache fingerprints
+      - name: Build complete unmodified release in musl builder
+        shell: bash
+        env:
+          EXPECTED_REVISION: ${{ matrix.revision }}
         run: |
-          mkdir -p target/ci
-          exec > >(tee -a target/ci/release.log) 2>&1
-          mkdir -p target/ci
-          python3 scripts/ci-fingerprint.py > target/ci/fingerprint.json
-      - name: Build release and validate version
-        run: |
-          mkdir -p target/ci
-          exec > >(tee -a target/ci/release.log) 2>&1
-          make release
-          version=$(target/release/areal --version | cut -d ' ' -f 2)
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            test "$GITHUB_REF_NAME" = "v$version"
-          fi
-          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
-          python3 -m unittest discover -s scripts/tests -p test_release.py
-      - name: Package the complete release
-        run: |
-          mkdir -p target/ci
-          exec > >(tee -a target/ci/release.log) 2>&1
-          python3 scripts/package.py --profile release --output ${{ runner.temp }}/areal-release-bundle/areal
-          python3 scripts/release-artifacts.py archive --bundle ${{ runner.temp }}/areal-release-bundle/areal --output ${{ runner.temp }}/areal-release-assets
-          mkdir -p '${{ runner.temp }}/areal relocated bundle'
-          tar -xzf ${{ runner.temp }}/areal-release-assets/areal-harness-v${RELEASE_VERSION}-${{ matrix.target }}.tar.gz -C '${{ runner.temp }}/areal relocated bundle'
-          python3 scripts/release-smoke.py --bundle '${{ runner.temp }}/areal relocated bundle/areal'
-          python3 scripts/install-smoke.py --bundle '${{ runner.temp }}/areal relocated bundle/areal' --evidence target/ci/install.json
-      - name: Verify Linux installation and native tools
-        if: runner.os == 'Linux'
-        run: |
-          mkdir -p target/ci
-          exec > >(tee -a target/ci/release.log) 2>&1
-          cat ${{ runner.temp }}/areal-release-assets/*.sha256 > ${{ runner.temp }}/areal-release-assets/SHA256SUMS
-          prefix="$RUNNER_TEMP/areal installed"
-          python3 scripts/install.py --version "$RELEASE_VERSION" --prefix "$prefix" \
-            --archive ${{ runner.temp }}/areal-release-assets/areal-harness-v${RELEASE_VERSION}-${{ matrix.target }}.tar.gz \
-            --checksums ${{ runner.temp }}/areal-release-assets/SHA256SUMS
-          python3 scripts/release-smoke.py --bundle "$prefix/lib/areal/${RELEASE_VERSION}-linux-x86_64" --executable "$prefix/bin/areal"
-          python3 scripts/native-tools-smoke.py --bin-dir target/release
-          rm ${{ runner.temp }}/areal-release-assets/SHA256SUMS
-      - name: Verify Homebrew installation and packaged lifecycle
-        if: runner.os == 'macOS'
-        run: |
-          mkdir -p target/ci
-          exec > >(tee -a target/ci/release.log) 2>&1
-          archive="${{ runner.temp }}/areal-release-assets/areal-harness-v${RELEASE_VERSION}-${{ matrix.target }}.tar.gz"
-          cat ${{ runner.temp }}/areal-release-assets/*.sha256 > ${{ runner.temp }}/areal-release-assets/SHA256SUMS
-          prefix="$RUNNER_TEMP/areal standalone"
-          python3 scripts/install.py --version "$RELEASE_VERSION" --prefix "$prefix" \
-            --archive "$archive" --checksums ${{ runner.temp }}/areal-release-assets/SHA256SUMS
-          python3 scripts/release-smoke.py --bundle "$prefix/lib/areal/${RELEASE_VERSION}-macos-arm64" --executable "$prefix/bin/areal"
-          rm ${{ runner.temp }}/areal-release-assets/SHA256SUMS
-          AREAL_PACKAGE_PROFILE=release node examples/desktop-api/soak.mjs
-      - name: Verify isolated Homebrew stable and beta channels
-        if: runner.os == 'macOS'
-        run: |
-          archive="${{ runner.temp }}/areal-release-assets/areal-harness-v${RELEASE_VERSION}-${{ matrix.target }}.tar.gz"
-          python3 scripts/homebrew-smoke.py --archive "$archive" --evidence target/ci/homebrew.json
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/musl-out"
+          docker pull rust:1.94.0-alpine3.22
+          docker image inspect rust:1.94.0-alpine3.22 > "$RUNNER_TEMP/musl-out/builder-image.json"
+          docker run --rm --privileged --platform linux/amd64 \
+            -v "$GITHUB_WORKSPACE:/src" -v "$RUNNER_TEMP/musl-out:/out" \
+            -e EXPECTED_REVISION -e CARGO_BUILD_JOBS=2 \
+            rust:1.94.0-alpine3.22 sh -c '
+              set -eu
+              apk add --no-cache bash git python3 nodejs npm make cmake gcc g++ musl-dev linux-headers perl pkgconf binutils openssl-dev openssl-libs-static zlib-dev zlib-static bubblewrap
+              git config --global --add safe.directory /src
+              cd /src
+              test "$(git rev-parse HEAD)" = "$EXPECTED_REVISION"
+              test -z "$(git status --porcelain --untracked-files=no)"
+              npm ci --ignore-scripts
+              make release
+              python3 scripts/package.py --profile release --output /out/areal
+              readelf -l /out/areal/bin/areal > /out/elf-program-headers.txt
+              ! grep -q INTERP /out/elf-program-headers.txt
+              tar -czf /out/areal-musl.tar.gz -C /out areal
+              sha256sum /out/areal-musl.tar.gz > /out/areal-musl.tar.gz.sha256
+              git status --porcelain --untracked-files=no > /out/source-status.txt
+              test ! -s /out/source-status.txt
+              python3 scripts/release-smoke.py --bundle /out/areal
+            ' 2>&1 | tee "$RUNNER_TEMP/musl-out/build.log"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        if: failure()
+        if: always()
         with:
-          name: release-diagnostics-${{ matrix.target }}
-          path: target/ci/
-          retention-days: 7
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: release-${{ matrix.target }}
-          path: ${{ runner.temp }}/areal-release-assets/
+          name: skillimpact-musl-${{ matrix.arm }}
+          path: |
+            ${{ runner.temp }}/musl-out/*.json
+            ${{ runner.temp }}/musl-out/*.txt
+            ${{ runner.temp }}/musl-out/*.log
+            ${{ runner.temp }}/musl-out/*.tar.gz
+            ${{ runner.temp }}/musl-out/*.sha256
           if-no-files-found: error
           retention-days: 14
-
-  linux_homebrew:
-    name: Native Linuxbrew install and upgrade
-    needs: [scope, bundle]
-    if: github.event_name == 'workflow_dispatch' && needs.scope.outputs.release == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: '24.22.1'
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: release-x86_64-unknown-linux-gnu
-          path: target/linux-release-assets
-      - name: Verify Ubuntu 22.04 bundle on a supported Linuxbrew host
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y bubblewrap
-          npm ci --ignore-scripts
-          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-          archive=(target/linux-release-assets/areal-harness-v*-x86_64-unknown-linux-gnu.tar.gz)
-          test "${#archive[@]}" = 1
-          python3 scripts/homebrew-smoke.py --archive "${archive[0]}" --evidence target/ci/homebrew-linux.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        if: failure()
-        with:
-          name: linuxbrew-diagnostics
-          path: target/ci/
-          retention-days: 7
-
-  draft:
-    name: Assemble draft release
-    needs: [bundle, linux_homebrew]
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          pattern: release-*
-          path: target/release-assets
-          merge-multiple: true
-      - name: Assemble checksums and draft
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p target/ci
-          exec > >(tee -a target/ci/release.log) 2>&1
-          cp scripts/install.py target/release-assets/install.py
-          formula=areal.rb
-          if [[ "$GITHUB_REF_NAME" == *-beta.* ]]; then formula=areal-beta.rb; fi
-          python3 scripts/release-artifacts.py formula \
-            --archive target/release-assets/*aarch64-apple-darwin.tar.gz \
-            --archive target/release-assets/*x86_64-unknown-linux-gnu.tar.gz \
-            --output "target/release-assets/$formula"
-          cd target/release-assets
-          cat *.tar.gz.sha256 > SHA256SUMS
-          sha256sum --check SHA256SUMS
-          sha256sum install.py "$formula" manifest-*.json >> SHA256SUMS
-          rm *.tar.gz.sha256
-          release_flags=(--draft --latest=false)
-          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
-            release_flags+=(--prerelease)
-          fi
-          gh release create "$GITHUB_REF_NAME" --verify-tag "${release_flags[@]}" \
-            --title "AReaL-Harness $GITHUB_REF_NAME" --generate-notes \
-            ./*.tar.gz ./SHA256SUMS ./install.py "./$formula" ./manifest-*.json
-
-  gate:
-    name: Release gate
-    needs: [scope, bundle, linux_homebrew]
-    if: always()
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - name: Verify local release contracts
-        if: github.event_name == 'pull_request'
-        run: python3 -m unittest discover -s scripts/tests -p test_release.py
-      - name: Require applicable work
-        env:
-          GATE_KIND: release
-          SCOPE_RESULT: ${{ needs.scope.result }}
-          WORK_RESULT: ${{ needs.bundle.result }}
-          HOMEBREW_RESULT: ${{ needs.linux_homebrew.result }}
-          NEEDED: ${{ github.event_name == 'workflow_dispatch' && needs.scope.outputs.release || 'false' }}
-        run: python3 scripts/ci-gate.py
