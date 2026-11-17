@@ -161,7 +161,7 @@ function startDesktop() {
   let startupPresentation = "requested",
     startupPainted = false,
     startupReady = false;
-  /** @typedef {import('./service-client.cjs').LifecycleResult|{kind?:string,canceled:boolean}|{stopped:boolean,quitting:true}} QuitResult */
+  /** @typedef {import('@areal/workbench/desktop-contract/desktop-control').LifecycleResult|{kind?:string,canceled:boolean}|{stopped:boolean,quitting:true}} QuitResult */
   /** @typedef {{id:number,intent:string,owner:Electron.WebContents|null,frame:Electron.WebFrameMain|null,decide:((allowed:boolean)=>void)|null,approved:boolean,phase:'checking'|'stopping'|'finishing'|null,startedAt:number,promise:Promise<QuitResult>|null}} QuitAttempt */
   let focusRequested = false,
     quitRequestSequence = 0;
@@ -1301,11 +1301,7 @@ function startDesktop() {
               lifecycle?.operations?.some(
                 (operation) => !["completed", "blocked"].includes(operation.phase),
               );
-            return (
-              recoveryPending > 0 ||
-              unsettled ||
-              (!serviceBackend.serviceExited && !(await serviceBackend.observeLifecycle()).ifIdle)
-            );
+            return recoveryPending > 0 || unsettled || (await serviceBackend.hasUpdateWork());
           };
           const recoverInstall = async () => {
             recoveryPending++;

@@ -1657,3 +1657,78 @@ test("Main resource and service status reads use native Host without a Node conn
   assert.deepEqual(operations, ["inspect", "status"]);
   assert.equal(f.backend.connection, undefined);
 });
+
+test("native update readiness observes Host resources and treats missing observations as busy", async (t) => {
+  const f = await fixture(t);
+  f.backend.nativeBrowserEpoch = {};
+  f.backend.status.connected = true;
+  let canStop = true;
+  f.backend.serviceStatus = async () => ({ canStop });
+  f.backend.observeLifecycle = async () => assert.fail("Node lifecycle must not be read");
+  assert.equal(await f.backend.hasUpdateWork(), false);
+  canStop = false;
+  assert.equal(await f.backend.hasUpdateWork(), true);
+  f.backend.serviceStatus = async () => {
+    throw new Error("original connection lost");
+  };
+  assert.equal(await f.backend.hasUpdateWork(), true);
+});
+
+test("native recovery stops through the original Host receipt without Node lifecycle", async (t) => {
+  const f = await fixture(t);
+  const { recoverConnectedService } = require("../app/src/core/startup-recovery.cjs");
+  f.backend.nativeBrowserEpoch = {};
+  f.backend.status.connected = true;
+  f.backend.observeLifecycle = async () => assert.fail("Node lifecycle must not be read");
+  f.setHandler(async (q) => {
+    assert.equal(q.method, "host.stop");
+    const value = f.receipt(q.params.requestId);
+    f.operations.set(q.params.requestId, value);
+    return value;
+  });
+  const result = await recoverConnectedService({
+    backend: f.backend,
+    notify: async () => ({ response: 1 }),
+    purpose: "update",
+  });
+  assert.equal(result.stopped, true);
+  assert.equal(result.operation.kind, "stopHost");
+  const saved = readReferences((await f.backend.readControl()).references);
+  assert.equal(saved[0].requestId, result.operation.requestId);
+  assert.equal(f.backend.connection, null);
+});
+
+test("native update keeps one original stop receipt and restarts only after completion", async (t) => {
+  const f = await fixture(t);
+  f.backend.nativeBrowserEpoch = {};
+  f.backend.status.connected = true;
+  f.backend.options.binary = "/unused/areal";
+  let starts = 0;
+  f.backend.initialize = async () => {
+    starts++;
+  };
+  f.backend.observeLifecycle = async () => assert.fail("Node lifecycle must not be read");
+  let stopId;
+  f.setHandler(async (q) => {
+    if (q.method === "host.stop") {
+      stopId = q.params.requestId;
+      const receipt = f.receipt(stopId, "acceptedPending");
+      f.operations.set(stopId, receipt);
+      return receipt;
+    }
+    assert.equal(q.method, "host.operation");
+    return { operation: f.operations.get(q.params.requestId) };
+  });
+  const notify = async () => ({ response: 1 });
+  await assert.rejects(f.backend.applyUpdate({ notify }), { code: "LIFECYCLE_INCOMPLETE" });
+  assert.equal(starts, 0);
+  assert.ok(stopId);
+  assert.equal(f.backend.hostReferences.size, 1);
+  f.operations.set(stopId, f.receipt(stopId));
+  const result = await f.backend.applyUpdate({ notify });
+  assert.equal(result.stopped, true);
+  assert.equal(result.operation.requestId, stopId);
+  assert.equal(starts, 1);
+  assert.equal(f.calls.filter((q) => q.method === "host.stop").length, 1);
+  assert.equal(f.backend.hostReferences.has(stopId), true);
+});

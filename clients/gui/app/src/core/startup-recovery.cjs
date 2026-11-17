@@ -31,6 +31,13 @@ async function recoverConnectedService({
   forUpdate = false,
   migration,
 }) {
+  if (backend.nativeBrowserEpoch) {
+    if (!notify)
+      throw Object.assign(new Error(nativeText("lifecycle.confirmationRequired")), {
+        code: "LIFECYCLE_CONFIRMATION_REQUIRED",
+      });
+    return require("./host-quit.cjs").confirmHostStop(backend, notify);
+  }
   const observed = await backend.observeLifecycle(true, {
     purpose: purpose === "quit" && !forUpdate ? "quit" : "manage",
   });

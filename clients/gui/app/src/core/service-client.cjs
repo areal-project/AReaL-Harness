@@ -1372,6 +1372,17 @@ class SharedCoreBackend {
   get serviceExited() {
     return !!this.exitConfirmation && this.exitConfirmation === this.metadata;
   }
+  async hasUpdateWork() {
+    if (this.serviceExited) return false;
+    if (this.nativeBrowserEpoch) {
+      try {
+        return (await this.serviceStatus()).canStop !== true;
+      } catch {
+        return true;
+      }
+    }
+    return !(await this.observeLifecycle()).ifIdle;
+  }
   /** @param {boolean} [forUpdate] @param {{purpose?:string}} [options] */
   async observeLifecycle(forUpdate = true, { purpose = "manage" } = {}) {
     if (this.serviceExited) return { ifIdle: true, exited: true, blockers: [] };
@@ -1743,7 +1754,8 @@ class SharedCoreBackend {
           result = { stopped: operation?.phase === "completed", operation };
       }
       if (!result) {
-        require("./lifecycle.cjs").assertLifecycleSupport(this.status, "updateDesktop");
+        if (!this.nativeBrowserEpoch)
+          require("./lifecycle.cjs").assertLifecycleSupport(this.status, "updateDesktop");
         if (!this.options.binary) throw new Error("Core 程序路径不可用");
         this.backendUpdate = { state: "applying" };
         this.onChange();
@@ -1768,6 +1780,7 @@ class SharedCoreBackend {
       for (const [requestId, reference] of this.lifecycleReferences) {
         if (
           desktopKind(reference.kind) &&
+          "desktopGeneration" in result.operation &&
           reference.desktopGeneration === result.operation.desktopGeneration
         ) {
           this.lifecycleReferences.delete(requestId);
