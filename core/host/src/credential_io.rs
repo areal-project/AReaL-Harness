@@ -162,9 +162,17 @@ pub(crate) fn execute(
     );
     let response =
         response.map_err(|_| error("storageLocked", "credential helper result is unavailable"))?;
+    reply_value(response)
+}
+
+fn reply_value(response: Reply) -> Result<Option<Value>> {
     match response.status {
         0 => Ok(response.value),
         -25300 => Ok(None),
+        -25293 => Err(error(
+            "storageAuthorizationRequired",
+            "Keychain authorization does not permit this application identity; authorize access or re-enter the credential",
+        )),
         status => Err(error(
             "storageLocked",
             format!("Host Keychain access failed (OSStatus {status})"),
@@ -645,4 +653,26 @@ mod tests {
             }
         }
     }
+}
+
+#[cfg(test)]
+#[test]
+fn keychain_identity_rejection_requires_authorization_not_unlocking() {
+    let error = reply_value(Reply {
+        status: -25293,
+        value: None,
+    })
+    .unwrap_err();
+    assert_eq!(
+        error.downcast_ref::<crate::wire::Error>().unwrap().code,
+        "storageAuthorizationRequired"
+    );
+    assert!(
+        reply_value(Reply {
+            status: -25300,
+            value: None
+        })
+        .unwrap()
+        .is_none()
+    );
 }

@@ -504,3 +504,41 @@ test("binary upgrade classification requires the original Host rejection receipt
     );
   }
 });
+
+test("a short recovered connection preserves reconnect backoff", async (t) => {
+  const {
+    ProjectConnections,
+  } = require("@areal/workbench-service/desktop/core/project-connections.cjs");
+  const descriptor = { serviceId: "service", configFingerprint: "config", generation: "core" };
+  const project = {
+    id: "project",
+    service: descriptor,
+    client: { ready: false },
+    reconnectAttempt: 3,
+  };
+  const host = {
+    projects: new Map([[project.id, project]]),
+    starting: new Map(),
+    lifecycleOperations: { assertProject() {}, schedulingSuppressed: () => false },
+    connectExisting: async () => ({ descriptor, token: "synthetic" }),
+    reconcile: async () => {},
+  };
+  const connections = new ProjectConnections(host);
+  connections.connect = async () => {
+    project.client = { ready: true };
+  };
+  await connections.reconnectProjectObserved(project);
+  assert.equal(
+    project.reconnectAttempt,
+    3,
+    "one successful handshake must not erase repeated short disconnections",
+  );
+  project.client.ready = false;
+  let delay;
+  t.mock.method(globalThis, "setTimeout", (_callback, value) => {
+    delay = value;
+    return { unref() {} };
+  });
+  connections.scheduleReconnect(project);
+  assert.equal(delay, 4000);
+});

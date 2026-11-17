@@ -18,6 +18,7 @@ pub(super) struct Providers {
 }
 struct Checked {
     stamp: Value,
+    execution: Value,
     snapshot: Value,
     errors: Value,
     proofs: BTreeMap<String, Value>,
@@ -99,12 +100,35 @@ fn targets(host: &Host, source: &str) -> Result<Vec<Target>> {
     }
     Ok(targets.into_values().collect())
 }
-fn stamp(host: &Host, source: &str, snapshot: &Value, targets: &[Target]) -> Result<Value> {
+fn stamp(host: &Host, source: &str, snapshot: &Value) -> Result<Value> {
     Ok(
         json!({"source":source,"catalog":snapshot,"credentials":host.migration.vault.provider_stamp(source)?,
-        "environment":storage::digest(&serde_json::to_vec(&host.gateway.workbench.environment_credentials(source))?),
-        "projects":targets.iter().map(|target| json!([target.id,target.alias,target.root,target.running,target.identity,
-            host.schedules.connections.model_catalog_revision(host, &target.id).ok()])).collect::<Vec<_>>()}),
+        "environment":storage::digest(&serde_json::to_vec(&host.gateway.workbench.environment_credentials(source))?)}),
+    )
+}
+fn execution_stamp(host: &Host, targets: &[Target]) -> Value {
+    json!(
+        targets
+            .iter()
+            .map(|target| json!([
+                target.id,
+                target.alias,
+                target.root,
+                target.running,
+                target
+                    .identity
+                    .as_ref()
+                    .map(|(service, generation, _)| (service, generation)),
+                host.schedules
+                    .connections
+                    .model_catalog_revision(host, &target.id)
+                    .ok(),
+                host.schedules
+                    .connections
+                    .model_application(host, &target.id)
+                    .ok()
+            ]))
+            .collect::<Vec<_>>()
     )
 }
 pub(super) fn base_url(endpoint: &str) -> String {
@@ -195,11 +219,12 @@ impl Providers {
     pub(super) fn revision(&self, host: &Host, source: &str) -> Result<String> {
         let options = host.gateway.workbench.utility_options(source)?;
         let catalog = workbench_utility::models_catalog(host, source, &options)?;
-        let stamp = stamp(host, source, &catalog, &targets(host, source)?)?;
+        let stamp = stamp(host, source, &catalog)?;
         let checked = self.checked.borrow();
         let current = checked.as_ref().filter(|checked| checked.stamp == stamp);
         Ok(storage::digest(&serde_json::to_vec(&json!([
             stamp,
+            execution_stamp(host, &targets(host, source)?),
             current.map(|checked| json!([checked.snapshot, checked.errors, checked.proofs]))
         ]))?))
     }
@@ -208,9 +233,11 @@ impl Providers {
         super::provider_config::import_saved_configuration(host, source, &options)?;
         let catalog = workbench_utility::models_catalog(host, source, &options)?;
         let targets = targets(host, source)?;
-        let stamp = stamp(host, source, &catalog, &targets)?;
+        let stamp = stamp(host, source, &catalog)?;
+        let execution = execution_stamp(host, &targets);
         let checked = self.checked.borrow();
         let current = checked.as_ref().filter(|checked| checked.stamp == stamp);
+        let proof_current = current.filter(|checked| checked.execution == execution);
         let mut snapshot = current
             .map(|checked| checked.snapshot.clone())
             .unwrap_or_else(|| catalog.clone());
@@ -219,7 +246,7 @@ impl Providers {
             .context("INVALID_RESPONSE")?
             .to_owned();
         let projects: Vec<_> = targets.iter().map(|target| {
-            let proof = current.and_then(|checked| checked.proofs.get(&target.id));
+            let proof = proof_current.and_then(|checked| checked.proofs.get(&target.id));
             let applied = proof.is_some_and(|proof| {
                 proof["applied"]["revision"] == revision && credentials_ready(proof, &snapshot)
             });
@@ -277,7 +304,8 @@ impl Providers {
             }
         }
         snapshot["definitions"] = json!(definitions);
-        let refresh = current.is_none_or(|checked| checked.at.elapsed() >= Duration::from_secs(1));
+        let refresh =
+            proof_current.is_none_or(|checked| checked.at.elapsed() >= Duration::from_secs(30));
         drop(checked);
         if refresh && !self.checking.replace(true) {
             let this = self.clone();
@@ -289,16 +317,37 @@ impl Providers {
                     check(&host, &source, &targets, stamp.clone()),
                 )
                 .await;
-                if let Ok(Ok(checked)) = result {
-                    *this.checked.borrow_mut() = Some(checked);
-                    host.changed();
-                }
+                let checked = match result {
+                    Ok(Ok(checked)) => checked,
+                    _ => {
+                        // 检查失败是可见终态；保留配置与原写入事实，不伪造已应用或无限 checking。
+                        let mut snapshot = catalog;
+                        let mut errors = json!({});
+                        if let Some(states) = snapshot["credentialStates"].as_object_mut() {
+                            for (id, state) in states {
+                                if *state == "checking" {
+                                    *state = json!("unavailable");
+                                    errors[id] = json!("checkUnavailable");
+                                }
+                            }
+                        }
+                        Checked {
+                            stamp: stamp.clone(),
+                            execution: execution.clone(),
+                            snapshot,
+                            errors,
+                            proofs: BTreeMap::new(),
+                            at: Instant::now(),
+                        }
+                    }
+                };
+                *this.checked.borrow_mut() = Some(checked);
+                host.changed();
                 this.checking.set(false);
                 // 等待期间的新配置不能丢掉检查机会；只继续读取，不重试任何写入。
                 if let Ok(options) = host.gateway.workbench.utility_options(&source)
                     && let Ok(catalog) = workbench_utility::models_catalog(&host, &source, &options)
-                    && let Ok(targets) = self::targets(&host, &source)
-                    && let Ok(current) = self::stamp(&host, &source, &catalog, &targets)
+                    && let Ok(current) = self::stamp(&host, &source, &catalog)
                     && current != stamp
                 {
                     let _ = this.read(&host, &source);
@@ -322,7 +371,15 @@ async fn check(
     for provider in snapshot["data"].as_array().context("INVALID_RESPONSE")? {
         if let Some(reference) = provider["apiKeyEnv"].as_str() {
             let error = &value["credentials"]["errors"][reference];
-            if error == "storageLocked" || error == "migrationPending" {
+            if matches!(
+                error.as_str(),
+                Some(
+                    "storageLocked"
+                        | "storageMissing"
+                        | "storageAuthorizationRequired"
+                        | "migrationPending"
+                )
+            ) {
                 errors[provider["id"].as_str().context("INVALID_RESPONSE")?] = error.clone();
             }
         }
@@ -371,7 +428,7 @@ async fn check(
     let options = host.gateway.workbench.utility_options(source)?;
     let catalog = workbench_utility::models_catalog(host, source, &options)?;
     ensure!(
-        stamp(host, source, &catalog, &self::targets(host, source)?)? == original,
+        stamp(host, source, &catalog)? == original,
         "RESYNC_REQUIRED"
     );
     ensure!(
@@ -380,9 +437,38 @@ async fn check(
     );
     Ok(Checked {
         stamp: original,
+        execution: execution_stamp(host, targets),
         snapshot,
         errors,
         proofs,
         at: Instant::now(),
     })
+}
+
+#[cfg(test)]
+#[test]
+fn credential_check_stamp_survives_transport_reconnection() {
+    let root = tempfile::tempdir().unwrap();
+    let host = super::schedules::tests::fixture(root.path());
+    let source = uuid::Uuid::new_v4().to_string();
+    let mut targets = vec![Target {
+        id: "project".into(),
+        alias: "alias".into(),
+        root: json!("fixture"),
+        running: true,
+        identity: Some((
+            "service".into(),
+            "generation".into(),
+            "connection-one".into(),
+        )),
+    }];
+    let first = stamp(&host, &source, &json!({"revision":"config-one"})).unwrap();
+    let execution = execution_stamp(&host, &targets);
+    targets[0].identity.as_mut().unwrap().2 = "connection-two".into();
+    assert_eq!(
+        stamp(&host, &source, &json!({"revision":"config-one"})).unwrap(),
+        first,
+        "transport identity must not invalidate a credential check"
+    );
+    assert_eq!(execution_stamp(&host, &targets), execution);
 }

@@ -94,6 +94,8 @@ const MAX_TICKETS: usize = 64;
 const MAX_CONNECTIONS: usize = 32;
 const MAX_WATCHED: usize = 4;
 const MAX_PENDING_COMMANDS: usize = 16;
+const MAX_PENDING_QUERIES: usize = 16;
+const MAX_PENDING_RECOVERY: usize = 4;
 const ELECTRON_ORIGIN: &str = "areal-ui://app";
 type Socket = WebSocketStream<TokioIo<hyper::upgrade::Upgraded>>;
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -618,6 +620,7 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
     let writable = writer.is_some();
     let mut commands = VecDeque::new();
     let mut queries = JoinSet::new();
+    let mut recovery = JoinSet::new();
     let mut command: Option<AbortOnDropHandle<(super::gateway_owner::LocalSession, Value)>> = None;
     loop {
         // 业务请求保留同连接顺序与会话状态；等待后台时仍消费读取、事件和撤销授权。
@@ -638,6 +641,11 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
         tokio::select! {
             Some(response) = queries.join_next(), if !queries.is_empty() => {
                 let response = response.context("Host query task failed")?;
+                ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
+                send(&mut socket, &response).await?;
+            }
+            Some(response) = recovery.join_next(), if !recovery.is_empty() => {
+                let response = response.context("Host recovery task failed")?;
                 ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
                 send(&mut socket, &response).await?;
             }
@@ -673,15 +681,29 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                         let raw: Value = serde_json::from_str(&bytes)?;
                         if writable && raw["method"].as_str().is_some_and(|method| WRITE_METHODS.contains(&method)) {
                             let id = raw["id"].as_str().filter(|id| !id.is_empty() && id.len() <= 64).context("invalid request")?.to_owned();
-                            if commands.len() + usize::from(command.is_some()) + queries.len() >= MAX_PENDING_COMMANDS {
+                            let recovery_request = matches!(raw["method"].as_str(), Some("command.read" | "turn.stop"));
+                            let independent = recovery_request || independent_query(&raw);
+                            let (full, reason) = if recovery_request {
+                                (recovery.len() >= MAX_PENDING_RECOVERY, "recoveryQueueFull")
+                            } else if independent {
+                                (queries.len() >= MAX_PENDING_QUERIES, "queryQueueFull")
+                            } else {
+                                (commands.len() + usize::from(command.is_some()) >= MAX_PENDING_COMMANDS, "commandQueueFull")
+                            };
+                            if full {
+                                let mut error = loopback_error(&raw, &anyhow::anyhow!("CAPACITY_EXCEEDED"));
+                                error["reason"] = json!(reason);
+                                error["submissionUnknown"] = json!(false);
+                                eprintln!("Host request not admitted: method={} reason={reason}", raw["method"].as_str().unwrap_or_default());
                                 send(&mut socket, &json!({"version":VERSION,"id":id,
-                                    "error":loopback_error(&raw, &anyhow::anyhow!("CAPACITY_EXCEEDED"))
+                                    "error":error
                                 })).await?;
-                            } else if independent_query(&raw) {
+                            } else if independent {
                                 let host = host.clone();
                                 let device = device_id.clone();
                                 let connection = connection_id.clone();
-                                queries.spawn_local(async move {
+                                let tasks = if recovery_request { &mut recovery } else { &mut queries };
+                                tasks.spawn_local(async move {
                                     // 这些查询不消费上传、分页令牌或选中会话；沿原工厂绑定同一主体与连接。
                                     let local = match &device {
                                         Some(device) => super::gateway_owner::LocalSession::browser(host.clone(), connection, device.clone()),

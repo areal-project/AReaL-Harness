@@ -468,7 +468,7 @@ mod tests {
                 let registration=host.slots.borrow()["project"].registration.clone();
                 let service=Service{identity:areal_protocol::service::Identity{protocol_version:1,service_id:"fixture-core".into(),generation:"generation".into(),workspace:registration.workspace,data_dir:registration.data_dir,config_fingerprint:"fixture".into()},owner:Some(host.owner()),endpoint:format!("ws://{}/",listener.local_addr().unwrap()),web_url:String::new(),auth_file:root.path().join("auth.json"),log_file:root.path().join("core.log"),host_pid:1,core_pid:2,state:State::Ready};
                 storage::write(&service.auth_file,&json!({"principals":[{"id":"desktop-owner","token":"fixture-token"}]})).unwrap();
-                {let mut slots=host.slots.borrow_mut();let slot=slots.get_mut("project").unwrap();slot.state="ready".into();slot.service=Some(service.clone());}
+                {let mut slots=host.slots.borrow_mut();let slot=slots.get_mut("project").unwrap();slot.state="ready".into();slot.service=Some(service.clone());let (writer,lifetime)=areal_local_service::OwnerLifetime::pair().unwrap();slot.writer=Some(writer);slot.lifetime=Some(Rc::new(lifetime));}
                 let host=Rc::new(host);
                 let core=tokio::task::spawn_local(async move {
                     let mut connections=tokio::task::JoinSet::new();

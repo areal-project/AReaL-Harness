@@ -120,7 +120,15 @@ pub(super) async fn execute_with_options(
         for (name, value) in host.gateway.workbench.environment_credentials(source) {
             inputs.env.insert(name.into(), value.into());
         }
-        let references = host.migration.vault.provider_references(source)?;
+        let catalog = models_catalog(host, source, &options)?;
+        let references = catalog["data"]
+            .as_array()
+            .context("INVALID_RESPONSE")?
+            .iter()
+            .filter_map(|provider| provider["apiKeyEnv"].as_str())
+            .filter(|reference| reference.starts_with("AREAL_CREDENTIAL_"))
+            .map(str::to_owned)
+            .collect::<std::collections::BTreeSet<_>>();
         for reference in references {
             credential_references.push(reference.clone());
             inputs.env.remove(OsString::from(&reference).as_os_str());
@@ -137,7 +145,10 @@ pub(super) async fn execute_with_options(
                     if error
                         .downcast_ref::<crate::wire::Error>()
                         .is_some_and(|error| {
-                            matches!(error.code, "storageLocked" | "storageMissing")
+                            matches!(
+                                error.code,
+                                "storageLocked" | "storageMissing" | "storageAuthorizationRequired"
+                            )
                         }) =>
                 {
                     credential_errors.insert(

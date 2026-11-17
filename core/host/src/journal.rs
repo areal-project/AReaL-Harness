@@ -7,7 +7,7 @@ use std::{
     cell::RefCell,
     collections::BTreeMap,
     fs::{File, OpenOptions},
-    io::Read,
+    io::{BufReader, Read},
     os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
 };
@@ -59,7 +59,7 @@ struct Prepared {
     receipt: Value,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Record {
     project_id: String,
@@ -164,10 +164,33 @@ fn write_record<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     storage::write(path, value)
 }
 
+type RecordStamp = [u64; 9];
+fn record_stamp(path: &Path) -> Result<RecordStamp> {
+    let metadata = std::fs::symlink_metadata(path)?;
+    ensure!(
+        metadata.is_file()
+            && metadata.uid() == unsafe { libc::geteuid() }
+            && metadata.permissions().mode() & 0o077 == 0,
+        "journal file must be private and owned by current UID"
+    );
+    Ok([
+        metadata.dev(),
+        metadata.ino(),
+        metadata.len(),
+        metadata.mtime() as u64,
+        metadata.mtime_nsec() as u64,
+        metadata.ctime() as u64,
+        metadata.ctime_nsec() as u64,
+        metadata.mode() as u64,
+        metadata.uid() as u64,
+    ])
+}
+
 pub(crate) struct Journal {
     root: PathBuf,
     epoch: String,
     reads: RefCell<BTreeMap<String, Vec<PathBuf>>>,
+    records: RefCell<BTreeMap<String, (RecordStamp, Record)>>,
 }
 
 #[derive(Deserialize)]
@@ -206,6 +229,7 @@ impl Journal {
             root: home.join("host/journals"),
             epoch: String::new(),
             reads: RefCell::new(BTreeMap::new()),
+            records: RefCell::new(BTreeMap::new()),
         };
         let Some(operation) = journal.prepared(id)? else {
             let directory = journal.root.join("records");
@@ -244,6 +268,7 @@ impl Journal {
             root,
             epoch: uuid::Uuid::new_v4().to_string(),
             reads: RefCell::new(BTreeMap::new()),
+            records: RefCell::new(BTreeMap::new()),
         };
         for path in storage::json_records(&journal.root.join("records"), true)? {
             let record: Record = read_large(&path)?;
@@ -279,7 +304,7 @@ impl Journal {
             );
             return Ok(());
         }
-        write_record(
+        self.store_record(
             &path,
             &Record {
                 project_id: project_id.into(),
@@ -294,10 +319,7 @@ impl Journal {
 
     fn ensure_empty(&self, project_id: &str) -> Result<()> {
         match std::fs::symlink_metadata(self.record_path(project_id)?) {
-            Ok(_) => {
-                self.load(project_id)?;
-                Ok(())
-            }
+            Ok(_) => self.with_record(project_id, |_| ()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 self.initialize(project_id, json!({"version":1,"pending":[],"outcomes":{}}))
             }
@@ -307,8 +329,23 @@ impl Journal {
 
     pub(crate) fn native_snapshot(&self, project_id: &str) -> Result<(u64, Value)> {
         self.ensure_empty(project_id)?;
-        let record = self.load(project_id)?;
-        Ok((record.revision, serde_json::to_value(record.snapshot)?))
+        self.with_record(project_id, |record| {
+            Ok((record.revision, serde_json::to_value(&record.snapshot)?))
+        })?
+    }
+
+    pub(crate) fn native_receipt(&self, project: &str, command: &str) -> Result<Option<Value>> {
+        self.ensure_empty(project)?;
+        self.with_record(project, |record| {
+            record.snapshot.outcomes.get(command).cloned().or_else(|| {
+                record
+                    .snapshot
+                    .pending
+                    .iter()
+                    .find(|row| row["requestId"] == command)
+                    .map(|row| row["result"].clone())
+            })
+        })
     }
     pub(crate) fn native_replace(
         &self,
@@ -329,7 +366,7 @@ impl Journal {
             .checked_add(1)
             .context("journal revision exhausted")?;
         reclaim(&mut record, now_secs());
-        write_record(&self.record_path(project_id)?, &record)
+        self.store_record(&self.record_path(project_id)?, &record)
     }
 
     /// 准入与结算共用同一快照事务；调用方只负责授权与方法特有的权威前置条件。
@@ -483,24 +520,42 @@ impl Journal {
     fn prepared(&self, id: &str) -> Result<Option<Prepared>> {
         storage::read_optional(&self.operation_path(id))
     }
+    fn store_record(&self, path: &Path, record: &Record) -> Result<()> {
+        // 落盘失败可能已原子替换文件，先失效；下一次读取必须重新核验并恢复提交证据。
+        self.records.borrow_mut().remove(&record.project_id);
+        write_record(path, record)
+    }
     fn load(&self, project_id: &str) -> Result<Record> {
-        let record: Record = read_large(&self.record_path(project_id)?)?;
+        self.with_record(project_id, Clone::clone)
+    }
+    fn with_record<T>(&self, project_id: &str, read: impl FnOnce(&Record) -> T) -> Result<T> {
+        let path = self.record_path(project_id)?;
+        let stamp = record_stamp(&path)?;
+        if let Some((cached_stamp, record)) = self.records.borrow().get(project_id)
+            && *cached_stamp == stamp
+        {
+            return Ok(read(record));
+        }
+        self.records.borrow_mut().remove(project_id);
+        let mut record: Record = read_large(&path)?;
         ensure!(
             record.project_id == project_id,
             "journal project identity mismatch"
         );
         record.snapshot.validate()?;
         self.recover(&record)?;
-        let mut record = record;
         drop_legacy_remote(&mut record.snapshot);
         if record.settled_at.is_empty() {
-            // 升级前写入的记录没有结算时间，视为已过最短保留期，满额项目升级后即可恢复。
             for id in record.snapshot.outcomes.keys() {
                 record.settled_at.insert(id.clone(), 0);
             }
         }
         reclaim(&mut record, now_secs());
-        Ok(record)
+        let result = read(&record);
+        self.records
+            .borrow_mut()
+            .insert(project_id.into(), (stamp, record));
+        Ok(result)
     }
     fn recover(&self, record: &Record) -> Result<()> {
         if let Some(operation) = &record.last_operation {
@@ -664,7 +719,7 @@ impl Journal {
             ..record
         };
         reclaim(&mut next, now_secs());
-        write_record(&self.record_path(&operation.project_id)?, &next)?;
+        self.store_record(&self.record_path(&operation.project_id)?, &next)?;
         storage::write(&self.operation_path(&operation.request_id), &operation)?;
         remove_transfer(&operation.write_path)?;
         Ok(operation.receipt)
@@ -809,8 +864,12 @@ fn open_read(path: &Path) -> Result<File> {
     );
     Ok(file)
 }
+#[cfg(test)]
+thread_local! { static RECORD_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
 fn read_large<T: DeserializeOwned>(path: &Path) -> Result<T> {
-    Ok(serde_json::from_reader(open_read(path)?)?)
+    #[cfg(test)]
+    RECORD_READS.with(|count| count.set(count.get() + 1));
+    Ok(serde_json::from_reader(BufReader::new(open_read(path)?))?)
 }
 fn remove_transfer(path: &Path) -> Result<()> {
     match std::fs::remove_file(path) {
@@ -1329,4 +1388,37 @@ mod tests {
             "slotExpired"
         );
     }
+}
+
+#[cfg(test)]
+#[test]
+fn owned_journal_reads_do_not_reparse_accumulated_history() {
+    let root = tempfile::tempdir().unwrap();
+    let journal = Journal::new(root.path()).unwrap();
+    let outcomes: BTreeMap<String, Value> = (0..615)
+        .map(|index| (index.to_string(), json!({"payload":"x".repeat(3800)})))
+        .collect();
+    journal
+        .initialize(
+            "project",
+            json!({"version":1,"pending":[],"outcomes":outcomes}),
+        )
+        .unwrap();
+    journal.native_snapshot("project").unwrap();
+    let before = RECORD_READS.with(std::cell::Cell::get);
+    for _ in 0..3 {
+        let (_, snapshot) = journal.native_snapshot("project").unwrap();
+        assert_eq!(
+            snapshot["outcomes"]["614"]["payload"]
+                .as_str()
+                .unwrap()
+                .len(),
+            3800
+        );
+    }
+    assert_eq!(
+        RECORD_READS.with(std::cell::Cell::get),
+        before,
+        "single-owner reads must not reopen and parse accumulated receipts"
+    );
 }

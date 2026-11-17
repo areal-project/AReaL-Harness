@@ -185,7 +185,7 @@ async fn observe_recovery(fixture: Boundary, delay: Duration, after: AfterTimeou
         if observed_states.last() != Some(&state) {
             observed_states.push(state);
         }
-        if !action_applied && fixture.host.slots.borrow()["project"].state == "unavailable" {
+        if !action_applied && fixture.statuses.get() > 0 {
             let mut slots = fixture.host.slots.borrow_mut();
             let slot = slots.get_mut("project").unwrap();
             match after {
@@ -277,7 +277,7 @@ async fn controlled_status_delay_recovers_without_host_status_healing() {
             );
             assert_eq!(delayed["models"]["data"][0]["modelId"], "fixture");
             assert_eq!(control["statusCalls"], 1);
-            assert!(delayed["statusCalls"].as_u64().unwrap() >= 2);
+            assert_eq!(delayed["statusCalls"], 1);
             for result in [&control, &delayed] {
                 assert_eq!(result["initializations"], 1);
                 assert_eq!(result["sharedGeneration"], result["generation"]);
@@ -287,7 +287,7 @@ async fn controlled_status_delay_recovers_without_host_status_healing() {
                     .as_array()
                     .unwrap()
                     .iter()
-                    .any(|state| state == "unavailable")
+                    .all(|state| state != "unavailable")
             );
         })
         .await;
@@ -330,13 +330,6 @@ async fn controlled_status_recovery_respects_lifecycle_authority() {
                 assert_eq!(result["initializations"], 0);
                 assert_eq!(result["directHttpProbeHealthyBeforeAndAfter"], true);
                 assert_eq!(result["hostStatusHealingCalls"], 0);
-                assert!(
-                    result["observedSlotStates"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .any(|state| state == "unavailable")
-                );
             }
         })
         .await;

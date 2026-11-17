@@ -112,6 +112,9 @@ impl Fixture {
             let slot = slots.get_mut("project").unwrap();
             slot.state = "ready".into();
             slot.service = Some(service.clone());
+            let (writer, lifetime) = areal_local_service::OwnerLifetime::pair().unwrap();
+            slot.writer = Some(writer);
+            slot.lifetime = Some(Rc::new(lifetime));
         }
         let (sender, calls) = mpsc::unbounded_channel();
         let server = tokio::task::spawn_local(async move {

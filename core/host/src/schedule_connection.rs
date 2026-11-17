@@ -134,6 +134,15 @@ impl Connections {
         id: &str,
         service: Service,
     ) -> Result<Box<dyn Fn()>> {
+        {
+            let mut slots = host.slots.borrow_mut();
+            let slot = slots.get_mut(id).context("test project missing")?;
+            if slot.writer.is_none() {
+                let (writer, lifetime) = areal_local_service::OwnerLifetime::pair()?;
+                slot.writer = Some(writer);
+                slot.lifetime = Some(Rc::new(lifetime));
+            }
+        }
         let session = connect(host, id, service).await?;
         session.ready.set(true);
         if let Some(previous) = self
@@ -631,7 +640,7 @@ impl CoreSession {
         deferred.extend(threads);
         if deferred.len() > areal_protocol::desktop::MAX_SUBSCRIPTIONS {
             drop(deferred);
-            self.close();
+            self.close_reason("deferred_subscription_capacity");
         }
         Vec::new()
     }
@@ -643,7 +652,7 @@ impl CoreSession {
         let sequence = self.sequence.get() + 1;
         self.sequence.set(sequence);
         if self.outgoing.try_send(json!({"id":format!("host-{sequence}"),"method":"areal/subscription/remove","params":{"threadIds":threads}})).is_err() {
-            self.close();
+            self.close_reason("subscription_outgoing_capacity");
         }
     }
     fn release_workbench(&self, lease: &str) {
@@ -680,10 +689,12 @@ impl CoreSession {
                     .get(&self.project_id)
                     .is_some_and(|slot| {
                         slot.state == "ready"
-                            && slot
-                                .service
-                                .as_ref()
-                                .is_some_and(|service| service.identity == self.service.identity)
+                            && !slot.uncertain_start
+                            && slot.writer.is_some()
+                            && slot.service.as_ref().is_some_and(|service| {
+                                service.identity == self.service.identity
+                                    && service.owner == self.service.owner
+                            })
                     }))
     }
     fn require_current(&self, host: &Host) -> Result<()> {
@@ -691,9 +702,16 @@ impl CoreSession {
         Ok(())
     }
     fn invalidate(&self) {
+        self.invalidate_reason("driver_dropped");
+    }
+    fn invalidate_reason(&self, reason: &str) {
         if self.closed.replace(true) {
             return;
         }
+        eprintln!(
+            "Host Core connection closed: project={} generation={} connection={} reason={reason}",
+            self.project_id, self.service.identity.generation, self.connection_id
+        );
         let sequence = self.event_sequence.get() + 1;
         self.event_sequence.set(sequence);
         let _ = self.events.send(CoreEvent {
@@ -708,7 +726,10 @@ impl CoreSession {
         self.refresh.notify_one();
     }
     fn close(&self) {
-        self.invalidate();
+        self.close_reason("owner_closed");
+    }
+    fn close_reason(&self, reason: &str) {
+        self.invalidate_reason(reason);
         if let Some(driver) = self.driver.borrow_mut().take() {
             driver.abort();
         }
@@ -995,20 +1016,20 @@ async fn connect_authorized(
         let _guard = DriverGuard(connection.clone(), Rc::downgrade(&host));
         let (mut writer, mut reader) = socket.split();
         let mut callbacks = JoinSet::new();
-        loop {
+        let reason = loop {
             tokio::select! {
                 outgoing = messages.recv() => {
-                    let Some(value) = outgoing else { break; };
-                    if writer.send(Message::Text(value.to_string().into())).await.is_err() { break; }
+                    let Some(value) = outgoing else { break "outgoing_closed"; };
+                    if writer.send(Message::Text(value.to_string().into())).await.is_err() { break "socket_write_error"; }
                 }
                 incoming = reader.next() => {
-                    let Some(Ok(message)) = incoming else { break; };
+                    let Some(Ok(message)) = incoming else { break "socket_eof_or_error"; };
                     match message {
                         Message::Text(text) => {
-                            let Ok(value) = serde_json::from_str::<Value>(&text) else { break; };
+                            let Ok(value) = serde_json::from_str::<Value>(&text) else { break "invalid_core_frame"; };
                             if let Some(method) = value["method"].as_str() {
                                 if value.get("id").is_none() { publish_event(&host, &connection, value); continue; }
-                                if callbacks.len() >= MAX_PENDING { break; }
+                                if callbacks.len() >= MAX_PENDING { break "callback_capacity"; }
                                 let host = host.clone();
                                 let connection = connection.clone();
                                 let method = method.to_owned();
@@ -1018,7 +1039,7 @@ async fn connect_authorized(
                                         Ok(result) => json!({"id":value["id"],"result":result}),
                                         Err(_) => json!({"id":value["id"],"error":{"code":-32001,"message":"Host scheduled preparation or desktop tool unavailable"}}),
                                     };
-                                    if connection.outgoing.try_send(response).is_err() { connection.close(); }
+                                    if connection.outgoing.try_send(response).is_err() { connection.close_reason("callback_outgoing_capacity"); }
                                 });
                             } else if let Some(id) = value["id"].as_str()
                                 && let Some(reply) = connection.pending.borrow_mut().remove(id) {
@@ -1032,8 +1053,8 @@ async fn connect_authorized(
                                     let _ = reply.reply.send(result);
                                 }
                         }
-                        Message::Ping(bytes) => if writer.send(Message::Pong(bytes)).await.is_err() { break; },
-                        Message::Close(_) => break,
+                        Message::Ping(bytes) => if writer.send(Message::Pong(bytes)).await.is_err() { break "socket_pong_error"; },
+                        Message::Close(_) => break "core_close_frame",
                         _ => {}
                     }
                 }
@@ -1047,7 +1068,8 @@ async fn connect_authorized(
                     });
                 }
             }
-        }
+        };
+        connection.invalidate_reason(reason);
     });
     *session.driver.borrow_mut() = Some(driver.abort_handle());
     let initialized = session.request("initialize", json!({"clientInfo":{"name":"areal_host_scheduler","version":env!("CARGO_PKG_VERSION")}})).await;
@@ -1498,6 +1520,7 @@ async fn project(host: Rc<Host>, id: String) -> Result<()> {
             unavailable()
         );
         let status = host.project_status(&id).await;
+        ensure!(!host.slots.borrow()[&id].uncertain_start, unavailable());
         let service = status.service.context("scheduled Core unavailable")?;
         let session = connect(host.clone(), &id, service).await?;
         let _guard = SessionGuard(session.clone());
@@ -1555,6 +1578,7 @@ async fn project(host: Rc<Host>, id: String) -> Result<()> {
         let mut changes = host.changes.subscribe();
         loop {
             if !session.current(&host) {
+                session.close_reason("project_identity_or_admission_changed");
                 return Err(unavailable());
             }
             if session.refresh_requested.replace(false) {

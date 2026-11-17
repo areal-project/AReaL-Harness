@@ -819,6 +819,11 @@ async fn provider_catalog_reads_configuration_without_opening_credentials() {
             &host.migration,
         )
         .unwrap();
+    host.migration.vault.dispatch("vault.replace", json!({
+        "requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":host.identity.generation,
+        "slot":{"kind":"providerCredential","sourceId":source,"reference":"AREAL_CREDENTIAL_obsolete"},
+        "expectedRevision":0,"value":"synthetic-obsolete-secret"
+    }), &host.identity.generation, &host.migration).unwrap();
     std::fs::create_dir(root.join(".areal")).unwrap();
     std::fs::write(root.join(".areal/config.toml"), format!(
         "schema_version=1\n[model]\nprovider='fixture'\nname='fixture'\n[model.providers.fixture]\nendpoint='http://example.invalid/v1/responses'\nprotocol='responses'\napi_key_env='{reference}'\n"

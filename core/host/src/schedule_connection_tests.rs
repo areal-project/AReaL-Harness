@@ -61,6 +61,9 @@ fn service(host: &Host, endpoint: String) -> Service {
     let slot = slots.get_mut("project").unwrap();
     slot.service = Some(service.clone());
     slot.state = "ready".into();
+    let (writer, lifetime) = areal_local_service::OwnerLifetime::pair().unwrap();
+    slot.writer = Some(writer);
+    slot.lifetime = Some(Rc::new(lifetime));
     service
 }
 

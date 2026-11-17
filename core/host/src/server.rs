@@ -1209,12 +1209,12 @@ impl Host {
         };
         if let Ok(_guard) = tokio::time::timeout(Duration::from_millis(500), gate.read()).await {
             let instance = Self::service_id(&registration);
-            if let Ok(Ok(service)) = tokio::time::timeout(
+            let observed = tokio::time::timeout(
                 Duration::from_millis(500),
                 areal_local_service::status(&self.home, &instance),
             )
-            .await
-            {
+            .await;
+            if let Ok(Ok(service)) = observed {
                 let mut slots = self.slots.borrow_mut();
                 let slot = slots.get_mut(id).unwrap();
                 slot.state = match service.state {
@@ -1233,10 +1233,20 @@ impl Host {
                 .into();
                 slot.service = Some(service);
             } else {
+                // 探测失败只代表本次观察没有完成；执行身份由服务回执与连接自身确认。
+                let reason = if observed.is_err() {
+                    "timeout"
+                } else {
+                    "probe_error"
+                };
                 let mut slots = self.slots.borrow_mut();
                 let slot = slots.get_mut(id).unwrap();
-                if slot.service.is_some() || slot.writer.is_some() {
+                // 协议、代际或归属校验失败仍按原安全边界失效；只隔离外层观察超时。
+                if observed.is_ok() && (slot.service.is_some() || slot.writer.is_some()) {
                     slot.state = "unavailable".into();
+                }
+                if slot.service.is_some() {
+                    eprintln!("Host service observation incomplete: project={id} reason={reason}");
                 }
             }
         }
@@ -1923,7 +1933,10 @@ impl Host {
                     }
                     Err(cause)
                         if cause.downcast_ref::<wire::Error>().is_some_and(|error| {
-                            matches!(error.code, "storageLocked" | "storageMissing")
+                            matches!(
+                                error.code,
+                                "storageLocked" | "storageMissing" | "storageAuthorizationRequired"
+                            )
                         }) =>
                     {
                         eprintln!("Host project credential unavailable: {cause}");

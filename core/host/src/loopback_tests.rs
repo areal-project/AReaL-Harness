@@ -831,6 +831,11 @@ async fn pending_workbench_requests_do_not_block_queries_or_page_events() {
                     let rejected = read(&mut socket).await;
                     assert_eq!(rejected["id"], "capacity-14");
                     assert_eq!(rejected["error"]["code"], "CAPACITY_EXCEEDED");
+                    write(&mut socket, json!({"version":1,"id":"recovery-read","method":"analytics.read","params":{}})).await;
+                    let safe = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
+                    assert_eq!(safe["id"], "recovery-read");
+                    assert_eq!(safe["result"]["tokens"], 0, "full mutation admission must preserve independent reads");
+
                 }
                 released.notify_one();
                 if progress.is_ok() {

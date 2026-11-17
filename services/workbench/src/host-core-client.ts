@@ -149,7 +149,7 @@ export class HostCoreClient {
           code: "RESPONSE_TOO_LARGE",
         });
       if (fence && (!Number.isSafeInteger(value.sequence) || Number(value.sequence) < 0)) {
-        this.close();
+        this.close(true, "missing_observation_barrier");
         throw new Error("Missing Core observation barrier");
       }
       const result = options.decode ? options.decode(value.result) : (value.result as Result);
@@ -264,7 +264,7 @@ export class HostCoreClient {
     )
       return;
     if (frame.method === "host/connectionClosed") {
-      this.close(false);
+      this.close(false, "host_connection_closed");
       return;
     }
     if (frame.method === "areal/tool/cancelled" && record(frame.params))
@@ -279,13 +279,13 @@ export class HostCoreClient {
     const pending = thread ? this.observations.get(thread) : null;
     if (pending?.size) {
       if (!Number.isSafeInteger(frame.sequence) || Number(frame.sequence) < 0) {
-        this.close();
+        this.close(true, "missing_event_sequence");
         return;
       }
       const bytes = Buffer.byteLength(JSON.stringify(frame));
       for (const fence of pending) {
         if (fence.events.length >= 128 || fence.bytes + bytes > 8 * 1024 * 1024) {
-          this.close();
+          this.close(true, "observation_fence_capacity");
           return;
         }
         fence.events.push(frame);
@@ -320,8 +320,14 @@ export class HostCoreClient {
       if (this.callbacks.get(id) === controller) this.callbacks.delete(id);
     }
   }
-  close(detach = true) {
+  close(detach = true, reason = "owner_closed") {
     if (this.closed) return;
+    console.error("Host Core projection closed", {
+      projectId: this.options.projectId,
+      coreGeneration: this.lease?.coreGeneration,
+      connectionId: this.lease?.connectionId,
+      reason,
+    });
     this.closed = true;
     this.ready = false;
     for (const controller of this.callbacks.values()) controller.abort();

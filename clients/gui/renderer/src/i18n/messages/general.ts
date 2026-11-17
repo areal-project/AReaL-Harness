@@ -711,6 +711,15 @@ export const generalMessages = {
     "zh-CN": "系统凭据访问受限，可点击显示密钥按钮授权读取",
     en: "System credential access is restricted. Use Show API key to authorize access.",
   },
+  "settings.modelSettings.keychainAuthorizationRequired": {
+    "zh-CN":
+      "旧密钥的系统授权不适用于当前应用。可点击显示密钥授权读取，或重新输入并保存；旧记录会保留。",
+    en: "The saved key is not authorized for this app identity. Use Show API key to authorize access, or re-enter and save it. The old entry is preserved.",
+  },
+  "settings.modelSettings.credentialCheckUnavailable": {
+    "zh-CN": "凭据检查暂时无法完成，配置已保留。请稍后重试。",
+    en: "Credential checking could not finish. Your configuration is preserved. Try again later.",
+  },
   "settings.modelSettings.storedCredentialMissing": {
     "zh-CN": "未找到已保存的密钥，请重新输入并保存",
     en: "The saved credential entry was not found. Re-enter and save the API key.",

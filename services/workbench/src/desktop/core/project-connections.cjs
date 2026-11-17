@@ -329,7 +329,6 @@ class ProjectConnections {
     project.token = token;
     await this.connect(project, { observeOnly: true });
     await this.host.reconcile(project, { observeOnly: true });
-    project.reconnectAttempt = 0;
     return project;
   }
 
@@ -462,6 +461,7 @@ class ProjectConnections {
     };
     const trace = startupTrace("core.connect", correlation);
     trace.advance("socket");
+    let connectedAt = 0;
     try {
       client.onNotification((method, params) => {
         if (this.currentConnection(project, client))
@@ -480,6 +480,11 @@ class ProjectConnections {
           ).catch(() => {});
         this.host.onMcpPageToolsDisconnected?.(client);
         if (project.client === client) {
+          if (connectedAt) {
+            // 短暂握手成功不能清空退避，否则反复失效会重新变成即时重连。
+            project.reconnectAttempt =
+              Date.now() - connectedAt >= 30000 ? 0 : (project.reconnectAttempt ?? 0) + 1;
+          }
           project.taskNotificationMonitor?.stop();
           this.host.stopReconciliation(project);
           if (failure.code === "RESPONSE_TOO_LARGE") {
@@ -598,6 +603,7 @@ class ProjectConnections {
       project.taskNotificationMonitor?.ready();
       this.requireConnection(project, client);
       trace.advance("connected");
+      connectedAt = Date.now();
       project.model.connection(true);
       this.host.scheduleReconciliation(project);
       this.host.onChange();

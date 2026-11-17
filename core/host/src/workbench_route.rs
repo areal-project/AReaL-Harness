@@ -853,17 +853,10 @@ fn backend_receipt_raw(host: &Host, principal: &str, command: &str) -> Result<Op
     let command = uuid::Uuid::parse_str(command)
         .context("INVALID_PARAMS")?
         .to_string();
-    let (_, snapshot) = host.journal.native_snapshot(&format!(
-        "workbench-{}",
-        areal_local_service::storage::digest(principal.as_bytes())
-    ))?;
-    Ok(snapshot["outcomes"].get(&command).cloned().or_else(|| {
-        snapshot["pending"]
-            .as_array()?
-            .iter()
-            .find(|row| row["requestId"] == command)
-            .map(|row| row["result"].clone())
-    }))
+    host.journal.native_receipt(
+        &format!("workbench-{}", storage::digest(principal.as_bytes())),
+        &command,
+    )
 }
 
 pub(super) async fn backend_command(

@@ -1529,3 +1529,56 @@ async fn interrupted_host_stop_preparation_recovers_without_replaying_stop() {
     assert_eq!(result["state"], "blocked");
     assert!(host.stop.borrow().is_none());
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn status_probe_timeout_does_not_revoke_live_execution_identity() {
+    let root = tempfile::tempdir().unwrap();
+    let host = schedules::tests::fixture(root.path());
+    let registration = host.slots.borrow()["project"].registration.clone();
+    storage::private_dir(&registration.data_dir).unwrap();
+    let lock = storage::open_private(&registration.data_dir.join("service.lock"), true).unwrap();
+    lock.lock_exclusive().unwrap();
+    let directory = storage::registry(&host.home, &Host::service_id(&registration)).unwrap();
+    storage::private_dir(&directory).unwrap();
+    let listener =
+        tokio::net::UnixListener::bind(storage::control_socket(&directory).unwrap()).unwrap();
+    let service: Service = serde_json::from_value(json!({
+        "protocolVersion":1,"serviceId":Host::service_id(&registration),
+        "generation":"original-core","workspace":registration.workspace,
+        "dataDir":registration.data_dir,"configFingerprint":"fixture",
+        "owner":host.owner(),"endpoint":"ws://127.0.0.1:1/","webUrl":"",
+        "authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),
+        "hostPid":500000000,"corePid":500000001,"state":"ready"
+    }))
+    .unwrap();
+    storage::write(&directory.join("service.json"), &service).unwrap();
+    {
+        let mut slots = host.slots.borrow_mut();
+        let slot = slots.get_mut("project").unwrap();
+        slot.state = "ready".into();
+        slot.service = Some(service.clone());
+    }
+    // 控制口已接受请求但不回答，确定命中探测超时，而不是伪造进程退出。
+    let (status, accepted) = tokio::join!(host.project_status("project"), listener.accept());
+    let (_connection, _) = accepted.unwrap();
+    assert_eq!(
+        status.state, "ready",
+        "observation timeout must not revoke execution identity"
+    );
+    assert_eq!(
+        host.slots.borrow()["project"]
+            .service
+            .as_ref()
+            .unwrap()
+            .identity,
+        service.identity
+    );
+    let mut foreign = service;
+    foreign.identity.service_id = "different-service".into();
+    storage::write(&directory.join("service.json"), &foreign).unwrap();
+    assert_eq!(
+        host.project_status("project").await.state,
+        "unavailable",
+        "a proven identity mismatch must still invalidate the connection"
+    );
+}

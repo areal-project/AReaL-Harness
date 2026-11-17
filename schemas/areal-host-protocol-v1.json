@@ -24954,6 +24954,9 @@
             "type": "string",
             "enum": [
               "storageLocked",
+              "storageMissing",
+              "storageAuthorizationRequired",
+              "checkUnavailable",
               "migrationPending"
             ]
           },

@@ -211,13 +211,17 @@ export function ModelSettings({
           ? t("settings.modelSettings.checkingCredentials")
           : credentialErrors?.[item.id] === "migrationPending"
             ? t("settings.modelSettings.credentialMigrating")
-            : credentialErrors?.[item.id] === "storageLocked"
-              ? t("settings.modelSettings.keychainLocked")
-              : credentialErrors?.[item.id] === "storageMissing"
-                ? t("settings.modelSettings.storedCredentialMissing")
-                : state.value?.credentialStates?.[item.id] === "unavailable"
-                  ? t("settings.modelSettings.missingCredentials")
-                  : t("settings.modelSettings.available");
+            : credentialErrors?.[item.id] === "storageAuthorizationRequired"
+              ? t("settings.modelSettings.keychainAuthorizationRequired")
+              : credentialErrors?.[item.id] === "checkUnavailable"
+                ? t("settings.modelSettings.credentialCheckUnavailable")
+                : credentialErrors?.[item.id] === "storageLocked"
+                  ? t("settings.modelSettings.keychainLocked")
+                  : credentialErrors?.[item.id] === "storageMissing"
+                    ? t("settings.modelSettings.storedCredentialMissing")
+                    : state.value?.credentialStates?.[item.id] === "unavailable"
+                      ? t("settings.modelSettings.missingCredentials")
+                      : t("settings.modelSettings.available");
   const dirty =
     key !== undefined ||
     (draft !== null &&
@@ -628,6 +632,16 @@ export function ModelSettings({
                     )}
                     {provider.id && providerCredentialError === "storageLocked" && !key && (
                       <p role="status">{t("settings.modelSettings.keychainLocked")}</p>
+                    )}
+                    {provider.id &&
+                      providerCredentialError === "storageAuthorizationRequired" &&
+                      !key && (
+                        <p role="status">
+                          {t("settings.modelSettings.keychainAuthorizationRequired")}
+                        </p>
+                      )}
+                    {provider.id && providerCredentialError === "checkUnavailable" && !key && (
+                      <p role="status">{t("settings.modelSettings.credentialCheckUnavailable")}</p>
                     )}
                     {provider.id && providerCredentialError === "storageMissing" && !key && (
                       <p role="status">{t("settings.modelSettings.storedCredentialMissing")}</p>
