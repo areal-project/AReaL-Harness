@@ -100,9 +100,8 @@ async function terminalOwner(descriptor) {
     const {createNativeHostTransport}=require(process.argv[1]);
     const {HostCoreClient}=require(process.argv[2]);
     const config=JSON.parse(process.argv[3]);
-    const backend={host:{sourceId:config.sourceId,home:config.home},hostCoreClients:new Map()};
     let transport,client;
-    const ready=(async()=>{transport=await createNativeHostTransport(backend,config.options);client=new HostCoreClient({host:transport.call,sourceId:config.sourceId,projectId:config.projectId,scope:'terminal'});backend.hostCoreClients.set('terminal',client);await client.connect();})();
+    const ready=(async()=>{transport=await createNativeHostTransport({home:config.home,sourceId:config.sourceId,launch:config.options,onCallback:()=>Promise.reject(new Error("No browser owner")),onEvent:(frame)=>client?.event(frame),onClosed:()=>client?.close(false)});client=new HostCoreClient({host:transport.call,sourceId:config.sourceId,projectId:config.projectId,scope:'terminal'});await client.connect();})();
     process.on("message", async ({id, request}) => {
       if (request === "close") {
         await ready;client.close();transport.close();
@@ -118,7 +117,7 @@ async function terminalOwner(descriptor) {
     [
       "-e",
       source,
-      join(repository, "services/workbench/src/generated/native-host-transport.cjs"),
+      join(repository, "clients/gui/app/src/core/generated/native-host-transport.cjs"),
       join(repository, "services/workbench/src/generated/host-core-client.cjs"),
       JSON.stringify({ sourceId, home, options, projectId: descriptor.projectId }),
     ],

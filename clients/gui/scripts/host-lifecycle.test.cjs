@@ -505,7 +505,7 @@ test("completed original stop cannot clear successor Main terminal ownership", a
   });
   const first = await f.backend.requestHostStop({ strategy: "cancel" });
   assert.equal(first.stopped, false);
-  const { NativeTerminalOwners } = require("@areal/workbench-service/native-host-transport");
+  const { NativeTerminalOwners } = require("../app/src/core/generated/native-host-transport.cjs");
   f.backend.terminalConnections = new NativeTerminalOwners({ options: () => ({}) });
   let closed = false;
   f.backend.connection = { close: () => (closed = true) };
@@ -912,4 +912,143 @@ test("automatic initialization resumes after a definitively refused Host stop", 
     f.calls.some((request) => request.method === "host.stop"),
     false,
   );
+});
+
+test("native Main handles Host-created leases on independent callback socket", async (t) => {
+  const f = await fixture(t);
+  const {
+    createNativeHostTransport,
+  } = require("../app/src/core/generated/native-host-transport.cjs");
+  let eventSocket, callSocket;
+  const reply = Promise.withResolvers();
+  const frame = {
+    event: "core.callback",
+    requestId: "host-request",
+    coreRequestId: 17,
+    projectId: "project",
+    lease: "host-created-lease",
+    coreInstanceId: "core",
+    coreGeneration: "generation",
+    connectionId: "original-connection",
+    method: "item/tool/call",
+    params: { tool: "browser_v1" },
+  };
+  f.setHandler(async (request, socket) => {
+    if (request.method === "desktop.core.subscribe") {
+      eventSocket = socket;
+      return { attachmentId: "attachment" };
+    }
+    if (request.method === "desktop.core.call") {
+      callSocket = socket;
+      eventSocket.write(
+        JSON.stringify({
+          version: 1,
+          method: "desktop.core.event",
+          params: { attachmentId: "attachment", event: frame },
+        }) + "\n",
+      );
+      return await reply.promise;
+    }
+    assert.equal(request.method, "desktop.core.callback");
+    assert.notEqual(socket, callSocket);
+    assert.notEqual(socket, eventSocket);
+    assert.deepEqual(request.params, {
+      attachmentId: "attachment",
+      requestId: "host-request",
+      result: { handled: true },
+    });
+    reply.resolve({ result: { alive: true } });
+    return { received: true };
+  });
+  const transport = await createNativeHostTransport({
+    home: f.hostHome,
+    sourceId: "source",
+    launch: {},
+    onCallback: async (received, signal) => {
+      assert.deepEqual(received, frame);
+      assert.equal(signal.aborted, false);
+      return { handled: true };
+    },
+    onEvent: () => {},
+    onClosed: () => {},
+  });
+  t.after(() => transport.close());
+  assert.deepEqual(
+    await transport.call("core.request", { projectId: "project", lease: frame.lease }),
+    { result: { alive: true } },
+  );
+});
+
+test("native callback cancellation binds the original lease and request", async (t) => {
+  const f = await fixture(t);
+  const {
+    createNativeHostTransport,
+  } = require("../app/src/core/generated/native-host-transport.cjs");
+  let eventSocket;
+  const started = Promise.withResolvers(),
+    cancelled = Promise.withResolvers(),
+    answered = Promise.withResolvers(),
+    observed = Promise.withResolvers();
+  f.setHandler(async (request, socket) => {
+    if (request.method === "desktop.core.subscribe") {
+      eventSocket = socket;
+      return { attachmentId: "attachment" };
+    }
+    assert.equal(request.method, "desktop.core.callback");
+    assert.deepEqual(request.params.error, { message: "Desktop tool unavailable" });
+    answered.resolve();
+    return { received: true };
+  });
+  const transport = await createNativeHostTransport({
+    home: f.hostHome,
+    sourceId: "source",
+    launch: {},
+    onCallback: async (_, signal) => {
+      started.resolve(signal);
+      await new Promise((resolve) => signal.addEventListener("abort", resolve, { once: true }));
+      cancelled.resolve();
+      return { lateSuccess: true };
+    },
+    onEvent: () => observed.resolve(),
+    onClosed: () => {},
+  });
+  t.after(() => transport.close());
+  const emit = (event) =>
+    eventSocket.write(
+      JSON.stringify({
+        version: 1,
+        method: "desktop.core.event",
+        params: { attachmentId: "attachment", event },
+      }) + "\n",
+    );
+  emit({
+    event: "core.callback",
+    requestId: "callback",
+    coreRequestId: 17,
+    projectId: "project",
+    lease: "original",
+    coreInstanceId: "core",
+    coreGeneration: "generation",
+    connectionId: "connection",
+    method: "item/tool/call",
+    params: {},
+  });
+  const signal = await started.promise;
+  emit({
+    event: "core.event",
+    lease: "other",
+    method: "areal/tool/cancelled",
+    params: { requestId: 17 },
+  });
+  await observed.promise;
+  assert.equal(signal.aborted, false);
+  emit({
+    event: "core.event",
+    lease: "original",
+    method: "areal/tool/cancelled",
+    params: { requestId: 17 },
+  });
+  await cancelled.promise;
+  await answered.promise;
+  assert.equal(transport.closed, false);
 });

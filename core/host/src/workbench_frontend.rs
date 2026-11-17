@@ -79,7 +79,8 @@ impl Connections {
         options: Value,
     ) -> Result<(Value, mpsc::Receiver<Value>)> {
         ensure!(
-            !host.gateway.workbench.backend_has_source(source),
+            !(host.gateway.workbench.backend_has_source(source)
+                && host.gateway.workbench.has_running_backend()),
             "COMMAND_CONFLICT"
         );
         let options = super::super::workbench_route::frontend_options(host, source, options)?;
@@ -164,6 +165,7 @@ impl Connections {
     }
     pub(crate) async fn frontend_callback(
         &self,
+        host: &Host,
         project: &str,
         lease: &str,
         method: &str,
@@ -177,6 +179,10 @@ impl Connections {
             .find(|(_, frontend)| frontend.leases.get(lease).is_some_and(|id| id == project))
             .map(|(id, frontend)| (id.clone(), frontend.events.clone()));
         let (attachment, sender) = selected?;
+        let identity = match self.workbench_identity(host, project, lease) {
+            Ok(identity) => identity,
+            Err(error) => return Some(Err(error)),
+        };
         let request = uuid::Uuid::new_v4().to_string();
         let (send, receive) = oneshot::channel();
         {
@@ -187,7 +193,7 @@ impl Connections {
             }
             frontend.callbacks.insert(request.clone(), send);
         }
-        let event = json!({"attachmentId":attachment,"event":{"event":"core.callback","requestId":request,"coreRequestId":core_request_id,"projectId":project,"lease":lease,"method":method,"params":params}});
+        let event = json!({"attachmentId":attachment,"event":{"event":"core.callback","requestId":request,"coreRequestId":core_request_id,"projectId":project,"lease":lease,"coreInstanceId":identity.0,"coreGeneration":identity.1,"connectionId":identity.2,"method":method,"params":params}});
         let sent = sender.send(event).await;
         let result = if sent.is_err() {
             Err(unavailable())
@@ -540,12 +546,13 @@ mod tests {
                 let shared=connect(host.clone(),"project",service.clone()).await.unwrap();host.schedules.connections.sessions.borrow_mut().insert("project".into(),shared.clone());
                 let session=connect_owned(host.clone(),"project",service,true).await.unwrap();session.desktop.set(true);
                 let lease=uuid::Uuid::new_v4().to_string();*session.workbench_lease.borrow_mut()=Some(lease.clone());host.schedules.connections.terminals.borrow_mut().insert(lease.clone(),session.clone());
+                host.gateway.workbench.set_test_source_and_options(&source_id,json!({}));
                 let (mut events,mut event_writer)=host_socket(host.clone()).await;
                 send(&mut event_writer,"subscribe","desktop.core.subscribe",json!({"sourceId":source_id,"options":{"binary":host.bin.join("areal"),"home":source.core_home,"guiProfile":source.profile,"hostHome":host.home}})).await;
                 let subscribed=crate::wire::read(&mut events).await.unwrap().unwrap();assert!(subscribed.get("error").is_none(),"{subscribed}");let attachment=subscribed["result"]["attachmentId"].as_str().unwrap().to_owned();host.schedules.connections.frontends.borrow_mut().get_mut(&attachment).unwrap().leases.insert(lease.clone(),"project".into());
                 let (mut calls,mut call_writer)=host_socket(host.clone()).await;let (mut replies,mut reply_writer)=host_socket(host.clone()).await;
                 send(&mut call_writer,"call","desktop.core.call",json!({"attachmentId":attachment,"call":"core.request","params":{"sourceId":source_id,"projectId":"project","lease":lease,"method":"areal/server/status","params":{}}})).await;
-                let event=crate::wire::read(&mut events).await.unwrap().unwrap();assert_eq!(event["method"],"desktop.core.event");assert_eq!(event["params"]["event"]["coreRequestId"],17);
+                let event=crate::wire::read(&mut events).await.unwrap().unwrap();assert_eq!(event["method"],"desktop.core.event");assert_eq!(event["params"]["event"]["coreRequestId"],17);assert_eq!(event["params"]["event"]["coreInstanceId"],"fixture-core");assert_eq!(event["params"]["event"]["coreGeneration"],"generation");assert_eq!(event["params"]["event"]["connectionId"],session.connection_id);
                 send(&mut reply_writer,"reply","desktop.core.callback",json!({"attachmentId":attachment,"requestId":event["params"]["event"]["requestId"],"result":{"handled":true}})).await;
                 assert_eq!(crate::wire::read(&mut replies).await.unwrap().unwrap()["result"]["received"],true);
                 assert_eq!(crate::wire::read(&mut calls).await.unwrap().unwrap()["result"]["result"]["alive"],true);

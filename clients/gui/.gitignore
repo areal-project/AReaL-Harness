@@ -5,3 +5,4 @@ dist/
 test-results/
 playwright-report/
 app/src/ipc/generated/
+app/src/core/generated/

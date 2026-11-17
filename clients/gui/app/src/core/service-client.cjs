@@ -17,7 +17,8 @@ const {
   projectHostReceipt,
   readOfflineHostReceipt,
 } = require("./host-lifecycle.cjs");
-const { NativeTerminalOwners } = require("@areal/workbench-service/native-host-transport");
+/** @type {typeof import("./native-host-transport")} */
+const { NativeTerminalOwners } = require("./generated/native-host-transport.cjs");
 const { ServiceConnection } = require("./service-connection.cjs");
 const {
   readServicePacket,

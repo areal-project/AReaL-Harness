@@ -12,7 +12,6 @@
   "exports": {
     "./desktop/*": "./src/desktop/*",
     "./package.json": "./package.json",
-    "./native-host-transport": { "types": "./src/native-host-transport.ts", "default": "./src/generated/native-host-transport.cjs" },
     "./host-core-client": {
       "types": "./src/host-core-client.ts",
       "default": "./src/generated/host-core-client.cjs"

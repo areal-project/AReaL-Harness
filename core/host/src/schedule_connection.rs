@@ -1105,7 +1105,14 @@ async fn callback(
         if let Some(result) = host
             .schedules
             .connections
-            .frontend_callback(&connection.project_id, &lease, method, params, request_id)
+            .frontend_callback(
+                host,
+                &connection.project_id,
+                &lease,
+                method,
+                params,
+                request_id,
+            )
             .await
         {
             return result;
