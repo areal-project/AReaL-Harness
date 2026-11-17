@@ -121,6 +121,10 @@ export const errorMessages = {
     "zh-CN": "任务列表暂时读不出来，请重试。",
     en: "Couldn't load the task list. Please try again.",
   },
+  "errors.RECONNECTING": {
+    "zh-CN": "原连接刚断开，正在恢复。这条操作没有发出，恢复后再试一次。",
+    en: "The previous connection just dropped and is recovering. Nothing was sent; try again once it's back.",
+  },
   "errors.PERSISTED_HISTORY_UNAVAILABLE": {
     "zh-CN": "历史记录暂时打不开，请稍后重试。历史本身没有丢失。",
     en: "History can't be opened right now. Nothing is lost; try again in a moment.",

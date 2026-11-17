@@ -692,7 +692,9 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                             };
                             if full {
                                 let mut error = loopback_error(&raw, &anyhow::anyhow!("CAPACITY_EXCEEDED"));
+                                // 同一 code 可能来自命令、查询或核对队列，写明哪一队满了才能在详情里定位。
                                 error["reason"] = json!(reason);
+                                error["method"] = json!(raw["method"]);
                                 error["submissionUnknown"] = json!(false);
                                 eprintln!("Host request not admitted: method={} reason={reason}", raw["method"].as_str().unwrap_or_default());
                                 send(&mut socket, &json!({"version":VERSION,"id":id,

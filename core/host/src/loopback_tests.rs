@@ -831,6 +831,9 @@ async fn pending_workbench_requests_do_not_block_queries_or_page_events() {
                     let rejected = read(&mut socket).await;
                     assert_eq!(rejected["id"], "capacity-14");
                     assert_eq!(rejected["error"]["code"], "CAPACITY_EXCEEDED");
+                    // 详情要能定位哪一队满了；上屏文案不读这些字段。
+                    assert_eq!(rejected["error"]["method"], "desktop.command");
+                    assert_eq!(rejected["error"]["reason"], "commandQueueFull");
                     write(&mut socket, json!({"version":1,"id":"recovery-read","method":"analytics.read","params":{}})).await;
                     let safe = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
                     assert_eq!(safe["id"], "recovery-read");

@@ -205,6 +205,27 @@ class ProjectConnections {
       });
   }
 
+  /**
+   * 后台连接正在恢复时，业务命令快速回流而不是逐条等两轮 Core 往返：串行的后台通道
+   * 一旦被等待占住，后面每条界面命令都会排队，直到 Host 的命令队列被拒。
+   * 核对、中断和明确的启动命令不受影响：它们本身就是恢复的入口。
+   * @param {Project} project @param {string} name @param {Record<string,unknown>} request
+   */
+  assertRecovered(project, name, request) {
+    // 没有连接占位时是首次连接，按原有启动路径处理；只有失败的占位才代表恢复中。
+    if (!project?.client || project.client.ready || project.client.closed) return;
+    if (
+      name === "connect" ||
+      name === "stop" ||
+      require("./lifecycle.cjs").isRecoveryCommand(name, request)
+    )
+      return;
+    throw Object.assign(
+      new Error("原 Core 连接中断，后台正在恢复；这条操作没有发出，请恢复后重试"),
+      { code: "RECONNECTING" },
+    );
+  }
+
   /** @param {Project} project */
   scheduleReconnect(project) {
     try {
@@ -276,6 +297,8 @@ class ProjectConnections {
               project.error = this.host.providers.redact(
                 error instanceof Error ? error.message : String(error),
               );
+              // 未就绪的连接交给恢复任务；恢复完成后再由它开启新的连接。
+              project.client = recoveringConnection(error);
               project.model.connection(false, project.error);
             }
             throw error;
@@ -339,6 +362,18 @@ class ProjectConnections {
 
   /** @param {Project} project @param {{observeOnly?:boolean}} [options] */
   async connect(project, { observeOnly = false } = {}) {
+    // 只有占位连接才先探测 Core 是否可达：不可达就失败并释放占位，不再拖住启动和重连任务。
+    // 其它情况下 Core 客户端自己握手，探测不会比它更早发现断线。
+    if (project.client && !project.client.ready && project.endpoint) {
+      const controller = project.client?.controller ?? null;
+      try {
+        await probeEndpoint(project.endpoint, 2000, controller?.signal);
+      } catch (error) {
+        project.client?.close();
+        throw error;
+      }
+      this.requireConnection(project, project.client);
+    }
     const startup = this.host.starting.get(project.id);
     const owner = this.host.desktopToolOwner?.() ?? null;
     if (this.host.closing) throw new Error("应用正在退出");
@@ -649,6 +684,93 @@ function nonRetryableCredentialFailure(error) {
   return /storageAuthorizationRequired|Keychain authorization does not permit this application identity|credential unavailable/i.test(
     text,
   );
+}
+
+/**
+ * Core 的 WebSocket 端点是否接受连接。握手超时或明确拒绝都算不可达；
+ * 探测不鉴权、不初始化，只回答“现在能否连上”。
+ * @param {string} endpoint @param {number} timeoutMs @param {AbortSignal|undefined} signal
+ * @returns {Promise<void>}
+ */
+function probeEndpoint(endpoint, timeoutMs, signal) {
+  return new Promise((resolve, reject) => {
+    const failed = (error) => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", aborted);
+      reject(error);
+    };
+    const aborted = () =>
+      failed(
+        Object.assign(
+          new Error("原 Core 连接中断，后台正在恢复；这条操作没有发出，请恢复后重试"),
+          { code: "RECONNECTING" },
+        ),
+      );
+    const timer = setTimeout(
+      () =>
+        failed(
+          Object.assign(new Error("Core 未在 2 秒内响应连接"), { code: "CORE_STOPPED" }),
+        ),
+      timeoutMs,
+    );
+    timer.unref?.();
+    if (signal?.aborted) {
+      aborted();
+      return;
+    }
+    signal?.addEventListener("abort", aborted, { once: true });
+    let socket;
+    try {
+      socket = new WebSocket(endpoint);
+    } catch (error) {
+      failed(error);
+      return;
+    }
+    socket.addEventListener("open", () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", aborted);
+      try {
+        socket.close();
+      } catch {}
+      resolve();
+    });
+    socket.addEventListener("error", () =>
+      failed(Object.assign(new Error("Core 端点暂不可达"), { code: "CORE_STOPPED" })),
+    );
+  });
+}
+
+/**
+ * 连接失败后占住归属的失败连接：`ready`、`closed` 都为假，用来区分“从未连接”和“正在恢复”。
+ * 恢复任务替掉它时会一并释放。
+ * @param {unknown} cause
+ */
+function recoveringConnection(cause) {
+  class RecoveringConnection {
+    constructor() {
+      this.ready = false;
+      this.closed = false;
+      this.capabilities = undefined;
+      this.failure = cause;
+      /** @type {AbortController|null} */
+      this.controller = null;
+    }
+    close() {
+      // 关闭即停止等待的那一轮恢复；恢复任务随后会装上新连接。
+      if (this.controller) this.controller.abort();
+      this.controller = null;
+    }
+    onNotification() {}
+    request() {
+      return Promise.reject(
+        Object.assign(
+          new Error("原 Core 连接中断，后台正在恢复；这条操作没有发出，请恢复后重试"),
+          { code: "RECONNECTING" },
+        ),
+      );
+    }
+  }
+  return new RecoveringConnection();
 }
 
 module.exports = { ProjectConnections };

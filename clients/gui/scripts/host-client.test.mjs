@@ -1248,7 +1248,7 @@ test("a ready Core selection never reopens a persisted Store reader", async (t) 
   assert.equal(fixture.frames.filter((f) => f.method === "session.open").length, 1);
 });
 
-test("failed conversation reads retain the Host code and method in their detail", async (t) => {
+test("failed conversation reads keep the Host code for the detail view, not the message", async (t) => {
   let fixture;
   fixture = await readServer(t, ({ frame }) => {
     if (frame.method !== "session.open") return false;
@@ -1266,6 +1266,37 @@ test("failed conversation reads retain the Host code and method in their detail"
   );
   const read = fixture.client.readsSnapshot().session;
   assert.equal(read.state, "unavailable");
-  assert.match(read.error, /CORE_UNAVAILABLE/);
-  assert.match(read.error, /session\.open/);
+  // 上屏文案按 code 取；错误码只作详情，不拼进 message。
+  assert.doesNotMatch(read.error, /CORE_UNAVAILABLE|session\.open/);
+});
+
+test("a queue-full rejection keeps its message readable and its method and reason in the detail", async (t) => {
+  let fixture;
+  fixture = await readServer(t, ({ frame }) => {
+    if (frame.method !== "session.open") return false;
+    [...fixture.listener.clients][0].send(
+      JSON.stringify({
+        version: 1,
+        id: frame.id,
+        error: {
+          code: "CAPACITY_EXCEEDED",
+          message: "Host command failed",
+          method: "session.open",
+          reason: "commandQueueFull",
+        },
+      }),
+    );
+    return true;
+  });
+  await assert.rejects(
+    fixture.client.selectSession({ projectId: project.projectId, threadId: "thread" }),
+  );
+  // 上屏文案由 code 决定；message 只承载 method 和队列原因，供“查看详情”使用。
+  const failure = await fixture.client
+    .selectSession({ projectId: project.projectId, threadId: "thread" })
+    .catch((error) => error);
+  assert.equal(failure.code, "CAPACITY_EXCEEDED");
+  assert.equal(failure.method, "session.open");
+  assert.equal(failure.reason, "commandQueueFull");
+  assert.doesNotMatch(failure.message, /CAPACITY_EXCEEDED|session\.open|commandQueueFull/);
 });

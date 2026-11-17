@@ -296,12 +296,50 @@ const businessErrorCodes = /** @type {const} */ ([
   "PERSISTED_HISTORY_UNAVAILABLE",
   "MIGRATION_PENDING",
   "migrationBlocked",
+  "RECONNECTING",
 ]);
 /** @typedef {(typeof businessErrorCodes)[number]} BusinessErrorCode */
 /** @type {ReadonlySet<string>} */
 const businessCodes = new Set(businessErrorCodes);
 /** @type {Readonly<Partial<Record<number, BusinessErrorCode>>>} */
 const coreRejections = { [-32009]: "TARGET_CHANGED", [-32004]: "RESOURCE_UNAVAILABLE" };
+// 每条命令最多等这么久；超时后回执结果未知，由 Host 按原编号核对，不重发。
+const COMMAND_TIMEOUT_MS = 120_000;
+// 与读取结果无关、可以并行执行的桌面命令；写命令仍严格按到达顺序串行。
+// 补建议是纯投影，永远是默认值，并且没有回执可核对。
+const PARALLEL_COMMANDS = new Set(["prediction"]);
+const MAX_INFLIGHT_COMMANDS = 4;
+/** 等结果和超时赛跑；超时按“结果未知”报告，调用方核对原请求，不重发。 */
+function commandTimeout(value) {
+  let timer;
+  const limit = new Promise((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), COMMAND_TIMEOUT_MS);
+    timer.unref?.();
+  });
+  return Promise.race([Promise.resolve(value), limit]).then((outcome) => {
+    clearTimeout(timer);
+    if (outcome !== "timeout") return outcome;
+    throw Object.assign(
+      new Error("命令等待超时，结果尚未确认；请核对原请求后重试"),
+      { code: "SUBMISSION_UNKNOWN", submissionUnknown: true, outcome: { kind: "unconfirmed" } },
+    );
+  });
+}
+/** 只有非写命令才能脱离主循环；参数不合合同的不并发，让主循环照常报告无效。 */
+function independentlyEffect(params) {
+  if (!params || typeof params !== "object" || Array.isArray(params)) return false;
+  if (typeof params.command !== "string" || !PARALLEL_COMMANDS.has(params.command)) return false;
+  try {
+    return (
+      appRequire("@areal/workbench/desktop-contract").commandSemantics(
+        params.command,
+        params.request ?? {},
+      ).effect !== "mutation"
+    );
+  } catch {
+    return false;
+  }
+}
 /** @param {unknown} value @param {boolean} desktopCommand
  * @returns {{code:BusinessErrorCode | "COMMAND_FAILED",message?:string}} */
 function mapBackendError(value, desktopCommand) {
@@ -331,6 +369,13 @@ function mapBackendError(value, desktopCommand) {
 /** @param {{input:import("node:stream").Readable,output:import("node:stream").Writable}} streams */
 async function start({ input, output }) {
   const lines = createInterface({ input, crlfDelay: Infinity });
+  // 并行命令的回复可能乱序到达；按进入顺序发出，保持同连接回复不早于先到的请求。
+  let replying = Promise.resolve();
+  /** @param {()=>void} write */
+  const replyInOrder = (write) => {
+    replying = replying.then(write).catch(() => {});
+    return replying;
+  };
   const iterator = lines[Symbol.asyncIterator]();
   const first = await iterator.next();
   if (first.done || Buffer.byteLength(first.value) >= MAX_FRAME) throw new Error("INVALID_PARAMS");
@@ -464,6 +509,7 @@ async function start({ input, output }) {
     );
     // EOF 是 Host 的关闭指令；领域调用只由已鉴权的 Host 经私有管道进入。
     const pending = new Set();
+    let inflightCommands = 0;
     for await (const line of { [Symbol.asyncIterator]: () => iterator }) {
       if (Buffer.byteLength(line) >= MAX_FRAME) throw new Error("LIMIT_EXCEEDED");
       const request = JSON.parse(line);
@@ -720,17 +766,38 @@ async function start({ input, output }) {
         );
         return result;
       };
-      const task = execute().then(
-        (result) => output.write(JSON.stringify({ version: 1, id: request.id, result }) + "\n"),
-        (error) =>
-          output.write(
-            JSON.stringify({
-              version: 1,
-              id: request.id,
-              error: mapBackendError(error, request.method === "desktop.command"),
-            }) + "\n",
+      const reply = (settle) =>
+        replyInOrder(() =>
+          settle.then(
+            (result) =>
+              output.write(JSON.stringify({ version: 1, id: request.id, result }) + "\n"),
+            (error) =>
+              output.write(
+                JSON.stringify({
+                  version: 1,
+                  id: request.id,
+                  error: mapBackendError(error, request.method === "desktop.command"),
+                }) + "\n",
+              ),
           ),
-      );
+        );
+      if (
+        request.method === "desktop.command" &&
+        inflightCommands < MAX_INFLIGHT_COMMANDS &&
+        independentlyEffect(request.params)
+      ) {
+        // 这类命令不读别人的结果，也不改任何状态：各自起一个任务，主循环继续读下一帧。
+        inflightCommands++;
+        const task = reply(commandTimeout(execute()))
+          .catch(() => {})
+          .finally(() => {
+            inflightCommands--;
+          });
+        pending.add(task);
+        void task.then(() => pending.delete(task));
+        continue;
+      }
+      const task = reply(commandTimeout(execute()));
       pending.add(task);
       void task.then(
         () => pending.delete(task),

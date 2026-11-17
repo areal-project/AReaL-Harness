@@ -1811,6 +1811,8 @@ class CoreBackend {
           : projectId,
       ))
         await this.lifecycleOperations.resumeScheduling(owner.id);
+    // 恢复开始前接受的命令直接回流；它们等在这里会占满后台串行通道和 Host 命令队列。
+    this.connections.assertRecovered(this.projects.get(projectId), name, request);
     const project = await this.start(projectId, {
       ...(name === "connect" || name === "open" ? { threadId: request.threadId } : {}),
       ...(readOwner ? { readOwner } : {}),

@@ -610,3 +610,59 @@ test("credential authorization failures stop the reconnect storm until explicit 
   assert.equal(project.reconnectBlocked, false);
   assert.equal(project.client.ready, true);
 });
+
+test("a recovering connection fast-fails business commands but admits recovery entry points", async (t) => {
+  const {
+    ProjectConnections,
+  } = require("@areal/workbench-service/desktop/core/project-connections.cjs");
+  const project = {
+    id: "gui",
+    service: { generation: "old" },
+    model: { connection() {} },
+    reconnectAttempt: 1,
+  };
+  const host = {
+    lifecycleOperations: { schedulingSuppressed: () => false, assertProject() {} },
+    projects: new Map([[project.id, project]]),
+    starting: new Map(),
+    stopReconciliation() {},
+    providers: { redact: (message) => message },
+    reconnectProject: async () => {
+      throw new Error("fixture reconnect failure");
+    },
+  };
+  const connections = new ProjectConnections(host);
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  connections.scheduleReconnect(project);
+  t.mock.timers.tick(1000);
+  await host.starting.get(project.id).catch(() => {});
+  // 恢复任务失败后，占位连接仍占住归属；此时普通业务命令直接回流。
+  for (const [name, request] of [
+    ["workspace", { operation: "info" }],
+    ["library", { operation: "settings" }],
+    ["prediction", { operation: "request" }],
+  ])
+    assert.throws(
+      () => connections.assertRecovered(project, name, request),
+      (error) => error.code === "RECONNECTING",
+      name,
+    );
+  // 恢复的入口本身不能被挡：核对、中断和明确的启动命令。
+  for (const [name, request] of [
+    ["manage", { operation: "inspect" }],
+    ["history", { operation: "acquire" }],
+    ["stop", { operation: "cancel" }],
+    ["connect", { resumeScheduling: true }],
+  ])
+    connections.assertRecovered(project, name, request);
+  const recovering = project.client;
+  assert.ok(recovering, "a failed reconnect must keep a recovering placeholder");
+  // 占位连接代表的恢复期里，业务请求本身也不会被发出去。
+  await assert.rejects(recovering.request("areal/thread/observe", {}), {
+    code: "RECONNECTING",
+  });
+  // 恢复完成（新连接就绪）后恢复放行；从未连接的项目不被拦截。
+  project.client = { ready: true };
+  connections.assertRecovered(project, "workspace", { operation: "info" });
+  connections.assertRecovered({ id: "fresh" }, "workspace", {});
+});
