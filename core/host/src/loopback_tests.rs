@@ -601,12 +601,12 @@ async fn pending_workbench_requests_do_not_block_queries() {
                 let fixture = Fixture::start().await;
                 let entered = Rc::new(Notify::new());
                 let released = Rc::new(Notify::new());
-                let mut mock_core_server: Option<tokio::task::JoinHandle<()>> = None;
-                let mut mock_control_server: Option<tokio::task::JoinHandle<()>> = None;
-                let mut mock_core_close: Option<Box<dyn Fn()>> = None;
-                let mut mock_service_lock: Option<std::fs::File> = None;
+                let mock_core_server: Option<tokio::task::JoinHandle<()>>;
+                let mock_control_server: Option<tokio::task::JoinHandle<()>>;
+                let mock_core_close: Option<Box<dyn Fn()>>;
+                let mock_service_lock: Option<std::fs::File>;
                 let slow_params;
-                if blocked_method == "manage.read" {
+                {
                     let base = fixture.host.home.parent().unwrap().canonicalize().unwrap();
                     let profile = base.join("profile");
                     let core_home = base.join("data");
@@ -732,6 +732,7 @@ async fn pending_workbench_requests_do_not_block_queries() {
                     let entered_cb = entered.clone();
                     let released_cb = released.clone();
                     let probe_identity = service.identity.clone();
+                    let blocked = Rc::new(std::cell::Cell::new(false));
                     let server = tokio::task::spawn_local(async move {
                         use futures_util::{SinkExt, StreamExt};
                         use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -764,6 +765,7 @@ async fn pending_workbench_requests_do_not_block_queries() {
                             }
                             let entered_cb = entered_cb.clone();
                             let released_cb = released_cb.clone();
+                            let blocked = blocked.clone();
                             tokio::task::spawn_local(async move {
                                 let mut socket =
                                     tokio_tungstenite::accept_async(stream).await.unwrap();
@@ -776,8 +778,10 @@ async fn pending_workbench_requests_do_not_block_queries() {
                                         "initialize" => json!({}),
                                         "areal/task/list" => json!({ "data": [], "nextCursor": null }),
                                         "areal/server/status" => {
-                                            entered_cb.notify_one();
-                                            released_cb.notified().await;
+                                            if !blocked.replace(true) {
+                                                entered_cb.notify_one();
+                                                released_cb.notified().await;
+                                            }
                                             json!({
                                                 "acceptingWork": true,
                                                 "activeGoals": [],
@@ -839,62 +843,11 @@ async fn pending_workbench_requests_do_not_block_queries() {
                             .await
                             .unwrap(),
                     );
-                    slow_params = json!({"sourceId": source_id, "projectId": alias, "operation": "server"});
-                } else {
-                    let runner = fixture.host.home.join("blocked.cjs");
-                    std::fs::write(
-                        &runner,
-                        r#"
-            const out = frame => console.log(JSON.stringify({version:1,...frame}));
-            out({event:'ready',methods:['manage.read','desktop.command']});
-            let pending;
-            require('node:readline').createInterface({input:process.stdin}).on('line', line => {
-                const frame = JSON.parse(line);
-                if (frame.method && pending === undefined) {
-                    pending = frame.id;
-                    out({call:'blocked',id:'gate',params:{}});
-                } else if (frame.method) {
-                    out({id:frame.id,result:{models:[]}});
-                } else if (frame.id === 'gate') {
-                    out({id:pending,result:{models:[]}});
-                }
-            });
-        "#,
-                    )
-                    .unwrap();
-                    let reverse: crate::workbench::Reverse = {
-                        let entered = entered.clone();
-                        let released = released.clone();
-                        Rc::new(move |method, _| {
-                            let entered = entered.clone();
-                            let released = released.clone();
-                            Box::pin(async move {
-                                assert_eq!(method, "blocked");
-                                entered.notify_one();
-                                released.notified().await;
-                                Ok(Value::Null)
-                            })
-                        })
+                    slow_params = if blocked_method == "manage.read" {
+                        json!({"sourceId": source_id, "projectId": alias, "operation": "server"})
+                    } else {
+                        json!({"sourceId": source_id, "command":"manage", "request":{"projectId":alias,"operation":"server"}})
                     };
-                    let node = std::process::Command::new("which")
-                        .arg("node")
-                        .output()
-                        .unwrap();
-                    assert!(
-                        node.status.success(),
-                        "Node is required for workbench tests"
-                    );
-                    let node = PathBuf::from(String::from_utf8(node.stdout).unwrap().trim());
-                    let backend =
-                        crate::workbench::Workbench::start(&node, &runner, &fixture.host.home, reverse)
-                            .await
-                            .unwrap();
-                    fixture
-                        .host
-                        .gateway
-                        .workbench
-                        .bind_test_backend(backend, "fixture");
-                    slow_params = json!({"command":"connect","request":{"projectId":"selected"}});
                 }
                 let ticket = fixture
                     .client()
@@ -925,7 +878,7 @@ async fn pending_workbench_requests_do_not_block_queries() {
                     write(
                         &mut socket,
                         json!({"version":1,"id":"second","method":"desktop.command",
-                "params":{"command":"connect","request":{"projectId":"second"}}}),
+                "params":slow_params}),
                     )
                     .await;
                 }
@@ -960,7 +913,7 @@ async fn pending_workbench_requests_do_not_block_queries() {
                 if progress.is_ok() && blocked_method == "desktop.command" {
                     for index in 0..15 {
                         write(&mut socket, json!({"version":1,"id":format!("capacity-{index}"),
-                            "method":"desktop.command","params":{"command":"connect","request":{"projectId":"queued"}}})).await;
+                            "method":"desktop.command","params":slow_params})).await;
                     }
                     let rejected = read(&mut socket).await;
                     assert_eq!(rejected["id"], "capacity-14");

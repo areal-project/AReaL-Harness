@@ -540,3 +540,66 @@ async fn recovery_inspection_uses_host_space_owner_without_node() {
         close();server.await.unwrap();
     }).await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn native_connect_keeps_explicit_stop_and_reconciles_unknown_activation() {
+    tokio::task::LocalSet::new().run_until(async {
+        let root=tempfile::tempdir().unwrap();
+        let (host,source,server,close)=setup_archive_fixture(root.path(),|method,_|Some(json!({"result":match method {
+            "initialize"|"areal/server/status"=>json!({}),
+            other=>panic!("unexpected connection RPC {other}"),
+        }}))).await;
+        let mut request=json!({"params":{"sourceId":source,"command":"connect","request":{"projectId":TEST_PROJECT_ALIAS}}});
+        let ready=desktop_command(&host,"local","native-connection",&request).await.unwrap();
+        assert_eq!(ready["projectId"],"project");
+        assert_eq!(ready["serviceGeneration"],"gen-1");
+        assert!(!host.gateway.workbench.has_running_backend());
+        host.schedules.suppress("project",true).unwrap();
+        assert!(desktop_command(&host,"local","native-connection",&request).await.is_err());
+        assert!(host.schedules.suppressed("project"));
+        let original=uuid::Uuid::new_v4().to_string();
+        storage::write(&crate::wire::operation_path(&host.home,&original),&json!({
+            "digest":"original", "receipt":{"requestId":original,"method":"project.ensure","projectId":"project","state":"acceptedPending"},"evidence":{}
+        })).unwrap();
+        let gate=host.gate("project").unwrap();
+        let _starting=gate.write().await;
+        request["params"]["request"]["resumeScheduling"]=json!(true);
+        for _ in 0..2 {
+            let pending=desktop_command(&host,"local","native-connection",&request).await.unwrap();
+            assert_eq!(pending["activationId"],original);
+            assert_eq!(pending["state"],"pending");
+        }
+        assert!(host.schedules.suppressed("project"));
+        assert_eq!(storage::json_records(&host.home.join("host/operations"),false).unwrap().len(),1);
+        assert!(!host.gateway.workbench.has_running_backend());
+        close();server.await.unwrap();
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn explicit_native_resume_records_intent_and_original_failed_activation() {
+    tokio::task::LocalSet::new().run_until(async {
+        let root=tempfile::tempdir().unwrap();
+        let (host,source,server,close)=setup_archive_fixture(root.path(),|method,_|Some(json!({"result":match method {
+            "initialize"|"areal/server/status"=>json!({}),
+            other=>panic!("unexpected connection RPC {other}"),
+        }}))).await;
+        host.schedules.suppress("project",true).unwrap();
+        // 已损坏的启动配置应明确结算失败；恢复意图仍属于同一份持久受理记录。
+        let path=host.home.join("host/launch").join(storage::digest(b"project")).join("inputs.json");
+        storage::private_dir(path.parent().unwrap()).unwrap();
+        storage::write(&path,&json!({})).unwrap();
+        let request=json!({"params":{"sourceId":source,"command":"connect","request":{"projectId":TEST_PROJECT_ALIAS,"resumeScheduling":true}}});
+        let result=desktop_command(&host,"local","native-connection",&request).await.unwrap();
+        assert_eq!(result["state"],"blocked");
+        let activation=result["activationId"].as_str().unwrap();
+        let record=host.receipt(activation).unwrap().unwrap();
+        assert_eq!(record.receipt["method"],"project.ensure");
+        assert_eq!(record.receipt["projectId"],"project");
+        assert_eq!(record.receipt["state"],"blocked");
+        assert!(!host.schedules.suppressed("project"));
+        assert!(!super::super::schedules::Schedules::load(&host.home).unwrap().suppressed("project"));
+        assert!(!host.gateway.workbench.has_running_backend());
+        close();server.await.unwrap();
+    }).await;
+}

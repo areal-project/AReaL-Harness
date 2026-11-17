@@ -2008,55 +2008,74 @@ it("reprojects completed inspection and fences its connection and Core generatio
   expect(replacement.modelName).toBeUndefined();
 });
 
-it("connects a foreground project through Host activation without a Node desktop command", async () => {
-  const page = new EventTarget();
-  vi.stubGlobal("window", page);
-  let phase = "stopped";
-  const wire = transport();
-  const activated: unknown[] = [];
-  const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
-    const base = await wire.factory(lifecycle);
-    return {
-      ...base,
-      identity: { ...base.identity, writeMethods: ["project.activate"] },
-      transport: {
-        ...base.transport,
-        async request(method, params, context) {
-          if (method === "shell.subscribe")
-            return {
-              ...identity,
-              subscriptionId: "shell",
-              sequence: 0,
-              snapshot: {
-                projects: [
-                  {
-                    ...project,
-                    state: phase,
-                    serviceGeneration: phase === "ready" ? "core-gen" : undefined,
-                  },
-                ],
-                navigation: [navigation],
-              },
-            };
-          return base.transport.request(method, params, context);
+it.each([false, true])(
+  "connects a foreground project through native Host (resume=%s)",
+  async (resumeScheduling) => {
+    const page = new EventTarget();
+    vi.stubGlobal("window", page);
+    let phase = "stopped";
+    const wire = transport();
+    const activated: unknown[] = [];
+    const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+      const base = await wire.factory(lifecycle);
+      return {
+        ...base,
+        identity: { ...base.identity, writeMethods: ["project.activate", "desktop.command"] },
+        transport: {
+          ...base.transport,
+          async request(method, params, context) {
+            if (method === "shell.subscribe")
+              return {
+                ...identity,
+                subscriptionId: "shell",
+                sequence: 0,
+                snapshot: {
+                  projects: [
+                    {
+                      ...project,
+                      state: phase,
+                      serviceGeneration: phase === "ready" ? "core-gen" : undefined,
+                    },
+                  ],
+                  navigation: [navigation],
+                },
+              };
+            return base.transport.request(method, params, context);
+          },
+          async write(method, params, context) {
+            expect(method).toBe(resumeScheduling ? "desktop.command" : "project.activate");
+            activated.push({ params, context });
+            phase = "ready";
+            return { projectId: "canonical", state: "ready", serviceGeneration: "core-gen" };
+          },
         },
-        async write(method, params, context) {
-          expect(method).toBe("project.activate");
-          activated.push({ params, context });
-          phase = "ready";
-          return { projectId: "canonical", state: "ready", serviceGeneration: "core-gen" };
-        },
-      },
+      };
     };
-  };
-  const services = createHostReadServices(undefined, options(factory));
-  try {
-    await until(services);
-    const result = await call(services, "connect", { projectId: "alias" });
-    expect(result).toMatchObject({ projects: [{ id: "alias", state: { connected: true } }] });
-    expect(activated).toEqual([{ params: {}, context: { projectId: "canonical" } }]);
-  } finally {
-    page.dispatchEvent(new Event("pagehide"));
-    vi.unstubAllGlobals();
-  }
-});
+    const services = createHostReadServices(undefined, options(factory));
+    try {
+      await until(services);
+      const result = await call(services, "connect", {
+        projectId: "alias",
+        ...(resumeScheduling ? { resumeScheduling: true } : {}),
+      });
+      expect(result).toMatchObject({ projects: [{ id: "alias", state: { connected: true } }] });
+      expect(activated).toEqual(
+        resumeScheduling
+          ? [
+              {
+                params: {
+                  sourceId: "source",
+                  command: "connect",
+                  request: { projectId: "alias", resumeScheduling: true },
+                },
+                context: null,
+              },
+            ]
+          : [{ params: {}, context: { projectId: "canonical" } }],
+      );
+    } finally {
+      page.dispatchEvent(new Event("pagehide"));
+      vi.unstubAllGlobals();
+    }
+  },
+);

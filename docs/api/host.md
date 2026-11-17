@@ -31,6 +31,8 @@ WS 只接受 `/host/socket`，拒绝 query，精确校验 Host authority 与单�
 
 Remote 的新读方法和原生会话格式只在 hello 协商 `gui-read-v1` 后提供，仍受现有设备项目授权约束；基础方法表为 25 项（含 `project.activate`）。共享客户端通过 Noise 或本机 WS 使用同一读模型。具体消息、字段与边界见 `schemas/areal-host-protocol-v1.json`。
 
+`desktop.command` 的 `connect` 由 Host 按逻辑项目和 Thread 解析执行工作区。显式 `resumeScheduling:true` 复用原 `project.ensure` 受理记录清除调度停止意图；遇到未决启动时只核对原回执，返回原 `activationId`，不会重发启动。结果使用原生激活状态，客户端重读共享投影并校验 Core 代际。
+
 本机 WebSocket 协商 `persistedHistoryV1` 后，可对已登记且未运行的项目调用 `session.openPersisted`。Host 核对旧服务身份并取得启动、服务和 Store 锁，生成有大小上限的固定只读快照，不启动 Core 或 Runtime；响应标记 `access.readOnly` 和快照摘要，不改变项目状态或旧回执。历史分页及内容寻址附件绑定该订阅；不支持的继承视图和缺失资源明确返回错误。连接关闭、订阅关闭或项目归属改变后快照失效。此能力不授予发送、任务控制或项目接管权限。
 
 Host 无法交接时，`areal host history-snapshot --service <service.json> --thread <id> --output <private-dir>/history.html` 可在取得同样的项目锁并验证服务身份后导出离线只读页面。输出目录须为当前用户拥有的私有目录；命令不连接或启动 Host、Core、Runtime，不改变原回执。页面不加载附件或引用会话，也不能发送或执行操作。

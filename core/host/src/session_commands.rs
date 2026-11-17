@@ -501,6 +501,7 @@ pub(super) async fn execute(
     request: &Value,
 ) -> Result<Value> {
     match command {
+        "connect" => connect(host, source, request).await,
         "fork" => fork(host, source, request).await,
         "editMessage" => edit_message(host, source, request).await,
         "continue" => continue_turn(host, source, request).await,
@@ -512,6 +513,88 @@ pub(super) async fn execute(
         "dismissRecovery" => dismiss_recovery(host, source, request).await,
         _ => bail!("methodNotFound"),
     }
+}
+
+async fn connect(host: &Rc<Host>, source: &str, request: &Value) -> Result<Value> {
+    let object = request.as_object().context("INVALID_PARAMS")?;
+    ensure_allowed_keys(object, &["projectId", "threadId", "resumeScheduling"])?;
+    optional_identifier(request.get("threadId"))?;
+    let resume = match request.get("resumeScheduling") {
+        None => false,
+        Some(value) => value.as_bool().context("INVALID_PARAMS")?,
+    };
+    let scope = resolve_project_scope(host, source, request, true, false).await?;
+    let id = &scope.canonical_id;
+    ensure!(
+        resume || !host.schedules.suppressed(id),
+        crate::wire::error("CORE_STOPPED", "项目已停止，请明确恢复调度")
+    );
+    // 未决启动只核对原回执；显式恢复也不能越过原启动另发一次。
+    for path in storage::json_records(&host.home.join("host/operations"), false)? {
+        let record: super::Operation = storage::read(&path)?;
+        if record.receipt["method"] == "project.ensure"
+            && record.receipt["projectId"] == *id
+            && !record.settled()
+        {
+            let original = identifier(record.receipt.get("requestId"))?;
+            let receipt = host
+                .reconcile(original)
+                .await?
+                .context("RESOURCE_UNAVAILABLE")?;
+            if receipt["state"] == "completed"
+                && !host.schedules.suppressed(id)
+                && let Ok((_, generation, _)) = host.schedules.connections.shared_identity(host, id)
+            {
+                return Ok(
+                    json!({"projectId":id,"state":"ready","activationId":original,"serviceGeneration":generation}),
+                );
+            }
+            if matches!(receipt["state"].as_str(), Some("completed" | "blocked")) {
+                return Ok(
+                    json!({"projectId":id,"state":"blocked","activationId":original,"reason":if host.schedules.suppressed(id) { "explicitlyStopped" } else { "activationIncomplete" }}),
+                );
+            }
+            return Ok(
+                json!({"projectId":id,"state":"pending","activationId":original,"reason":"activationIncomplete"}),
+            );
+        }
+    }
+    let activation = if resume {
+        let original = uuid::Uuid::new_v4().to_string();
+        let result = host
+            .ensure(Ensure {
+                request_id: original.clone(),
+                expected_generation: host.identity.generation.clone(),
+                project_id: id.clone(),
+                no_auto_restart: false,
+                resume_scheduling: true,
+                launch_inputs: None,
+                credentials: BTreeMap::new(),
+            })
+            .await;
+        if let Some(record) = host.receipt(&original)?
+            && record.receipt["state"] != "completed"
+        {
+            return Ok(
+                json!({"projectId":id,"state":if record.settled() { "blocked" } else { "pending" },"activationId":original,"reason":"activationIncomplete"}),
+            );
+        }
+        result?;
+        Some(original)
+    } else {
+        ensure_project(host, id).await?;
+        None
+    };
+    let (_, generation, _) = host.schedules.connections.shared_identity(host, id)?;
+    let mut response = if host.schedules.suppressed(id) {
+        json!({"projectId":id,"state":"blocked","reason":"explicitlyStopped"})
+    } else {
+        json!({"projectId":id,"state":"ready","serviceGeneration":generation})
+    };
+    if let Some(activation) = activation {
+        response["activationId"] = json!(activation);
+    }
+    Ok(response)
 }
 
 async fn fork(host: &Rc<Host>, source: &str, request: &Value) -> Result<Value> {

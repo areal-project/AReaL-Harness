@@ -518,13 +518,6 @@ impl Supervisor {
         Ok(result)
     }
 
-    #[cfg(test)]
-    pub(crate) fn bind_test_backend(&self, backend: Workbench, source: &str) {
-        *self.backend.ownership.borrow_mut() = Some(("test".into(), json!({"serviceId":"test"})));
-        *self.backend.running.borrow_mut() = Some(Rc::new(backend));
-        *self.backend.source.borrow_mut() = Some(source.into());
-    }
-
     pub(super) async fn request(
         &self,
         host: &Rc<Host>,
@@ -1059,6 +1052,7 @@ pub(super) fn desktop_command<'a>(
             Cmd::Value4 => Some("cloud"),
             Cmd::Value5 => Some("cloudSession"),
             Cmd::Value6 => Some("configure"),
+            Cmd::Value7 => Some("connect"),
             Cmd::Value8 => Some("continue"),
             Cmd::Value9 => Some("dismissRecovery"),
             Cmd::Value10 => Some("editMessage"),

@@ -554,8 +554,17 @@ export function createHostReadServices(
     const hostProjectId = threadTargets.get(`${projectId}:${threadId}`) ?? project?.hostProjectId;
     return project && hostProjectId ? { project, hostProjectId, threadId } : undefined;
   }
-  async function activateProject(projectId: string) {
-    const activation = await client.query("project.activate", projectId, {});
+  async function activateProject(
+    projectId: string,
+    resume?: { projectId: string; threadId?: string },
+  ) {
+    const activation = resume
+      ? await client.workbench("desktop.command", {
+          sourceId: librarySourceId ?? "",
+          command: "connect",
+          request: { ...resume, resumeScheduling: true },
+        })
+      : await client.query("project.activate", projectId, {});
     if (!object(activation) || activation.projectId !== projectId)
       throw new Error("Invalid project activation response");
     if (activation.state !== "ready")
@@ -578,14 +587,22 @@ export function createHostReadServices(
       const project = snapshot.projects.find((value) => value.id === params.projectId) as
         | ReadProject
         | undefined;
-      if (project && name === "connect" && params.resumeScheduling !== true) {
+      if (project && name === "connect") {
         const original = client.snapshot();
         if (original.connection !== "ready") throw new Error("Host unavailable");
         const activationProjectId =
           typeof params.threadId === "string"
             ? (threadTargets.get(`${project.id}:${params.threadId}`) ?? project.hostProjectId)
             : project.hostProjectId;
-        const activation = await activateProject(activationProjectId);
+        const activation = await activateProject(
+          activationProjectId,
+          params.resumeScheduling === true
+            ? {
+                projectId: project.id,
+                ...(typeof params.threadId === "string" ? { threadId: params.threadId } : {}),
+              }
+            : undefined,
+        );
         await client.refreshShell();
         const current = client.snapshot();
         const shell = client.readsSnapshot().shell;
