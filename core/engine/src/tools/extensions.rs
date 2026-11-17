@@ -105,11 +105,7 @@ impl Invocation<'_> {
                 .is_some_and(|c| c.read_only)
                 && matches!(
                     self.entry.backend,
-                    Backend::Client
-                        | Backend::Page(_)
-                        | Backend::Mcp(_)
-                        | Backend::Plugin(_)
-                        | Backend::Coordination
+                    Backend::Client | Backend::Mcp(_) | Backend::Plugin(_) | Backend::Coordination
                 )
                 && !crate::agents::read_only_tool(&self.call.name, &self.entry.backend)
             {
@@ -358,16 +354,13 @@ impl Invocation<'_> {
                 ));
             }
         }
-        if self.cancel.is_cancelled() && !matches!(self.entry.backend, Backend::Page(_)) {
+        if self.cancel.is_cancelled() {
             return Err(rt::Error::new(
                 rt::ErrorCode::ScopeClosed,
                 "cancelled before dispatch",
             ));
         }
-        let result = if matches!(
-            self.entry.backend,
-            Backend::Mcp(_) | Backend::Plugin(_) | Backend::Page(_)
-        ) {
+        let result = if matches!(self.entry.backend, Backend::Mcp(_) | Backend::Plugin(_)) {
             // These backends own cancellation and cleanup; do not drop their futures first.
             self.invoke(&arguments, browser_plan.as_ref()).await
         } else if matches!(self.entry.backend, Backend::Builtin)
@@ -428,20 +421,14 @@ impl Invocation<'_> {
             Ok(result) => result,
             Err(error) => (false, self.failure(&arguments, error)),
         };
-        if matches!(self.entry.backend, Backend::Page(_))
-            && (self.cancel.is_cancelled()
-                || value["status"] == "unknown"
-                || value["status"] == "noEffect")
-        {
-            return Ok((success, value));
-        }
+
         let event = if success {
             HookEvent::PostToolUse
         } else {
             HookEvent::PostToolUseFailure
         };
         let hooks = self.hooks(event);
-        if !hooks.is_empty() && !matches!(self.entry.backend, Backend::Page(_)) {
+        if !hooks.is_empty() {
             // Commit the actual tool outcome before invoking potentially effectful hooks.
             // A hook failure must never turn a successful write into a retryable failure.
             let prepared = self
@@ -475,18 +462,7 @@ impl Invocation<'_> {
                 break;
             }
         }
-        if matches!(self.entry.backend, Backend::Page(_)) {
-            return match self
-                .codex_post(&hook_arguments, success, value.clone())
-                .await
-            {
-                Ok(result) => Ok(result),
-                Err(_) => {
-                    *post_hook_failed = true;
-                    Ok((success, value))
-                }
-            };
-        }
+
         self.codex_post(&hook_arguments, success, value).await
     }
 
@@ -498,41 +474,28 @@ impl Invocation<'_> {
     ) -> rt::Result<(bool, Value)> {
         // Persist actual outcome before effectful post handlers; feedback cannot roll back
         // a write or make it replayable. The model projection may be replaced separately.
-        if !matches!(self.entry.backend, Backend::Page(_)) {
-            let prepared = self
-                .engine
-                .prepare_tool_result(self.cell, self.item_id, &self.call.name, &value, None)
-                .await
-                .map_err(unknown)?;
-            self.edit(|execution, content| {
-                execution.outcome = if success {
-                    ToolOutcome::Succeeded
-                } else {
-                    ToolOutcome::Failed
-                };
-                execution.result_snapshot = prepared.snapshot;
-                execution.output_projection = Some(prepared.metrics);
-                *content = Some(content_items(&value));
-            })
-            .await?;
-        }
+
+        let prepared = self
+            .engine
+            .prepare_tool_result(self.cell, self.item_id, &self.call.name, &value, None)
+            .await
+            .map_err(unknown)?;
+        self.edit(|execution, content| {
+            execution.outcome = if success {
+                ToolOutcome::Succeeded
+            } else {
+                ToolOutcome::Failed
+            };
+            execution.result_snapshot = prepared.snapshot;
+            execution.output_projection = Some(prepared.metrics);
+            *content = Some(content_items(&value));
+        })
+        .await?;
+
         let (name, input) = crate::plugin_hooks::tool_input(&self.call.name, args);
         let effects=self.engine.plugin_hook_event(self.cell,areal_plugins::hooks::HookEvent::PostToolUse,
             json!({"tool_name":name,"tool_input":input,"tool_response":value,"tool_use_id":self.call.id,"__areal_caller_admitted":!matches!(self.entry.backend,Backend::Agent|Backend::Coordination|Backend::Core)}),self.cancel).await.map_err(unknown)?;
         if let Some(reason) = effects.block.or(effects.stop) {
-            if matches!(self.entry.backend, Backend::Page(_)) {
-                self.edit(|execution, _| {
-                    execution.hooks.push(HookExecution {
-                        name: "page-post-feedback".into(),
-                        event: "PostToolUse".into(),
-                        operation_id: self.operation.into(),
-                        outcome: ToolOutcome::Succeeded,
-                        result: Some(json!({"hookFeedback":reason})),
-                    })
-                })
-                .await?;
-                return Ok((success, value));
-            }
             return Ok((
                 success,
                 json!({"hookFeedback":reason,"toolOutcomeRetained":true}),
@@ -559,27 +522,7 @@ impl Invocation<'_> {
         if serde_json::to_vec(args).map_err(invalid)?.len() > registry::MAX_ARGUMENT_BYTES {
             return Err(invalid("tool arguments exceed 64 KiB"));
         }
-        if matches!(self.entry.backend, Backend::Page(_)) {
-            if serde_json::to_vec(args).map_err(invalid)?.len()
-                > areal_protocol::plugin_runtime::PAGE_BYTES
-            {
-                return Err(invalid("page arguments exceed 32 KiB"));
-            }
-            if let Backend::Page(tool) = &self.entry.backend
-                && tool.binding.kind == areal_protocol::plugin_runtime::PageToolKind::ApplyPatch
-            {
-                let patch: areal_protocol::plugin_runtime::PagePatch =
-                    serde_json::from_value(args.clone()).map_err(invalid)?;
-                if patch.patch.insert.encode_utf16().count()
-                    > areal_protocol::plugin_runtime::PAGE_TEXT_UNITS
-                    || patch.patch.insert.contains('\r')
-                {
-                    return Err(invalid(
-                        "page replacement exceeds UTF-16 bound or contains CR",
-                    ));
-                }
-            }
-        }
+
         self.entry.validate_input(args).map_err(invalid)
     }
     fn hooks(&self, event: HookEvent) -> Vec<&HookDefinition> {
@@ -608,7 +551,6 @@ impl Invocation<'_> {
             args,
         );
         let mut response = match &self.entry.backend {
-            Backend::Page(tool) => return self.invoke_page(tool, args).await,
             Backend::Agent => {
                 return super::agents::invoke(self.engine, self.cell, &self.call.name, args)
                     .await
@@ -924,7 +866,7 @@ impl Invocation<'_> {
                 );
                 let key = (tool.server_name().to_owned(), tool.generation());
                 {
-                    let mut calls = self.engine.desktop.mcp_apps.calls.lock().await;
+                    let mut calls = self.engine.desktop.mcp_interactions.calls.lock().await;
                     if calls.contains_key(&key) {
                         return Err(rt::Error::new(
                             rt::ErrorCode::PermissionDenied,
@@ -941,16 +883,11 @@ impl Invocation<'_> {
                     .active
                     .as_ref()
                     .and_then(|a| a.tool_meta.clone());
-                let cwd = self.cell.state.lock().await.thread.cwd.clone();
-                let source = self
-                    .engine
-                    .mcp_result_source(tool, self.thread_id, &cwd)
-                    .await;
                 let raw = tool
                     .call_raw_owned(args.clone(), meta, call_cancel, Some(&context))
                     .await;
                 {
-                    let mut calls = self.engine.desktop.mcp_apps.calls.lock().await;
+                    let mut calls = self.engine.desktop.mcp_interactions.calls.lock().await;
                     if calls.get(&key).is_some_and(|o| o.token == owner_token) {
                         calls.remove(&key);
                     }
@@ -989,7 +926,7 @@ impl Invocation<'_> {
                 }
                 let mut value = serde_json::to_value(&response).map_err(unknown)?;
                 value["mcpResult"] = serde_json::to_value(&raw).map_err(unknown)?;
-                value["mcpServer"] = json!({"serverId":tool.server_name(),"generation":tool.generation(),"toolMetadata":tool.metadata(),"source":source});
+                value["mcpServer"] = json!({"serverId":tool.server_name(),"generation":tool.generation(),"toolMetadata":tool.metadata()});
                 if serde_json::to_vec(&value).map_err(unknown)?.len()
                     > areal_protocol::MAX_TOOL_RESULT_BYTES
                 {
@@ -1202,8 +1139,7 @@ impl Invocation<'_> {
             if matches!(
                 execution.outcome,
                 ToolOutcome::Succeeded | ToolOutcome::Failed
-            ) || execution.page.as_ref().is_some_and(|p| p.is_terminal())
-            {
+            ) {
                 let succeeded = execution.outcome == ToolOutcome::Succeeded;
                 *success = Some(succeeded);
                 *status = if succeeded {

@@ -1,5 +1,5 @@
 use super::*;
-use crate::desktop::mcp_apps::CallOwner;
+use crate::desktop::mcp_interactions::CallOwner;
 pub(super) struct HookMcpLease {
     pub(super) context: areal_mcp::RequestOwner,
     pub(super) owner: CallOwner,
@@ -9,7 +9,7 @@ pub(super) struct HookMcpLease {
 impl HookMcpLease {
     pub(super) async fn close(self) {
         self.owner.cancellation.cancel();
-        let mut calls = self.engine.desktop.mcp_apps.calls.lock().await;
+        let mut calls = self.engine.desktop.mcp_interactions.calls.lock().await;
         if calls
             .get(&self.key)
             .is_some_and(|owner| owner.token == self.owner.token)
@@ -61,7 +61,7 @@ pub(super) async fn mcp_owner(
             !cancel.is_cancelled(),
             "hook cancelled while waiting for MCP ownership"
         );
-        let mut calls = engine.desktop.mcp_apps.calls.lock().await;
+        let mut calls = engine.desktop.mcp_interactions.calls.lock().await;
         if !calls.contains_key(&key) {
             calls.insert(key.clone(), owner.clone());
             break;

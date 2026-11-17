@@ -4,7 +4,7 @@ mod catalog;
 mod context;
 mod interactions;
 mod mcp;
-pub(crate) mod mcp_apps;
+pub(crate) mod mcp_interactions;
 pub(crate) mod mcp_tools;
 pub(crate) mod media;
 mod model_configuration;
@@ -44,7 +44,7 @@ pub(crate) struct Desktop {
     submissions: submissions::Submissions,
     pub(crate) lifecycle: server::Lifecycle,
     pub(crate) plugin_mcp: plugin_mcp::Manager,
-    pub(crate) mcp_apps: mcp_apps::Manager,
+    pub(crate) mcp_interactions: mcp_interactions::Manager,
     catalog: std::sync::RwLock<catalog::Catalog>,
     catalog_write: Mutex<()>,
     model_events: broadcast::Sender<Value>,
@@ -64,7 +64,7 @@ impl Desktop {
             worker_model: std::sync::atomic::AtomicBool::new(false),
             submissions: submissions::Submissions::open(root)?,
             plugin_mcp: plugin_mcp::Manager::open(root)?,
-            mcp_apps: mcp_apps::Manager::open(root)?,
+            mcp_interactions: mcp_interactions::Manager::open(root)?,
             lifecycle: Default::default(),
             catalog: std::sync::RwLock::new(catalog::Catalog::load(root)?),
             catalog_write: Mutex::new(()),

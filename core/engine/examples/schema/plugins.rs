@@ -85,7 +85,7 @@ pub fn projections(responses: &mut Map<String, Value>, notifications: &mut Map<S
     }));
     let plugin_mcp = data(object(json!({
         "pluginId":string,"installedDigest":string,"state":string,"authenticationTiming":{"enum":["ON_INSTALL","ON_USE",null]},"trusted":boolean,
-        "servers":array(object(json!({"serverId":string,"projectEnabled":boolean,"state":string,"config":redacted_config,"policy":schema::<areal_mcp::PluginPolicy>(),"authenticationTiming":{"enum":["ON_INSTALL","ON_USE",null]},"authentication":{"enum":["optional","required","none"]}}))),
+        "servers":array(object(json!({"serverId":string,"generation":nullable(number.clone()),"projectEnabled":boolean,"state":string,"config":redacted_config,"policy":schema::<areal_mcp::PluginPolicy>(),"authenticationTiming":{"enum":["ON_INSTALL","ON_USE",null]},"authentication":{"enum":["optional","required","none"]}}))),
         "connectors":array(object(json!({"id":string,"state":string}))),
         "diagnostics":array(json!({"anyOf":[string,any_object]}))
     })));
@@ -125,10 +125,9 @@ pub fn projections(responses: &mut Map<String, Value>, notifications: &mut Map<S
     );
     insert(
         &["mcp/form/preview"],
-        json!({"oneOf":[
-            object(json!({"type":{"const":"resource_link"},"serverId":string,"generation":number,"resource":object(json!({"contents":array(any_object.clone())}))})),
-            object(json!({"type":{"const":"mcp_app_tool"},"serverId":string,"generation":number,"toolName":string,"arguments":any_object,"requiresIdleTurn":{"const":true}}))
-        ]}),
+        object(
+            json!({"type":{"const":"resource_link"},"serverId":string,"generation":number,"resource":object(json!({"contents":array(any_object.clone())}))}),
+        ),
     );
     insert(
         &["mcp/form/resource/prepare"],

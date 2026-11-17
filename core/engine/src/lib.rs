@@ -278,7 +278,7 @@ struct State {
     active: Option<Active>,
     poisoned: bool,
     compacting: bool,
-    compaction_owner: Option<desktop::mcp_apps::CallOwner>,
+    compaction_owner: Option<desktop::mcp_interactions::CallOwner>,
     // Failed cleanup or final persistence is not evidence that capacity is
     // reusable. Keep the reservation until this Engine is dropped/recovered.
     quarantined_admission: Option<OwnedSemaphorePermit>,

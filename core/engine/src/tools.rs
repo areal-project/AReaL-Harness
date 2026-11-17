@@ -363,7 +363,6 @@ mod file_before;
 mod images;
 mod navigation;
 mod output;
-mod page;
 mod plugin_execution;
 pub mod plugins;
 pub(crate) mod registry;
@@ -1233,15 +1232,7 @@ impl Engine {
                 started_at_ms: Some(crate::execution_trace::now_ms()),
                 permission_review: None,
                 permission_scopes: Vec::new(),
-                page: entry.as_ref().ok().and_then(|t| match &t.backend {
-                    Backend::Page(p) => Some(areal_protocol::plugin_runtime::PageExecution {
-                        binding: p.binding.clone(),
-                        dispatch: areal_protocol::plugin_runtime::PageDispatch::Pending {
-                            arguments_digest: None,
-                        },
-                    }),
-                    _ => None,
-                }),
+                page: None,
                 interactive_result: None,
                 result_snapshot: None,
                 file_before: None,
@@ -1257,7 +1248,6 @@ impl Engine {
                             Backend::Core => "core",
                             Backend::Command(_) => "command",
                             Backend::Client => "client",
-                            Backend::Page(_) => "page",
                             Backend::Mcp(_) => "mcp",
                             Backend::Plugin(_) => "plugin",
                         }
@@ -1385,26 +1375,6 @@ impl Engine {
         }
         if call.name == "tool_program" && result.get("contentItems").is_none() {
             self.program_failure_receipt(cell, &call, &mut result).await;
-        }
-        {
-            let state = cell.state.lock().await;
-            if let Some(Item::DynamicToolCall {
-                execution,
-                success: saved_success,
-                ..
-            }) = state
-                .thread
-                .turns
-                .last()
-                .unwrap()
-                .items
-                .iter()
-                .find(|i| i.id() == item_id)
-                && execution.page.as_ref().is_some_and(|p| p.is_terminal())
-            {
-                outcome = execution.outcome.clone();
-                success = saved_success == &Some(true);
-            }
         }
         if !success {
             tracing::Span::current().record("otel.status_code", "ERROR");
@@ -1559,7 +1529,7 @@ impl Engine {
         let mcp_event = result.get("mcpResult").map(|raw| json!({"threadId":thread_id,"turnId":turn_id,"callId":call.id,"itemId":item_id,"serverId":result["mcpServer"]["serverId"],"generation":result["mcpServer"]["generation"],"toolMetadata":result["mcpServer"]["toolMetadata"],"mcpResult":raw}));
         let mut model_result = result.clone();
         if result.get("mcpResult").is_some() {
-            crate::desktop::mcp_apps::strip_meta(&mut model_result);
+            crate::desktop::mcp_interactions::strip_meta(&mut model_result);
         }
         let mut custom_content = model_result
             .get("contentItems")
@@ -1596,11 +1566,6 @@ impl Engine {
         {
             custom_content = None;
         }
-        let interactive_result = (success
-            && matches!(outcome, ToolOutcome::Succeeded)
-            && result["mcpServer"]["source"]["version"] == 1
-            && crate::desktop::mcp_apps::tool_uri(&result["mcpServer"]["toolMetadata"]).is_some())
-        .then_some(true);
         let result = skill::serialize_result(complete_skill, &prepared.value)?;
         let pending_skill = skill::pend(complete_skill, parent_call_id.is_none(), &call, &result);
         let projection_ms = projection_started.elapsed().as_secs_f64() * 1000.0;
@@ -1623,31 +1588,28 @@ impl Engine {
             ..
         } = item
         {
-            if !execution.page.as_ref().is_some_and(|p| p.is_terminal()) {
-                *status = if success {
-                    ToolStatus::Completed
-                } else {
-                    ToolStatus::Failed
-                };
-                *saved_success = Some(success);
-                *content_items = Some(
-                    custom_content
-                        .unwrap_or_else(|| vec![json!({"type":"inputText","text":result})]),
-                );
-                execution.interactive_result =
-                    interactive_result.filter(|_| execution.backend.as_deref() == Some("mcp"));
-                execution.outcome = outcome;
-                execution.result_snapshot = prepared.snapshot;
-                execution.output_projection = Some(prepared.metrics);
+            *status = if success {
+                ToolStatus::Completed
+            } else {
+                ToolStatus::Failed
+            };
+            *saved_success = Some(success);
+            *content_items = Some(
+                custom_content.unwrap_or_else(|| vec![json!({"type":"inputText","text":result})]),
+            );
+            execution.interactive_result = None;
+            execution.outcome = outcome;
+            execution.result_snapshot = prepared.snapshot;
+            execution.output_projection = Some(prepared.metrics);
 
-                if execution.backend.as_deref() == Some("coordination")
-                    && call.name.starts_with("agent_")
-                {
-                    // Pin the first settlement's identity version; retain old provider receipts.
-                    execution.output_projection.as_mut().unwrap()["executionIdentityVersion"] =
-                        json!(if call.name == "agent_wait_any" { 2 } else { 1 });
-                }
+            if execution.backend.as_deref() == Some("coordination")
+                && call.name.starts_with("agent_")
+            {
+                // Pin the first settlement's identity version; retain old provider receipts.
+                execution.output_projection.as_mut().unwrap()["executionIdentityVersion"] =
+                    json!(if call.name == "agent_wait_any" { 2 } else { 1 });
             }
+
             execution.duration_ms = Some(started.elapsed().as_millis() as u64);
         }
         let bytes = serde_json::to_vec(item)?.len();

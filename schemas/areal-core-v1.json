@@ -58468,78 +58468,41 @@
       "type": "object"
     },
     "areal/mcp/form/preview": {
-      "oneOf": [
-        {
+      "additionalProperties": true,
+      "properties": {
+        "generation": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "resource": {
           "additionalProperties": true,
           "properties": {
-            "generation": {
-              "minimum": 0,
-              "type": "integer"
-            },
-            "resource": {
-              "additionalProperties": true,
-              "properties": {
-                "contents": {
-                  "items": {
-                    "type": "object"
-                  },
-                  "type": "array"
-                }
+            "contents": {
+              "items": {
+                "type": "object"
               },
-              "required": [
-                "contents"
-              ],
-              "type": "object"
-            },
-            "serverId": {
-              "type": "string"
-            },
-            "type": {
-              "const": "resource_link"
+              "type": "array"
             }
           },
           "required": [
-            "generation",
-            "resource",
-            "serverId",
-            "type"
+            "contents"
           ],
           "type": "object"
         },
-        {
-          "additionalProperties": true,
-          "properties": {
-            "arguments": {
-              "type": "object"
-            },
-            "generation": {
-              "minimum": 0,
-              "type": "integer"
-            },
-            "requiresIdleTurn": {
-              "const": true
-            },
-            "serverId": {
-              "type": "string"
-            },
-            "toolName": {
-              "type": "string"
-            },
-            "type": {
-              "const": "mcp_app_tool"
-            }
-          },
-          "required": [
-            "arguments",
-            "generation",
-            "requiresIdleTurn",
-            "serverId",
-            "toolName",
-            "type"
-          ],
-          "type": "object"
+        "serverId": {
+          "type": "string"
+        },
+        "type": {
+          "const": "resource_link"
         }
-      ]
+      },
+      "required": [
+        "generation",
+        "resource",
+        "serverId",
+        "type"
+      ],
+      "type": "object"
     },
     "areal/mcp/form/resource/prepare": {
       "additionalProperties": true,
@@ -60177,6 +60140,17 @@
                       ],
                       "type": "object"
                     },
+                    "generation": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "policy": {
                       "$defs": {
                         "ApprovalMode": {
@@ -60272,6 +60246,7 @@
                     "authentication",
                     "authenticationTiming",
                     "config",
+                    "generation",
                     "policy",
                     "projectEnabled",
                     "serverId",
@@ -63509,6 +63484,17 @@
                       ],
                       "type": "object"
                     },
+                    "generation": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "policy": {
                       "$defs": {
                         "ApprovalMode": {
@@ -63604,6 +63590,7 @@
                     "authentication",
                     "authenticationTiming",
                     "config",
+                    "generation",
                     "policy",
                     "projectEnabled",
                     "serverId",

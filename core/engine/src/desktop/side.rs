@@ -892,7 +892,7 @@ impl Engine {
                 // Retained process records gate final confirmation after inspection.
                 let _ = engine.close_managed(&cell, None).await;
                 let hooks = engine.plugin_hooks_end(&cell).await;
-                let apps = engine.close_thread_apps(&cleanup_request.thread_id).await;
+                let apps = engine.close_thread_mcp_interactions(&cleanup_request.thread_id).await;
                 cell.bindings.write().await.host = None;
                 let mut state = cell.state.lock().await;
                 if settled && hooks.is_ok() && apps.is_ok() {

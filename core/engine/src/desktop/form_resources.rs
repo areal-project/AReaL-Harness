@@ -46,7 +46,7 @@ impl Engine {
         request_id: String,
         field_name: String,
     ) -> Result<Value> {
-        let forms = self.desktop.mcp_apps.forms.lock().await;
+        let forms = self.desktop.mcp_interactions.forms.lock().await;
         let form = forms.get(&request_id).ok_or(Error::NotFound)?;
         if form.owner.identity != identity
             || form.owner.thread != thread_id
@@ -54,8 +54,7 @@ impl Engine {
         {
             return Err(invalid("form owner mismatch or expired"));
         }
-        self.validate_mcp_owner(&form.owner, &form.request.server, form.request.generation)
-            .await?;
+        self.validate_mcp_owner(&form.owner).await?;
         let (_, server) = self
             .plugin_server(&form.request.server, form.request.generation)
             .await?;
@@ -90,7 +89,7 @@ impl Engine {
         let multiple = selection.multiple;
         let token = id();
         {
-            let mut uploads = self.desktop.mcp_apps.uploads.lock().await;
+            let mut uploads = self.desktop.mcp_interactions.uploads.lock().await;
             if let Some((token, _)) = uploads.selections.iter().find(|(_, s)| {
                 s.form == selection.form
                     && s.field == selection.field
@@ -127,7 +126,7 @@ impl Engine {
     ) -> Result<Value> {
         let selection = self
             .desktop
-            .mcp_apps
+            .mcp_interactions
             .uploads
             .lock()
             .await
@@ -184,7 +183,7 @@ impl Engine {
             let _ = std::fs::remove_dir_all(&root);
             return Err(e);
         }
-        let pending = self.desktop.mcp_apps.forms.lock().await;
+        let pending = self.desktop.mcp_interactions.forms.lock().await;
         if pending.get(&selection.form).is_none_or(|f| {
             f.owner.token != selection.owner.token || f.request.cancellation.is_cancelled()
         }) {
@@ -192,7 +191,7 @@ impl Engine {
             let _ = std::fs::remove_dir_all(&root);
             return Err(invalid("picker form ended"));
         }
-        let mut uploads = self.desktop.mcp_apps.uploads.lock().await;
+        let mut uploads = self.desktop.mcp_interactions.uploads.lock().await;
         if selection.owner.cancellation.is_cancelled() {
             drop(uploads);
             let _ = std::fs::remove_dir_all(&root);
@@ -235,11 +234,10 @@ impl Engine {
         )
     }
     async fn check_pending_selection(&self, selection: &Selection) -> Result<()> {
-        self.validate_mcp_owner(&selection.owner, &selection.server, selection.generation)
-            .await?;
+        self.validate_mcp_owner(&selection.owner).await?;
         self.plugin_server(&selection.server, selection.generation)
             .await?;
-        let forms = self.desktop.mcp_apps.forms.lock().await;
+        let forms = self.desktop.mcp_interactions.forms.lock().await;
         let form = forms.get(&selection.form).ok_or(Error::NotFound)?;
         if form.owner.token != selection.owner.token || form.request.cancellation.is_cancelled() {
             return Err(invalid("picker form ended"));
@@ -255,7 +253,7 @@ impl Engine {
         uri: String,
     ) -> Result<Value> {
         let selection = {
-            let uploads = self.desktop.mcp_apps.uploads.lock().await;
+            let uploads = self.desktop.mcp_interactions.uploads.lock().await;
             let Some(grant) = uploads.grants.get(&uri) else {
                 return Ok(json!({"released":true}));
             };
@@ -269,13 +267,13 @@ impl Engine {
             return Err(invalid("resource grant owner mismatch"));
         }
         self.check_pending_selection(&selection).await?;
-        let pending = self.desktop.mcp_apps.forms.lock().await;
+        let pending = self.desktop.mcp_interactions.forms.lock().await;
         if pending.get(&request_id).is_none_or(|f| {
             f.owner.token != selection.owner.token || f.request.cancellation.is_cancelled()
         }) {
             return Err(invalid("form ended"));
         }
-        let mut uploads = self.desktop.mcp_apps.uploads.lock().await;
+        let mut uploads = self.desktop.mcp_interactions.uploads.lock().await;
         let Some(grant) = uploads.grants.remove(&uri) else {
             return Ok(json!({"released":true}));
         };
@@ -296,7 +294,7 @@ impl Engine {
         Ok(json!({"released":true}))
     }
     async fn cleanup_form_uploads(&self, owner: &str) {
-        let mut uploads = self.desktop.mcp_apps.uploads.lock().await;
+        let mut uploads = self.desktop.mcp_interactions.uploads.lock().await;
         let roots = uploads
             .grants
             .values()
@@ -319,7 +317,7 @@ impl Engine {
         response: &mut Value,
     ) -> Result<Value> {
         let mut schema = form.request.params["requestedSchema"].clone();
-        let uploads = self.desktop.mcp_apps.uploads.lock().await;
+        let uploads = self.desktop.mcp_interactions.uploads.lock().await;
         if let Some(properties) = schema["properties"].as_object_mut() {
             for (field, definition) in properties {
                 let Some(selected) = response["content"].get_mut(field) else {

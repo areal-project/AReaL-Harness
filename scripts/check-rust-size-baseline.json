@@ -5,7 +5,6 @@
   "core/engine/src/agents.rs": 2020,
   "core/engine/src/context.rs": 2006,
   "core/engine/src/desktop/catalog.rs": 1612,
-  "core/engine/src/desktop/mcp_apps.rs": 2652,
   "core/engine/src/desktop/plugin_mcp.rs": 1868,
   "core/engine/src/desktop/state.rs": 1548,
   "core/engine/src/generation.rs": 2350,

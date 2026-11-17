@@ -138,15 +138,7 @@ impl DynamicToolHost for ToolHost {
             })??,
         ))
     }
-    async fn page_tool_notice(
-        &self,
-        notice: areal_protocol::plugin_runtime::PageToolNotice,
-    ) -> anyhow::Result<()> {
-        anyhow::ensure!(!self.is_closed(), "page-tool Host disconnected");
-        self.tx
-            .try_send(Outbound::Message(notice.into_notification()))
-            .map_err(|_| anyhow::anyhow!("page-tool notice delivery failed"))
-    }
+
     async fn wait_closed(&self) {
         self.stop.cancelled().await;
     }

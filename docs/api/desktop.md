@@ -475,6 +475,8 @@ Hook 报告复用运行时声明选择与强类型文档解析，`mcp_tool` 是�
 
 `areal/plugin/auth/configure {id,server,expectedDigest,configuration,requestId}` 仅持久化宿主凭据引用，要求已断开且摘要匹配，使用持久管理回执。configuration 支持 clientSecretRef/privateKeyRef/privateKeyId/clientMetadataUrl/apiKeyRef/callbackUrl；秘密值只通过可信启动输入注入。配置 revision 隔离替代/取消的认证流程。
 
+`areal/plugin/mcp/list` 的服务器行包含当前 `generation`；未连接时为 null。扩展调用使用该原始连接代次，不经页面目录发现。表单预览只读取待回复请求声明的 `resource_link`；页面工具预览不再提供。旧 App 元数据不参与 Core 启动或普通 MCP 调用，历史工具结果仍按原快照读取。
+
 `areal/mcp/extension/call` 的 kind 为 `settingsRead/settingsUpdate/settingsAction/mentionsSearch`。`areal/mcp/forms/list`、`areal/mcp/form/respond/preview` 验证完整待回复请求与来源服务器。`areal/mcp/tool/result {threadId,callId}` 读取已持久保存的原始 MCP 结果，模型只用剔除 `_meta` 的投影。MCP 表单和工具结果通知保留原 Thread 与连接世代。
 
 原生 Main 使用 `areal/mcp/form/resource/prepare {threadId,requestId,fieldName}`、`stage {selectionToken,requestId,paths}` 和 `release {threadId,requestId,fieldName,uri}`。prepare/stage 要求带认证的 desktop-owner，通用 Renderer 命令不能调用；stage 按 UUID/参数进入已有管理账本，UNKNOWN 只查原收据。路径和 selection token 留在 Main/Core，Renderer 只见不透明 URI。现代 discovery 协商 MRTR，逐轮保留参数并将 requestState 留在私有层。
