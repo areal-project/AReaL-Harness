@@ -643,17 +643,18 @@ impl RemoteState {
         }
     }
     fn save_receipt(&self, receipt: &Value) -> Result<()> {
+        let path = self.home.join("host/remote-operations").join(format!(
+            "{}.json",
+            receipt["requestId"]
+                .as_str()
+                .context("missing Remote requestId")?
+        ));
+        if storage::read_json::<Value>(&path).ok().flatten().as_ref() == Some(receipt) {
+            return Ok(());
+        }
         storage::private_dir(&self.home.join("host/remote-operations"))?;
         std::fs::File::open(self.home.join("host"))?.sync_all()?;
-        storage::write(
-            &self.home.join("host/remote-operations").join(format!(
-                "{}.json",
-                receipt["requestId"]
-                    .as_str()
-                    .context("missing Remote requestId")?
-            )),
-            receipt,
-        )
+        storage::write(&path, receipt)
     }
     fn recover(&self, migration: &impl Credentials) -> Result<()> {
         migration.vault().idle()?;

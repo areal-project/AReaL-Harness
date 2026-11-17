@@ -55,6 +55,11 @@ export const ERROR_CODES = {
   PAIRING_USED: { action: "none", retryable: false },
   PAIRING_CANCELLED: { action: "none", retryable: false },
   PROTOCOL_UNSUPPORTED: { action: "none", retryable: false },
+  storageAuthorizationRequired: { action: "none", retryable: false },
+  storageMissing: { action: "none", retryable: false },
+  storageLocked: { action: "retry", retryable: true },
+  remoteStateUnavailable: { action: "retry", retryable: true },
+  localRelayUnavailable: { action: "none", retryable: false },
   // 只用于诊断的码：用户看到通用说明，原码进详情。
   GUI_SOURCE_PENDING: {
     message: "errors.CAPABILITY_UNAVAILABLE",

@@ -266,6 +266,7 @@ try {
         source: join(root, "services/remote-relay"),
         site: join(gui, "renderer/dist"),
         destination: join(output, "areal-relay"),
+        includeAssets: false,
       });
       const workbenchBundle = await buildWorkbenchResources({
         source: join(root, "services/workbench"),

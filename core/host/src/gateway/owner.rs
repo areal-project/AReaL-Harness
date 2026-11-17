@@ -292,22 +292,58 @@ async fn run_relay(host: Rc<Host>) {
     let mut running: Option<Running> = None;
     let mut terminal_transport = None;
     let mut observed_revision = None;
+    let mut next_snapshot_retry: Option<std::time::Instant> = None;
+    let mut last_snapshot_error: Option<String> = None;
     loop {
         let previous_status = host.gateway.status();
-        if host.gateway.relay_reconnect.replace(false) {
+        let reconnect_requested = host.gateway.relay_reconnect.replace(false);
+        if reconnect_requested {
             running = None;
             terminal_transport = None;
             host.gateway.push_supported.set(false);
+            next_snapshot_retry = None;
         }
-        let snapshot = if host.remote.native_owner().ok().flatten().is_some() {
-            host.remote.snapshot_async(&host.migration).await
+        let native_owned = host.remote.native_owner().ok().flatten().is_some();
+        let snapshot = if native_owned {
+            if let Ok(cached) = host.remote.snapshot(&host.migration) {
+                next_snapshot_retry = None;
+                last_snapshot_error = None;
+                Ok(cached)
+            } else if next_snapshot_retry.is_some_and(|until| std::time::Instant::now() < until) {
+                Err(anyhow::anyhow!(
+                    last_snapshot_error
+                        .clone()
+                        .unwrap_or_else(|| "Remote configuration is temporarily unavailable".into())
+                ))
+            } else {
+                match host.remote.snapshot_async(&host.migration).await {
+                    Ok(loaded) => {
+                        next_snapshot_retry = None;
+                        last_snapshot_error = None;
+                        Ok(loaded)
+                    }
+                    Err(error) => {
+                        let message = format!("{error:#}");
+                        if last_snapshot_error.as_deref() != Some(&message) {
+                            eprintln!("Host remote state unavailable: {message}");
+                            last_snapshot_error = Some(message);
+                        }
+                        // 冷加载失败（如钥匙串未授权或凭据缺失）时退避重试，避免 250ms 轮询反复触发 helper 与写盘。
+                        next_snapshot_retry =
+                            Some(std::time::Instant::now() + Duration::from_secs(5));
+                        Err(error)
+                    }
+                }
+            }
         } else {
+            next_snapshot_retry = None;
+            last_snapshot_error = None;
             Ok(Value::Null)
         };
         let desired = snapshot
             .as_ref()
             .ok()
-            .filter(|_| host.remote.native_owner().ok().flatten().is_some());
+            .filter(|_| native_owned);
         let transport =
             desired.map(|snapshot| transport_key(&snapshot["config"], TransportKind::Relay));
         if let Some(snapshot) = desired {

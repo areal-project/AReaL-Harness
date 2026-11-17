@@ -612,13 +612,13 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
                     struct Query { source_id:String }
                     let input:Query=serde_json::from_value(request.params)?;
 
-                    (|| -> Result<Value> {
+                    async {
                         ensure!(gateway_subscription.as_ref().is_none_or(|(source,_,_,_)|source==&input.source_id),error("sourceNotFound","connection already subscribes to another Remote source"));
-                        let state=host.gateway_state(&input.source_id)?;
+                        let state=host.gateway_state_async(&input.source_id).await?;
                         let id=uuid::Uuid::new_v4().to_string();
                         gateway_subscription=Some((input.source_id,id.clone(),0,state.clone()));
                         Ok(json!({"subscriptionId":id,"generation":host.identity.generation,"sequence":0,"state":state}))
-                    })()
+                    }.await
                 } else if request.method=="desktop.core.subscribe" {
                     ensure!(frontend_events.is_none(),error("invalidRequest","desktop attachment already exists"));
                     let source=request.params["sourceId"].as_str().context("INVALID_PARAMS")?;
@@ -1369,6 +1369,13 @@ impl Host {
         }
         if method == "web.revoke" {
             return self.loopback.revoke(self, params);
+        }
+        if method == "remote.gateway.state" {
+            self.validate_client_state(method, &params)?;
+            let source = params["sourceId"]
+                .as_str()
+                .context("missing Remote source")?;
+            return self.gateway_state_async(source).await;
         }
         if method == "remote.gateway.control" {
             return connection.host.gateway_control(params).await;
