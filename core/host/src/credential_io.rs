@@ -495,10 +495,8 @@ pub fn run(channel_fd: i32, owner_fd: i32) -> Result<()> {
     send(&mut channel, &response)
 }
 
-/// 主密钥条目按 Home 归属，但**不按可执行文件路径**授权：旧实现把每条凭据直接写进
-/// 登录 keychain，ACL 的「可信应用」记的是内层二进制绝对路径，换包后 CDHash 变化即失效，
-/// 而读取路径禁用用户交互，没有任何恢复入口。现在 keychain 只保存一把主密钥，
-/// 凭据用主密钥加密后写进 Host home 的加密文件，条目本身不再逐个随版本失效。
+/// 主密钥仍受系统 Keychain ACL 保护；加密文件不会绕过授权。
+/// 发行 Host 使用固定签名标识，旧身份的条目仍须显式授权后才能迁移。
 fn master_key_service(home: &Path) -> String {
     format!(
         "org.areal.credential.v1.{}",
@@ -510,7 +508,30 @@ fn sealed_path(home: &Path, entry: &str) -> PathBuf {
     home.join("host/vault-sealed").join(format!("{entry}.bin"))
 }
 
-fn master_key(service: &str) -> Result<[u8; MASTER_KEY_BYTES]> {
+fn sealed_credentials_exist(home: &Path) -> Result<bool> {
+    let directory = home.join("host/vault-sealed");
+    match std::fs::read_dir(directory) {
+        Ok(entries) => {
+            for entry in entries {
+                if entry?
+                    .path()
+                    .extension()
+                    .is_some_and(|extension| extension == "bin")
+                {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+        Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(cause) => Err(cause.into()),
+    }
+}
+
+fn master_key(home: &Path, service: &str, create: bool) -> Result<[u8; MASTER_KEY_BYTES]> {
+    // 多个凭据 helper 共用一把主密钥，首次创建必须串行化。
+    let lock = storage::open_private(&home.join("host/vault-master.lock"), true)?;
+    lock.lock_exclusive()?;
     match security_framework::passwords::get_generic_password(service, "master") {
         Ok(bytes) => {
             let key: [u8; MASTER_KEY_BYTES] = bytes.as_slice().try_into().map_err(|_| {
@@ -522,6 +543,13 @@ fn master_key(service: &str) -> Result<[u8; MASTER_KEY_BYTES]> {
             Ok(key)
         }
         Err(cause) if cause.code() == -25300 => {
+            ensure!(
+                create && !sealed_credentials_exist(home)?,
+                error(
+                    "storageMissing",
+                    "credential master key is missing; existing encrypted credentials require recovery"
+                )
+            );
             let mut key = [0u8; MASTER_KEY_BYTES];
             ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut key)
                 .map_err(|_| error("storageLocked", "credential master key unavailable"))?;
@@ -582,7 +610,7 @@ fn read_sealed_file(home: &Path, service: &str, entry: &str) -> Result<Option<Va
     let Some(sealed) = storage::read_bytes(&sealed_path(home, entry))? else {
         return Ok(None);
     };
-    let key = master_key(service)?;
+    let key = master_key(home, service, false)?;
     let plaintext = unseal(&key, &sealed)?;
     serde_json::from_slice(&plaintext)
         .map(Some)
@@ -613,7 +641,7 @@ fn legacy_secret(home: &Path, entry: &str) -> Result<Option<Vec<u8>>> {
 }
 
 fn write_sealed(home: &Path, service: &str, entry: &str, bytes: &[u8]) -> Result<()> {
-    let key = master_key(service)?;
+    let key = master_key(home, service, true)?;
     let sealed = seal(&key, bytes)?;
     let directory = home.join("host/vault-sealed");
     storage::private_dir(&directory)?;
@@ -886,4 +914,14 @@ fn sealed_credential_files_are_private_and_home_scoped() {
     assert!(service.starts_with("org.areal.credential.v1."));
     let path = sealed_path(&home, "entry-id");
     assert_eq!(path, home.join("host/vault-sealed/entry-id.bin"));
+}
+
+#[cfg(test)]
+#[test]
+fn existing_envelopes_prevent_replacement_master_key() {
+    let root = tempfile::tempdir().unwrap();
+    assert!(!sealed_credentials_exist(root.path()).unwrap());
+    storage::private_dir(&root.path().join("host/vault-sealed")).unwrap();
+    storage::write_bytes(&sealed_path(root.path(), "fixture"), b"encrypted").unwrap();
+    assert!(sealed_credentials_exist(root.path()).unwrap());
 }

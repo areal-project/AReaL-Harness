@@ -266,7 +266,10 @@ class ProjectConnections {
                 ].includes(modelRecord(error) ? String(error.code) : "") ||
                 (modelRecord(error) && error.reason === "RESPONSE_TOO_LARGE") ||
                 project.client?.closeFailure?.code === "RESPONSE_TOO_LARGE" ||
-                nonRetryableCredentialFailure(error);
+                nonRetryableCredentialFailure(error) ||
+                (modelRecord(error) &&
+                  error.code === "STALE_CONNECTION" &&
+                  this.host.providers.config?.authorizationRequired() === true);
               project.reconnectAttempt = (project.reconnectAttempt ?? 0) + 1;
               this.host.stopReconciliation(project);
               project.client?.close();

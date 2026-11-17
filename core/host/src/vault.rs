@@ -120,6 +120,8 @@ pub(crate) struct Vault {
     #[cfg(test)]
     pub(crate) locked: std::cell::Cell<bool>,
     #[cfg(test)]
+    pub(crate) read_failure: std::cell::Cell<Option<&'static str>>,
+    #[cfg(test)]
     pub(crate) before_write: Option<std::sync::Arc<dyn Fn() + Send + Sync>>,
     #[cfg(test)]
     backend_reads: Arc<std::sync::atomic::AtomicUsize>,
@@ -910,6 +912,8 @@ impl Vault {
             #[cfg(test)]
             locked: std::cell::Cell::new(false),
             #[cfg(test)]
+            read_failure: std::cell::Cell::new(None),
+            #[cfg(test)]
             before_write: None,
             #[cfg(test)]
             backend_reads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
@@ -931,6 +935,8 @@ impl Vault {
             interaction_allowed: true,
             isolated_files: true,
             locked: std::cell::Cell::new(false),
+            #[cfg(test)]
+            read_failure: std::cell::Cell::new(None),
             #[cfg(test)]
             before_write: None,
             backend_reads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
@@ -993,6 +999,10 @@ impl Vault {
         crate::wire::request_id(entry)?;
         #[cfg(test)]
         self.backend_reads.fetch_add(1, Ordering::Relaxed);
+        #[cfg(test)]
+        if let Some(code) = self.read_failure.get() {
+            return Err(error(code, "isolated credential failure"));
+        }
         #[cfg(test)]
         if self.locked.get() {
             return Err(error("storageLocked", "isolated vault is locked"));

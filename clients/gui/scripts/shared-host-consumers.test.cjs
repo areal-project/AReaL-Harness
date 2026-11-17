@@ -544,7 +544,9 @@ test("a short recovered connection preserves reconnect backoff", async (t) => {
 });
 
 test("credential authorization failures stop the reconnect storm until explicit retry", async (t) => {
-  const { ProjectConnections } = require("@areal/workbench-service/desktop/core/project-connections.cjs");
+  const {
+    ProjectConnections,
+  } = require("@areal/workbench-service/desktop/core/project-connections.cjs");
   let run;
   t.mock.method(globalThis, "setTimeout", (callback) => {
     run = callback;
@@ -569,15 +571,38 @@ test("credential authorization failures stop the reconnect storm until explicit 
     providers: { redact: (message) => message },
   };
   const connections = new ProjectConnections(host);
+  const { ModelConfiguration } = require("@areal/workbench-service/desktop/core/model-config.cjs");
+  host.providers.config = new ModelConfiguration(
+    {
+      hostCall: async () => ({
+        snapshot: {
+          path: "/fixture/config.toml",
+          revision: "fixture",
+          data: [],
+          defaultModel: null,
+          credentialStates: {},
+          credentialSources: {},
+          effective: {},
+        },
+        credentials: {
+          references: ["AREAL_CREDENTIAL_saved"],
+          values: {},
+          errors: { AREAL_CREDENTIAL_saved: "storageAuthorizationRequired" },
+        },
+      }),
+    },
+    {},
+  );
   connections.reconnectProject = async () => {
-    throw new Error(
-      "storageAuthorizationRequired: Keychain authorization does not permit this application identity",
-    );
+    await host.providers.config.current();
+    throw Object.assign(new Error("连接已换代，请等待状态恢复后重试"), {
+      code: "STALE_CONNECTION",
+    });
   };
   connections.scheduleReconnect(project);
   assert.equal(typeof run, "function");
   run();
-  await assert.rejects(host.starting.get(project.id), /storageAuthorizationRequired/);
+  await assert.rejects(host.starting.get(project.id), /连接已换代/);
   assert.equal(project.reconnectBlocked, true);
   assert.equal(project.reconnectTimer, null);
   assert.equal(project.reconnectAttempt, 1);
