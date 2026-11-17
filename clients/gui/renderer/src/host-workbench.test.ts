@@ -131,7 +131,7 @@ describe("library routes without a desktop adapter", () => {
     expect(commands).toHaveLength(1);
   });
 
-  it("routes navigation preferences but does not expose native library settings", async () => {
+  it("routes navigation preferences through Host", async () => {
     const { routes, commands } = library((commandId) => ({
       commandId,
       method: "library.command",
@@ -142,13 +142,6 @@ describe("library routes without a desktop adapter", () => {
     expect(
       await routes.call("library", { operation: "settings", key: "sidebarSort", value: "manual" }),
     ).toEqual({ value: state });
-    expect(
-      await routes.call("library", {
-        operation: "settings",
-        key: "computerControlEnabled",
-        value: true,
-      }),
-    ).toBeUndefined();
     expect(commands).toHaveLength(1);
   });
 
@@ -744,7 +737,6 @@ describe("local web desktop commands", () => {
       ok: false,
       error: { code: "x", message: "Core refused" },
     });
-    await expect(command("computerControl", {} as never)).rejects.toThrow("需要桌面应用");
     expect(await command("media", { projectId: "p", operation: "read" } as never)).toEqual({
       ok: true,
       value: { bytes: new Uint8Array([137, 80]), mime: "image/png" },
@@ -879,22 +871,6 @@ describe("library Host-only routing", () => {
         ),
       ).rejects.toMatchObject({ code: "CAPABILITY_UNAVAILABLE", submissionUnknown: false });
       expect(native).not.toHaveBeenCalled();
-    },
-  );
-
-  it.each(["computerControlEnabled", "computerControlProvider", "computerControlExecutable"])(
-    "keeps %s with the native permission owner",
-    async (key) => {
-      const native = vi.fn(async () => ({ ok: true, value: null }));
-      const host = vi.fn();
-      const route = routeDesktopCommand(
-        { command: native } as Pick<PlatformServices, "command">,
-        host,
-        () => true,
-      );
-      await route("library", { operation: "settings", key });
-      expect(native).toHaveBeenCalledTimes(1);
-      expect(host).not.toHaveBeenCalled();
     },
   );
 

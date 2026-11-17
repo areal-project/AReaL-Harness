@@ -246,7 +246,6 @@ struct Active {
     direct_tool: Option<model::ToolCall>,
     tool_meta: Option<serde_json::Map<String, Value>>,
     tool_calls: usize,
-    cua_used: bool,
     waiting_for_model_capacity: bool,
     started: std::time::Instant,
     isolated_children: usize,

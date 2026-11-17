@@ -738,7 +738,7 @@ test("Desktop Host reconnect is available only to its authenticated Main owner",
     observer = socket();
   desktop.clients.add(main);
   desktop.clients.add(observer);
-  desktop.computerSocket = main;
+  desktop.browserSocket = main;
   await desktop.receive(
     observer,
     Buffer.from(JSON.stringify({ id: 1, method: "hostReconnect", params: { protocol: PROTOCOL } })),

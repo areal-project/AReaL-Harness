@@ -14,7 +14,7 @@ function fixture(tools, overrides = {}) {
     installedDigest: "snapshot",
     installedSkills: [
       { requiredTools: ["browser_v1"] },
-      { requiredTools: ["computer_v1", "browser_v1"] },
+      { requiredTools: ["fixture_missing_tool", "browser_v1"] },
     ],
     ...overrides,
   };
@@ -63,16 +63,16 @@ test("declared requirements use actual deployed tools and never infer prose or r
     expectedDigest: "snapshot",
   };
   for (const [tools, expectedMissing, expectedAvailable] of [
-    [["browser_v1", "js", "js_reset"], ["computer_v1"], false],
-    [["browser_v1"], ["computer_v1"], false],
-    [[], ["browser_v1", "computer_v1"], false],
+    [["browser_v1", "js", "js_reset"], ["fixture_missing_tool"], false],
+    [["browser_v1"], ["fixture_missing_tool"], false],
+    [[], ["browser_v1", "fixture_missing_tool"], false],
   ]) {
     const { backend, project } = fixture(tools);
     const value = await manage(backend, project, request);
     assert.deepEqual(value, {
       pluginId: "fixture@local",
       installedDigest: "snapshot",
-      requiredTools: ["browser_v1", "computer_v1"],
+      requiredTools: ["browser_v1", "fixture_missing_tool"],
       missingTools: expectedMissing,
       available: expectedAvailable,
     });
@@ -104,13 +104,13 @@ test("declared requirements use actual deployed tools and never infer prose or r
     });
   }
   const { backend, project } = fixture([], {
-    installedSkills: [{ description: "use computer_v1 and browser_v1" }],
+    installedSkills: [{ description: "use fixture_missing_tool and browser_v1" }],
   });
   assert.equal((await manage(backend, project, request)).available, true);
 });
 test("uninstalled, disabled, and malformed snapshot requests cannot report ready", async () => {
   for (const overrides of [{ installed: false }, { enabled: false }, { installedDigest: "new" }]) {
-    const { backend, project } = fixture(["browser_v1", "computer_v1"], overrides);
+    const { backend, project } = fixture(["browser_v1", "fixture_missing_tool"], overrides);
     await assert.rejects(
       manage(backend, project, {
         projectId: "p",
@@ -125,7 +125,7 @@ test("disabled package Skills do not block the remaining enabled components", as
   const { backend, project } = fixture(["browser_v1"], {
     installedSkills: [
       { id: "browser", requiredTools: ["browser_v1"] },
-      { id: "computer", requiredTools: ["computer_v1"] },
+      { id: "computer", requiredTools: ["fixture_missing_tool"] },
     ],
     componentChoices: { disabledSkills: ["computer"] },
   });

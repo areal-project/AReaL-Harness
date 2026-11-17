@@ -525,6 +525,7 @@ mod tests {
         let source = crate::migration::Source {
             profile: root.join("profile"),
             core_home: root.join("data"),
+            // 过渡：到 0.2.0 删；导入夹具沿用迁移来源字段。
             legacy_service_home: root.join("legacy"),
         };
         host.migration
@@ -559,6 +560,7 @@ mod tests {
             slot.registration.workspace = workspace.clone();
             slot.registration.source = crate::ProjectSource::Gui {
                 profile: source.profile.clone(),
+                // 过渡：到 0.2.0 删；导入夹具沿用迁移来源字段。
                 legacy_project_id: alias.clone(),
             };
         }

@@ -175,9 +175,6 @@ importers:
       '@crowecawcaw/xa11y':
         specifier: 0.13.0
         version: 0.13.0
-      '@modelcontextprotocol/sdk':
-        specifier: 1.32.0
-        version: 1.32.0(zod@4.6.6)
       electron-updater:
         specifier: 6.8.9
         version: 6.8.9(patch_hash=a9461757ba817cd32de6e6c8e3e2204cef79abca0e02c0cdd6a9073752489707)
@@ -7161,6 +7158,7 @@ snapshots:
   '@hono/node-server@2.1.7(hono@4.13.18)':
     dependencies:
       hono: 4.13.18
+    optional: true
 
   '@iconify/types@2.0.0': {}
 
@@ -7579,6 +7577,7 @@ snapshots:
       zod-to-json-schema: 3.25.2(zod@4.6.6)
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   '@multiformats/dns@1.0.15':
     dependencies:
@@ -8990,12 +8989,14 @@ snapshots:
     dependencies:
       mime-types: 3.0.2
       negotiator: 1.1.0
+    optional: true
 
   agent-base@7.1.4: {}
 
   ajv-formats@3.0.1(ajv@8.20.0):
     optionalDependencies:
       ajv: 8.20.0
+    optional: true
 
   ajv@8.20.0:
     dependencies:
@@ -9128,6 +9129,7 @@ snapshots:
       type-is: 2.1.0
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   bowser@2.14.1: {}
 
@@ -9187,7 +9189,8 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  bytes@3.1.2: {}
+  bytes@3.1.2:
+    optional: true
 
   bytestreamjs@2.0.1: {}
 
@@ -9212,6 +9215,7 @@ snapshots:
     dependencies:
       call-bind-apply-helpers: 1.0.2
       get-intrinsic: 1.3.0
+    optional: true
 
   camelcase@5.3.1: {}
 
@@ -9300,17 +9304,22 @@ snapshots:
 
   compare-version@0.1.2: {}
 
-  content-disposition@2.0.1: {}
+  content-disposition@2.0.1:
+    optional: true
 
-  content-type@1.0.5: {}
+  content-type@1.0.5:
+    optional: true
 
-  content-type@2.1.0: {}
+  content-type@2.1.0:
+    optional: true
 
   convert-source-map@2.0.0: {}
 
-  cookie-signature@1.2.2: {}
+  cookie-signature@1.2.2:
+    optional: true
 
-  cookie@0.7.2: {}
+  cookie@0.7.2:
+    optional: true
 
   core-util-is@1.0.3: {}
 
@@ -9318,6 +9327,7 @@ snapshots:
     dependencies:
       object-assign: 4.1.1
       vary: 1.1.2
+    optional: true
 
   cose-base@1.0.3:
     dependencies:
@@ -9564,7 +9574,8 @@ snapshots:
 
   delayed-stream@1.0.0: {}
 
-  depd@2.0.0: {}
+  depd@2.0.0:
+    optional: true
 
   dequal@2.0.3: {}
 
@@ -9620,7 +9631,8 @@ snapshots:
     dependencies:
       safe-buffer: 5.2.1
 
-  ee-first@1.1.1: {}
+  ee-first@1.1.1:
+    optional: true
 
   ejs@3.1.10:
     dependencies:
@@ -9683,7 +9695,8 @@ snapshots:
 
   emoji-regex@8.0.0: {}
 
-  encodeurl@2.0.0: {}
+  encodeurl@2.0.0:
+    optional: true
 
   end-of-stream@1.4.5:
     dependencies:
@@ -9781,7 +9794,8 @@ snapshots:
 
   escalade@3.2.0: {}
 
-  escape-html@1.0.3: {}
+  escape-html@1.0.3:
+    optional: true
 
   escape-string-regexp@5.0.0: {}
 
@@ -9805,15 +9819,18 @@ snapshots:
 
   esutils@2.0.3: {}
 
-  etag@1.8.1: {}
+  etag@1.8.1:
+    optional: true
 
   eventemitter3@5.0.4: {}
 
-  eventsource-parser@3.1.1: {}
+  eventsource-parser@3.1.1:
+    optional: true
 
   eventsource@3.0.7:
     dependencies:
       eventsource-parser: 3.1.1
+    optional: true
 
   expect-type@1.4.0: {}
 
@@ -9826,6 +9843,7 @@ snapshots:
       ip-address: 10.7.4
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   express@5.3.0:
     dependencies:
@@ -9859,6 +9877,7 @@ snapshots:
       vary: 1.1.2
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   extend@3.0.2: {}
 
@@ -9904,6 +9923,7 @@ snapshots:
       statuses: 2.0.2
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   find-up@4.1.0:
     dependencies:
@@ -9929,9 +9949,11 @@ snapshots:
     dependencies:
       fetch-blob: 3.2.0(patch_hash=a66ca678202ce91421b3e37171f574c2e398b7de1084339353bdba02a349b7e6)
 
-  forwarded@0.2.0: {}
+  forwarded@0.2.0:
+    optional: true
 
-  fresh@2.0.0: {}
+  fresh@2.0.0:
+    optional: true
 
   fs-extra@10.1.0:
     dependencies:
@@ -10200,7 +10222,8 @@ snapshots:
       property-information: 7.2.0
       space-separated-tokens: 2.0.2
 
-  hono@4.13.18: {}
+  hono@4.13.18:
+    optional: true
 
   hosted-git-info@4.1.0:
     dependencies:
@@ -10221,6 +10244,7 @@ snapshots:
       setprototypeof: 1.2.0
       statuses: 2.0.2
       toidentifier: 1.0.1
+    optional: true
 
   http-proxy-agent@7.0.2:
     dependencies:
@@ -10248,6 +10272,7 @@ snapshots:
   iconv-lite@0.7.3:
     dependencies:
       safer-buffer: 2.1.2
+    optional: true
 
   import-meta-resolve@4.2.0: {}
 
@@ -10278,7 +10303,8 @@ snapshots:
 
   ip-address@10.7.4: {}
 
-  ipaddr.js@1.9.1: {}
+  ipaddr.js@1.9.1:
+    optional: true
 
   is-alphabetical@2.0.1: {}
 
@@ -10301,7 +10327,8 @@ snapshots:
 
   is-plain-obj@4.1.0: {}
 
-  is-promise@4.0.0: {}
+  is-promise@4.0.0:
+    optional: true
 
   is-wsl@2.2.0:
     dependencies:
@@ -10402,7 +10429,8 @@ snapshots:
 
   json-schema-traverse@1.0.0: {}
 
-  json-schema-typed@8.0.2: {}
+  json-schema-typed@8.0.2:
+    optional: true
 
   json5@2.2.3: {}
 
@@ -10809,9 +10837,11 @@ snapshots:
     dependencies:
       '@types/mdast': 4.0.4
 
-  media-typer@1.1.1: {}
+  media-typer@1.1.1:
+    optional: true
 
-  merge-descriptors@2.0.0: {}
+  merge-descriptors@2.0.0:
+    optional: true
 
   mermaid@11.17.2:
     dependencies:
@@ -11079,7 +11109,8 @@ snapshots:
 
   mime-db@1.52.0: {}
 
-  mime-db@1.54.0: {}
+  mime-db@1.54.0:
+    optional: true
 
   mime-types@2.1.35:
     dependencies:
@@ -11088,6 +11119,7 @@ snapshots:
   mime-types@3.0.2:
     dependencies:
       mime-db: 1.54.0
+    optional: true
 
   mime@2.6.0: {}
 
@@ -11139,6 +11171,7 @@ snapshots:
   negotiator@1.1.0:
     dependencies:
       content-type: 2.1.0
+    optional: true
 
   netmask@2.1.1: {}
 
@@ -11179,15 +11212,18 @@ snapshots:
 
   normalize-url@6.1.0: {}
 
-  object-assign@4.1.1: {}
+  object-assign@4.1.1:
+    optional: true
 
-  object-inspect@1.13.4: {}
+  object-inspect@1.13.4:
+    optional: true
 
   obug@3.0.0: {}
 
   on-finished@2.4.2:
     dependencies:
       ee-first: 1.1.1
+    optional: true
 
   once@1.4.0:
     dependencies:
@@ -11435,7 +11471,8 @@ snapshots:
     dependencies:
       entities: 6.0.1
 
-  parseurl@1.3.3: {}
+  parseurl@1.3.3:
+    optional: true
 
   partial-json@0.1.7: {}
 
@@ -11450,7 +11487,8 @@ snapshots:
       lru-cache: 11.5.3
       minipass: 7.1.3
 
-  path-to-regexp@8.4.2: {}
+  path-to-regexp@8.4.2:
+    optional: true
 
   pathe@2.0.3: {}
 
@@ -11466,7 +11504,8 @@ snapshots:
 
   picomatch@4.0.7: {}
 
-  pkce-challenge@5.0.1: {}
+  pkce-challenge@5.0.1:
+    optional: true
 
   pkijs@3.4.1:
     dependencies:
@@ -11571,6 +11610,7 @@ snapshots:
     dependencies:
       forwarded: 0.2.0
       ipaddr.js: 1.9.1
+    optional: true
 
   proxy-agent@6.5.0:
     dependencies:
@@ -11608,6 +11648,7 @@ snapshots:
     dependencies:
       es-define-property: 1.0.1
       side-channel: 1.1.1
+    optional: true
 
   quick-lru@5.1.1: {}
 
@@ -11615,7 +11656,8 @@ snapshots:
 
   random-int@3.1.0: {}
 
-  range-parser@1.3.0: {}
+  range-parser@1.3.0:
+    optional: true
 
   raw-body@3.0.2:
     dependencies:
@@ -11623,6 +11665,7 @@ snapshots:
       http-errors: 2.0.1
       iconv-lite: 0.7.3
       unpipe: 1.0.0
+    optional: true
 
   react-dom@19.2.8(react@19.2.8):
     dependencies:
@@ -11854,6 +11897,7 @@ snapshots:
       path-to-regexp: 8.4.2
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   rw@1.3.3: {}
 
@@ -11896,6 +11940,7 @@ snapshots:
       statuses: 2.0.2
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   serve-static@2.2.1:
     dependencies:
@@ -11905,10 +11950,12 @@ snapshots:
       send: 1.2.1
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   set-blocking@2.0.0: {}
 
-  setprototypeof@1.2.0: {}
+  setprototypeof@1.2.0:
+    optional: true
 
   shebang-command@2.0.0:
     dependencies:
@@ -11942,6 +11989,7 @@ snapshots:
     dependencies:
       es-errors: 1.3.0
       object-inspect: 1.13.4
+    optional: true
 
   side-channel-map@1.0.1:
     dependencies:
@@ -11949,6 +11997,7 @@ snapshots:
       es-errors: 1.3.0
       get-intrinsic: 1.3.0
       object-inspect: 1.13.4
+    optional: true
 
   side-channel-weakmap@1.0.2:
     dependencies:
@@ -11957,6 +12006,7 @@ snapshots:
       get-intrinsic: 1.3.0
       object-inspect: 1.13.4
       side-channel-map: 1.0.1
+    optional: true
 
   side-channel@1.1.1:
     dependencies:
@@ -11965,6 +12015,7 @@ snapshots:
       side-channel-list: 1.0.1
       side-channel-map: 1.0.1
       side-channel-weakmap: 1.0.2
+    optional: true
 
   signal-exit@3.0.7: {}
 
@@ -12024,7 +12075,8 @@ snapshots:
 
   stat-mode@1.0.0: {}
 
-  statuses@2.0.2: {}
+  statuses@2.0.2:
+    optional: true
 
   std-env@4.3.0: {}
 
@@ -12149,7 +12201,8 @@ snapshots:
 
   tmp@0.2.7: {}
 
-  toidentifier@1.0.1: {}
+  toidentifier@1.0.1:
+    optional: true
 
   totalist@3.0.1: {}
 
@@ -12176,6 +12229,7 @@ snapshots:
       content-type: 2.1.0
       media-typer: 1.1.1
       mime-types: 3.0.2
+    optional: true
 
   typebox@1.3.7: {}
 
@@ -12288,7 +12342,8 @@ snapshots:
 
   unlimited-timeout@0.1.0: {}
 
-  unpipe@1.0.0: {}
+  unpipe@1.0.0:
+    optional: true
 
   untildify@4.0.0: {}
 
@@ -12335,7 +12390,8 @@ snapshots:
 
   uuid@14.0.2: {}
 
-  vary@1.1.2: {}
+  vary@1.1.2:
+    optional: true
 
   vfile-location@5.0.3:
     dependencies:
@@ -12674,6 +12730,7 @@ snapshots:
   zod-to-json-schema@3.25.2(zod@4.6.6):
     dependencies:
       zod: 4.6.6
+    optional: true
 
   zod@4.6.6: {}
 

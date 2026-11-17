@@ -54,14 +54,6 @@ const PROTOCOL = "areal.desktop-service.v1";
 const COMMAND_CONTRACT = "areal.desktop-commands.v3";
 /** @param {unknown} projectId @param {unknown} threadId */
 const browserKey = (projectId, threadId) => JSON.stringify([projectId, threadId]);
-/** @param {string} name @param {Fields} request */
-const computerSetting = (name, request) =>
-  name === "library" &&
-  request?.operation === "settings" &&
-  ["computerControlEnabled", "computerControlProvider", "computerControlExecutable"].some(
-    (key) => key === request.key,
-  );
-
 /** @param {string} name @param {unknown} params */
 function validateCommand(name, params) {
   desktopContract.readCommandInvocation(name, params);
@@ -97,7 +89,7 @@ class DesktopService {
   encryptionSequence = 0;
   /** 只向当前原生外壳取安全存储能力；断开后不重放。 @param {'encrypt'|'decrypt'} operation @param {string} value */
   encryptionRequest(operation, value) {
-    const socket = this.computerSocket;
+    const socket = this.browserSocket;
     if (this.closed || !connected(socket) || this.encryptionPending.size >= 16)
       return Promise.reject(new Error("系统安全存储外壳不可用"));
     const requestId = ++this.encryptionSequence;
@@ -140,7 +132,6 @@ class DesktopService {
     this.nextTerminalId = 0;
     this.browserTestTrace = process.env.AREAL_BROWSER_READ_TEST_TRACE;
     backend.browserRead = (request) => this.browserRead(request);
-    backend.cuaRead = (request) => this.cuaRead(request);
     this.sequence = 0;
     this.inflight = 0;
     /** @type {number|null} */ this.idleSince = Date.now();
@@ -148,9 +139,9 @@ class DesktopService {
     /** @type {InstanceType<typeof NativeRemote>|undefined} */ this.remote = undefined;
     /** @type {Promise<InstanceType<typeof NativeRemote>>|undefined} */ this.remoteInitialization =
       undefined;
-    /** @type {ServiceSocket|null|undefined} */ this.computerSocket = undefined;
+    /** @type {ServiceSocket|null|undefined} */ this.browserSocket = undefined;
     backend.desktopToolOwner = () =>
-      !this.closed && connected(this.computerSocket) ? this.computerSocket : null;
+      !this.closed && connected(this.browserSocket) ? this.browserSocket : null;
     /** @type {NodeJS.Timeout|null|undefined} */ this.timer = undefined;
     /** @type {NodeJS.Timeout|undefined} */ this.activityTimer = undefined;
     /** @type {NodeJS.Timeout|undefined} */ this.flushTimer = undefined;
@@ -431,8 +422,8 @@ class DesktopService {
       }
     this.stopSending(socket);
     this.releaseHistoryViews(socket);
-    if (this.computerSocket === socket) {
-      this.computerSocket = null;
+    if (this.browserSocket === socket) {
+      this.browserSocket = null;
       this.backend.connections.revokeDesktopToolHost(socket);
     }
     for (const [key, claim] of this.browserClaims)
@@ -641,21 +632,21 @@ class DesktopService {
         socket.notifications = params.notifications === true;
         if (
           record(params.capabilities) &&
-          params.capabilities.computerHost === 1 &&
-          (!this.computerSocket ||
-            this.computerSocket === socket ||
-            !connected(this.computerSocket))
+          params.capabilities.browserHost === 1 &&
+          (!this.browserSocket ||
+            this.browserSocket === socket ||
+            !connected(this.browserSocket))
         ) {
-          if (this.computerSocket !== socket) {
-            if (this.computerSocket)
-              this.backend.connections.revokeDesktopToolHost(this.computerSocket);
+          if (this.browserSocket !== socket) {
+            if (this.browserSocket)
+              this.backend.connections.revokeDesktopToolHost(this.browserSocket);
             this.backend.connections.revokeDesktopToolHost(null);
           }
-          this.computerSocket = socket;
+          this.browserSocket = socket;
         }
         this.clients.add(socket);
         this.idleSince = null;
-        const packet = { ...this.packet(), computerHostOwned: this.computerSocket === socket };
+        const packet = { ...this.packet(), browserHostOwned: this.browserSocket === socket };
         response = packet;
         if (socket.notifications && this.pendingNotificationTarget) {
           this.send(socket, { method: "notificationOpen", params: this.pendingNotificationTarget });
@@ -701,7 +692,7 @@ class DesktopService {
         return null;
       }
       if (method === "hostReconnect") {
-        if (params.protocol !== PROTOCOL || this.computerSocket !== socket)
+        if (params.protocol !== PROTOCOL || this.browserSocket !== socket)
           throw new Error("Host reconnect requires the current local Main owner");
         const result = await this.reconnectHost();
         response = result;
@@ -744,7 +735,7 @@ class DesktopService {
       if (this.recovering && !["snapshot", "activity"].includes(method))
         throw blocked("正在处理后台资源，请稍后重试");
       if (method === "browserClaim") {
-        if (this.computerSocket !== socket) throw new Error("Desktop tool owner is unavailable");
+        if (this.browserSocket !== socket) throw new Error("Desktop tool owner is unavailable");
         const {
           coreInstanceId: claimedCoreId,
           projectId,
@@ -1015,8 +1006,6 @@ class DesktopService {
             ].includes(String(request.operation)))
         )
           throw new Error("Unsupported GUI terminal command");
-        if (computerSetting(name, request) && this.computerSocket !== socket)
-          throw new Error("Computer provider settings belong to the local computer control host");
       } else if (typeof params.path !== "string") throw new Error("无效工作区路径");
       this.inflight++;
       this.schedule();
@@ -1232,8 +1221,6 @@ class DesktopService {
   }
   /** @param {string} name @param {Fields} request */
   async executeRemote(name, request) {
-    if (computerSetting(name, request))
-      throw new Error("Computer provider settings must be changed on the local control host");
     if (name === "providers" && request?.operation === "revealKey")
       throw new Error("API Key 仅可在本机模型设置中查看");
     if (this.closed || this.recovering) throw new Error("后台正在停止或恢复，请稍后重试");
@@ -1283,12 +1270,12 @@ class DesktopService {
     if (!project || !client) throw new Error("Host execution project unavailable");
     const owner = this.hostConnections.get(connection) ?? {};
     this.hostConnections.set(connection, owner);
-    const socket = this.computerSocket;
+    const socket = this.browserSocket;
     const current = () =>
       !this.closed &&
       !this.recovering &&
       this.hostConnections.get(connection) === owner &&
-      this.computerSocket === socket &&
+      this.browserSocket === socket &&
       this.backend.currentConnection(project, client) &&
       project.service?.serviceId === coreInstanceId &&
       project.service?.generation === coreGeneration &&
@@ -1776,79 +1763,6 @@ class DesktopService {
       contentItems,
       ...(envelope.structuredContent ? { structuredContent: envelope.structuredContent } : {}),
     };
-  }
-
-  /** @param {ToolHostInput} request */
-  async cuaRead(request) {
-    const { projectId, signal, phase } = request;
-    if (typeof projectId !== "string" || typeof phase !== "string")
-      throw new Error("Invalid external CUA identity");
-    const project = this.backend.projects.get(projectId),
-      client = project?.client,
-      socket = this.computerSocket;
-    const current = () =>
-      !!socket &&
-      !this.closed &&
-      this.computerSocket === socket &&
-      this.clients.has(socket) &&
-      connected(socket) &&
-      (phase === "revokeProject" ||
-        (!!project &&
-          this.backend.projects.get(projectId) === project &&
-          this.backend.currentConnection(project, client) &&
-          project?.service?.serviceId === request.coreInstanceId &&
-          project?.service?.generation === request.coreGeneration));
-    if (!socket || !current()) throw new Error("External CUA desktop host is unavailable");
-    /** @type {Fields} */ const settings = this.backend.library.value.settings;
-    if (["catalog", "call"].includes(phase) && settings.computerControlEnabled !== true)
-      throw new Error("External CUA is not enabled");
-    if (signal?.aborted || this.browserPending.size >= 16)
-      throw new Error("External CUA request cancelled or host busy before dispatch");
-    const requestId = ++this.nextBrowserId;
-    /** @type {unknown} */
-    const result = await new Promise((resolve, reject) => {
-      /** @type {NodeJS.Timeout|undefined} */ let timer;
-      /** @param {(value:unknown)=>void} next @param {unknown} value */
-      const finish = (next, value) => {
-        clearTimeout(timer);
-        signal?.removeEventListener("abort", onAbort);
-        this.browserPending.delete(requestId);
-        next(value);
-      };
-      const cancel = () =>
-        this.send(socket, { method: "browserCancel", params: { tool: "external_cua", requestId } });
-      const onAbort = () => {
-        cancel();
-        finish(reject, new Error("External CUA cancelled; outcome is UNKNOWN"));
-      };
-      if (phase !== "call")
-        timer = setTimeout(() => {
-          cancel();
-          finish(reject, new Error("External CUA host did not finish"));
-        }, 130000);
-      this.browserPending.set(requestId, {
-        socket,
-        tool: "external_cua",
-        timer,
-        resolve: (value) => finish(resolve, value),
-        reject: (error) => finish(reject, error),
-      });
-      signal?.addEventListener("abort", onAbort, { once: true });
-      const { signal: _ignoredSignal, ...params } = request;
-      this.send(socket, {
-        method: "browserRequest",
-        params: { ...params, tool: "external_cua", cuaTool: request.tool, requestId },
-      });
-    });
-    if (!current() || signal?.aborted)
-      throw new Error("External CUA owner changed; outcome is UNKNOWN");
-    if (!record(result) || Buffer.byteLength(JSON.stringify(result)) > 32 * 1024 * 1024)
-      throw new Error("Invalid external CUA response");
-    if (result.error)
-      throw new Error(
-        typeof result.error === "string" ? result.error : "Invalid external CUA error",
-      );
-    return result;
   }
 
   /** @param {ToolHostInput} raw */

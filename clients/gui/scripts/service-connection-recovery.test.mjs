@@ -111,9 +111,9 @@ async function connectAdapter(backend, adapter) {
       protocol: PROTOCOL,
       identity: metadata.identity,
       notifications: !!backend.onNotification,
-      capabilities: { computerHost: 1 },
+      capabilities: { browserHost: 1 },
     });
-    backend.computerHostOwned = packet?.computerHostOwned === true;
+    backend.browserHostOwned = packet?.browserHostOwned === true;
     backend.accept(packet, metadata);
     if (backend.lastActivity) await connection.request("activity", backend.lastActivity);
   } catch (error) {

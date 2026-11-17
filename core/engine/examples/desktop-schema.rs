@@ -560,26 +560,12 @@ fn desktop_schema() -> Value {
     output["serverRequests"] = json!({"item/tool/call":browser_request,
         "areal/browser/prepare":object(json!({"threadId":string,"turnId":string,"callId":string,"tool":string,"arguments":{},"hostGeneration":string}),vec!["threadId","turnId","callId","tool","arguments","hostGeneration"])});
     output["serverRequests"]["item/tool/call"]["properties"]["browserApproval"] = json!({"type":"object","properties":{"plan":{"type":"object"}},"required":["plan"],"additionalProperties":false});
-    output["serverRequests"]["item/tool/call"]["properties"]["computerApproval"] =
-        output["serverRequests"]["item/tool/call"]["properties"]["browserApproval"].clone();
-    output["serverRequests"]["areal/computer/prepare"] =
-        output["serverRequests"]["areal/browser/prepare"].clone();
-    output["serverRequests"]["areal/computer/prepare"]["properties"]["discardPreparedPlan"] =
-        json!({"type":"boolean"});
-    output["serverRequests"]["areal/computer/prepare"]["properties"]["computerApproval"] =
-        output["serverRequests"]["item/tool/call"]["properties"]["computerApproval"].clone();
-    output["serverRequests"]["areal/cua/turnEnded"] = object(
-        json!({"threadId":string,"turnId":string,"hostGeneration":string,"event":{"enum":["Stop","Interrupt"]}}),
-        vec!["threadId", "turnId", "hostGeneration", "event"],
-    );
     output["serverRequests"]["areal/task/prepare"] = json!({"oneOf":[
         object(json!({"taskId":string,"runId":string,"threadId":string,"scheduledAt":integer,"intent":{"enum":["start","resume"]}}), vec!["taskId", "runId", "threadId", "scheduledAt", "intent"]),
         object(json!({"intent":{"const":"create"},"requestId":string,"requestDigest":{"type":"string","pattern":"^[0-9a-f]{64}$"},"threadId":string,"sourceThreadId":string}), vec!["intent","requestId","requestDigest","threadId"])
     ]});
     output["serverRequests"]["areal/host/status"] = empty.clone();
     output["serverResponses"] = json!({"item/tool/call":schemars::schema_for!(areal_protocol::DynamicToolResponse),"areal/browser/prepare":{"type":"object"},"areal/task/prepare":{"type":"object"},"areal/host/status":{"anyOf":[schemars::schema_for!(HostUpdateStatus),{"type":"null"}]}});
-    output["serverResponses"]["areal/computer/prepare"] = json!({"type":"object"});
-    output["serverResponses"]["areal/cua/turnEnded"] = empty;
     for method in SERVER_REQUESTS {
         assert!(
             output["serverRequests"].get(*method).is_some()

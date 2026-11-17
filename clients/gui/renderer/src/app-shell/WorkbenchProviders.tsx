@@ -3,7 +3,6 @@ import type { PlatformServices, QuitProgress, SnapShotServices } from "../servic
 import { PlatformReadProvider } from "../PlatformReadContext.js";
 import { QuitProgressDialog } from "../QuitProgressDialog.js";
 import { UnsavedChangesProvider } from "../settings/UnsavedChanges.js";
-import { ComputerControlContext } from "../ComputerControlEntry.js";
 import { OpenSettingsContext } from "../settings/openSettingsContext.js";
 import { SnapShotProvider } from "../snapshots/SnapShotCoordinator.js";
 
@@ -15,7 +14,7 @@ export function WorkbenchProviders({
   children,
 }: {
   bridge?: SnapShotServices;
-  settings?: { snapShot?: unknown; computerControlShowEntry?: boolean };
+  settings?: { snapShot?: unknown };
   ready?: boolean;
   openSettings: (tab: string) => void;
   children: ReactNode;
@@ -27,14 +26,7 @@ export function WorkbenchProviders({
       ready={ready}
       openSettings={() => openSettings("SnapShots")}
     >
-      <ComputerControlContext.Provider
-        value={{
-          visible: settings?.computerControlShowEntry === true,
-          open: () => openSettings("电脑控制"),
-        }}
-      >
-        <OpenSettingsContext.Provider value={openSettings}>{children}</OpenSettingsContext.Provider>
-      </ComputerControlContext.Provider>
+      <OpenSettingsContext.Provider value={openSettings}>{children}</OpenSettingsContext.Provider>
     </SnapShotProvider>
   );
 }

@@ -199,7 +199,6 @@ class CiContracts(unittest.TestCase):
             "macos:ui",
             "macos:renderer",
             "macos:bundle",
-            "computer-helper",
             "smoke:test:composer-files",
         }
         self.assertTrue(expensive <= full)
@@ -858,7 +857,7 @@ class CiContracts(unittest.TestCase):
         self.assertEqual(gate.validate_jobs(plan, "gui", jobs), [])
 
     def test_gui_plan_preserves_every_current_production_build_prerequisite(self):
-        plan, _ = self.gate_fixture(("clients/gui/native/computer-helper/Sources/main.swift",))
+        plan, _ = self.gate_fixture(("clients/gui/renderer/src/App.tsx",))
         config = (ROOT / "clients/gui/vite.config.mts").read_text()
         block = config.split('"build-suite": {', 1)[1].split('"design-build": {', 1)[0]
         dependencies = json.loads(re.search(r"dependsOn: (\[[^\]]+\])", block).group(1))
@@ -866,11 +865,6 @@ class CiContracts(unittest.TestCase):
             item.get("productionTask") for item in plan["items"] if item["group"] == "gui-build"
         }
         self.assertTrue(set(dependencies) <= tasks)
-        helper = next(item for item in plan["items"] if item["id"] == "computer-helper")
-        self.assertEqual(
-            helper["command"], ["node", "clients/gui/scripts/build-computer-helper.mjs"]
-        )
-        self.assertIn("xcode", helper["requires"])
 
     def test_native_dmg_contract_has_one_declared_mac_owner(self):
         plan, _ = self.gate_fixture()

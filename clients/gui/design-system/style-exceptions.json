@@ -126,8 +126,7 @@
       "reason": "远程配对步骤、邀请 QR、待授权状态、路由可达性和密钥字段的实际业务状态视觉。已有 SettingsRow 等只拥有行，不拥有此配对流程。",
       "consumers": [
         "renderer/src/settings/MobileSettings.tsx",
-        "renderer/src/settings/BrowserSettings.tsx",
-        "renderer/src/settings/ComputerSettings.tsx"
+        "renderer/src/settings/BrowserSettings.tsx"
       ],
       "exitCondition": "当该界面的真实公共DOM所有者已建立时迁回对应组合；场景删除时移除此项。不得以改名layout或迁入无消费者的包目录替代。"
     },

@@ -298,7 +298,7 @@ test("only the Main owner disconnect revokes its Core tool connection and succes
         params: {
           protocol: PROTOCOL,
           identity: "owner-fixture",
-          capabilities: owns ? { computerHost: 1 } : {},
+          capabilities: owns ? { browserHost: 1 } : {},
         },
       }),
     );
@@ -404,7 +404,7 @@ test("an authenticated owner claim refuses a request from another Core generatio
   await receive(1, "hello", {
     protocol: PROTOCOL,
     identity: "fixture-identity",
-    capabilities: { computerHost: 1 },
+    capabilities: { browserHost: 1 },
   });
   await receive(2, "browserClaim", {
     protocol: "areal.browser.host.v1",
@@ -516,7 +516,7 @@ test("revoked or competing claim cannot publish after the Core bind awaits", asy
   await receive(owner, 1, "hello", {
     protocol: PROTOCOL,
     identity: "fixture-identity",
-    capabilities: { computerHost: 1 },
+    capabilities: { browserHost: 1 },
   });
   await receive(other, 2, "hello", { protocol: PROTOCOL, identity: "fixture-identity" });
 

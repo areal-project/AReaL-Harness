@@ -10,8 +10,6 @@ use std::collections::BTreeMap;
 pub enum DesktopToolBundle {
     #[serde(rename = "areal.browser.v1")]
     Browser,
-    #[serde(rename = "areal.computer.v1")]
-    Computer,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]

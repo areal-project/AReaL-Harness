@@ -2,7 +2,6 @@ import { AppProviders, WorkbenchProviders } from "./app-shell/WorkbenchProviders
 import React, { useEffect, useSyncExternalStore } from "react";
 import { WorkSurface, WorkbenchShell } from "./app-shell/WorkbenchShell.js";
 import { BackendStatusNotice } from "./BackendStatusNotice.js";
-import { Button } from "./components/ui/button.js";
 import { sending, subscribeSending } from "./Composer.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { Inbox } from "./Inbox.js";
@@ -474,21 +473,6 @@ function AppContent({ services }: { services: PlatformServices }) {
           }}
         />
         <ToastHost />
-        {snapshot.computerControl?.active === true && (
-          <div
-            role="status"
-            className="fixed bottom-4 right-4 z-50 flex items-center justify-between gap-3 rounded-lg border bg-background px-4 py-2 text-ui-sm shadow-lg"
-          >
-            <span>{t("settings.computer.working")}</span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void resourceAction("computerControl", { operation: "stop" })}
-            >
-              {t("settings.computer.stop")}
-            </Button>
-          </div>
-        )}
         {!session.readOnly && (
           <BackendStatusNotice
             summary={snapshot.serviceSummary}

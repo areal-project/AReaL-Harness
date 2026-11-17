@@ -21,7 +21,7 @@ const { modelRecord, isCoreTask } = require("@areal/workbench/core-model-contrac
  * prepareServiceLaunch:(project:Project,trace:ReturnType<typeof startupTrace>)=>Promise<Launch>,
  * reconcile:(project:Project,options:{observeOnly:boolean})=>Promise<unknown>,
  * desktopToolOwner:()=>object|null,desktopTools:(project:Project)=>unknown[],supportsBrowser:(project:Project)=>boolean|undefined,
- * cuaRead:(request:Record<string,unknown>)=>Promise<unknown>|undefined,browserRead?:(request:Record<string,unknown>)=>Promise<unknown>|undefined,
+ * browserRead?:(request:Record<string,unknown>)=>Promise<unknown>|undefined,
  * observeNotification:(project:Project,client:Client,method:string,params:unknown)=>void,
  * listThreads:(project:Project)=>Promise<unknown>,openThread:(project:Project,threadId:string)=>Promise<unknown>,startTaskMonitor:(project:Project,client:Client)=>Promise<void>
  * }} ConnectionHost */
@@ -340,44 +340,11 @@ class ProjectConnections {
     project.client = null;
     previous?.close();
     project.summariesLoaded = false;
-    const cuaOwner = {
-      projectId: project.id,
-      coreInstanceId: project.service?.serviceId,
-      coreGeneration: project.service?.generation,
-    };
-    /** @type {unknown} */
-    let cuaHostGeneration;
     if (!this.host.hostCall) throw new Error("Host Core transport unavailable");
     /** @type {Pick<ConstructorParameters<typeof import('@areal/runtime-client/core').CoreClient>[0],'onServerRequest'>} */
     const connectionOptions = {
       onServerRequest: async (method, params, context) => {
         if (!modelRecord(params)) throw new Error("Invalid Core tool host request");
-        if (
-          method === "areal/cua/turnEnded" ||
-          (method === "item/tool/call" && ["js", "js_reset"].includes(String(params.tool)))
-        ) {
-          this.requireConnection(project, client);
-          if (!this.currentDesktopToolHost(project, client))
-            throw new Error("Desktop tool host is unavailable");
-          cuaHostGeneration = params.hostGeneration;
-          const result = await this.host.cuaRead({
-            ...params,
-            projectId: project.id,
-            cwd: project.root,
-            toolHostGeneration: params.hostGeneration,
-            coreInstanceId: project.service?.serviceId,
-            coreGeneration: project.service?.generation,
-            signal: context.signal,
-            phase: method === "areal/cua/turnEnded" ? "endTurn" : "call",
-          });
-          return method === "areal/cua/turnEnded"
-            ? result
-            : {
-                success: !modelRecord(result) || result.isError !== true,
-                contentItems: [],
-                rawMcpResult: result,
-              };
-        }
         if (
           !["item/tool/call", "areal/browser/prepare"].includes(method) ||
           params?.tool !== "browser_v1"
@@ -439,14 +406,6 @@ class ProjectConnections {
       client.onClose((failure) => {
         if (this.host.hostCoreClients.get(canonical) === client)
           this.host.hostCoreClients.delete(canonical);
-        if (cuaHostGeneration)
-          void Promise.resolve(
-            this.host.cuaRead?.({
-              phase: "revokeProject",
-              ...cuaOwner,
-              toolHostGeneration: cuaHostGeneration,
-            }),
-          ).catch(() => {});
         if (project.client === client) {
           project.taskNotificationMonitor?.stop();
           this.host.stopReconciliation(project);

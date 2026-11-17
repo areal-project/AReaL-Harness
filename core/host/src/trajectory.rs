@@ -627,6 +627,7 @@ mod tests {
         let source_desc = crate::migration::Source {
             profile: profile.clone(),
             core_home: core.clone(),
+            // 过渡：到 0.2.0 删；导入夹具沿用迁移来源字段。
             legacy_service_home: base.join("legacy"),
         };
         migration

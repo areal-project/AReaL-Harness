@@ -485,4 +485,4 @@ test:i18n-native 使用同一隔离 runner，覆盖双语归档、会话与诊�
 
 预览包仅供手动安装，使用 ad-hoc 签名，不执行 Developer ID 分发签名或公证，也不推进正式更新频道。使用隔离数据或先做备份；预览数据格式不保证旧正式版可读，预览转正式需要手动安装并单独验证。不要关闭安全防护或清除隔离标记来绕过系统拦截。
 
-浏览器与电脑自动化的实现边界见 [Browser](../../docs/api/browser.md) 和[电脑控制](../../docs/api/computer.md)。`pnpm --dir clients/gui run test:automation` 使用隔离 Electron/Core 与合成站点；原生输入验收只操作独立测试应用，需已有系统授权。Helper 构建随 GUI build 执行。源码验收不代表安装包、公证或真实供应商验收。
+浏览器自动化的实现边界见 [Browser](../../docs/api/browser.md)。`pnpm --dir clients/gui run test:automation` 使用隔离 Electron/Core 与合成站点。源码验收不代表安装包、公证或真实供应商验收。

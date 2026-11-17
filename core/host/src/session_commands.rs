@@ -427,7 +427,6 @@ fn validate_client_options(value: &Value) -> Result<()> {
     ensure_allowed_keys(
         obj,
         &[
-            "externalCua",
             "permissionPreset",
             "interactionMode",
             "readOnly",
@@ -439,7 +438,7 @@ fn validate_client_options(value: &Value) -> Result<()> {
             "maxModelRounds",
         ],
     )?;
-    for key in ["externalCua", "readOnly"] {
+    for key in ["readOnly"] {
         if let Some(v) = obj.get(key) {
             ensure!(v.is_boolean(), "INVALID_PARAMS");
         }
@@ -1600,6 +1599,7 @@ mod tests {
         let source = crate::migration::Source {
             profile: root.join("profile"),
             core_home: root.join("data"),
+            // 过渡：到 0.2.0 删；导入夹具沿用迁移来源字段。
             legacy_service_home: root.join("legacy"),
         };
         host.migration
@@ -1634,6 +1634,7 @@ mod tests {
             slot.registration.workspace = workspace.clone();
             slot.registration.source = crate::ProjectSource::Gui {
                 profile: source.profile.clone(),
+                // 过渡：到 0.2.0 删；导入夹具沿用迁移来源字段。
                 legacy_project_id: alias.clone(),
             };
         }

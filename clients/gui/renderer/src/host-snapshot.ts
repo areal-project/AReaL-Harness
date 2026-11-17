@@ -210,7 +210,6 @@ export const SHELL_SNAPSHOT_KEYS = [
   "serviceSummary",
   "backendUpdate",
   "lifecycle",
-  "computerControl",
   "subscription",
   "projectless",
 ] as const;

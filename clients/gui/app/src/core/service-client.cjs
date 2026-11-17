@@ -151,7 +151,7 @@ class SharedCoreBackend {
     /** @type {Activity|undefined} */
     this.lastActivity = undefined;
     /** @type {boolean|undefined} */
-    this.computerHostOwned = undefined;
+    this.browserHostOwned = undefined;
     /** @type {(()=>void)|undefined} */
     this.onBrowserDisconnected = undefined;
     /** @type {((request:Record<string,unknown>&{requestId:number})=>unknown)|undefined} */
@@ -293,7 +293,7 @@ class SharedCoreBackend {
   }
   disconnected() {
     this.terminalConnections.close();
-    this.computerHostOwned = false;
+    this.browserHostOwned = false;
     this.onBrowserDisconnected?.();
     const stopped = !!this.connection && this.stoppedConnection === this.connection;
     const message = stopped ? "后台服务已停止，可按需重新连接" : "后台服务已断开，请重新连接";
@@ -471,13 +471,13 @@ class SharedCoreBackend {
             protocol: PROTOCOL,
             identity,
             notifications: hostOwned && !!this.onNotification,
-            capabilities: hostOwned ? { computerHost: 1, projection: 1 } : {},
+            capabilities: hostOwned ? { browserHost: 1, projection: 1 } : {},
           });
           if (this.connection !== connection)
             throw Object.assign(new Error("后台服务连接已变化，请重新连接"), {
               code: "DISCONNECTED",
             });
-          this.computerHostOwned = record(packet) && packet.computerHostOwned === true;
+          this.browserHostOwned = record(packet) && packet.browserHostOwned === true;
           this.accept(packet, metadata);
           // 成功握手覆盖此前升级或重连尝试留下的错误；错误只属于真正失败的连接，
           // 后台恢复后不能再让它闪现在启动页。

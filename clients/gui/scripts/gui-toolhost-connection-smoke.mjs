@@ -89,16 +89,16 @@ async function until(check, label) {
     await new Promise((done) => setTimeout(done, 40));
   }
 }
-async function main(computerHost = true) {
+async function main(browserHost = true) {
   const connection = new ServiceConnection();
   mains.push(connection);
   await connection.connect(metadata);
   const packet = await connection.request("hello", {
     protocol: PROTOCOL,
     identity: metadata.identity,
-    capabilities: computerHost ? { computerHost: 1 } : {},
+    capabilities: browserHost ? { browserHost: 1 } : {},
   });
-  assert.equal(packet.computerHostOwned, computerHost);
+  assert.equal(packet.browserHostOwned, browserHost);
   return connection;
 }
 try {

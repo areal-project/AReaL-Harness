@@ -144,14 +144,10 @@ export default defineConfig({
         command: "node scripts/build-snapshots.mjs",
         cache: false,
       },
-      "computer-helper-build": {
-        command: "node scripts/build-computer-helper.mjs",
-        cache: false,
-      },
       "build-suite": {
         command: "vp build",
         cwd: "renderer",
-        dependsOn: ["ui-build", "desktop-build", "computer-helper-build"],
+        dependsOn: ["ui-build", "desktop-build"],
         cache: false,
       },
       "design-build": {

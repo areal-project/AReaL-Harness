@@ -299,7 +299,6 @@ function validateCommand(name, params, { serviceOnly = false } = {}) {
     case "stopService":
     case "recoverResources":
     case "browserData":
-    case "computerControl":
     case "bugReport":
     case "exportDiagnostics":
     case "connectService":
@@ -643,7 +642,6 @@ function validateCommandResponse(name, params, value) {
     case "stopService":
     case "recoverResources":
     case "browserData":
-    case "computerControl":
     case "bugReport":
     case "exportDiagnostics":
     case "connectService":

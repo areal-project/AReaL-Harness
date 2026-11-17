@@ -700,13 +700,6 @@ def build_plan(paths, source, manifest):
 
     if affected["gui"]:
         desktop, ui, renderer = gui_builds("macos:", "gui-build", ("darwin",))
-        add(
-            "computer-helper",
-            ["node", "clients/gui/scripts/build-computer-helper.mjs"],
-            "gui-build",
-            requires=("node-24.22.1", "macos-tools", "xcode"),
-            platforms=("darwin",),
-        )
         for entry in manifest:
             if (
                 entry["layer"] != "e2e"
@@ -796,7 +789,6 @@ def build_plan(paths, source, manifest):
         "macos:desktop": "desktop-build",
         "macos:ui": "ui-build",
         "macos:renderer": "build-suite",
-        "computer-helper": "computer-helper-build",
     }
     for item in items:
         if item["id"] in production_tasks:

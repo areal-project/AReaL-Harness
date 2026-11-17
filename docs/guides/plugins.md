@@ -30,7 +30,7 @@ Claude 市场允许由条目定义没有独立 manifest 的插件。例如 `sour
 
 `sourceDigest` 始终描述当前候选的原包字节。消费市场条目定义的候选另有 `admissionDigest`。安装时 `expectedDigest` 使用 `admissionDigest ?? sourceDigest`，界面与 CLI 自动选择正确身份。`installedDigest` 描述有效安装快照，`installedSourceDigest` 单独描述已安装原包。市场条目只改组件选择、来源或执行前提，也会要求重新审阅。安装后读取、重启及历史引用使用固定定义，不重新读取可变市场。旧无上下文包保留原摘要和收据行为。旧客户端只提交原包摘要时不能安装需要新审阅身份的候选。
 
-自有可移植包可以声明 `extensions.org.areal.hostRequirements` 为 `{"version":1,"tools":["browser_v1"]}`。这些要求只收窄可用性，不注册、开启或授权工具。桌面试用前检查当前部署；Core 在实际会话与 Turn 准入时检查可用工具及 Profile 限制。电脑控制关闭或使用不同 provider 时，要求 `computer_v1` 的 Skill 不会自动切换输入通道。工具存在不代表 OS 权限已授予，审批、系统权限、Stop 与 UNKNOWN 规则继续由原所有者执行。没有结构化声明的任意 Skill 文本不被当作可自动推断的完整依赖图，其行为兼容保持未验证。
+自有可移植包可以声明 `extensions.org.areal.hostRequirements` 为 `{"version":1,"tools":["browser_v1"]}`。这些要求只收窄可用性，不注册、开启或授权工具。桌面试用前检查当前部署；Core 在实际会话与 Turn 准入时检查可用工具及 Profile 限制。审批、Stop 与 UNKNOWN 规则继续由原所有者执行。没有结构化声明的任意 Skill 文本不被当作可自动推断的完整依赖图，其行为兼容保持未验证。
 
 仓库提供 [本地市场示例](../../examples/plugin-marketplace/README.zh-CN.md)，包含调用现有工具的 AReaL 浏览器和电脑适配 Skill，以及固定版本的官方 Heptabase 来源。浏览器和电脑包是 AReaL 适配包，不宣称原始 ZCode JavaScript SDK 可以原样执行。创建技能继续使用既有 **Create Skill** 和固定官方 Creator，市场发现、创建产物和发布分别处理。
 

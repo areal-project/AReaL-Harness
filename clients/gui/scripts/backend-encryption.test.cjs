@@ -34,7 +34,7 @@ test("安全存储回调绑定原外壳，其他客户端不能结算，断开�
   await owner.request("hello", {
     protocol: PROTOCOL,
     identity: "fixture",
-    capabilities: { computerHost: 1 },
+    capabilities: { browserHost: 1 },
   });
   await other.request("hello", { protocol: PROTOCOL, identity: "fixture", capabilities: {} });
   const pending = service.encryptionRequest("encrypt", "test-only-secret");

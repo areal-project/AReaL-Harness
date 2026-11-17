@@ -285,7 +285,7 @@ async fn scheduled_run_keeps_scheduler_when_gui_disconnects_without_adopting_suc
     engine
         .register_schedule_tools(
             TaskToolsReady {
-                bundles: vec![DesktopToolBundle::Browser, DesktopToolBundle::Computer],
+                bundles: vec![DesktopToolBundle::Browser],
             },
             gui.clone(),
         )
@@ -302,7 +302,7 @@ async fn scheduled_run_keeps_scheduler_when_gui_disconnects_without_adopting_suc
     let visible = engine
         .visible_tools(&cell, &Default::default(), true, &thread)
         .await;
-    for name in ["browser_v1", "computer_v1"] {
+    for name in ["browser_v1"] {
         assert!(visible.iter().any(|tool| tool["function"]["name"] == name));
     }
     let ordinary = engine.create_configured("owner".into(), serde_json::from_value(json!({"requestId":"ordinary-tools","cwd":"/workspace","dynamicTools":[areal_protocol::desktop::browser_v1_tool()]})).unwrap(), gui.clone()).await.unwrap();
@@ -311,7 +311,7 @@ async fn scheduled_run_keeps_scheduler_when_gui_disconnects_without_adopting_suc
     engine
         .register_schedule_tools(
             TaskToolsReady {
-                bundles: vec![DesktopToolBundle::Browser, DesktopToolBundle::Computer],
+                bundles: vec![DesktopToolBundle::Browser],
             },
             successor,
         )
@@ -328,10 +328,11 @@ async fn scheduled_run_keeps_scheduler_when_gui_disconnects_without_adopting_suc
     let visible = engine
         .visible_tools(&cell, &Default::default(), true, &thread)
         .await;
-    assert!(!visible.iter().any(|tool| matches!(
-        tool["function"]["name"].as_str(),
-        Some("browser_v1" | "computer_v1")
-    )));
+    assert!(
+        !visible
+            .iter()
+            .any(|tool| matches!(tool["function"]["name"].as_str(), Some("browser_v1")))
+    );
     let bindings = cell.bindings.read().await;
     assert_eq!(bindings.host.as_ref().unwrap().id(), "gui");
     assert_eq!(bindings.schedule_host.as_ref().unwrap().id(), "scheduler");
@@ -368,7 +369,7 @@ async fn prepared_schedule_restart_preserves_catalog_and_only_binds_compatible_p
         engine
             .register_schedule_tools(
                 TaskToolsReady {
-                    bundles: vec![DesktopToolBundle::Browser, DesktopToolBundle::Computer],
+                    bundles: vec![DesktopToolBundle::Browser],
                 },
                 ScheduleConnection::new("old-gui", "owner"),
             )
@@ -394,9 +395,9 @@ async fn prepared_schedule_restart_preserves_catalog_and_only_binds_compatible_p
             .await
             .unwrap();
         let bundles = if compatible {
-            vec![DesktopToolBundle::Browser, DesktopToolBundle::Computer]
-        } else {
             vec![DesktopToolBundle::Browser]
+        } else {
+            vec![]
         };
         engine
             .register_schedule_tools(
@@ -419,7 +420,7 @@ async fn prepared_schedule_restart_preserves_catalog_and_only_binds_compatible_p
                 .iter()
                 .map(|tool| tool.name.as_str())
                 .collect::<Vec<_>>(),
-            ["browser_v1", "computer_v1"]
+            ["browser_v1"]
         );
         let cell = engine.cell(thread_id).await.unwrap();
         let bindings = cell.bindings.read().await;

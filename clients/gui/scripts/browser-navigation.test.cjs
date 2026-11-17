@@ -202,7 +202,7 @@ for (const change of ["timeout", "takeover", "deployment"]) {
       await receive("hello", {
         protocol: PROTOCOL,
         identity: "unknown-fixture",
-        capabilities: { computerHost: 1 },
+        capabilities: { browserHost: 1 },
       });
       await receive("browserClaim", {
         protocol: "areal.browser.host.v1",

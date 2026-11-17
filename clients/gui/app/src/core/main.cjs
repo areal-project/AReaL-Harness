@@ -48,7 +48,6 @@ const validatePreview = require("@areal/workbench/desktop-contract").validatePre
 const { modelRecord } = require("@areal/workbench/core-model-contract");
 const { readBrowserHostRequest, browserHostFailure } = require("./browser-host-request.cjs");
 const { CorePreview, developmentApproval } = require("./preview.cjs");
-const { ExternalCua, nativeAppElicitation, readComputerSelection } = require("./external-cua.cjs");
 const diagnostics = require("@areal/workbench-service/desktop/core/diagnostics.cjs");
 const { startSnapShots } = require("./snapshots/host.cjs");
 const cfg = require("./service-config.cjs");
@@ -127,27 +126,6 @@ function startDesktop() {
   const guiRoot = app.isPackaged
     ? join(process.resourcesPath, "areal-gui")
     : resolve(__dirname, "../../../renderer/dist");
-  /** @type {InstanceType<typeof ExternalCua>|undefined} */
-  let externalCua;
-  /** @type {unknown} */
-  let computerActivity = null;
-  let computerWasEnabled = false,
-    computerAdmissionSuspended = false,
-    computerUiAvailable = false,
-    computerSystemPaused = false;
-  /** @type {Map<number,AbortController>} */
-  const computerRequests = new Map();
-  const computerSelection = () => readComputerSelection(backend?.snapshot());
-  const computerAvailable = () =>
-    backend?.computerHostOwned === true &&
-    !quitting &&
-    !browserWindowClosed &&
-    computerUiAvailable &&
-    !computerSystemPaused &&
-    !computerAdmissionSuspended;
-  /** @param {string} reason */
-  const stopComputer = (reason) => Promise.resolve(externalCua?.stop(reason));
-  const closeComputer = () => Promise.resolve(externalCua?.close());
   /** @type {Electron.BrowserWindow|undefined} */
   let window;
   /** @type {import("./snapshots/DesktopSnapShots.js").DesktopSnapShots|undefined} */
@@ -414,7 +392,6 @@ function startDesktop() {
       recordQuitStage(attempt, "disconnect");
       await backend.shutdown();
       await preview?.dispose();
-      await closeComputer();
       exitReady = true;
       recordQuitStage(attempt, "exit-ready");
       if (intent !== "install") setImmediate(() => app.quit());
@@ -539,11 +516,7 @@ function startDesktop() {
         ?.configure(state.library.settings?.snapShot)
         .catch((error) => console.error("SnapShots settings failed", error));
     }
-    const enabled = state.library?.settings?.computerControlEnabled === true;
-    const wasEnabled = computerWasEnabled;
-    computerWasEnabled = enabled;
-    if (wasEnabled && !enabled) void stopComputer("disabled").catch(() => {});
-    return { ...state, menuBar: menuBar?.snapshot() ?? null, computerControl: computerActivity };
+    return { ...state, menuBar: menuBar?.snapshot() ?? null };
   }
   /** @param {Electron.IpcMainEvent|Electron.IpcMainInvokeEvent} event */
   function trustedSender(event) {
@@ -649,8 +622,7 @@ function startDesktop() {
           ].filter((value) => typeof value === "string"),
         developmentApproval(
           createdWindow,
-          () =>
-            !quitting && backend.status.connected === true && backend.computerHostOwned === true,
+          () => !quitting && backend.status.connected === true && backend.browserHostOwned === true,
           () => preview,
         ),
         (projectId, threadId) => backend.retainsThreadResources(projectId, threadId),
@@ -661,12 +633,9 @@ function startDesktop() {
         void backend.browserRevoke(identity).catch(() => {});
       };
       createdWindow.on("unresponsive", () => {
-        computerUiAvailable = false;
-        void stopComputer("ui_unresponsive").catch(() => {});
         diagnostics.record({ type: "renderer-unresponsive" });
       });
       createdWindow.on("responsive", () => {
-        computerUiAvailable = createdWindow.webContents.mainFrame.url.startsWith("areal-ui://app/");
         diagnostics.record({ type: "renderer-responsive" });
       });
       createdWindow.on("blur", () => snapShots?.setSnapShotShortcutSuppressed(false));
@@ -674,25 +643,18 @@ function startDesktop() {
       owner.on("did-start-navigation", (_event, _url, inPlace, mainFrame) => {
         if (mainFrame && !inPlace) {
           snapShots?.setSnapShotShortcutSuppressed(false);
-          computerUiAvailable = false;
-          void stopComputer("ui_navigation").catch(() => {});
           projections.delete(owner);
         }
       });
       owner.on("did-finish-load", () => {
         diagnostics.record({ type: "window-ready", windows: BrowserWindow.getAllWindows().length });
-        computerUiAvailable = owner.mainFrame.url.startsWith("areal-ui://app/");
       });
       owner.on("destroyed", () => {
         snapShots?.setSnapShotShortcutSuppressed(false);
-        computerUiAvailable = false;
-        void stopComputer("ui_destroyed").catch(() => {});
         projections.delete(owner);
       });
       owner.on("render-process-gone", () => {
         snapShots?.setSnapShotShortcutSuppressed(false);
-        computerUiAvailable = false;
-        void stopComputer("ui_crashed").catch(() => {});
         projections.delete(owner);
       });
       createdWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
@@ -722,7 +684,6 @@ function startDesktop() {
           focusRequested = false;
         }
         const owner = createdWindow;
-        void stopComputer("window_closed").catch(() => {});
         windowClosePromise = settleWindow(owner)
           .then(async () => {
             await preview?.dispose();
@@ -799,29 +760,12 @@ function startDesktop() {
             await serviceBackend.init({ automatic: connectedOnce });
             if (serviceBackend.status.connected) connectedOnce = true;
           };
-          const externalCuaHost = (externalCua = new ExternalCua({
-            getSelection: computerSelection,
-            getAvailable: computerAvailable,
-            onActivity: (status) => {
-              computerActivity = status;
-              publish();
-            },
-            onElicitation: nativeAppElicitation(
-              app,
-              computerAvailable,
-              () => window,
-              showMessageBox,
-            ),
-          }));
           serviceBackend.onBrowserDisconnected = () => {
             preview?.revokeAll();
-            for (const controller of computerRequests.values()) controller.abort();
-            void stopComputer("desktop_disconnected").catch(() => {});
           };
           serviceBackend.onBrowserCancel = (request) => {
             if (!modelRecord(request) || typeof request.requestId !== "number") return;
-            if (request.tool === "external_cua") computerRequests.get(request.requestId)?.abort();
-            else if (
+            if (
               typeof request.projectId === "string" &&
               typeof request.threadId === "string" &&
               typeof request.hostGeneration === "number"
@@ -834,27 +778,6 @@ function startDesktop() {
               });
           };
           serviceBackend.onBrowserRequest = async (request) => {
-            if (request.tool === "external_cua") {
-              const controller = new AbortController();
-              computerRequests.set(request.requestId, controller);
-              try {
-                const input = { ...request, tool: request.cuaTool, signal: controller.signal };
-                if (request.phase === "catalog")
-                  return await externalCuaHost.catalog({ ...input, threadId: "__catalog__" });
-                if (request.phase === "call") return await externalCuaHost.call(input);
-                if (request.phase === "endTurn") return await externalCuaHost.endTurn(input);
-                if (request.phase === "revokeProject") {
-                  await externalCuaHost.revokeProject(input);
-                  return {};
-                }
-                throw new Error("Unsupported external CUA request");
-              } catch (error) {
-                if (request.phase === "catalog") return { error: desktopError(error).message };
-                throw error;
-              } finally {
-                computerRequests.delete(request.requestId);
-              }
-            }
             if (quitting || !preview || !window || window.isDestroyed())
               throw new Error("Browser host unavailable");
             const browserRequest = readBrowserHostRequest(request);
@@ -967,9 +890,7 @@ function startDesktop() {
               return browserHostFailure(request, error);
             }
           };
-          app.on("will-quit", () => {
-            void closeComputer().catch(() => {});
-          });
+          app.on("will-quit", () => {});
           /** @param {Parameters<InstanceType<typeof CorePreview>["openDocument"]>[0]} request */
           const openHtml = async (request) => {
             if (!preview || !window || window.isDestroyed())
@@ -1260,45 +1181,6 @@ function startDesktop() {
                 trusted(event);
                 return { ok: true, value };
               }
-              if (name === "computerControl") {
-                let value;
-                if (params.operation === "status") value = externalCuaHost.status();
-                else if (params.operation === "restart") value = await externalCuaHost.check();
-                else if (params.operation === "stop") {
-                  await externalCuaHost.stop("user_stop");
-                  value = externalCuaHost.status();
-                } else
-                  throw new Error(
-                    "LCU installation and OS permissions are managed outside AReaL Harness",
-                  );
-                trusted(event);
-                if (serviceBackend.computerHostOwned !== true)
-                  value = {
-                    ...value,
-                    ready: false,
-                    code: "host_busy",
-                    reason:
-                      "Computer control belongs to another GUI window. Reconnect after that host closes.",
-                  };
-                return { ok: true, value };
-              }
-              if (
-                name === "library" &&
-                params.operation === "settings" &&
-                [
-                  "computerControlEnabled",
-                  "computerControlProvider",
-                  "computerControlExecutable",
-                ].some((key) => key === params.key)
-              ) {
-                computerAdmissionSuspended = true;
-                try {
-                  await stopComputer("configuration_changed");
-                  return { ok: true, value: await serviceBackend.command(name, params) };
-                } finally {
-                  computerAdmissionSuspended = false;
-                }
-              }
               if (name === "providers" && params.operation === "revealKey") {
                 const value = await require("../ipc/generated/provider-key.cjs").revealProviderKey(
                   {
@@ -1557,8 +1439,6 @@ function startDesktop() {
             .on("restore", sampleActivity);
           /** @param {"suspend"|"lock-screen"} event */
           const pauseActivity = (event) => {
-            computerSystemPaused = true;
-            void stopComputer(event).catch(() => {});
             sampleActivity();
             activityPauses.add(event);
             sampleActivity();
@@ -1570,7 +1450,6 @@ function startDesktop() {
           /** @param {"suspend"|"lock-screen"} pause */
           const resumeActivity = (pause) => {
             activityPauses.delete(pause);
-            computerSystemPaused = activityPauses.size > 0;
             sampleActivity();
           };
           powerMonitor

@@ -11,10 +11,10 @@ const root = resolve(scripts, "../../..");
 const args = process.argv.slice(2);
 assert.ok(
   args.length === 0 || (args.length === 2 && args[0] === "--suite"),
-  "Usage: plugin-ecosystem-smoke.mjs [--suite all|browser|computer|creator]",
+  "Usage: plugin-ecosystem-smoke.mjs [--suite all|browser|creator]",
 );
 const suite = args[1] ?? "all";
-assert.ok(["all", "browser", "computer", "creator"].includes(suite), "Unknown ecosystem suite");
+assert.ok(["all", "browser", "creator"].includes(suite), "Unknown ecosystem suite");
 const binary = process.env.AREAL_CORE_BIN;
 assert.ok(
   binary && isAbsolute(binary),
@@ -32,13 +32,6 @@ const cases = [
     manifest: "run-manifest.json",
   },
   {
-    id: "computer",
-    script: "automation-core-smoke.mjs",
-    args: ["--ecosystem", "--suite", "computer"],
-    marker: "Automation Core evidence ",
-    manifest: "run-manifest.json",
-  },
-  {
     id: "creator",
     script: "plugin-concepts-smoke.mjs",
     args: ["--creator-only"],
@@ -50,7 +43,7 @@ const failureModes = [
   "Reviewed GUI installation or restart changes the selected package digest or exact Skill reference.",
   "Try starts inference or creates an execution thread before Send.",
   "A selected Skill never reaches the model request before the requested real Core tool result.",
-  "A missing native host tool or disabled computer control presents available readiness or allows Try.",
+  "A missing native host tool presents available readiness or allows Try.",
   "Browser mutation does not change the controlled native DOM and reach the fixture server exactly once.",
   "Denied browser input is replayed after a read or renderer reconnect.",
   "Creator uses a copied replacement instead of the verified official builtin Skill and its Runtime scripts.",
@@ -145,7 +138,7 @@ for (const scenario of cases) {
           "selected-plugin browser path changes the controlled server exactly once",
         );
         assert.ok(manifest.checks.includes("browser-durable-results-no-replay"));
-      } else assert.ok(manifest.checks.includes("ecosystem-disabled-computer-try-blocked"));
+      }
     } else {
       assert.equal(manifest.creator?.skill?.id, "openai-skill-creator");
       assert.ok(
@@ -199,7 +192,7 @@ const manifest = {
   errors,
   failureModes,
   scope:
-    "Source Electron GUI installation and selection, actual Core Skill content and host tool execution, controlled native browser DOM effects, disabled native admission, existing official Creator through actual Runtime. Each child owns a different temporary home, registry and workspace. The model, local site and native path chooser are fixtures.",
+    "Source Electron GUI installation and selection, actual Core Skill content and host tool execution, controlled native browser DOM effects, existing official Creator through actual Runtime. Each child owns a different temporary home, registry and workspace. The model, local site and native path chooser are fixtures.",
   gaps: [
     "No combined selected-plugin stale-reference or UNKNOWN receipt-loss injection.",
     "No physical native computer input, OS grant acquisition, real-provider, public-site, installed-package or signing acceptance.",

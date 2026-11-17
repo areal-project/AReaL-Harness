@@ -441,7 +441,7 @@ test(
       resources: { async beforeCreate() {} },
       scheduleAdmission: { async prepare() {} },
       library: {
-        value: { settings: { computerControlEnabled: true, computerControlProvider: "lcu" } },
+        value: { settings: { taskNotifications: true } },
       },
       browserRead: async () => {
         catalogReads++;
@@ -481,8 +481,8 @@ test(
     const setting = (key, value) =>
       host.executeCommand("library", { operation: "settings", key, value });
     const settingsPublications = publications.length;
-    await setting("computerControlEnabled", false);
-    await setting("computerControlEnabled", true);
+    await setting("taskNotifications", false);
+    await setting("taskNotifications", true);
     await setting("taskNotifications", false);
     assert.equal(publications.length, settingsPublications);
     managed = false;
@@ -539,7 +539,7 @@ test(
         finishSave = resolve;
         saved();
       });
-    const oldMainSettings = setting("computerControlEnabled", true);
+    const oldMainSettings = setting("taskNotifications", true);
     await saving;
     owner = {};
     finishSave();

@@ -1418,15 +1418,6 @@ impl Connection {
                 capabilities["features"]["sideExecutableV2"] = json!(true);
                 capabilities["features"]["hostUpdateStatus"] = json!(true);
                 capabilities["features"]["connectionProcesses"] = json!(true);
-                capabilities["desktopToolBundles"] = if can_attach_browser {
-                    json!([{ "bundleId":areal_protocol::desktop::COMPUTER_V1_BUNDLE,
-                        "definition":areal_protocol::desktop::computer_v1_tool() }])
-                } else {
-                    json!([])
-                };
-                capabilities["features"]["computerToolAttachment"] = json!(can_attach_browser);
-                capabilities["features"]["computerToolPreparation"] = json!(can_attach_browser);
-                capabilities["features"]["externalCua"] = json!(can_attach_browser);
                 capabilities["features"]["mcpPageToolsV1"] =
                     json!({"version":1,"kinds":["getSelection","applyPatch"]});
                 capabilities["features"]["permissionPresets"] =

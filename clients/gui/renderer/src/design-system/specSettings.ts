@@ -129,17 +129,6 @@ export function settingsAction(name: string, request: Data): Data | undefined {
     return { ...sample.feedback, installation: null, account: null, destination: null };
   if (name === "cloud" && operation === "status")
     return { baseURL: sample.cloud.baseURL, tokenConfigured: true };
-  if (name === "computerControl" && operation === "status")
-    return {
-      provider: "lcu",
-      supported: true,
-      platform: "darwin",
-      ready: true,
-      state: "ready",
-      reason: "",
-      active: false,
-      sessions: 0,
-    };
   if (name === "remoteControl" && operation === "status")
     return {
       enabled: true,

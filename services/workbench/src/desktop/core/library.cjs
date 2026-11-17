@@ -246,14 +246,6 @@ class CoreLibrary {
       ) {
         if (typeof request.value !== "string") throw new Error("Invalid desktop setting");
         settingValue = validateDesktopString(request.key, request.value);
-      } else if (request.key === "computerControlExecutable") {
-        if (
-          typeof request.value !== "string" ||
-          request.value.length > 4096 ||
-          request.value.includes("\0") ||
-          (request.value && !require("node:path").isAbsolute(request.value))
-        )
-          throw new Error("LCU executable must be an absolute path");
       }
       Object.assign(state.settings, { [request.key]: settingValue });
     });

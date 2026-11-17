@@ -13,7 +13,6 @@ import type {
 } from "../services.js";
 import { BrowserSettings } from "../settings/BrowserSettings.js";
 import { CloudSettings } from "../settings/CloudSettings.js";
-import { ComputerSettings } from "../settings/ComputerSettings.js";
 import { CreationRecoverySettings } from "../settings/CreationRecoverySettings.js";
 import { CoreCapabilitiesSettings } from "../settings/CoreCapabilitiesSettings.js";
 import { PluginDoctorSummary } from "../settings/PluginDoctorSummary.js";
@@ -145,12 +144,6 @@ export function WorkbenchSettings({
         />
       ) : settingsTab === "Cloud" ? (
         <CloudSettings action={resourceAction} />
-      ) : settingsTab === "电脑控制" ? (
-        <ComputerSettings
-          settings={library.settings}
-          action={resourceAction}
-          connected={snapshot.connection?.state === "ready"}
-        />
       ) : settingsTab === "Worktrees" ? (
         <WorktreesSettings
           onAddProject={async () => {

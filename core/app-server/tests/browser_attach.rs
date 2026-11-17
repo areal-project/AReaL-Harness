@@ -17,6 +17,39 @@ use tokio_util::sync::CancellationToken;
 type Socket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 
 struct ModelFixture;
+
+#[tokio::test]
+async fn retired_computer_bundle_is_not_advertised_or_attachable() {
+    let mut historical =
+        serde_json::to_value(areal_protocol::desktop::ClientOptions::default()).unwrap();
+    historical["externalCua"] = json!(true);
+    let restored: areal_protocol::desktop::ClientOptions =
+        serde_json::from_value(historical.clone()).unwrap();
+    assert_eq!(serde_json::to_value(restored).unwrap(), historical);
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(ModelFixture), Limits::default()).unwrap();
+    let thread = engine.create("/workspace".into()).await.unwrap();
+    let (url, stop, task) = server(engine).await;
+    let mut owner = connected(&url).await;
+    let capabilities = call(&mut owner, "areal/capabilities", json!({})).await;
+    let advertised = &capabilities["result"];
+    assert!(
+        advertised
+            .get("desktopToolBundles")
+            .is_none_or(|bundles| bundles.as_array().is_some_and(Vec::is_empty)),
+        "{advertised}"
+    );
+    assert!(
+        advertised["features"].get("externalCua").is_none(),
+        "{advertised}"
+    );
+    let attached = call(&mut owner, "areal/thread/tools/attach", json!({
+        "threadId":thread.id,"requestId":"retired-computer","expectedToolsetRevision":0,"bundleId":"areal.computer.v1"
+    })).await;
+    assert!(attached.get("error").is_some(), "{attached}");
+    stop.cancel();
+    task.await.unwrap().unwrap();
+}
 #[async_trait]
 impl Model for ModelFixture {
     fn configure(
@@ -90,7 +123,7 @@ async fn executable_side_first_input_binds_desktop_browser_before_activation() {
     let (url, stop, task) = server(engine.clone()).await;
     let mut owner = connected(&url).await;
     let attached = call(&mut owner, "areal/thread/tools/attach", json!({
-        "threadId":source.id,"requestId":"attach-computer-side","expectedToolsetRevision":0,"bundleId":"areal.computer.v1"
+        "threadId":source.id,"requestId":"attach-browser-side","expectedToolsetRevision":0,"bundleId":"areal.browser.v1"
     })).await;
     assert!(attached.get("result").is_some(), "{attached}");
     let created = call(
@@ -113,7 +146,7 @@ async fn executable_side_first_input_binds_desktop_browser_before_activation() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|tool| tool["name"] == "computer_v1"),
+            .any(|tool| tool["name"] == "browser_v1"),
         "{created}"
     );
     let interaction = tokio::time::timeout(Duration::from_secs(10), async {

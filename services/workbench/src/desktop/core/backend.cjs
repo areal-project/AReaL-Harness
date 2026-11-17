@@ -121,7 +121,6 @@ class CoreBackend {
     /** @type {((input:import('./service-transport-contract.cjs').ToolHostInput)=>Promise<unknown>)|undefined} */
     this.browserRead = undefined;
     /** @type {((input:import('./service-transport-contract.cjs').ToolHostInput)=>Promise<unknown>)|undefined} */
-    this.cuaRead = undefined;
 
     /** @type {Map<string,import('./project-state.cjs').CoreProject>} */
     this.projects = new Map();
@@ -187,7 +186,6 @@ class CoreBackend {
           return backend.applicationOwner;
         },
         browserRead: (...args) => backend.browserRead?.(...args),
-        cuaRead: (...args) => backend.cuaRead?.(...args),
         desktopTools: (...args) => backend.desktopTools(...args),
         desktopToolOwner: () => backend.desktopToolOwner?.() ?? null,
         get closing() {
@@ -1595,39 +1593,10 @@ class CoreBackend {
     if (request.requestId !== undefined && typeof request.requestId !== "string")
       throw new Error("无效创建请求标识");
     /** @type {Fields} */
-    let options = { permissionPreset: "ask", ...request.options };
+    const options = { permissionPreset: "ask", ...request.options };
     /** @type {unknown[]} */
-    let tools = this.desktopTools(project);
+    const tools = this.desktopTools(project);
     const owner = this.desktopToolOwner?.();
-    if (owner && this.library.value.settings.computerControlEnabled === true) {
-      if (project.client?.capabilities?.features?.externalCua !== true)
-        throw new Error(
-          "This Core does not support external CUA; update Core before creating this chat",
-        );
-      if (!this.cuaRead) throw new Error("External CUA desktop host is unavailable");
-      const catalog = await this.cuaRead({
-        phase: "catalog",
-        projectId: project.id,
-        cwd: project.root,
-        coreInstanceId: project.service?.serviceId,
-        coreGeneration: project.service?.generation,
-      });
-      if (this.desktopToolOwner?.() !== owner)
-        throw new Error("External CUA desktop host disconnected");
-      if (
-        !modelRecord(catalog) ||
-        typeof catalog.instructions !== "string" ||
-        !Array.isArray(catalog.tools)
-      )
-        throw new Error("Invalid external CUA catalog");
-      const appendInstructions = [options.appendInstructions, catalog.instructions]
-        .filter(Boolean)
-        .join("\n\n");
-      options = { ...options, externalCua: true, appendInstructions };
-      if (Buffer.byteLength(appendInstructions) > 32768)
-        throw new Error("Complete LCU and client instructions exceed the 32768-byte budget");
-      tools = [...tools, ...catalog.tools];
-    }
     const profile =
       request.profile ??
       (this.providers.manages(project)

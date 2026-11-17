@@ -3,7 +3,6 @@ import type { Action, Data } from "../services.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { BrowserSettings } from "../settings/BrowserSettings.js";
 import { CloudSettings } from "../settings/CloudSettings.js";
-import { ComputerSettings } from "../settings/ComputerSettings.js";
 import { AppearanceSettings, GeneralSettings } from "../settings/DisplaySettings.js";
 import { HooksSettings } from "../settings/HooksSettings.js";
 import { MobileSettings } from "../settings/MobileSettings.js";
@@ -59,8 +58,6 @@ export function SpecSettingsPage({
         <BrowserSettings action={action} connected />
       ) : tab === "Cloud" ? (
         <CloudSettings action={action} />
-      ) : tab === "电脑控制" ? (
-        <ComputerSettings action={action} connected />
       ) : tab === "Worktrees" ? (
         <WorktreesSettings action={action} projects={[project]} />
       ) : tab === "钩子" ? (

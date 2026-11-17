@@ -316,7 +316,6 @@ impl Engine {
             direct_tool,
             tool_meta,
             tool_calls: 0,
-            cua_used: false,
             waiting_for_model_capacity: false,
             started: execution_started,
             isolated_children: 0,
@@ -986,31 +985,6 @@ impl Engine {
             if let Err(error) = budget.flush().await {
                 cleanup_failed = true;
                 result = Err(anyhow::anyhow!("goal ledger persistence failed: {error}"));
-            }
-        }
-        if cell
-            .state
-            .lock()
-            .await
-            .active
-            .as_ref()
-            .is_some_and(|active| active.cua_used)
-        {
-            let host = cell.bindings.read().await.host.clone();
-            let cleanup = async {
-                let host =
-                    host.ok_or_else(|| anyhow::anyhow!("CUA host disappeared before cleanup"))?;
-                host.end_cua_turn(json!({"threadId": cell.id, "turnId": active_id,
-                    "hostGeneration": host.id(), "event": if result.is_err() { "Interrupt" } else { "Stop" }})).await
-            };
-            match tokio::time::timeout(Duration::from_secs(135), cleanup).await {
-                Ok(Ok(())) => {}
-                failure => {
-                    cleanup_failed = true;
-                    result = Err(anyhow::anyhow!(
-                        "External CUA cleanup is unresolved: {failure:?}"
-                    ));
-                }
             }
         }
         let mut state = cell.state.lock().await;

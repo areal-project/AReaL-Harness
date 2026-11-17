@@ -858,11 +858,12 @@ async fn rev_parse_head_optional(top: &Path) -> Result<String> {
 
 fn worktree_metadata(top: &Path, home: &Path) -> Option<Value> {
     let real_top = std::fs::canonicalize(top).ok()?;
-    let legacy_path = home.join("worktrees").join(format!(
+    // 过渡：到 0.2.0 删；迁移前的 worktree 元数据由原目录读取。
+    let metadata_path = home.join("worktrees").join(format!(
         "{}.json",
         sha256_hex(real_top.to_string_lossy().as_bytes())
     ));
-    if let Ok(Some(record)) = storage::read_optional::<Value>(&legacy_path)
+    if let Ok(Some(record)) = storage::read_optional::<Value>(&metadata_path)
         && record.is_object()
     {
         return Some(record);
@@ -2569,6 +2570,7 @@ mod tests {
         let source = crate::migration::Source {
             profile: root.join("profile"),
             core_home: root.join("data"),
+            // 过渡：到 0.2.0 删；导入夹具沿用迁移来源字段。
             legacy_service_home: root.join("legacy"),
         };
         host.migration
@@ -2603,6 +2605,7 @@ mod tests {
             slot.registration.workspace = workspace.clone();
             slot.registration.source = crate::ProjectSource::Gui {
                 profile: source.profile.clone(),
+                // 过渡：到 0.2.0 删；导入夹具沿用迁移来源字段。
                 legacy_project_id: alias.clone(),
             };
         }

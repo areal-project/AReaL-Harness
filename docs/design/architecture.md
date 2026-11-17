@@ -167,7 +167,7 @@ Engine 的 `diagnostics` 模块对非权威排障制品执行有界保留，serv
 
 Fork 与 Side 复用 Core/Runtime 的会话、历史和执行所有者。`conversation.origin` 记录内容来源，不承担 Agent 委派或取消归属。Fork 在当前共享工作区分支对话。新建 Side 保存版本 2 和 `sideExecutableV2` 策略，继承来源当前配置并复用普通会话的提交、工具、权限和压缩路径。稳定来源历史仅供模型参考，活动轮次只复制用户输入，子会话界面与执行账本从空白开始。旧版 `sideReadOnlyV1` 在存储校验、工具目录、指令和 Runtime Scope 中保持只读。Renderer 用完整 `Composer` 与 `Messages` 展示每个子会话，以项目、来源和子会话 ID 管理临时标签、草稿与引用。Core 持有创建及关闭收据；关闭先建立持久准入屏障，再停止并结算资源，UNKNOWN 不重放。隐藏面板和切换来源保留活动会话，关闭标签释放该子会话，重启不恢复新标签。Esc 按面板 DOM 归属路由。接口见[桌面 API](../api/desktop.md#side-chat)。源码、确定性本地模型、真实供应商与安装包分别验证。
 
-桌面目录准入核对 Core 保存的 V2 来源与相同物理 cwd，将 Side 及其委派子任务映射到来源 Session 作者；原子首问同样先准入。文件与浏览器结果沿子会话的执行 Core/root 路由。首轮只继承来源已挂载的固定电脑工具定义，旧版 Side 不扩权。
+桌面目录准入核对 Core 保存的 V2 来源与相同物理 cwd，将 Side 及其委派子任务映射到来源 Session 作者；原子首问同样先准入。文件与浏览器结果沿子会话的执行 Core/root 路由。首轮使用固定浏览器工具定义，旧版 Side 不扩权。
 
 提示词预测复用这两个 Composer。只有已显示且开启该功能的 GUI 请求最新成功轮次的候选；Core 保留该轮实际模型实例，独立发送无工具 `promptPrediction` 请求。一个持久化的 `DesktopState.promptPrediction` 标签槽负责来源、去重、恢复与失效；专用通知只更新该槽，Thread 快照负责恢复。待定尝试在重启后不可重试，已有候选原样恢复。预测不创建 Turn/Item、不进入 Solve 上下文。Lexical 在真实文档外显示候选，裸 Tab 仅接受到草稿；新输入暂时隐藏而不删除候选。模型容量、取消和最终发布验证归 Core；设置、需求与呈现归 GUI。详见[Core API](../api/core.md#下一条提示词预测)。
 
@@ -280,9 +280,7 @@ MCP hook 绑定原工具 generation 与真实 Turn/compaction owner，取消旧 
 Cloud 接入归 Clients：桌面适配器保存远端原生 Thread 身份及加密凭据，GUI、CLI 和 TUI 使用同一 app-server 协议连接 Arena 或远程 Core。Arena 工作区生命周期不进入客户端，批任务 HTTP CLI 仅保留兼容入口；消息与执行事实仍归远端 Core/Runtime。本地 Project 不因此变成另一份权威历史，后端运行默认值不由客户端选择。见[Cloud 客户端](../guides/clients.md#cloud)。
 `core/engine/src/workspace.rs` 在已确认的受管副作用结算边界管理共享作者租约；工具调用并发由 `tools/scheduling.rs` 按可信后端和顺序屏障控制。Runtime 仍拥有进程与清理事实，Core 不通过 shell 文本推断只读或资源已释放。
 
-电脑控制采用独立原生 Helper，Main 拥有生命周期、系统授权与停止，Core 保留准备计划、审批与历史权威。设置只发起用户明确点击的系统授权；观察与模型请求不会弹出授权。原生 AX、截图与输入结果经认证桌面通道返回，未知输入不自动重放。边界与构建见[电脑控制](../api/computer.md)。
 
-外部 LCU 是显式选择的电脑控制方式。Main 持有固定版本原始 CUA client 与每聊天 JS 会话，沿现有 computerHost 认证连接提供原始工具与原生应用授权。Core 向手动新建聊天注入完整初始化指令，产生可信调用身份，复用 MCP 结果投影与媒体持久化，并在权威 turn 结算前等待清理。旧聊天不迁移工具表；provider 切换在执行准入再次校验。LCU 不承载内置浏览器，Preview/browser_v1 的所有者保持不变。
 
 程序化工具位于 `core/engine/src/tools/program`，`tools/edit_files` 提供直接批量编辑入口，两者通过 `tools/composition` 复用原生子调用的准入、预算和结算：无宿主 I/O 的解释器仅产生调用请求，Core 沿既有入口持有权限、预算、历史和结算，Runtime 继续持有原生效果与进程生命周期；不增加 Clients 到 Runtime 的旁路。契约见[程序化工具调用](../guides/programmatic-tools.md)。
 

@@ -347,7 +347,6 @@ fn validate_non_navigation_setting(key: &str, value: &Value) -> Result<Value> {
             | "terminalInheritSystemProfile"
             | "hardwareAcceleration"
             | "taskNotifications"
-            | "computerControlShowEntry"
             | "browserFullAddress"
     ) {
         ensure!(value.is_boolean(), "INVALID_PARAMS");

@@ -54,7 +54,6 @@ const mainCommands = {
   hostUpdate: { kind: "shell", reason: "升级本机 Host" },
   stopService: { kind: "shell", reason: "停止桌面带起的后台" },
   browserData: { kind: "shell", reason: "内置浏览器的本机数据" },
-  computerControl: { kind: "shell", reason: "系统辅助功能权限与电脑控制进程" },
   bugReport: { kind: "shell", reason: "截图与本机保存" },
   exportDiagnostics: { kind: "shell", reason: "系统保存对话框" },
   serviceStatus: { kind: "transitional", reason: "后台状态；应由 Host 统一给出" },
@@ -73,18 +72,6 @@ const desktopOperations = {
   "manage.pluginArchivePick": { kind: "shell", reason: "系统文件选择框选插件包" },
   "manage.pluginArchiveImport": { kind: "shell", reason: "导入刚在系统文件框里选中的插件包" },
   "manage.process*": { kind: "shell", reason: "本机终端进程绑定桌面窗口持有的终端会话" },
-  "library.settings:computerControlEnabled": {
-    kind: "shell",
-    reason: "电脑控制要系统辅助功能权限，改设置前先停掉本机控制进程",
-  },
-  "library.settings:computerControlProvider": {
-    kind: "shell",
-    reason: "电脑控制要系统辅助功能权限，改设置前先停掉本机控制进程",
-  },
-  "library.settings:computerControlExecutable": {
-    kind: "shell",
-    reason: "电脑控制要系统辅助功能权限，改设置前先停掉本机控制进程",
-  },
 };
 
 /** 业务仍走 IPC 的上限：迁走一项就把对应数字减一，不允许加回去。 */

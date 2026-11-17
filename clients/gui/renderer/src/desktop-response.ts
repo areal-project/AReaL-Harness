@@ -86,7 +86,6 @@ const snapshotSchema: z.ZodType<Snapshot> = z.object({
     })
     .optional(),
   library: fields.optional(),
-  computerControl: fields.nullable().optional(),
 });
 function isSnapshot(value: unknown): value is Snapshot {
   return snapshotSchema.safeParse(value).success;

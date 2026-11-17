@@ -123,9 +123,6 @@
               "null"
             ]
           },
-          "externalCua": {
-            "type": "boolean"
-          },
           "interactionMode": {
             "$ref": "#/$defs/InteractionMode",
             "default": "interactive"
@@ -3480,9 +3477,6 @@
                     "null"
                   ]
                 },
-                "externalCua": {
-                  "type": "boolean"
-                },
                 "interactionMode": {
                   "$ref": "#/properties/queue/$defs/InteractionMode",
                   "default": "interactive"
@@ -5544,9 +5538,6 @@
                     "null"
                   ]
                 },
-                "externalCua": {
-                  "type": "boolean"
-                },
                 "interactionMode": {
                   "$ref": "#/properties/configuration/$defs/InteractionMode",
                   "default": "interactive"
@@ -6289,9 +6280,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
@@ -12346,9 +12334,6 @@
                     "null"
                   ]
                 },
-                "externalCua": {
-                  "type": "boolean"
-                },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
                   "default": "interactive"
@@ -16159,9 +16144,6 @@
                     "null"
                   ]
                 },
-                "externalCua": {
-                  "type": "boolean"
-                },
                 "interactionMode": {
                   "$ref": "#/properties/turn/$defs/InteractionMode",
                   "default": "interactive"
@@ -18185,9 +18167,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/turn/$defs/InteractionMode",
@@ -20642,9 +20621,6 @@
               "boolean",
               "null"
             ]
-          },
-          "externalCua": {
-            "type": "boolean"
           },
           "interactionMode": {
             "$ref": "#/$defs/InteractionMode",
@@ -29318,8 +29294,7 @@
       "$defs": {
         "DesktopToolBundle": {
           "enum": [
-            "areal.browser.v1",
-            "areal.computer.v1"
+            "areal.browser.v1"
           ],
           "type": "string"
         }
@@ -29930,9 +29905,6 @@
                 "null"
               ]
             },
-            "externalCua": {
-              "type": "boolean"
-            },
             "interactionMode": {
               "$ref": "#/$defs/InteractionMode",
               "default": "interactive"
@@ -30435,9 +30407,6 @@
                 "boolean",
                 "null"
               ]
-            },
-            "externalCua": {
-              "type": "boolean"
             },
             "interactionMode": {
               "$ref": "#/$defs/InteractionMode",
@@ -34735,9 +34704,6 @@
                       "null"
                     ]
                   },
-                  "externalCua": {
-                    "type": "boolean"
-                  },
                   "interactionMode": {
                     "$ref": "#/properties/data/items/$defs/InteractionMode",
                     "default": "interactive"
@@ -38641,9 +38607,6 @@
                         "null"
                       ]
                     },
-                    "externalCua": {
-                      "type": "boolean"
-                    },
                     "interactionMode": {
                       "$ref": "#/oneOf/0/properties/thread/$defs/InteractionMode",
                       "default": "interactive"
@@ -42444,9 +42407,6 @@
                         "boolean",
                         "null"
                       ]
-                    },
-                    "externalCua": {
-                      "type": "boolean"
                     },
                     "interactionMode": {
                       "$ref": "#/oneOf/0/properties/turn/$defs/InteractionMode",
@@ -48182,9 +48142,6 @@
                       "null"
                     ]
                   },
-                  "externalCua": {
-                    "type": "boolean"
-                  },
                   "interactionMode": {
                     "$ref": "#/properties/data/items/$defs/InteractionMode",
                     "default": "interactive"
@@ -53158,9 +53115,6 @@
                         "null"
                       ]
                     },
-                    "externalCua": {
-                      "type": "boolean"
-                    },
                     "interactionMode": {
                       "$ref": "#/properties/activeTurn/anyOf/0/$defs/InteractionMode",
                       "default": "interactive"
@@ -55513,9 +55467,6 @@
                         "boolean",
                         "null"
                       ]
-                    },
-                    "externalCua": {
-                      "type": "boolean"
                     },
                     "interactionMode": {
                       "$ref": "#/properties/queue/anyOf/0/$defs/InteractionMode",
@@ -65973,9 +65924,6 @@
                     "null"
                   ]
                 },
-                "externalCua": {
-                  "type": "boolean"
-                },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
                   "default": "interactive"
@@ -69773,9 +69721,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/turn/$defs/InteractionMode",
@@ -74078,9 +74023,6 @@
                 "null"
               ]
             },
-            "externalCua": {
-              "type": "boolean"
-            },
             "interactionMode": {
               "$ref": "#/$defs/InteractionMode",
               "default": "interactive"
@@ -75004,9 +74946,6 @@
                 "boolean",
                 "null"
               ]
-            },
-            "externalCua": {
-              "type": "boolean"
             },
             "interactionMode": {
               "$ref": "#/$defs/InteractionMode",
@@ -75932,9 +75871,6 @@
                 "null"
               ]
             },
-            "externalCua": {
-              "type": "boolean"
-            },
             "interactionMode": {
               "$ref": "#/$defs/InteractionMode",
               "default": "interactive"
@@ -76859,9 +76795,6 @@
                 "null"
               ]
             },
-            "externalCua": {
-              "type": "boolean"
-            },
             "interactionMode": {
               "$ref": "#/$defs/InteractionMode",
               "default": "interactive"
@@ -77785,9 +77718,6 @@
                 "boolean",
                 "null"
               ]
-            },
-            "externalCua": {
-              "type": "boolean"
             },
             "interactionMode": {
               "$ref": "#/$defs/InteractionMode",
@@ -78737,9 +78667,6 @@
                 "boolean",
                 "null"
               ]
-            },
-            "externalCua": {
-              "type": "boolean"
             },
             "interactionMode": {
               "$ref": "#/$defs/InteractionMode",
@@ -81477,9 +81404,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
@@ -85281,9 +85205,6 @@
                         "null"
                       ]
                     },
-                    "externalCua": {
-                      "type": "boolean"
-                    },
                     "interactionMode": {
                       "$ref": "#/properties/turn/anyOf/0/$defs/InteractionMode",
                       "default": "interactive"
@@ -87384,9 +87305,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
@@ -91185,9 +91103,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/turn/$defs/InteractionMode",
@@ -98803,9 +98718,6 @@
                         "boolean",
                         "null"
                       ]
-                    },
-                    "externalCua": {
-                      "type": "boolean"
                     },
                     "interactionMode": {
                       "$ref": "#/anyOf/4/properties/thread/$defs/InteractionMode",
@@ -112280,9 +112192,6 @@
                 "null"
               ]
             },
-            "externalCua": {
-              "type": "boolean"
-            },
             "interactionMode": {
               "$ref": "#/$defs/InteractionMode",
               "default": "interactive"
@@ -112960,9 +112869,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
@@ -116775,9 +116681,6 @@
                     "null"
                   ]
                 },
-                "externalCua": {
-                  "type": "boolean"
-                },
                 "interactionMode": {
                   "$ref": "#/properties/configuration/$defs/InteractionMode",
                   "default": "interactive"
@@ -118025,9 +117928,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
@@ -122921,9 +122821,6 @@
                     "null"
                   ]
                 },
-                "externalCua": {
-                  "type": "boolean"
-                },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
                   "default": "interactive"
@@ -126780,9 +126677,6 @@
                     "null"
                   ]
                 },
-                "externalCua": {
-                  "type": "boolean"
-                },
                 "interactionMode": {
                   "$ref": "#/properties/turn/$defs/InteractionMode",
                   "default": "interactive"
@@ -128804,9 +128698,6 @@
                         "boolean",
                         "null"
                       ]
-                    },
-                    "externalCua": {
-                      "type": "boolean"
                     },
                     "interactionMode": {
                       "$ref": "#/oneOf/0/properties/turn/$defs/InteractionMode",
@@ -141145,9 +141036,6 @@
                       "null"
                     ]
                   },
-                  "externalCua": {
-                    "type": "boolean"
-                  },
                   "interactionMode": {
                     "$ref": "#/properties/data/items/$defs/InteractionMode",
                     "default": "interactive"
@@ -145038,9 +144926,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
@@ -149024,9 +148909,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
@@ -153871,9 +153753,6 @@
                     "null"
                   ]
                 },
-                "externalCua": {
-                  "type": "boolean"
-                },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
                   "default": "interactive"
@@ -157695,9 +157574,6 @@
                     "null"
                   ]
                 },
-                "externalCua": {
-                  "type": "boolean"
-                },
                 "interactionMode": {
                   "$ref": "#/properties/turn/$defs/InteractionMode",
                   "default": "interactive"
@@ -159629,78 +159505,6 @@
       ],
       "type": "object"
     },
-    "areal/computer/prepare": {
-      "additionalProperties": false,
-      "properties": {
-        "arguments": {},
-        "callId": {
-          "type": "string"
-        },
-        "computerApproval": {
-          "additionalProperties": false,
-          "properties": {
-            "plan": {
-              "type": "object"
-            }
-          },
-          "required": [
-            "plan"
-          ],
-          "type": "object"
-        },
-        "discardPreparedPlan": {
-          "type": "boolean"
-        },
-        "hostGeneration": {
-          "type": "string"
-        },
-        "threadId": {
-          "type": "string"
-        },
-        "tool": {
-          "type": "string"
-        },
-        "turnId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "threadId",
-        "turnId",
-        "callId",
-        "tool",
-        "arguments",
-        "hostGeneration"
-      ],
-      "type": "object"
-    },
-    "areal/cua/turnEnded": {
-      "additionalProperties": false,
-      "properties": {
-        "event": {
-          "enum": [
-            "Stop",
-            "Interrupt"
-          ]
-        },
-        "hostGeneration": {
-          "type": "string"
-        },
-        "threadId": {
-          "type": "string"
-        },
-        "turnId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "threadId",
-        "turnId",
-        "hostGeneration",
-        "event"
-      ],
-      "type": "object"
-    },
     "areal/host/status": {
       "additionalProperties": false,
       "properties": {},
@@ -159789,18 +159593,6 @@
         "callId": {
           "type": "string"
         },
-        "computerApproval": {
-          "additionalProperties": false,
-          "properties": {
-            "plan": {
-              "type": "object"
-            }
-          },
-          "required": [
-            "plan"
-          ],
-          "type": "object"
-        },
         "hostGeneration": {
           "type": "string"
         },
@@ -159827,14 +159619,6 @@
   },
   "serverResponses": {
     "areal/browser/prepare": {
-      "type": "object"
-    },
-    "areal/computer/prepare": {
-      "type": "object"
-    },
-    "areal/cua/turnEnded": {
-      "additionalProperties": false,
-      "properties": {},
       "type": "object"
     },
     "areal/host/status": {
@@ -160183,9 +159967,6 @@
               "boolean",
               "null"
             ]
-          },
-          "externalCua": {
-            "type": "boolean"
           },
           "interactionMode": {
             "$ref": "#/$defs/InteractionMode",
@@ -163984,9 +163765,6 @@
               "boolean",
               "null"
             ]
-          },
-          "externalCua": {
-            "type": "boolean"
           },
           "interactionMode": {
             "$ref": "#/$defs/InteractionMode",

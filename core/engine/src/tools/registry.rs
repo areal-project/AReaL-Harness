@@ -175,16 +175,6 @@ pub trait DynamicToolHost: Send + Sync {
     ) -> anyhow::Result<Option<Value>> {
         Ok(None)
     }
-    async fn prepare_computer(
-        &self,
-        _request: Value,
-        _cancel: CancellationToken,
-    ) -> anyhow::Result<Option<Value>> {
-        Ok(None)
-    }
-    async fn end_cua_turn(&self, _request: Value) -> anyhow::Result<()> {
-        Ok(())
-    }
     async fn page_tool_notice(
         &self,
         _notice: areal_protocol::plugin_runtime::PageToolNotice,

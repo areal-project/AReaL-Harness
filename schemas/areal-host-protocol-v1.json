@@ -17323,7 +17323,6 @@
             "terminalInheritSystemProfile",
             "hardwareAcceleration",
             "taskNotifications",
-            "computerControlShowEntry",
             "browserFullAddress",
             "terminalFontFamily",
             "httpProxy",
@@ -30465,9 +30464,6 @@
             }
           ]
         },
-        "externalCua": {
-          "type": "boolean"
-        },
         "interactionMode": {
           "$ref": "#/$defs/WorkbenchManagedInteractionMode"
         },
@@ -34034,9 +34030,6 @@
               "type": "null"
             }
           ]
-        },
-        "externalCua": {
-          "type": "boolean"
         },
         "interactionMode": {
           "$ref": "#/$defs/WorkbenchExecutionCoreInteractionMode",
@@ -42758,86 +42751,6 @@
             "params"
           ],
           "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "projectId": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            },
-            "lease": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "method": {
-              "type": "string",
-              "const": "areal/computer/prepare"
-            },
-            "params": {
-              "$ref": "urn:areal:core-protocol:v1#/serverRequests/areal~1computer~1prepare"
-            },
-            "requestId": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 512
-                },
-                {
-                  "type": "number"
-                }
-              ]
-            }
-          },
-          "required": [
-            "projectId",
-            "lease",
-            "method",
-            "params"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "projectId": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            },
-            "lease": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "method": {
-              "type": "string",
-              "const": "areal/cua/turnEnded"
-            },
-            "params": {
-              "$ref": "urn:areal:core-protocol:v1#/serverRequests/areal~1cua~1turnEnded"
-            },
-            "requestId": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 512
-                },
-                {
-                  "type": "number"
-                }
-              ]
-            }
-          },
-          "required": [
-            "projectId",
-            "lease",
-            "method",
-            "params"
-          ],
-          "additionalProperties": false
         }
       ]
     },
@@ -42848,12 +42761,6 @@
         },
         {
           "$ref": "urn:areal:core-protocol:v1#/serverResponses/areal~1browser~1prepare"
-        },
-        {
-          "$ref": "urn:areal:core-protocol:v1#/serverResponses/areal~1computer~1prepare"
-        },
-        {
-          "$ref": "urn:areal:core-protocol:v1#/serverResponses/areal~1cua~1turnEnded"
         }
       ]
     },
@@ -43071,7 +42978,6 @@
             "terminalInheritSystemProfile",
             "hardwareAcceleration",
             "taskNotifications",
-            "computerControlShowEntry",
             "browserFullAddress",
             "terminalFontFamily",
             "httpProxy",
@@ -47627,9 +47533,6 @@
                           "terminalInheritSystemProfile",
                           "hardwareAcceleration",
                           "taskNotifications",
-                          "computerControlEnabled",
-                          "computerControlShowEntry",
-                          "computerControlProvider",
                           "browserLinkTarget",
                           "browserLocalTarget",
                           "browserFullAddress",
@@ -47637,7 +47540,6 @@
                           "httpProxy",
                           "httpProxyNoProxy",
                           "httpProxyCaCertPath",
-                          "computerControlExecutable",
                           "blockPrivatePreviewNetworks",
                           "projectlessDirectory",
                           "worktrees",
@@ -60580,108 +60482,6 @@
             },
             "params": {
               "$ref": "urn:areal:core-protocol:v1#/serverRequests/areal~1browser~1prepare"
-            },
-            "requestId": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "event": {
-              "type": "string",
-              "const": "core.callback"
-            },
-            "coreRequestId": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 512
-                },
-                {
-                  "type": "number"
-                }
-              ]
-            }
-          },
-          "required": [
-            "projectId",
-            "lease",
-            "method",
-            "params",
-            "event",
-            "requestId",
-            "coreRequestId"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "projectId": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            },
-            "lease": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "method": {
-              "type": "string",
-              "const": "areal/computer/prepare"
-            },
-            "params": {
-              "$ref": "urn:areal:core-protocol:v1#/serverRequests/areal~1computer~1prepare"
-            },
-            "requestId": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "event": {
-              "type": "string",
-              "const": "core.callback"
-            },
-            "coreRequestId": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 512
-                },
-                {
-                  "type": "number"
-                }
-              ]
-            }
-          },
-          "required": [
-            "projectId",
-            "lease",
-            "method",
-            "params",
-            "event",
-            "requestId",
-            "coreRequestId"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "projectId": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            },
-            "lease": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "method": {
-              "type": "string",
-              "const": "areal/cua/turnEnded"
-            },
-            "params": {
-              "$ref": "urn:areal:core-protocol:v1#/serverRequests/areal~1cua~1turnEnded"
             },
             "requestId": {
               "type": "string",

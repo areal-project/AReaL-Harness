@@ -470,7 +470,6 @@ impl Engine {
         self.mutate(move |engine| async move {
             let tool = match request.bundle_id.as_str() {
                 BROWSER_V1_BUNDLE => areal_protocol::desktop::browser_v1_tool(),
-                areal_protocol::desktop::COMPUTER_V1_BUNDLE => areal_protocol::desktop::computer_v1_tool(),
                 _ => return Err(invalid("unsupported desktop tool bundle")),
             };
             if host.is_closed() || host.identity() != identity {
@@ -512,7 +511,7 @@ impl Engine {
                 return Err(Error::Conflict);
             }
             // 旧工具仅在原 live ToolHost 当前连接上继续执行；不能改绑给不认识它们的 GUI。
-            let deployed = [areal_protocol::desktop::browser_v1_tool(), areal_protocol::desktop::computer_v1_tool()];
+            let deployed = [areal_protocol::desktop::browser_v1_tool()];
             if state.thread.dynamic_tools.iter().any(|entry| !deployed.iter().any(|known| digest(entry).ok() == digest(known).ok()))
                 && !bindings.host.as_ref().is_some_and(|old| old.id() == host.id() && !old.is_closed())
             {

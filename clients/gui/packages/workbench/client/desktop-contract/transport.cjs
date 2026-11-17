@@ -167,11 +167,6 @@ const commandDefinitions = Object.freeze({
     "app",
     { status: read, ...operations(mutation, "importChrome clearCache clearAll") },
   ],
-  computerControl: [
-    "main",
-    "app",
-    { status: read, ...operations(mutation, "requestAccess openSettings restart stop") },
-  ],
   bugReport: [
     "main",
     "app",

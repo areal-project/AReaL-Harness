@@ -1096,10 +1096,7 @@ async fn callback(
         )?);
     }
     connection.require_current(host)?;
-    if matches!(
-        method,
-        "item/tool/call" | "areal/browser/prepare" | "areal/cua/turnEnded"
-    ) {
+    if matches!(method, "item/tool/call" | "areal/browser/prepare") {
         let lease = connection
             .workbench_lease
             .borrow()

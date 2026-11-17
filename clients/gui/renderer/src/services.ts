@@ -132,7 +132,6 @@ export interface Snapshot {
     }[];
   };
   library?: Data;
-  computerControl?: Data | null;
 }
 export interface UpdateState {
   enabled: boolean;
