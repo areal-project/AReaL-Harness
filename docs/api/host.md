@@ -47,6 +47,8 @@ Host 发布包内与 Electron 相同的 Renderer。`areal web` 打开公开 orig
 
 `providers.read` 读取 Host 的公开供应商配置投影；`providers.command` 接受保存、应用、默认模型、删除、发现和探测，要求本机浏览器的 manage 授权。写入以 `commandId` 查询原回执；草稿凭据不进入 journal 参数，浏览器不能调用 `revealKey`。保存、默认模型、删除和显式应用由 Host 统一准入。保存先写规范配置，不等待在线 Core；每个项目独立在空闲时应用，并按原请求核查回执。UNKNOWN 不重发，明确失败后可显式重试；未运行项目使用下次启动的配置。Node 只核验应用证明，不再写配置或全局回滚；发现和探测也由 Host 执行，不启动 Node 或 Core；保留来源网络设置、代理绕过及证书验证，30 秒超时，发现响应最多 1 MiB 和 64 个模型，探测要求完整且非空的 SSE 文本成功终态。模型草稿的 `reportedContextWindowTokens` 保留上游报告的上下文窗口，取 1–2,000,000 的整数，与用户覆盖的 `parameters.contextWindowTokens` 分开保存。保存要求 API Key 但既无输入也无已配置引用时返回 `PROVIDER_CREDENTIAL_REQUIRED`，原命令确定拒绝，不留待核对的提交。
 
+`providerRevision` 同时覆盖应用证明的有效性：证明失效或重新有效时，即使证明内容相同也推进版本。保存回执是原命令的固定结果；界面按后续版本通知重读当前投影，不能用回执替代实时应用状态。
+
 供应商列表通过 Host 的 `modelsCatalog` 只读取配置及凭据引用，不等待安全存储或项目配置对账。尚未核查的已存储凭据返回 `credentialStates: checking`；同一配置 revision 可复用最近一次凭据诊断。后台继续非交互检查凭据并核对原项目回执，客户端在 checking 或应用未确认时刷新投影。目录可见不代表凭据可用；保存、探测和执行仍走原校验路径。
 
 工作台各域的读写（`library`、`worktree`、`tasks`、`trajectory`、`feedback`、`manage`、`providers`）与 `desktop.command` 都不需要客户端指定 `sourceId`：省略时 Host 用当前工作台后台的来源，后台未运行时返回 `CAPABILITY_UNAVAILABLE`；显式传入且不一致时返回 `FORBIDDEN`。

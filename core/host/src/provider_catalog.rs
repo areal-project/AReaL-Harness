@@ -131,6 +131,22 @@ fn execution_stamp(host: &Host, targets: &[Target]) -> Value {
             .collect::<Vec<_>>()
     )
 }
+fn projection_revision(
+    stamp: &Value,
+    execution: &Value,
+    checked: Option<&Checked>,
+) -> Result<String> {
+    // 版本必须反映 read() 实际可用的证明；同内容证明重新有效时也要唤醒客户端重读。
+    Ok(storage::digest(&serde_json::to_vec(&json!([
+        stamp,
+        execution,
+        checked.map(|checked| json!([
+            checked.snapshot,
+            checked.errors,
+            (checked.execution == *execution).then_some(&checked.proofs)
+        ]))
+    ]))?))
+}
 pub(super) fn base_url(endpoint: &str) -> String {
     let value = endpoint.strip_suffix('/').unwrap_or(endpoint);
     value
@@ -222,11 +238,11 @@ impl Providers {
         let stamp = stamp(host, source, &catalog)?;
         let checked = self.checked.borrow();
         let current = checked.as_ref().filter(|checked| checked.stamp == stamp);
-        Ok(storage::digest(&serde_json::to_vec(&json!([
-            stamp,
-            execution_stamp(host, &targets(host, source)?),
-            current.map(|checked| json!([checked.snapshot, checked.errors, checked.proofs]))
-        ]))?))
+        projection_revision(
+            &stamp,
+            &execution_stamp(host, &targets(host, source)?),
+            current,
+        )
     }
     pub(super) fn read(self: &Rc<Self>, host: &Rc<Host>, source: &str) -> Result<Value> {
         let options = host.gateway.workbench.utility_options(source)?;
@@ -471,4 +487,29 @@ fn credential_check_stamp_survives_transport_reconnection() {
         "transport identity must not invalidate a credential check"
     );
     assert_eq!(execution_stamp(&host, &targets), execution);
+}
+
+#[cfg(test)]
+#[test]
+fn provider_revision_publishes_same_proof_when_it_becomes_current() {
+    let stamp = json!({"revision":"saved-config"});
+    let execution = json!({"generation":"core","catalog":2});
+    let mut checked = Checked {
+        stamp: stamp.clone(),
+        execution: json!({"generation":"core","catalog":1}),
+        snapshot: json!({"revision":"saved-config"}),
+        errors: json!({}),
+        proofs: BTreeMap::from([(
+            "project".into(),
+            json!({"applied":{"revision":"saved-config"}}),
+        )]),
+        at: Instant::now(),
+    };
+    let unknown = projection_revision(&stamp, &execution, Some(&checked)).unwrap();
+    checked.execution = execution.clone();
+    let applied = projection_revision(&stamp, &execution, Some(&checked)).unwrap();
+    assert_ne!(
+        unknown, applied,
+        "restoring the same proof must notify clients after an unknown projection"
+    );
 }
