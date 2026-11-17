@@ -111,9 +111,9 @@ it("opens a fresh draft in a stopped project without an empty Thread target", as
   expect(f.selectSession).toHaveBeenCalledExactlyOnceWith(null);
 });
 
-it("reads stopped project history without activating its execution", async () => {
+it("browser reads stopped project history without activating execution", async () => {
   const f = fixture(
-    true,
+    false,
     async () => {
       throw Error("reading history must not activate Core");
     },
@@ -283,9 +283,9 @@ it("keeps a user-stopped project blocked until explicit resume", async () => {
   expect(f.selectSession).toHaveBeenCalledTimes(1);
 });
 
-it("reads persisted history without probing a blocked execution owner", async () => {
+it("browser reads persisted history without probing a blocked execution owner", async () => {
   const f = fixture(
-    true,
+    false,
     async () => {
       throw Object.assign(Error("old owner"), { code: "migrationBlocked" });
     },
@@ -314,9 +314,9 @@ it.each([
   expect(f.selectSession).not.toHaveBeenCalled();
 });
 
-it("does not attempt an uncertain activation when persisted history is available", async () => {
+it("browser does not activate execution when persisted history is available", async () => {
   const f = fixture(
-    true,
+    false,
     async () => {
       throw Object.assign(Error("activation result unknown"), {
         code: "migrationBlocked",
@@ -407,4 +407,35 @@ it.each([true, false])("restores the backend before Host reads on native=%s", as
     "connect",
     "read",
   ]);
+});
+
+it("desktop restores execution after displaying persisted history without submitting input", async () => {
+  const f = fixture(true, async () => {}, false, true);
+  await f.navigation.selectConversation(owner.projectId, owner.threadId);
+  expect(f.events).toEqual(["read", "connect", "read"]);
+  expect(f.selectSession).toHaveBeenNthCalledWith(1, {
+    projectId: owner.projectId,
+    threadId: owner.threadId,
+    persisted: true,
+  });
+  expect(f.selectSession).toHaveBeenNthCalledWith(2, {
+    projectId: owner.projectId,
+    threadId: owner.threadId,
+  });
+  expect(f.command.mock.calls.map(([name]) => name)).not.toContain("send");
+});
+
+it("does not activate execution for an observe-only desktop", async () => {
+  const f = fixture(
+    true,
+    async () => {
+      throw Error("must not activate");
+    },
+    false,
+    true,
+  );
+  Object.assign(f.services.capabilities!, { mutations: false });
+  await f.navigation.selectConversation(owner.projectId, owner.threadId);
+  expect(f.events).toEqual(["read"]);
+  expect(f.command).not.toHaveBeenCalled();
 });

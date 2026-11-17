@@ -269,10 +269,16 @@ export function useSessionNavigation(
                     throw error;
                 }
                 if (!current()) return;
-                // 阅读停止项目到此完成；写入入口再唤醒执行，导航不预热重进程。
+                // 本机桌面显示历史后继续恢复执行，避免发送入口又等待实时配置。
+                // 只读网页仍停在持久化历史，不为阅读启动项目。
                 if (persisted) {
                   setRestoration({ ...owner, pending: false, error: "" });
-                  return;
+                  if (
+                    services.capabilities?.native !== true ||
+                    services.capabilities?.mutations === false ||
+                    services.capabilities?.conversationSubmit === false
+                  )
+                    return;
                 }
               }
               try {
