@@ -240,14 +240,24 @@ impl RegisteredTool {
         {
             return result;
         }
-        self.input
-            .validate(arguments)
-            .map_err(|e| anyhow::anyhow!("invalid tool arguments at {}: {}", e.instance_path, e))
+        self.input.validate(arguments).map_err(|e| {
+            anyhow::anyhow!(
+                "invalid tool arguments at {} (schema {}): {}",
+                e.instance_path,
+                e.schema_path,
+                e.masked()
+            )
+        })
     }
     pub fn validate_output(&self, result: &Value) -> anyhow::Result<()> {
         if let Some(output) = &self.output {
             output.validate(result).map_err(|e| {
-                anyhow::anyhow!("invalid tool result at {}: {}", e.instance_path, e)
+                anyhow::anyhow!(
+                    "invalid tool result at {} (schema {}): {}",
+                    e.instance_path,
+                    e.schema_path,
+                    e.masked()
+                )
             })?;
         }
         Ok(())
@@ -859,6 +869,70 @@ mod tests {
         }
         tool.validate_output(&json!(4)).unwrap();
         assert!(tool.validate_output(&json!("4")).is_err());
+    }
+
+    #[test]
+    fn validation_feedback_omits_rejected_file_bodies() {
+        let registry = Registry::new(true, &ToolExtensions::default()).unwrap();
+        let tool = registry.get("edit_files").unwrap();
+        let body = "SOURCE_BODY_MARKER".repeat(1024);
+        let arguments = json!({"files":[{"path":"module.js","oldText":"old","newText":body}]});
+        let original = arguments.clone();
+        let message = tool.validate_input(&arguments).unwrap_err().to_string();
+        assert!(message.contains("/files/0"), "{message}");
+        assert!(message.contains("oneOf"), "{message}");
+        assert!(!message.contains("SOURCE_BODY_MARKER"));
+        assert!(message.len() < 512);
+        assert_eq!(arguments, original);
+        tool.validate_input(
+            &json!({"files":[{"path":"module.js","patches":[{"oldText":"old","newText":"new"}]}]}),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn validation_feedback_preserves_fields_types_and_limits() {
+        let schema = json!({"type":"object","required":["value"],"properties":{"value":{"type":"integer","minimum":1,"maximum":8}},"additionalProperties":false});
+        let registry = Registry::default()
+            .with_dynamic(&[definition(schema)])
+            .unwrap();
+        let tool = registry.get("lookup").unwrap();
+        let message = tool
+            .validate_input(&json!({"value":"INPUT_BODY_MARKER".repeat(1024)}))
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("/value"), "{message}");
+        assert!(message.contains("integer"), "{message}");
+        assert!(!message.contains("INPUT_BODY_MARKER"));
+        assert!(message.len() < 512);
+        let required = tool.validate_input(&json!({})).unwrap_err().to_string();
+        assert!(
+            required.contains("\"value\" is a required property"),
+            "{required}"
+        );
+        let limit = tool
+            .validate_input(&json!({"value":9}))
+            .unwrap_err()
+            .to_string();
+        assert!(limit.contains("maximum of 8"), "{limit}");
+        tool.validate_input(&json!({"value":4})).unwrap();
+    }
+
+    #[test]
+    fn validation_feedback_omits_invalid_output_bodies() {
+        let registry = Registry::default()
+            .with_dynamic(&[definition(json!({"type":"object"}))])
+            .unwrap();
+        let tool = registry.get("lookup").unwrap();
+        let message = tool
+            .validate_output(&json!("OUTPUT_BODY_MARKER".repeat(1024)))
+            .unwrap_err()
+            .to_string();
+        assert!(message.starts_with("invalid tool result at "), "{message}");
+        assert!(message.contains("integer"), "{message}");
+        assert!(!message.contains("OUTPUT_BODY_MARKER"));
+        assert!(message.len() < 512);
+        tool.validate_output(&json!(4)).unwrap();
     }
     #[test]
     fn rejects_invalid_schemas_external_refs_and_name_collisions() {

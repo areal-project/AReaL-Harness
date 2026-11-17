@@ -120,6 +120,8 @@ Provider HTTP 错误体最多读取 64 KiB、等待 2 秒，仅保留白名单 c
 
 Responses 在成功终态确认协议完整后，将参数交给与 Chat 共用的工具边界逐个校验；畸形 JSON、非对象参数和 schema 不符均作为工具错误反馈。截断参数不执行，也不抢先遮住后续真实 usage。合法终态携带的最终 usage 在工具额度、回放冲突或推理快照校验失败时仍按已知用量结算。缺少最终 usage 保持 UNKNOWN。`function_call` 显式非 `completed` 状态不得执行；省略或为 `null` 的状态字段保留兼容行为。终态同一调用的状态可更新先前快照，调用名称与参数冲突仍拒绝，不重放工具。
 
+工具输入或输出不符合 JSON Schema 时，错误保留实例路径、schema 路径、字段名、预期类型与限制，并省略被拒绝的值，避免重复回显文件正文。校验与执行规则不变。
+
 Rust 模型适配器的完整 `ToolCallLimits` 结构体字面量需包含 `require_call`；默认值为 `false`。显式 Goal 报告阶段将其设为 `true`，HTTP 适配器在已授权工具目录内要求结构化调用，其他请求保持原行为。
 
 外部平台通过原生 CLI `exec --output-format stream-json --include-native-events` 消费 Core 通知及终态结构化错误，原始字段保持不变，见 [CLI 契约](claude-cli.md)。输入物化、进程期限、结果投影、产物收集和部署用量统计由平台负责。仓库不再提供旧 EnvArena Python runner 或 zipapp；已发布的平台不可变版本仍独立管理。
