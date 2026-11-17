@@ -465,7 +465,7 @@ test(
       project.client?.close();
     });
     await host.connections.connect(project, { observeOnly: true });
-    assert.deepEqual(publications, [{ bundles: ["areal.browser.v1"] }]);
+    assert.deepEqual(publications, [{ bundles: [] }]);
     const tool = {
       tool: "browser_v1",
       threadId: "thread",
@@ -490,7 +490,7 @@ test(
     assert.deepEqual(publications.at(-1), { bundles: [] });
     managed = true;
     await host.connections.publishScheduleTools(project, liveClient, owner);
-    assert.deepEqual(publications.at(-1), { bundles: ["areal.browser.v1"] });
+    assert.deepEqual(publications.at(-1), { bundles: [] });
     assert.equal(project.client, liveClient);
     assert.equal(liveClient.closed, false);
     browserAvailable = false;
@@ -523,7 +523,7 @@ test(
     assert.equal(observer.closed, true);
     await host.connections.connect(project, { observeOnly: true });
     const successor = project.client;
-    assert.deepEqual(publications.at(-1), { bundles: ["areal.browser.v1"] });
+    assert.deepEqual(publications.at(-1), { bundles: [] });
     assert.equal(publications.length, publishedBeforeForeign + 1);
     host.connections.revokeDesktopToolHost(firstOwner);
     assert.equal(successor.closed, false);

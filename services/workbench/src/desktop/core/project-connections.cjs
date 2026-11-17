@@ -67,14 +67,8 @@ class ProjectConnections {
       !client.capabilities?.methods?.includes("areal/task/tools/ready")
     )
       return;
-    const bundles = this.host.providers.manages(project)
-      ? this.host
-          .desktopTools(project)
-          .flatMap((tool) =>
-            !modelRecord(tool) ? [] : tool.name === "browser_v1" ? ["areal.browser.v1"] : [],
-          )
-      : [];
-    await client.request("areal/task/tools/ready", { bundles });
+    // 调度工具由Rust Host的Main专用租约发布；旧观察连接只撤销自身发布。
+    await client.request("areal/task/tools/ready", { bundles: [] });
     this.requireConnection(project, client);
   }
 

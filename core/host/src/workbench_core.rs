@@ -237,7 +237,12 @@ impl Connections {
         Ok(())
     }
 
-    fn workbench_session(&self, host: &Host, id: &str, lease: &str) -> Result<Rc<CoreSession>> {
+    pub(super) fn workbench_session(
+        &self,
+        host: &Host,
+        id: &str,
+        lease: &str,
+    ) -> Result<Rc<CoreSession>> {
         let terminal = self.terminals.borrow().get(lease).cloned();
         let session = terminal
             .or_else(|| self.sessions.borrow().get(id).cloned())

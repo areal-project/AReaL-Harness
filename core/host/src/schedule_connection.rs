@@ -389,6 +389,9 @@ fn unavailable() -> anyhow::Error {
 }
 
 fn task_connection_ready(host: &Rc<Host>, session: &Rc<CoreSession>) {
+    host.schedules
+        .connections
+        .frontend_project_ready(host, &session.project_id);
     if host.gateway.workbench.active_source().is_some() {
         let host = host.clone();
         let project = session.project_id.clone();

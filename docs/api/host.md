@@ -113,7 +113,7 @@ Host 发布包内与 Electron 相同的 Renderer。`areal web` 打开公开 orig
 
 Host 内部共享 Core 连接的监督器在状态探测暂时失败后，仍按原退避重新探测当前 Host 持有生命周期且启动结果已确定的服务，即使项目的定时激活已被抑制。恢复前重新核验服务身份与 owner；探测不调用 `project.ensure`，不启动新 Core，也不解除停止意图。已停止、失去生命周期持有权、owner 不匹配或启动结果未确定的项目不通过这条重试路径恢复。
 
-本机 Main 通过 `desktop.core.subscribe` 绑定来源和经核验的启动选项；可选 `environmentCredentials` 只接受已配置的环境凭据名，值仅保留在 Host 内存，不进入启动记录。`desktop.core.event` 的工具回调携带原 `sourceId/projectId/lease/coreInstanceId/coreGeneration/connectionId`，以及用于原生预览的 `guiProjectId/workspacePath`；逻辑项目与执行工作树不能互换。`desktop.core.callback` 仅回复同一附件的原请求，媒体上传仍使用原执行项目和租约。附件断开撤销专用连接，不重放回调或提交。
+本机 Main 通过 `desktop.core.subscribe` 绑定来源和经核验的启动选项；可选 `environmentCredentials` 只接受已配置的环境凭据名，值仅保留在 Host 内存，不进入启动记录。`desktop.core.event` 的工具回调携带原 `sourceId/projectId/lease/coreInstanceId/coreGeneration/connectionId`，以及用于原生预览的 `guiProjectId/workspacePath`；逻辑项目与执行工作树不能互换。`desktop.core.callback` 仅回复同一附件的原请求，媒体上传仍使用原执行项目和租约。附件断开撤销专用连接，不重放回调或提交。 Main 订阅既有就绪项目或 Core 后续就绪时，Host 在该附件的项目专用租约上发布 `areal.browser.v1` 调度工具；普通原生连接与会话准备复用同一租约。旧 Node 观察连接只撤销自身工具发布，不能接管原生工具宿主。
 
 ## 定时项目激活与准备
 

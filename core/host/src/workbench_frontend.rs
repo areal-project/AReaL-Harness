@@ -16,6 +16,7 @@ pub(super) struct Frontend {
     options: Value,
     events: mpsc::Sender<Value>,
     leases: BTreeMap<String, String>,
+    browser_gates: BTreeMap<String, Rc<tokio::sync::Mutex<()>>>,
     callbacks: BTreeMap<String, oneshot::Sender<Result<Value>>>,
 }
 impl Connections {
@@ -25,29 +26,43 @@ impl Connections {
         source: &str,
         project: &str,
     ) -> Result<Option<String>> {
-        let owner = self
-            .frontends
-            .borrow()
-            .iter()
-            .find(|(_, frontend)| frontend.source == source)
-            .map(|(id, frontend)| {
-                (
-                    id.clone(),
-                    frontend
-                        .leases
-                        .iter()
-                        .find(|(lease, id)| {
-                            id.as_str() == project
-                                && self.terminals.borrow().get(*lease).is_some_and(|session| {
-                                    session.desktop.get() && !session.closed.get()
-                                })
-                        })
-                        .map(|(lease, _)| lease.clone()),
-                )
-            });
-        let Some((attachment, existing)) = owner else {
+        let owner = {
+            let mut frontends = self.frontends.borrow_mut();
+            frontends
+                .iter_mut()
+                .find(|(_, frontend)| frontend.source == source)
+                .map(|(id, frontend)| {
+                    (
+                        id.clone(),
+                        frontend
+                            .browser_gates
+                            .entry(project.into())
+                            .or_insert_with(|| Rc::new(tokio::sync::Mutex::new(())))
+                            .clone(),
+                    )
+                })
+        };
+        let Some((attachment, gate)) = owner else {
             return Ok(None);
         };
+        let _attach = gate.lock().await;
+        let existing =
+            {
+                let frontends = self.frontends.borrow();
+                let frontend = frontends
+                    .get(&attachment)
+                    .context("CAPABILITY_UNAVAILABLE")?;
+                frontend
+                    .leases
+                    .iter()
+                    .find(|(lease, id)| {
+                        id.as_str() == project
+                            && self.terminals.borrow().get(*lease).is_some_and(|session| {
+                                session.desktop.get() && !session.closed.get()
+                            })
+                    })
+                    .map(|(lease, _)| lease.clone())
+            };
         if let Some(lease) = existing {
             self.workbench_identity(host, project, &lease)?;
             return Ok(Some(lease));
@@ -63,6 +78,77 @@ impl Connections {
         }
         self.workbench_detach(host, project, &lease)?;
         anyhow::bail!("CAPABILITY_UNAVAILABLE")
+    }
+
+    // 共享连接就绪和Main重连都发布同一专用租约，不能让两次异步attach抢占工具宿主。
+    pub(crate) fn frontend_project_ready(&self, host: &Rc<Host>, project: &str) {
+        let Some(source) = host.gateway.workbench.active_source() else {
+            return;
+        };
+        if !self
+            .frontends
+            .borrow()
+            .values()
+            .any(|frontend| frontend.source == source)
+            || super::super::workbench_route::backend_project_alias(host, &source, project).is_err()
+        {
+            return;
+        }
+        let host = host.clone();
+        let project = project.to_owned();
+        tokio::task::spawn_local(async move {
+            if host
+                .schedules
+                .connections
+                .frontend_publish_browser(&host, &source, &project)
+                .await
+                .is_err()
+            {
+                eprintln!("Host native browser scheduled tools unavailable");
+            }
+        });
+    }
+
+    async fn frontend_publish_browser(
+        &self,
+        host: &Rc<Host>,
+        source: &str,
+        project: &str,
+    ) -> Result<()> {
+        let Some(lease) = self.frontend_browser_lease(host, source, project).await? else {
+            return Ok(());
+        };
+        let identity = self.workbench_identity(host, project, &lease)?;
+        let session = self.workbench_session(host, project, &lease)?;
+        let caps = session
+            .request("areal/capabilities", json!({"apiVersion":"areal.core.v1"}))
+            .await?;
+        ensure!(
+            self.workbench_identity(host, project, &lease)? == identity,
+            "RESYNC_REQUIRED"
+        );
+        if caps["features"]["browserToolAttachment"] != true
+            || !caps["browserToolBundles"]
+                .as_array()
+                .is_some_and(|bundles| {
+                    bundles
+                        .iter()
+                        .any(|bundle| bundle["bundleId"] == "areal.browser.v1")
+                })
+        {
+            return Ok(());
+        }
+        session
+            .request(
+                "areal/task/tools/ready",
+                json!({"bundles":["areal.browser.v1"]}),
+            )
+            .await?;
+        ensure!(
+            self.workbench_identity(host, project, &lease)? == identity,
+            "RESYNC_REQUIRED"
+        );
+        Ok(())
     }
 
     pub(crate) fn frontend_owns(&self, lease: &str) -> bool {
@@ -103,6 +189,7 @@ impl Connections {
                 options,
                 events,
                 leases: BTreeMap::new(),
+                browser_gates: BTreeMap::new(),
                 callbacks: BTreeMap::new(),
             },
         );
@@ -404,7 +491,22 @@ impl Connections {
         }
         if call == "core.attach" {
             let value = if input["scope"].is_null() {
-                self.workbench_desktop_attach(host, project).await?
+                let lease = self
+                    .frontend_browser_lease(host, &source, project)
+                    .await?
+                    .context("CAPABILITY_UNAVAILABLE")?;
+                let (instance, generation, connection) =
+                    self.workbench_identity(host, project, &lease)?;
+                let session = self.workbench_session(host, project, &lease)?;
+                let caps = session
+                    .request("areal/capabilities", json!({"apiVersion":"areal.core.v1"}))
+                    .await?;
+                ensure!(
+                    self.workbench_identity(host, project, &lease)?
+                        == (instance.clone(), generation.clone(), connection.clone()),
+                    "RESYNC_REQUIRED"
+                );
+                json!({"lease":lease,"coreInstanceId":instance,"coreGeneration":generation,"connectionId":connection,"capabilities":caps})
             } else {
                 self.workbench_attach(host, project, input["scope"].as_str())
                     .await?
@@ -551,18 +653,23 @@ mod tests {
                 let registration=host.slots.borrow()["project"].registration.clone();
                 let service=Service{identity:areal_protocol::service::Identity{protocol_version:1,service_id:"fixture-core".into(),generation:"generation".into(),workspace:registration.workspace,data_dir:registration.data_dir,config_fingerprint:"fixture".into()},owner:Some(host.owner()),endpoint:format!("ws://{}/",listener.local_addr().unwrap()),web_url:String::new(),auth_file:root.path().join("auth.json"),log_file:root.path().join("core.log"),host_pid:1,core_pid:2,state:State::Ready};
                 storage::write(&service.auth_file,&json!({"principals":[{"id":"desktop-owner","token":"fixture-token"}]})).unwrap();
-                {let mut slots=host.slots.borrow_mut();let slot=slots.get_mut("project").unwrap();slot.state="ready".into();slot.service=Some(service.clone());}
+                {let mut slots=host.slots.borrow_mut();let slot=slots.get_mut("project").unwrap();slot.state="ready".into();slot.service=Some(service.clone());let (writer,lifetime)=areal_local_service::OwnerLifetime::pair().unwrap();slot.writer=Some(writer);slot.lifetime=Some(Rc::new(lifetime));}
                 let host=Rc::new(host);
+                let (published, published_ready)=oneshot::channel();
+                let published=Rc::new(RefCell::new(Some(published)));
                 let core=tokio::task::spawn_local(async move {
                     let mut connections=tokio::task::JoinSet::new();
                     for index in 0..2 {
                         let (stream,_)=listener.accept().await.unwrap();
+                        let published=published.clone();
                         connections.spawn_local(async move {
                             let mut socket=tokio_tungstenite::accept_async(stream).await.unwrap();let mut original=Value::Null;
                             while let Some(Ok(Message::Text(text)))=socket.next().await {
                                 let frame:Value=serde_json::from_str(&text).unwrap();if frame["method"]=="initialized"{continue;}
                                 if frame["method"]=="initialize" {socket.send(Message::Text(json!({"id":frame["id"],"result":{}}).to_string().into())).await.unwrap();}
                                 else if index==0 {socket.send(Message::Text(json!({"id":frame["id"],"result":{"alive":true}}).to_string().into())).await.unwrap();}
+                                else if frame["method"]=="areal/capabilities" {socket.send(Message::Text(json!({"id":frame["id"],"result":{"features":{"browserToolAttachment":true},"browserToolBundles":[{"bundleId":"areal.browser.v1"}]}}).to_string().into())).await.unwrap();}
+                                else if frame["method"]=="areal/task/tools/ready" {assert_eq!(frame["params"]["bundles"],json!(["areal.browser.v1"]));socket.send(Message::Text(json!({"id":frame["id"],"result":{}}).to_string().into())).await.unwrap();if let Some(done)=published.borrow_mut().take(){done.send(()).unwrap();}}
                                 else if frame["method"]=="areal/thread/start" {
                                     assert_eq!(frame["params"]["dynamicTools"][0]["name"],"browser_v1");
                                     socket.send(Message::Text(json!({"id":frame["id"],"result":{"thread":{"id":"browser-created"},"requestId":frame["params"]["requestId"]}}).to_string().into())).await.unwrap();
@@ -575,15 +682,21 @@ mod tests {
                     while let Some(result)=connections.join_next().await{result.unwrap();}
                 });
                 let shared=connect(host.clone(),"project",service.clone()).await.unwrap();host.schedules.connections.sessions.borrow_mut().insert("project".into(),shared.clone());
-                let session=connect_owned(host.clone(),"project",service,true).await.unwrap();session.desktop.set(true);
-                let lease=uuid::Uuid::new_v4().to_string();*session.workbench_lease.borrow_mut()=Some(lease.clone());host.schedules.connections.terminals.borrow_mut().insert(lease.clone(),session.clone());
+
                 let execution_alias=super::super::super::workbench_route::backend_project_alias(&host,&source_id,"project").unwrap();
-                storage::write(&source.core_home.join("projects.json"),&json!([{"id":execution_alias,"root":session.service.identity.workspace,"logicalProjectId":"logical"}])).unwrap();
+                storage::write(&source.core_home.join("projects.json"),&json!([{"id":execution_alias,"root":shared.service.identity.workspace,"logicalProjectId":"logical"}])).unwrap();
                 host.gateway.workbench.set_test_source_and_options(&source_id,json!({}));
                 let (mut events,mut event_writer)=host_socket(host.clone()).await;
                 // 过渡：到 0.2.0 删；夹具沿用来源导入的旧目录身份。
                 send(&mut event_writer,"subscribe","desktop.core.subscribe",json!({"sourceId":source_id,"options":{"binary":host.bin.join("areal"),"home":source.core_home,"guiProfile":source.profile,"hostHome":host.home,"harnessHome":source.legacy_service_home}})).await;
-                let subscribed=crate::wire::read(&mut events).await.unwrap().unwrap();assert!(subscribed.get("error").is_none(),"{subscribed}");let attachment=subscribed["result"]["attachmentId"].as_str().unwrap().to_owned();host.schedules.connections.frontends.borrow_mut().get_mut(&attachment).unwrap().leases.insert(lease.clone(),"project".into());
+                let subscribed=crate::wire::read(&mut events).await.unwrap().unwrap();assert!(subscribed.get("error").is_none(),"{subscribed}");let attachment=subscribed["result"]["attachmentId"].as_str().unwrap().to_owned();host.schedules.connections.frontend_project_ready(&host,"project");
+                let (one,two)=tokio::join!(host.schedules.connections.frontend_browser_lease(&host,&source_id,"project"),host.schedules.connections.frontend_browser_lease(&host,&source_id,"project"));
+                let lease=one.unwrap().unwrap();assert_eq!(two.unwrap(),Some(lease.clone()));
+                published_ready.await.unwrap();
+                let session=host.schedules.connections.terminals.borrow()[&lease].clone();
+                assert_eq!(host.schedules.connections.terminals.borrow().len(),1);
+                let attached=host.schedules.connections.frontend_call(&host,&json!({"attachmentId":attachment,"call":"core.attach","params":{"sourceId":source_id,"projectId":"project"}})).await.unwrap();
+                assert_eq!(attached["lease"],lease,"native attach and schedule publication must share the live tool host");
                 let (mut calls,mut call_writer)=host_socket(host.clone()).await;let (mut replies,mut reply_writer)=host_socket(host.clone()).await;
                 send(&mut call_writer,"call","desktop.core.call",json!({"attachmentId":attachment,"call":"core.request","params":{"sourceId":source_id,"projectId":"project","lease":lease,"method":"areal/server/status","params":{}}})).await;
                 let event=crate::wire::read(&mut events).await.unwrap().unwrap();assert_eq!(event["method"],"desktop.core.event");assert_eq!(event["params"]["event"]["coreRequestId"],17);assert_eq!(event["params"]["event"]["coreInstanceId"],"fixture-core");assert_eq!(event["params"]["event"]["coreGeneration"],"generation");assert_eq!(event["params"]["event"]["connectionId"],session.connection_id);assert_eq!(event["params"]["event"]["sourceId"],source_id);assert_eq!(event["params"]["event"]["guiProjectId"],"logical");assert_eq!(event["params"]["event"]["workspacePath"],json!(session.service.identity.workspace));
