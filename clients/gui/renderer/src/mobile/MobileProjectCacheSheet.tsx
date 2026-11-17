@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Folder, HardDrive, Trash2 } from "lucide-react";
 import { Button, Switch } from "@areal/ui";
-import { FeedbackNotice } from "@areal/ui/experimental";
+import { FeedbackNotice } from "../FeedbackNotice.js";
 import { readObservationResult } from "../host-services.js";
 import type { SessionRead, ShellProject } from "@areal/client";
 import { useI18n } from "../i18n/IntlProvider.js";
