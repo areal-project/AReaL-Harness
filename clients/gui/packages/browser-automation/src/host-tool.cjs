@@ -45,8 +45,8 @@ function validWait(parameters) {
     condition.name.length <= 256
   );
 }
-/** @param {import('../../../../../clients/gui/app/src/core/preview/tool-contract.cjs').WaitParameters} parameters
- * @returns {{kind:'wait',timeoutMs:number,condition?:import('../../../../../clients/gui/app/src/core/preview/tool-contract.cjs').WaitCondition}} */
+/** @param {import('./host-tool-types.cjs').WaitParameters} parameters
+ * @returns {{kind:'wait',timeoutMs:number,condition?:import('./host-tool-types.cjs').WaitCondition}} */
 function waitAction(parameters) {
   return {
     kind: "wait",
@@ -55,7 +55,7 @@ function waitAction(parameters) {
   };
 }
 
-/** @param {unknown} value @returns {value is import('../../../../../clients/gui/app/src/core/preview/tool-contract.cjs').BrowserToolInput} */
+/** @param {unknown} value @returns {value is import('./host-tool-types.cjs').BrowserToolInput} */
 function validToolInput(value) {
   if (
     !record(value) ||

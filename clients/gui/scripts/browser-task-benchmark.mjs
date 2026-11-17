@@ -241,7 +241,7 @@ async function provenance() {
     "scripts/browser-task-benchmark-catalog.mjs",
     "scripts/browser-task-benchmark-driver.mjs",
     "scripts/automation-core-smoke.mjs",
-    "../../services/workbench/src/desktop/core/browser-tool.cjs",
+    "packages/browser-automation/src/host-tool.cjs",
     "../../services/workbench/src/desktop/core/service-protocol.cjs",
     "app/src/core/preview-native/native-targets.cjs",
     "packages/browser-automation/src/upstream/browser/browserPlaywrightLocatorExecutor.ts",

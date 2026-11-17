@@ -7,7 +7,7 @@ const {
   DesktopService,
   PROTOCOL,
 } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
-const { validToolInput } = require("@areal/workbench-service/desktop/core/browser-tool.cjs");
+const { validToolInput } = require("../packages/browser-automation/src/host-tool.cjs");
 
 test("browser observation and capture accept only bounded declared parameters", () => {
   const pageId = "00000000-0000-4000-8000-000000000001";

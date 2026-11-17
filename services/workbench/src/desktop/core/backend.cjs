@@ -35,7 +35,7 @@ const { TaskWorkspaceOwners } = require("./task-workspace-owners.cjs");
 const { ScheduleAdmission } = require("./schedule-admission.cjs");
 const { ProjectlessWorkspaces } = require("./projectless.cjs");
 const { inspectCoreCapabilities, projectCoreCapabilities } = require("./core-capabilities.cjs");
-const { definition: browserTool } = require("./browser-tool.cjs");
+const { definition: browserTool } = require("@areal/browser-automation/host-tool");
 
 const {
   readAdmission,

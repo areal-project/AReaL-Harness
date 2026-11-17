@@ -37,7 +37,7 @@ class ApprovedBatches {
 
   /**
    * @param {import('./model.js').BatchRequest} request
-   * @param {import('../preview/tool-contract.cjs').BatchStep} step
+   * @param {import('@areal/browser-automation/host-tool-types').BatchStep} step
    * @returns {import('./model.js').ActionRequest}
    */
   batchStep(request, step) {

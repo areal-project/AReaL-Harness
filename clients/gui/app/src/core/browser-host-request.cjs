@@ -2,7 +2,7 @@
 "use strict";
 const { desktopError } = require("@areal/workbench/desktop-contract");
 const { modelRecord } = require("@areal/workbench/core-model-contract");
-const { validToolInput } = require("@areal/workbench-service/desktop/core/browser-tool.cjs");
+const { validToolInput } = require("@areal/browser-automation/host-tool");
 /** @typedef {import('./preview-native/model.js').HostRequest|import('./preview-native/model.js').DiscoveryRequest} BrowserHostRequest */
 /** The Desktop service adds authenticated identity to the already validated Core browser tool input. */
 /** @param {unknown} value @returns {BrowserHostRequest} */

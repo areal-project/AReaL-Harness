@@ -1,4 +1,8 @@
-import type { BrowserToolInput, BrowserAction, WaitCondition } from "../preview/tool-contract.cjs";
+import type {
+  BrowserToolInput,
+  BrowserAction,
+  WaitCondition,
+} from "@areal/browser-automation/host-tool-types";
 import type {
   BrowserCommand,
   ControlledView,

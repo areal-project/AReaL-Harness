@@ -666,7 +666,7 @@ try {
     new Promise((resolve) => model.close(resolve)),
   ]);
   const files = [
-    "../../services/workbench/src/desktop/core/browser-tool.cjs",
+    "packages/browser-automation/src/host-tool.cjs",
     "../../services/workbench/src/desktop/core/backend.cjs",
     "app/src/core/service-client.cjs",
     "../../services/workbench/src/desktop/core/service-protocol.cjs",

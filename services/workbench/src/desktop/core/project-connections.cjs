@@ -2,7 +2,7 @@
 "use strict";
 const diagnostics = require("./diagnostics.cjs");
 const { startupTrace } = require("./startup-timing.cjs");
-const { failure: browserFailure } = require("./browser-tool.cjs");
+const { failure: browserFailure } = require("@areal/browser-automation/host-tool");
 const { modelRecord, isCoreTask } = require("@areal/workbench/core-model-contract");
 
 /** @typedef {import('./project-state.cjs').CoreProject} Project */

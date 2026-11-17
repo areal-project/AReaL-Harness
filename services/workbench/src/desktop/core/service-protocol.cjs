@@ -16,7 +16,7 @@ const {
   failure: browserFailure,
   success: browserSuccess,
   unconfirmed: browserUnconfirmed,
-} = require("./browser-tool.cjs");
+} = require("@areal/browser-automation/host-tool");
 const { ProjectionEncoder } = require("@areal/workbench/state-projection");
 const {
   record,
