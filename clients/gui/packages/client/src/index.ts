@@ -29,7 +29,12 @@ import {
 } from "./read-state.js";
 export { readHostBootstrap, type HostBootstrap } from "./bootstrap.js";
 export type * from "./read-state.js";
-export { sessionReadKey, SESSION_READ_CACHE_MS, SESSION_READ_CACHE_LIMIT } from "./read-state.js";
+export {
+  readShell,
+  sessionReadKey,
+  SESSION_READ_CACHE_MS,
+  SESSION_READ_CACHE_LIMIT,
+} from "./read-state.js";
 export { beginSessionLoad, sessionLoadTiming } from "./session-load-timing.js";
 import { sessionLoadTiming } from "./session-load-timing.js";
 export type HostReadState =
@@ -80,12 +85,19 @@ export interface ReadTransport {
   ): Promise<unknown>;
   close(): void;
 }
+export interface HostReadCache {
+  loadShell?(): Promise<ShellRead | undefined>;
+  saveShell?(shell: ShellRead): void | Promise<void>;
+  loadSession?(target: { projectId: string; threadId: string }): Promise<SessionRead | undefined>;
+  saveSession?(session: SessionRead): void | Promise<void>;
+}
 export interface HostClientOptions {
   bootstrap(): Promise<unknown>;
   origin: string;
   /** 只有桌面外壳签发的票据能协商写入；浏览器传 false 或不传。 */
   writes?: boolean;
   events?: Pick<Window, "addEventListener" | "removeEventListener">;
+  cache?: HostReadCache;
   transport?(options: {
     signal: AbortSignal;
     current(): boolean;
@@ -120,6 +132,8 @@ export class HostClient {
     },
   });
   #cacheTimer?: ReturnType<typeof setTimeout>;
+  #sessionPersistTimer?: ReturnType<typeof setTimeout>;
+  #cacheLoadedShell = false;
   #connectedHost?: string;
   #mediaQueue = Promise.resolve();
   #wake = () => {
@@ -200,9 +214,20 @@ export class HostClient {
       expires: Date.now() + SESSION_READ_CACHE_MS,
     });
     this.#pruneSessionCache();
+    void Promise.resolve(this.options.cache?.saveSession?.(session.value)).catch(() => {});
   }
   retry() {
     if (this.#closed) return;
+    if (!this.#cacheLoadedShell && this.options.cache?.loadShell) {
+      this.#cacheLoadedShell = true;
+      void Promise.resolve(this.options.cache.loadShell())
+        .then((cached) => {
+          if (this.#closed || !cached || this.#reads.shell.state === "fresh") return;
+          const shell: ShellRead = { ...cached, snapshot: readShell(cached.snapshot) };
+          this.#publishReads({ ...this.#reads, shell: { state: "stale", value: shell } });
+        })
+        .catch(() => {});
+    }
     this.#retainSession();
     clearTimeout(this.#timer);
     const epoch = ++this.#epoch;
@@ -318,6 +343,7 @@ export class HostClient {
     const before = selected(old),
       after = selected(value);
     this.#publishReads({ ...this.#reads, shell: { state: "fresh", value } });
+    void Promise.resolve(this.options.cache?.saveShell?.(value)).catch(() => {});
     this.#watched.reopen((id) => {
       const a = find(old, id),
         b = find(value, id);
@@ -515,6 +541,29 @@ export class HostClient {
         : undefined,
       session: cached ? { state: "stale", value: cached } : { state: "loading" },
     });
+    if (target && !cached && !target.persisted && this.options.cache?.loadSession) {
+      const loadSelection = this.#selection;
+      void Promise.resolve(
+        this.options.cache.loadSession({
+          projectId: target.projectId,
+          threadId: target.threadId,
+        }),
+      )
+        .then((persistedSession) => {
+          if (
+            this.#closed ||
+            loadSelection !== this.#selection ||
+            !persistedSession ||
+            this.#reads.session.state === "fresh"
+          )
+            return;
+          this.#publishReads({
+            ...this.#reads,
+            session: { state: "stale", value: persistedSession },
+          });
+        })
+        .catch(() => {});
+    }
     if (target && this.#transport) await this.#openSession();
   }
   async #openSession() {
@@ -612,6 +661,7 @@ export class HostClient {
       timing?.mark("baseline");
       this.#publishReads({ ...this.#reads, session: { state: "fresh", value: session } });
       this.#pruneSessionCache();
+      void Promise.resolve(this.options.cache?.saveSession?.(session)).catch(() => {});
     } catch (error) {
       if (selection === this.#selection)
         this.#publishReads({
@@ -805,17 +855,28 @@ export class HostClient {
       return;
     }
     try {
+      const nextSession: SessionRead = {
+        ...current,
+        sequence: event.sequence,
+        snapshot: applyConversationPatch(current.snapshot, event.patch),
+      };
       this.#publishReads({
         ...this.#reads,
         session: {
           state: "fresh",
-          value: {
-            ...current,
-            sequence: event.sequence,
-            snapshot: applyConversationPatch(current.snapshot, event.patch),
-          },
+          value: nextSession,
         },
       });
+      if (this.options.cache?.saveSession) {
+        clearTimeout(this.#sessionPersistTimer);
+        this.#sessionPersistTimer = setTimeout(() => {
+          if (!this.#closed && this.#reads.session.state === "fresh") {
+            void Promise.resolve(
+              this.options.cache?.saveSession?.(this.#reads.session.value),
+            ).catch(() => {});
+          }
+        }, 500);
+      }
     } catch {
       this.#publishReads({ ...this.#reads, session: stale(session) });
       void this.#openSession().catch(() => {});
@@ -828,6 +889,7 @@ export class HostClient {
     ++this.#shellEpoch;
     clearTimeout(this.#timer);
     clearTimeout(this.#cacheTimer);
+    clearTimeout(this.#sessionPersistTimer);
     this.#sessionCache.clear();
     this.#watched.clear();
     this.#abort?.abort();

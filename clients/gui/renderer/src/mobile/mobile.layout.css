@@ -47,3 +47,37 @@ body,
 .mobile-model-sheet[data-panel="permissions"] {
   min-height: 52dvh;
 }
+.mobile-cache-sheet {
+  gap: var(--spacing-inline);
+  padding-top: var(--spacing-field);
+  overflow: hidden;
+}
+.mobile-cache-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-inline);
+  overflow-y: auto;
+  max-height: 60dvh;
+  padding-bottom: var(--spacing-inline);
+}
+.mobile-cache-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-inline);
+  padding: var(--spacing-inline) var(--spacing-field);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+.mobile-cache-card[data-selected="true"] {
+  border-color: var(--color-brand);
+}
+.mobile-offline-workspace {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: var(--spacing-inline);
+  overflow-y: auto;
+}

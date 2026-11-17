@@ -28,34 +28,58 @@ fn grant_projects(request: &Value) -> Result<Vec<String>> {
     }
     Ok(projects)
 }
+fn pair_link_parts(
+    config: &Value,
+    host_peer: &str,
+    invite_secret: &str,
+    transport: &str,
+    direct_origin: Option<&str>,
+) -> Result<(String, String)> {
+    let mut fragment = url::form_urlencoded::Serializer::new(String::new());
+    fragment
+        .append_pair("host", host_peer)
+        .append_pair("invite", invite_secret);
+    let origin = if transport == "relay" {
+        fragment.append_pair(
+            "room",
+            config["room"].as_str().context("Relay room is missing")?,
+        );
+        let origin = config["relay"]
+            .as_str()
+            .context("Relay origin is missing")?
+            .to_owned();
+        if origin.starts_with("http://")
+            && config["relayLocal"]["enabled"] == true
+            && config["relayLocal"]["origin"] == origin
+        {
+            fragment.append_pair("local", "1");
+        }
+        origin
+    } else {
+        direct_origin.context("Direct is unavailable")?.to_owned()
+    };
+    Ok((origin, fragment.finish()))
+}
 fn pair_payload(host: &Host, config: &Value, invite: &Invite) -> Result<Value> {
     let identity = wire::Identity::from_base64(
         config["identity"]
             .as_str()
             .context("Remote identity is missing")?,
     )?;
-    let mut fragment = url::form_urlencoded::Serializer::new(String::new());
-    fragment
-        .append_pair("host", &identity.peer().to_string())
-        .append_pair("invite", &invite.secret);
-    let origin = if invite.transport == "relay" {
-        fragment.append_pair(
-            "room",
-            config["room"].as_str().context("Relay room is missing")?,
-        );
-        config["relay"]
-            .as_str()
-            .context("Relay origin is missing")?
-            .to_owned()
-    } else {
-        host.gateway
-            .direct
-            .borrow()
-            .as_ref()
-            .map(|handle| handle.origin().to_owned())
-            .context("Direct is unavailable")?
-    };
-    Ok(json!({"payload":format!("{origin}/#{}", fragment.finish()),"expiresAt":invite.expires_at}))
+    let direct = host
+        .gateway
+        .direct
+        .borrow()
+        .as_ref()
+        .map(|handle| handle.origin().to_owned());
+    let (origin, fragment) = pair_link_parts(
+        config,
+        &identity.peer().to_string(),
+        &invite.secret,
+        &invite.transport,
+        direct.as_deref(),
+    )?;
+    Ok(json!({"payload":format!("{origin}/#{fragment}"),"expiresAt":invite.expires_at}))
 }
 impl Host {
     pub(in crate::server) fn gateway_state(&self, source_id: &str) -> Result<Value> {
@@ -106,6 +130,12 @@ impl Host {
                 fragment
                     .append_pair("host", &host_peer)
                     .append_pair("room", config["room"].as_str().unwrap());
+                if relay.starts_with("http://")
+                    && config["relayLocal"]["enabled"] == true
+                    && config["relayLocal"]["origin"] == relay
+                {
+                    fragment.append_pair("local", "1");
+                }
                 format!("{relay}/#{}", fragment.finish())
             } else {
                 String::new()
@@ -678,5 +708,33 @@ impl Host {
         }
         self.gateway.refresh_config(&config);
         self.gateway_state(&input.source_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pair_link_marks_local_relay_with_local_1_and_leaves_https_clean() {
+        let local = json!({
+            "relay": "http://192.168.1.10:47820",
+            "room": "a".repeat(64),
+            "relayLocal": { "enabled": true, "origin": "http://192.168.1.10:47820", "port": 47820 }
+        });
+        let (origin, frag) =
+            pair_link_parts(&local, "host-id", &"b".repeat(64), "relay", None).unwrap();
+        assert_eq!(origin, "http://192.168.1.10:47820");
+        assert!(frag.contains("local=1"));
+
+        let external = json!({
+            "relay": "https://relay.example",
+            "room": "a".repeat(64),
+            "relayLocal": { "enabled": false, "origin": "http://192.168.1.10:47820", "port": 47820 }
+        });
+        let (origin, frag) =
+            pair_link_parts(&external, "host-id", &"b".repeat(64), "relay", None).unwrap();
+        assert_eq!(origin, "https://relay.example");
+        assert!(!frag.contains("local=1"));
     }
 }

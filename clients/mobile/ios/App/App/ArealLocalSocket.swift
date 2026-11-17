@@ -80,7 +80,10 @@ public class ArealLocalSocketPlugin: CAPPlugin, CAPBridgedPlugin {
                 case .ready:
                     self.event(id, "open")
                     self.receive(id, connection)
-                case .failed, .waiting:
+                case .waiting:
+                    // 首次弹出本地网络权限框或短暂切网时连接会停在 waiting；交由上层超时或用户允许后继续，不立即判失败。
+                    break
+                case .failed:
                     self.finish(id, failed: true)
                 case .cancelled:
                     self.finish(id)

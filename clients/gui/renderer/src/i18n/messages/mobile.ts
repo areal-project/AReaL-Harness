@@ -285,4 +285,72 @@ export const mobileMessages = {
   "mobile.effort.high": { "zh-CN": "高", en: "High" },
   "mobile.effort.xhigh": { "zh-CN": "极高", en: "Very high" },
   "mobile.effort.max": { "zh-CN": "最高", en: "Maximum" },
+
+  "mobile.cache.button": { "zh-CN": "项目与缓存", en: "Projects & Cache" },
+  "mobile.cache.title": { "zh-CN": "已授权项目与缓存", en: "Authorized projects & cache" },
+  "mobile.cache.description": {
+    "zh-CN": "选择要查看的项目，或管理在手机本地保留的离线会话缓存。",
+    en: "Choose a project to view, or manage which authorized projects keep offline conversation cache.",
+  },
+  "mobile.cache.enableAll": { "zh-CN": "全部缓存", en: "Cache all" },
+  "mobile.cache.clearSessions": { "zh-CN": "清空会话缓存", en: "Clear session cache" },
+  "mobile.cache.clearProject": { "zh-CN": "清除此项目缓存", en: "Clear project cache" },
+  "mobile.cache.current": { "zh-CN": "当前", en: "Current" },
+  "mobile.cache.online": { "zh-CN": "在线", en: "Online" },
+  "mobile.cache.offline": { "zh-CN": "离线", en: "Offline" },
+  "mobile.cache.toggleLabel": {
+    "zh-CN": "离线缓存 {project}",
+    en: "Offline cache for {project}",
+  },
+  "mobile.cache.summaryCount": {
+    "zh-CN": "{count} 个会话",
+    en: "{count} conversations",
+  },
+  "mobile.cache.cachedDetail": {
+    "zh-CN": "已缓存 {count} 条会话 · {size}",
+    en: "{count} cached · {size}",
+  },
+  "mobile.cache.disabled": {
+    "zh-CN": "未开启离线缓存",
+    en: "Offline cache off",
+  },
+  "mobile.cache.noAuthorized": {
+    "zh-CN": "暂无已授权项目缓存，连接电脑后会自动同步。",
+    en: "No cached authorized projects yet. Connect to your computer to sync.",
+  },
+  "mobile.cache.offlineBanner": {
+    "zh-CN": "电脑离线 · 正在浏览本地缓存（只读）",
+    en: "Computer offline · Browsing local cache (read-only)",
+  },
+  "mobile.cache.connectingBanner": {
+    "zh-CN": "正在连接电脑，先为你展示本地缓存。",
+    en: "Connecting to your computer. Showing local cache in the meantime.",
+  },
+  "mobile.cache.cachedBadge": { "zh-CN": "已缓存", en: "Cached" },
+  "mobile.cache.summaryOnlyBadge": { "zh-CN": "仅摘要", en: "Summary only" },
+  "mobile.cache.notCachedDetail": {
+    "zh-CN": "该会话尚未在本地缓存正文，请连上电脑后打开一次即可缓存。",
+    en: "Full messages for this conversation are not cached locally yet. Open it once while connected to cache it.",
+  },
+  "mobile.cache.backToThreads": { "zh-CN": "返回会话列表", en: "Back to conversations" },
+  "mobile.cache.storageSummary": {
+    "zh-CN": "本地缓存：{projects} 个项目 · {sessions} 条会话（{size}）",
+    en: "Local cache: {projects} projects · {sessions} conversations ({size})",
+  },
+  "mobile.endpoint.title": { "zh-CN": "更新连接地址", en: "Update connection address" },
+  "mobile.endpoint.description": {
+    "zh-CN": "电脑切换网络或本机 Relay IP 变化时，扫码或粘贴新链接即可更新，无需清除缓存。",
+    en: "If your computer changed Wi-Fi or local Relay IP, scan or paste the updated link without clearing cache.",
+  },
+  "mobile.endpoint.scan": { "zh-CN": "扫码更新地址", en: "Scan to update address" },
+  "mobile.endpoint.paste": { "zh-CN": "粘贴新连接链接", en: "Paste updated link" },
+  "mobile.endpoint.apply": { "zh-CN": "更新并重连", en: "Update & reconnect" },
+  "mobile.endpoint.mismatch": {
+    "zh-CN": "该链接不属于当前配对的电脑。",
+    en: "This link belongs to a different computer.",
+  },
+  "mobile.endpoint.updated": {
+    "zh-CN": "连接地址已更新，正在重连…",
+    en: "Connection address updated. Reconnecting…",
+  },
 } as const;
