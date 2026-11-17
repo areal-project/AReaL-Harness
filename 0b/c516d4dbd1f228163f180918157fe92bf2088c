@@ -1,0 +1,25 @@
+core/engine/src/tools/registry.rs
+  s_6c4376080c8c23::t_c20f1f6766623a 873-886,891-895,899-908,917-936
+  s_6c4376080c8c23::t_c466f22a3bf438 887-890,896-898,909-916
+  s_6c4376080c8c23::t_63860b81d6d799 243-250,255-260
+docs/api/core.en.md
+  s_6c4376080c8c23::t_facadef34705f7 128-129
+docs/api/core.md
+  s_6c4376080c8c23::t_32ed9c74bb26a8 123-124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0bc516d4dbd1f228163f180918157fe92bf2088c",
+  "prompts": {},
+  "sessions": {
+    "s_6c4376080c8c23": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1e04f-aaf3-7101-9583-e4d3761f91e7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
