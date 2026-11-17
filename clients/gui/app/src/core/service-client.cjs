@@ -8,7 +8,8 @@ const {
 const { commandSemantics, desktopError } = require("@areal/workbench/desktop-contract");
 const { startupTrace } = require("@areal/workbench-service/desktop/core/startup-timing.cjs");
 const { createHash, randomUUID } = require("node:crypto");
-const { mkdir, readFile, realpath, rm } = require("node:fs/promises");
+const { mkdir, open, readFile, realpath, rm } = require("node:fs/promises");
+const { constants: fsConstants } = require("node:fs");
 const { join } = require("node:path");
 const { HostClient, executeHost } = require("@areal/client/node");
 const { hostUpdateReceipt } = require("@areal/workbench/desktop-contract/desktop-control");
@@ -897,12 +898,70 @@ class SharedCoreBackend {
       // 旧 Host 退出期间可能短暂报告身份不匹配；新 Host 完成 attach 且身份确认后，
       // 清掉这条过期错误，避免启动页继续停在失败状态。
       await this.connectNativeBrowser(source, options);
+      // Cloud 导入未完成由该设置页显示，不能阻塞无关历史与已确认项目。
+      await this.importNativeCloud(source.sourceId).catch(() => {});
       this.lifecycleError = null;
       await completeUpgrade();
       this.backendUpdate = undefined;
     } finally {
       source.close();
     }
+  }
+  /** @param {string} sourceId @param {{isEncryptionAvailable:()=>boolean,decryptString:(value:Buffer)=>string,getSelectedStorageBackend?:()=>string}} [encryption] */
+  // 过渡：到 0.2.0 删（Cloud 旧密文一次导入完成后移除）。
+  async importNativeCloud(sourceId, encryption = require("electron").safeStorage) {
+    const epoch = this.nativeBrowserEpoch;
+    const current = () =>
+      epoch &&
+      this.nativeBrowserEpoch === epoch &&
+      this.nativeBrowserSource === sourceId &&
+      !this.disposed;
+    if (!current()) throw new Error("Cloud import source changed");
+    let file;
+    try {
+      file = await open(
+        join(this.home, "cloud.json"),
+        fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK,
+      );
+    } catch (error) {
+      if (record(error) && error.code === "ENOENT") return;
+      throw error;
+    }
+    let raw;
+    try {
+      const stat = await file.stat();
+      if (!stat.isFile() || stat.size > 1024 * 1024) throw new Error("Invalid Cloud import source");
+      const bytes = Buffer.alloc(1024 * 1024 + 1);
+      const { bytesRead } = await file.read(bytes, 0, bytes.length, 0);
+      if (bytesRead > 1024 * 1024) throw new Error("Cloud import source exceeds limit");
+      raw = bytes.subarray(0, bytesRead);
+    } finally {
+      await file.close();
+    }
+    const value = JSON.parse(raw.toString("utf8"));
+    if (!record(value) || typeof value.secret !== "string" || !value.secret) return;
+    try {
+      await this.nativeBrowserCall("cloud.settings", { operation: "status" });
+      return;
+    } catch (error) {
+      if (!record(error) || error.code !== "CLOUD_IMPORT_REQUIRED") throw error;
+    }
+    if (!current()) throw new Error("Cloud import source changed");
+    if (
+      !encryption?.isEncryptionAvailable() ||
+      encryption.getSelectedStorageBackend?.() === "basic_text"
+    )
+      throw new Error("Cloud credential import requires unlocked system storage");
+    const token = encryption.decryptString(Buffer.from(value.secret, "base64"));
+    const sourceDigest = createHash("sha256").update(raw).digest("hex");
+    const identity = createHash("sha256")
+      .update(sourceId)
+      .update("\0")
+      .update(sourceDigest)
+      .digest("hex");
+    const requestId = `${identity.slice(0, 8)}-${identity.slice(8, 12)}-4${identity.slice(13, 16)}-a${identity.slice(17, 20)}-${identity.slice(20, 32)}`;
+    if (!current()) throw new Error("Cloud import source changed");
+    await this.nativeBrowserCall("cloud.import", { requestId, sourceDigest, token });
   }
   /** @param {string} path @returns {Promise<unknown>} */
   async addProject(path) {

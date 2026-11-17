@@ -591,6 +591,23 @@
             "kind"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "cloudAccount"
+            },
+            "sourceId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "sourceId"
+          ],
+          "additionalProperties": false
         }
       ]
     },
@@ -58602,6 +58619,69 @@
             "params"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "attachmentId": {
+              "type": "string"
+            },
+            "call": {
+              "type": "string",
+              "const": "cloud.settings"
+            },
+            "params": {
+              "$ref": "#/$defs/LocalDesktopCloudSettingsParams"
+            }
+          },
+          "required": [
+            "attachmentId",
+            "call",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "attachmentId": {
+              "type": "string"
+            },
+            "call": {
+              "type": "string",
+              "const": "cloud.import"
+            },
+            "params": {
+              "$ref": "#/$defs/LocalDesktopCloudImportParams"
+            }
+          },
+          "required": [
+            "attachmentId",
+            "call",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "attachmentId": {
+              "type": "string"
+            },
+            "call": {
+              "type": "string",
+              "const": "cloud.configured.attach"
+            },
+            "params": {
+              "$ref": "#/$defs/LocalDesktopCloudConfiguredAttachParams"
+            }
+          },
+          "required": [
+            "attachmentId",
+            "call",
+            "params"
+          ],
+          "additionalProperties": false
         }
       ]
     },
@@ -58648,6 +58728,9 @@
         },
         {
           "$ref": "#/$defs/LocalDesktopCreatorResult"
+        },
+        {
+          "$ref": "#/$defs/LocalDesktopCloudSettingsResult"
         }
       ],
       "examples": [
@@ -63995,6 +64078,176 @@
         "provenance"
       ],
       "additionalProperties": false
+    },
+    "LocalDesktopCloudSettingsParams": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "status"
+            }
+          },
+          "required": [
+            "operation"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "save"
+            },
+            "baseURL": {
+              "type": "string"
+            },
+            "token": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "operation",
+            "baseURL"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "LocalDesktopCloudSettingsResult": {
+      "type": "object",
+      "properties": {
+        "baseURL": {
+          "type": "string"
+        },
+        "tokenConfigured": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "baseURL",
+        "tokenConfigured"
+      ],
+      "additionalProperties": false
+    },
+    "LocalDesktopCloudImportParams": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string"
+        },
+        "sourceDigest": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "requestId",
+        "sourceDigest",
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "LocalDesktopCloudConfiguredAttachParams": {
+      "type": "object",
+      "properties": {
+        "baseURL": {
+          "type": "string"
+        },
+        "sourceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "baseURL"
+      ],
+      "additionalProperties": false
+    },
+    "WorkbenchPrivateCloudSettingsRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "call": {
+          "type": "string",
+          "const": "cloud.settings"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "sourceId": {
+              "type": "string"
+            },
+            "request": {
+              "$ref": "#/$defs/LocalDesktopCloudSettingsParams"
+            }
+          },
+          "required": [
+            "sourceId",
+            "request"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "call",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "WorkbenchPrivateCloudConfiguredAttachRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "call": {
+          "type": "string",
+          "const": "cloud.configured.attach"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "sourceId": {
+              "type": "string"
+            },
+            "baseURL": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "sourceId",
+            "baseURL"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "call",
+        "params"
+      ],
+      "additionalProperties": false
     }
   },
   "x-current": {
@@ -65002,6 +65255,20 @@
         "projectless.command": {
           "request": "#/$defs/WorkbenchPrivateProjectlessCommandRequest",
           "result": "#/$defs/LocalDesktopProjectlessResult",
+          "direction": "workbenchToHost",
+          "x-owner": "host",
+          "source": "core/host/src/workbench_route.rs"
+        },
+        "cloud.settings": {
+          "request": "#/$defs/WorkbenchPrivateCloudSettingsRequest",
+          "result": "#/$defs/LocalDesktopCloudSettingsResult",
+          "direction": "workbenchToHost",
+          "x-owner": "host",
+          "source": "core/host/src/workbench_route.rs"
+        },
+        "cloud.configured.attach": {
+          "request": "#/$defs/WorkbenchPrivateCloudConfiguredAttachRequest",
+          "result": "#/$defs/WorkbenchPrivateCloudAttachResult",
           "direction": "workbenchToHost",
           "x-owner": "host",
           "source": "core/host/src/workbench_route.rs"

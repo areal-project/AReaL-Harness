@@ -18,7 +18,6 @@ test("统一 endpoint 不含平台路由推断，HTTP(S) 可规范化为 WS(S)",
     "wss://host/#x",
   ])
     assert.throws(() => backendURL(url));
-  assert.throws(() => new CloudClient({ baseURL: "ws://localhost", token: "a\nb" }));
 });
 
 test("固定服务地址按当前 Session ID 派生 workspace，互不共用", () => {
@@ -29,7 +28,6 @@ test("固定服务地址按当前 Session ID 派生 workspace，互不共用", (
   assert.throws(() => cloudServiceURL("https://example.test/openapi/v1/app-server/manual-test/"));
   const service = new CloudClient({
     baseURL: "https://example.test/openapi/v1/app-server/",
-    token: "test",
   });
   assert.equal(
     service.forWorkspace("session-a").baseURL.href,

@@ -321,7 +321,7 @@ journal 快照为 `{version:1,pending:object[],outcomes:object}`，保留条目�
 
 ## 固定凭据槽
 
-`credentialVault` 只服务已发布 GUI 来源。槽位为 `{kind:"providerCredential",sourceId,reference}`、`{kind:"subscriptionAccount",sourceId,providerId}` 或 `{kind:"subscriptionTransport",sourceId}`。`reference` 使用原 `AREAL_CREDENTIAL_*` 名称。不同来源的同名引用独立。Remote 身份仍归 `remote.read/replace`；通过 vault 访问 `remoteIdentity` 返回 `remoteStateRequired`。
+`credentialVault` 只服务已发布 GUI 来源。槽位为 `{kind:"providerCredential",sourceId,reference}`、`{kind:"subscriptionAccount",sourceId,providerId}` 、`{kind:"subscriptionTransport",sourceId}` 或 `{kind:"cloudAccount",sourceId}`。`reference` 使用原 `AREAL_CREDENTIAL_*` 名称。不同来源的同名引用独立。Cloud 槽把服务地址与 token 保存在同一修订中，设置页只接收地址和是否已配置；连接时 Host 校验目标与原凭据修订，再发布远端 lease。旧 `cloud.json` 的一次解密导入由 Main 原生适配器执行，Host 校验原字节摘要且不覆盖已初始化槽，原密文保留。Remote 身份仍归 `remote.read/replace`；通过 vault 访问 `remoteIdentity` 返回 `remoteStateRequired`。
 
 | 方法            | 请求 params                                                  | result                                                                                                          |
 | --------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |

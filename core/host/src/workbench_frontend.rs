@@ -463,6 +463,15 @@ impl Connections {
                 )?;
             }
             "tasks.preview" => exact(input, &["projectId", "limit", "sourceThreadId"])?,
+            "cloud.settings" => {
+                let _: areal_protocol::host::LocalDesktopCloudSettingsParams =
+                    serde_json::from_value(input.clone()).context("INVALID_PARAMS")?;
+            }
+            "cloud.import" => {
+                let _: areal_protocol::host::LocalDesktopCloudImportParams =
+                    serde_json::from_value(input.clone()).context("INVALID_PARAMS")?;
+            }
+            "cloud.configured.attach" => exact(input, &["sourceId", "baseURL"])?,
             "cloud.attach" => exact(input, &["sourceId", "baseURL", "token"])?,
             "workbench.utility" => {
                 exact(input, &["operation", "document", "projectId", "pluginId"])?
@@ -559,8 +568,32 @@ impl Connections {
             params["sourceId"] = json!(source);
             return super::super::task_catalog::preview(host, &params).await;
         }
-        if call == "cloud.attach" {
-            let value = self.workbench_cloud_attach(host, &source, input).await?;
+        if call == "cloud.settings" {
+            return host
+                .gateway
+                .workbench
+                .cloud
+                .settings(host, &source, input)
+                .await;
+        }
+        if call == "cloud.import" {
+            return host
+                .gateway
+                .workbench
+                .cloud
+                .import(host, &source, input)
+                .await;
+        }
+        if call == "cloud.attach" || call == "cloud.configured.attach" {
+            let value = if call == "cloud.configured.attach" {
+                host.gateway
+                    .workbench
+                    .cloud
+                    .attach(host, &source, input)
+                    .await?
+            } else {
+                self.workbench_cloud_attach(host, &source, input).await?
+            };
             let lease = value["lease"].as_str().context("INVALID_RESPONSE")?;
             let project = value["projectId"].as_str().context("INVALID_RESPONSE")?;
             if let Some(frontend) = self.frontends.borrow_mut().get_mut(attachment) {

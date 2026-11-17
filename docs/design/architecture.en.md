@@ -265,7 +265,7 @@ MCP hooks bind the original tool generation and a real Turn/compaction owner; re
 
 Clients freeze public history and reuse an independent Side for feedback. Core Server only adapts the existing trajectory receiver. See [user feedback](../guides/user-feedback.en.md).
 
-Cloud integration belongs to Clients: the desktop adapter stores native Thread identities and encrypted credentials. GUI, CLI and TUI use the same app-server protocol for Arena and remote Core; workspace lifecycle stays behind the endpoint. The batch HTTP CLI remains a compatibility entry. Messages and execution facts remain authoritative in remote Core/Runtime. Local Projects do not become another history owner, and clients do not select backend runtime defaults. See [Cloud clients](../guides/clients.en.md#cloud).
+Host Vault stores the Cloud service address and token in one revision per source. The desktop adapter retains remote native Thread identities and rebuildable projections. GUI, CLI and TUI use the same app-server protocol through Host for Arena and remote Core; workspace lifecycle stays behind the endpoint. The batch HTTP CLI remains a compatibility entry. Messages and execution facts remain authoritative in remote Core/Runtime. Local Projects do not become another history owner, and clients do not select backend runtime defaults. See [Cloud clients](../guides/clients.en.md#cloud).
 `core/engine/src/workspace.rs` manages shared-writer leases at confirmed managed-effect settlement boundaries. `tools/scheduling.rs` admits concurrent calls by trusted backend and ordered barriers. Runtime retains process and cleanup facts; Core does not infer read-only behavior or release from shell text.
 
 

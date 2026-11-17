@@ -170,7 +170,12 @@ impl Drop for TerminalPermit<'_> {
         self.0.set(self.0.get() - 1);
     }
 }
-struct AttachGuard(Option<Rc<CoreSession>>);
+pub(crate) struct AttachGuard(Option<Rc<CoreSession>>);
+impl AttachGuard {
+    pub(crate) fn retain(mut self) {
+        self.0 = None;
+    }
+}
 impl Drop for AttachGuard {
     fn drop(&mut self) {
         if let Some(session) = self.0.take() {
@@ -235,6 +240,15 @@ impl Connections {
             }
         }
         Ok(())
+    }
+
+    pub(crate) fn hold_attachment(
+        &self,
+        host: &Host,
+        id: &str,
+        lease: &str,
+    ) -> Result<AttachGuard> {
+        Ok(AttachGuard(Some(self.workbench_session(host, id, lease)?)))
     }
 
     pub(super) fn workbench_session(

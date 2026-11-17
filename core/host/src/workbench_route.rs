@@ -90,6 +90,7 @@ pub(super) struct Supervisor {
     workspace_ops: super::workspace_ops::WorkspaceOps,
     manage_service: super::manage_service::ManageService,
     pub(super) resources: super::resources::Resources,
+    pub(super) cloud: super::cloud::Cloud,
     pub(super) projectless: super::projectless::Projectless,
     /// 桌面后台：界面 Main 原来在进程内启动的 CoreBackend + DesktopService，改由 Host 监督。
     backend: Backend,
@@ -1049,6 +1050,7 @@ pub(super) async fn desktop_command(
     host.admission()?;
     let native_command = match params.command {
         Cmd::Value3 => Some("chatgpt"),
+        Cmd::Value4 => Some("cloud"),
         Cmd::Value6 => Some("configure"),
         Cmd::Value8 => Some("continue"),
         Cmd::Value9 => Some("dismissRecovery"),
@@ -1079,6 +1081,13 @@ pub(super) async fn desktop_command(
             "FORBIDDEN"
         );
         return match command {
+            "cloud" => {
+                host.gateway
+                    .workbench
+                    .cloud
+                    .settings(host, &source, &params.request)
+                    .await
+            }
             "prepareCreator" => {
                 host.gateway
                     .workbench
@@ -1904,6 +1913,27 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
                             params["params"].clone(),
                         )
                         .await
+                    }
+                }
+                "cloud.settings" | "cloud.configured.attach" => {
+                    let source = host
+                        .gateway
+                        .workbench
+                        .active_source()
+                        .context("FORBIDDEN")?;
+                    ensure!(params["sourceId"] == source, "FORBIDDEN");
+                    if call == "cloud.settings" {
+                        host.gateway
+                            .workbench
+                            .cloud
+                            .settings(&host, &source, &params["request"])
+                            .await
+                    } else {
+                        host.gateway
+                            .workbench
+                            .cloud
+                            .attach(&host, &source, &params)
+                            .await
                     }
                 }
                 "cloud.attach" => {

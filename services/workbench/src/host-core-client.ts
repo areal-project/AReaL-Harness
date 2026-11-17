@@ -33,7 +33,7 @@ export class HostCoreClient {
       host: Call;
       sourceId: string;
       projectId: string;
-      cloud?: { baseURL: string; token: string };
+      cloud?: { baseURL: string };
       scope?: "terminal" | "observer";
       onServerRequest?: ServerRequest;
     },
@@ -42,7 +42,7 @@ export class HostCoreClient {
   async connect() {
     if (this.closed || this.lease) throw new Error("Host Core projection already attached");
     const value = await this.options.host(
-      this.options.cloud ? "cloud.attach" : "core.attach",
+      this.options.cloud ? "cloud.configured.attach" : "core.attach",
       this.options.cloud
         ? { sourceId: this.options.sourceId, ...this.options.cloud }
         : { ...this.scope(), ...(this.options.scope ? { scope: this.options.scope } : {}) },

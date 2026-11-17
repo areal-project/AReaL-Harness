@@ -21,15 +21,12 @@ function backendURL(value) {
 
 /** Arena 与远程 Core 使用同一原生接口，客户端不管理平台 Session。 */
 class CloudClient {
-  /** @param {{baseURL:string,token:string,host:(method:string,params:unknown)=>Promise<unknown>,sourceId:string,clients:Map<string,import('@areal/workbench-service/host-core-client').HostCoreClient>}} options */
-  constructor({ baseURL, token, host, sourceId, clients }) {
+  /** @param {{baseURL:string,host:(method:string,params:unknown)=>Promise<unknown>,sourceId:string,clients:Map<string,import('@areal/workbench-service/host-core-client').HostCoreClient>}} options */
+  constructor({ baseURL, host, sourceId, clients }) {
     this.host = host;
     this.sourceId = sourceId;
     this.clients = clients;
     this.baseURL = backendURL(baseURL);
-    if (typeof token !== "string" || !token.trim() || /[\r\n]/.test(token))
-      throw new Error("Cloud token 无效");
-    this.token = token;
   }
   /** @param {string} sessionId */
   forWorkspace(sessionId) {
@@ -39,7 +36,6 @@ class CloudClient {
     url.pathname += encodeURIComponent(sessionId) + "/";
     return new CloudClient({
       baseURL: url.href,
-      token: this.token,
       host: this.host,
       sourceId: this.sourceId,
       clients: this.clients,
@@ -51,7 +47,7 @@ class CloudClient {
       host: this.host,
       sourceId: this.sourceId,
       projectId: "",
-      cloud: { baseURL: this.baseURL.href, token: this.token },
+      cloud: { baseURL: this.baseURL.href },
     });
     const key = `cloud:${randomUUID()}`;
     this.clients.set(key, client);

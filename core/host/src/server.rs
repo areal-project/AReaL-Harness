@@ -1,3 +1,5 @@
+#[path = "cloud.rs"]
+mod cloud;
 #[path = "conversation_media.rs"]
 pub(crate) mod conversation_media;
 #[path = "conversation_read.rs"]

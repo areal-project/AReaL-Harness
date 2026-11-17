@@ -5,7 +5,7 @@ const { randomUUID } = require("node:crypto");
 const { WebSocket } = createRequire(resolve(__dirname, "../../app/package.json"))("ws");
 
 /**
- * 测试用 Host：把 cloud.attach / core.request 接到夹具的原生 WebSocket app-server。
+ * 测试用 Host：把 cloud.configured.attach / core.request 接到夹具的原生 WebSocket app-server。
  * 远端拨号在 Rust Host 里，这里只为驱动仍在工作台后台的 Cloud 投影逻辑。
  */
 function cloudHost() {
@@ -20,9 +20,11 @@ function cloudHost() {
       attachment.socket.send(JSON.stringify({ id, method, params }));
     });
   async function host(method, params) {
-    if (method === "cloud.attach") {
+    if (method === "cloud.configured.attach") {
+      if (Object.hasOwn(params, "token"))
+        throw new Error("Cloud projection must not receive credentials");
       const socket = new WebSocket(params.baseURL, {
-        headers: { Authorization: `Bearer ${params.token}` },
+        headers: { Authorization: "Bearer token" },
       });
       const lease = randomUUID();
       const attachment = { socket, pending: new Map(), nextId: 0, sequence: 0 };

@@ -1272,3 +1272,44 @@ test("Skill Creator preparation uses native Host without a Node connection", asy
   assert.deepEqual(await f.backend.command("prepareCreator", request), response);
   assert.equal(f.backend.connection, undefined);
 });
+
+test("legacy Cloud import binds original bytes and native source without rewriting ciphertext", async (t) => {
+  const f = await fixture(t);
+  const raw = JSON.stringify({
+    baseURL: "https://cloud.example.invalid",
+    secret: Buffer.from("ciphertext").toString("base64"),
+  });
+  const path = join(f.home, "cloud.json");
+  await writeFile(path, raw, { mode: 0o600 });
+  f.backend.nativeBrowserEpoch = {};
+  f.backend.nativeBrowserSource = "source";
+  const imports = [];
+  f.backend.nativeBrowserCall = async (call, params) => {
+    if (call === "cloud.settings")
+      throw Object.assign(new Error("Import pending"), { code: "CLOUD_IMPORT_REQUIRED" });
+    assert.equal(call, "cloud.import");
+    imports.push(params);
+    return { baseURL: "wss://cloud.example.invalid/openapi/v1/app-server", tokenConfigured: true };
+  };
+  const encryption = {
+    isEncryptionAvailable: () => true,
+    decryptString: (value) => {
+      assert.equal(value.toString(), "ciphertext");
+      return "synthetic-import-token";
+    },
+  };
+  await f.backend.importNativeCloud("source", encryption);
+  await f.backend.importNativeCloud("source", encryption);
+  assert.equal(imports.length, 2);
+  assert.deepEqual(imports[0], imports[1]);
+  assert.match(imports[0].requestId, /^[0-9a-f-]{36}$/);
+  assert.equal(imports[0].token, "synthetic-import-token");
+  assert.equal(await readFile(path, "utf8"), raw);
+  const original = f.backend.nativeBrowserEpoch;
+  f.backend.nativeBrowserCall = async () => {
+    f.backend.nativeBrowserEpoch = {};
+    throw Object.assign(new Error("Import pending"), { code: "CLOUD_IMPORT_REQUIRED" });
+  };
+  await assert.rejects(f.backend.importNativeCloud("source", encryption), /source changed/);
+  assert.notEqual(f.backend.nativeBrowserEpoch, original);
+});

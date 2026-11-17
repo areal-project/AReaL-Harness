@@ -33,6 +33,10 @@ pub(crate) enum Slot {
         #[serde(rename = "sourceId")]
         source_id: String,
     },
+    CloudAccount {
+        #[serde(rename = "sourceId")]
+        source_id: String,
+    },
     RemoteIdentity,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -89,7 +93,9 @@ impl Slot {
                 }
                 source_id
             }
-            Self::SubscriptionTransport { source_id } => source_id,
+            Self::SubscriptionTransport { source_id } | Self::CloudAccount { source_id } => {
+                source_id
+            }
             Self::RemoteIdentity => {
                 return Err(error(
                     "remoteStateRequired",

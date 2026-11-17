@@ -1915,3 +1915,158 @@ async fn native_resource_settings_own_skills_hooks_and_revisions_without_node() 
         assert!(!host.gateway.workbench.has_running_backend());
     }).await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn native_cloud_settings_bind_tokens_to_the_saved_service_without_node() {
+    tokio::task::LocalSet::new().run_until(async {
+        let temp=tempfile::tempdir().unwrap();let root=temp.path().canonicalize().unwrap();
+        let (mut host,input,source)=resumable_host(&root);
+        Rc::get_mut(&mut Rc::get_mut(&mut host).unwrap().migration).unwrap().vault=crate::vault::Vault::isolated_files(&host.home);
+        std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+        let options=frontend_options(&host,&source,input.options,None).unwrap();
+        let (subscribed,_)=host.schedules.connections.frontend_subscribe(&host,"cloud-settings",&source,options,None).unwrap();
+        let command=|request:Value|{let host=host.clone();let source=source.clone();async move {
+            desktop_command(&host,"local","cloud",&json!({"params":{"sourceId":source,"command":"cloud","request":request}})).await
+        }};
+        assert_eq!(command(json!({"operation":"status"})).await.unwrap(),json!({"baseURL":"","tokenConfigured":false}));
+        let legacy=root.join("data/cloud.json");let raw=br#"{"baseURL":"https://legacy.example.invalid","secret":"synthetic-ciphertext"}"#;storage::write_bytes(&legacy,raw).unwrap();
+        assert!(command(json!({"operation":"status"})).await.is_err());
+        let import=|params:Value|{let host=host.clone();let attachment=subscribed["attachmentId"].clone();async move {host.schedules.connections.frontend_call(&host,&json!({"attachmentId":attachment,"call":"cloud.import","params":params})).await}};
+        let import_id=uuid::Uuid::new_v4().to_string();
+        assert!(import(json!({"requestId":import_id,"sourceDigest":"wrong","token":"synthetic-old-token"})).await.is_err());
+        assert_eq!(import(json!({"requestId":import_id,"sourceDigest":storage::digest(raw),"token":"synthetic-old-token"})).await.unwrap(),json!({"baseURL":"wss://legacy.example.invalid/openapi/v1/app-server","tokenConfigured":true}));
+        assert_eq!(std::fs::read(&legacy).unwrap(),raw);
+        let expected=json!({"baseURL":"wss://cloud.example.invalid/openapi/v1/app-server","tokenConfigured":true});
+        assert_eq!(command(json!({"operation":"save","baseURL":"https://cloud.example.invalid","token":"synthetic-cloud-secret"})).await.unwrap(),expected);
+        assert_eq!(command(json!({"operation":"save","baseURL":"https://cloud.example.invalid"})).await.unwrap(),expected);
+        assert_eq!(import(json!({"requestId":import_id,"sourceDigest":storage::digest(raw),"token":"synthetic-old-token"})).await.unwrap(),expected,"late legacy import cannot overwrite an initialized Cloud account");
+        for invalid in [" ","\n","valid\rvalue"] {
+            assert!(command(json!({"operation":"save","baseURL":"https://cloud.example.invalid","token":invalid})).await.is_err());
+        }
+        for operation in storage::json_records(&host.home.join("host/vault-operations"),false).unwrap() {
+            assert!(!std::fs::read_to_string(operation).unwrap().contains("synthetic-cloud-secret"),"credential values cannot enter operation receipts");
+        }
+        assert!(command(json!({"operation":"save","baseURL":"https://other.example.invalid"})).await.is_err());
+        assert_eq!(command(json!({"operation":"status"})).await.unwrap(),expected);
+        for base in ["https://user:pass@cloud.example.invalid","https://cloud.example.invalid/?token=private","file:///tmp/cloud","https://cloud.example.invalid/app-server/workspace"] {
+            assert!(command(json!({"operation":"save","baseURL":base,"token":"synthetic-cloud-secret"})).await.is_err());
+        }
+        assert!(!serde_json::to_string(&command(json!({"operation":"status"})).await.unwrap()).unwrap().contains("synthetic-cloud-secret"));
+        assert!(!host.gateway.workbench.has_running_backend());
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn configured_cloud_handshake_cannot_publish_after_token_revision_changes() {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::{
+        Message,
+        handshake::server::{Request, Response},
+    };
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path().canonicalize().unwrap();
+            let (mut host, input, source) = resumable_host(&root);
+            Rc::get_mut(&mut Rc::get_mut(&mut host).unwrap().migration)
+                .unwrap()
+                .vault = crate::vault::Vault::isolated_files(&host.home);
+            let options = frontend_options(&host, &source, input.options, None).unwrap();
+            host.schedules
+                .connections
+                .frontend_subscribe(&host, "cloud-race", &source, options, None)
+                .unwrap();
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let base = format!("ws://{}/app-server/", listener.local_addr().unwrap());
+            host.gateway
+                .workbench
+                .cloud
+                .settings(
+                    &host,
+                    &source,
+                    &json!({"operation":"save","baseURL":base,"token":"synthetic-original-token"}),
+                )
+                .await
+                .unwrap();
+            let (ready, observed) = tokio::sync::oneshot::channel();
+            let (release, resume) = tokio::sync::oneshot::channel();
+            let server = tokio::task::spawn_local(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut socket = tokio_tungstenite::accept_hdr_async(
+                    stream,
+                    |request: &Request, response: Response| {
+                        assert_eq!(
+                            request.headers().get("authorization").unwrap(),
+                            "Bearer synthetic-original-token"
+                        );
+                        Ok(response)
+                    },
+                )
+                .await
+                .unwrap();
+                let mut ready = Some(ready);
+                let mut resume = Some(resume);
+                while let Some(Ok(Message::Text(raw))) = socket.next().await {
+                    let request: Value = serde_json::from_str(&raw).unwrap();
+                    if request.get("id").is_none() {
+                        continue;
+                    }
+                    let result = match request["method"].as_str().unwrap() {
+                        "initialize" => json!({}),
+                        "areal/capabilities" => {
+                            ready.take().unwrap().send(()).unwrap();
+                            resume.take().unwrap().await.unwrap();
+                            json!({"apiVersion":"areal.core.v1","methods":[]})
+                        }
+                        other => panic!("unexpected {other}"),
+                    };
+                    socket
+                        .send(Message::Text(
+                            json!({"jsonrpc":"2.0","id":request["id"],"result":result})
+                                .to_string()
+                                .into(),
+                        ))
+                        .await
+                        .unwrap();
+                }
+            });
+            let connecting_host = host.clone();
+            let connecting_source = source.clone();
+            let connecting_base = base.clone();
+            let connecting = tokio::task::spawn_local(async move {
+                connecting_host
+                    .gateway
+                    .workbench
+                    .cloud
+                    .attach(
+                        &connecting_host,
+                        &connecting_source,
+                        &json!({"baseURL":connecting_base}),
+                    )
+                    .await
+            });
+            observed.await.unwrap();
+            host.gateway
+                .workbench
+                .cloud
+                .settings(
+                    &host,
+                    &source,
+                    &json!({"operation":"save","baseURL":base,"token":"synthetic-new-token"}),
+                )
+                .await
+                .unwrap();
+            release.send(()).unwrap();
+            assert!(
+                connecting
+                    .await
+                    .unwrap()
+                    .unwrap_err()
+                    .to_string()
+                    .contains("TARGET_CHANGED")
+            );
+            server.await.unwrap();
+            assert!(!host.gateway.workbench.has_running_backend());
+        })
+        .await;
+}

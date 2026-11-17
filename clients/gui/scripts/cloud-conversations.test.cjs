@@ -74,7 +74,6 @@ test("原生 WS 协议夹具：并发创建去重、流式投影、重启复用�
   });
   let platform = new CloudClient({
     baseURL: `http://127.0.0.1:${http.address().port}/api`,
-    token: "token",
     ...cloudHost(),
   });
   const backend = {
@@ -121,7 +120,6 @@ test("原生 WS 协议夹具：并发创建去重、流式投影、重启复用�
   assert.equal(restored.projection("project").threads[first.threadId].turns.length, 1);
   platform = new CloudClient({
     baseURL: "https://another.example/api",
-    token: "different-token",
     ...cloudHost(),
   });
   await assert.rejects(
@@ -182,7 +180,6 @@ async function recoveryFixture(t, onObserve = (_socket, reply, thread) => reply(
   await once(http, "listening");
   const platform = new CloudClient({
     baseURL: `http://127.0.0.1:${http.address().port}/api`,
-    token: "token",
     ...cloudHost(),
   });
   const backend = {

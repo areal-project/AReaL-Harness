@@ -403,22 +403,12 @@ async function start({ input, output }) {
       { mode: 0o600, flag: "wx" },
     );
     claimed = true;
-    const encryption = {
-      isEncryptionAvailable: () => true,
-      /** @param {string} value */
-      encryptString: async (value) =>
-        Buffer.from(await desktop.adapter.encryptionRequest("encrypt", value), "base64"),
-      /** @param {Buffer} value */
-      decryptString: (value) =>
-        desktop.adapter.encryptionRequest("decrypt", value.toString("base64")),
-    };
     /** @type {NonNullable<typeof cleanupDesktop>} */
     const desktop = await createMainDesktop(
       { ...options, applicationOwner: undefined, sourceSingletonHeld: false },
       { onClose: () => lines.close(), hostCall },
     );
     cleanupDesktop = desktop;
-    desktop.backend.cloud.encryption = encryption;
     metadata = {
       ...(await desktop.adapter.listen({ initialized: true })),
       ...(owner ? { owner } : {}),

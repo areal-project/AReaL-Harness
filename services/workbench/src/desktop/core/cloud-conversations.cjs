@@ -128,7 +128,6 @@ class CloudConversations {
       )
         platform = new CloudClient({
           baseURL: bound.href,
-          token: service.token,
           host: service.host,
           sourceId: service.sourceId,
           clients: service.clients,
@@ -254,7 +253,6 @@ class CloudConversations {
         ...createProjectState({ id: record.projectId, root: "" }, live.model),
         client: live.session.client,
         endpoint: platform.baseURL.href,
-        token: platform.token,
       },
       request,
       {

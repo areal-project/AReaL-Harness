@@ -153,7 +153,7 @@ class CoreBackend {
     this.resources = new ScopedResources(this);
     this.hooks = new AppHooks(this);
     this.providers = new AppProviders(this);
-    this.cloud = new CloudSettings(this, encryption);
+    this.cloud = new CloudSettings(this);
     this.cloudConversations = new CloudConversations(this);
     this.activeCommands = 0;
     /** @type {Map<Promise<void>, ReadCommandOwner>} */ this.activeReadCommands = new Map();
