@@ -1,0 +1,23 @@
+scripts/tests/test_release.py
+  s_6c4376080c8c23::t_ea63a646199b54 31-33,514-517,528-534,547-560,564-568,576-580,583-587,614-621
+  s_6c4376080c8c23::t_a1916b907ba0d7 34,496-513,518-527,535-546,561-563,569-575,581-582,588-613,622
+scripts/release-smoke.py
+  s_6c4376080c8c23::t_79c20a6e500c35 5-6,11,15-16,22-30,40,47-64,68-90,198,237-247,249
+  s_6c4376080c8c23::t_ea63a646199b54 31-39,41-46,65-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "eb4391e3486916c5bcc8d1d686e43b83ca277de3",
+  "prompts": {},
+  "sessions": {
+    "s_6c4376080c8c23": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1e04f-aaf3-7101-9583-e4d3761f91e7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
