@@ -36,6 +36,8 @@ mod manage_service;
 mod plugins;
 #[path = "power.rs"]
 mod power;
+#[path = "projectless.rs"]
+mod projectless;
 #[path = "provider_catalog.rs"]
 mod provider_catalog;
 #[path = "provider_config.rs"]

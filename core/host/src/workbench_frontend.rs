@@ -379,6 +379,9 @@ impl Connections {
         let input = &params["params"];
         match call {
             "browser.scope" => exact(input, &["projectId", "threadId"])?,
+            "projectless.command" => {
+                exact(input, &["operation", "requestId", "directory", "path"])?
+            }
             "worktree.project.add" => exact(
                 input,
                 &["root", "worktreeResources", "projectlessRequestId"],
@@ -462,6 +465,14 @@ impl Connections {
             input.get("sourceId").is_none_or(|id| id == &source),
             "FORBIDDEN"
         );
+        if call == "projectless.command" {
+            return host
+                .gateway
+                .workbench
+                .projectless
+                .command(host, &source, input)
+                .await;
+        }
         if call == "worktree.project.add" {
             return super::super::worktree_catalog::add_project(host, &source, input.clone()).await;
         }

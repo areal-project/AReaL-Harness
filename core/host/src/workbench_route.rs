@@ -89,6 +89,7 @@ pub(super) struct Supervisor {
     pub(super) side_owners: super::side_owners::SideWindowOwners,
     workspace_ops: super::workspace_ops::WorkspaceOps,
     manage_service: super::manage_service::ManageService,
+    pub(super) projectless: super::projectless::Projectless,
     /// 桌面后台：界面 Main 原来在进程内启动的 CoreBackend + DesktopService，改由 Host 监督。
     backend: Backend,
 }
@@ -1054,6 +1055,7 @@ pub(super) async fn desktop_command(
         Cmd::Value12 => Some("fork"),
         Cmd::Value15 => Some("manage"),
         Cmd::Value18 => Some("prediction"),
+        Cmd::Value20 => Some("projectless"),
         Cmd::Value22 => Some("queue"),
         Cmd::Value23 => Some("queueEdit"),
         Cmd::Value24 => Some("reconcile"),
@@ -1074,6 +1076,13 @@ pub(super) async fn desktop_command(
             "FORBIDDEN"
         );
         return match command {
+            "projectless" => {
+                host.gateway
+                    .workbench
+                    .projectless
+                    .command(host, &source, &params.request)
+                    .await
+            }
             "chatgpt" => host.chatgpt_desktop_command(&source, &params.request).await,
             "manage" => {
                 host.gateway
@@ -1733,6 +1742,18 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
                     } else {
                         super::task_catalog::native_command(&host, "local", &params).await
                     }
+                }
+                "projectless.command" => {
+                    let source = host
+                        .gateway
+                        .workbench
+                        .active_source()
+                        .context("FORBIDDEN")?;
+                    host.gateway
+                        .workbench
+                        .projectless
+                        .command(&host, &source, &params)
+                        .await
                 }
                 "worktree.project.add" => {
                     let source = host

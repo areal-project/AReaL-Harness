@@ -61,7 +61,7 @@ pub(super) async fn missing_inputs(
     Ok(prepared)
 }
 
-fn options(host: &Host, source: &str) -> Result<Value> {
+pub(super) fn options(host: &Host, source: &str) -> Result<Value> {
     host.schedules
         .connections
         .frontend_launch_options(source)

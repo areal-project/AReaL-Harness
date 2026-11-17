@@ -1792,3 +1792,62 @@ async fn fresh_gui_registration_prepares_launch_without_node_or_core() {
         assert!(host.slots.borrow()[&registration.project_id].service.is_none());
     }).await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn projectless_allocations_keep_original_roots_without_node() {
+    tokio::task::LocalSet::new().run_until(async {
+        let temp=tempfile::tempdir().unwrap();let root=temp.path().canonicalize().unwrap();
+        let (host,input,source)=resumable_host(&root);
+        storage::private_dir(&host.home.join("host/projects")).unwrap();
+        std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+        let options=frontend_options(&host,&source,input.options,None).unwrap();
+        host.schedules.connections.frontend_subscribe(&host,"projectless",&source,options,None).unwrap();
+        let base=root.join("tasks");storage::private_dir(&base).unwrap();
+        { use std::os::unix::fs::PermissionsExt; std::fs::set_permissions(&base,std::fs::Permissions::from_mode(0o755)).unwrap(); }
+        let call=|params:Value| {let host=host.clone();let source=source.clone();async move {
+            desktop_command(&host,"local","projectless",&json!({"params":{"sourceId":source,"command":"projectless","request":params}})).await
+        }};
+        let directory=call(json!({"operation":"directory","path":base})).await.unwrap();
+        assert_eq!(directory["directory"],json!(base));
+        let id=uuid::Uuid::new_v4().to_string();
+        let (first,second)=tokio::join!(call(json!({"operation":"prepare","requestId":id})),call(json!({"operation":"prepare","requestId":id})));
+        let first=first.unwrap();assert_eq!(first,second.unwrap());assert_eq!(first["cwd"],json!(base.join(&id)));
+        let allocations:Value=storage::read(&root.join("data/projectless-drafts.json")).unwrap();assert_eq!(allocations[&id]["root"],first["cwd"]);
+        let other=root.join("other");storage::private_dir(&other).unwrap();
+        assert!(call(json!({"operation":"prepare","requestId":id,"directory":other})).await.is_err());
+        let alias=first["projectId"].as_str().unwrap();
+        let projects:Value=storage::read(&root.join("data/projects.json")).unwrap();
+        assert_eq!(projects.as_array().unwrap().iter().filter(|row|row["id"]==alias).count(),1);
+        assert_eq!(projects.as_array().unwrap().iter().find(|row|row["id"]==alias).unwrap()["projectlessRequestId"],id);
+        let normal=root.join("normal");storage::private_dir(&normal).unwrap();
+        super::super::worktree_catalog::add_project(&host,&source,json!({"root":normal})).await.unwrap();
+        assert!(call(json!({"operation":"prepare","requestId":uuid::Uuid::new_v4().to_string(),"directory":normal})).await.is_err());
+        assert!(!host.gateway.workbench.has_running_backend());
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn projectless_native_catalog_and_scratch_share_source_authority() {
+    tokio::task::LocalSet::new().run_until(async {
+        let temp=tempfile::tempdir().unwrap();let root=temp.path().canonicalize().unwrap();
+        let (host,mut input,source)=resumable_host(&root);
+        storage::private_dir(&host.home.join("host/projects")).unwrap();
+        std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+        let config=root.join("config");storage::private_dir(&config).unwrap();
+        storage::write_bytes(&config.join("config.toml"),b"schema_version=1\n[model]\nprovider='fixture'\nname='example'\n[model.providers.fixture]\nprotocol='responses'\nendpoint='http://127.0.0.1:9/private-endpoint'\napi_key_env='PROJECTLESS_FIXTURE_KEY'\n").unwrap();
+        input.options["configHome"]=json!(config);
+        let options=frontend_options(&host,&source,input.options,Some(std::collections::BTreeMap::from([("PROJECTLESS_FIXTURE_KEY".into(),"private-fixture-value".into())]))).unwrap();
+        let (subscribed,_)=host.schedules.connections.frontend_subscribe(&host,"native-projectless",&source,options,None).unwrap();
+        let call=|request:Value|{let host=host.clone();let attachment=subscribed["attachmentId"].clone();async move {
+            host.schedules.connections.frontend_call(&host,&json!({"attachmentId":attachment,"call":"projectless.command","params":request})).await
+        }};
+        let catalog=call(json!({"operation":"catalog"})).await.unwrap();
+        assert!(catalog["models"].as_array().unwrap().iter().any(|row|row["modelId"]=="example" && row["available"]==true));
+        let encoded=serde_json::to_string(&catalog).unwrap();assert!(!encoded.contains("private-endpoint"));assert!(!encoded.contains("private-fixture-value"));
+        let scratch=call(json!({"operation":"scratch"})).await.unwrap();
+        assert_eq!(scratch["cwd"],json!(config.join("scratch")));
+        assert_eq!(scratch,call(json!({"operation":"scratch"})).await.unwrap());
+        assert!(call(json!({"operation":"prepare","requestId":uuid::Uuid::new_v4().to_string(),"directory":root.join("../escape")})).await.is_err());
+        assert!(!host.gateway.workbench.has_running_backend());
+    }).await;
+}

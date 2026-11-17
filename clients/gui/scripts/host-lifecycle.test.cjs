@@ -1202,3 +1202,23 @@ test("project picker registers through the native Host without a Node projection
   assert.equal(await f.backend.addProject(f.root), "a".repeat(24));
   assert.equal(f.backend.connection, undefined);
 });
+
+test("projectless preparations use the native source without a Node connection", async (t) => {
+  const f = await fixture(t);
+  const request = { operation: "prepare", requestId: randomUUID() };
+  f.setHandler(async (frame) => {
+    if (frame.method === "desktop.core.subscribe") return { attachmentId: "attachment" };
+    assert.equal(frame.method, "desktop.core.call");
+    assert.equal(frame.params.call, "projectless.command");
+    assert.deepEqual(frame.params.params, request);
+    return { projectId: "a".repeat(24), cwd: f.root };
+  });
+  await f.backend.connectNativeBrowser({ home: f.hostHome, sourceId: "source" }, {});
+  t.after(() => f.backend.closeNativeBrowser());
+  f.backend.status.connected = true;
+  assert.deepEqual(await f.backend.command("projectless", request), {
+    projectId: "a".repeat(24),
+    cwd: f.root,
+  });
+  assert.equal(f.backend.connection, undefined);
+});

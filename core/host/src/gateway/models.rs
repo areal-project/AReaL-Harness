@@ -391,6 +391,101 @@ fn mark_checking(models: &mut [Value]) {
     }
 }
 
+pub(crate) fn projectless_models(host: &Host, source: &str, options: &Value) -> Result<Value> {
+    let mut inputs = crate::server::workbench_utility::inputs(options)?;
+    for (name, value) in host.gateway.workbench.environment_credentials(source) {
+        inputs.env.insert(name.into(), value.into());
+    }
+    let references: Vec<_> = host
+        .migration
+        .vault
+        .provider_references(source)?
+        .into_iter()
+        .collect();
+    for name in &references {
+        inputs.env.remove(std::ffi::OsStr::new(name));
+    }
+    let config = areal_config::models::read(&inputs, &references)?;
+    let mut rows = configured_models(&config);
+    let effective = &config.effective["model"];
+    if let Some(name) = effective["name"].as_str().filter(|name| !name.is_empty()) {
+        let configured = rows
+            .iter()
+            .find(|row| row["providerId"] == effective["provider"] && row["modelId"] == name)
+            .cloned();
+        let mut parameters = json!({});
+        for (key, field) in [
+            ("temperature", "temperature"),
+            ("max_output_tokens", "maxOutputTokens"),
+            ("context_window_tokens", "contextWindowTokens"),
+            ("reasoning_effort", "reasoningEffort"),
+            ("service_tier", "serviceTier"),
+        ] {
+            if !effective[key].is_null() {
+                parameters[field] = effective[key].clone();
+            }
+        }
+        let available = configured
+            .as_ref()
+            .map(|row| row["available"] != false)
+            .unwrap_or_else(|| {
+                effective["endpoint"]
+                    .as_str()
+                    .is_some_and(|value| !value.is_empty())
+                    && effective["api_key_env"].as_str().is_none_or(|key| {
+                        inputs
+                            .env
+                            .get(std::ffi::OsStr::new(key))
+                            .is_some_and(|value| !value.is_empty())
+                    })
+            });
+        let mut row = json!({"providerId":null,"modelId":name,"displayName":configured.as_ref().map(|row|row["displayName"].clone()).unwrap_or(json!(name)),"available":available,"isDefault":!rows.iter().any(|row|row["isDefault"]==true),"parameters":parameters,"reasoningEffortOptions":configured.as_ref().map(|row|row["reasoningEffortOptions"].clone()).unwrap_or(json!([]))});
+        if let Some(caps) = configured.as_ref().and_then(|row| row.get("capabilities")) {
+            row["capabilities"] = caps.clone();
+        }
+        rows.insert(0, row);
+    }
+    let subscription = host.subscription_model_catalog(source)?;
+    let mut models = catalog(&rows, subscription.as_ref(), &[]);
+    for row in &mut models {
+        if row.get("available").is_none() {
+            row["available"] =
+                json!(row["credentialState"] == "checking" || row["providerId"] == "areal_openai");
+        }
+        if row.get("parameters").is_none() {
+            row["parameters"] = json!({});
+        }
+        if row["providerId"] == "areal_openai" {
+            row["isDefault"] = json!(
+                config
+                    .default_model
+                    .as_ref()
+                    .is_some_and(|selected| selected.provider_id == "areal_openai"
+                        && row["modelId"] == selected.model_id)
+            );
+        } else if row.get("isDefault").is_none() {
+            row["isDefault"] = json!(false);
+        }
+        if row.get("reasoningEffortOptions").is_none() {
+            row["reasoningEffortOptions"] = json!([]);
+        }
+    }
+    if models
+        .iter()
+        .any(|row| !row["providerId"].is_null() && row["isDefault"] == true)
+    {
+        for row in &mut models {
+            if row["providerId"].is_null() {
+                row["isDefault"] = json!(false);
+            }
+        }
+    }
+    let home = crate::server::library_store::source_home(host, source)?;
+    let accepted: Option<areal_protocol::host::WorkbenchCreationAcceptedModel> =
+        storage::read_optional(&home.join("model-selection.json"))?;
+    Ok(json!({"models":models,"lastAcceptedModel":accepted}))
+}
+
 fn configured_models(config: &areal_config::models::ModelConfiguration) -> Vec<Value> {
     config.data.iter().filter(|provider| provider.enabled).flat_map(|provider| {
         let stored = matches!(config.credential_sources.get(&provider.id),

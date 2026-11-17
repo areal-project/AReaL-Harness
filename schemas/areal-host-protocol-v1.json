@@ -58538,6 +58538,28 @@
             "params"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "attachmentId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "call": {
+              "type": "string",
+              "const": "projectless.command"
+            },
+            "params": {
+              "$ref": "#/$defs/LocalDesktopProjectlessParams"
+            }
+          },
+          "required": [
+            "attachmentId",
+            "call",
+            "params"
+          ],
+          "additionalProperties": false
         }
       ]
     },
@@ -58575,6 +58597,9 @@
         },
         {
           "$ref": "#/$defs/WorkbenchPrivateWorktreeProjectAddResult"
+        },
+        {
+          "$ref": "#/$defs/LocalDesktopProjectlessResult"
         }
       ],
       "examples": [
@@ -62937,6 +62962,242 @@
         "connectionId"
       ],
       "additionalProperties": false
+    },
+    "LocalDesktopProjectlessParams": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "catalog"
+            }
+          },
+          "required": [
+            "operation"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "scratch"
+            }
+          },
+          "required": [
+            "operation"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "directory"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "operation",
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "prepare"
+            },
+            "requestId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "directory": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "operation",
+            "requestId"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "LocalDesktopProjectlessResult": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "projectId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "cwd": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "projectId",
+            "cwd"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "directory": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "directory"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "models": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/LocalDesktopProjectlessModel"
+              }
+            },
+            "lastAcceptedModel": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WorkbenchCreationAcceptedModel"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "models",
+            "lastAcceptedModel"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "WorkbenchPrivateProjectlessCommandRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "call": {
+          "type": "string",
+          "const": "projectless.command"
+        },
+        "params": {
+          "$ref": "#/$defs/LocalDesktopProjectlessParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "call",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "LocalDesktopProjectlessModel": {
+      "type": "object",
+      "properties": {
+        "modelId": {
+          "type": "string"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "providerName": {
+          "type": "string"
+        },
+        "credentialState": {
+          "type": "string"
+        },
+        "unavailableReason": {
+          "type": "string"
+        },
+        "availability": {
+          "type": "string"
+        },
+        "providerId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "providerRevision": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "isDefault": {
+          "type": "boolean"
+        },
+        "parameters": {
+          "$ref": "#/$defs/WorkbenchProviderParameters"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/WorkbenchProviderCapabilities"
+        },
+        "reasoningEffortOptions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "contextWindowTokens": {
+          "type": "integer"
+        },
+        "maxOutputTokens": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "providerId",
+        "modelId",
+        "displayName",
+        "available",
+        "isDefault",
+        "parameters",
+        "reasoningEffortOptions"
+      ],
+      "additionalProperties": false
     }
   },
   "x-current": {
@@ -63937,6 +64198,13 @@
         "plugins.command": {
           "request": "#/$defs/WorkbenchPrivatePluginsCommandRequest",
           "result": "#/$defs/WorkbenchPrivatePluginsCommandResult",
+          "direction": "workbenchToHost",
+          "x-owner": "host",
+          "source": "core/host/src/workbench_route.rs"
+        },
+        "projectless.command": {
+          "request": "#/$defs/WorkbenchPrivateProjectlessCommandRequest",
+          "result": "#/$defs/LocalDesktopProjectlessResult",
           "direction": "workbenchToHost",
           "x-owner": "host",
           "source": "core/host/src/workbench_route.rs"

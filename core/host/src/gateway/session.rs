@@ -10,7 +10,7 @@ mod create;
 #[path = "interaction_tests.rs"]
 mod interaction_tests;
 #[path = "models.rs"]
-mod models;
+pub(super) mod models;
 #[path = "observer.rs"]
 mod observer;
 #[path = "overview.rs"]
