@@ -124,6 +124,5 @@
   "services/workbench/src/desktop/core/remote-config.cjs": 7,
   "services/workbench/src/desktop/core/startup-timing.cjs": 1,
   "services/workbench/src/desktop/core/submission-recovery.cjs": 1,
-  "services/workbench/src/desktop/core/task-draft-target.cjs": 2,
-  "services/workbench/src/native-host-transport.ts": 1
+  "services/workbench/src/desktop/core/task-draft-target.cjs": 2
 }

@@ -77,22 +77,22 @@ impl Connections {
         connection: &str,
         source: &str,
         options: Value,
+        environment_credentials: Option<std::collections::BTreeMap<String, String>>,
     ) -> Result<(Value, mpsc::Receiver<Value>)> {
-        ensure!(
-            !(host.gateway.workbench.backend_has_source(source)
-                && host.gateway.workbench.has_running_backend()),
-            "COMMAND_CONFLICT"
-        );
-        let options = super::super::workbench_route::frontend_options(host, source, options)?;
         ensure!(self.frontends.borrow().len() < 16, "CAPACITY_EXCEEDED");
         ensure!(
-            !self
-                .frontends
+            self.frontends
                 .borrow()
                 .values()
-                .any(|frontend| frontend.source == source),
+                .all(|frontend| frontend.source != source),
             "COMMAND_CONFLICT"
         );
+        let options = super::super::workbench_route::frontend_options(
+            host,
+            source,
+            options,
+            environment_credentials,
+        )?;
         let id = uuid::Uuid::new_v4().to_string();
         let (events, receiver) = mpsc::channel(64);
         self.frontends.borrow_mut().insert(
@@ -177,10 +177,35 @@ impl Connections {
             .borrow()
             .iter()
             .find(|(_, frontend)| frontend.leases.get(lease).is_some_and(|id| id == project))
-            .map(|(id, frontend)| (id.clone(), frontend.events.clone()));
-        let (attachment, sender) = selected?;
+            .map(|(id, frontend)| (id.clone(), frontend.source.clone(), frontend.events.clone()));
+        let (attachment, source, sender) = selected?;
         let identity = match self.workbench_identity(host, project, lease) {
             Ok(identity) => identity,
+            Err(error) => return Some(Err(error)),
+        };
+        let target = (|| -> Result<(String, std::path::PathBuf)> {
+            let alias =
+                super::super::workbench_route::backend_project_alias(host, &source, project)?;
+            let home = super::super::library_store::source_home(host, &source)?;
+            let rows = super::super::worktree_catalog::saved_projects(&home)?;
+            let logical = rows
+                .iter()
+                .find(|row| row["id"] == alias)
+                .and_then(|row| row["logicalProjectId"].as_str())
+                .unwrap_or(&alias)
+                .to_owned();
+            let workspace = host
+                .slots
+                .borrow()
+                .get(project)
+                .context("RESOURCE_UNAVAILABLE")?
+                .registration
+                .workspace
+                .clone();
+            Ok((logical, workspace))
+        })();
+        let (logical, workspace) = match target {
+            Ok(target) => target,
             Err(error) => return Some(Err(error)),
         };
         let request = uuid::Uuid::new_v4().to_string();
@@ -193,12 +218,18 @@ impl Connections {
             }
             frontend.callbacks.insert(request.clone(), send);
         }
-        let event = json!({"attachmentId":attachment,"event":{"event":"core.callback","requestId":request,"coreRequestId":core_request_id,"projectId":project,"lease":lease,"coreInstanceId":identity.0,"coreGeneration":identity.1,"connectionId":identity.2,"method":method,"params":params}});
+        let event = json!({"attachmentId":attachment,"event":{"event":"core.callback","requestId":request,"coreRequestId":core_request_id,"projectId":project,"lease":lease,"coreInstanceId":identity.0,"coreGeneration":identity.1,"connectionId":identity.2,"sourceId":source,"guiProjectId":logical,"workspacePath":workspace,"method":method,"params":params}});
         let sent = sender.send(event).await;
+        let deadline =
+            if method == "item/tool/call" && params["arguments"]["operation"] == "command" {
+                Duration::from_secs(128)
+            } else {
+                Duration::from_secs(62)
+            };
         let result = if sent.is_err() {
             Err(unavailable())
         } else {
-            match tokio::time::timeout(Duration::from_secs(62), receive).await {
+            match tokio::time::timeout(deadline, receive).await {
                 Ok(Ok(result)) => result,
                 _ => Err(unavailable()),
             }
@@ -546,13 +577,16 @@ mod tests {
                 let shared=connect(host.clone(),"project",service.clone()).await.unwrap();host.schedules.connections.sessions.borrow_mut().insert("project".into(),shared.clone());
                 let session=connect_owned(host.clone(),"project",service,true).await.unwrap();session.desktop.set(true);
                 let lease=uuid::Uuid::new_v4().to_string();*session.workbench_lease.borrow_mut()=Some(lease.clone());host.schedules.connections.terminals.borrow_mut().insert(lease.clone(),session.clone());
+                let execution_alias=super::super::super::workbench_route::backend_project_alias(&host,&source_id,"project").unwrap();
+                storage::write(&source.core_home.join("projects.json"),&json!([{"id":execution_alias,"root":session.service.identity.workspace,"logicalProjectId":"logical"}])).unwrap();
                 host.gateway.workbench.set_test_source_and_options(&source_id,json!({}));
                 let (mut events,mut event_writer)=host_socket(host.clone()).await;
-                send(&mut event_writer,"subscribe","desktop.core.subscribe",json!({"sourceId":source_id,"options":{"binary":host.bin.join("areal"),"home":source.core_home,"guiProfile":source.profile,"hostHome":host.home}})).await;
+                // 过渡：到 0.2.0 删；夹具沿用来源导入的旧目录身份。
+                send(&mut event_writer,"subscribe","desktop.core.subscribe",json!({"sourceId":source_id,"options":{"binary":host.bin.join("areal"),"home":source.core_home,"guiProfile":source.profile,"hostHome":host.home,"harnessHome":source.legacy_service_home}})).await;
                 let subscribed=crate::wire::read(&mut events).await.unwrap().unwrap();assert!(subscribed.get("error").is_none(),"{subscribed}");let attachment=subscribed["result"]["attachmentId"].as_str().unwrap().to_owned();host.schedules.connections.frontends.borrow_mut().get_mut(&attachment).unwrap().leases.insert(lease.clone(),"project".into());
                 let (mut calls,mut call_writer)=host_socket(host.clone()).await;let (mut replies,mut reply_writer)=host_socket(host.clone()).await;
                 send(&mut call_writer,"call","desktop.core.call",json!({"attachmentId":attachment,"call":"core.request","params":{"sourceId":source_id,"projectId":"project","lease":lease,"method":"areal/server/status","params":{}}})).await;
-                let event=crate::wire::read(&mut events).await.unwrap().unwrap();assert_eq!(event["method"],"desktop.core.event");assert_eq!(event["params"]["event"]["coreRequestId"],17);assert_eq!(event["params"]["event"]["coreInstanceId"],"fixture-core");assert_eq!(event["params"]["event"]["coreGeneration"],"generation");assert_eq!(event["params"]["event"]["connectionId"],session.connection_id);
+                let event=crate::wire::read(&mut events).await.unwrap().unwrap();assert_eq!(event["method"],"desktop.core.event");assert_eq!(event["params"]["event"]["coreRequestId"],17);assert_eq!(event["params"]["event"]["coreInstanceId"],"fixture-core");assert_eq!(event["params"]["event"]["coreGeneration"],"generation");assert_eq!(event["params"]["event"]["connectionId"],session.connection_id);assert_eq!(event["params"]["event"]["sourceId"],source_id);assert_eq!(event["params"]["event"]["guiProjectId"],"logical");assert_eq!(event["params"]["event"]["workspacePath"],json!(session.service.identity.workspace));
                 send(&mut reply_writer,"reply","desktop.core.callback",json!({"attachmentId":attachment,"requestId":event["params"]["event"]["requestId"],"result":{"handled":true}})).await;
                 assert_eq!(crate::wire::read(&mut replies).await.unwrap().unwrap()["result"]["received"],true);
                 assert_eq!(crate::wire::read(&mut calls).await.unwrap().unwrap()["result"]["result"]["alive"],true);

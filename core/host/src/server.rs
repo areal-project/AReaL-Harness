@@ -623,8 +623,8 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
                     })()
                 } else if request.method=="desktop.core.subscribe" {
                     ensure!(frontend_events.is_none(),error("invalidRequest","desktop attachment already exists"));
-                    let source=request.params["sourceId"].as_str().context("INVALID_PARAMS")?;
-                    let (result,events)=host.schedules.connections.frontend_subscribe(&host,&connection.id,source,request.params["options"].clone())?;
+                    let input:areal_protocol::host::LocalDesktopCoreSubscribeParams=serde_json::from_value(request.params)?;
+                    let (result,events)=host.schedules.connections.frontend_subscribe(&host,&connection.id,&input.source_id,serde_json::to_value(input.options)?,input.environment_credentials.map(|values|values.additional_properties))?;
                     frontend_events=Some(events);Ok(result)
                 } else {host.dispatch_connection(&request.method,request.params,&connection).await};
                 let response=match result {Ok(value)=>json!({"version":VERSION,"id":request.id,"result":value}),Err(e)=>json!({"version":VERSION,"id":request.id,"error":local_command_error(&e)})};

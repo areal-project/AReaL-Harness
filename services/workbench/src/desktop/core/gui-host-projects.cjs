@@ -30,6 +30,8 @@ class GuiHostProjects {
     this.source = options.source;
     this.sourceId = "";
     this.migrationId = "";
+    /** @type {Record<string,string>|undefined} */
+    this.environmentCredentials = undefined;
     /** @type {RetirementState} */
     this.retirement = { state: "pending", error: "旧凭据清理尚未确认，ChatGPT 订阅暂不可用。" };
     /** @type {Promise<RetirementState>|undefined} */
@@ -65,6 +67,7 @@ class GuiHostProjects {
         typeof environment[name] === "string" ? [[name, environment[name]]] : [],
       ),
     );
+    this.environmentCredentials = result.configurationError ? undefined : credentials;
     return this.client.request(
       "backend.ensure",
       result.configurationError

@@ -51,7 +51,7 @@ Host 发布包内与 Electron 相同的 Renderer。`areal web` 打开公开 orig
 
 工作台各域的读写（`library`、`worktree`、`tasks`、`trajectory`、`feedback`、`manage`、`providers`）与 `desktop.command` 都不需要客户端指定 `sourceId`：省略时 Host 用当前工作台后台的来源，后台未运行时返回 `CAPABILITY_UNAVAILABLE`；显式传入且不一致时返回 `FORBIDDEN`。
 
-资料库非原生操作（含非导航偏好）统一使用 `library.command` 和原 `commandId` 回执；`desktop.command` 不再接受 `library`。电脑控制的启用、provider、executable 三项设置仍使用本机 Main 权限入口。
+资料库非原生操作（含非导航偏好）统一使用 `library.command` 和原 `commandId` 回执；`desktop.command` 不再接受 `library`。
 
 ## 消息封装与公共类型
 
@@ -113,11 +113,13 @@ Host 发布包内与 Electron 相同的 Renderer。`areal web` 打开公开 orig
 
 Host 内部共享 Core 连接的监督器在状态探测暂时失败后，仍按原退避重新探测当前 Host 持有生命周期且启动结果已确定的服务，即使项目的定时激活已被抑制。恢复前重新核验服务身份与 owner；探测不调用 `project.ensure`，不启动新 Core，也不解除停止意图。已停止、失去生命周期持有权、owner 不匹配或启动结果未确定的项目不通过这条重试路径恢复。
 
+本机 Main 通过 `desktop.core.subscribe` 绑定来源和经核验的启动选项；可选 `environmentCredentials` 只接受已配置的环境凭据名，值仅保留在 Host 内存，不进入启动记录。`desktop.core.event` 的工具回调携带原 `sourceId/projectId/lease/coreInstanceId/coreGeneration/connectionId`，以及用于原生预览的 `guiProjectId/workspacePath`；逻辑项目与执行工作树不能互换。`desktop.core.callback` 仅回复同一附件的原请求，媒体上传仍使用原执行项目和租约。附件断开撤销专用连接，不重放回调或提交。
+
 ## 定时项目激活与准备
 
-`scheduledPreparation` 表示 Host 通过常驻认证连接注册 Core 调度宿主并处理 `areal/task/prepare`。普通 GUI 工具连接和调度连接可以不同，但必须属于同一认证身份；来源会话和执行锚点仍校验原连接与目录归属。Core 保留 Task、Run、准备结果及触发权威。Host 不为缺席的 Main 发布浏览器、计算机或 JavaScript 工具。
+`scheduledPreparation` 表示 Host 通过常驻认证连接注册 Core 调度宿主并处理 `areal/task/prepare`。普通 GUI 工具连接和调度连接可以不同，但必须属于同一认证身份；来源会话和执行锚点仍校验原连接与目录归属。Core 保留 Task、Run、准备结果及触发权威。Host 不为缺席的 Main 发布浏览器工具。
 
-GUI 在线时通过 Core `areal/task/tools/ready` 发布当前 Browser/Computer bundle。Run 的调度生命期绑定 Host，桌面工具绑定实际 GUI 连接；退出 GUI 不终止纯模型执行，旧工具调用也不转发给后来的连接。注册是连接级状态，不迁入 Host 的持久任务记录。
+GUI 在线时通过 Core `areal/task/tools/ready` 发布当前 Browser bundle。Run 的调度生命期绑定 Host，桌面工具绑定实际 GUI 连接；退出 GUI 不终止纯模型执行，旧工具调用也不转发给后来的连接。注册是连接级状态，不迁入 Host 的持久任务记录。
 
 `scheduledActivation` 能力表示 Host 承担定时项目激活。`host.status.projects` 的 `scheduleActivationSuppressed:boolean` 与可选 `scheduleActivationError:string` 是 GUI 的只读投影来源。错误仅包含领域错误码，不公开子进程 stderr 或秘密。
 

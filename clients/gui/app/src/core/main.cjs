@@ -607,12 +607,7 @@ function startDesktop() {
         WebContentsView,
         (projectId, threadId) => backend.ownsThread(projectId, threadId),
         () => backend.snapshot().library?.settings ?? {},
-        (projectId, threadId) =>
-          backend.snapshot().projects.find((project) => project.id === projectId)?.state?.threads?.[
-            threadId
-          ]?.executionCore?.instanceId ??
-          backend.status.browserCore?.[projectId] ??
-          null,
+        (projectId, threadId) => backend.browserCoreIdentity(projectId, threadId),
         () =>
           [
             backend.metadata && "endpoint" in backend.metadata
@@ -760,6 +755,34 @@ function startDesktop() {
             await serviceBackend.init({ automatic: connectedOnce });
             if (serviceBackend.status.connected) connectedOnce = true;
           };
+          /** @type {typeof import("./native-browser-tools")} */
+          const { NativeBrowserTools } = require("./generated/native-browser-tools.cjs");
+          const nativeBrowserTools = new NativeBrowserTools({
+            preview: () => {
+              if (quitting || !preview || !window || window.isDestroyed())
+                throw new Error("Browser host unavailable");
+              return preview;
+            },
+            current: (frame) =>
+              !quitting &&
+              !!window &&
+              !window.isDestroyed() &&
+              serviceBackend.nativeBrowserCurrent(frame),
+            call: (method, params) => serviceBackend.nativeBrowserCall(method, params),
+            reveal: (projectId, threadId, pageId) => {
+              if (window && !window.isDestroyed())
+                sendDesktopEvent(window.webContents, "areal-core:preview-event", {
+                  kind: "reveal",
+                  projectId,
+                  threadId,
+                  pageId,
+                });
+            },
+          });
+          serviceBackend.onNativeBrowserRequest = (frame, signal) =>
+            nativeBrowserTools.callback(frame, signal);
+          serviceBackend.onNativeBrowserRevoked = (projectId, threadId) =>
+            preview?.revokeThread(projectId, threadId);
           serviceBackend.onBrowserDisconnected = () => {
             preview?.revokeAll();
           };

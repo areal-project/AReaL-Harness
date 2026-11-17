@@ -91,6 +91,7 @@ async function terminalOwner(descriptor) {
     home: nativeSource.coreHome,
     guiProfile: nativeSource.profile,
     hostHome: home,
+    harnessHome: nativeSource.legacyServiceHome,
     userHome: user,
     configHome: user,
     config,

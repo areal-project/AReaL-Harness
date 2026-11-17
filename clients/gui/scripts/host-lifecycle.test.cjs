@@ -929,7 +929,10 @@ test("native Main handles Host-created leases on independent callback socket", a
     lease: "host-created-lease",
     coreInstanceId: "core",
     coreGeneration: "generation",
+    sourceId: "source",
     connectionId: "original-connection",
+    guiProjectId: "logical",
+    workspacePath: f.root,
     method: "item/tool/call",
     params: { tool: "browser_v1" },
   };
@@ -1029,7 +1032,10 @@ test("native callback cancellation binds the original lease and request", async 
     lease: "original",
     coreInstanceId: "core",
     coreGeneration: "generation",
+    sourceId: "source",
     connectionId: "connection",
+    guiProjectId: "logical",
+    workspacePath: f.root,
     method: "item/tool/call",
     params: {},
   });
@@ -1051,4 +1057,80 @@ test("native callback cancellation binds the original lease and request", async 
   await cancelled.promise;
   await answered.promise;
   assert.equal(transport.closed, false);
+});
+
+test("production Main installs native callback ownership before a late subscription baseline", async (t) => {
+  const f = await fixture(t);
+  const received = Promise.withResolvers(),
+    revoked = Promise.withResolvers();
+  let eventSocket;
+  const frame = {
+    event: "core.callback",
+    sourceId: "source",
+    requestId: "callback",
+    coreRequestId: 17,
+    projectId: "execution",
+    guiProjectId: "logical",
+    workspacePath: f.root,
+    lease: "original-lease",
+    coreInstanceId: "core",
+    coreGeneration: "generation",
+    connectionId: "connection",
+    method: "item/tool/call",
+    params: { threadId: "thread" },
+  };
+  const emit = (event) =>
+    eventSocket.write(
+      JSON.stringify({
+        version: 1,
+        method: "desktop.core.event",
+        params: { attachmentId: "attachment", event },
+      }) + "\n",
+    );
+  f.setHandler(async (request, socket) => {
+    if (request.method === "desktop.core.subscribe") {
+      eventSocket = socket;
+      // 先送事件，覆盖订阅回复与事件处于同一读取批次时的微任务顺序。
+      emit(frame);
+      return { attachmentId: "attachment" };
+    }
+    if (request.method === "desktop.core.call") {
+      assert.equal(request.params.call, "core.blob");
+      assert.equal(request.params.params.lease, frame.lease);
+      return { uri: "areal://media/original" };
+    }
+    assert.equal(request.method, "desktop.core.callback");
+    assert.deepEqual(request.params.result, { handled: true });
+    received.resolve();
+    return { received: true };
+  });
+  f.backend.onNativeBrowserRequest = async (callback) => {
+    assert.equal(f.backend.nativeBrowserCurrent(callback), true);
+    assert.equal(f.backend.ownsThread("logical", "thread"), true);
+    assert.equal(f.backend.browserCoreIdentity("logical", "thread"), "core");
+    assert.equal(
+      f.backend.nativeBrowserWorkspace({ projectId: "logical", threadId: "thread" }).root,
+      f.root,
+    );
+    const image = await f.backend.nativeBrowserCall("core.blob", {
+      projectId: "execution",
+      lease: callback.lease,
+    });
+    assert.equal(image.uri, "areal://media/original");
+    return { handled: true };
+  };
+  f.backend.onNativeBrowserRevoked = (projectId, threadId) =>
+    revoked.resolve({ projectId, threadId });
+  await f.backend.connectNativeBrowser({ home: f.hostHome, sourceId: "source" }, {});
+  t.after(() => f.backend.closeNativeBrowser());
+  await received.promise;
+  emit({ event: "core.event", lease: "other-lease", method: "host/connectionClosed" });
+  emit({
+    event: "core.event",
+    lease: frame.lease,
+    method: "areal/thread/archived",
+    params: { threadId: "thread" },
+  });
+  assert.deepEqual(await revoked.promise, { projectId: "logical", threadId: "thread" });
+  assert.equal(f.backend.ownsThread("logical", "thread"), false);
 });

@@ -1583,7 +1583,13 @@ fn launch_at(bin: &Path, host_home: &Path, input: Ensure) -> Result<(String, Lau
             && binary.file_name().is_some_and(|name| name == "areal"),
         invalid("Core executable is not the Host Core")
     );
-    let source = source_entry(bin, "backend-main.cjs").is_some();
+    let source = cfg!(debug_assertions)
+        && bin.file_name().is_some_and(|name| name == "debug")
+        && bin
+            .parent()
+            .and_then(Path::file_name)
+            .is_some_and(|name| name == "target")
+        && bin.join("../../clients/gui/app").is_dir();
     let app_root = bin
         .join(if source {
             "../../clients/gui/app"
@@ -1935,17 +1941,81 @@ async fn workbench_core_call(host: &Rc<Host>, method: &str, params: &Value) -> R
         .await
 }
 
-pub(super) fn frontend_options(host: &Host, source: &str, options: Value) -> Result<Value> {
-    let profile = host.migration.source_profile(source)?;
-    let (_, launch) = launch(
-        host,
-        Ensure {
-            profile,
-            options,
-            environment_credentials: Default::default(),
-        },
-    )?;
+pub(super) fn frontend_options(
+    host: &Host,
+    source: &str,
+    options: Value,
+    environment_credentials: Option<std::collections::BTreeMap<String, String>>,
+) -> Result<Value> {
+    host.admission()?;
+    let input = Ensure {
+        profile: host.migration.source_profile(source)?,
+        options,
+        environment_credentials,
+    };
+    let (key, launch) = launch(host, input.clone())?;
     ensure!(launch.source_id.as_deref() == Some(source), "FORBIDDEN");
+    if let Some(credentials) = &input.environment_credentials
+        && !credentials.is_empty()
+    {
+        let allowed = environment_credential_names(&launch.options)?;
+        ensure!(
+            credentials.keys().all(|name| allowed.contains(name)),
+            "INVALID_PARAMS"
+        );
+    }
+    let backend = &host.gateway.workbench.backend;
+    // 独立终端附件保留自己的来源和选项，不能改绑当前工作台或写它的凭据。
+    if backend
+        .source
+        .borrow()
+        .as_deref()
+        .is_some_and(|active| active != source)
+    {
+        ensure!(
+            input
+                .environment_credentials
+                .as_ref()
+                .is_none_or(|credentials| credentials.is_empty()),
+            "CONFLICT"
+        );
+        return Ok(launch.options);
+    }
+    if backend
+        .running
+        .borrow()
+        .as_ref()
+        .is_some_and(|running| !running.closed())
+    {
+        ensure!(
+            backend
+                .ownership
+                .borrow()
+                .as_ref()
+                .is_some_and(|(existing, _)| existing == &key),
+            "CONFLICT"
+        );
+    }
+    let previous = backend.environment_credentials.borrow().clone();
+    let credentials = input.environment_credentials.clone().unwrap_or_else(|| {
+        previous
+            .filter(|previous| previous.source_id == source && previous.launch_key == key)
+            .map(|previous| previous.values)
+            .unwrap_or_default()
+    });
+    // 只持久化经校验的路径；环境凭据只留在Host内存，不写入启动记录。
+    storage::private_dir(launch_record(host).parent().unwrap())?;
+    storage::write(&launch_record(host), &input)?;
+    host.retain_for_gui()?;
+    *backend.source.borrow_mut() = Some(source.into());
+    *backend.utility_options.borrow_mut() = Some(launch.options.clone());
+    *backend.environment_credentials.borrow_mut() = Some(EnvironmentCredentials {
+        source_id: source.into(),
+        launch_key: key,
+        values: credentials,
+    });
+    // 模型配置失败不阻塞独立的历史和管理读取，模型入口保留原错误。
+    let _ = super::provider_config::import_saved_configuration(host, source, &launch.options);
     Ok(launch.options)
 }
 

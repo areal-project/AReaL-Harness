@@ -45475,181 +45475,6 @@
       ],
       "additionalProperties": false
     },
-    "WorkbenchPrivateExecutionCompleteParams": {
-      "type": "object",
-      "properties": {
-        "handle": {
-          "type": "string",
-          "format": "uuid"
-        },
-        "result": {
-          "$ref": "#/$defs/WorkbenchExecutionCoreResponse"
-        },
-        "error": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "handle"
-      ],
-      "additionalProperties": false
-    },
-    "WorkbenchPrivateExecutionCompleteResult": {
-      "type": "object",
-      "properties": {
-        "completed": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "completed"
-      ],
-      "additionalProperties": false
-    },
-    "WorkbenchPrivateExecutionCompleteRequest": {
-      "type": "object",
-      "properties": {
-        "version": {
-          "type": "integer",
-          "const": 1
-        },
-        "id": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "method": {
-          "type": "string",
-          "const": "execution.complete"
-        },
-        "params": {
-          "$ref": "#/$defs/WorkbenchPrivateExecutionCompleteParams"
-        },
-        "context": {
-          "type": "object",
-          "properties": {
-            "principal": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            },
-            "connection": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            }
-          },
-          "required": [],
-          "additionalProperties": false
-        }
-      },
-      "required": [
-        "version",
-        "id",
-        "method",
-        "params"
-      ],
-      "additionalProperties": false
-    },
-    "WorkbenchPrivateExecutionPrepareParams": {
-      "$ref": "#/$defs/WorkbenchExecutionPrepareParams"
-    },
-    "WorkbenchPrivateExecutionPrepareResult": {
-      "$ref": "#/$defs/WorkbenchExecutionPrepareResult"
-    },
-    "WorkbenchPrivateExecutionPrepareRequest": {
-      "type": "object",
-      "properties": {
-        "version": {
-          "type": "integer",
-          "const": 1
-        },
-        "id": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "method": {
-          "type": "string",
-          "const": "execution.prepare"
-        },
-        "params": {
-          "$ref": "#/$defs/WorkbenchPrivateExecutionPrepareParams"
-        },
-        "context": {
-          "type": "object",
-          "properties": {
-            "principal": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            },
-            "connection": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            }
-          },
-          "required": [],
-          "additionalProperties": false
-        }
-      },
-      "required": [
-        "version",
-        "id",
-        "method",
-        "params"
-      ],
-      "additionalProperties": false
-    },
-    "WorkbenchPrivateExecutionDispatchParams": {
-      "$ref": "#/$defs/WorkbenchExecutionDispatchParams"
-    },
-    "WorkbenchPrivateExecutionDispatchResult": {
-      "$ref": "#/$defs/WorkbenchExecutionDispatchResult"
-    },
-    "WorkbenchPrivateExecutionDispatchRequest": {
-      "type": "object",
-      "properties": {
-        "version": {
-          "type": "integer",
-          "const": 1
-        },
-        "id": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "method": {
-          "type": "string",
-          "const": "execution.dispatch"
-        },
-        "params": {
-          "$ref": "#/$defs/WorkbenchPrivateExecutionDispatchParams"
-        },
-        "context": {
-          "type": "object",
-          "properties": {
-            "principal": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            },
-            "connection": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            }
-          },
-          "required": [],
-          "additionalProperties": false
-        }
-      },
-      "required": [
-        "version",
-        "id",
-        "method",
-        "params"
-      ],
-      "additionalProperties": false
-    },
     "WorkbenchLifecycleHostReceipt": {
       "type": "object",
       "properties": {
@@ -47392,41 +47217,6 @@
           "additionalProperties": false
         }
       ]
-    },
-    "WorkbenchPrivateExecutionCompleteEvent": {
-      "type": "object",
-      "properties": {
-        "version": {
-          "type": "integer",
-          "const": 1
-        },
-        "event": {
-          "type": "string",
-          "const": "execution.complete"
-        },
-        "connection": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 512
-        },
-        "handle": {
-          "type": "string",
-          "format": "uuid"
-        },
-        "result": {
-          "$ref": "#/$defs/WorkbenchExecutionCoreResponse"
-        },
-        "error": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "version",
-        "event",
-        "connection",
-        "handle"
-      ],
-      "additionalProperties": false
     },
     "WorkbenchPrivateLibraryState": {
       "type": "object",
@@ -58420,35 +58210,6 @@
       ],
       "additionalProperties": false
     },
-    "WorkbenchPrivateExecutionCancelEvent": {
-      "type": "object",
-      "properties": {
-        "version": {
-          "type": "integer",
-          "const": 1
-        },
-        "event": {
-          "type": "string",
-          "const": "execution.cancel"
-        },
-        "connection": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 512
-        },
-        "handle": {
-          "type": "string",
-          "format": "uuid"
-        }
-      },
-      "required": [
-        "version",
-        "event",
-        "connection",
-        "handle"
-      ],
-      "additionalProperties": false
-    },
     "LocalDesktopCoreSubscribeParams": {
       "type": "object",
       "properties": {
@@ -58459,6 +58220,10 @@
         },
         "options": {
           "$ref": "#/$defs/DesktopBackendOptions"
+        },
+        "environmentCredentials": {
+          "$ref": "#/$defs/StringMap",
+          "x-sensitive": true
         }
       },
       "required": [
@@ -60451,6 +60216,36 @@
                   "type": "number"
                 }
               ]
+            },
+            "sourceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "coreInstanceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "coreGeneration": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "connectionId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "guiProjectId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "workspacePath": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
             }
           },
           "required": [
@@ -60460,7 +60255,13 @@
             "params",
             "event",
             "requestId",
-            "coreRequestId"
+            "coreRequestId",
+            "sourceId",
+            "coreInstanceId",
+            "coreGeneration",
+            "connectionId",
+            "guiProjectId",
+            "workspacePath"
           ],
           "additionalProperties": false
         },
@@ -60502,6 +60303,36 @@
                   "type": "number"
                 }
               ]
+            },
+            "sourceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "coreInstanceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "coreGeneration": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "connectionId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "guiProjectId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "workspacePath": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
             }
           },
           "required": [
@@ -60511,7 +60342,13 @@
             "params",
             "event",
             "requestId",
-            "coreRequestId"
+            "coreRequestId",
+            "sourceId",
+            "coreInstanceId",
+            "coreGeneration",
+            "connectionId",
+            "guiProjectId",
+            "workspacePath"
           ],
           "additionalProperties": false
         }
@@ -63930,30 +63767,9 @@
           "x-owner": "host",
           "source": "core/host/src/workbench_route.rs"
         },
-        "execution.complete": {
-          "request": "#/$defs/WorkbenchPrivateExecutionCompleteRequest",
-          "result": "#/$defs/WorkbenchPrivateExecutionCompleteResult",
-          "direction": "hostToWorkbench",
-          "x-owner": "workbench",
-          "source": "services/workbench/src/backend-main.cjs"
-        },
         "desktop.command": {
           "request": "#/$defs/WorkbenchPrivateDesktopCommandRequest",
           "result": "#/$defs/WorkbenchPrivateDesktopCommandResult",
-          "direction": "hostToWorkbench",
-          "x-owner": "workbench",
-          "source": "services/workbench/src/backend-main.cjs"
-        },
-        "execution.prepare": {
-          "request": "#/$defs/WorkbenchPrivateExecutionPrepareRequest",
-          "result": "#/$defs/WorkbenchPrivateExecutionPrepareResult",
-          "direction": "hostToWorkbench",
-          "x-owner": "workbench",
-          "source": "services/workbench/src/backend-main.cjs"
-        },
-        "execution.dispatch": {
-          "request": "#/$defs/WorkbenchPrivateExecutionDispatchRequest",
-          "result": "#/$defs/WorkbenchPrivateExecutionDispatchResult",
           "direction": "hostToWorkbench",
           "x-owner": "workbench",
           "source": "services/workbench/src/backend-main.cjs"
@@ -64007,20 +63823,8 @@
           "x-owner": "host",
           "source": "core/host/src/workbench_route.rs"
         },
-        "execution.complete": {
-          "schema": "#/$defs/WorkbenchPrivateExecutionCompleteEvent",
-          "direction": "hostToWorkbench",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
         "library.changed": {
           "schema": "#/$defs/WorkbenchPrivateLibraryChangedEvent",
-          "direction": "hostToWorkbench",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "execution.cancel": {
-          "schema": "#/$defs/WorkbenchPrivateExecutionCancelEvent",
           "direction": "hostToWorkbench",
           "x-owner": "host",
           "source": "core/host/src/workbench_route.rs"

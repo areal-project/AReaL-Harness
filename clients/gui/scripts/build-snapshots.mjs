@@ -59,14 +59,14 @@ results.push(
   await build({
     metafile: true,
     absWorkingDir: gui,
-    entryPoints: ["app/src/core/native-host-transport.ts"],
+    entryPoints: ["app/src/core/native-host-transport.ts", "app/src/core/native-browser-tools.ts"],
     outdir: "app/src/core/generated",
     outExtension: { ".js": ".cjs" },
     bundle: true,
     platform: "node",
     format: "cjs",
     target: "node22",
-    external: ["@areal/client/node"],
+    external: ["@areal/client/node", "@areal/browser-automation/host-tool"],
   }),
 );
 const built = new Set(results.flatMap((result) => Object.keys(result.metafile.inputs)));

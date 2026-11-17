@@ -18,7 +18,10 @@ const {
   readOfflineHostReceipt,
 } = require("./host-lifecycle.cjs");
 /** @type {typeof import("./native-host-transport")} */
-const { NativeTerminalOwners } = require("./generated/native-host-transport.cjs");
+const {
+  NativeTerminalOwners,
+  createNativeHostTransport,
+} = require("./generated/native-host-transport.cjs");
 const { ServiceConnection } = require("./service-connection.cjs");
 const {
   readServicePacket,
@@ -157,6 +160,18 @@ class SharedCoreBackend {
     this.onBrowserDisconnected = undefined;
     /** @type {((request:Record<string,unknown>&{requestId:number})=>unknown)|undefined} */
     this.onBrowserRequest = undefined;
+    /** @type {Awaited<ReturnType<typeof createNativeHostTransport>>|undefined} */
+    this.nativeBrowser = undefined;
+    /** @type {ReturnType<typeof createNativeHostTransport>|undefined} */
+    this.nativeBrowserConnecting = undefined;
+    /** @type {object|undefined} */
+    this.nativeBrowserEpoch = undefined;
+    /** @type {Map<string,import('./native-host-transport').DesktopCallback>} */
+    this.nativeBrowserScopes = new Map();
+    /** @type {((frame:import('./native-host-transport').DesktopCallback,signal:AbortSignal)=>Promise<unknown>)|undefined} */
+    this.onNativeBrowserRequest = undefined;
+    /** @type {((projectId:string,threadId:string)=>void)|undefined} */
+    this.onNativeBrowserRevoked = undefined;
     /** @type {((request:unknown)=>void)|undefined} */
     this.onBrowserCancel = undefined;
     this.prerequisiteCheck = prerequisiteCheck;
@@ -227,8 +242,136 @@ class SharedCoreBackend {
     return this.value.projects;
   }
   /** @param {string} projectId @param {string} threadId */
+  nativeBrowserScope(projectId, threadId) {
+    const scope = this.nativeBrowserScopes.get(JSON.stringify([projectId, threadId]));
+    return scope && this.nativeBrowserCurrent(scope) ? scope : undefined;
+  }
+  /** @param {import('./native-host-transport').DesktopCallback} frame */
+  nativeBrowserCurrent(frame) {
+    if (!this.nativeBrowserEpoch || this.disposed || !record(frame.params)) return false;
+    const scope = this.nativeBrowserScopes.get(
+      JSON.stringify([frame.guiProjectId, frame.params.threadId]),
+    );
+    return (
+      !!scope &&
+      scope.lease === frame.lease &&
+      scope.coreInstanceId === frame.coreInstanceId &&
+      scope.coreGeneration === frame.coreGeneration &&
+      scope.connectionId === frame.connectionId
+    );
+  }
+  /** @param {string} projectId @param {string} threadId */
+  browserCoreIdentity(projectId, threadId) {
+    return (
+      this.nativeBrowserScope(projectId, threadId)?.coreInstanceId ??
+      this.value.projects.find((project) => project.id === projectId)?.state?.threads?.[threadId]
+        ?.executionCore?.instanceId ??
+      this.status.browserCore?.[projectId] ??
+      null
+    );
+  }
+  /** @param {Record<string,unknown>} request */
+  nativeBrowserWorkspace(request) {
+    if (typeof request.projectId !== "string" || typeof request.threadId !== "string")
+      return undefined;
+    const scope = this.nativeBrowserScope(request.projectId, request.threadId);
+    if (!scope || !this.ownsThread(request.projectId, request.threadId)) return undefined;
+    const project = this.value.projects.find((project) => project.id === request.projectId);
+    return {
+      ...project,
+      id: request.projectId,
+      state: project?.state ?? null,
+      root: scope.workspacePath,
+      executionProjectId: scope.projectId,
+    };
+  }
+  /** @param {string} method @param {Record<string,unknown>} params */
+  async nativeBrowserCall(method, params) {
+    const epoch = this.nativeBrowserEpoch;
+    const transport = this.nativeBrowser ?? (await this.nativeBrowserConnecting);
+    if (!epoch || this.nativeBrowserEpoch !== epoch || !transport || transport.closed)
+      throw new Error("Native browser attachment unavailable");
+    return transport.call(method, params);
+  }
+
+  closeNativeBrowser() {
+    this.nativeBrowserEpoch = undefined;
+    const original = this.nativeBrowser;
+    this.nativeBrowser = undefined;
+    this.nativeBrowserConnecting = undefined;
+    this.nativeBrowserScopes.clear();
+    original?.close();
+    if (original) this.onBrowserDisconnected?.();
+  }
+  /** @param {InstanceType<typeof import('@areal/workbench-service/desktop/core/gui-host-projects.cjs').GuiHostProjects>} source
+   * @param {Record<string,unknown>} options */
+  async connectNativeBrowser(source, options) {
+    this.closeNativeBrowser();
+    const epoch = {};
+    this.nativeBrowserEpoch = epoch;
+    this.nativeBrowserConnecting = createNativeHostTransport({
+      home: source.home,
+      sourceId: source.sourceId,
+      launch: { ...options, applicationOwner: undefined },
+      environmentCredentials: source.environmentCredentials,
+      onCallback: async (frame, signal) => {
+        if (
+          this.disposed ||
+          this.nativeBrowserEpoch !== epoch ||
+          !record(frame.params) ||
+          typeof frame.params.threadId !== "string"
+        )
+          throw new Error("Original native browser attachment unavailable");
+        this.nativeBrowserScopes.set(
+          JSON.stringify([frame.guiProjectId, frame.params.threadId]),
+          frame,
+        );
+        this.onChange();
+        if (!this.onNativeBrowserRequest) throw new Error("Native browser host unavailable");
+        return this.onNativeBrowserRequest(frame, signal);
+      },
+      onEvent: (frame) => {
+        if (this.nativeBrowserEpoch !== epoch) return;
+        for (const [key, scope] of this.nativeBrowserScopes) {
+          if (scope.lease !== frame.lease) continue;
+          if (
+            frame.method !== "host/connectionClosed" &&
+            !(
+              frame.method === "areal/thread/archived" &&
+              record(frame.params) &&
+              record(scope.params) &&
+              frame.params.threadId === scope.params.threadId
+            )
+          )
+            continue;
+          this.nativeBrowserScopes.delete(key);
+          if (record(scope.params) && typeof scope.params.threadId === "string")
+            this.onNativeBrowserRevoked?.(scope.guiProjectId, scope.params.threadId);
+        }
+      },
+      onClosed: () => {
+        if (this.nativeBrowserEpoch !== epoch || this.disposed) return;
+        this.connection?.close();
+        this.disconnected();
+      },
+    });
+    const transport = await this.nativeBrowserConnecting;
+    if (this.disposed || this.nativeBrowserEpoch !== epoch) {
+      transport.close();
+      throw new Error("Native browser attachment changed");
+    }
+    this.nativeBrowser = transport;
+    this.nativeBrowserConnecting = undefined;
+  }
+  /** @param {string} projectId @param {string} threadId */
   ownsThread(projectId, threadId) {
-    return ownsThread(this.value, projectId, threadId);
+    if (this.value.library.projects[projectId]?.hidden) return false;
+    const thread = this.value.projects.find((project) => project.id === projectId)?.state
+      ?.threads?.[threadId];
+    if (thread?.desktop?.archived) return false;
+    return (
+      ownsThread(this.value, projectId, threadId) || !!this.nativeBrowserScope(projectId, threadId)
+    );
   }
   /** @param {string} projectId @param {string} threadId */
   async ensureBrowserThread(projectId, threadId) {
@@ -293,6 +436,7 @@ class SharedCoreBackend {
     this.onChange();
   }
   disconnected() {
+    this.closeNativeBrowser();
     this.terminalConnections.close();
     this.browserHostOwned = false;
     this.onBrowserDisconnected?.();
@@ -734,6 +878,7 @@ class SharedCoreBackend {
         throw new Error("Host 后台尚未就绪");
       // 旧 Host 退出期间可能短暂报告身份不匹配；新 Host 完成 attach 且身份确认后，
       // 清掉这条过期错误，避免启动页继续停在失败状态。
+      await this.connectNativeBrowser(source, options);
       this.lifecycleError = null;
       await completeUpgrade();
       this.backendUpdate = undefined;
@@ -771,11 +916,25 @@ class SharedCoreBackend {
   /** @param {Record<string,unknown>} identity */
   async browserClaim(identity) {
     this.assertLifecycleScope("browserClaim");
+    if (typeof identity.projectId === "string" && typeof identity.threadId === "string") {
+      const scope = this.nativeBrowserScope(identity.projectId, identity.threadId);
+      if (scope) {
+        if (identity.coreInstanceId !== scope.coreInstanceId)
+          throw new Error("Browser Core changed");
+        return { claimed: true };
+      }
+    }
     if (!this.status.connected || !this.connection) throw new Error("后台尚未连接");
     return this.requireConnection().request("browserClaim", identity, true);
   }
   /** @param {Record<string,unknown>} identity */
   async browserRevoke(identity) {
+    if (
+      typeof identity.projectId === "string" &&
+      typeof identity.threadId === "string" &&
+      this.nativeBrowserScope(identity.projectId, identity.threadId)
+    )
+      return;
     if (this.foreignOwner) return;
     if (!this.status.connected || !this.connection) return;
     return this.requireConnection().request("browserRevoke", identity, true);
@@ -1556,6 +1715,7 @@ class SharedCoreBackend {
             .request("activity", { focused: false, idleSeconds: 0 })
             .catch(() => {});
       } finally {
+        this.closeNativeBrowser();
         this.terminalConnections.close();
         this.connection?.close();
       }

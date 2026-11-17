@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { selectConversation, captureSmokeFailure } from "./smoke-navigation.mjs";
+import { selectCreatedConversation, captureSmokeFailure } from "./smoke-navigation.mjs";
 import { createBrowserEvidence } from "./browser-evidence.mjs";
 import { checkBrowserStartup } from "./browser-startup.mjs";
 
@@ -161,6 +161,7 @@ for (const key of [
   "AREAL_HARNESS_CONFIG",
 ])
   delete env[key];
+env.AREAL_CORE_CONFIG = join(userHome, ".areal", "config.toml");
 let app,
   page,
   executionStatus = "failed";
@@ -299,7 +300,7 @@ try {
     profile: { id: "fixture", revision: "v1" },
   });
   const threadId = first.threadId;
-  await selectConversation(page, threadId);
+  await selectCreatedConversation(page, projectId, threadId);
   await page.keyboard.press("Meta+t");
   await page.locator(".preview-panel").waitFor();
   await app.evaluate(({ app, BrowserWindow }) => {
@@ -408,7 +409,7 @@ try {
     browserEnabled: true,
     profile: { id: "fixture", revision: "v1" },
   });
-  await selectConversation(page, second.threadId);
+  await selectCreatedConversation(page, projectId, second.threadId);
   await page.keyboard.press("Meta+t");
   await page.locator(".preview-panel").waitFor();
   await app.evaluate(({ app, BrowserWindow }) => {
@@ -669,6 +670,10 @@ try {
     "packages/browser-automation/src/host-tool.cjs",
     "../../services/workbench/src/desktop/core/backend.cjs",
     "app/src/core/service-client.cjs",
+    "app/src/core/native-host-transport.ts",
+    "app/src/core/native-browser-tools.ts",
+    "app/src/core/generated/native-host-transport.cjs",
+    "app/src/core/generated/native-browser-tools.cjs",
     "../../services/workbench/src/desktop/core/service-protocol.cjs",
     "app/src/core/preview.cjs",
     "app/src/core/main.cjs",

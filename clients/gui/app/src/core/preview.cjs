@@ -213,6 +213,11 @@ class CorePreview {
   takeover(projectId, threadId, pageId) {
     return this.control.takeover(projectId, threadId, pageId);
   }
+  /** @param {string} projectId @param {string} threadId */
+  revokeThread(projectId, threadId) {
+    for (const page of this.workspace.workspacePages(projectId, threadId))
+      this.control.revoke(page);
+  }
   revokeAll() {
     return this.control.revokeAll();
   }

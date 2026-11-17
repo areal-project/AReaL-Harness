@@ -357,6 +357,134 @@ headers_env="FIXTURE_FEEDBACK_HEADERS"
     );
 }
 
+#[test]
+fn native_frontend_publishes_validated_launch_without_node_or_persisting_credentials() {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path().canonicalize().unwrap();
+    let (host, input, source) = resumable_host(&root);
+    std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+    std::fs::create_dir(root.join(".areal")).unwrap();
+    std::fs::write(root.join(".areal/config.toml"), "schema_version=1\n[model]\nprovider='fixture'\nname='fixture'\n[model.providers.fixture]\nendpoint='http://127.0.0.1:1/'\nprotocol='responses'\napi_key_env='FIXTURE_KEY'\n").unwrap();
+    let credentials = std::collections::BTreeMap::from([(
+        "FIXTURE_KEY".into(),
+        "synthetic-native-secret".into(),
+    )]);
+    let options =
+        frontend_options(&host, &source, input.options.clone(), Some(credentials)).unwrap();
+    assert_eq!(
+        host.gateway.workbench.active_source().as_deref(),
+        Some(source.as_str())
+    );
+    assert_eq!(
+        host.gateway.workbench.utility_options(&source).unwrap(),
+        options
+    );
+    assert_eq!(
+        host.gateway
+            .workbench
+            .environment_credentials(&source)
+            .get("FIXTURE_KEY")
+            .map(String::as_str),
+        Some("synthetic-native-secret")
+    );
+    let persisted = std::fs::read(launch_record(&host)).unwrap();
+    assert!(!String::from_utf8_lossy(&persisted).contains("synthetic-native-secret"));
+    assert!(!String::from_utf8_lossy(&persisted).contains("environmentCredentials"));
+    // 过渡：到 0.2.0 删；次附件仍需核验导入来源的旧目录身份。
+    let secondary = crate::migration::Source {
+        profile: root.join("secondary-profile"),
+        core_home: root.join("secondary-core"),
+        legacy_service_home: root.join("secondary-services"),
+    };
+    // 过渡：到 0.2.0 删；来源目录属于同一次停机导入。
+    for directory in [
+        &secondary.profile,
+        &secondary.core_home,
+        &secondary.legacy_service_home,
+    ] {
+        storage::private_dir(directory).unwrap();
+    }
+    storage::write(&secondary.core_home.join("projects.json"), &json!([])).unwrap();
+    host.migration
+        .attach(secondary.clone(), "secondary", None)
+        .unwrap();
+    let imported = host.migration.import(serde_json::from_value(json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":host.identity.generation,"source":secondary})).unwrap(), "secondary", &[], &host.journal).unwrap();
+    assert_eq!(imported["kind"], "ready");
+    let secondary_id = host
+        .migration
+        .navigation_source_id(&secondary.profile)
+        .unwrap()
+        .unwrap();
+    let mut secondary_options = input.options.clone();
+    secondary_options["home"] = json!(secondary.core_home);
+    secondary_options["guiProfile"] = json!(secondary.profile);
+    frontend_options(&host, &secondary_id, secondary_options.clone(), None).unwrap();
+    assert_eq!(
+        host.gateway.workbench.active_source().as_deref(),
+        Some(source.as_str())
+    );
+    assert_eq!(std::fs::read(launch_record(&host)).unwrap(), persisted);
+    let secondary_secret =
+        std::collections::BTreeMap::from([("FIXTURE_KEY".into(), "secondary-secret".into())]);
+    assert_eq!(
+        frontend_options(
+            &host,
+            &secondary_id,
+            secondary_options,
+            Some(secondary_secret)
+        )
+        .unwrap_err()
+        .to_string(),
+        "CONFLICT"
+    );
+    assert_eq!(
+        host.gateway
+            .workbench
+            .environment_credentials(&source)
+            .get("FIXTURE_KEY")
+            .map(String::as_str),
+        Some("synthetic-native-secret")
+    );
+    let forbidden =
+        std::collections::BTreeMap::from([("UNDECLARED_KEY".into(), "forbidden".into())]);
+    assert_eq!(
+        frontend_options(&host, &source, input.options.clone(), Some(forbidden))
+            .unwrap_err()
+            .to_string(),
+        "INVALID_PARAMS"
+    );
+    assert_eq!(std::fs::read(launch_record(&host)).unwrap(), persisted);
+    frontend_options(&host, &source, input.options.clone(), None).unwrap();
+    assert!(
+        !host
+            .gateway
+            .workbench
+            .environment_credentials(&source)
+            .is_empty()
+    );
+    frontend_options(&host, &source, input.options, Some(Default::default())).unwrap();
+    assert!(
+        host.gateway
+            .workbench
+            .environment_credentials(&source)
+            .is_empty()
+    );
+    host.gateway.workbench.backend.source.borrow_mut().take();
+    host.gateway
+        .workbench
+        .backend
+        .utility_options
+        .borrow_mut()
+        .take();
+    host.gateway.workbench.restore_source(&host).unwrap();
+    assert_eq!(
+        host.gateway.workbench.active_source().as_deref(),
+        Some(source.as_str())
+    );
+    assert!(host.gateway.workbench.backend.running.borrow().is_none());
+    assert!(!root.join("data/service.json").exists());
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn running_backend_accepts_updated_and_explicitly_cleared_environment_credentials() {
     tokio::task::LocalSet::new().run_until(async {

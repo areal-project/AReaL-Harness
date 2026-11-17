@@ -423,7 +423,42 @@ const discoveryGuidance = {
   ],
 };
 
+const interactionGuidance = {
+  actions: {
+    ref: ["click", "fill", "press", "hover", "selectOption", "setChecked"],
+    viewport: ["scroll"],
+    scroll: "{kind:scroll,target:viewport,deltaX,deltaY}; nonzero safe integers in [-4096,4096]",
+    selectOption:
+      "native single SELECT, exact observed unique enabled option value; semantic input/change events are not trusted physical input",
+    setChecked: "native checkbox boolean state; already equal is a confirmed no-op without input",
+    screenshot: ["clickAt", "drag", "pressAt"],
+    screenshotCoordinates:
+      "bitmap pixels from the latest viewport capture; capture observationId is snapshotId",
+    keyboard: [
+      "Enter",
+      "Tab",
+      "Escape",
+      "Backspace",
+      "ArrowUp",
+      "ArrowDown",
+      "ArrowLeft",
+      "ArrowRight",
+    ],
+  },
+  waits: {
+    timeoutMs: [1, 30000],
+    conditions: ["documentReady", "accessibleName", "checked", "enabled"],
+    checked:
+      "{kind:checked,ref,value:boolean}; original native checkbox, including disabled controls; zero input",
+    enabled: "{kind:enabled,ref,value:boolean}; original native form control; zero input",
+    documentReady: "{kind:documentReady,state:interactive|complete}",
+    accessibleName: "{kind:accessibleName,ref,name}; exact current AX name; stale Ref refused",
+    withoutCondition: "bounded delay only; not page readiness",
+  },
+};
+
 module.exports = {
+  interactionGuidance,
   discoveryGuidance,
   definition,
   validToolInput,

@@ -776,3 +776,189 @@ test("browser describe examples expose valid checkbox and command-topic paramete
     clearTimeout(service.timer);
   }
 });
+
+function nativeBrowserFixture() {
+  const { NativeBrowserTools } = require("../app/src/core/generated/native-browser-tools.cjs");
+  const permit = {
+    pageId: "00000000-0000-4000-8000-000000000001",
+    browserHostId: "browser",
+    hostGeneration: 2,
+    pageGeneration: 3,
+    controlEpoch: 4,
+    origin: "https://before.example",
+  };
+  const frame = {
+    sourceId: "source",
+    projectId: "execution-project",
+    guiProjectId: "logical-project",
+    workspacePath: "/workspace/checkout",
+    lease: "original-lease",
+    coreInstanceId: "core",
+    coreGeneration: "generation",
+    connectionId: "connection",
+    coreRequestId: 17,
+    method: "item/tool/call",
+    params: {
+      tool: "browser_v1",
+      threadId: "thread",
+      turnId: "turn",
+      callId: "call",
+      hostGeneration: "tool-generation",
+      arguments: {
+        operation: "capture",
+        parameters: { pageId: "00000000-0000-4000-8000-000000000001", scope: "viewport" },
+      },
+      browserApproval: { plan: { preparedActionId: "plan" } },
+    },
+  };
+  const calls = [];
+  let connected = true;
+  const preview = {
+    page: () => ({ control: "agent" }),
+    controlPermit: (projectId, threadId, pageId) => {
+      assert.equal(projectId, frame.guiProjectId);
+      assert.equal(threadId, "thread");
+      assert.equal(pageId, "00000000-0000-4000-8000-000000000001");
+      return { ...permit };
+    },
+    execute: async (request) => {
+      calls.push(request);
+      return { mimeType: "image/png", imageBase64: "aW1hZ2U=" };
+    },
+    cancelRead: (request) => calls.push({ cancelled: request }),
+  };
+  const tools = new NativeBrowserTools({
+    preview: () => preview,
+    current: () => connected,
+    call: async (method, params) => {
+      calls.push({ method, params });
+      return { uri: "areal://media/original" };
+    },
+    reveal: () => {},
+  });
+  return {
+    tools,
+    preview,
+    permit,
+    frame,
+    calls,
+    disconnect: () => {
+      connected = false;
+    },
+  };
+}
+
+test("native browser capture binds logical preview to original execution Core media lease", async () => {
+  const f = nativeBrowserFixture();
+  const result = await f.tools.callback(f.frame, new AbortController().signal);
+  assert.equal(f.calls[0].projectId, "logical-project");
+  assert.equal(f.calls[0].workspacePath, "/workspace/checkout");
+  assert.deepEqual(f.calls[1], {
+    method: "core.blob",
+    params: {
+      sourceId: "source",
+      projectId: "execution-project",
+      lease: "original-lease",
+      operation: "upload",
+      threadId: "thread",
+      callId: "call",
+      hostGeneration: "tool-generation",
+      mime: "image/png",
+      base64: "aW1hZ2U=",
+    },
+  });
+  assert.equal(result.success, true);
+  assert.deepEqual(result.contentItems[1], {
+    type: "arealMedia",
+    modality: "image",
+    media: { uri: "areal://media/original" },
+  });
+  assert.doesNotMatch(JSON.stringify(result), /aW1hZ2U=/);
+});
+
+test("native browser approved navigation accepts its new origin but revoked execution remains UNKNOWN", async () => {
+  for (const revoke of [false, true]) {
+    const f = nativeBrowserFixture();
+    f.frame.params.arguments = {
+      operation: "navigate",
+      parameters: { pageId: "00000000-0000-4000-8000-000000000001", url: "https://after.example" },
+    };
+    f.preview.execute = async () => {
+      f.permit.origin = "https://after.example";
+      if (revoke) f.permit.controlEpoch++;
+      return { dispatch: "confirmed" };
+    };
+    const result = await f.tools.callback(f.frame, new AbortController().signal);
+    assert.equal(result.success, !revoke);
+    assert.equal(result.structuredContent.dispatch, revoke ? "unknown" : "confirmed");
+    if (!revoke)
+      assert.equal(result.structuredContent.controlPermit.origin, "https://after.example");
+  }
+});
+
+test("native browser owner loss during capture cannot publish or upload the old image", async () => {
+  const f = nativeBrowserFixture();
+  f.preview.execute = async () => {
+    f.disconnect();
+    return { mimeType: "image/png", imageBase64: "aW1hZ2U=" };
+  };
+  const result = await f.tools.callback(f.frame, new AbortController().signal);
+  assert.equal(result.success, false);
+  assert.equal(f.calls.length, 0);
+  assert.doesNotMatch(JSON.stringify(result), /arealMedia|aW1hZ2U=/);
+});
+
+test("native browser preparation returns the native plan and execute requires Core approval", async () => {
+  const f = nativeBrowserFixture();
+  f.frame.method = "areal/browser/prepare";
+  f.preview.prepare = async (request) => ({
+    plan: {
+      preparedActionId: "original-plan",
+      pageId: request.pageId,
+      operation: request.operation,
+    },
+  });
+  const prepared = await f.tools.callback(f.frame, new AbortController().signal);
+  assert.equal(prepared.preparedActionId, "original-plan");
+  f.frame.method = "item/tool/call";
+  delete f.frame.params.browserApproval;
+  const rejected = await f.tools.callback(f.frame, new AbortController().signal);
+  assert.equal(rejected.structuredContent.code, "approval_required");
+  assert.equal(f.calls.length, 0);
+});
+
+test("native executor distinguishes refused input from dispatched UNKNOWN", async () => {
+  for (const message of ["plan_stale", "not_sent", "outcome_unknown"]) {
+    const f = nativeBrowserFixture();
+    f.frame.params.arguments = {
+      operation: "navigate",
+      parameters: { pageId: f.permit.pageId, url: "https://after.example" },
+    };
+    f.preview.execute = async () => {
+      throw Object.assign(new Error(message), { reason: "navigation_timeout" });
+    };
+    const result = await f.tools.callback(f.frame, new AbortController().signal);
+    assert.equal(result.success, false);
+    assert.equal(
+      result.structuredContent.code,
+      message === "outcome_unknown" ? "outcome_unknown" : message,
+    );
+    assert.equal(
+      result.structuredContent.dispatch,
+      message === "outcome_unknown" ? "unknown" : "not_sent",
+    );
+    if (message === "outcome_unknown")
+      assert.equal(result.structuredContent.reason, "navigation_timeout");
+  }
+  const f = nativeBrowserFixture();
+  f.frame.params.arguments = {
+    operation: "wait",
+    parameters: { pageId: f.permit.pageId, timeoutMs: 1 },
+  };
+  f.preview.execute = async () => {
+    throw new Error("condition_timeout");
+  };
+  const result = await f.tools.callback(f.frame, new AbortController().signal);
+  assert.equal(result.structuredContent.code, "condition_timeout");
+  assert.equal(result.structuredContent.dispatch, "not_sent");
+});

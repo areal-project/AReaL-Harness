@@ -3,7 +3,10 @@ type Fields = Record<string, unknown>;
 const record = (value: unknown): value is Fields =>
   !!value && typeof value === "object" && !Array.isArray(value);
 export type DesktopCallback = {
+  sourceId: string;
   projectId: string;
+  guiProjectId: string;
+  workspacePath: string;
   lease: string;
   coreInstanceId: string;
   coreGeneration: string;
@@ -18,6 +21,7 @@ export async function createNativeHostTransport(options: {
   home: string;
   sourceId: string;
   launch: unknown;
+  environmentCredentials?: Record<string, string>;
   onCallback: (frame: DesktopCallback, signal: AbortSignal) => Promise<unknown>;
   onEvent: (frame: Fields) => void;
   onClosed: () => void;
@@ -29,6 +33,8 @@ export async function createNativeHostTransport(options: {
     string,
     { lease: string; coreRequestId: unknown; controller: AbortController }
   >();
+  const early: unknown[] = [];
+  let earlyBytes = 0;
   let attachment = "",
     closed = false;
   const close = () => {
@@ -36,6 +42,7 @@ export async function createNativeHostTransport(options: {
     closed = true;
     for (const entry of pending.values()) entry.controller.abort();
     pending.clear();
+    early.length = 0;
     events.close();
     calls.close();
     replies.close();
@@ -55,7 +62,7 @@ export async function createNativeHostTransport(options: {
     )
       throw new Error("Host changed during desktop attachment");
     for (const client of [events, calls, replies]) client.desktopCoreClosed = close;
-    events.desktopCoreEvent = (value: unknown) => {
+    const handleEvent = (value: unknown) => {
       if (!record(value) || value.attachmentId !== attachment || !record(value.event))
         return close();
       const frame = value.event;
@@ -75,10 +82,18 @@ export async function createNativeHostTransport(options: {
       }
       if (
         frame.event !== "core.callback" ||
+        frame.sourceId !== options.sourceId ||
         typeof frame.requestId !== "string" ||
-        !["projectId", "lease", "coreInstanceId", "coreGeneration", "connectionId", "method"].every(
-          (key) => typeof frame[key] === "string" && frame[key] !== "",
-        ) ||
+        ![
+          "projectId",
+          "guiProjectId",
+          "workspacePath",
+          "lease",
+          "coreInstanceId",
+          "coreGeneration",
+          "connectionId",
+          "method",
+        ].every((key) => typeof frame[key] === "string" && frame[key] !== "") ||
         pending.has(frame.requestId)
       )
         return close();
@@ -112,9 +127,18 @@ export async function createNativeHostTransport(options: {
         .catch(close)
         .finally(() => pending.delete(id));
     };
+    events.desktopCoreEvent = (value: unknown) => {
+      if (attachment) return handleEvent(value);
+      earlyBytes += Buffer.byteLength(JSON.stringify(value));
+      if (early.length >= 64 || earlyBytes > 8 * 1024 * 1024) return close();
+      early.push(value);
+    };
     const result: unknown = await events.request("desktop.core.subscribe", {
       sourceId: options.sourceId,
       options: options.launch,
+      ...(options.environmentCredentials
+        ? { environmentCredentials: options.environmentCredentials }
+        : {}),
     });
     if (
       closed ||
@@ -124,6 +148,11 @@ export async function createNativeHostTransport(options: {
     )
       throw new Error("Invalid native desktop attachment");
     attachment = result.attachmentId;
+    for (const event of early.splice(0)) {
+      if (closed) break;
+      handleEvent(event);
+    }
+    if (closed) throw new Error("Native desktop attachment disconnected during subscription");
     return {
       call: (call: string, params: unknown) => {
         if (closed) return Promise.reject(new Error("Native desktop attachment disconnected"));
@@ -155,6 +184,7 @@ export async function closeGuiHostTerminals(options: Fields) {
     const state: unknown = await client.sourceState({
       profile: options.guiProfile,
       coreHome: options.home,
+      // 过渡：到 0.2.0 删；停机导入仍按原来源摘要核对旧目录。
       legacyServiceHome: options.harnessHome,
     });
     if (record(state) && typeof state.sourceId === "string")

@@ -30,8 +30,10 @@ const editors = [
   { id: "cursor", label: "Cursor", bundle: "Cursor.app" },
 ];
 
-/** @param {Pick<InstanceType<typeof import("./service-client.cjs").SharedCoreBackend>,"snapshot">} backend @param {Record<string,unknown>} request @returns {import("@areal/workbench-service/desktop/core/service-state.cjs").ServiceProject} */
+/** @param {Pick<InstanceType<typeof import("./service-client.cjs").SharedCoreBackend>,"snapshot"|"nativeBrowserWorkspace">} backend @param {Record<string,unknown>} request @returns {import("@areal/workbench-service/desktop/core/service-state.cjs").ServiceProject} */
 function fileWorkspace(backend, request) {
+  const native = backend.nativeBrowserWorkspace?.(request);
+  if (native) return native;
   /** @type {import("@areal/workbench-service/desktop/core/service-state.cjs").ServiceProject|undefined} */
   const project = backend.snapshot().projects.find((value) => value.id === request.projectId);
   if (!project) throw new Error("未知工作区");
@@ -62,7 +64,7 @@ function fileWorkspace(backend, request) {
   };
 }
 
-/** @param {{backend:Pick<InstanceType<typeof import("./service-client.cjs").SharedCoreBackend>,"snapshot"|"command">,shell:Pick<typeof import("electron").shell,"showItemInFolder"|"openPath">,home:string,authorize:()=>void,openHtml:(request:{projectId:string,threadId:string,path:string,workspacePath:string,valid:()=>boolean})=>Promise<{pageId:string,url:string,dispatch:string}>,chooseSave:(options:import("electron").SaveDialogOptions)=>Promise<import("electron").SaveDialogReturnValue>}} options @param {unknown} request */
+/** @param {{backend:Pick<InstanceType<typeof import("./service-client.cjs").SharedCoreBackend>,"snapshot"|"command"|"nativeBrowserWorkspace">,shell:Pick<typeof import("electron").shell,"showItemInFolder"|"openPath">,home:string,authorize:()=>void,openHtml:(request:{projectId:string,threadId:string,path:string,workspacePath:string,valid:()=>boolean})=>Promise<{pageId:string,url:string,dispatch:string}>,chooseSave:(options:import("electron").SaveDialogOptions)=>Promise<import("electron").SaveDialogReturnValue>}} options @param {unknown} request */
 async function fileOpen({ backend, shell, home, authorize, chooseSave, openHtml }, request) {
   if (!modelRecord(request)) throw new Error("无效文件打开请求");
   /** @type {Array<{id:string,label:string,application?:string}>} */

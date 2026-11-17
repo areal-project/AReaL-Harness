@@ -51,7 +51,7 @@ Provider lists use Host `modelsCatalog` to read configuration and credential ref
 
 Workbench domain reads and writes (`library`, `worktree`, `tasks`, `trajectory`, `feedback`, `manage`, `providers`) and `desktop.command` no longer need a client-supplied `sourceId`: when omitted, Host uses the source of the current workbench backend and returns `CAPABILITY_UNAVAILABLE` if that backend is not running; an explicit mismatching value returns `FORBIDDEN`.
 
-All non-native library operations, including non-navigation preferences, use `library.command` with the original `commandId` receipt. `desktop.command` no longer accepts `library`. The computer-control enabled, provider and executable settings retain the local Main permission entry point.
+All non-native library operations, including non-navigation preferences, use `library.command` with the original `commandId` receipt. `desktop.command` no longer accepts `library`.
 
 ## Envelope and common types
 
@@ -113,11 +113,13 @@ Automatic reconnect reads only a verified existing service descriptor from `host
 
 After a transient status-probe failure, the Host's internal shared Core connection supervisor retries with the existing backoff for services whose lifecycle is still held by this Host and whose startup outcome is known, even when scheduled activation is suppressed. Recovery revalidates service identity and owner. Probing does not call `project.ensure`, start a new Core, or clear stop intent. Stopped projects, projects without lifecycle ownership, mismatched owners, and uncertain startup outcomes are not recovered through this retry path.
 
+Local Main binds its source and validated launch options with `desktop.core.subscribe`. Optional `environmentCredentials` accepts only configured environment credential names; values remain in Host memory and are excluded from launch records. Tool callbacks in `desktop.core.event` carry the original `sourceId/projectId/lease/coreInstanceId/coreGeneration/connectionId` plus `guiProjectId/workspacePath` for native preview. The logical project and execution checkout are distinct. `desktop.core.callback` only answers the original request on the same attachment; media upload retains the execution project and lease. Disconnect revokes dedicated connections without replaying callbacks or submissions.
+
 ## Scheduled project activation and preparation
 
-`scheduledPreparation` means Host registers as the Core schedule host through a persistent authenticated connection and handles `areal/task/prepare`. Ordinary GUI tool and schedule connections may differ but must share the authenticated principal. Source conversations and execution anchors retain connection and directory-ownership validation. Core owns Tasks, Runs, preparation results, and triggering. Host does not advertise browser, computer, or JavaScript tools on behalf of an absent Main.
+`scheduledPreparation` means Host registers as the Core schedule host through a persistent authenticated connection and handles `areal/task/prepare`. Ordinary GUI tool and schedule connections may differ but must share the authenticated principal. Source conversations and execution anchors retain connection and directory-ownership validation. Core owns Tasks, Runs, preparation results, and triggering. Host does not advertise browser tools on behalf of an absent Main.
 
-An online GUI publishes its current Browser/Computer bundles through Core `areal/task/tools/ready`. Run scheduling lifetime binds to Host; desktop tools bind to the actual GUI connection. GUI exit does not terminate plain-model execution, and old tool calls are not forwarded to a later connection. Registration is connection-scoped state, not a persistent Host task record.
+An online GUI publishes its current Browser bundles through Core `areal/task/tools/ready`. Run scheduling lifetime binds to Host; desktop tools bind to the actual GUI connection. GUI exit does not terminate plain-model execution, and old tool calls are not forwarded to a later connection. Registration is connection-scoped state, not a persistent Host task record.
 
 The `scheduledActivation` capability identifies Host-owned scheduled project activation. GUI reads `scheduleActivationSuppressed:boolean` and optional `scheduleActivationError:string` from `host.status.projects`. Errors contain domain codes, not child-process stderr or secrets.
 
