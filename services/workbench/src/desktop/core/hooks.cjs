@@ -18,7 +18,7 @@ class AppHooks {
   }
   environment() {
     return {
-      ...require("./application-owner.cjs").scrubOwnerEnvironment(),
+      ...require("@areal/workbench/node/application-owner").scrubOwnerEnvironment(),
       ...this.backend.proxyEnvironment,
       ...(this.backend.userHome ? { HOME: this.backend.userHome } : {}),
       // 管理命令与 Host 启动 Core 使用同一配置根，服务登记目录保持独立。

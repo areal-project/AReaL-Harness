@@ -1,7 +1,7 @@
 // @ts-check
 "use strict";
 const { isDesktopSnapshot } = require("@areal/workbench/desktop-contract/shared");
-const { sameOwner } = require("@areal/workbench-service/desktop/core/application-owner.cjs");
+const { sameOwner } = require("@areal/workbench/node/application-owner");
 
 /** @typedef {import('@areal/workbench/desktop-contract/shared').ServiceThread} ServiceThread */
 /** @typedef {import('@areal/workbench/desktop-contract/shared').ServiceProject} ServiceProject */

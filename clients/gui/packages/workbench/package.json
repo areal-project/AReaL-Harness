@@ -117,7 +117,8 @@
       "default": "./client/desktop-contract/snapshots.cjs"
     },
     "./desktop-profile": "./assets/desktop-profile.json",
-    "./builtin-skills/*": "./assets/builtin-skills/*"
+    "./builtin-skills/*": "./assets/builtin-skills/*",
+    "./node/*": "./node/*.cjs"
   },
   "dependencies": {
     "@modelcontextprotocol/core": "2.3.0"

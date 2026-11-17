@@ -334,7 +334,7 @@ const Module = require('node:module');
 const original = Module._load;
 Module._load = function(name, ...args) {
   if (name === '@electron/osx-sign') return { signAsync: async () => {} };
-  if (name.endsWith('/desktop/core/bundle.cjs')) return { verifyCoreBundle: () => ({}) };
+  if (name.endsWith('/packages/workbench/node/bundle.cjs')) return { verifyCoreBundle: () => ({}) };
   return original.call(this, name, ...args);
 };
 function call(bin, args) {

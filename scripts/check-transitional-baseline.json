@@ -113,7 +113,7 @@
   "examples/desktop-api/schedule-host.mjs": 15,
   "examples/desktop-api/task-controls.mjs": 1,
   "services/workbench/src/desktop/core/backend.cjs": 1,
-  "services/workbench/src/desktop/core/diagnostics.cjs": 1,
+  "clients/gui/packages/workbench/node/diagnostics.cjs": 1,
   "services/workbench/src/desktop/core/gui-host-projects.cjs": 5,
   "clients/gui/packages/client/node/gui-source.cjs": 12,
   "services/workbench/src/desktop/core/lifecycle.cjs": 3,
@@ -122,7 +122,7 @@
   "services/workbench/src/desktop/core/native-subscription.cjs": 3,
   "services/workbench/src/desktop/core/providers.cjs": 4,
   "services/workbench/src/desktop/core/remote-config.cjs": 7,
-  "services/workbench/src/desktop/core/startup-timing.cjs": 1,
+  "clients/gui/packages/workbench/node/startup-timing.cjs": 1,
   "services/workbench/src/desktop/core/submission-recovery.cjs": 1,
   "services/workbench/src/desktop/core/task-draft-target.cjs": 2
 }

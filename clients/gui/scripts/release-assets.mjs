@@ -36,12 +36,9 @@ await checkDmgSize(join(input, `AReaLHarness-${version}-macos-arm64.dmg`));
 const resources = join(input, state.appName, "Contents/Resources");
 const config = JSON.parse(await readFile(join(resources, "areal-update.json"), "utf8"));
 assert.deepEqual(config, { engine: "electron", feedUrl: githubFeedUrl });
-const core = require("../../../services/workbench/src/desktop/core/bundle.cjs").verifyCoreBundle(
-  resources,
-  {
-    hashes: true,
-  },
-).manifest;
+const core = require("../packages/workbench/node/bundle.cjs").verifyCoreBundle(resources, {
+  hashes: true,
+}).manifest;
 assert.equal(core.profile, "release");
 assert.equal(core.workingTree, false);
 // GUI 与 CLI 共用版本号，包内后台必须是同一版本，客户端才能按版本号判断谁更新。

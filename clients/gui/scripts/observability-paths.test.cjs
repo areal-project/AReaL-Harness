@@ -5,7 +5,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
-const diagnostics = require("@areal/workbench-service/desktop/core/diagnostics.cjs");
+const diagnostics = require("@areal/workbench/node/diagnostics");
 const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const {
   ProjectConnections,

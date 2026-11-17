@@ -576,7 +576,7 @@ test("foreign Host projects retain their own model and subscription authorities"
   assert.throws(() => app.target(project), /其他来源/);
 });
 
-const diagnostics = require("@areal/workbench-service/desktop/core/diagnostics.cjs");
+const diagnostics = require("@areal/workbench/node/diagnostics");
 test("credential failures isolate a provider and a later refresh restores it", async (t) => {
   const names = [
     "AREAL_CREDENTIAL_locked",

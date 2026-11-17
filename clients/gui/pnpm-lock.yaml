@@ -48,6 +48,9 @@ importers:
       '@areal/remote-client':
         specifier: workspace:*
         version: link:packages/remote-client
+      '@areal/workbench':
+        specifier: workspace:*
+        version: link:packages/workbench
       '@areal/workbench-service':
         specifier: workspace:*
         version: link:../../services/workbench

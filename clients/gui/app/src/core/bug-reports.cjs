@@ -5,13 +5,13 @@ const { constants } = require("node:fs");
 const { join } = require("node:path");
 const { randomUUID } = require("node:crypto");
 const { serviceOptions } = require("./service-config.cjs");
-const diagnostics = require("@areal/workbench-service/desktop/core/diagnostics.cjs");
-const { nativeText } = require("@areal/workbench-service/desktop/core/native-i18n.cjs");
+const diagnostics = require("@areal/workbench/node/diagnostics");
+const { nativeText } = require("@areal/workbench/node/native-i18n");
 const contract = require("@areal/workbench/desktop-contract/bug-report");
 /** @typedef {import('@areal/workbench/desktop-contract/bug-report').Report} Report */
 
 class BugReports {
-  /** @param {{root:string,collect:()=>Promise<Awaited<ReturnType<typeof import('@areal/workbench-service/desktop/core/diagnostics.cjs').collect>>>,normalizeImage:(data:string)=>string,endpoint?:string}} options */
+  /** @param {{root:string,collect:()=>Promise<Awaited<ReturnType<typeof import('@areal/workbench/node/diagnostics').collect>>>,normalizeImage:(data:string)=>string,endpoint?:string}} options */
   constructor({
     root,
     collect,

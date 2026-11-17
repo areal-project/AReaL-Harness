@@ -2,8 +2,8 @@
 "use strict";
 const { catalog, rejectModel, subscriptionAvailable } = require("./provider-model-catalog.cjs");
 const { errorMessage } = require("./error-message.cjs");
-const { startupTrace } = require("./startup-timing.cjs");
-const diagnostics = require("./diagnostics.cjs");
+const { startupTrace } = require("@areal/workbench/node/startup-timing");
+const diagnostics = require("@areal/workbench/node/diagnostics");
 const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
 const { createHash } = require("node:crypto");

@@ -11,10 +11,7 @@ import { fileURLToPath } from "node:url";
 import { proxyForUrl, subscriptionNetwork } from "../packages/chatgpt-provider/network.js";
 
 const require = createRequire(import.meta.url);
-const {
-  parseSystemProxy,
-  systemProxyEnvironment,
-} = require("@areal/workbench-service/desktop/core/system-proxy.cjs");
+const { parseSystemProxy, systemProxyEnvironment } = require("@areal/workbench/node/system-proxy");
 const { AppHooks } = require("@areal/workbench-service/desktop/core/hooks.cjs");
 const { proxyRelay } = require("../app/src/core/proxy-relay.cjs");
 const { AppProviders } = require("@areal/workbench-service/desktop/core/providers.cjs");

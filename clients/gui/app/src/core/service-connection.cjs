@@ -3,7 +3,7 @@
 const WebSocket = require("ws");
 const { ProjectionReader } = require("@areal/workbench/state-projection");
 const { PROTOCOL } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
-const diagnostics = require("@areal/workbench-service/desktop/core/diagnostics.cjs");
+const diagnostics = require("@areal/workbench/node/diagnostics");
 let diagnosticsConnectionGeneration = 0;
 /** @typedef {Record<string,unknown> & {protocol:string,endpoint:string,token:string,identity:string,pid:number}} ServiceMetadata */
 /** @typedef {{resolve:(value:unknown)=>void,reject:(error:unknown)=>void,timer:NodeJS.Timeout,mutation:boolean,requestId:unknown}} PendingRequest */
@@ -145,7 +145,7 @@ class ServiceConnection {
       maxPayload: 256 * 1024 * 1024,
     }));
     const projection = new ProjectionReader();
-    /** @satisfies {import("@areal/workbench-service/desktop/core/diagnostics.cjs").SocketTarget} */
+    /** @satisfies {import("@areal/workbench/node/diagnostics").SocketTarget} */
     const target = Object.freeze({
       boundary: "main-desktop",
       hostPid: metadata.pid,

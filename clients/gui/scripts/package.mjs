@@ -173,14 +173,9 @@ try {
       );
       if (process.env.AREAL_GUI_RELAY_CA_CERT) {
         const caPath = resolve(process.env.AREAL_GUI_RELAY_CA_CERT);
-        const {
-          normalizeNetworkSetting,
-        } = require("@areal/workbench-service/desktop/core/desktop-network.cjs");
+        const { normalizeNetworkSetting } = require("@areal/workbench/node/desktop-network");
         normalizeNetworkSetting("httpProxyCaCertPath", caPath);
-        await cp(
-          caPath,
-          join(appStage, "node_modules/@areal/workbench-service/src/assets/relay-ca.pem"),
-        );
+        await cp(caPath, join(appStage, "node_modules/@areal/workbench/assets/relay-ca.pem"));
       }
       const { githubFeedUrl } = require(join(gui, "app/src/update/config.cjs"));
       const updateConfig = join(staged, "areal-update.json");
@@ -230,9 +225,7 @@ try {
           );
         }
       });
-      const { verifyCoreBundle } = require(
-        join(gui, "../../services/workbench/src/desktop/core/bundle.cjs"),
-      );
+      const { verifyCoreBundle } = require(join(gui, "packages/workbench/node/bundle.cjs"));
       const coreBundle = verifyCoreBundle(output, { hashes: true });
       if (release)
         assert.equal(

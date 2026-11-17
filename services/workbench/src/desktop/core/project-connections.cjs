@@ -1,7 +1,7 @@
 // @ts-check
 "use strict";
-const diagnostics = require("./diagnostics.cjs");
-const { startupTrace } = require("./startup-timing.cjs");
+const diagnostics = require("@areal/workbench/node/diagnostics");
+const { startupTrace } = require("@areal/workbench/node/startup-timing");
 const { failure: browserFailure } = require("@areal/browser-automation/host-tool");
 const { modelRecord, isCoreTask } = require("@areal/workbench/core-model-contract");
 

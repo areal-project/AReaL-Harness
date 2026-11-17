@@ -1,6 +1,6 @@
 // @ts-check
 "use strict";
-const { startupTrace } = require("@areal/workbench-service/desktop/core/startup-timing.cjs");
+const { startupTrace } = require("@areal/workbench/node/startup-timing");
 const startupTraceMain = startupTrace("gui.startup");
 startupTraceMain.advance("imports");
 
@@ -32,7 +32,7 @@ const { randomUUID } = require("node:crypto");
 /** @type {typeof import("../ipc/window-close.js")} */
 const { WindowCloseGate } = require("../ipc/generated/window-close.cjs");
 const { ProjectionEncoder } = require("@areal/workbench/state-projection");
-const { createOwner } = require("@areal/workbench-service/desktop/core/application-owner.cjs");
+const { createOwner } = require("@areal/workbench/node/application-owner");
 const { setupUpdater } = require("../update/electron.cjs");
 const {
   showCoreNotification,
@@ -48,19 +48,14 @@ const validatePreview = require("@areal/workbench/desktop-contract").validatePre
 const { modelRecord } = require("@areal/workbench/core-model-contract");
 const { readBrowserHostRequest, browserHostFailure } = require("./browser-host-request.cjs");
 const { CorePreview, developmentApproval } = require("./preview.cjs");
-const diagnostics = require("@areal/workbench-service/desktop/core/diagnostics.cjs");
+const diagnostics = require("@areal/workbench/node/diagnostics");
 const { startSnapShots } = require("./snapshots/host.cjs");
 const cfg = require("./service-config.cjs");
 const { readLibraryStartupSettings } = require("@areal/workbench-service/desktop/core/library.cjs");
-const {
-  applyDesktopSessionNetworkPolicy,
-} = require("@areal/workbench-service/desktop/core/desktop-network.cjs");
+const { applyDesktopSessionNetworkPolicy } = require("@areal/workbench/node/desktop-network");
 const { SharedCoreBackend } = require("./service-client.cjs");
 const { recoverConnectedService } = require("./startup-recovery.cjs");
-const {
-  setNativeLocale,
-  nativeText,
-} = require("@areal/workbench-service/desktop/core/native-i18n.cjs");
+const { setNativeLocale, nativeText } = require("@areal/workbench/node/native-i18n");
 const { confirmHostQuit, confirmHostStop, hostActivityLabel } = require("./host-quit.cjs");
 const { loadThemes, desktopTheme } = require("../themes");
 
@@ -259,7 +254,7 @@ function startDesktop() {
         phase ? { state: "quitting", phase } : { state: "idle" },
       );
   }
-  /** @param {QuitAttempt} attempt @param {Extract<import("@areal/workbench-service/desktop/core/diagnostics.cjs").Incident,{type:"quit-stage"}>["stage"]} stage */
+  /** @param {QuitAttempt} attempt @param {Extract<import("@areal/workbench/node/diagnostics").Incident,{type:"quit-stage"}>["stage"]} stage */
   function recordQuitStage(attempt, stage) {
     if (quitAttempt !== attempt) return;
     diagnostics.record({

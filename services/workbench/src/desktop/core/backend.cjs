@@ -6,8 +6,8 @@ const {
   desktopError,
   readCommandInvocation,
 } = require("@areal/workbench/desktop-contract");
-const { startupTrace } = require("./startup-timing.cjs");
-const diagnostics = require("./diagnostics.cjs");
+const { startupTrace } = require("@areal/workbench/node/startup-timing");
+const diagnostics = require("@areal/workbench/node/diagnostics");
 
 const { GuiHostProjects } = require("./gui-host-projects.cjs");
 const { LifecycleOperations } = require("./lifecycle-operations.cjs");
@@ -53,7 +53,7 @@ const { SubmissionRecovery, operationOf, isRemoteControl } = require("./submissi
 /** @typedef {import('./project-state.cjs').CoreProject} Project */
 /** @typedef {import('@areal/runtime-client/core').CoreClient} Client */
 /** @typedef {Record<string,unknown>} Fields */
-/** @typedef {{binary:string,home:string,hostHome?:string,guiProfile?:string,sourceSingletonHeld?:boolean,configHome?:string,applicationOwner?:import('./application-owner.cjs').ApplicationOwner,harnessHome?:string,config?:string,desktopConfig?:string,userHome?:string,toolExtensions?:string,workgroupPolicy?:string,workgroupToolchain?:string,sandboxProfile?:string,desktopProcesses?:boolean,defaultProfile?:import('@areal/workbench/desktop-contract').ResourceRef,encryption?:import('electron').SafeStorage,proxyEnvironment?:NodeJS.ProcessEnv,onChange?:()=>void}} CoreBackendOptions */
+/** @typedef {{binary:string,home:string,hostHome?:string,guiProfile?:string,sourceSingletonHeld?:boolean,configHome?:string,applicationOwner?:import('@areal/workbench/node/application-owner').ApplicationOwner,harnessHome?:string,config?:string,desktopConfig?:string,userHome?:string,toolExtensions?:string,workgroupPolicy?:string,workgroupToolchain?:string,sandboxProfile?:string,desktopProcesses?:boolean,defaultProfile?:import('@areal/workbench/desktop-contract').ResourceRef,encryption?:import('electron').SafeStorage,proxyEnvironment?:NodeJS.ProcessEnv,onChange?:()=>void}} CoreBackendOptions */
 /** 每个项目连接公开的共享 Core 服务；这里只保留可重建投影与客户端受理回执。 */
 class CoreBackend {
   /** @param {CoreBackendOptions} options */

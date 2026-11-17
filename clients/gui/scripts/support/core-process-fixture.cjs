@@ -4,11 +4,9 @@
 
 const { spawn } = require("node:child_process");
 const { isAbsolute } = require("node:path");
-const {
-  scrubOwnerEnvironment,
-} = require("@areal/workbench-service/desktop/core/application-owner.cjs");
+const { scrubOwnerEnvironment } = require("@areal/workbench/node/application-owner");
 /** @typedef {import('node:child_process').ChildProcessWithoutNullStreams & {killed:boolean,ownerLifetime?:import('node:stream').Duplex|null}} CoreChild */
-/** @typedef {Omit<import('node:child_process').SpawnOptions,'stdio'> & {applicationOwner?:import('@areal/workbench-service/desktop/core/application-owner.cjs').ApplicationOwner}} CoreSpawnOptions */
+/** @typedef {Omit<import('node:child_process').SpawnOptions,'stdio'> & {applicationOwner?:import('@areal/workbench/node/application-owner').ApplicationOwner}} CoreSpawnOptions */
 /** @typedef {CoreSpawnOptions & {timeout?:number,maxBuffer?:number,input?:string|Uint8Array,signal?:AbortSignal}} CoreExecutionOptions */
 /** @typedef {{stdout:string,stderr:string}} CoreOutput */
 /** @typedef {Error & {code?:string|number|null,timedOut?:boolean}} CoreFailure */

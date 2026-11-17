@@ -10,7 +10,7 @@ const {
 } = require("node:fs");
 const { join, dirname, basename, resolve } = require("node:path");
 const { homedir } = require("node:os");
-const { executables } = require("./bundle.cjs");
+const { executables } = require("@areal/workbench/node/bundle");
 /** @param {string} path */
 function configurationIdentity(path) {
   // 默认文件可以尚不存在；规范已有祖先，使首次保存和目录别名不改变身份。

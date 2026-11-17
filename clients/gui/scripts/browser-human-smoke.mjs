@@ -42,7 +42,7 @@ assert.ok(
 const executable = packaged ? resolve(process.env.AREAL_GUI_EXECUTABLE) : require("electron");
 const resources = packaged ? join(dirname(dirname(executable)), "Resources") : null;
 const bundled = packaged
-  ? require("../../../services/workbench/src/desktop/core/bundle.cjs").verifyCoreBundle(resources, {
+  ? require("../packages/workbench/node/bundle.cjs").verifyCoreBundle(resources, {
       hashes: true,
     })
   : null;

@@ -6,7 +6,7 @@ const {
   observedOperation,
 } = require("@areal/workbench-service/desktop/core/receipt-contract.cjs");
 const { commandSemantics, desktopError } = require("@areal/workbench/desktop-contract");
-const { startupTrace } = require("@areal/workbench-service/desktop/core/startup-timing.cjs");
+const { startupTrace } = require("@areal/workbench/node/startup-timing");
 const { createHash, randomUUID } = require("node:crypto");
 const { mkdir, open, readFile, realpath, rm } = require("node:fs/promises");
 const { constants: fsConstants } = require("node:fs");

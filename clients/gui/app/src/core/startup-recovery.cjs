@@ -7,7 +7,7 @@ const {
   blockerMessage,
   describe,
 } = require("./lifecycle.cjs");
-const { nativeText } = require("@areal/workbench-service/desktop/core/native-i18n.cjs");
+const { nativeText } = require("@areal/workbench/node/native-i18n");
 const { PROTOCOL } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 
 /** @param {{metadata:{identity?:unknown},home:string}} options */

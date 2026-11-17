@@ -1,7 +1,7 @@
 // @ts-check
 "use strict";
 const { dialog } = require("electron");
-const { nativeText } = require("@areal/workbench-service/desktop/core/native-i18n.cjs");
+const { nativeText } = require("@areal/workbench/node/native-i18n");
 const { performance } = require("node:perf_hooks");
 const { randomUUID } = require("node:crypto");
 const { loadNavigationDocument } = require("./browser-navigation.cjs");

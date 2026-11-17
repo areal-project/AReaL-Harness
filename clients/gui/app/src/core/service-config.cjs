@@ -55,9 +55,7 @@ function serviceOptions(app) {
       process.env.AREAL_HARNESS_SERVICE_HOME || process.env.AREAL_HARNESS_HOME || defaultHostHome,
     ),
     applicationOwner: process.env.AREAL_GUI_OWNER
-      ? require("@areal/workbench-service/desktop/core/application-owner.cjs").parseOwner(
-          process.env.AREAL_GUI_OWNER,
-        )
+      ? require("@areal/workbench/node/application-owner").parseOwner(process.env.AREAL_GUI_OWNER)
       : undefined,
     // macOS Unix socket 长度有限，注册目录不能嵌入较长的 userData 路径。
     harnessHome:

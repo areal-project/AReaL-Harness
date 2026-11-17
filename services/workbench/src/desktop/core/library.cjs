@@ -3,7 +3,7 @@
 const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
 const { openSync, fstatSync, readSync, closeSync, constants } = require("node:fs");
-const { normalizeNetworkSetting } = require("./desktop-network.cjs");
+const { normalizeNetworkSetting } = require("@areal/workbench/node/desktop-network");
 const { modelRecord } = require("@areal/workbench/core-model-contract");
 const {
   readLibraryState,

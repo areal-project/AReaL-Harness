@@ -3,7 +3,7 @@
 const { ipcMain, protocol, dialog } = require("electron");
 const { readFile } = require("node:fs/promises");
 const { resolve, sep, extname } = require("node:path");
-const { nativeText } = require("@areal/workbench-service/desktop/core/native-i18n.cjs");
+const { nativeText } = require("@areal/workbench/node/native-i18n");
 /** @typedef {import('@areal/workbench/desktop-contract').DesktopInvokeArguments} InvokeArguments */
 /** @typedef {import('@areal/workbench/desktop-contract').DesktopSendArguments} SendArguments */
 /** @typedef {import('@areal/workbench/desktop-contract').DesktopEventArguments} EventArguments */
@@ -87,7 +87,7 @@ function desktopDialogs(getWindow) {
   return { showMessageBox, showOpenDialog, showSaveDialog };
 }
 
-/** @param {import('electron').App} app @param {typeof import('@areal/workbench-service/desktop/core/diagnostics.cjs')} diagnostics */
+/** @param {import('electron').App} app @param {typeof import('@areal/workbench/node/diagnostics')} diagnostics */
 function registerDesktopShell(app, diagnostics) {
   app.on("child-process-gone", (_event, details) =>
     diagnostics.record({

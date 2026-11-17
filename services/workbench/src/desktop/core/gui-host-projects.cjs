@@ -5,8 +5,8 @@ const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
 const { isDeepStrictEqual } = require("node:util");
 const { GuiSourceSession, GuiSourceAdapter, requestIdFor } = require("@areal/client/gui-source");
-const { startupTrace } = require("./startup-timing.cjs");
-const diagnostics = require("./diagnostics.cjs");
+const { startupTrace } = require("@areal/workbench/node/startup-timing");
+const diagnostics = require("@areal/workbench/node/diagnostics");
 /** @typedef {import('./project-index.cjs').SavedProject} SavedProject */
 /** @typedef {{alias:{profile:string,legacyProjectId:string},projectId:string,workspace:string,dataDir:string,scratchDir:string,sourceId?:string,usesSharedModelConfig?:boolean,logicalAlias?:{profile:string,legacyProjectId:string},worktreeRequestId?:string,projectlessRequestId?:string}} Binding */
 /** @typedef {{suppressed:boolean,activationError:string|null}} Scheduling */

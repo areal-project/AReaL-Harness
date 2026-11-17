@@ -1,7 +1,7 @@
 // @ts-check
 "use strict";
 const { randomUUID } = require("node:crypto");
-const diagnostics = require("./diagnostics.cjs");
+const diagnostics = require("@areal/workbench/node/diagnostics");
 const {
   record,
   strings,

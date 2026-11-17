@@ -1,6 +1,6 @@
 // @ts-check
 "use strict";
-const { nativeText } = require("./native-i18n.cjs");
+const { nativeText } = require("@areal/workbench/node/native-i18n");
 const { isDeepStrictEqual } = require("node:util");
 const { readReceipts } = require("@areal/workbench/desktop-contract/shared");
 const { modelRecord } = require("@areal/workbench/core-model-contract");
