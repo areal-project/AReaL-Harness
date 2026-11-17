@@ -1134,3 +1134,54 @@ test("production Main installs native callback ownership before a late subscript
   assert.deepEqual(await revoked.promise, { projectId: "logical", threadId: "thread" });
   assert.equal(f.backend.ownsThread("logical", "thread"), false);
 });
+
+test("preview resolves the original native Thread scope before any browser callback", async (t) => {
+  const f = await fixture(t);
+  const scope = {
+    sourceId: "source",
+    projectId: "execution",
+    guiProjectId: "logical",
+    threadId: "thread",
+    workspacePath: f.root,
+    lease: "native-lease",
+    coreInstanceId: "core",
+    coreGeneration: "core-generation",
+    connectionId: "core-connection",
+  };
+  let release;
+  const waiting = Promise.withResolvers();
+  f.setHandler(async (request) => {
+    if (request.method === "desktop.core.subscribe") return { attachmentId: "attachment" };
+    assert.equal(request.method, "desktop.core.call");
+    assert.equal(request.params.call, "browser.scope");
+    assert.deepEqual(request.params.params, { projectId: "logical", threadId: "thread" });
+    if (release) {
+      waiting.resolve();
+      await release;
+    }
+    return scope;
+  });
+  await f.backend.connectNativeBrowser({ home: f.hostHome, sourceId: "source" }, {});
+  t.after(() => f.backend.closeNativeBrowser());
+  f.backend.status.connected = true;
+  f.backend.command = async () => {
+    throw new Error("legacy Node path used");
+  };
+  await f.backend.ensureBrowserThread("logical", "thread");
+  assert.equal(f.backend.ownsThread("logical", "thread"), true);
+  assert.equal(f.backend.browserCoreIdentity("logical", "thread"), "core");
+  assert.equal(
+    f.backend.nativeBrowserWorkspace({ projectId: "logical", threadId: "thread" }).root,
+    f.root,
+  );
+  let finish;
+  release = new Promise((resolve) => {
+    finish = resolve;
+  });
+  const pending = f.backend.ensureBrowserThread("logical", "thread");
+  await waiting.promise;
+  f.backend.closeNativeBrowser();
+  finish();
+  await assert.rejects(pending, /changed|unavailable|disconnected/i);
+  assert.equal(f.backend.ownsThread("logical", "thread"), false);
+});

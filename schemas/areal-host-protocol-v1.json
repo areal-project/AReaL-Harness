@@ -58494,6 +58494,28 @@
             "params"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "attachmentId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "call": {
+              "type": "string",
+              "const": "browser.scope"
+            },
+            "params": {
+              "$ref": "#/$defs/LocalDesktopThreadScopeParams"
+            }
+          },
+          "required": [
+            "attachmentId",
+            "call",
+            "params"
+          ],
+          "additionalProperties": false
         }
       ]
     },
@@ -58525,6 +58547,9 @@
         },
         {
           "$ref": "#/$defs/WorkbenchPrivateCoreBlobResult"
+        },
+        {
+          "$ref": "#/$defs/LocalDesktopThreadScopeResult"
         }
       ],
       "examples": [
@@ -62803,6 +62828,88 @@
         "version",
         "event",
         "connection"
+      ],
+      "additionalProperties": false
+    },
+    "LocalDesktopThreadScopeParams": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "threadId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "required": [
+        "projectId",
+        "threadId"
+      ],
+      "additionalProperties": false
+    },
+    "LocalDesktopThreadScopeResult": {
+      "type": "object",
+      "properties": {
+        "sourceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "guiProjectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "threadId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "workspacePath": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "lease": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "coreInstanceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "coreGeneration": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "connectionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "required": [
+        "sourceId",
+        "projectId",
+        "guiProjectId",
+        "threadId",
+        "workspacePath",
+        "lease",
+        "coreInstanceId",
+        "coreGeneration",
+        "connectionId"
       ],
       "additionalProperties": false
     }

@@ -166,7 +166,9 @@ class SharedCoreBackend {
     this.nativeBrowserConnecting = undefined;
     /** @type {object|undefined} */
     this.nativeBrowserEpoch = undefined;
-    /** @type {Map<string,import('./native-host-transport').DesktopCallback>} */
+    /** @type {string|undefined} */
+    this.nativeBrowserSource = undefined;
+    /** @type {Map<string,import('./native-host-transport').DesktopThreadScope>} */
     this.nativeBrowserScopes = new Map();
     /** @type {((frame:import('./native-host-transport').DesktopCallback,signal:AbortSignal)=>Promise<unknown>)|undefined} */
     this.onNativeBrowserRequest = undefined;
@@ -244,7 +246,7 @@ class SharedCoreBackend {
   /** @param {string} projectId @param {string} threadId */
   nativeBrowserScope(projectId, threadId) {
     const scope = this.nativeBrowserScopes.get(JSON.stringify([projectId, threadId]));
-    return scope && this.nativeBrowserCurrent(scope) ? scope : undefined;
+    return scope && this.nativeBrowserEpoch && !this.disposed ? scope : undefined;
   }
   /** @param {import('./native-host-transport').DesktopCallback} frame */
   nativeBrowserCurrent(frame) {
@@ -296,6 +298,7 @@ class SharedCoreBackend {
 
   closeNativeBrowser() {
     this.nativeBrowserEpoch = undefined;
+    this.nativeBrowserSource = undefined;
     const original = this.nativeBrowser;
     this.nativeBrowser = undefined;
     this.nativeBrowserConnecting = undefined;
@@ -309,6 +312,7 @@ class SharedCoreBackend {
     this.closeNativeBrowser();
     const epoch = {};
     this.nativeBrowserEpoch = epoch;
+    this.nativeBrowserSource = source.sourceId;
     this.nativeBrowserConnecting = createNativeHostTransport({
       home: source.home,
       sourceId: source.sourceId,
@@ -322,10 +326,10 @@ class SharedCoreBackend {
           typeof frame.params.threadId !== "string"
         )
           throw new Error("Original native browser attachment unavailable");
-        this.nativeBrowserScopes.set(
-          JSON.stringify([frame.guiProjectId, frame.params.threadId]),
-          frame,
-        );
+        this.nativeBrowserScopes.set(JSON.stringify([frame.guiProjectId, frame.params.threadId]), {
+          ...frame,
+          threadId: frame.params.threadId,
+        });
         this.onChange();
         if (!this.onNativeBrowserRequest) throw new Error("Native browser host unavailable");
         return this.onNativeBrowserRequest(frame, signal);
@@ -339,14 +343,12 @@ class SharedCoreBackend {
             !(
               frame.method === "areal/thread/archived" &&
               record(frame.params) &&
-              record(scope.params) &&
-              frame.params.threadId === scope.params.threadId
+              frame.params.threadId === scope.threadId
             )
           )
             continue;
           this.nativeBrowserScopes.delete(key);
-          if (record(scope.params) && typeof scope.params.threadId === "string")
-            this.onNativeBrowserRevoked?.(scope.guiProjectId, scope.params.threadId);
+          this.onNativeBrowserRevoked?.(scope.guiProjectId, scope.threadId);
         }
       },
       onClosed: () => {
@@ -375,15 +377,31 @@ class SharedCoreBackend {
   }
   /** @param {string} projectId @param {string} threadId */
   async ensureBrowserThread(projectId, threadId) {
-    if (!this.status.connected) await this.init();
-    if (this.ownsThread(projectId, threadId)) return;
-    const connection = this.requireConnection();
-    await this.command("open", { projectId, threadId });
-    const packet = await connection.request("snapshot");
-    if (connection !== this.connection || !this.status.connected)
-      throw new Error("后台连接已变化，请重试");
-    this.accept(packet);
-    if (!this.ownsThread(projectId, threadId)) throw new Error("请选择已连接 Core 的有效任务");
+    if (!this.nativeBrowserEpoch) await this.init();
+    const epoch = this.nativeBrowserEpoch;
+    const scope = await this.nativeBrowserCall("browser.scope", { projectId, threadId });
+    if (!epoch || this.nativeBrowserEpoch !== epoch || this.disposed)
+      throw new Error("Original native browser attachment changed");
+    if (
+      !record(scope) ||
+      scope.sourceId !== this.nativeBrowserSource ||
+      scope.guiProjectId !== projectId ||
+      scope.threadId !== threadId ||
+      ![
+        "projectId",
+        "workspacePath",
+        "lease",
+        "coreInstanceId",
+        "coreGeneration",
+        "connectionId",
+      ].every((key) => typeof scope[key] === "string" && scope[key])
+    )
+      throw new Error("Invalid native browser Thread scope");
+    this.nativeBrowserScopes.set(
+      JSON.stringify([projectId, threadId]),
+      /** @type {import('./native-host-transport').DesktopThreadScope} */ (scope),
+    );
+    this.onChange();
   }
   /** @param {string} projectId @param {string} threadId */
   retainsThreadResources(projectId, threadId) {

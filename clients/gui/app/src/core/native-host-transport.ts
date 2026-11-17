@@ -16,6 +16,18 @@ export type DesktopCallback = {
   coreRequestId: unknown;
 };
 
+export type DesktopThreadScope = Pick<
+  DesktopCallback,
+  | "sourceId"
+  | "projectId"
+  | "guiProjectId"
+  | "workspacePath"
+  | "lease"
+  | "coreInstanceId"
+  | "coreGeneration"
+  | "connectionId"
+> & { threadId: string };
+
 /** Main只持有原生附件；Host创建的租约无需Node投影预先登记。 */
 export async function createNativeHostTransport(options: {
   home: string;

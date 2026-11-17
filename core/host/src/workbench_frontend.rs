@@ -370,6 +370,7 @@ impl Connections {
         host.migration.source_profile(&source)?;
         let input = &params["params"];
         match call {
+            "browser.scope" => exact(input, &["projectId", "threadId"])?,
             "core.attach" => exact(input, &["sourceId", "projectId", "scope"])?,
             "core.blob" => {
                 if input["operation"] == "read" {
@@ -449,6 +450,44 @@ impl Connections {
             input.get("sourceId").is_none_or(|id| id == &source),
             "FORBIDDEN"
         );
+        if call == "browser.scope" {
+            let thread = input["threadId"]
+                .as_str()
+                .filter(|id| !id.is_empty() && id.len() <= 512 && !id.contains('\0'))
+                .context("INVALID_PARAMS")?;
+            let target = super::super::session_commands::resolve_project_scope(
+                host, &source, input, false, true,
+            )
+            .await?;
+            let lease = self
+                .frontend_browser_lease(host, &source, &target.canonical_id)
+                .await?
+                .context("CAPABILITY_UNAVAILABLE")?;
+            let identity = self.workbench_identity(host, &target.canonical_id, &lease)?;
+            let session = self.workbench_session(host, &target.canonical_id, &lease)?;
+            let value = session
+                .request(
+                    "thread/read",
+                    json!({"threadId":thread,"includeTurns":false}),
+                )
+                .await?;
+            ensure!(
+                value["thread"]["id"] == thread && value["thread"]["desktop"]["archived"] != true,
+                "RESOURCE_UNAVAILABLE"
+            );
+            let library = super::super::library_store::read_source(host, &source)?;
+            ensure!(
+                library["projects"][&target.logical]["hidden"] != true,
+                "FORBIDDEN"
+            );
+            ensure!(
+                self.workbench_identity(host, &target.canonical_id, &lease)? == identity,
+                "RESYNC_REQUIRED"
+            );
+            return Ok(json!({"sourceId":source,"projectId":target.canonical_id,
+                "guiProjectId":target.logical,"workspacePath":target.workspace,"threadId":thread,"lease":lease,
+                "coreInstanceId":identity.0,"coreGeneration":identity.1,"connectionId":identity.2}));
+        }
         if call == "workbench.utility" {
             let options = self
                 .frontends
@@ -667,6 +706,7 @@ mod tests {
                             while let Some(Ok(Message::Text(text)))=socket.next().await {
                                 let frame:Value=serde_json::from_str(&text).unwrap();if frame["method"]=="initialized"{continue;}
                                 if frame["method"]=="initialize" {socket.send(Message::Text(json!({"id":frame["id"],"result":{}}).to_string().into())).await.unwrap();}
+                                else if frame["method"]=="thread/read" {socket.send(Message::Text(json!({"id":frame["id"],"result":{"thread":{"id":frame["params"]["threadId"],"desktop":{"archived":frame["params"]["threadId"]=="archived"}}}}).to_string().into())).await.unwrap();}
                                 else if index==0 {socket.send(Message::Text(json!({"id":frame["id"],"result":{"alive":true}}).to_string().into())).await.unwrap();}
                                 else if frame["method"]=="areal/capabilities" {socket.send(Message::Text(json!({"id":frame["id"],"result":{"features":{"browserToolAttachment":true},"browserToolBundles":[{"bundleId":"areal.browser.v1"}]}}).to_string().into())).await.unwrap();}
                                 else if frame["method"]=="areal/task/tools/ready" {assert_eq!(frame["params"]["bundles"],json!(["areal.browser.v1"]));socket.send(Message::Text(json!({"id":frame["id"],"result":{}}).to_string().into())).await.unwrap();if let Some(done)=published.borrow_mut().take(){done.send(()).unwrap();}}
@@ -684,7 +724,7 @@ mod tests {
                 let shared=connect(host.clone(),"project",service.clone()).await.unwrap();host.schedules.connections.sessions.borrow_mut().insert("project".into(),shared.clone());
 
                 let execution_alias=super::super::super::workbench_route::backend_project_alias(&host,&source_id,"project").unwrap();
-                storage::write(&source.core_home.join("projects.json"),&json!([{"id":execution_alias,"root":shared.service.identity.workspace,"logicalProjectId":"logical"}])).unwrap();
+                storage::write(&source.core_home.join("projects.json"),&json!([{"id":execution_alias,"root":shared.service.identity.workspace}])).unwrap();
                 host.gateway.workbench.set_test_source_and_options(&source_id,json!({}));
                 let (mut events,mut event_writer)=host_socket(host.clone()).await;
                 // 过渡：到 0.2.0 删；夹具沿用来源导入的旧目录身份。
@@ -699,7 +739,7 @@ mod tests {
                 assert_eq!(attached["lease"],lease,"native attach and schedule publication must share the live tool host");
                 let (mut calls,mut call_writer)=host_socket(host.clone()).await;let (mut replies,mut reply_writer)=host_socket(host.clone()).await;
                 send(&mut call_writer,"call","desktop.core.call",json!({"attachmentId":attachment,"call":"core.request","params":{"sourceId":source_id,"projectId":"project","lease":lease,"method":"areal/server/status","params":{}}})).await;
-                let event=crate::wire::read(&mut events).await.unwrap().unwrap();assert_eq!(event["method"],"desktop.core.event");assert_eq!(event["params"]["event"]["coreRequestId"],17);assert_eq!(event["params"]["event"]["coreInstanceId"],"fixture-core");assert_eq!(event["params"]["event"]["coreGeneration"],"generation");assert_eq!(event["params"]["event"]["connectionId"],session.connection_id);assert_eq!(event["params"]["event"]["sourceId"],source_id);assert_eq!(event["params"]["event"]["guiProjectId"],"logical");assert_eq!(event["params"]["event"]["workspacePath"],json!(session.service.identity.workspace));
+                let event=crate::wire::read(&mut events).await.unwrap().unwrap();assert_eq!(event["method"],"desktop.core.event");assert_eq!(event["params"]["event"]["coreRequestId"],17);assert_eq!(event["params"]["event"]["coreInstanceId"],"fixture-core");assert_eq!(event["params"]["event"]["coreGeneration"],"generation");assert_eq!(event["params"]["event"]["connectionId"],session.connection_id);assert_eq!(event["params"]["event"]["sourceId"],source_id);assert_eq!(event["params"]["event"]["guiProjectId"],execution_alias);assert_eq!(event["params"]["event"]["workspacePath"],json!(session.service.identity.workspace));
                 send(&mut reply_writer,"reply","desktop.core.callback",json!({"attachmentId":attachment,"requestId":event["params"]["event"]["requestId"],"result":{"handled":true}})).await;
                 assert_eq!(crate::wire::read(&mut replies).await.unwrap().unwrap()["result"]["received"],true);
                 assert_eq!(crate::wire::read(&mut calls).await.unwrap().unwrap()["result"]["result"]["alive"],true);
@@ -709,6 +749,12 @@ mod tests {
                 super::super::super::worktree_catalog::prepare_thread_target(&host,"host","project",json!({"requestId":creation})).await.unwrap();
                 let created=super::super::super::worktree_catalog::bind_thread_target_with_lease(&host,"host","project",&creation,json!({"requestId":creation,"dynamicTools":[areal_protocol::desktop::browser_v1_tool()]}),Some(&lease)).await.unwrap();
                 assert_eq!(created["threadId"],"browser-created","creation must use the original Main callback connection");
+                storage::private_dir(&source.core_home.join("thread-owners")).unwrap();
+                storage::write(&source.core_home.join("thread-owners").join(format!("{execution_alias}.json")),&json!(["browser-created","archived"])).unwrap();
+                let scoped=host.schedules.connections.frontend_call(&host,&json!({"attachmentId":attachment,"call":"browser.scope","params":{"projectId":execution_alias,"threadId":"browser-created"}})).await.unwrap();
+                assert_eq!(scoped["projectId"],"project");assert_eq!(scoped["guiProjectId"],execution_alias);assert_eq!(scoped["workspacePath"],json!(session.service.identity.workspace));assert_eq!(scoped["threadId"],"browser-created");assert_eq!(scoped["lease"],lease);
+                assert!(host.schedules.connections.frontend_call(&host,&json!({"attachmentId":attachment,"call":"browser.scope","params":{"projectId":execution_alias,"threadId":"archived"}})).await.is_err());
+
                 host.schedules.connections.workbench_close_terminals();
                 assert!(!session.closed.get(),"backend cleanup cannot revoke an independent Main attachment");
                 assert!(!shared.closed.get());
