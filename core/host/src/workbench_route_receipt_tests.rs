@@ -462,3 +462,62 @@ fn manage_operations_that_admit_or_stop_work_need_their_own_capability() {
 fn backend_status_is_not_routed_to_external_clients() {
     assert!(!METHODS.contains(&"backend.ensure") && !METHODS.contains(&"backend.status"));
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn native_skill_creator_requires_exact_available_builtin_without_node() {
+    tokio::task::LocalSet::new().run_until(async {
+        let root=tempfile::tempdir().unwrap();
+        let descriptor=crate::builtin_skills::descriptor(&root.path().join("data")).unwrap();
+        let revision=descriptor["skill"]["revision"].clone();
+        let available=Rc::new(std::cell::Cell::new(true));let observed=available.clone();
+        let (host,source,server,close)=setup_archive_fixture(root.path(),move|method,params|{
+            Some(json!({"result":match method {
+                "initialize"=>json!({}),
+                "areal/skill/list"=>{
+                    assert_eq!(params["agentProfile"],json!({"id":"custom","revision":"v1"}));
+                    json!({"data":[{"id":crate::builtin_skills::ID,"revision":revision,"available":observed.get()}]})
+                },
+                other=>panic!("unexpected {other}"),
+            }}))
+        }).await;
+        let registration=host.slots.borrow()["project"].registration.clone();
+        let directory=host.home.join("host/launch").join(storage::digest(b"project"));storage::private_dir(&directory).unwrap();
+        let deployment=directory.join("external.json");storage::write(&deployment,&json!({"profiles":[{"id":"custom","revision":"v1"}]})).unwrap();
+        storage::write(&directory.join("inputs.json"),&crate::LaunchInputs {
+            workspace:registration.workspace.clone(),cwd:registration.workspace,config_home:root.path().join("data"),homedir:None,config_path:None,
+            deployment_path:Some(deployment),schedule_preparation:None,environment:Default::default(),credential_names:vec![],options:Default::default(),
+        }).unwrap();
+        let request=json!({"params":{"sourceId":source,"command":"prepareCreator","request":{"projectId":TEST_PROJECT_ALIAS,"profile":{"id":"custom","revision":"v1"}}}});
+        let result=desktop_command(&host,"local","creator",&request).await.unwrap();
+        assert_eq!(result["skill"],descriptor["skill"]);assert_eq!(result["provenance"],descriptor["provenance"]);
+        available.set(false);
+        assert!(desktop_command(&host,"local","creator",&request).await.is_err());
+        assert!(!host.gateway.workbench.has_running_backend());
+        close();server.await.unwrap();
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn prepared_creation_cannot_rebind_to_a_later_core_generation() {
+    tokio::task::LocalSet::new().run_until(async {
+        let root=tempfile::tempdir().unwrap();
+        let (host,source,server,close)=setup_archive_fixture(root.path(),|method,_|Some(json!({"result":match method {
+            "initialize"|"areal/server/status"=>json!({}),
+            "areal/capabilities"=>json!({"methods":["areal/thread/start","areal/request/read"],"features":{"threadCreationJournal":{"binding":{"identity":"fixture","journalEpoch":"epoch","coreInstanceId":"fixture"}}}}),
+            other=>panic!("unexpected {other}"),
+        }}))).await;
+        let registration=host.slots.borrow()["project"].registration.clone();
+        let directory=host.home.join("host/launch").join(storage::digest(b"project"));storage::private_dir(&directory).unwrap();
+        storage::write(&directory.join("inputs.json"),&crate::LaunchInputs{
+            workspace:registration.workspace.clone(),cwd:registration.workspace,config_home:root.path().join("data"),homedir:None,config_path:None,deployment_path:None,schedule_preparation:None,environment:Default::default(),credential_names:vec![],options:Default::default(),
+        }).unwrap();
+        let id=uuid::Uuid::new_v4().to_string();let request=json!({"projectId":TEST_PROJECT_ALIAS,"requestId":id,"browserEnabled":false});
+        host.gateway.workbench.prepare_execution(&host,"owner","project","workbench/thread/create",request.clone()).await.unwrap().unwrap();
+        let path=super::super::library_store::source_home(&host,&source).unwrap().join("worktree-requests").join(format!("{id}.json"));
+        let mut original:Value=storage::read(&path).unwrap();original["preparedCore"]["generation"]=json!("original-retired-generation");storage::write(&path,&original).unwrap();
+        let frozen=std::fs::read(&path).unwrap();
+        assert!(host.gateway.workbench.prepare_execution(&host,"owner","project","workbench/thread/create",request).await.is_err());
+        assert_eq!(std::fs::read(path).unwrap(),frozen);
+        close();server.await.unwrap();
+    }).await;
+}

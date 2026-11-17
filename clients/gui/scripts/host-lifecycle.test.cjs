@@ -1240,3 +1240,35 @@ test("resource settings use the native source without a Node connection", async 
   assert.deepEqual(await f.backend.command("resources", request), response);
   assert.equal(f.backend.connection, undefined);
 });
+
+test("Skill Creator preparation uses native Host without a Node connection", async (t) => {
+  const f = await fixture(t);
+  const request = { projectId: "project", profile: { id: "standard", revision: "v2" } };
+  const response = {
+    projectId: "project",
+    profile: request.profile,
+    skill: {
+      id: "openai-skill-creator",
+      revision: "pinned",
+      name: "Skill Creator",
+      description: "Create skills",
+    },
+    provenance: {
+      upstream: "https://github.com/openai/skills",
+      revision: "upstream",
+      contentDigest: "digest",
+    },
+  };
+  f.setHandler(async (frame) => {
+    if (frame.method === "desktop.core.subscribe") return { attachmentId: "attachment" };
+    assert.equal(frame.method, "desktop.core.call");
+    assert.equal(frame.params.call, "resources.prepareCreator");
+    assert.deepEqual(frame.params.params, request);
+    return response;
+  });
+  await f.backend.connectNativeBrowser({ home: f.hostHome, sourceId: "source" }, {});
+  t.after(() => f.backend.closeNativeBrowser());
+  f.backend.status.connected = true;
+  assert.deepEqual(await f.backend.command("prepareCreator", request), response);
+  assert.equal(f.backend.connection, undefined);
+});

@@ -51,6 +51,20 @@ pub(super) async fn prepare_core(
         "INVALID_PARAMS"
     );
     let connections = &host.schedules.connections;
+    if method == "areal/thread/start" {
+        connections.refresh_gui(host, project).await?;
+        if params.get("agentProfile").is_none()
+            && matches!(
+                host.slots.borrow()[project].registration.source,
+                crate::ProjectSource::Gui { .. }
+            )
+        {
+            let inputs = super::schedule_connection::inputs(host, project)?;
+            if let Some(profile) = crate::launch::remote_profile(&inputs)? {
+                params["agentProfile"] = serde_json::to_value(profile)?;
+            }
+        }
+    }
     let scope = connections.shared_identity(host, project)?;
     let browser = match connections
         .frontend_browser_lease(host, source, project)

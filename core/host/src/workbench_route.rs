@@ -1056,6 +1056,7 @@ pub(super) async fn desktop_command(
         Cmd::Value12 => Some("fork"),
         Cmd::Value15 => Some("manage"),
         Cmd::Value18 => Some("prediction"),
+        Cmd::Value19 => Some("prepareCreator"),
         Cmd::Value20 => Some("projectless"),
         Cmd::Value22 => Some("queue"),
         Cmd::Value23 => Some("queueEdit"),
@@ -1078,6 +1079,13 @@ pub(super) async fn desktop_command(
             "FORBIDDEN"
         );
         return match command {
+            "prepareCreator" => {
+                host.gateway
+                    .workbench
+                    .resources
+                    .prepare_creator(host, &source, &params.request)
+                    .await
+            }
             "resources" => {
                 host.gateway
                     .workbench

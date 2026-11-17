@@ -145,6 +145,64 @@ impl Connections {
         Ok(Box::new(move || session.close()))
     }
 
+    /// 原会话只请求更新，项目连接任务拥有持久化排空、停止、重启和插件恢复。
+    pub(super) async fn refresh_gui(&self, host: &Rc<Host>, id: &str) -> Result<()> {
+        let registration = host
+            .slots
+            .borrow()
+            .get(id)
+            .context("RESOURCE_UNAVAILABLE")?
+            .registration
+            .clone();
+        let Some(candidate) = super::gui_project::refresh_inputs(host, &registration).await? else {
+            return Ok(());
+        };
+        if super::gui_project::same_inputs(&inputs(host, id)?, &candidate)? {
+            return Ok(());
+        }
+        ensure!(
+            !host.schedules.suppressed(id) && !host.schedules.import_blocked(id),
+            unavailable()
+        );
+        let session = self
+            .sessions
+            .borrow()
+            .get(id)
+            .cloned()
+            .context("RESOURCE_UNAVAILABLE")?;
+        session.require_current(host)?;
+        ensure!(
+            session.request("areal/server/status", json!({})).await?["restartSafe"] == true,
+            "配置已保存，请在当前任务和终端结束后创建新任务"
+        );
+        session.require_current(host)?;
+        session.request_refresh_inputs(candidate.clone())?;
+        tokio::time::timeout(Duration::from_secs(30), async {
+            loop {
+                let changed = self.changed.notified();
+                host.admission()?;
+                ensure!(
+                    !host.schedules.suppressed(id) && !host.schedules.import_blocked(id),
+                    unavailable()
+                );
+                if let Ok(identity) = self.shared_identity(host, id) {
+                    if identity.1 != session.service.identity.generation {
+                        ensure!(
+                            super::gui_project::same_inputs(&inputs(host, id)?, &candidate)?,
+                            "RESYNC_REQUIRED"
+                        );
+                        return Ok(());
+                    }
+                } else if let Some(error) = host.schedules.error(id) {
+                    anyhow::bail!("{error}");
+                }
+                changed.await;
+            }
+        })
+        .await
+        .context("RESOURCE_UNAVAILABLE")?
+    }
+
     pub(super) fn shared_identity(
         &self,
         host: &Host,
@@ -622,9 +680,23 @@ struct CoreSession {
     conversation_capabilities: tokio::sync::OnceCell<Value>,
     refresh: Notify,
     refresh_requested: Cell<bool>,
+    refresh_inputs: RefCell<Option<LaunchInputs>>,
     driver: RefCell<Option<AbortHandle>>,
 }
 impl CoreSession {
+    fn request_refresh_inputs(&self, candidate: LaunchInputs) -> Result<()> {
+        if let Some(pending) = self.refresh_inputs.borrow().as_ref() {
+            ensure!(
+                super::gui_project::same_inputs(pending, &candidate)?,
+                "configuration update already pending"
+            );
+        }
+        *self.refresh_inputs.borrow_mut() = Some(candidate);
+        self.refresh_requested.set(true);
+        self.refresh.notify_one();
+        Ok(())
+    }
+
     fn defer_removals(&self, threads: Vec<String>) -> Vec<String> {
         if self.workbench_creations.get() == 0 {
             return threads;
@@ -953,6 +1025,7 @@ async fn connect_authorized(
         conversation_capabilities: tokio::sync::OnceCell::new(),
         refresh: Notify::new(),
         refresh_requested: Cell::new(false),
+        refresh_inputs: RefCell::new(None),
         driver: RefCell::new(None),
     });
     let connection = session.clone();
@@ -1147,6 +1220,14 @@ async fn callback(
         return Ok(json!({}));
     }
     let inputs = inputs(host, &connection.project_id)?;
+    if let Some(candidate) = super::gui_project::refresh_inputs(host, &project.registration).await?
+    {
+        if !super::gui_project::same_inputs(&inputs, &candidate)? {
+            connection.require_current(host)?;
+            connection.request_refresh_inputs(candidate)?;
+            return std::future::pending().await;
+        }
+    }
     let mut result = json!({"dynamicTools":[]});
     match &inputs.schedule_preparation {
         Some(crate::SchedulePreparation::External {
@@ -1233,7 +1314,12 @@ pub(super) async fn activation_pending(host: &Host, id: &str) -> Result<bool> {
 
 async fn capture_refresh(host: &Host, session: &CoreSession) -> Result<Refresh> {
     session.require_current(host)?;
-    let mut inputs = inputs(host, &session.project_id)?;
+    let mut inputs = session
+        .refresh_inputs
+        .borrow()
+        .clone()
+        .map(Ok)
+        .unwrap_or_else(|| inputs(host, &session.project_id))?;
     let registration = host.slots.borrow()[&session.project_id]
         .registration
         .clone();

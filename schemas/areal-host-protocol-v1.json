@@ -58581,6 +58581,27 @@
             "params"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "attachmentId": {
+              "type": "string"
+            },
+            "call": {
+              "type": "string",
+              "const": "resources.prepareCreator"
+            },
+            "params": {
+              "$ref": "#/$defs/LocalDesktopCreatorParams"
+            }
+          },
+          "required": [
+            "attachmentId",
+            "call",
+            "params"
+          ],
+          "additionalProperties": false
         }
       ]
     },
@@ -58624,6 +58645,9 @@
         },
         {
           "$ref": "#/$defs/LocalDesktopResourceResult"
+        },
+        {
+          "$ref": "#/$defs/LocalDesktopCreatorResult"
         }
       ],
       "examples": [
@@ -63868,6 +63892,109 @@
           "additionalProperties": false
         }
       ]
+    },
+    "LocalDesktopCreatorParams": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "profile": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "revision"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "projectId"
+      ],
+      "additionalProperties": false
+    },
+    "LocalDesktopCreatorResult": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "profile": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "revision"
+          ],
+          "additionalProperties": false
+        },
+        "skill": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "revision",
+            "name",
+            "description"
+          ],
+          "additionalProperties": false
+        },
+        "provenance": {
+          "type": "object",
+          "properties": {
+            "upstream": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "string"
+            },
+            "contentDigest": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "upstream",
+            "revision",
+            "contentDigest"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "projectId",
+        "profile",
+        "skill",
+        "provenance"
+      ],
+      "additionalProperties": false
     }
   },
   "x-current": {

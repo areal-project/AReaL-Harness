@@ -1481,7 +1481,13 @@ async fn register_target(
         .join(storage::digest(source_project.project_id.as_bytes()))
         .join("inputs.json");
     let launch: LaunchInputs = storage::read(&template_path)?;
-    let launch = target_launch_inputs(launch, &root, &target_data, home, &execution_alias)?;
+    let mut launch = target_launch_inputs(launch, &root, &target_data, home, &execution_alias)?;
+    if launch.schedule_preparation.is_some() {
+        let registration = host.slots.borrow()[&execution_id].registration.clone();
+        let resources = crate::schedule_resources::materialize(&host.home, &registration, &launch)?;
+        launch.deployment_path = Some(resources.deployment_path.clone());
+        launch.options.desktop_config = Some(resources.deployment_path);
+    }
     let credentials = host
         .slots
         .borrow()
@@ -1585,8 +1591,13 @@ fn freeze_prepared_core(
     let backend = creation_owner(host, source)?;
     let inputs = super::schedule_connection::inputs(host, execution)?;
     let resources = prepared_resources(&inputs)?;
-    value["preparedCore"] = json!({"projectId":execution,"instanceId":scope.0,"generation":scope.1,"connectionId":scope.2,"backend":backend,
+    let binding = json!({"projectId":execution,"instanceId":scope.0,"generation":scope.1,"connectionId":scope.2,"backend":backend,
         "resourceProfile":resources["profile"],"resourceFingerprint":resources["fingerprint"]});
+    if let Some(original) = value.get("preparedCore") {
+        ensure!(*original == binding, "RESYNC_REQUIRED");
+    } else {
+        value["preparedCore"] = binding;
+    }
     Ok(())
 }
 fn prepared_resources(inputs: &LaunchInputs) -> Result<Value> {
@@ -1700,7 +1711,7 @@ fn thread_checkout_params(logical: &str, id: &str, worktree: &Value) -> Result<V
     }
     Ok(params)
 }
-/// 只准备归属与目录，不执行会话创建；供应商和页面工具仍由原 JS 宿主准备。
+/// 准备归属与目录，不执行会话创建；首次准备先应用当前 Host 资源配置。
 pub(super) async fn prepare_thread_target(
     host: &Rc<Host>,
     source: &str,
@@ -1711,6 +1722,18 @@ pub(super) async fn prepare_thread_target(
     let home = super::library_store::source_home(host, source)?;
     let id = uuid::Uuid::parse_str(required(&input, "requestId")?)?.to_string();
     let signature = thread_signature(&input);
+    if !home
+        .join("worktree-requests")
+        .join(format!("{id}.json"))
+        .try_exists()?
+    {
+        let registration = project(host, source, logical)?;
+        super::session_commands::ensure_project(host, &registration.project_id).await?;
+        host.schedules
+            .connections
+            .refresh_gui(host, &registration.project_id)
+            .await?;
+    }
     let mut value = match record(&home, &id, logical) {
         Ok(value) => {
             ensure!(
@@ -1852,6 +1875,15 @@ pub(super) async fn bind_thread_target_with_lease(
     } else {
         ensure!(value["state"] == "created", "SUBMISSION_UNKNOWN");
         host.admission()?;
+        if let Some(candidate) = super::gui_project::refresh_inputs(host, &execution).await? {
+            ensure!(
+                super::gui_project::same_inputs(
+                    &super::schedule_connection::inputs(host, &execution.project_id)?,
+                    &candidate
+                )?,
+                "配置已变化，原创建请求已保留，请重新确认"
+            );
+        }
         let scope = prepared_core(host, source, &value)?;
         if let Some(lease) = browser_lease {
             let browser = host.schedules.connections.workbench_identity(

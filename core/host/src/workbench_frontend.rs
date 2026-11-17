@@ -379,6 +379,10 @@ impl Connections {
         let input = &params["params"];
         match call {
             "browser.scope" => exact(input, &["projectId", "threadId"])?,
+            "resources.prepareCreator" => {
+                let _: areal_protocol::host::LocalDesktopCreatorParams =
+                    serde_json::from_value(input.clone()).context("INVALID_PARAMS")?;
+            }
             "resources.command" => {
                 let _: areal_protocol::host::LocalDesktopResourceParams =
                     serde_json::from_value(input.clone()).context("INVALID_PARAMS")?;
@@ -469,6 +473,14 @@ impl Connections {
             input.get("sourceId").is_none_or(|id| id == &source),
             "FORBIDDEN"
         );
+        if call == "resources.prepareCreator" {
+            return host
+                .gateway
+                .workbench
+                .resources
+                .prepare_creator(host, &source, input)
+                .await;
+        }
         if call == "resources.command" {
             return host
                 .gateway

@@ -89,6 +89,83 @@ pub(super) fn managed(host: &Host, options: &Value) -> Result<bool> {
     Ok(source.as_deref() == Some(requested) || packaged.as_deref() == Some(requested))
 }
 
+/// 工作树复制资源到自身路径；技能按版本身份、钩子与证书按内容比较。
+pub(super) fn same_inputs(left: &LaunchInputs, right: &LaunchInputs) -> Result<bool> {
+    fn identity(inputs: &LaunchInputs) -> Result<Value> {
+        let mut value = serde_json::to_value(inputs)?;
+        if let Some(path) = &inputs.deployment_path {
+            let mut deployment: Value = storage::read(path)?;
+            if let Some(skills) = deployment.get_mut("skills").and_then(Value::as_array_mut) {
+                for skill in skills {
+                    // 同一 id/revision 在启动器中复制成不可变版本；实体路径不是逻辑版本身份。
+                    skill
+                        .as_object_mut()
+                        .context("invalid deployment skill")?
+                        .remove("root");
+                }
+            }
+            value["deploymentPath"] = deployment.clone();
+            if inputs.options.desktop_config.as_ref() == Some(path) {
+                value["options"]["desktop_config"] = deployment;
+            }
+        }
+        for name in [
+            "AREAL_HARNESS_TOOL_EXTENSIONS",
+            "SSL_CERT_FILE",
+            "NODE_EXTRA_CA_CERTS",
+            "REQUESTS_CA_BUNDLE",
+            "CURL_CA_BUNDLE",
+        ] {
+            if let Some(path) = inputs.environment.get(name) {
+                value["environment"][name] = json!(storage::digest(&fs::read(path)?));
+            }
+        }
+        Ok(value)
+    }
+    Ok(identity(left)? == identity(right)?)
+}
+
+/// 候选输入只写入不可变资源文件；运行中代际的 inputs.json 由既有重启回执提交。
+pub(super) async fn refresh_inputs(
+    host: &Host,
+    project: &ProjectRegistration,
+) -> Result<Option<LaunchInputs>> {
+    if !matches!(project.source, ProjectSource::Gui { .. }) {
+        return Ok(None);
+    }
+    let saved: Option<LaunchInputs> = storage::read_optional(&launch_path(host, project))?;
+    if saved
+        .as_ref()
+        .is_some_and(|input| input.schedule_preparation.is_none())
+    {
+        return Ok(None);
+    }
+    let source = host
+        .migration
+        .credential_source(project)?
+        .context("GUI_SOURCE_PENDING")?;
+    let options = self::options(host, &source)?;
+    let mut candidate = prepare(host, &source, project, &options).await?;
+    if let Some(saved) = &saved {
+        candidate.options.scratch = saved.options.scratch.clone();
+        for name in saved
+            .credential_names
+            .iter()
+            .filter(|name| name.starts_with("AREAL_CREDENTIAL_"))
+        {
+            if !candidate.credential_names.contains(name) {
+                candidate.credential_names.push(name.clone());
+            }
+        }
+    }
+    ensure!(self::options(host, &source)? == options, "RESYNC_REQUIRED");
+    ensure!(
+        !candidate.options.history_only,
+        "GUI execution configuration unavailable; history remains readable"
+    );
+    Ok(Some(candidate))
+}
+
 fn hooks(home: &Path, options: &Value) -> Result<Value> {
     let config = areal_config::load_service_config(&workbench_utility::inputs(options)?)?.0;
     let external = config.tool_extensions_file;
@@ -255,7 +332,16 @@ async fn prepare(
             value["skills"] = json!([{"id":builtin_skills::ID,"revision":builtin.revision,"root":builtin.root,"metadata":{"name":builtin.metadata.name,"description":builtin.metadata.description}}]);
             storage::write(&seed, &value)?;
         }
-        inputs.deployment_path = Some(seed);
+        let saved: Option<LaunchInputs> = storage::read_optional(&launch_path(host, project))?;
+        inputs.deployment_path = saved
+            .filter(|input| {
+                matches!(
+                    input.schedule_preparation,
+                    Some(SchedulePreparation::Managed { .. })
+                )
+            })
+            .and_then(|input| input.deployment_path)
+            .or(Some(seed));
         Ok(schedule_resources::materialize(&host.home, project, &inputs)?.deployment_path)
     })();
     match deployment {

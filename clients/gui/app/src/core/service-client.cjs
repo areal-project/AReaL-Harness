@@ -979,10 +979,14 @@ class SharedCoreBackend {
       });
     }
     this.assertLifecycleScope(name, request);
-    if (name === "projectless" || name === "resources") {
+    if (["projectless", "resources", "prepareCreator"].includes(name)) {
       const epoch = this.nativeBrowserEpoch;
       const value = await this.nativeBrowserCall(
-        name === "resources" ? "resources.command" : "projectless.command",
+        name === "resources"
+          ? "resources.command"
+          : name === "prepareCreator"
+            ? "resources.prepareCreator"
+            : "projectless.command",
         request,
       );
       if (!epoch || this.nativeBrowserEpoch !== epoch || this.disposed)

@@ -787,7 +787,14 @@ async fn refresh_records_drain_and_original_maintenance_stop_before_activation()
             let session = connect(host.clone(), "project", service.clone())
                 .await
                 .unwrap();
+            let mut candidate = inputs.clone();
+            candidate.environment.insert("AREAL_HARNESS_TOOL_EXTENSIONS".into(), host.home.join("immutable-hooks.json").to_string_lossy().into_owned());
+            candidate.options.history_only = true;
+            *session.refresh_inputs.borrow_mut() = Some(candidate.clone());
             let mut refresh = capture_refresh(&host, &session).await.unwrap();
+            assert_eq!(serde_json::to_value(&refresh.inputs).unwrap(), serde_json::to_value(&candidate).unwrap());
+            let saved: LaunchInputs = storage::read(&path.parent().unwrap().join("inputs.json")).unwrap();
+            assert_eq!(serde_json::to_value(saved).unwrap(), serde_json::to_value(&inputs).unwrap(), "candidate cannot overwrite running generation launch inputs before the journaled restart");
             assert!(refresh.drained);
             session.close();
             server.await.unwrap();

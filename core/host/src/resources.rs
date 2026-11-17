@@ -100,6 +100,88 @@ fn resolve_scope(
     })
 }
 impl Resources {
+    pub(super) async fn prepare_creator(
+        &self,
+        host: &Rc<Host>,
+        source: &str,
+        request: &Value,
+    ) -> Result<Value> {
+        ensure!(
+            request
+                .as_object()
+                .is_some_and(|object| object
+                    .keys()
+                    .all(|key| ["projectId", "profile"].contains(&key.as_str()))),
+            "INVALID_PARAMS"
+        );
+        let alias = text(request, "projectId")?;
+        let home = library_store::source_home(host, source)?;
+        ensure!(
+            worktree_catalog::saved_projects(&home)?
+                .iter()
+                .any(|row| row["id"] == alias && row["projectless"] != true),
+            "请先选择要创建 Skill 的项目"
+        );
+        let registration = worktree_catalog::project(host, source, alias)?;
+        super::session_commands::ensure_project(host, &registration.project_id).await?;
+        host.schedules
+            .connections
+            .refresh_gui(host, &registration.project_id)
+            .await?;
+        let inputs = schedule_connection::inputs(host, &registration.project_id)?;
+        let current = crate::launch::remote_profile(&inputs)?
+            .map(serde_json::to_value)
+            .transpose()?;
+        let profile = match request.get("profile") {
+            Some(profile) => {
+                let _: areal_protocol::desktop::VersionRef =
+                    serde_json::from_value(profile.clone()).context("INVALID_PARAMS")?;
+                match &inputs.schedule_preparation {
+                    Some(crate::SchedulePreparation::Managed {
+                        default_profile, ..
+                    }) if profile == default_profile => current,
+                    _ => Some(profile.clone()),
+                }
+            }
+            None => current,
+        }
+        .context("当前部署未配置默认任务配置，现有草稿已保留")?;
+        let descriptor = builtin_skills::descriptor(&home)?;
+        let scope = host
+            .schedules
+            .connections
+            .shared_identity(host, &registration.project_id)?;
+        let skills = host
+            .schedules
+            .connections
+            .remote_request(
+                host,
+                &registration.project_id,
+                (&scope.0, &scope.1, &scope.2),
+                "areal/skill/list",
+                json!({"agentProfile":profile}),
+            )
+            .await?;
+        ensure!(
+            host.schedules
+                .connections
+                .shared_identity(host, &registration.project_id)?
+                == scope,
+            "RESYNC_REQUIRED"
+        );
+        ensure!(
+            skills["data"].as_array().is_some_and(|rows| rows
+                .iter()
+                .any(|row| row["available"] == true
+                    && row["id"] == descriptor["skill"]["id"]
+                    && row["revision"] == descriptor["skill"]["revision"])),
+            "当前任务配置未提供官方 Skill Creator 的确切版本，现有草稿已保留"
+        );
+        Ok(
+            json!({"projectId":alias,"profile":profile,"skill":descriptor["skill"],"provenance":descriptor["provenance"]}),
+        )
+    }
+
     pub(super) async fn command(
         &self,
         host: &Rc<Host>,
