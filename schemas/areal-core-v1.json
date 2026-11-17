@@ -22637,33 +22637,6 @@
       ],
       "type": "object"
     },
-    "areal/genUi/source": {
-      "additionalProperties": false,
-      "properties": {
-        "itemId": {
-          "type": "string"
-        },
-        "path": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "threadId": {
-          "type": "string"
-        },
-        "turnId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "threadId",
-        "turnId",
-        "itemId"
-      ],
-      "title": "GenUiSource",
-      "type": "object"
-    },
     "areal/goal/clear": {
       "additionalProperties": false,
       "properties": {
@@ -56587,66 +56560,6 @@
         "title",
         "verification",
         "timedOut"
-      ],
-      "type": "object"
-    },
-    "areal/genUi/source": {
-      "additionalProperties": true,
-      "properties": {
-        "artifacts": {
-          "items": {
-            "additionalProperties": true,
-            "properties": {
-              "artifactId": {
-                "type": "string"
-              },
-              "blob": {
-                "type": "string"
-              },
-              "callId": {
-                "type": "string"
-              },
-              "digest": {
-                "type": "string"
-              },
-              "html": {
-                "type": "string"
-              },
-              "path": {
-                "type": "string"
-              },
-              "threadId": {
-                "type": "string"
-              },
-              "turnId": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "artifactId",
-              "blob",
-              "callId",
-              "digest",
-              "html",
-              "path",
-              "threadId",
-              "turnId"
-            ],
-            "type": "object"
-          },
-          "type": "array"
-        },
-        "readOnly": {
-          "type": "boolean"
-        },
-        "text": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "artifacts",
-        "readOnly",
-        "text"
       ],
       "type": "object"
     },

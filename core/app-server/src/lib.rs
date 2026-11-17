@@ -632,7 +632,6 @@ async fn connection(
                         | "areal/side/close"
                         | "areal/conversation/history"
                         | "areal/side/context/read"
-                        | "areal/genUi/source"
                         | "areal/task/create"
                         | "areal/task/draft"
                         | "turn/interrupt"
@@ -831,7 +830,6 @@ async fn check_side_policy(engine: &Engine, method: &str, params: &Value) -> Res
             | "areal/turn/start"
             | "turn/interrupt"
             | "areal/side/context/read"
-            | "areal/genUi/source"
             | "areal/conversation/history"
             | "areal/tool/acknowledge"
             | "areal/context/read"
@@ -1859,6 +1857,28 @@ mod tests {
                 "registered method has no parameter route: {method}"
             );
         }
+        let capabilities = conn
+            .dispatch(
+                &engine,
+                "areal/capabilities",
+                json!({"apiVersion":"areal.core.v1"}),
+            )
+            .await
+            .unwrap();
+        assert!(
+            !capabilities["methods"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|method| method == "areal/genUi/source")
+        );
+        assert_eq!(
+            conn.dispatch(&engine, "areal/genUi/source", json!({}))
+                .await
+                .unwrap_err()
+                .code,
+            -32601
+        );
         assert!(engine.list(None, 100, None).await.unwrap().0.is_empty());
         engine.shutdown().await;
     }

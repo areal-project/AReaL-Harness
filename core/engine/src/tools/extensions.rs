@@ -66,10 +66,8 @@ impl Invocation<'_> {
                 ));
             }
             if state.thread.is_read_only_side()
-                && !(matches!(
-                    self.call.name.as_str(),
-                    "side_context_read" | "gen_ui_publish"
-                ) && matches!(self.entry.backend, Backend::Core))
+                && !(self.call.name == "side_context_read"
+                    && matches!(self.entry.backend, Backend::Core))
                 && !(state.thread.side_workspace_read()
                     && super::side_file_tool(&self.call.name, &self.entry.backend))
             {

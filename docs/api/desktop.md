@@ -391,7 +391,7 @@ GUI 的 `tasks` 只读命令支持 `operation: list | inbox`、可选 `projectId
 
 `areal/side/start` 请求 `{requestId,sourceThreadId,anchor?,selection?,workspaceAccess:"none"|"readOnly",input:[{type:"text",text}]}`；`anchor` 可为 `latestCommitted` 或 `{kind:"turn",turnId,boundary:"before"|"after"}`，省略时选取首问受理时最后一个已提交 Turn。`selection` 可为 `{kind:"itemRange",turnId,itemId,startUtf8,endUtf8,textSha256}`，在冻结前缀的单个文本 Item 上按 UTF-8 字节范围及 SHA-256 摘要验证；重复原文按位置区分，边界、范围或摘要失效返回 `STALE_SELECTION`，首问未提交。对尚未落盘或无法精确映射的文本使用 `{kind:"userQuote",text,claimedTurnId?,claimedItemId?}`，持久标记为未确认用户引文，声明的 ID 不证明来源。`turn/after` 接受完成、失败和中断轮次，活动轮次返回 `TURN_NOT_TERMINAL`。空面板不创建 Thread。首问将目标独立 Session、不可变参考快照、首个 Turn 和业务收据一起提交，然后启动模型；同键重复请求在归档、历史移入冷段或重启后仍返回同一个目标与原首轮，不启动执行或取消归档。创建和同键重试返回 `thread.turns=[]`、`turn.items=[]` 的摘要，保留目标与首轮身份、状态和配置；完整历史从目标的 read/observe 恢复。提交后响应丢失时用 `areal/request/read {requestId}` 查找，不能改键重试。重启时已提交但尚未完成的轮次明确中断，不会重发首问。
 
-Side 的 `conversation.kind=side` 与 `policy.kind=sideReadOnlyV1` 是持久角色，`none` 允许 Core 固定的 `side_context_read`，以及部署启用时的受保护回答发布工具 `gen_ui_publish`；`readOnly` 在创建时来源当前配置的工具允许集、身份授权、部署权限与受信任 Runtime 原生 `fs_read`、`fs_list`、`fs_stat` 和 `search_files` 的交集中读取当前工作区。历史锚点配置不扩大此授权；冻结后的工具子集跨模型配置、归档与重启保持不变。`areal/capabilities.features.conversationDerivationV1.sideWorkspaceAccess` 仅在原生路径沙箱、文件助手及搜索能力可验证且无命令 Hook 时公布 `readOnly`；否则创建明确返回 `WORKSPACE_READ_UNAVAILABLE`，用户可另选 `none`。Side Runtime Scope 仅在冻结子集包含文件工具时具有工作区读取根，否则读取根也为空；写入根为空且网络被拒绝；命令、MCP、插件、动态工具、Goal、自动 Workflow 与委派不能获得执行权限。文件读取返回 `source:"currentWorkspace"`、当前 SHA-256 与范围；同一轮次再次读取同路径时若 SHA 改变则返回 `changedSincePreviousPage:true`。目录和搜索也标记为当前工作区观察，不保证跨页原子快照。历史中的指令和工具输出都是参考数据。模型上下文只含有界最近摘录、证据引用和省略数量；追问仍使用创建时快照。`areal/side/context/read {threadId,evidenceRef?,cursor?,maxBytes?}` 受目标身份授权分页读取冻结证据，默认 8192 字节、最大 16 KiB；`evidenceRef` 与 `cursor` 不能同时传。GUI 证据阅读标明快照和确认状态，来源推进或无法查询当前状态时不会声称引用为最新。旧执行入口不能改变 Side 角色或扩权，`thread/list` 默认任务列表排除 Side。`turn/start` 和 `areal/turn/start` 仅接受文本追问，`turn/interrupt` 只停止 Side 当前 Turn；关闭 GUI 面板不发送中断。
+Side 的 `conversation.kind=side` 与 `policy.kind=sideReadOnlyV1` 是持久角色，`none` 允许 Core 固定的 `side_context_read`；`readOnly` 在创建时来源当前配置的工具允许集、身份授权、部署权限与受信任 Runtime 原生 `fs_read`、`fs_list`、`fs_stat` 和 `search_files` 的交集中读取当前工作区。历史锚点配置不扩大此授权；冻结后的工具子集跨模型配置、归档与重启保持不变。`areal/capabilities.features.conversationDerivationV1.sideWorkspaceAccess` 仅在原生路径沙箱、文件助手及搜索能力可验证且无命令 Hook 时公布 `readOnly`；否则创建明确返回 `WORKSPACE_READ_UNAVAILABLE`，用户可另选 `none`。Side Runtime Scope 仅在冻结子集包含文件工具时具有工作区读取根，否则读取根也为空；写入根为空且网络被拒绝；命令、MCP、插件、动态工具、Goal、自动 Workflow 与委派不能获得执行权限。文件读取返回 `source:"currentWorkspace"`、当前 SHA-256 与范围；同一轮次再次读取同路径时若 SHA 改变则返回 `changedSincePreviousPage:true`。目录和搜索也标记为当前工作区观察，不保证跨页原子快照。历史中的指令和工具输出都是参考数据。模型上下文只含有界最近摘录、证据引用和省略数量；追问仍使用创建时快照。`areal/side/context/read {threadId,evidenceRef?,cursor?,maxBytes?}` 受目标身份授权分页读取冻结证据，默认 8192 字节、最大 16 KiB；`evidenceRef` 与 `cursor` 不能同时传。GUI 证据阅读标明快照和确认状态，来源推进或无法查询当前状态时不会声称引用为最新。旧执行入口不能改变 Side 角色或扩权，`thread/list` 默认任务列表排除 Side。`turn/start` 和 `areal/turn/start` 仅接受文本追问，`turn/interrupt` 只停止 Side 当前 Turn；关闭 GUI 面板不发送中断。
 
 已完成轮次的 GUI 选区默认传该轮 `after` 锚点；流式用户引文使用首问受理时的最新持久观察。富文本显示无法直接映射到 canonical 文本时，即使回复已完成，GUI 仍将其标成未确认 `userQuote`。单选区原文超过 16 KiB，或转义后无法装入初始包，返回 `SELECTION_TOO_LARGE`。初始模型包按序列化 UTF-8 字节限制在 32 KiB；证据页的 `maxBytes` 计入整个序列化结果，预算不足时明确拒绝。已有 Side 再从选区发起会打开新草稿，旧快照保持不变。
 
@@ -466,16 +466,6 @@ Host `plugins.command` 返回已受理回执，`receipt` 是插件目录或包�
 安装可以保留 blocked 包供检查，`enabled` 仍表示配置范围的意图。Store 既有有效选择从 Skills、组件、版本发布及执行检查中排除 blocked 包。历史 Skill 引用同时受当前包有效状态及其自身不可变包摘要的兼容性约束。允许的新版本不能放行曾被阻止的旧版本；兼容的历史引用仍可在更新后使用，停用、卸载或当前包被阻止会撤销使用资格。可选 unsupported 声明不阻止有效 Skill。动态信任或连接前提独立于静态门禁。
 
 Hook 报告复用运行时声明选择与强类型文档解析，`mcp_tool` 是受识别的 MCP handler 类型。无效声明仍显示 partial 记录；已有规则选择的默认文档另列记录。Hook 的 `supportedSchema` 仅表示文档和 handler 字段结构，不证明 matcher 行为、平台命令、信任或执行结果。Apps 报告先按组件加载规则解析 manifest 路径数组，再识别文档中的单个字符串 `id` 对象、按 id 索引的对象映射和声明数组。静态连接器声明不证明映射、认证或连接已完成。
-
-## 生成式交互回答
-
-启用 `genUi` 的部署向主会话和 Side 提供原生工具 `gen_ui_publish {name,html}`。`name` 为最多 80 字符的小写连字符名称，`html` 为最多 48 KiB 的 UTF-8 HTML 片段。工具将制品存入受保护的不可变输出目录，返回 `{artifactId,path,digest}`。它不授予工作区写入、命令、网络或 MCP 工具权限。助手通过 `::visualize` 指令引用返回的精确路径。
-
-只读方法 `areal/genUi/source {threadId,turnId,itemId,path?}` 返回已完成助手消息的 `{text,artifacts,readOnly}`。不传 `path` 时只读取消息，制品列表为空。Main 使用移植的解析器按指令偏移解码路径，再传入精确 `path` 读取至多一个制品。制品包含身份、来源 Turn 和调用、摘要、路径及 HTML。Core 从该 Thread 的成功发布记录核对来源、托管路径和 SHA-256。用户消息、代码片段、未完成回复或未发布的文件引用不能获得执行权限。 请求与响应契约均纳入生成的桌面 schema。电脑操作准备与外部 CUA Turn 结算的服务端请求/响应也纳入该 schema；能力发现与生成器复用同一服务端请求目录。
-
-Desktop 在同一配置目录内保存 `{modelContent,privateContent}`，按真实执行工作区、Thread 和制品隔离；Worktree 的 GUI 保存与 Core 后续读取使用同一物理身份。单项序列化状态最多 16 KiB，会话最多保留 100 项，超出时淘汰最早更新的状态。页面通过 `window.zcode.widgetState` 读取初值，`setWidgetState({modelContent,privateContent})` 等待保存确认，`sendFollowUpMessage({prompt,title?})` 提出后续问题。主会话和 Side 的实际发送入口将最多 64 KiB 的 `modelContent` 列表附加为 `<untrusted_gen_ui_state>`，不附加 `privateContent`。状态保存本身不创建模型 Turn。页面后续问题等待状态保存，再交给宿主确认与原会话发送入口。未知受理只核对原收据，不自动重发。
-
-生成页使用现有 MCP Apps token、代理与每窗口 8 页额度，不能访问 Node、任意文件、工具或网络。状态恢复限于同一 Desktop 配置，不提供跨设备同步。
 
 ## 插件来源、MCP 与桌面 Apps
 

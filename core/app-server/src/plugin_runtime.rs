@@ -15,7 +15,6 @@ areal_protocol::method_catalog! {
     "areal/plugin/credentials/register" => Mutation, Management;
     "areal/mcp/tool/result" => Read;
     "areal/mcp/apps/list" => Read;
-    "areal/genUi/source" => Read;
     "areal/mcp/app/open" => Mutation;
     "areal/mcp/app/openFromResult" => Mutation;
     "areal/mcp/app/request" => Mutation;
@@ -157,12 +156,6 @@ async fn dispatch_inner(
         "areal/plugin/credentials/register" => {
             let p: CredentialsRegister = parse(params)?;
             engine.register_credentials(p.credentials)
-        }
-        "areal/genUi/source" => {
-            let p: GenUiSource = parse(params)?;
-            engine
-                .gen_ui_source(&p.thread_id, &p.turn_id, &p.item_id, p.path.as_deref())
-                .await
         }
         "areal/mcp/apps/list" => {
             let p: Apps = parse(params)?;

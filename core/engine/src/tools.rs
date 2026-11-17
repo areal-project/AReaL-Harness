@@ -1001,7 +1001,7 @@ impl Engine {
         let side_read = cell.state.lock().await.thread.side_workspace_read();
         if !blocked_by_workspace_conflict
             && cell.state.lock().await.thread.is_read_only_side()
-            && !(matches!(call.name.as_str(), "side_context_read" | "gen_ui_publish")
+            && !(call.name == "side_context_read"
                 && entry
                     .as_ref()
                     .is_ok_and(|e| matches!(e.backend, Backend::Core))

@@ -95,7 +95,6 @@ Codex 兼容包由 `core/plugins` 持有本地安装与范围选择；Engine 登
 
 有限页面工具沿用普通 Core 工具目录、审批和 ToolCall 历史。注册只声明固定的选区读取与 revision 条件修改。Core 固定原始 ToolHost、App epoch、包摘要和登记版本；Desktop 服务固定打开实例的 Main socket，Main 固定窗口、token 与已初始化的 bridge。通知仅唤醒原执行端，持久 claim 才授予一次执行。单次调用拥有 claim 与结算写入，已确认终态不能被后续 hook 或通用 finalizer 覆盖。断线撤销工具执行，保留未保存页面；UNKNOWN 不自动重放。协议和预算见[桌面 API](../api/desktop.md#有限页面工具)。
 
-生成式交互回答复用同一个 MCP Apps 页面宿主，不创建插件或第二套沙箱。Core 的 `gen_ui_publish` 原生工具发布不可变 HTML 制品，`areal/genUi/source` 按已完成的助手消息读取来源与制品。Main 使用移植的 ZCode 指令解析器核对 `::visualize` 引用与 Core 返回的制品，不能凭 Renderer 提供的文件路径打开任意 HTML。页面与 MCP Apps 共用窗口 token、资源代理和 8 页额度。
 
 启用 `pages` 领域时，上述页面宿主迁入 Host 监督的工作台服务，窗口 owner 改为已鉴权的连接 owner；Main 不再持有该路径的页面 token。资源走认证协议，公开 HTTP 只有固定的 opaque-origin 代理。共享 Renderer 沿同一 AppBridge 转发，断开撤销页面与工具租约；当前本机 manage 与 submit 授权边界见[工作台服务设计](workbench-service.md)，不代表远程页面已开放。
 

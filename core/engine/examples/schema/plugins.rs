@@ -22,16 +22,6 @@ pub fn projections(responses: &mut Map<String, Value>, notifications: &mut Map<S
             responses.insert(format!("areal/{name}"), value.clone());
         }
     };
-    insert(
-        &["genUi/source"],
-        object(json!({
-            "text":string,"readOnly":boolean,
-            "artifacts":array(object(json!({
-                "artifactId":string,"path":string,"digest":string,"blob":string,
-                "threadId":string,"turnId":string,"callId":string,"html":string
-            })))
-        })),
-    );
     let catalog = schema::<areal_plugins::PluginList>();
     insert(
         &[

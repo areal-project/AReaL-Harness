@@ -50,7 +50,7 @@ impl Model for Fixture {
         if *self.side.lock().unwrap() {
             assert!(tools.iter().all(|tool| matches!(
                 tool["function"]["name"].as_str(),
-                Some("side_context_read" | "gen_ui_publish")
+                Some("side_context_read")
             )));
             assert!(
                 !tools

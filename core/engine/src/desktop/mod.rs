@@ -2,7 +2,6 @@
 mod agents;
 mod catalog;
 mod context;
-pub(crate) mod gen_ui;
 mod interactions;
 mod mcp;
 pub(crate) mod mcp_apps;
