@@ -1185,3 +1185,20 @@ test("preview resolves the original native Thread scope before any browser callb
   await assert.rejects(pending, /changed|unavailable|disconnected/i);
   assert.equal(f.backend.ownsThread("logical", "thread"), false);
 });
+
+test("project picker registers through the native Host without a Node projection", async (t) => {
+  const f = await fixture(t);
+  f.setHandler(async (request) => {
+    if (request.method === "desktop.core.subscribe") return { attachmentId: "attachment" };
+    assert.equal(request.method, "desktop.core.call");
+    assert.equal(request.params.call, "worktree.project.add");
+    assert.deepEqual(request.params.params, { root: f.root });
+    return { projectId: "a".repeat(24) };
+  });
+  await f.backend.connectNativeBrowser({ home: f.hostHome, sourceId: "source" }, {});
+  t.after(() => f.backend.closeNativeBrowser());
+  f.backend.status.connected = true;
+  f.backend.init = async () => {};
+  assert.equal(await f.backend.addProject(f.root), "a".repeat(24));
+  assert.equal(f.backend.connection, undefined);
+});

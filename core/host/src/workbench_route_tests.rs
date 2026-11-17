@@ -1749,3 +1749,46 @@ async fn feedback_refinement_recovers_the_original_core_receipt_and_closes_witho
         close();accepting.abort();for handle in spawned.borrow().iter(){handle.abort();}
     }).await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn fresh_gui_registration_prepares_launch_without_node_or_core() {
+    tokio::task::LocalSet::new().run_until(async {
+        let root=tempfile::tempdir().unwrap();let root=root.path().canonicalize().unwrap();
+        let (host,mut input,source)=resumable_host(&root);
+        storage::private_dir(&host.home.join("host/projects")).unwrap();
+        std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+        let config_home=root.join("configuration");storage::private_dir(&config_home).unwrap();
+        storage::write_bytes(&config_home.join("config.toml"),b"schema_version=1\n[model]\nprovider='fixture'\nname='fixture'\n[model.providers.fixture]\nendpoint='http://127.0.0.1:1/'\nprotocol='responses'\napi_key_env='FIXTURE_KEY'\n").unwrap();
+        input.options["configHome"]=json!(config_home);input.options["desktopProcesses"]=json!(true);
+        let launch_options=frontend_options(&host,&source,input.options,Some(std::collections::BTreeMap::from([("FIXTURE_KEY".into(),"synthetic-initial-secret".into())]))).unwrap();
+        super::super::library_store::change(&host,&source,|value| {value["settings"]["httpProxy"]=json!("http://127.0.0.1:8888");Ok(())}).unwrap();
+        let workspace=root.join("fresh-project");storage::private_dir(&workspace).unwrap();
+        for (base,name) in [(&root,"user"),(&workspace,"project")] {
+            let skill=base.join(".agents/skills/shared");storage::private_dir(&skill).unwrap();
+            storage::write_bytes(&skill.join("SKILL.md"),format!("---\nname: {name}\ndescription: local fixture\n---\nRead the task.\n").as_bytes()).unwrap();
+        }
+        let (subscribed,_)=host.schedules.connections.frontend_subscribe(&host,"native-picker",&source,launch_options,None).unwrap();
+        let result=host.schedules.connections.frontend_call(&host,&json!({"attachmentId":subscribed["attachmentId"],"call":"worktree.project.add","params":{"root":workspace}})).await.unwrap();
+        let alias=result["projectId"].as_str().unwrap();
+        let registration=super::super::worktree_catalog::project(&host,&source,alias).unwrap();
+        let saved=host.home.join("host/launch").join(storage::digest(registration.project_id.as_bytes())).join("inputs.json");
+        let inputs:crate::LaunchInputs=storage::read(&saved).expect("new GUI registration must prepare its first native launch");
+        assert_eq!(inputs.workspace,workspace);assert_eq!(inputs.cwd,workspace);
+        assert!(inputs.credential_names.iter().any(|name|name=="FIXTURE_KEY"));
+        assert!(!String::from_utf8_lossy(&std::fs::read(&saved).unwrap()).contains("synthetic-initial-secret"));
+        assert!(inputs.options.allow_concurrent_writes);assert!(!inputs.options.history_only);
+        assert_eq!(inputs.environment.get("HTTPS_PROXY").map(String::as_str),Some("http://127.0.0.1:8888"));
+        let deployment:Value=storage::read(inputs.deployment_path.as_ref().unwrap()).unwrap();
+        assert!(deployment["skills"].as_array().unwrap().iter().any(|skill|skill["id"]=="shared"&&skill["metadata"]["name"]=="project"));
+        assert!(deployment["skills"].as_array().unwrap().iter().any(|skill|skill["id"]=="openai-skill-creator"));
+        assert!(deployment["profiles"].as_array().unwrap().iter().any(|profile|profile["revision"].as_str().is_some_and(|revision|revision.starts_with("resources-"))));
+        for name in ["areal-runtime","areal-runtime-fs","areal-runtime-reaper"] {std::fs::write(host.bin.join(name),b"fixture").unwrap();}
+        let (launch,_)=crate::launch::prepare(&host.home,&host.bin,&registration,&inputs,&Default::default()).unwrap();
+        assert!(!launch.args.history_only,"native deployment must pass the shared Core launch preparation");
+        let before=std::fs::read(&saved).unwrap();
+        super::super::worktree_catalog::add_project(&host,&source,json!({"root":workspace})).await.unwrap();
+        assert_eq!(std::fs::read(&saved).unwrap(),before,"repeated registration retains original launch inputs");
+        assert!(!host.gateway.workbench.has_running_backend());
+        assert!(host.slots.borrow()[&registration.project_id].service.is_none());
+    }).await;
+}

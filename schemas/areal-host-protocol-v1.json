@@ -58516,6 +58516,28 @@
             "params"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "attachmentId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "call": {
+              "type": "string",
+              "const": "worktree.project.add"
+            },
+            "params": {
+              "$ref": "#/$defs/WorkbenchPrivateWorktreeProjectAddParams"
+            }
+          },
+          "required": [
+            "attachmentId",
+            "call",
+            "params"
+          ],
+          "additionalProperties": false
         }
       ]
     },
@@ -58550,6 +58572,9 @@
         },
         {
           "$ref": "#/$defs/LocalDesktopThreadScopeResult"
+        },
+        {
+          "$ref": "#/$defs/WorkbenchPrivateWorktreeProjectAddResult"
         }
       ],
       "examples": [

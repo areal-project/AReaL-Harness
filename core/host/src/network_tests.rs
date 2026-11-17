@@ -98,6 +98,42 @@ fn configured_ca_requires_regular_bounded_self_signed_authority_and_valid_signat
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("ca.pem");
     let original = authority(root.path());
+    let native = rustls_native_certs::load_native_certs();
+    assert!(!native.certs.is_empty());
+    let environment = launch_environment(
+        NetworkInput {
+            extra_ca_pem: vec![original.clone()],
+            ..Default::default()
+        },
+        &root.path().join("launch"),
+    )
+    .unwrap();
+    let bytes = std::fs::read(&environment["SSL_CERT_FILE"]).unwrap();
+    let mut remaining = bytes.as_slice();
+    let mut retained = BTreeSet::new();
+    while let Some(start) = remaining
+        .windows(27)
+        .position(|part| part == b"-----BEGIN CERTIFICATE-----")
+    {
+        let (rest, pem) = x509_parser::pem::parse_x509_pem(&remaining[start..]).unwrap();
+        retained.insert(pem.contents);
+        remaining = rest;
+    }
+    assert!(
+        native
+            .certs
+            .iter()
+            .all(|cert| retained.contains(cert.as_ref())),
+        "additional CA must retain original native roots"
+    );
+    let (_, extra) = x509_parser::pem::parse_x509_pem(original.as_bytes()).unwrap();
+    assert!(retained.contains(&extra.contents));
+    assert!(
+        environment
+            .keys()
+            .all(|name| crate::launch::allowed_environment(name))
+    );
+
     std::fs::write(&path, &original).unwrap();
     assert!(
         ca_bundle(&path, true)

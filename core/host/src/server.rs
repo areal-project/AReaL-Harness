@@ -18,6 +18,8 @@ mod execution_preparation;
 mod feedback;
 #[path = "feedback_context.rs"]
 mod feedback_context;
+#[path = "gui_project.rs"]
+mod gui_project;
 #[path = "idle.rs"]
 mod idle;
 #[path = "library_commands.rs"]
@@ -1833,12 +1835,10 @@ impl Host {
             .join("inputs.json");
         let mut inputs = match &input.launch_inputs {
             Some(v) => v.clone(),
-            None => storage::read_optional(&saved_path)?.ok_or_else(|| {
-                error(
-                    "configurationConflict",
-                    "first activation requires launchInputs",
-                )
-            })?,
+            None => match storage::read_optional(&saved_path)? {
+                Some(inputs) => inputs,
+                None => gui_project::missing_inputs(self, &registration).await?,
+            },
         };
         let uses_shared_host_config = self.uses_shared_host_config(&inputs);
         if uses_shared_host_config && self.home.join("config.toml").exists() {

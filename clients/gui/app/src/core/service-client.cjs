@@ -906,30 +906,21 @@ class SharedCoreBackend {
   }
   /** @param {string} path @returns {Promise<unknown>} */
   async addProject(path) {
-    await this.init();
-    this.assertLifecycleScope("addProject");
-    const connection = this.requireConnection();
-    try {
-      return await connection.request("addProject", { path }, true);
-    } catch (error) {
-      if (
-        desktopError(error).submissionUnknown ||
-        ["admitted", "unconfirmed"].some((kind) => kind === desktopError(error).outcome?.kind)
-      )
-        throw error;
-      const packet = await connection.request("snapshot").catch(() => null);
-      if (!packet || connection !== this.connection || !this.status.connected) throw error;
-      this.accept(packet);
-      const project = this.value.projects.find(
-        (project) =>
-          project.root === path &&
-          !project.state?.connected &&
-          project.error &&
-          project.error === desktopError(error).message,
-      );
-      if (!project) throw error;
-      return project.id;
-    }
+    if (!this.nativeBrowserEpoch) await this.init();
+    const epoch = this.nativeBrowserEpoch;
+    const result = await this.nativeBrowserCall("worktree.project.add", { root: path });
+    if (!epoch || this.nativeBrowserEpoch !== epoch || this.disposed)
+      throw Object.assign(new Error("Project source changed; read the original registration"), {
+        code: "RESYNC_REQUIRED",
+        submissionUnknown: false,
+      });
+    if (
+      !record(result) ||
+      typeof result.projectId !== "string" ||
+      !/^[a-f0-9]{24}$/.test(result.projectId)
+    )
+      throw new Error("Invalid native project registration");
+    return result.projectId;
   }
   /** @param {Record<string,unknown>} identity */
   async browserClaim(identity) {

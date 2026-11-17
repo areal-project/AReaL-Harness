@@ -222,6 +222,7 @@ pub(super) async fn add_project(host: &Rc<Host>, source: &str, params: Value) ->
     }
     // 受理登记可 await；整表合并必须在它之后同步读最新文件，不能回写调用方旧快照。
     merge_project_metadata(&home, row)?;
+    super::gui_project::initialize(host, source, &project(host, source, &alias)?).await?;
     host.changed();
     Ok(json!({"projectId":alias}))
 }

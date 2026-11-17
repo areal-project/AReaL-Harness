@@ -1,6 +1,7 @@
 //! 每用户共享 Host。客户端发现与项目激活不承载 Core 执行或生命期。
 mod activity;
 mod browser_auth;
+mod builtin_skills;
 mod client;
 #[cfg(target_os = "macos")]
 mod credential_io;

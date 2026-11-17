@@ -151,6 +151,14 @@ impl Connections {
         Ok(())
     }
 
+    pub(crate) fn frontend_launch_options(&self, source: &str) -> Option<Value> {
+        self.frontends
+            .borrow()
+            .values()
+            .find(|frontend| frontend.source == source)
+            .map(|frontend| frontend.options.clone())
+    }
+
     pub(crate) fn frontend_owns(&self, lease: &str) -> bool {
         self.frontends
             .borrow()
@@ -371,6 +379,10 @@ impl Connections {
         let input = &params["params"];
         match call {
             "browser.scope" => exact(input, &["projectId", "threadId"])?,
+            "worktree.project.add" => exact(
+                input,
+                &["root", "worktreeResources", "projectlessRequestId"],
+            )?,
             "core.attach" => exact(input, &["sourceId", "projectId", "scope"])?,
             "core.blob" => {
                 if input["operation"] == "read" {
@@ -450,6 +462,9 @@ impl Connections {
             input.get("sourceId").is_none_or(|id| id == &source),
             "FORBIDDEN"
         );
+        if call == "worktree.project.add" {
+            return super::super::worktree_catalog::add_project(host, &source, input.clone()).await;
+        }
         if call == "browser.scope" {
             let thread = input["threadId"]
                 .as_str()

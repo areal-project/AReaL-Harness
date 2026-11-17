@@ -115,6 +115,8 @@ Host 内部共享 Core 连接的监督器在状态探测暂时失败后，仍按
 
 本机 Main 通过 `desktop.core.subscribe` 绑定来源和经核验的启动选项；可选 `environmentCredentials` 只接受已配置的环境凭据名，值仅保留在 Host 内存，不进入启动记录。`desktop.core.event` 的工具回调携带原 `sourceId/projectId/lease/coreInstanceId/coreGeneration/connectionId`，以及用于原生预览的 `guiProjectId/workspacePath`；逻辑项目与执行工作树不能互换。`desktop.core.callback` 仅回复同一附件的原请求，媒体上传仍使用原执行项目和租约。附件断开撤销专用连接，不重放回调或提交。 Main 订阅既有就绪项目或 Core 后续就绪时，Host 在该附件的项目专用租约上发布 `areal.browser.v1` 调度工具；普通原生连接与会话准备复用同一租约。旧 Node 观察连接只撤销自身工具发布，不能接管原生工具宿主。 用户首次打开预览时，Main 经 `desktop.core.call` 的 `browser.scope` 查询 Thread 归属；Host 复用工作树解析并核对 Core 中的未归档 Thread，返回逻辑项目、执行目录和同一原生租约，无需先产生工具回调或打开旧 Node 投影。
 
+GUI 来源的新项目登记由 Host 生成首次 `LaunchInputs`，不等待 Node 写入启动记录；已保存的输入继续沿原记录复用。已导入但缺少启动记录的 GUI 项目可从同一来源经校验的启动选项准备；CLI 的首次激活仍须显式提供输入。配置根、执行目录与数据目录独立绑定，凭据值仍经 Host 内存通道注入。默认 Profile 和内置 Skill 来自共享资源，固定清单与摘要校验后物化；用户与项目 Skill 选择复用定时准备的同一物化器，显式外部部署保留自身契约。代理与补充证书使用来源设置，附加 CA 保留原系统信任根。资源、钩子或网络准备失败时，启动输入标记为仅历史模式，不因此开放执行。
+
 ## 定时项目激活与准备
 
 `scheduledPreparation` 表示 Host 通过常驻认证连接注册 Core 调度宿主并处理 `areal/task/prepare`。普通 GUI 工具连接和调度连接可以不同，但必须属于同一认证身份；来源会话和执行锚点仍校验原连接与目录归属。Core 保留 Task、Run、准备结果及触发权威。Host 不为缺席的 Main 发布浏览器工具。

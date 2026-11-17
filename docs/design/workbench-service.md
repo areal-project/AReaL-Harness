@@ -18,6 +18,8 @@ GUI 升级先等待来源和安全项目发布，再启动后台；原生凭据�
 
 `CoreBackend`、`DesktopService` 与运行时依赖闭包位于 `services/workbench/src/desktop`；轨迹与反馈位于 `src/domains`。资料库修改统一使用 Host 命令与 patch，后台不再装配可切换的暂存写入器。后台通过 `@areal/workbench-service` 加载，Host 接管与 Main 回退共用唯一实现。Main 保留应用配置、连接客户端和原生生命周期客户端；部署身份包含服务源码、拆分协议与生成的 Host 客户端。服务包是 GUI 的显式 workspace 依赖，由现有依赖分发器连同资源和依赖闭包装入 `app.asar`，不依赖 `Resources/areal-workbench` 向兄弟归档隐式解析模块。
 
+GUI 项目首次启动输入现由 Rust Host 准备：项目登记后沿原数据目录保存配置、钩子与资源部署，后续 Core 启动复用既有启动器。默认 Profile 与内置 Skill 的唯一受控资产位于共享 `@areal/workbench` 包；Host 编译其固定内容并核对清单，避免依赖 ASAR 内部路径或工作台子进程生成文件。该边界不改变 Core Store 或来源导入契约。
+
 ## 进程监督
 
 Host 复用 `workbench_route.rs` 与 `workbench.rs` 的监督机制，承接尚未迁完的桌面后台；使用统计已由 Rust Host 直接持有：
