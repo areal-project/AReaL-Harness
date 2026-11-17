@@ -79,17 +79,6 @@ const requests: Record<string, Data> = {
       },
     },
   },
-  computer: {
-    tool: "computer_v1",
-    reason: "是否允许点击指定应用？",
-    effectiveArguments: {
-      plan: {
-        operation: "click",
-        target: { app: { name: "示例应用" } },
-        parameters: { x: 50, y: 80 },
-      },
-    },
-  },
   file: {
     tool: "fs_create",
     reason: "是否允许创建说明文件？",
@@ -123,17 +112,6 @@ requests["shell-long"] = {
     cwd: "/workspace/" + "目录/".repeat(100) + "TARGET_END",
   },
   effectivePermissions: { rememberAllowed: true },
-};
-requests["computer-long"] = {
-  tool: "computer_v1",
-  reason: longReason,
-  effectiveArguments: {
-    plan: {
-      operation: "click",
-      target: { app: { name: "应用名称".repeat(100) + "TARGET_END" } },
-      parameters: { text: longCommand },
-    },
-  },
 };
 requests["file-long"] = {
   tool: "fs_create",

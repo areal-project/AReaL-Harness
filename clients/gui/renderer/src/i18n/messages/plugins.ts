@@ -190,10 +190,6 @@ export const pluginMessages = {
     "zh-CN": "当前宿主未提供所需工具：{tools}。",
     en: "Required tools are unavailable in this host: {tools}.",
   },
-  "settings.pluginCenter.enableNativeComputerProvider": {
-    "zh-CN": "请在设置中明确启用原生电脑控制提供方。LCU 不提供 computer_v1。",
-    en: "Enable the native computer control provider in Settings. LCU does not provide computer_v1.",
-  },
   "settings.pluginCenter.hostReadinessUnavailable": {
     "zh-CN": "无法确认当前安装快照的工具可用性，请刷新插件详情。",
     en: "Could not confirm tool availability for this installed snapshot. Refresh plugin details.",

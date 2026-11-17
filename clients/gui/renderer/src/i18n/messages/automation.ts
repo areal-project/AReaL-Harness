@@ -2,12 +2,6 @@ export const automationMessages = {
   "settings.computer.lcuReady": { "zh-CN": "LCU 连接已就绪", en: "LCU connection ready" },
   "settings.computer.lcuNotReady": { "zh-CN": "LCU 连接未就绪", en: "LCU connection not ready" },
   "settings.computer.lcuRefresh": { "zh-CN": "刷新连接状态", en: "Refresh connection status" },
-  "settings.computer.provider": { "zh-CN": "控制方式", en: "Computer provider" },
-  "settings.computer.providerDescription": {
-    "zh-CN": "切换会先停止当前控制。外部 CUA 仅用于启用后新建的普通聊天。",
-    en: "Switching first stops current control. External CUA applies to new regular chats.",
-  },
-  "settings.computer.native": { "zh-CN": "内置", en: "Built-in" },
   "settings.computer.lcu": { "zh-CN": "外部 CUA（LCU）", en: "External CUA (LCU)" },
   "settings.computer.executable": { "zh-CN": "LCU 程序路径", en: "LCU executable" },
   "settings.computer.executableDescription": {
@@ -19,10 +13,6 @@ export const automationMessages = {
   "settings.computer.lcuDescription": {
     "zh-CN": "LCU 负责电脑控制和应用授权，内置网页预览不受影响。更改后新建聊天生效。",
     en: "LCU handles computer control and app permissions. Built-in web preview is unaffected. Start a new chat to apply changes.",
-  },
-  "settings.computer.capacityReached": {
-    "zh-CN": "控制轮次记录已达上限，请重启应用后继续。",
-    en: "Control turn records reached capacity. Restart the application to continue.",
   },
   "settings.browserData.sharedShort": {
     "zh-CN": "所有项目共享持久登录数据。",
@@ -83,73 +73,9 @@ export const automationMessages = {
     "zh-CN": "按钮打开电脑控制设置。隐藏按钮不会关闭能力。",
     en: "The button opens computer control settings. Hiding it does not disable the capability.",
   },
-  "settings.computer.permissions": {
-    "zh-CN": "系统授权",
-    en: "System access",
-  },
-  "settings.computer.permissionsDescription": {
-    "zh-CN": "为 AReaL Computer Helper 授权。权限状态由实际执行操作的 Helper 检查。",
-    en: "Grant access to AReaL Computer Helper. The helper that executes actions checks these permissions.",
-  },
-  "settings.computer.accessibility": {
-    "zh-CN": "辅助功能 (Accessibility)",
-    en: "Accessibility",
-  },
-  "settings.computer.accessibilityDescription": {
-    "zh-CN": "读取应用界面，并操作可访问的控件。",
-    en: "Read application interfaces and operate accessible controls.",
-  },
-  "settings.computer.screenRecording": {
-    "zh-CN": "屏幕录制 (Screen Recording)",
-    en: "Screen recording",
-  },
-  "settings.computer.screenRecordingDescription": {
-    "zh-CN": "截取目标窗口，供 Agent 观察。",
-    en: "Capture the target window for the Agent to observe.",
-  },
-  "settings.computer.inputMonitoring": {
-    "zh-CN": "输入监控 (Input Monitoring)",
-    en: "Input monitoring",
-  },
-  "settings.computer.inputMonitoringDescription": {
-    "zh-CN": "检测到你操作键鼠时停止自动操作。修改应用前需要开启。",
-    en: "Stops automation when you use the keyboard or mouse. Required before changing apps.",
-  },
-  "settings.computer.grant": {
-    "zh-CN": "授权",
-    en: "Grant access",
-  },
-  "settings.computer.openSettings": {
-    "zh-CN": "打开系统设置",
-    en: "Open system settings",
-  },
-  "settings.computer.granted": {
-    "zh-CN": "已授权",
-    en: "Granted",
-  },
-  "settings.computer.denied": {
-    "zh-CN": "未授权",
-    en: "Not granted",
-  },
-  "settings.computer.unknown": {
-    "zh-CN": "未知",
-    en: "Unknown",
-  },
-  "settings.computer.stale": {
-    "zh-CN": "需要复验",
-    en: "Recheck required",
-  },
   "settings.computer.unsupported": {
-    "zh-CN": "此环境暂不支持电脑控制。当前原生后端需要本机 macOS 14 或更高版本。",
-    en: "Computer control is unavailable here. The native backend requires local macOS 14 or later.",
-  },
-  "settings.computer.refresh": {
-    "zh-CN": "刷新权限状态",
-    en: "Refresh access status",
-  },
-  "settings.computer.restart": {
-    "zh-CN": "重启控制 Helper",
-    en: "Restart control helper",
+    "zh-CN": "此环境暂不支持电脑控制。外部 CUA 仅支持 macOS。",
+    en: "Computer control is unavailable here. External CUA is supported only on macOS.",
   },
   "settings.computer.stop": {
     "zh-CN": "停止电脑操作",
@@ -159,14 +85,6 @@ export const automationMessages = {
     "zh-CN": "正在操作本机应用",
     en: "Controlling a local application",
   },
-  "settings.computer.ready": {
-    "zh-CN": "系统授权已就绪",
-    en: "System access is ready",
-  },
-  "settings.computer.notReady": {
-    "zh-CN": "请完成所需的系统授权",
-    en: "Complete the required system access",
-  },
   "settings.computer.disabled": {
     "zh-CN": "电脑控制已关闭",
     en: "Computer control is disabled",
@@ -174,25 +92,5 @@ export const automationMessages = {
   "settings.computer.noAccess": {
     "zh-CN": "此客户端没有本机电脑控制入口。",
     en: "This client has no local computer control entry.",
-  },
-  "settings.computer.helper": {
-    "zh-CN": "控制进程",
-    en: "Control process",
-  },
-  "settings.computer.helperDescription": {
-    "zh-CN": "权限修改后可以重新检查或重启 Helper。停止操作会撤销当前控制和观察引用。",
-    en: "Recheck or restart the helper after permission changes. Stop revokes current control and observation references.",
-  },
-  "chat.approval.computer": {
-    "zh-CN": "电脑控制",
-    en: "Computer control",
-  },
-  "chat.approval.computerQuestion": {
-    "zh-CN": "是否允许操作本机应用？",
-    en: "Allow this local application operation?",
-  },
-  "chat.approval.computerTarget": {
-    "zh-CN": "目标应用",
-    en: "Target application",
   },
 } as const;

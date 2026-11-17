@@ -599,10 +599,251 @@ async fn pending_workbench_requests_do_not_block_queries() {
         .run_until(async {
             for blocked_method in ["manage.read", "desktop.command"] {
                 let fixture = Fixture::start().await;
-                let runner = fixture.host.home.join("blocked.cjs");
-                std::fs::write(
-                    &runner,
-                    r#"
+                let entered = Rc::new(Notify::new());
+                let released = Rc::new(Notify::new());
+                let mut mock_core_server: Option<tokio::task::JoinHandle<()>> = None;
+                let mut mock_control_server: Option<tokio::task::JoinHandle<()>> = None;
+                let mut mock_core_close: Option<Box<dyn Fn()>> = None;
+                let mut mock_service_lock: Option<std::fs::File> = None;
+                let slow_params;
+                if blocked_method == "manage.read" {
+                    let base = fixture.host.home.parent().unwrap().canonicalize().unwrap();
+                    let profile = base.join("profile");
+                    let core_home = base.join("data");
+                    let legacy = base.join("legacy");
+                    let workspace = base.join("project");
+                    let data_dir = base.join("project-data");
+                    for dir in [&profile, &core_home, &workspace, &data_dir] {
+                        storage::private_dir(dir).unwrap();
+                    }
+                    let src = crate::migration::Source {
+                        profile: profile.clone(),
+                        core_home: core_home.clone(),
+                        legacy_service_home: legacy,
+                    };
+                    fixture.host.migration.attach(src.clone(), "fixture", None).unwrap();
+                    let imported = fixture
+                        .host
+                        .migration
+                        .import(
+                            serde_json::from_value(json!({
+                                "requestId": uuid::Uuid::new_v4().to_string(),
+                                "expectedGeneration": fixture.host.identity.generation,
+                                "source": src,
+                            }))
+                            .unwrap(),
+                            "fixture",
+                            &[],
+                            &fixture.host.journal,
+                        )
+                        .unwrap();
+                    assert_eq!(imported["kind"], "ready");
+                    let source_id = fixture
+                        .host
+                        .migration
+                        .navigation_source_id(&profile)
+                        .unwrap()
+                        .unwrap();
+                    let alias = "fedcba9876543210fedcba98";
+                    let registration = crate::ProjectRegistration {
+                        project_id: "project".into(),
+                        workspace: workspace.clone(),
+                        data_dir,
+                        source: crate::ProjectSource::Gui {
+                            profile,
+                            legacy_project_id: alias.into(),
+                        },
+                        default_binding: false,
+                    };
+                    storage::write(
+                        &core_home.join("projects.json"),
+                        &json!([{ "id": alias, "root": workspace }]),
+                    )
+                    .unwrap();
+                    fixture.host.gateway.workbench.test_source(&source_id);
+
+                    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                    let service_id =
+                        storage::digest(registration.data_dir.as_os_str().as_encoded_bytes())[..24]
+                            .to_owned();
+                    let service = areal_protocol::service::Service {
+                        identity: areal_protocol::service::Identity {
+                            protocol_version: 1,
+                            service_id: service_id.clone(),
+                            generation: "gen-1".into(),
+                            workspace: registration.workspace.clone(),
+                            data_dir: registration.data_dir.clone(),
+                            config_fingerprint: "fixture".into(),
+                        },
+                        owner: Some(fixture.host.owner()),
+                        endpoint: format!("ws://{}/", listener.local_addr().unwrap()),
+                        web_url: String::new(),
+                        auth_file: fixture.host.home.join("core-auth.json"),
+                        log_file: fixture.host.home.join("core.log"),
+                        host_pid: 1,
+                        core_pid: 2,
+                        state: areal_protocol::service::State::Ready,
+                    };
+                    storage::write(
+                        &service.auth_file,
+                        &json!({"principals":[{"id":"desktop-owner","token":"fixture"}]}),
+                    )
+                    .unwrap();
+                    let service_dir = storage::registry(&fixture.host.home, &service_id).unwrap();
+                    storage::private_dir(&service_dir).unwrap();
+                    storage::write(&service_dir.join("service.json"), &service).unwrap();
+                    let service_lock =
+                        storage::open_private(&registration.data_dir.join("service.lock"), true)
+                            .unwrap();
+                    fs2::FileExt::try_lock_exclusive(&service_lock).unwrap();
+                    mock_service_lock = Some(service_lock);
+
+                    let control_path = storage::control_socket(&service_dir).unwrap();
+                    storage::private_dir(control_path.parent().unwrap()).unwrap();
+                    let control_listener = tokio::net::UnixListener::bind(&control_path).unwrap();
+                    let control_service = service.clone();
+                    mock_control_server = Some(tokio::task::spawn_local(async move {
+                        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+                        while let Ok((stream, _)) = control_listener.accept().await {
+                            let (read_half, mut write_half) = stream.into_split();
+                            let mut line = String::new();
+                            if BufReader::new(read_half).read_line(&mut line).await.unwrap_or(0) > 0 {
+                                let mut reply = serde_json::to_vec(
+                                    &areal_protocol::service::Response::Ok {
+                                        service: Box::new(control_service.clone()),
+                                    },
+                                )
+                                .unwrap();
+                                reply.push(b'\n');
+                                let _ = write_half.write_all(&reply).await;
+                                let _ = write_half.flush().await;
+                            }
+                        }
+                    }));
+
+                    let mut slot = super::super::Slot::imported(registration);
+                    slot.service = Some(service.clone());
+                    slot.state = "ready".into();
+                    let (writer, lifetime) = areal_local_service::OwnerLifetime::pair().unwrap();
+                    slot.writer = Some(writer);
+                    slot.lifetime = Some(Rc::new(lifetime));
+                    fixture.host.slots.borrow_mut().insert("project".into(), slot);
+
+                    let entered_cb = entered.clone();
+                    let released_cb = released.clone();
+                    let probe_identity = service.identity.clone();
+                    let server = tokio::task::spawn_local(async move {
+                        use futures_util::{SinkExt, StreamExt};
+                        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                        use tokio_tungstenite::tungstenite::Message;
+                        while let Ok((mut stream, _)) = listener.accept().await {
+                            let mut peek = [0u8; 16];
+                            let n = stream.peek(&mut peek).await.unwrap_or(0);
+                            if peek[..n].starts_with(b"GET /areal/") {
+                                let mut buf = [0u8; 4096];
+                                let mut total = 0usize;
+                                while total < buf.len() {
+                                    let read = stream.read(&mut buf[total..]).await.unwrap_or(0);
+                                    if read == 0 {
+                                        break;
+                                    }
+                                    total += read;
+                                    if buf[..total].windows(4).any(|w| w == b"\r\n\r\n") {
+                                        break;
+                                    }
+                                }
+                                let body = serde_json::to_vec(&probe_identity).unwrap();
+                                let header = format!(
+                                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                                    body.len()
+                                );
+                                let _ = stream.write_all(header.as_bytes()).await;
+                                let _ = stream.write_all(&body).await;
+                                let _ = stream.flush().await;
+                                continue;
+                            }
+                            let entered_cb = entered_cb.clone();
+                            let released_cb = released_cb.clone();
+                            tokio::task::spawn_local(async move {
+                                let mut socket =
+                                    tokio_tungstenite::accept_async(stream).await.unwrap();
+                                while let Some(Ok(Message::Text(text))) = socket.next().await {
+                                    let call: Value = serde_json::from_str(&text).unwrap();
+                                    if call.get("id").is_none() {
+                                        continue;
+                                    }
+                                    let result = match call["method"].as_str().unwrap() {
+                                        "initialize" => json!({}),
+                                        "areal/task/list" => json!({ "data": [], "nextCursor": null }),
+                                        "areal/server/status" => {
+                                            entered_cb.notify_one();
+                                            released_cb.notified().await;
+                                            json!({
+                                                "acceptingWork": true,
+                                                "activeGoals": [],
+                                                "activeTasks": 0,
+                                                "activeTurns": [],
+                                                "apiVersion": "areal.core.v1",
+                                                "capacity": {
+                                                    "activeTurns": 0,
+                                                    "blobBytes": 0,
+                                                    "historyBytesPerThread": 0,
+                                                    "maxActiveTurns": 4,
+                                                    "maxThreads": 8,
+                                                    "threads": 0
+                                                },
+                                                "closed": false,
+                                                "compactions": [],
+                                                "configuration": Value::Null,
+                                                "draining": false,
+                                                "idleForMs": 0,
+                                                "lifecycle": {
+                                                    "admission": "open",
+                                                    "executionOutcomes": { "uninspectedUnknown": 0 },
+                                                    "ifIdle": { "allowed": true, "reasons": [] },
+                                                    "settled": { "allowed": true, "reasons": [] },
+                                                    "version": 1
+                                                },
+                                                "pendingQueueItems": 0,
+                                                "productVersion": "fixture",
+                                                "resources": [],
+                                                "restartSafe": true,
+                                                "runtime": Value::Null,
+                                                "stateVersion": 1,
+                                                "unresolvedTools": [],
+                                                "workgroups": []
+                                            })
+                                        }
+                                        other => panic!("unexpected mock core method: {other}"),
+                                    };
+                                    socket
+                                        .send(Message::Text(
+                                            json!({ "jsonrpc": "2.0", "id": call["id"], "result": result })
+                                                .to_string()
+                                                .into(),
+                                        ))
+                                        .await
+                                        .unwrap();
+                                }
+                            });
+                        }
+                    });
+                    mock_core_server = Some(server);
+                    mock_core_close = Some(
+                        fixture
+                            .host
+                            .schedules
+                            .connections
+                            .connect_test_core(fixture.host.clone(), "project", service)
+                            .await
+                            .unwrap(),
+                    );
+                    slow_params = json!({"sourceId": source_id, "projectId": alias, "operation": "server"});
+                } else {
+                    let runner = fixture.host.home.join("blocked.cjs");
+                    std::fs::write(
+                        &runner,
+                        r#"
             const out = frame => console.log(JSON.stringify({version:1,...frame}));
             out({event:'ready',methods:['manage.read','desktop.command']});
             let pending;
@@ -618,42 +859,42 @@ async fn pending_workbench_requests_do_not_block_queries() {
                 }
             });
         "#,
-                )
-                .unwrap();
-                let entered = Rc::new(Notify::new());
-                let released = Rc::new(Notify::new());
-                let reverse: crate::workbench::Reverse = {
-                    let entered = entered.clone();
-                    let released = released.clone();
-                    Rc::new(move |method, _| {
+                    )
+                    .unwrap();
+                    let reverse: crate::workbench::Reverse = {
                         let entered = entered.clone();
                         let released = released.clone();
-                        Box::pin(async move {
-                            assert_eq!(method, "blocked");
-                            entered.notify_one();
-                            released.notified().await;
-                            Ok(Value::Null)
+                        Rc::new(move |method, _| {
+                            let entered = entered.clone();
+                            let released = released.clone();
+                            Box::pin(async move {
+                                assert_eq!(method, "blocked");
+                                entered.notify_one();
+                                released.notified().await;
+                                Ok(Value::Null)
+                            })
                         })
-                    })
-                };
-                let node = std::process::Command::new("which")
-                    .arg("node")
-                    .output()
-                    .unwrap();
-                assert!(
-                    node.status.success(),
-                    "Node is required for workbench tests"
-                );
-                let node = PathBuf::from(String::from_utf8(node.stdout).unwrap().trim());
-                let backend =
-                    crate::workbench::Workbench::start(&node, &runner, &fixture.host.home, reverse)
-                        .await
+                    };
+                    let node = std::process::Command::new("which")
+                        .arg("node")
+                        .output()
                         .unwrap();
-                fixture
-                    .host
-                    .gateway
-                    .workbench
-                    .bind_test_backend(backend, "fixture");
+                    assert!(
+                        node.status.success(),
+                        "Node is required for workbench tests"
+                    );
+                    let node = PathBuf::from(String::from_utf8(node.stdout).unwrap().trim());
+                    let backend =
+                        crate::workbench::Workbench::start(&node, &runner, &fixture.host.home, reverse)
+                            .await
+                            .unwrap();
+                    fixture
+                        .host
+                        .gateway
+                        .workbench
+                        .bind_test_backend(backend, "fixture");
+                    slow_params = json!({"command":"connect","request":{"projectId":"selected"}});
+                }
                 let ticket = fixture
                     .client()
                     .await
@@ -670,11 +911,6 @@ async fn pending_workbench_requests_do_not_block_queries() {
                 )
                 .await;
                 let _hello = read(&mut socket).await;
-                let slow_params = if blocked_method == "manage.read" {
-                    json!({"sourceId":"fixture","projectId":"project","operation":"server"})
-                } else {
-                    json!({"command":"connect","request":{"projectId":"selected"}})
-                };
                 write(
                     &mut socket,
                     json!({"version":1,"id":"slow","method":blocked_method,
@@ -731,11 +967,24 @@ async fn pending_workbench_requests_do_not_block_queries() {
                 }
                 released.notify_one();
                 if progress.is_ok() {
-                    assert_eq!(read(&mut socket).await["id"], "slow");
-                    if blocked_method == "desktop.command" {
+                    let slow = read(&mut socket).await;
+                    assert_eq!(slow["id"], "slow");
+                    if blocked_method == "manage.read" {
+                        assert!(slow.get("error").is_none(), "{slow}");
+                    } else if blocked_method == "desktop.command" {
                         assert_eq!(read(&mut socket).await["id"], "second");
                     }
                 }
+                if let Some(close) = mock_core_close {
+                    close();
+                }
+                if let Some(control) = mock_control_server {
+                    control.abort();
+                }
+                if let Some(server) = mock_core_server {
+                    server.abort();
+                }
+                drop(mock_service_lock);
                 fixture.host.gateway.workbench.stop_backend().await;
                 assert!(
                     progress.is_ok(),

@@ -1156,6 +1156,24 @@ impl Host {
         Ok(())
     }
 
+    pub(super) async fn ensure_subscription_for_project(
+        &self,
+        source_id: &str,
+        project_id: &str,
+    ) -> Result<()> {
+        let sub =
+            if let Some(existing) = self.subscriptions.sources.borrow().get(source_id).cloned() {
+                existing
+            } else {
+                let snapshot = self.subscription_snapshot(source_id).await?;
+                if snapshot["state"] == "signed_out" && snapshot["owner"] != "nativeV1" {
+                    return Ok(());
+                }
+                self.ensure_native_subscription(source_id).await?
+            };
+        self.subscription_reconcile(project_id, &sub).await
+    }
+
     async fn ensure_native_subscription(&self, source_id: &str) -> Result<Rc<SourceSubscription>> {
         let settings = super::library_store::read_source(self, source_id)?;
         let env: BTreeMap<String, String> = std::env::vars_os()
@@ -1464,7 +1482,7 @@ impl Host {
                 };
                 Ok(sub.probe(&model).await?)
             }
-            _ => bail!("INVALID_PARAMS"),
+            _ => anyhow::bail!("INVALID_PARAMS"),
         }
     }
 }
@@ -1472,6 +1490,7 @@ impl Host {
 #[cfg(test)]
 mod chatgpt_tests {
     use super::*;
+    use std::path::Path;
 
     fn host_with_imported_source(base: &Path) -> (Rc<Host>, String) {
         let mut host = crate::server::schedules::tests::fixture(base);
@@ -1526,72 +1545,87 @@ mod chatgpt_tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn signed_out_chatgpt_status_is_passive_and_creates_no_owner_or_vault_slots() {
-        let root = tempfile::tempdir().unwrap();
-        let base = root.path().canonicalize().unwrap();
-        let (host, source_id) = host_with_imported_source(&base);
-        let status = host
-            .chatgpt_desktop_command(
-                &source_id,
-                &json!({"operation": "status", "provider": "openai"}),
-            )
-            .await
-            .unwrap();
-        assert_eq!(status["state"], "signed_out");
-        assert_eq!(status["authenticated"], false);
-        assert!(status["activeAccountId"].is_null());
-        assert_eq!(status["accounts"], json!([]));
-        assert!(
-            host.migration
-                .vault
-                .subscription_owner(&source_id)
-                .unwrap()
-                .is_none()
-        );
-        assert!(
-            host.subscriptions
-                .sources
-                .borrow()
-                .get(&source_id)
-                .is_none()
-        );
-        let vault_slots = host.home.join("host/vault-slots");
-        if vault_slots.exists() {
-            assert_eq!(std::fs::read_dir(vault_slots).unwrap().count(), 0);
-        }
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let root = tempfile::tempdir().unwrap();
+                let base = root.path().canonicalize().unwrap();
+                let (host, source_id) = host_with_imported_source(&base);
+                let status = host
+                    .chatgpt_desktop_command(
+                        &source_id,
+                        &json!({"operation": "status", "provider": "openai"}),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(status["state"], "signed_out");
+                assert_eq!(status["authenticated"], false);
+                assert!(status["activeAccountId"].is_null());
+                assert_eq!(status["accounts"], json!([]));
+                assert!(
+                    host.migration
+                        .vault
+                        .subscription_owner(&source_id)
+                        .unwrap()
+                        .is_none()
+                );
+                assert!(
+                    host.subscriptions
+                        .sources
+                        .borrow()
+                        .get(&source_id)
+                        .is_none()
+                );
+                assert!(status["endpoint"].is_null());
+                let vault_ops = host.home.join("host/vault-operations");
+                assert!(!vault_ops.exists() || std::fs::read_dir(vault_ops).unwrap().count() == 0);
+                let vault_slots = host.home.join("host/vault-slots");
+                if vault_slots.exists() {
+                    for entry in std::fs::read_dir(vault_slots).unwrap() {
+                        let slot: Value = storage::read(&entry.unwrap().path()).unwrap();
+                        assert_eq!(slot["revision"], 0);
+                        assert!(slot["entryId"].is_null());
+                    }
+                }
+            })
+            .await;
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn chatgpt_login_and_cancel_work_without_node_workbench() {
-        let root = tempfile::tempdir().unwrap();
-        let base = root.path().canonicalize().unwrap();
-        let (host, source_id) = host_with_imported_source(&base);
-        let login = host
-            .chatgpt_desktop_command(
-                &source_id,
-                &json!({"operation": "login", "provider": "openai"}),
-            )
-            .await
-            .unwrap();
-        let login_id = login["loginId"].as_str().unwrap().to_owned();
-        assert!(!login_id.is_empty());
-        assert!(login["authUrl"].as_str().unwrap().starts_with("https://"));
-        assert!(
-            host.migration
-                .vault
-                .subscription_owner(&source_id)
-                .unwrap()
-                .is_some()
-        );
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let root = tempfile::tempdir().unwrap();
+                let base = root.path().canonicalize().unwrap();
+                let (host, source_id) = host_with_imported_source(&base);
+                let login = host
+                    .chatgpt_desktop_command(
+                        &source_id,
+                        &json!({"operation": "login", "provider": "openai"}),
+                    )
+                    .await
+                    .unwrap();
+                let login_id = login["loginId"].as_str().unwrap().to_owned();
+                assert!(!login_id.is_empty());
+                assert!(login["authUrl"].as_str().unwrap().starts_with("https://"));
+                assert!(
+                    host.migration
+                        .vault
+                        .subscription_owner(&source_id)
+                        .unwrap()
+                        .is_some()
+                );
 
-        let after_cancel = host
-            .chatgpt_desktop_command(
-                &source_id,
-                &json!({"operation": "cancel", "provider": "openai", "loginId": login_id}),
-            )
-            .await
-            .unwrap();
-        assert!(after_cancel["login"].is_null());
-        assert_eq!(after_cancel["authenticated"], false);
-        host.close_subscriptions().await;
+                let after_cancel = host
+                    .chatgpt_desktop_command(
+                        &source_id,
+                        &json!({"operation": "cancel", "provider": "openai", "loginId": login_id}),
+                    )
+                    .await
+                    .unwrap();
+                assert!(after_cancel["login"].is_null());
+                assert_eq!(after_cancel["authenticated"], false);
+                host.close_subscriptions().await;
+            })
+            .await;
     }
 }

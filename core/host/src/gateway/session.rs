@@ -204,7 +204,7 @@ pub(crate) fn error_code(message: &str) -> &str {
     }
 }
 pub(crate) const LOCAL_PEER: &str = "local-desktop";
-pub(crate) use send::{GUI_WRITE_PENDING_BYTES, write_limits};
+pub(crate) use send::{GUI_WRITE_PENDING_BYTES, rich_message_input_with_command, write_limits};
 
 pub(crate) struct Session {
     pub(crate) host: Rc<Host>,
@@ -243,7 +243,7 @@ impl Drop for SessionSlot {
             self.host
                 .gateway
                 .workbench
-                .disconnect_connection(connection);
+                .disconnect_connection(&self.host, connection);
             if let Some(active) = self.host.gateway.active.borrow_mut().remove(connection) {
                 self.host
                     .gateway
@@ -1114,6 +1114,9 @@ impl Session {
             ensure!(request.get("context").is_none(), "INVALID_PARAMS");
             let (host, peer) = (&self.host, &self.peer);
             if method == "desktop.command" {
+                if let Some(capability) = workbench_route::desktop_command_capability(params) {
+                    self.authorize(None, capability)?;
+                }
                 return workbench_route::desktop_command(host, peer, &self.connection, request)
                     .await;
             }

@@ -61,7 +61,6 @@ const model = createServer(async (request, response) => {
       desktopModelTools.push(tools);
       if (desktopProvider) {
         assert(tools.includes("browser_v1"), "online schedule advertises Browser");
-        assert(tools.includes("computer_v1"), "online schedule advertises Computer");
         await desktopProvider.close();
         desktopProvider = undefined;
       }
@@ -441,7 +440,7 @@ try {
   desktopProvider = await connect(desktop.service.endpoint, desktop.service.authFile);
   coreClients.push(desktopProvider);
   await desktopProvider.call("areal/task/tools/ready", {
-    bundles: ["areal.browser.v1", "areal.computer.v1"],
+    bundles: ["areal.browser.v1"],
   });
   const desktopTask = await until(async () => {
     const task = await readTask(desktop);
@@ -469,7 +468,7 @@ try {
     "headless Run never advertises unavailable desktop tools",
   );
   evidence.checks.push(
-    "online schedules receive Browser/Computer; desktop disconnect preserves Run and generations; next Run omits desktop tools",
+    "online schedules receive Browser; desktop disconnect preserves Run and generations; next Run omits desktop tools",
   );
   evidence.desktopModelTools = desktopModelTools;
   await until(async () => {

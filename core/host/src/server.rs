@@ -26,6 +26,8 @@ mod library_service;
 mod library_store;
 #[path = "loopback.rs"]
 mod loopback;
+#[path = "manage_service.rs"]
+mod manage_service;
 #[path = "plugins.rs"]
 mod plugins;
 #[path = "power.rs"]
@@ -40,8 +42,12 @@ mod provider_probe;
 mod schedule_connection;
 #[path = "schedules.rs"]
 mod schedules;
+#[path = "session_commands.rs"]
+mod session_commands;
 #[path = "shell_subscription.rs"]
 mod shell_subscription;
+#[path = "side_owners.rs"]
+mod side_owners;
 #[path = "subscription/host.rs"]
 mod subscriptions;
 #[path = "task_catalog.rs"]
@@ -58,6 +64,8 @@ mod workbench_route;
 mod workbench_submissions;
 #[path = "workbench_utility.rs"]
 mod workbench_utility;
+#[path = "workspace_ops.rs"]
+mod workspace_ops;
 #[path = "worktree_catalog.rs"]
 mod worktree_catalog;
 use crate::{

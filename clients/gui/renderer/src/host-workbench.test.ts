@@ -897,4 +897,65 @@ describe("library Host-only routing", () => {
       expect(host).not.toHaveBeenCalled();
     },
   );
+
+  it.each([
+    "chatgpt",
+    "configure",
+    "continue",
+    "dismissRecovery",
+    "editMessage",
+    "fork",
+    "manage",
+    "prediction",
+    "queue",
+    "queueEdit",
+    "reconcile",
+    "side",
+    "workspace",
+  ])("never falls back %s to native Main when Host is unready or declines", async (name) => {
+    const native = vi.fn(async () => ({ ok: true as const, value: null }));
+    const host = vi.fn(async () => ({
+      ok: false as const,
+      error: { code: "CAPABILITY_UNAVAILABLE", message: "Host declined" },
+    }));
+    const unready = routeDesktopCommand(
+      { command: native } as Pick<PlatformServices, "command">,
+      host,
+      () => false,
+    );
+    expect(await unready(name, {})).toMatchObject({
+      ok: false,
+      error: { code: "CAPABILITY_UNAVAILABLE" },
+    });
+    expect(native).not.toHaveBeenCalled();
+    expect(host).not.toHaveBeenCalled();
+
+    const ready = routeDesktopCommand(
+      { command: native } as Pick<PlatformServices, "command">,
+      host,
+      () => true,
+    );
+    expect(await ready(name, {})).toMatchObject({
+      ok: false,
+      error: { code: "CAPABILITY_UNAVAILABLE", message: "Host declined" },
+    });
+    expect(host).toHaveBeenCalledOnce();
+    expect(native).not.toHaveBeenCalled();
+  });
+
+  it.each(["processStart", "pluginArchivePick", "pluginArchiveImport"])(
+    "keeps desktop-only manage.%s on native Main",
+    async (operation) => {
+      const native = vi.fn(async () => ({ ok: true as const, value: null }));
+      const host = vi.fn();
+      const route = routeDesktopCommand(
+        { command: native } as Pick<PlatformServices, "command">,
+        host,
+        () => true,
+      );
+      await route("manage", { operation });
+      expect(native).toHaveBeenCalledTimes(1);
+      expect(host).not.toHaveBeenCalled();
+    },
+  );
 });

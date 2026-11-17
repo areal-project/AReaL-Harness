@@ -12,7 +12,7 @@ mod enrollment;
 mod push;
 #[path = "session.rs"]
 mod session;
-pub(crate) use session::{error_code, write_limits};
+pub(crate) use session::{error_code, rich_message_input_with_command, write_limits};
 
 /// 执行方明确报出的失败：结果已知，不记成“结果未知”，也不需要事后核对。
 /// 后台中途退出时未完成的请求也是 CAPABILITY_UNAVAILABLE，所以它和兜底的 CORE_UNAVAILABLE 不算。

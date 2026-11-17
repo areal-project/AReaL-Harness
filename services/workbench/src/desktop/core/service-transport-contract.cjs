@@ -2,7 +2,7 @@
 "use strict";
 /** @typedef {Record<string,unknown>} Fields */
 /** @typedef {Fields & {signal?:AbortSignal}} ToolHostInput */
-/** @typedef {Pick<import('../../../../../clients/gui/app/src/core/preview-native/model.js').HostIdentity,'projectId'|'threadId'|'turnId'|'callId'|'coreInstanceId'|'coreGeneration'> & {signal?:AbortSignal,arguments?:unknown,toolHostGeneration?:string,phase?:'prepare'|'execute',discardPreparedPlan?:boolean,browserApproval?:Fields & {plan?:Fields & {preparedActionId:string}},computerApproval?:unknown}} ToolRequest */
+/** @typedef {Pick<import('../../../../../clients/gui/app/src/core/preview-native/model.js').HostIdentity,'projectId'|'threadId'|'turnId'|'callId'|'coreInstanceId'|'coreGeneration'> & {signal?:AbortSignal,arguments?:unknown,toolHostGeneration?:string,phase?:'prepare'|'execute',discardPreparedPlan?:boolean,browserApproval?:Fields & {plan?:Fields & {preparedActionId:string}}}} ToolRequest */
 /** @typedef {Pick<import('../../../../../clients/gui/app/src/core/preview-native/model.js').DiscoveryPlan,'operation'|'preparedActionId'|'fingerprint'|'origin'|'pageId'|'browserHostId'|'alreadyControlled'|'hostGeneration'|'pageGeneration'|'controlEpoch'|'humanRevision'|'documentEpoch'|'expiresAt'|'coreInstanceId'|'coreGeneration'|'projectId'|'threadId'|'turnId'|'callId'> & Fields} DiscoveryPlan */
 /** @typedef {{registrationId:string,tools:Array<Fields & {schemaDigest:string}>,[key:string]:unknown}} PageRegistration */
 /** @typedef {{projectId:string,threadId:string,instanceId:string,generation:string|number,operation:'register'|'revoke'|'claim'|'resolve',registrationId?:string,turnId?:string,callId?:string,ownerId?:string,schemaDigest?:string,claimId?:string,declaration?:unknown,reply?:unknown}} PageToolRequest */

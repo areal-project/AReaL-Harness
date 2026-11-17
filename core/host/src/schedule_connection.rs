@@ -1098,10 +1098,7 @@ async fn callback(
     connection.require_current(host)?;
     if matches!(
         method,
-        "item/tool/call"
-            | "areal/browser/prepare"
-            | "areal/computer/prepare"
-            | "areal/cua/turnEnded"
+        "item/tool/call" | "areal/browser/prepare" | "areal/cua/turnEnded"
     ) {
         let lease = connection
             .workbench_lease

@@ -131,7 +131,7 @@ impl Drop for ClientConnection {
         self.host
             .gateway
             .workbench
-            .disconnect_connection(&self.connection);
+            .disconnect_connection(&self.host, &self.connection);
     }
 }
 #[derive(Default)]
@@ -956,7 +956,11 @@ fn loopback_error(request: &Value, error: &anyhow::Error) -> Value {
     ) {
         value["commandId"] = request["commandId"].clone();
         value["submissionUnknown"] = json!(
-            !(super::gateway_owner::settled_failure(code) || code == "CAPABILITY_UNAVAILABLE")
+            !(super::gateway_owner::settled_failure(code)
+                || matches!(
+                    code,
+                    "CAPABILITY_UNAVAILABLE" | "COMMAND_FAILED" | "scheduleWorkspaceRequired"
+                ))
         );
     } else if request["method"] == "providers.read" {
         value["submissionUnknown"] = json!(false);

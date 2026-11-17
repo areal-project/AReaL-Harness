@@ -542,6 +542,61 @@ impl Connections {
         }
     }
 
+    pub(crate) async fn shared_workbench_request(
+        &self,
+        host: &Host,
+        id: &str,
+        (service_id, generation, connection_id): (&str, &str, &str),
+        method: &str,
+        params: Value,
+    ) -> Result<Value> {
+        ensure!(WORKBENCH_METHODS.contains(&method), "FORBIDDEN");
+        ensure!(params.is_object(), "INVALID_PARAMS");
+        let session = self
+            .sessions
+            .borrow()
+            .get(id)
+            .cloned()
+            .ok_or_else(unavailable)?;
+        ensure!(
+            session.shared_current(host)
+                && session.service.identity.service_id == service_id
+                && session.service.identity.generation == generation
+                && session.connection_id == connection_id,
+            unavailable()
+        );
+        let result = session.request_with_barrier(method, params).await;
+        ensure!(
+            session.shared_current(host) && session.service.identity.generation == generation,
+            unavailable()
+        );
+        match result {
+            Ok(result) => {
+                if matches!(
+                    method,
+                    "areal/thread/archive"
+                        | "areal/conversation/unarchive"
+                        | "areal/thread/configure"
+                        | "thread/start"
+                        | "areal/thread/start"
+                        | "areal/thread/fork"
+                        | "thread/fork"
+                        | "areal/side/start"
+                        | "areal/side/create"
+                        | "areal/side/close"
+                ) {
+                    session.shell_revision.set(session.shell_revision.get() + 1);
+                    host.changed();
+                }
+                Ok(json!({"result":result.value,"sequence":result.sequence}))
+            }
+            Err(error) => match error.downcast_ref::<RpcFailure>() {
+                Some(error) => Ok(json!({"error":error.0})),
+                None => Err(error),
+            },
+        }
+    }
+
     pub(crate) fn workbench_detach(&self, host: &Host, id: &str, lease: &str) -> Result<Value> {
         let terminal = self.terminals.borrow().get(lease).cloned();
         if let Some(session) = terminal {
@@ -913,6 +968,45 @@ impl Connections {
             }
             _ => anyhow::bail!("INVALID_PARAMS"),
         }
+    }
+
+    pub(crate) async fn shared_read_blob(
+        &self,
+        host: &Host,
+        id: &str,
+        thread: &str,
+        uri: &str,
+    ) -> Result<Vec<u8>> {
+        use base64::Engine;
+        let session = self
+            .sessions
+            .borrow()
+            .get(id)
+            .cloned()
+            .ok_or_else(unavailable)?;
+        ensure!(session.shared_current(host), unavailable());
+        let result = if let Some(token) = &session.remote_token {
+            super::super::conversation_media::remote_blob(
+                &session.service.endpoint,
+                token,
+                &json!({"operation":"read","threadId":thread,"uri":uri}),
+                || {
+                    ensure!(session.shared_current(host), unavailable());
+                    Ok(())
+                },
+            )
+            .await?
+        } else {
+            super::super::conversation_media::read_blob(&session.service, thread, uri, || {
+                ensure!(session.shared_current(host), unavailable());
+                Ok(())
+            })
+            .await?
+        };
+        let encoded = result["base64"].as_str().context("INVALID_RESPONSE")?;
+        base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .context("INVALID_RESPONSE")
     }
 }
 

@@ -156,7 +156,7 @@ impl SourceSubscription {
             }
         }
     }
-    pub(super) fn login_public(&self) -> Value {
+    pub(crate) fn login_public(&self) -> Value {
         self.login.borrow().as_ref().map_or(
             Value::Null,
             |login| json!({"loginId":login.id,"authUrl":login.url}),

@@ -62,10 +62,10 @@ test("declared requirements use actual deployed tools and never infer prose or r
     id: "fixture@local",
     expectedDigest: "snapshot",
   };
-  for (const tools of [
-    ["browser_v1"],
-    ["browser_v1", "computer_v1"],
-    ["browser_v1", "js", "js_reset"],
+  for (const [tools, expectedMissing, expectedAvailable] of [
+    [["browser_v1", "js", "js_reset"], ["computer_v1"], false],
+    [["browser_v1"], ["computer_v1"], false],
+    [[], ["browser_v1", "computer_v1"], false],
   ]) {
     const { backend, project } = fixture(tools);
     const value = await manage(backend, project, request);
@@ -73,8 +73,34 @@ test("declared requirements use actual deployed tools and never infer prose or r
       pluginId: "fixture@local",
       installedDigest: "snapshot",
       requiredTools: ["browser_v1", "computer_v1"],
-      missingTools: tools.includes("computer_v1") ? [] : ["computer_v1"],
-      available: tools.includes("computer_v1"),
+      missingTools: expectedMissing,
+      available: expectedAvailable,
+    });
+  }
+  {
+    const { backend, project } = fixture(["browser_v1"], {
+      installedSkills: [{ requiredTools: ["browser_v1"] }],
+    });
+    const value = await manage(backend, project, request);
+    assert.deepEqual(value, {
+      pluginId: "fixture@local",
+      installedDigest: "snapshot",
+      requiredTools: ["browser_v1"],
+      missingTools: [],
+      available: true,
+    });
+  }
+  {
+    const { backend, project } = fixture([], {
+      installedSkills: [{ requiredTools: ["browser_v1"] }],
+    });
+    const value = await manage(backend, project, request);
+    assert.deepEqual(value, {
+      pluginId: "fixture@local",
+      installedDigest: "snapshot",
+      requiredTools: ["browser_v1"],
+      missingTools: ["browser_v1"],
+      available: false,
     });
   }
   const { backend, project } = fixture([], {

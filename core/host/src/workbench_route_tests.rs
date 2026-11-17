@@ -671,7 +671,7 @@ async fn backend_business_errors_preserve_only_codes_supported_by_the_host() {
             "appRoot":app,"options":{"home":data,"userHome":root.path()},
         }))), &[]).await.unwrap();
         for (code, expected) in [(json!("COMMAND_CONFLICT"), "COMMAND_CONFLICT"), (json!("TURN_BUSY"), "TURN_BUSY"), (json!("MIGRATION_PENDING"), "MIGRATION_PENDING"), (json!("migrationBlocked"), "migrationBlocked"), (json!("ENOENT"), "CORE_UNAVAILABLE"), (json!(-32602), "CORE_UNAVAILABLE")] {
-            assert_eq!(backend.request("trajectory.read", json!({"code":code}), json!({})).await.unwrap_err().to_string(), expected);
+            assert_eq!(backend.request("manage.read", json!({"code":code}), json!({})).await.unwrap_err().to_string(), expected);
         }
         backend.stop().await.unwrap();
     }).await;
@@ -708,7 +708,7 @@ async fn connection_disconnect_is_forwarded_without_a_journal() {
         });
         let backend = Workbench::start(&runtime, &runner, root.path(), reverse_call).await.unwrap();
         *host.gateway.workbench.backend.running.borrow_mut() = Some(Rc::new(backend));
-        host.gateway.workbench.disconnect_connection("first");
+        host.gateway.workbench.disconnect_connection(&host, "first");
         let connection = tokio::time::timeout(Duration::from_secs(2), disconnects.recv()).await.unwrap().unwrap();
         assert_eq!(connection, "first");
         assert!(backend_receipt(&host, "local", &uuid::Uuid::new_v4().to_string()).unwrap().is_none());

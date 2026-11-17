@@ -5,26 +5,7 @@ import { useI18n } from "../i18n/IntlProvider.js";
 import type { Action, CommandParams, Data } from "../services.js";
 import { Input } from "../components/ui/input.js";
 import { Button } from "../components/ui/button.js";
-import { SettingsBadge, SettingsSwitch, SettingsSelect } from "./SettingsPageParts.js";
-
-const permissionLabels = {
-  accessibility: ["settings.computer.accessibility", "settings.computer.accessibilityDescription"],
-  screenRecording: [
-    "settings.computer.screenRecording",
-    "settings.computer.screenRecordingDescription",
-  ],
-  inputMonitoring: [
-    "settings.computer.inputMonitoring",
-    "settings.computer.inputMonitoringDescription",
-  ],
-} as const;
-type Capability = keyof typeof permissionLabels;
-const statusLabels = {
-  granted: "settings.computer.granted",
-  denied: "settings.computer.denied",
-  stale: "settings.computer.stale",
-  unknown: "settings.computer.unknown",
-} as const;
+import { SettingsSwitch } from "./SettingsPageParts.js";
 
 export function ComputerSettings({
   settings = {},
@@ -36,7 +17,6 @@ export function ComputerSettings({
   connected: boolean;
 }) {
   const { t } = useI18n();
-  const lcu = settings.computerControlProvider === "lcu";
   const [executable, setExecutable] = useState(String(settings.computerControlExecutable ?? ""));
   useEffect(
     () => setExecutable(String(settings.computerControlExecutable ?? "")),
@@ -130,48 +110,31 @@ export function ComputerSettings({
       <SettingsSection>
         <SettingsGroupCard>
           <SettingsRow
-            label={t("settings.computer.provider")}
-            description={t("settings.computer.providerDescription")}
+            label={t("settings.computer.executable")}
+            description={t("settings.computer.executableDescription")}
+            controlLayout="wide"
             control={
-              <SettingsSelect
-                aria-label={t("settings.computer.provider")}
-                value={lcu ? "lcu" : "native"}
-                disabled={!connected || busy}
-                onValueChange={(value) => void save("computerControlProvider", value)}
-              >
-                <option value="native">{t("settings.computer.native")}</option>
-                <option value="lcu">{t("settings.computer.lcu")}</option>
-              </SettingsSelect>
+              <div className="flex w-full flex-wrap items-center gap-2">
+                <Input
+                  aria-label={t("settings.computer.executable")}
+                  value={executable}
+                  disabled={!connected || busy}
+                  onChange={(event) => setExecutable(event.target.value)}
+                />
+                <Button
+                  variant="outline"
+                  disabled={
+                    !connected ||
+                    busy ||
+                    executable === String(settings.computerControlExecutable ?? "")
+                  }
+                  onClick={() => void save("computerControlExecutable", executable)}
+                >
+                  {t("settings.computer.save")}
+                </Button>
+              </div>
             }
           />
-          {lcu && (
-            <SettingsRow
-              label={t("settings.computer.executable")}
-              description={t("settings.computer.executableDescription")}
-              controlLayout="wide"
-              control={
-                <div className="flex w-full flex-wrap items-center gap-2">
-                  <Input
-                    aria-label={t("settings.computer.executable")}
-                    value={executable}
-                    disabled={!connected || busy}
-                    onChange={(event) => setExecutable(event.target.value)}
-                  />
-                  <Button
-                    variant="outline"
-                    disabled={
-                      !connected ||
-                      busy ||
-                      executable === String(settings.computerControlExecutable ?? "")
-                    }
-                    onClick={() => void save("computerControlExecutable", executable)}
-                  >
-                    {t("settings.computer.save")}
-                  </Button>
-                </div>
-              }
-            />
-          )}
           <SettingsRow
             label={t("settings.computer.enable")}
             description={t("settings.computer.enableDescription")}
@@ -200,75 +163,22 @@ export function ComputerSettings({
           />
         </SettingsGroupCard>
       </SettingsSection>
-      {!lcu && (
-        <SettingsSection
-          title={t("settings.computer.permissions")}
-          description={t("settings.computer.permissionsDescription")}
-        >
-          <SettingsGroupCard>
-            {(Object.keys(permissionLabels) as Capability[])
-              .filter(
-                (capability) =>
-                  capability !== "inputMonitoring" || status?.inputMonitoring !== undefined,
-              )
-              .map((capability) => {
-                const value =
-                  typeof status?.[capability] === "string" && status[capability] in statusLabels
-                    ? (status[capability] as keyof typeof statusLabels)
-                    : "unknown";
-                return (
-                  <SettingsRow
-                    key={capability}
-                    label={t(permissionLabels[capability][0])}
-                    description={t(permissionLabels[capability][1])}
-                    controlLayout="wide"
-                    control={
-                      <div className="flex flex-wrap items-center justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          disabled={disabled}
-                          onClick={() => void run({ operation: "requestAccess", capability })}
-                        >
-                          {t("settings.computer.grant")}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          disabled={disabled}
-                          onClick={() => void run({ operation: "openSettings", capability })}
-                        >
-                          {t("settings.computer.openSettings")}
-                        </Button>
-                        <SettingsBadge>{t(statusLabels[value])}</SettingsBadge>
-                      </div>
-                    }
-                  />
-                );
-              })}
-          </SettingsGroupCard>
-        </SettingsSection>
-      )}
       <SettingsSection
-        title={t(lcu ? "settings.computer.lcu" : "settings.computer.helper")}
-        description={t(
-          lcu ? "settings.computer.lcuDescription" : "settings.computer.helperDescription",
-        )}
+        title={t("settings.computer.lcu")}
+        description={t("settings.computer.lcuDescription")}
       >
         <SettingsGroupCard>
           <SettingsRow
             label={t(
               settings.computerControlEnabled !== true
                 ? "settings.computer.disabled"
-                : status?.ownerFence?.capacityReached
-                  ? "settings.computer.capacityReached"
-                  : status?.ready
-                    ? lcu
-                      ? "settings.computer.lcuReady"
-                      : "settings.computer.ready"
-                    : lcu
-                      ? "settings.computer.lcuNotReady"
-                      : "settings.computer.notReady",
+                : status?.ready
+                  ? "settings.computer.lcuReady"
+                  : "settings.computer.lcuNotReady",
             )}
-            description={status?.message || status?.reason || undefined}
+            description={
+              typeof status?.reason === "string" && status.reason ? status.reason : undefined
+            }
             control={
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <Button
@@ -276,14 +186,14 @@ export function ComputerSettings({
                   disabled={!connected || busy}
                   onClick={() => void refresh()}
                 >
-                  {t(lcu ? "settings.computer.lcuRefresh" : "settings.computer.refresh")}
+                  {t("settings.computer.lcuRefresh")}
                 </Button>
                 <Button
                   variant="outline"
                   disabled={disabled}
                   onClick={() => void run({ operation: "restart" })}
                 >
-                  {t(lcu ? "settings.computer.check" : "settings.computer.restart")}
+                  {t("settings.computer.check")}
                 </Button>
                 <Button
                   variant="outline"

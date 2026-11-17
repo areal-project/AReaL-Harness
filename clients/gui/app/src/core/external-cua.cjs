@@ -564,4 +564,17 @@ function nativeAppElicitation(app, getAvailable, getWindow, showMessageBox) {
   };
 }
 
-module.exports = { ExternalCua, upstream, nativeAppElicitation };
+/** @param {{library?: {settings?: Record<string,unknown>}}|undefined} snapshot */
+function readComputerSelection(snapshot) {
+  const settings = snapshot?.library?.settings ?? {};
+  return {
+    enabled: settings.computerControlEnabled === true,
+    provider: "lcu",
+    executable:
+      typeof settings.computerControlExecutable === "string"
+        ? settings.computerControlExecutable
+        : "",
+  };
+}
+
+module.exports = { ExternalCua, upstream, nativeAppElicitation, readComputerSelection };

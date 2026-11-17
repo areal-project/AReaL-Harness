@@ -180,7 +180,7 @@ export async function runContentSystem(page, scratch, checks) {
     animations: "disabled",
   });
   await page.getByLabel("响应状态", { exact: true }).selectOption("ready");
-  for (const kind of ["browser-long", "shell-long", "computer-long", "file-long"]) {
+  for (const kind of ["browser-long", "shell-long", "file-long"]) {
     await page.getByLabel("审批类型", { exact: true }).selectOption(kind);
     const card = approval.locator(".decision-card");
     await card.scrollIntoViewIfNeeded();

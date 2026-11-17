@@ -36,7 +36,6 @@ const { ScheduleAdmission } = require("./schedule-admission.cjs");
 const { ProjectlessWorkspaces } = require("./projectless.cjs");
 const { inspectCoreCapabilities, projectCoreCapabilities } = require("./core-capabilities.cjs");
 const { definition: browserTool } = require("./browser-tool.cjs");
-const { definition: computerTool } = require("./computer-tool.cjs");
 
 const {
   readAdmission,
@@ -122,8 +121,6 @@ class CoreBackend {
     /** @type {((input:import('./service-transport-contract.cjs').ToolHostInput)=>Promise<unknown>)|undefined} */
     this.browserRead = undefined;
     /** @type {((input:import('./service-transport-contract.cjs').ToolHostInput)=>Promise<unknown>)|undefined} */
-    this.computerRead = undefined;
-    /** @type {((input:import('./service-transport-contract.cjs').ToolHostInput)=>Promise<unknown>)|undefined} */
     this.cuaRead = undefined;
 
     /** @type {Map<string,import('./project-state.cjs').CoreProject>} */
@@ -190,7 +187,6 @@ class CoreBackend {
           return backend.applicationOwner;
         },
         browserRead: (...args) => backend.browserRead?.(...args),
-        computerRead: (...args) => backend.computerRead?.(...args),
         cuaRead: (...args) => backend.cuaRead?.(...args),
         desktopTools: (...args) => backend.desktopTools(...args),
         desktopToolOwner: () => backend.desktopToolOwner?.() ?? null,
@@ -244,7 +240,6 @@ class CoreBackend {
         },
         stopReconciliation: (...args) => backend.stopReconciliation(...args),
         supportsBrowser: backend.supportsBrowser.bind(backend),
-        supportsComputer: (...args) => backend.supportsComputer(...args),
         connectExisting: (project) => backend.host.observe(project.id),
       });
     }
@@ -948,33 +943,14 @@ class CoreBackend {
   }
 
   /** @param {Project} project */
-  supportsComputer(project) {
-    const capabilities = project.client?.capabilities;
-    return (
-      capabilities?.features?.computerToolAttachment === true &&
-      capabilities?.features?.computerToolPreparation === true &&
-      capabilities?.desktopToolBundles?.some((bundle) => bundle.bundleId === "areal.computer.v1")
-    );
-  }
-
-  /** @param {Project} project */
   desktopTools(project) {
     if (!this.desktopToolOwner?.()) return [];
-    return [
-      ...(this.supportsBrowser(project) ? [browserTool] : []),
-      ...(this.supportsComputer(project) &&
-      this.library.value.settings.computerControlEnabled === true &&
-      this.library.value.settings.computerControlProvider !== "lcu"
-        ? [computerTool]
-        : []),
-    ];
+    return this.supportsBrowser(project) ? [browserTool] : [];
   }
 
   /** @param {Project} project @param {string} threadId */
   async ensureBrowserTools(project, threadId) {
-    const bundles = this.desktopTools(project).map((tool) =>
-      tool.name === "browser_v1" ? "areal.browser.v1" : "areal.computer.v1",
-    );
+    const bundles = this.desktopTools(project).map(() => "areal.browser.v1");
     if (!bundles.length) return;
     const client = project.client;
     for (const bundleId of bundles) {
@@ -1623,11 +1599,7 @@ class CoreBackend {
     /** @type {unknown[]} */
     let tools = this.desktopTools(project);
     const owner = this.desktopToolOwner?.();
-    if (
-      owner &&
-      this.library.value.settings.computerControlEnabled === true &&
-      this.library.value.settings.computerControlProvider === "lcu"
-    ) {
+    if (owner && this.library.value.settings.computerControlEnabled === true) {
       if (project.client?.capabilities?.features?.externalCua !== true)
         throw new Error(
           "This Core does not support external CUA; update Core before creating this chat",
@@ -1732,21 +1704,7 @@ class CoreBackend {
     }
     if (name === "tasks") return taskCatalog(this, request);
     if (name === "projectless") return this.projectless.command(request);
-    if (name === "library") {
-      const owner = this.desktopToolOwner?.() ?? null;
-      const result = await this.library.command(request);
-      if (
-        owner &&
-        request.operation === "settings" &&
-        ["computerControlEnabled", "computerControlProvider"].includes(request.key ?? "")
-      )
-        await Promise.all(
-          [...this.projects.values()].map((project) =>
-            this.connections.publishScheduleTools(project, project.client, owner),
-          ),
-        );
-      return result;
-    }
+    if (name === "library") return this.library.command(request);
     if (!(name === "workspace" && request.operation.startsWith("worktree")) && name !== "create") {
       if (projectId !== undefined && typeof projectId !== "string") throw new Error("无效项目标识");
       this.worktrees.assertAvailable(projectId);

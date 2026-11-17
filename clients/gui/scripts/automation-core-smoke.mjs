@@ -21,7 +21,7 @@ import { checkBrowserStartup } from "./browser-startup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 
 const runStarted = performance.now();
-const options = { suite: "all", native: false };
+const options = { suite: "browser", native: false };
 for (let index = 2; index < process.argv.length; index++) {
   const flag = process.argv[index];
   if (flag === "--native") options.native = true;
@@ -1240,8 +1240,7 @@ async function launch() {
     {
       workspace,
       taskLifecycle: Boolean(taskBenchmark),
-      computerModule:
-        options.suite === "browser" ? null : join(gui, "app/src/core/computer-control.cjs"),
+      computerModule: null,
     },
   );
   assert.equal(events.runtime.userData, env.AREAL_GUI_USER_DATA);
@@ -2027,7 +2026,6 @@ try {
   const files = [
     "scripts/automation-core-smoke.mjs",
     "../../services/workbench/src/desktop/core/browser-tool.cjs",
-    "app/src/core/computer-control.cjs",
     "app/src/core/preview.cjs",
     "app/src/core/agent-dialog-presentation.cjs",
     "renderer/dist/index.html",

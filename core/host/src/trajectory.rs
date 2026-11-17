@@ -1,9 +1,7 @@
 //! 数据飞轮状态与控制：完全由 Host 管理配置、凭据注入、worker 进程与按项目采集重启。
 use super::Host;
-use anyhow::{Context, Result, bail, ensure};
-use areal_config::{
-    ConfigErrorKind, ConfigInputs, load_management_config, trajectory::TrajectoryConfig,
-};
+use anyhow::{Context, Result, ensure};
+use areal_config::{ConfigErrorKind, ConfigInputs, TrajectoryConfig, load_management_config};
 use areal_local_service::storage;
 use serde_json::{Value, json};
 use std::{
@@ -84,20 +82,34 @@ fn management_inputs(
 }
 
 fn write_private_bytes(path: &Path, content: &[u8]) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        storage::private_dir(parent)?;
-    }
     let parent = path.parent().context("invalid CA bundle path")?;
-    let mut temp = tempfile::NamedTempFile::new_in(parent)?;
+    storage::private_dir(parent)?;
+    let tmp = parent.join(format!(
+        ".trajectory-ca-{}.tmp",
+        uuid::Uuid::new_v4().simple()
+    ));
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(temp.path(), std::fs::Permissions::from_mode(0o600))?;
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
     }
-    use std::io::Write;
-    temp.write_all(content)?;
-    temp.as_file().sync_all()?;
-    temp.persist(path).map_err(|err| err.error)?;
+    let write_res: Result<()> = (|| {
+        use std::io::Write;
+        let mut file = options.open(&tmp)?;
+        file.write_all(content)?;
+        file.sync_all()?;
+        Ok(())
+    })();
+    if let Err(err) = write_res {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(err);
+    }
+    if let Err(err) = std::fs::rename(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(err.into());
+    }
     Ok(())
 }
 
@@ -364,18 +376,20 @@ impl Trajectory {
                             .await?
                         }
                     };
-                    let outcome = if !before.trajectory.enabled {
-                        areal_trajectory::resume_retained_with_runtime(
-                            &config.trajectory,
-                            (&exe, &worker_env),
-                        )
-                    } else {
+                    let outcome = (|| -> Result<Value> {
                         areal_trajectory::configure_with_runtime(
                             &config.trajectory,
                             (&exe, &worker_env),
-                        )
-                        .and_then(|()| areal_trajectory::status(&config.trajectory))
-                    };
+                        )?;
+                        if !before.trajectory.enabled {
+                            areal_trajectory::resume_retained_with_runtime(
+                                &config.trajectory,
+                                (&exe, &worker_env),
+                            )
+                        } else {
+                            areal_trajectory::status(&config.trajectory)
+                        }
+                    })();
                     outcome.map_err(|err| {
                         rejected(redact(&format!("数据飞轮启停失败：{err}"), &secrets))
                     })?
@@ -636,14 +650,16 @@ mod tests {
         std::fs::write(&config_path, config_body).unwrap();
         host.migration = Rc::new(migration);
         let host = Rc::new(host);
-        *host.gateway.workbench.backend.source.borrow_mut() = Some(source_id.clone());
-        *host.gateway.workbench.backend.utility_options.borrow_mut() = Some(json!({
-            "home": core,
-            "config": config_path,
-            "cwd": base,
-            "homedir": base,
-            "profile": profile,
-        }));
+        host.gateway.workbench.set_test_source_and_options(
+            &source_id,
+            json!({
+                "home": core,
+                "config": config_path,
+                "cwd": base,
+                "homedir": base,
+                "profile": profile,
+            }),
+        );
         (host, source_id, config_path)
     }
 
@@ -651,12 +667,12 @@ mod tests {
     async fn read_only_status_does_not_unlock_vault_and_returns_revision() {
         let root = tempfile::tempdir().unwrap();
         let base = root.path().canonicalize().unwrap();
-        let (host, source, config_path) = host_with_source(
-            &base,
-            "schema_version = 2\n[trajectory]\nenabled = false\nendpoint = 'https://collector.example.test/ingest'\nheaders_env = 'AREAL_TRAJECTORY_SECRET'\n",
-        )
-        .await;
-        // 将 Vault 标记为仅允许交互解锁；只读状态不能触发任何解锁或读取。
+        let spool = base.join("spool");
+        let body = format!(
+            "schema_version = 2\n[trajectory]\nenabled = false\nendpoint = 'https://collector.example.test/ingest'\nheaders_env = 'AREAL_CREDENTIAL_TRAJECTORY'\nspool_dir = '{}'\n",
+            spool.display()
+        );
+        let (host, source, config_path) = host_with_source(&base, &body).await;
         host.migration
             .vault
             .dispatch(
@@ -667,7 +683,7 @@ mod tests {
                     "slot": {
                         "kind": "providerCredential",
                         "sourceId": source,
-                        "reference": "AREAL_TRAJECTORY_SECRET",
+                        "reference": "AREAL_CREDENTIAL_TRAJECTORY",
                     },
                     "expectedRevision": 0,
                     "value": "secret-trajectory-token",
@@ -696,11 +712,12 @@ mod tests {
     async fn set_enabled_rejects_stale_revision_with_target_changed() {
         let root = tempfile::tempdir().unwrap();
         let base = root.path().canonicalize().unwrap();
-        let (host, source, _) = host_with_source(
-            &base,
-            "schema_version = 2\n[trajectory]\nenabled = false\nendpoint = 'https://collector.example.test/ingest'\n",
-        )
-        .await;
+        let spool = base.join("spool");
+        let body = format!(
+            "schema_version = 2\n[trajectory]\nenabled = false\nendpoint = 'https://collector.example.test/ingest'\nspool_dir = '{}'\n",
+            spool.display()
+        );
+        let (host, source, _) = host_with_source(&base, &body).await;
         let traj = Rc::new(Trajectory::default());
         let err = traj
             .command(
@@ -720,49 +737,191 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn failure_messages_redact_trajectory_secrets() {
-        let root = tempfile::tempdir().unwrap();
-        let base = root.path().canonicalize().unwrap();
-        let (host, source, config_path) = host_with_source(
-            &base,
-            "schema_version = 2\n[trajectory]\nenabled = true\nendpoint = 'http://127.0.0.1:1/ingest'\nheaders_env = 'AREAL_TRAJECTORY_SECRET'\n",
-        )
-        .await;
-        let fake_binary = base.join("fake-areal.sh");
-        std::fs::write(&fake_binary, "#!/bin/sh\nexit 1\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&fake_binary, std::fs::Permissions::from_mode(0o700)).unwrap();
-        }
-        *host.gateway.workbench.backend.utility_options.borrow_mut() = Some(json!({
-            "home": base.join("core"),
-            "config": config_path,
-            "cwd": base,
-            "homedir": base,
-            "profile": base.join("profile"),
-            "binary": fake_binary,
-        }));
-        let secret = "trajectory-secret-value";
-        let mut creds = BTreeMap::new();
-        creds.insert("AREAL_TRAJECTORY_SECRET".to_owned(), secret.to_owned());
-        host.gateway
-            .workbench
-            .set_test_environment_credentials(&source, creds);
-        assert_eq!(
-            redact(&format!("failed with {secret}"), &[secret.to_owned()]),
-            "failed with [redacted]"
-        );
-        let traj = Rc::new(Trajectory::default());
-        let err = traj
-            .command(
-                &host,
-                &source,
-                json!({"sourceId": source, "operation": "retry"}),
-            )
-            .await
-            .unwrap_err();
-        let rejection = rejection(&err).unwrap();
-        assert_eq!(rejection["code"], "RESOURCE_UNAVAILABLE");
-        assert!(!rejection["message"].as_str().unwrap().contains(secret));
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let root = tempfile::tempdir().unwrap();
+                let base = root.path().canonicalize().unwrap();
+                let spool = base.join("spool");
+                let body = format!(
+                    "schema_version = 2\n[trajectory]\nenabled = false\nendpoint = 'http://127.0.0.1:1/ingest'\nheaders_env = 'AREAL_CREDENTIAL_TRAJECTORY'\nspool_dir = '{}'\n",
+                    spool.display()
+                );
+                let (host, source, config_path) = host_with_source(&base, &body).await;
+                let fake_binary = base.join("fake-areal.sh");
+                std::fs::write(&fake_binary, "#!/bin/sh\nexit 1\n").unwrap();
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    std::fs::set_permissions(&fake_binary, std::fs::Permissions::from_mode(0o700))
+                        .unwrap();
+                }
+                host.gateway.workbench.set_test_source_and_options(
+                    &source,
+                    json!({
+                        "home": base.join("core"),
+                        "config": config_path,
+                        "cwd": base,
+                        "homedir": base,
+                        "profile": base.join("profile"),
+                        "binary": fake_binary,
+                    }),
+                );
+                let secret = "trajectory-secret-value";
+                let mut creds = BTreeMap::new();
+                creds.insert("AREAL_CREDENTIAL_TRAJECTORY".to_owned(), secret.to_owned());
+                host.gateway
+                    .workbench
+                    .set_test_environment_credentials(&source, creds);
+                assert_eq!(
+                    redact(&format!("failed with {secret}"), &[secret.to_owned()]),
+                    "failed with [redacted]"
+                );
+                let traj = Rc::new(Trajectory::default());
+                let before = traj
+                    .read(
+                        &host,
+                        &source,
+                        json!({"sourceId": source, "operation": "status"}),
+                    )
+                    .unwrap();
+                let err = traj
+                    .command(
+                        &host,
+                        &source,
+                        json!({
+                            "sourceId": source,
+                            "operation": "setEnabled",
+                            "enabled": true,
+                            "expectedRevision": before["config_revision"],
+                        }),
+                    )
+                    .await
+                    .unwrap_err();
+                let rejection_val = rejection(&err).unwrap();
+                assert_eq!(rejection_val["code"], "RESOURCE_UNAVAILABLE");
+                assert!(!rejection_val["message"].as_str().unwrap().contains(secret));
+                let retry_err = traj
+                    .command(
+                        &host,
+                        &source,
+                        json!({"sourceId": source, "operation": "retry"}),
+                    )
+                    .await
+                    .unwrap_err();
+                assert_eq!(
+                    rejection(&retry_err).unwrap()["code"],
+                    "RESOURCE_UNAVAILABLE"
+                );
+            })
+            .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn host_routes_trajectory_library_and_chatgpt_without_node_backend() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let root = tempfile::tempdir().unwrap();
+                let base = root.path().canonicalize().unwrap();
+                let spool = base.join("spool");
+                let body = format!(
+                    "schema_version = 2\n[trajectory]\nenabled = false\nendpoint = 'https://collector.example.test/ingest'\nspool_dir = '{}'\n",
+                    spool.display()
+                );
+                let (host, source, config_path) = host_with_source(&base, &body).await;
+                assert!(!host.gateway.workbench.has_running_backend());
+
+                let traj_status = crate::server::workbench_route::backend_read(
+                    &host,
+                    "local",
+                    &json!({"method": "trajectory.read", "params": {"sourceId": source, "operation": "status"}}),
+                )
+                .await
+                .unwrap();
+                assert_eq!(traj_status["enabled"], false);
+                assert_eq!(
+                    traj_status["configPath"],
+                    json!(config_path.display().to_string())
+                );
+
+                let snap_receipt = crate::server::workbench_route::backend_command(
+                    &host,
+                    "local",
+                    &json!({
+                        "method": "library.command",
+                        "commandId": uuid::Uuid::new_v4().to_string(),
+                        "params": {
+                            "sourceId": source,
+                            "operation": "settings",
+                            "key": "snapShot",
+                            "value": {
+                                "snapShotEnabled": true,
+                                "snapShotIncludeAccessibility": false,
+                                "snapShotShortcut": {
+                                    "key": "S",
+                                    "metaKey": false,
+                                    "ctrlKey": false,
+                                    "shiftKey": true,
+                                    "altKey": false,
+                                    "modKey": true,
+                                },
+                                "snapShotPlaySound": true,
+                                "snapShotSound": "soft-pop",
+                                "snapShotFlash": true,
+                                "snapShotAnimations": true,
+                            }
+                        }
+                    }),
+                )
+                .await
+                .unwrap();
+                assert_eq!(snap_receipt["admissionState"], "accepted");
+
+                let font_receipt = crate::server::workbench_route::backend_command(
+                    &host,
+                    "local",
+                    &json!({
+                        "method": "library.command",
+                        "commandId": uuid::Uuid::new_v4().to_string(),
+                        "params": {
+                            "sourceId": source,
+                            "operation": "settings",
+                            "key": "terminalFontFamily",
+                            "value": "JetBrains Mono",
+                        }
+                    }),
+                )
+                .await
+                .unwrap();
+                assert_eq!(font_receipt["admissionState"], "accepted");
+                assert!(
+                    font_receipt["receipt"]["settings"]
+                        .get("terminalFontFamily")
+                        .is_none()
+                );
+                let stored_library =
+                    crate::server::library_store::read_source(&host, &source).unwrap();
+                assert_eq!(
+                    stored_library["settings"]["terminalFontFamily"],
+                    json!("JetBrains Mono")
+                );
+
+                let chatgpt = crate::server::workbench_route::desktop_command(
+                    &host,
+                    "local",
+                    "conn-1",
+                    &json!({
+                        "params": {
+                            "sourceId": source,
+                            "command": "chatgpt",
+                            "request": { "operation": "status", "provider": "openai" },
+                        }
+                    }),
+                )
+                .await
+                .unwrap();
+                assert_eq!(chatgpt["state"], "signed_out");
+                assert!(!host.gateway.workbench.has_running_backend());
+            })
+            .await;
     }
 }

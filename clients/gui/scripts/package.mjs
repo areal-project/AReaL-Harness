@@ -150,7 +150,6 @@ try {
     "packages/browser-data/dist",
     "app/src/core/snapshots/build",
     "app/src/ipc/generated",
-    "native/computer-helper/build/AReaL Computer Helper.app",
     "../../services/workbench/src/generated",
   ].map((path) => join(gui, path));
   // 依赖同步只执行一次；缓存只替代构建，不替代锁文件安装。
@@ -283,10 +282,6 @@ try {
                 from: join(gui, "renderer/dist"),
                 to: "areal-gui",
                 filter: ["**/*", "!bundle-analysis.json"],
-              },
-              {
-                from: join(gui, "native/computer-helper/build/AReaL Computer Helper.app"),
-                to: "computer-helper/AReaL Computer Helper.app",
               },
               ...(release
                 ? [

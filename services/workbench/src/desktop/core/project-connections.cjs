@@ -20,8 +20,8 @@ const { modelRecord, isCoreTask } = require("@areal/workbench/core-model-contrac
  * connectExisting:(project:Project,service:Service)=>Promise<ServiceConnection>,
  * prepareServiceLaunch:(project:Project,trace:ReturnType<typeof startupTrace>)=>Promise<Launch>,
  * reconcile:(project:Project,options:{observeOnly:boolean})=>Promise<unknown>,
- * desktopToolOwner:()=>object|null,desktopTools:(project:Project)=>unknown[],supportsBrowser:(project:Project)=>boolean|undefined,supportsComputer:(project:Project)=>boolean|undefined,
- * cuaRead:(request:Record<string,unknown>)=>Promise<unknown>|undefined,computerRead:(request:Record<string,unknown>)=>Promise<unknown>|undefined,browserRead?:(request:Record<string,unknown>)=>Promise<unknown>|undefined,
+ * desktopToolOwner:()=>object|null,desktopTools:(project:Project)=>unknown[],supportsBrowser:(project:Project)=>boolean|undefined,
+ * cuaRead:(request:Record<string,unknown>)=>Promise<unknown>|undefined,browserRead?:(request:Record<string,unknown>)=>Promise<unknown>|undefined,
  * observeNotification:(project:Project,client:Client,method:string,params:unknown)=>void,
  * listThreads:(project:Project)=>Promise<unknown>,openThread:(project:Project,threadId:string)=>Promise<unknown>,startTaskMonitor:(project:Project,client:Client)=>Promise<void>
  * }} ConnectionHost */
@@ -71,13 +71,7 @@ class ProjectConnections {
       ? this.host
           .desktopTools(project)
           .flatMap((tool) =>
-            !modelRecord(tool)
-              ? []
-              : tool.name === "browser_v1"
-                ? ["areal.browser.v1"]
-                : tool.name === "computer_v1"
-                  ? ["areal.computer.v1"]
-                  : [],
+            !modelRecord(tool) ? [] : tool.name === "browser_v1" ? ["areal.browser.v1"] : [],
           )
       : [];
     await client.request("areal/task/tools/ready", { bundles });
@@ -383,31 +377,6 @@ class ProjectConnections {
                 contentItems: [],
                 rawMcpResult: result,
               };
-        }
-        if (
-          params?.tool === "computer_v1" &&
-          ["item/tool/call", "areal/computer/prepare"].includes(method)
-        ) {
-          this.requireConnection(project, client);
-          if (!this.currentDesktopToolHost(project, client))
-            throw new Error("Desktop tool host is unavailable");
-          if (!this.host.supportsComputer(project))
-            throw new Error("Computer tool capability unavailable");
-          return this.host.computerRead({
-            projectId: project.id,
-            threadId: params.threadId,
-            turnId: params.turnId,
-            callId: params.callId,
-            toolHostGeneration: params.hostGeneration,
-            arguments: params.arguments,
-            computerApproval: params.computerApproval,
-            discardPreparedPlan:
-              method === "areal/computer/prepare" && params.discardPreparedPlan === true,
-            phase: method === "areal/computer/prepare" ? "prepare" : "execute",
-            coreInstanceId: project.service?.serviceId,
-            coreGeneration: project.service?.generation,
-            signal: context.signal,
-          });
         }
         if (
           !["item/tool/call", "areal/browser/prepare"].includes(method) ||

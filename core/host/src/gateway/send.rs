@@ -472,23 +472,41 @@ fn blob_url(value: &Value) -> Option<&str> {
 /// 桌面 `media.cjs` messageInput 的移植：正文、引用、附件与 MCP 内容按同一顺序与上限组装。
 /// 已发布客户端只会带正文，结果与原来的单个文本项相同。
 pub(super) fn rich_message_input(text: &str, values: &Value) -> Result<Vec<areal_protocol::Input>> {
-    message_input(&Message {
-        thread_id: String::new(),
-        expected_config_revision: 0,
-        text: text.to_owned(),
-        enqueue: None,
-        expected_turn_id: None,
-        attachments: values.get("attachments").cloned(),
-        conversation_quotes: values.get("conversationQuotes").cloned(),
-        mcp_content: values.get("mcpContent").cloned(),
-        context_parts: values
-            .get("contextParts")
-            .cloned()
-            .map(serde_json::from_value)
-            .transpose()?,
-    })
+    rich_message_input_with_command(text, values, false)
+}
+
+pub(crate) fn rich_message_input_with_command(
+    text: &str,
+    values: &Value,
+    allow_empty_for_command: bool,
+) -> Result<Vec<areal_protocol::Input>> {
+    ensure!(text.len() <= 64 * 1024, "INVALID_PARAMS");
+    message_input_with_empty(
+        &Message {
+            thread_id: String::new(),
+            expected_config_revision: 0,
+            text: text.to_owned(),
+            enqueue: None,
+            expected_turn_id: None,
+            attachments: values.get("attachments").cloned(),
+            conversation_quotes: values.get("conversationQuotes").cloned(),
+            mcp_content: values.get("mcpContent").cloned(),
+            context_parts: values
+                .get("contextParts")
+                .cloned()
+                .map(serde_json::from_value)
+                .transpose()?,
+        },
+        allow_empty_for_command,
+    )
 }
 fn message_input(params: &Message) -> Result<Vec<areal_protocol::Input>> {
+    message_input_with_empty(params, false)
+}
+fn message_input_with_empty(
+    params: &Message,
+    allow_empty_for_command: bool,
+) -> Result<Vec<areal_protocol::Input>> {
     use areal_protocol::Input;
     if let Some(parts) = &params.context_parts {
         ensure!(parts.len() <= 32, "contextParts");
@@ -605,7 +623,7 @@ fn message_input(params: &Message) -> Result<Vec<areal_protocol::Input>> {
         input.push(Input::mcp_text(block).map_err(|error| anyhow::anyhow!(error))?);
     }
     ensure!(total <= MCP_CONTENT_BYTES, "mcpContent");
-    ensure!(!input.is_empty(), "empty");
+    ensure!(allow_empty_for_command || !input.is_empty(), "empty");
     Ok(input)
 }
 /// 桌面每块 64 KiB、最多 32 块；经 Host 时整条命令要放进 1 MiB 帧，所以总量另设上限。

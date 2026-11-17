@@ -654,6 +654,22 @@ export async function openInBrowser(url: string) {
   if (!window.open(url, "_blank", "noopener,noreferrer")) throw new Error("浏览器拦截了新窗口");
 }
 
+const HOST_ONLY_DESKTOP_COMMANDS = new Set([
+  "chatgpt",
+  "configure",
+  "continue",
+  "dismissRecovery",
+  "editMessage",
+  "fork",
+  "manage",
+  "prediction",
+  "queue",
+  "queueEdit",
+  "reconcile",
+  "side",
+  "workspace",
+]);
+
 /**
  * 桌面与网页同走 Host 的后台命令；只有 Main 加了本机行为的、或资料库来源未就绪时仍走 Main。
  * 过渡：到 0.2.0 删（来源去掉、Main 附加行为迁走后整条走 Host）
@@ -673,8 +689,17 @@ export function routeDesktopCommand(
       name === "feedback"
     )
       throw backendUnavailable("资料库操作入口尚未就绪，请重新连接");
-    if (!DESKTOP_COMMANDS.has(name) || desktopKeepsCommand(name, params) || !hostReady())
+    if (!DESKTOP_COMMANDS.has(name) || desktopKeepsCommand(name, params))
       return native(name, params);
+    if (HOST_ONLY_DESKTOP_COMMANDS.has(name)) {
+      if (!hostReady())
+        return {
+          ok: false,
+          error: { code: "CAPABILITY_UNAVAILABLE", message: "桌面后台尚未就绪，请稍后再试" },
+        } as Awaited<ReturnType<Run>>;
+      return (hostCommand as Run)(name, params);
+    }
+    if (!hostReady()) return native(name, params);
     const result = await (hostCommand as Run)(name, params);
     // 窗口刚打开时 Main 可能还没把后台交给 Host；Host 明确拒绝（未受理）时走 Main，Main 会等后台就绪。
     return !result.ok && declinedCode(result.error.code) ? native(name, params) : result;

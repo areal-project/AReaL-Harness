@@ -17,7 +17,6 @@ const {
   success: browserSuccess,
   unconfirmed: browserUnconfirmed,
 } = require("./browser-tool.cjs");
-const { validComputerInput } = require("./computer-tool.cjs");
 const { ProjectionEncoder } = require("@areal/workbench/state-projection");
 const {
   record,
@@ -141,7 +140,6 @@ class DesktopService {
     this.nextTerminalId = 0;
     this.browserTestTrace = process.env.AREAL_BROWSER_READ_TEST_TRACE;
     backend.browserRead = (request) => this.browserRead(request);
-    backend.computerRead = (request) => this.computerRead(request);
     backend.cuaRead = (request) => this.cuaRead(request);
     this.sequence = 0;
     this.inflight = 0;
@@ -1802,11 +1800,8 @@ class DesktopService {
           project?.service?.generation === request.coreGeneration));
     if (!socket || !current()) throw new Error("External CUA desktop host is unavailable");
     /** @type {Fields} */ const settings = this.backend.library.value.settings;
-    if (
-      ["catalog", "call"].includes(phase) &&
-      (settings.computerControlEnabled !== true || settings.computerControlProvider !== "lcu")
-    )
-      throw new Error("External CUA is not the selected computer provider");
+    if (["catalog", "call"].includes(phase) && settings.computerControlEnabled !== true)
+      throw new Error("External CUA is not enabled");
     if (signal?.aborted || this.browserPending.size >= 16)
       throw new Error("External CUA request cancelled or host busy before dispatch");
     const requestId = ++this.nextBrowserId;
@@ -1854,129 +1849,6 @@ class DesktopService {
         typeof result.error === "string" ? result.error : "Invalid external CUA error",
       );
     return result;
-  }
-
-  /** @param {ToolHostInput} raw */
-  async computerRead(raw) {
-    if (!toolRequest(raw))
-      return raw?.phase === "prepare"
-        ? { error: "invalid_arguments", dispatch: "not_sent" }
-        : browserFailure("invalid_arguments", "Unsupported computer identity");
-    const request = raw;
-    const { projectId, threadId, turnId, callId, coreInstanceId, coreGeneration, signal, phase } =
-      request;
-    if (
-      ![projectId, threadId, turnId, callId, coreInstanceId].every((value) => value.length > 0) ||
-      !validComputerInput(request.arguments)
-    )
-      return phase === "prepare"
-        ? { error: "invalid_arguments", dispatch: "not_sent" }
-        : browserFailure("invalid_arguments", "Unsupported computer operation or parameters");
-    const project = this.backend.projects.get(projectId),
-      client = project?.client,
-      socket = this.computerSocket;
-    const current = () =>
-      !!socket &&
-      !this.closed &&
-      this.computerSocket === socket &&
-      this.clients.has(socket) &&
-      connected(socket) &&
-      !!project &&
-      this.backend.projects.get(projectId) === project &&
-      this.backend.currentConnection(project, client) &&
-      project?.service?.serviceId === coreInstanceId &&
-      project?.service?.generation === coreGeneration;
-    /** @type {Fields} */ const settings = this.backend.library.value.settings;
-    if (
-      request.discardPreparedPlan !== true &&
-      (settings.computerControlEnabled !== true || settings.computerControlProvider === "lcu")
-    ) {
-      const refusal = {
-        code: "not_authorized",
-        message: "Computer control is disabled",
-        action_sent: false,
-        dispatch_status: "not_sent",
-        dispatch: "not_sent",
-      };
-      return phase === "prepare"
-        ? { ...refusal, error: refusal.code }
-        : {
-            success: false,
-            contentItems: [{ type: "inputText", text: JSON.stringify(refusal) }],
-            structuredContent: refusal,
-          };
-    }
-    if (!socket || !current())
-      return phase === "prepare"
-        ? { error: "computer_unavailable", dispatch: "not_sent" }
-        : browserFailure("computer_unavailable", "The local computer control host is unavailable");
-    if (signal?.aborted) throw new Error("Computer request cancelled before dispatch");
-    if (this.browserPending.size >= 16)
-      return phase === "prepare"
-        ? { error: "host_busy", dispatch: "not_sent" }
-        : browserFailure("host_busy", "Desktop host is busy; no action was sent");
-    const requestId = ++this.nextBrowserId;
-    /** @type {unknown} */
-    const result = await new Promise((resolve, reject) => {
-      /** @param {(value:unknown)=>void} next @param {unknown} value */
-      const finish = (next, value) => {
-        clearTimeout(timer);
-        signal?.removeEventListener("abort", onAbort);
-        this.browserPending.delete(requestId);
-        next(value);
-      };
-      const cancel = () =>
-        this.send(socket, {
-          method: "browserCancel",
-          params: { tool: "computer_v1", requestId, projectId, threadId, turnId, callId },
-        });
-      const onAbort = () => {
-        cancel();
-        finish(reject, new Error("Computer request cancelled; dispatch may be unknown"));
-      };
-      const timer = setTimeout(
-        () => {
-          cancel();
-          finish(reject, new Error("Computer host response unknown"));
-        },
-        phase === "prepare" ? 10000 : 125000,
-      );
-      this.browserPending.set(requestId, {
-        socket,
-        tool: "computer_v1",
-        timer,
-        resolve: (value) => finish(resolve, value),
-        reject: (error) => finish(reject, error),
-      });
-      signal?.addEventListener("abort", onAbort, { once: true });
-      const { signal: _ignoredSignal, ...params } = request;
-      this.send(socket, {
-        method: "browserRequest",
-        params: { ...params, tool: "computer_v1", requestId },
-      });
-    });
-    if (!current() || signal?.aborted) throw new Error("Computer owner changed during dispatch");
-    if (!record(result) || JSON.stringify(result).length > 32 * 1024 * 1024)
-      throw new Error("Invalid computer host response");
-    if (phase === "prepare") {
-      if (request.discardPreparedPlan === true) return result;
-      if (result.error && result.dispatch === "not_sent") return result;
-      if (
-        result.operation !== request.arguments.operation ||
-        result.parameters === undefined ||
-        !isDeepStrictEqual(result.parameters, request.arguments.parameters) ||
-        result.coreInstanceId !== coreInstanceId ||
-        result.coreGeneration !== coreGeneration ||
-        result.projectId !== projectId ||
-        result.threadId !== threadId ||
-        result.turnId !== turnId ||
-        result.callId !== callId ||
-        result.toolHostGeneration !== request.toolHostGeneration
-      )
-        throw new Error("Invalid prepared computer identity");
-      return result;
-    }
-    return this.toolResult(request, result, current);
   }
 
   /** @param {ToolHostInput} raw */

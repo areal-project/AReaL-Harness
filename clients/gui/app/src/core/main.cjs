@@ -48,8 +48,7 @@ const validatePreview = require("@areal/workbench/desktop-contract").validatePre
 const { modelRecord } = require("@areal/workbench/core-model-contract");
 const { readBrowserHostRequest, browserHostFailure } = require("./browser-host-request.cjs");
 const { CorePreview, developmentApproval } = require("./preview.cjs");
-const { ComputerControl, readComputerSelection } = require("./computer-control.cjs");
-const { ExternalCua, nativeAppElicitation } = require("./external-cua.cjs");
+const { ExternalCua, nativeAppElicitation, readComputerSelection } = require("./external-cua.cjs");
 const diagnostics = require("@areal/workbench-service/desktop/core/diagnostics.cjs");
 const { startSnapShots } = require("./snapshots/host.cjs");
 const cfg = require("./service-config.cjs");
@@ -128,8 +127,6 @@ function startDesktop() {
   const guiRoot = app.isPackaged
     ? join(process.resourcesPath, "areal-gui")
     : resolve(__dirname, "../../../renderer/dist");
-  /** @type {InstanceType<typeof ComputerControl>|undefined} */
-  let computer;
   /** @type {InstanceType<typeof ExternalCua>|undefined} */
   let externalCua;
   /** @type {unknown} */
@@ -149,8 +146,8 @@ function startDesktop() {
     !computerSystemPaused &&
     !computerAdmissionSuspended;
   /** @param {string} reason */
-  const stopComputer = (reason) => Promise.all([computer?.stop(reason), externalCua?.stop(reason)]);
-  const closeComputer = () => Promise.all([computer?.close(), externalCua?.close()]);
+  const stopComputer = (reason) => Promise.resolve(externalCua?.stop(reason));
+  const closeComputer = () => Promise.resolve(externalCua?.close());
   /** @type {Electron.BrowserWindow|undefined} */
   let window;
   /** @type {import("./snapshots/DesktopSnapShots.js").DesktopSnapShots|undefined} */
@@ -802,29 +799,12 @@ function startDesktop() {
             await serviceBackend.init({ automatic: connectedOnce });
             if (serviceBackend.status.connected) connectedOnce = true;
           };
-          const computerHost = (computer = new ComputerControl({
-            helperPath: app.isPackaged
-              ? join(process.resourcesPath, "computer-helper/AReaL Computer Helper.app")
-              : join(__dirname, "../../../native/computer-helper/build/AReaL Computer Helper.app"),
-            getEnabled: () =>
-              computerAvailable() &&
-              computerSelection().enabled &&
-              computerSelection().provider === "native",
-            onActivity: (status) => {
-              if (computerSelection().provider === "native") {
-                computerActivity = status;
-                publish();
-              }
-            },
-          }));
           const externalCuaHost = (externalCua = new ExternalCua({
             getSelection: computerSelection,
             getAvailable: computerAvailable,
             onActivity: (status) => {
-              if (computerSelection().provider === "lcu") {
-                computerActivity = status;
-                publish();
-              }
+              computerActivity = status;
+              publish();
             },
             onElicitation: nativeAppElicitation(
               app,
@@ -840,8 +820,7 @@ function startDesktop() {
           };
           serviceBackend.onBrowserCancel = (request) => {
             if (!modelRecord(request) || typeof request.requestId !== "number") return;
-            if (request.tool === "computer_v1" || request.tool === "external_cua")
-              computerRequests.get(request.requestId)?.abort();
+            if (request.tool === "external_cua") computerRequests.get(request.requestId)?.abort();
             else if (
               typeof request.projectId === "string" &&
               typeof request.threadId === "string" &&
@@ -874,52 +853,6 @@ function startDesktop() {
                 throw error;
               } finally {
                 computerRequests.delete(request.requestId);
-              }
-            }
-            if (request.tool === "computer_v1") {
-              if (quitting || !window || window.isDestroyed() || browserWindowClosed)
-                throw new Error("Computer host unavailable");
-              const controller = new AbortController();
-              computerRequests.set(request.requestId, controller);
-              try {
-                const input = { ...request, signal: controller.signal };
-                return await (request.phase === "prepare"
-                  ? request.discardPreparedPlan === true
-                    ? computerHost.discard(input)
-                    : computerHost.prepare(input)
-                  : computerHost.execute(input));
-              } catch (error) {
-                const fields = modelRecord(error) ? error : {};
-                const details = desktopError(error);
-                if (request.phase === "prepare")
-                  return {
-                    ...(modelRecord(fields.structuredContent) ? fields.structuredContent : {}),
-                    code: details.code ?? "computer_unavailable",
-                    message: details.message,
-                    error: details.code ?? "computer_unavailable",
-                    dispatch: "not_sent",
-                    dispatch_status: "not_sent",
-                    action_sent: false,
-                  };
-                const dispatch = fields.dispatch_status ?? fields.dispatchStatus;
-                if (
-                  dispatch === "not_sent" &&
-                  fields.actionSent !== true &&
-                  fields.action_sent !== true
-                )
-                  return {
-                    isError: true,
-                    content: [{ type: "text", text: details.message }],
-                    structuredContent: {
-                      code: details.code ?? "computer_unavailable",
-                      dispatch_status: "not_sent",
-                      action_sent: false,
-                    },
-                  };
-                throw error;
-              } finally {
-                if (computerRequests.get(request.requestId) === controller)
-                  computerRequests.delete(request.requestId);
               }
             }
             if (quitting || !preview || !window || window.isDestroyed())
@@ -1329,42 +1262,15 @@ function startDesktop() {
               }
               if (name === "computerControl") {
                 let value;
-                if (computerSelection().provider === "lcu") {
-                  if (params.operation === "status") value = externalCuaHost.status();
-                  else if (params.operation === "restart") value = await externalCuaHost.check();
-                  else if (params.operation === "stop") {
-                    await externalCuaHost.stop("user_stop");
-                    value = externalCuaHost.status();
-                  } else
-                    throw new Error(
-                      "LCU installation and OS permissions are managed outside AReaL Harness",
-                    );
-                } else if (params.operation === "status") value = await computerHost.status();
+                if (params.operation === "status") value = externalCuaHost.status();
+                else if (params.operation === "restart") value = await externalCuaHost.check();
                 else if (params.operation === "stop") {
-                  await computerHost.stop("user_stop");
-                  value = await computerHost.status();
-                } else if (params.operation === "restart") {
-                  await computerHost.restart();
-                  value = await computerHost.status();
-                } else {
-                  if (process.platform !== "darwin")
-                    throw new Error("Computer control is unavailable on this platform");
-                  if (params.operation === "requestAccess")
-                    value = await computerHost.requestAccess(params.capability);
-                  else {
-                    if (params.operation !== "openSettings")
-                      throw new Error("Invalid computer operation");
-                    const panes = {
-                      accessibility: "Privacy_Accessibility",
-                      screenRecording: "Privacy_ScreenCapture",
-                      inputMonitoring: "Privacy_ListenEvent",
-                    };
-                    await shell.openExternal(
-                      `x-apple.systempreferences:com.apple.preference.security?${panes[params.capability]}`,
-                    );
-                    value = await computerHost.status();
-                  }
-                }
+                  await externalCuaHost.stop("user_stop");
+                  value = externalCuaHost.status();
+                } else
+                  throw new Error(
+                    "LCU installation and OS permissions are managed outside AReaL Harness",
+                  );
                 trusted(event);
                 if (serviceBackend.computerHostOwned !== true)
                   value = {

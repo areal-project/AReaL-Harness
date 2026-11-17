@@ -400,11 +400,8 @@ test(
                 ],
                 features: {
                   browserToolAttachment: browserAvailable,
-                  computerToolAttachment: true,
-                  computerToolPreparation: true,
                 },
                 browserToolBundles: [{ bundleId: "areal.browser.v1" }],
-                desktopToolBundles: [{ bundleId: "areal.computer.v1" }],
               }
             : ["areal/model/list", "areal/profile/list"].includes(message.method)
               ? { data: [] }
@@ -483,32 +480,16 @@ test(
     const liveClient = project.client;
     const setting = (key, value) =>
       host.executeCommand("library", { operation: "settings", key, value });
-    await setting("computerControlProvider", "native");
-    assert.deepEqual(publications.at(-1), {
-      bundles: ["areal.browser.v1", "areal.computer.v1"],
-    });
-    await setting("computerControlEnabled", false);
-    assert.deepEqual(publications.at(-1), { bundles: ["areal.browser.v1"] });
-    await setting("computerControlEnabled", true);
-    assert.deepEqual(publications.at(-1), {
-      bundles: ["areal.browser.v1", "areal.computer.v1"],
-    });
-    await setting("computerControlProvider", "lcu");
-    assert.deepEqual(publications.at(-1), { bundles: ["areal.browser.v1"] });
-    await setting("computerControlProvider", "native");
-    assert.deepEqual(publications.at(-1), {
-      bundles: ["areal.browser.v1", "areal.computer.v1"],
-    });
-    await setting("computerControlEnabled", false);
-    assert.deepEqual(publications.at(-1), { bundles: ["areal.browser.v1"] });
     const settingsPublications = publications.length;
+    await setting("computerControlEnabled", false);
+    await setting("computerControlEnabled", true);
     await setting("taskNotifications", false);
     assert.equal(publications.length, settingsPublications);
     managed = false;
-    await setting("computerControlProvider", "lcu");
+    await host.connections.publishScheduleTools(project, liveClient, owner);
     assert.deepEqual(publications.at(-1), { bundles: [] });
     managed = true;
-    await setting("computerControlProvider", "native");
+    await host.connections.publishScheduleTools(project, liveClient, owner);
     assert.deepEqual(publications.at(-1), { bundles: ["areal.browser.v1"] });
     assert.equal(project.client, liveClient);
     assert.equal(liveClient.closed, false);

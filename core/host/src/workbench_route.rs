@@ -86,6 +86,9 @@ pub(super) struct Supervisor {
     providers: Rc<super::provider_catalog::Providers>,
     feedback: super::feedback::Feedback,
     trajectory: Rc<super::trajectory::Trajectory>,
+    pub(super) side_owners: super::side_owners::SideWindowOwners,
+    workspace_ops: super::workspace_ops::WorkspaceOps,
+    manage_service: super::manage_service::ManageService,
     /// 桌面后台：界面 Main 原来在进程内启动的 CoreBackend + DesktopService，改由 Host 监督。
     backend: Backend,
 }
@@ -472,6 +475,11 @@ impl Supervisor {
             values,
         });
     }
+    #[cfg(test)]
+    pub(super) fn set_test_source_and_options(&self, source: &str, options: Value) {
+        *self.backend.source.borrow_mut() = Some(source.to_owned());
+        *self.backend.utility_options.borrow_mut() = Some(options);
+    }
 
     pub(super) async fn prepare_execution(
         &self,
@@ -770,7 +778,8 @@ impl Supervisor {
         self.backend.stop().await;
     }
 
-    pub(super) fn disconnect_connection(&self, connection: &str) {
+    pub(super) fn disconnect_connection(&self, host: &Rc<Host>, connection: &str) {
+        self.side_owners.disconnect(host, connection);
         let Some(backend) = self.backend.running.borrow().clone() else {
             return;
         };
@@ -793,6 +802,24 @@ fn backend_rejection(receipt: &Value, error: &Value) -> anyhow::Error {
             "RESOURCE_UNAVAILABLE",
             error["message"].as_str().unwrap_or("供应商连接不可用"),
         );
+    }
+    if receipt["method"] == "manage.command" && error.get("data").is_none() {
+        let code = match error["code"].as_str() {
+            Some("COMMAND_FAILED") => Some("COMMAND_FAILED"),
+            Some("scheduleWorkspaceRequired") => Some("scheduleWorkspaceRequired"),
+            Some("RESOURCE_UNAVAILABLE") => Some("RESOURCE_UNAVAILABLE"),
+            Some("INVALID_PARAMS") => Some("INVALID_PARAMS"),
+            Some("FORBIDDEN") => Some("FORBIDDEN"),
+            Some("TARGET_CHANGED") => Some("TARGET_CHANGED"),
+            Some("PROFILE_NOT_SUPPORTED") => Some("PROFILE_NOT_SUPPORTED"),
+            _ => None,
+        };
+        if let Some(code) = code {
+            return crate::wire::error(
+                code,
+                error["message"].as_str().unwrap_or("Host command failed"),
+            );
+        }
     }
     super::task_catalog::TaskRejection(error.clone()).into()
 }
@@ -918,40 +945,11 @@ pub(super) async fn backend_command(
     let standalone_worktree = method == "worktree.command" && source == "host";
     let native_task = method == "manage.command"
         && super::task_catalog::mutation(params["operation"].as_str().unwrap_or("")).is_some();
+    let native_manage = method == "manage.command" && !native_task;
     if !standalone_worktree {
         host.gateway.workbench.restore_source(host)?;
         ensure!(
             host.gateway.workbench.active_source().is_some(),
-            "CAPABILITY_UNAVAILABLE"
-        );
-        ensure!(
-            host.gateway.workbench.backend_has_source(&source),
-            "FORBIDDEN"
-        );
-    }
-    let native_library = method == "library.command";
-    let native_provider = method == "providers.command";
-    let native_feedback = method == "feedback.command";
-    let native_trajectory = method == "trajectory.command";
-    if !standalone_worktree
-        && !native_task
-        && !native_library
-        && !native_provider
-        && !native_feedback
-        && !native_trajectory
-    {
-        host.gateway.workbench.resume_backend(host).await?;
-    }
-    let backend = host.gateway.workbench.backend.running.borrow().clone();
-    if !standalone_worktree
-        && !native_task
-        && !native_library
-        && !native_provider
-        && !native_feedback
-        && !native_trajectory
-    {
-        ensure!(
-            backend.as_ref().is_some_and(|b| !b.closed()),
             "CAPABILITY_UNAVAILABLE"
         );
         ensure!(
@@ -980,6 +978,10 @@ pub(super) async fn backend_command(
     if method == "manage.command" && payload.get("requestId").is_none() {
         payload["requestId"] = json!(command);
     }
+    let native_library = method == "library.command";
+    let native_provider = method == "providers.command";
+    let native_feedback = method == "feedback.command";
+    let native_trajectory = method == "trajectory.command";
     let result = if native_library {
         super::library_service::command(host, &source, payload).await
     } else if method == "worktree.command" {
@@ -1009,11 +1011,14 @@ pub(super) async fn backend_command(
     } else if native_task {
         payload["sourceId"] = json!(source);
         super::task_catalog::command(host, &payload).await
-    } else {
-        backend
-            .context("CAPABILITY_UNAVAILABLE")?
-            .request(method, payload, json!({"principal":principal}))
+    } else if native_manage {
+        host.gateway
+            .workbench
+            .manage_service
+            .command_rpc(host, &source, &command, payload)
             .await
+    } else {
+        bail!("methodNotFound")
     }
     .and_then(|value| {
         if method == "library.command" {
@@ -1044,6 +1049,11 @@ pub(super) async fn backend_command(
             .or_else(|| {
                 native_trajectory
                     .then(|| super::trajectory::rejection(&error))
+                    .flatten()
+            })
+            .or_else(|| {
+                native_manage
+                    .then(|| super::manage_service::rejection(&error))
                     .flatten()
             }) {
             Some(error) => {
@@ -1077,6 +1087,33 @@ pub(super) async fn backend_command(
     Ok(receipt)
 }
 
+pub(super) fn desktop_command_capability(params: &Value) -> Option<&'static str> {
+    let command = params.get("command")?.as_str()?;
+    let operation = params
+        .get("request")
+        .and_then(|req| req.get("operation"))
+        .and_then(Value::as_str);
+    match command {
+        "editMessage" | "continue" | "fork" => Some("submit"),
+        "manage" => {
+            let op = operation?;
+            if MANAGE_SUBMIT_OPERATIONS.contains(&op) {
+                Some("submit")
+            } else if MANAGE_INTERRUPT_OPERATIONS.contains(&op) {
+                Some("interrupt")
+            } else {
+                None
+            }
+        }
+        "prediction" if operation == Some("request") => Some("submit"),
+        "queueEdit" if matches!(operation, Some("update" | "reorder" | "resume" | "steer")) => {
+            Some("submit")
+        }
+        "side" if matches!(operation, Some("start" | "send" | "create")) => Some("submit"),
+        _ => None,
+    }
+}
+
 /// 本机网页的桌面命令：与桌面窗口同一用户，由后台按桌面命令合同校验后执行。
 /// 不进 Host journal，丢回复与桌面窗口原路径一样只能重新读取。
 pub(super) async fn desktop_command(
@@ -1085,16 +1122,30 @@ pub(super) async fn desktop_command(
     connection: &str,
     request: &Value,
 ) -> Result<Value> {
+    use areal_protocol::host::DesktopCommandParamsFieldCommand as Cmd;
     ensure!(request.get("commandId").is_none(), "INVALID_PARAMS");
     let mut params = serde_json::from_value::<areal_protocol::host::DesktopCommandParams>(
         request["params"].clone(),
     )
     .context("INVALID_PARAMS")?;
     host.admission()?;
-    if matches!(
-        params.command,
-        areal_protocol::host::DesktopCommandParamsFieldCommand::Chatgpt
-    ) {
+    let native_command = match params.command {
+        Cmd::Value3 => Some("chatgpt"),
+        Cmd::Value6 => Some("configure"),
+        Cmd::Value8 => Some("continue"),
+        Cmd::Value9 => Some("dismissRecovery"),
+        Cmd::Value10 => Some("editMessage"),
+        Cmd::Value12 => Some("fork"),
+        Cmd::Value15 => Some("manage"),
+        Cmd::Value18 => Some("prediction"),
+        Cmd::Value22 => Some("queue"),
+        Cmd::Value23 => Some("queueEdit"),
+        Cmd::Value24 => Some("reconcile"),
+        Cmd::Value27 => Some("side"),
+        Cmd::Value30 => Some("workspace"),
+        _ => None,
+    };
+    if let Some(command) = native_command {
         host.gateway.workbench.restore_source(host)?;
         let source = host.gateway.workbench.active_source().ok_or_else(|| {
             crate::wire::error(
@@ -1106,7 +1157,31 @@ pub(super) async fn desktop_command(
             params.source_id.take().is_none_or(|id| id == source),
             "FORBIDDEN"
         );
-        return host.chatgpt_desktop_command(&source, &params.request).await;
+        return match command {
+            "chatgpt" => host.chatgpt_desktop_command(&source, &params.request).await,
+            "manage" => {
+                host.gateway
+                    .workbench
+                    .manage_service
+                    .desktop_command(host, principal, &source, &params.request)
+                    .await
+            }
+            "side" => {
+                host.gateway
+                    .workbench
+                    .side_owners
+                    .command(host, &source, connection, &params.request)
+                    .await
+            }
+            "workspace" => {
+                host.gateway
+                    .workbench
+                    .workspace_ops
+                    .execute(host, &source, &params.request)
+                    .await
+            }
+            _ => super::session_commands::execute(host, &source, command, &params.request).await,
+        };
     }
     host.gateway.workbench.resume_backend(host).await?;
     let source = host.gateway.workbench.backend.source.borrow().clone();
@@ -1217,14 +1292,19 @@ pub(super) async fn backend_read(
     if method == "worktree.read" && host.gateway.workbench.backend_has_source(&source) {
         return super::worktree_catalog::read(host, &source, params).await;
     }
-    params.as_object_mut().unwrap().remove("sourceId");
-    let value = host
-        .gateway
-        .workbench
-        .request(host, method, params, json!({"principal":principal}))
-        .await?;
-    validate_backend_result(method, &value)?;
-    Ok(value)
+    if method == "manage.read" {
+        params.as_object_mut().unwrap().remove("sourceId");
+        let value = host
+            .gateway
+            .workbench
+            .manage_service
+            .read_rpc(host, &source, params)
+            .await?;
+        validate_backend_result(method, &value)?;
+        return Ok(value);
+    }
+    let _ = principal;
+    bail!("methodNotFound")
 }
 
 fn validate_backend_result(method: &str, value: &Value) -> Result<()> {

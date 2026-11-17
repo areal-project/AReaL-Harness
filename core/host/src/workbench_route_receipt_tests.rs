@@ -1,27 +1,149 @@
 //! 从 workbench_route.rs 拆出的测试：写命令回执（明确失败按拒绝结算、回复丢失保持未知且不重放）与后台准入。
 use super::*;
+use futures_util::{SinkExt, StreamExt};
+use tokio_tungstenite::tungstenite::Message;
+
+const TEST_PROJECT_ALIAS: &str = "fedcba9876543210fedcba98";
+
+async fn setup_archive_fixture<F>(
+    root: &Path,
+    handler: F,
+) -> (Rc<Host>, String, tokio::task::JoinHandle<()>, Box<dyn Fn()>)
+where
+    F: FnMut(&str, &Value) -> Option<Value> + 'static,
+{
+    let base = root.canonicalize().unwrap();
+    let mut host = crate::server::schedules::tests::fixture(&base);
+    host.bin = base.join("bin");
+    for dir in [&host.bin, &base.join("profile"), &base.join("data")] {
+        areal_local_service::storage::private_dir(dir).unwrap();
+    }
+    let source = crate::migration::Source {
+        profile: base.join("profile"),
+        core_home: base.join("data"),
+        legacy_service_home: base.join("legacy"),
+    };
+    host.migration
+        .attach(source.clone(), "fixture", None)
+        .unwrap();
+    let imported = host
+        .migration
+        .import(
+            serde_json::from_value(json!({
+                "requestId": uuid::Uuid::new_v4().to_string(),
+                "expectedGeneration": host.identity.generation,
+                "source": source,
+            }))
+            .unwrap(),
+            "fixture",
+            &[],
+            &host.journal,
+        )
+        .unwrap();
+    assert_eq!(imported["kind"], "ready");
+    let source_id = host
+        .migration
+        .navigation_source_id(&source.profile)
+        .unwrap()
+        .unwrap();
+    let workspace = base.join("project");
+    areal_local_service::storage::private_dir(&workspace).unwrap();
+    {
+        let mut slots = host.slots.borrow_mut();
+        let slot = slots.get_mut("project").unwrap();
+        slot.registration.workspace = workspace.clone();
+        slot.registration.source = crate::ProjectSource::Gui {
+            profile: source.profile.clone(),
+            legacy_project_id: TEST_PROJECT_ALIAS.into(),
+        };
+    }
+    areal_local_service::storage::write(
+        &source.core_home.join("projects.json"),
+        &json!([{ "id": TEST_PROJECT_ALIAS, "root": workspace }]),
+    )
+    .unwrap();
+    let host = Rc::new(host);
+    host.gateway.workbench.test_source(&source_id);
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let registration = host.slots.borrow()["project"].registration.clone();
+    let service = areal_protocol::service::Service {
+        identity: areal_protocol::service::Identity {
+            protocol_version: 1,
+            service_id: "fixture".into(),
+            generation: "gen-1".into(),
+            workspace: registration.workspace,
+            data_dir: registration.data_dir,
+            config_fingerprint: "fixture".into(),
+        },
+        owner: Some(host.owner()),
+        endpoint: format!("ws://{}/", listener.local_addr().unwrap()),
+        web_url: String::new(),
+        auth_file: host.home.join("core-auth.json"),
+        log_file: host.home.join("core.log"),
+        host_pid: 1,
+        core_pid: 2,
+        state: areal_protocol::service::State::Ready,
+    };
+    areal_local_service::storage::write(
+        &service.auth_file,
+        &json!({"principals":[{"id":"desktop-owner","token":"fixture"}]}),
+    )
+    .unwrap();
+    {
+        let mut slots = host.slots.borrow_mut();
+        let slot = slots.get_mut("project").unwrap();
+        slot.service = Some(service.clone());
+        slot.state = "ready".into();
+        let (writer, lifetime) = areal_local_service::OwnerLifetime::pair().unwrap();
+        slot.writer = Some(writer);
+        slot.lifetime = Some(Rc::new(lifetime));
+    }
+    let mut handler = handler;
+    let server = tokio::task::spawn_local(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+        while let Some(Ok(Message::Text(text))) = socket.next().await {
+            let call: Value = serde_json::from_str(&text).unwrap();
+            if call.get("id").is_none() {
+                continue;
+            }
+            let method = call["method"].as_str().unwrap();
+            let Some(mut response) = handler(method, &call["params"]) else {
+                break;
+            };
+            response["jsonrpc"] = json!("2.0");
+            response["id"] = call["id"].clone();
+            socket
+                .send(Message::Text(response.to_string().into()))
+                .await
+                .unwrap();
+        }
+    });
+    let close = host
+        .schedules
+        .connections
+        .connect_test_core(host.clone(), "project", service)
+        .await
+        .unwrap();
+    (host, source_id, server, close)
+}
 
 #[tokio::test(flavor = "current_thread")]
 async fn explicit_backend_failure_settles_as_rejection_not_unknown() {
     tokio::task::LocalSet::new().run_until(async {
         let root = tempfile::tempdir().unwrap();
-        let host = Rc::new(crate::server::schedules::tests::fixture(root.path()));
-        let runtime = std::env::split_paths(&std::env::var_os("PATH").unwrap())
-            .map(|path| path.join("node")).find(|path| path.is_file()).expect("Node is required for the workbench boundary test");
-        let runner = root.path().join("refuse.cjs");
-        std::fs::write(&runner, r#"
-            console.log(JSON.stringify({version:1,event:'ready',methods:['manage.command']}));
-            require('node:readline').createInterface({input:process.stdin}).on('line', (line) => {
-              const request = JSON.parse(line);
-              console.log(JSON.stringify({version:1,id:request.id,error:{code:'TARGET_CHANGED'}}));
-            });
-        "#).unwrap();
-        let reverse: Reverse = Rc::new(|_, _| Box::pin(async { bail!("FORBIDDEN") }));
-        let backend = Workbench::start(&runtime, &runner, root.path(), reverse).await.unwrap();
-        *host.gateway.workbench.backend.running.borrow_mut() = Some(Rc::new(backend));
-        *host.gateway.workbench.backend.source.borrow_mut() = Some("fixture".into());
+        let workspace = root.path().canonicalize().unwrap().join("project");
+        let (host, source, server, close) = setup_archive_fixture(root.path(), move |method, params| match method {
+            "initialize" => Some(json!({"result":{}})),
+            "areal/task/list" => Some(json!({"result":{"data":[],"nextCursor":null}})),
+            "areal/capabilities" => Some(json!({"result":{"methodSemantics":{"areal/thread/archive":{"effect":"mutation","receipt":"management"}},"features":{"threadCreationJournal":{"binding":null}}}})),
+            "thread/read" => Some(json!({"result":{"thread":{"id":params["threadId"],"sessionId":"s-1","cwd":workspace,"conversation":{"kind":"ordinary","policy":{"kind":"ordinaryV1"}},"turns":[]}}})),
+            "areal/thread/archive" => Some(json!({"error":{"code":-32009,"message":"TARGET_CHANGED","data":{"outcome":{"kind":"rejected"}}}})),
+            other => panic!("unexpected {other}"),
+        }).await;
         let command = uuid::Uuid::new_v4().to_string();
-        let request = json!({"method":"manage.command","commandId":command,"params":{"sourceId":"fixture","operation":"archive","projectId":"p","threadId":"t"}});
+        let request = json!({"method":"manage.command","commandId":command,"params":{"sourceId":source,"operation":"archive","projectId":TEST_PROJECT_ALIAS,"threadId":"t"}});
         assert_eq!(backend_command(&host, "local", &request).await.unwrap_err().to_string(), "TARGET_CHANGED");
         // 同一命令再来一次只读原结论，不重新派发，也不留在待核对列表里。
         assert_eq!(backend_command(&host, "local", &request).await.unwrap_err().to_string(), "TARGET_CHANGED");
@@ -30,7 +152,8 @@ async fn explicit_backend_failure_settles_as_rejection_not_unknown() {
         let (_, snapshot) = host.journal.native_snapshot(&scope).unwrap();
         assert_eq!(snapshot["pending"], json!([]));
         assert_eq!(snapshot["outcomes"][&command]["admissionState"], "rejected");
-        host.gateway.workbench.stop_backend().await;
+        close();
+        server.abort();
     }).await;
 }
 
@@ -38,35 +161,37 @@ async fn explicit_backend_failure_settles_as_rejection_not_unknown() {
 async fn lost_backend_reply_keeps_the_original_library_command_unknown() {
     tokio::task::LocalSet::new().run_until(async {
         let root = tempfile::tempdir().unwrap();
-        let host = Rc::new(crate::server::schedules::tests::fixture(root.path()));
-        let runtime = std::env::split_paths(&std::env::var_os("PATH").unwrap())
-            .map(|path| path.join("node")).find(|path| path.is_file()).expect("Node is required for the workbench boundary test");
-        let runner = root.path().join("lost-reply.cjs");
-        std::fs::write(&runner, r#"
-            const fs = require('node:fs');
-            console.log(JSON.stringify({version:1,event:'ready',methods:['manage.command']}));
-            require('node:readline').createInterface({input:process.stdin}).on('line', () => {
-              fs.appendFileSync(process.env.AREAL_WORKBENCH_DATA + '/effects', 'once\n');
-              process.exit(0);
-            });
-        "#).unwrap();
-        let reverse: Reverse = Rc::new(|_, _| Box::pin(async { bail!("FORBIDDEN") }));
-        let backend = Workbench::start(&runtime, &runner, root.path(), reverse).await.unwrap();
-        *host.gateway.workbench.backend.running.borrow_mut() = Some(Rc::new(backend));
-        *host.gateway.workbench.backend.source.borrow_mut() = Some("fixture".into());
+        let base = root.path().canonicalize().unwrap();
+        let workspace = base.join("project");
+        let effects = base.join("effects");
+        let effects_cb = effects.clone();
+        let (host, source, server, close) = setup_archive_fixture(root.path(), move |method, params| match method {
+            "initialize" => Some(json!({"result":{}})),
+            "areal/task/list" => Some(json!({"result":{"data":[],"nextCursor":null}})),
+            "areal/capabilities" => Some(json!({"result":{"methodSemantics":{"areal/thread/archive":{"effect":"mutation","receipt":"management"}},"features":{"threadCreationJournal":{"binding":null}}}})),
+            "thread/read" => Some(json!({"result":{"thread":{"id":params["threadId"],"sessionId":"s-1","cwd":workspace,"conversation":{"kind":"ordinary","policy":{"kind":"ordinaryV1"}},"turns":[]}}})),
+            "areal/thread/archive" => {
+                use std::io::Write;
+                let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&effects_cb).unwrap();
+                f.write_all(b"once\n").unwrap();
+                None
+            }
+            other => panic!("unexpected {other}"),
+        }).await;
         let command = uuid::Uuid::new_v4().to_string();
-        let request = json!({"method":"manage.command","commandId":command,"params":{"sourceId":"fixture","operation":"archive","projectId":"p","threadId":"t"}});
+        let request = json!({"method":"manage.command","commandId":command,"params":{"sourceId":source,"operation":"archive","projectId":TEST_PROJECT_ALIAS,"threadId":"t"}});
         let first = backend_command(&host, "local", &request).await.unwrap();
         assert_eq!(first["submissionUnknown"], true);
         assert_eq!(backend_command(&host, "local", &request).await.unwrap(), first);
-        assert_eq!(std::fs::read_to_string(root.path().join("effects")).unwrap(), "once\n");
+        assert_eq!(std::fs::read_to_string(&effects).unwrap(), "once\n");
         let mut conflict = request.clone();
         conflict["params"]["threadId"] = json!("other");
         assert_eq!(backend_command(&host, "local", &conflict).await.unwrap_err().to_string(), "COMMAND_CONFLICT");
         assert_eq!(backend_receipt(&host, "local", &command).unwrap().unwrap()["submissionUnknown"], true);
         let other_method = json!({"method":"worktree.command","commandId":command,"params":{"sourceId":"fixture","operation":"worktreeSettings","worktreeRoot":"/isolated","branchPrefix":"fixture"}});
         assert_eq!(backend_command(&host, "local", &other_method).await.unwrap_err().to_string(), "COMMAND_CONFLICT");
-        host.gateway.workbench.stop_backend().await;
+        close();
+        server.abort();
     }).await;
 }
 
@@ -74,35 +199,37 @@ async fn lost_backend_reply_keeps_the_original_library_command_unknown() {
 async fn lost_library_preference_reply_is_not_replayed() {
     tokio::task::LocalSet::new().run_until(async {
         let root = tempfile::tempdir().unwrap();
-        let host = Rc::new(crate::server::schedules::tests::fixture(root.path()));
-        let runtime = std::env::split_paths(&std::env::var_os("PATH").unwrap())
-            .map(|path| path.join("node")).find(|path| path.is_file()).expect("Node is required for the workbench boundary test");
-        let runner = root.path().join("lost-reply.cjs");
-        std::fs::write(&runner, r#"
-            const fs = require('node:fs');
-            console.log(JSON.stringify({version:1,event:'ready',methods:['manage.command']}));
-            require('node:readline').createInterface({input:process.stdin}).on('line', () => {
-              fs.appendFileSync(process.env.AREAL_WORKBENCH_DATA + '/effects', 'once\n');
-              process.exit(0);
-            });
-        "#).unwrap();
-        let reverse: Reverse = Rc::new(|_, _| Box::pin(async { bail!("FORBIDDEN") }));
-        let backend = Workbench::start(&runtime, &runner, root.path(), reverse).await.unwrap();
-        *host.gateway.workbench.backend.running.borrow_mut() = Some(Rc::new(backend));
-        *host.gateway.workbench.backend.source.borrow_mut() = Some("fixture".into());
+        let base = root.path().canonicalize().unwrap();
+        let workspace = base.join("project");
+        let effects = base.join("effects");
+        let effects_cb = effects.clone();
+        let (host, source, server, close) = setup_archive_fixture(root.path(), move |method, params| match method {
+            "initialize" => Some(json!({"result":{}})),
+            "areal/task/list" => Some(json!({"result":{"data":[],"nextCursor":null}})),
+            "areal/capabilities" => Some(json!({"result":{"methodSemantics":{"areal/thread/archive":{"effect":"mutation","receipt":"management"}},"features":{"threadCreationJournal":{"binding":null}}}})),
+            "thread/read" => Some(json!({"result":{"thread":{"id":params["threadId"],"sessionId":"s-1","cwd":workspace,"conversation":{"kind":"ordinary","policy":{"kind":"ordinaryV1"}},"turns":[]}}})),
+            "areal/thread/archive" => {
+                use std::io::Write;
+                let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&effects_cb).unwrap();
+                f.write_all(b"once\n").unwrap();
+                None
+            }
+            other => panic!("unexpected {other}"),
+        }).await;
         let command = uuid::Uuid::new_v4().to_string();
-        let request = json!({"method":"manage.command","commandId":command,"params":{"sourceId":"fixture","operation":"archive","projectId":"p","threadId":"t"}});
+        let request = json!({"method":"manage.command","commandId":command,"params":{"sourceId":source,"operation":"archive","projectId":TEST_PROJECT_ALIAS,"threadId":"t"}});
         let first = backend_command(&host, "local", &request).await.unwrap();
         assert_eq!(first["submissionUnknown"], true);
         assert_eq!(backend_command(&host, "local", &request).await.unwrap(), first);
-        assert_eq!(std::fs::read_to_string(root.path().join("effects")).unwrap(), "once\n");
+        assert_eq!(std::fs::read_to_string(&effects).unwrap(), "once\n");
         let mut conflict = request.clone();
         conflict["params"]["threadId"] = json!("other");
         assert_eq!(backend_command(&host, "local", &conflict).await.unwrap_err().to_string(), "COMMAND_CONFLICT");
         assert_eq!(backend_receipt(&host, "local", &command).unwrap().unwrap()["submissionUnknown"], true);
         let other_method = json!({"method":"worktree.command","commandId":command,"params":{"sourceId":"fixture","operation":"worktreeSettings","worktreeRoot":"/isolated","branchPrefix":"fixture"}});
         assert_eq!(backend_command(&host, "local", &other_method).await.unwrap_err().to_string(), "COMMAND_CONFLICT");
-        host.gateway.workbench.stop_backend().await;
+        close();
+        server.abort();
     }).await;
 }
 

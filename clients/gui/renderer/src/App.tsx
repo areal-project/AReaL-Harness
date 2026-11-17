@@ -479,10 +479,7 @@ function AppContent({ services }: { services: PlatformServices }) {
             role="status"
             className="fixed bottom-4 right-4 z-50 flex items-center justify-between gap-3 rounded-lg border bg-background px-4 py-2 text-ui-sm shadow-lg"
           >
-            <span>
-              {t("settings.computer.working")}
-              {snapshot.computerControl.app?.name ? ` · ${snapshot.computerControl.app.name}` : ""}
-            </span>
+            <span>{t("settings.computer.working")}</span>
             <Button
               variant="outline"
               size="sm"
