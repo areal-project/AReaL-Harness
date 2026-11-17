@@ -1,7 +1,83 @@
 import { HostClient } from "@areal/client/node";
+import { HostClient as ReadClient, readHostBootstrap, type ShellView } from "@areal/client";
+import { connectWebSocket } from "../../../packages/client/src/websocket.js";
+import WebSocket from "ws";
 type Fields = Record<string, unknown>;
 const record = (value: unknown): value is Fields =>
   !!value && typeof value === "object" && !Array.isArray(value);
+
+/** 原生功能与Renderer复用Host的shell基线、增量与身份校验。 */
+export async function createNativeShellTransport(options: {
+  home: string;
+  profile: string;
+  hostId: string;
+  generation: string;
+  onShell: (shell: ShellView) => void;
+  onClosed: () => void;
+}) {
+  let closed = false;
+  const clientOptions = {
+    origin: "areal-ui://app",
+    bootstrap: async () => {
+      const local = new HostClient();
+      try {
+        await local.connect(options.home);
+        if (local.hostId !== options.hostId || local.generation !== options.generation)
+          throw new Error("Original native Host changed");
+        const ticket = readHostBootstrap(
+          await local.request("web.ticket", {
+            origin: "areal-ui://app",
+            expectedGeneration: options.generation,
+            profile: options.profile,
+          }),
+        );
+        if (ticket.hostId !== options.hostId || ticket.generation !== options.generation)
+          throw new Error("Original native Host ticket changed");
+        return ticket;
+      } finally {
+        local.close();
+      }
+    },
+  };
+  const reads = new ReadClient({
+    ...clientOptions,
+    transport: ({ current, signal, onEvent }) =>
+      connectWebSocket(
+        clientOptions,
+        current,
+        signal,
+        onEvent,
+        () => {
+          if (closed) return;
+          close();
+          options.onClosed();
+        },
+        (url) =>
+          new WebSocket(url, { origin: clientOptions.origin }) as unknown as globalThis.WebSocket,
+      ),
+  });
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    reads.close();
+  };
+  reads.subscribe(() => {
+    if (reads.snapshot().connection === "offline" && !closed) {
+      close();
+      options.onClosed();
+    }
+  });
+  reads.subscribeReads(() => {
+    const shell = reads.readsSnapshot().shell;
+    if (!closed && shell.state === "fresh") options.onShell(shell.value.snapshot);
+  });
+  await reads.retry();
+  if (closed || reads.readsSnapshot().shell.state !== "fresh") {
+    close();
+    throw new Error("Native Host shell unavailable");
+  }
+  return { close };
+}
 export type DesktopCallback = {
   sourceId: string;
   projectId: string;
@@ -166,6 +242,8 @@ export async function createNativeHostTransport(options: {
     }
     if (closed) throw new Error("Native desktop attachment disconnected during subscription");
     return {
+      hostId: events.hostId,
+      generation: events.generation,
       call: (call: string, params: unknown) => {
         if (closed) return Promise.reject(new Error("Native desktop attachment disconnected"));
         return calls.request("desktop.core.call", { attachmentId: attachment, call, params });

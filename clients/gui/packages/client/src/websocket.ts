@@ -43,6 +43,7 @@ export async function connectWebSocket(
   signal: AbortSignal,
   onEvent: (event: unknown) => void,
   onClose: () => void,
+  createSocket: (url: string) => WebSocket = (url) => new WebSocket(url),
 ) {
   let bootstrap: HostBootstrap | undefined = readHostBootstrap(await options.bootstrap());
   if (bootstrap.origin !== options.origin) throw new Error("Host origin mismatch");
@@ -52,7 +53,7 @@ export async function connectWebSocket(
       ? bootstrap.preferredSourceId
       : undefined;
   if (!current()) throw new Error("Connection cancelled");
-  const socket = new WebSocket(bootstrap.websocketUrl);
+  const socket = createSocket(bootstrap.websocketUrl);
   let sequence = 0;
   const pending = new Map<string, Pending>();
   const close = () => {

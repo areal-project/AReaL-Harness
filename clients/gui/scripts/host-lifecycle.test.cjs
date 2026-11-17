@@ -1385,3 +1385,208 @@ test("GUI terminals use native Host commands and confirm cleanup without a Node 
   assert.equal(f.backend.guiTerminals.size, 0);
   assert.equal(f.backend.connection, undefined);
 });
+
+test("native shell uses the shared Host read contract and never starts a Node backend", async (t) => {
+  const f = await fixture(t);
+  const { WebSocketServer } = require("node:module").createRequire(
+    require.resolve("../app/package.json"),
+  )("ws");
+  const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  await once(server, "listening");
+  t.after(() => {
+    for (const socket of server.clients) socket.terminate();
+    server.close();
+  });
+  const methods = [];
+  const shell = {
+    projects: [
+      {
+        projectId: "canonical",
+        workspace: f.root,
+        projectless: false,
+        state: "stopped",
+        summaries: { state: "unknown", items: [] },
+        attention: { state: "unknown" },
+      },
+    ],
+    navigation: [
+      {
+        sourceId: "source",
+        state: "available",
+        bindings: [{ projectId: "canonical", alias: "alias", projectless: false }],
+        preferences: {},
+        settings: { showInMenuBar: false },
+        projects: {},
+        threads: {},
+        projectOrder: ["alias"],
+        sections: [],
+        sidebarThreadOrder: [],
+        sidebarRevision: 0,
+      },
+    ],
+  };
+  const identity = {
+    connectionId: "read",
+    gatewayGeneration: f.generation,
+    subscriptionId: "shell",
+    sequence: 0,
+  };
+  let socket;
+  server.on("connection", (ws, request) => {
+    assert.equal(request.headers.origin, "areal-ui://app");
+    socket = ws;
+    ws.on("message", (raw) => {
+      const q = JSON.parse(String(raw));
+      methods.push(q.method);
+      const result =
+        q.method === "hello"
+          ? {
+              hostId: f.hostId,
+              generation: f.generation,
+              negotiatedCapabilities: ["gui-read-v1"],
+              connectionId: "read",
+              gatewayGeneration: f.generation,
+            }
+          : q.method === "host.status"
+            ? {
+                hostId: f.hostId,
+                generation: f.generation,
+                state: "running",
+                restartPending: false,
+                stopIntent: false,
+                capabilities: [],
+                projects: [],
+              }
+            : { ...identity, snapshot: shell };
+      ws.send(JSON.stringify({ version: 1, id: q.id, result }));
+    });
+  });
+  f.setHandler(async (q) => {
+    assert.equal(q.method, "web.ticket");
+    assert.equal(q.params.profile, f.profile);
+    return {
+      version: 1,
+      hostId: f.hostId,
+      generation: f.generation,
+      origin: "areal-ui://app",
+      websocketUrl: `ws://127.0.0.1:${server.address().port}/`,
+      ticket: "synthetic",
+      expiresAt: Date.now() + 30000,
+    };
+  });
+  const updates = [];
+  let changed;
+  const change = new Promise((resolve) => {
+    changed = resolve;
+  });
+  let disconnected;
+  const disconnect = new Promise((resolve) => {
+    disconnected = resolve;
+  });
+  const {
+    createNativeShellTransport,
+  } = require("../app/src/core/generated/native-host-transport.cjs");
+  const owner = await createNativeShellTransport({
+    home: f.hostHome,
+    profile: f.profile,
+    hostId: f.hostId,
+    generation: f.generation,
+    onShell: (value) => {
+      updates.push(value);
+      if (updates.length === 2) changed();
+    },
+    onClosed: () => disconnected(),
+  });
+  t.after(() => owner.close());
+  assert.deepEqual(updates[0], shell);
+  const navigation = { ...shell.navigation[0], settings: { showInMenuBar: true } };
+  socket.send(
+    JSON.stringify({
+      version: 1,
+      method: "shell.updated",
+      params: {
+        ...identity,
+        event: "shell.updated",
+        sequence: 1,
+        delta: {
+          projects: { upsert: [], remove: [] },
+          navigation: { upsert: [navigation], remove: [] },
+        },
+      },
+    }),
+  );
+  await Promise.race([
+    change,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("native shell delta missing")), 2000).unref(),
+    ),
+  ]);
+  assert.equal(updates[1].navigation[0].settings.showInMenuBar, true);
+  assert.deepEqual(methods, ["hello", "host.status", "shell.subscribe"]);
+  assert.equal(
+    f.calls.some((q) => q.method === "backend.ensure"),
+    false,
+  );
+  socket.close();
+  await Promise.race([
+    disconnect,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("native shell disconnect missing")), 2000).unref(),
+    ),
+  ]);
+  assert.equal(server.clients.size, 0);
+});
+
+test("native shell metadata stays bound to the original GUI source and attachment", async (t) => {
+  const f = await fixture(t);
+  const epoch = {};
+  f.backend.nativeBrowserEpoch = epoch;
+  f.backend.nativeBrowserSource = "source";
+  const navigation = {
+    sourceId: "source",
+    state: "available",
+    settings: { showInMenuBar: false },
+    projects: { alias: { title: "Native project" } },
+    threads: {},
+    projectOrder: ["alias"],
+    sections: [],
+    sidebarThreadOrder: [],
+    sidebarRevision: 2,
+    bindings: [{ projectId: "canonical", alias: "alias", projectless: false }],
+  };
+  const shell = {
+    navigation: [navigation],
+    projects: [
+      {
+        projectId: "canonical",
+        workspace: f.root,
+        projectless: false,
+        state: "stopped",
+        summaries: { state: "fresh", items: [{ id: "thread", desktop: { archived: false } }] },
+        attention: { state: "unknown" },
+      },
+      {
+        projectId: "foreign",
+        workspace: "/foreign",
+        state: "ready",
+        summaries: { state: "unknown", items: [] },
+        attention: { state: "unknown" },
+      },
+    ],
+  };
+  f.backend.acceptNativeShell(shell, "source", epoch);
+  const snapshot = f.backend.snapshot();
+  assert.equal(snapshot.library.settings.showInMenuBar, false);
+  assert.deepEqual(
+    snapshot.projects.map((p) => p.id),
+    ["alias"],
+  );
+  assert.equal(snapshot.projects[0].root, f.root);
+  assert.equal(snapshot.projects[0].summaries[0].id, "thread");
+  f.backend.acceptNativeShell(
+    { ...shell, navigation: [{ ...navigation, settings: { showInMenuBar: true } }] },
+    "source",
+    {},
+  );
+  assert.equal(f.backend.snapshot().library.settings.showInMenuBar, false);
+});

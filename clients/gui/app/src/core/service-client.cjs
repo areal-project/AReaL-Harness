@@ -22,6 +22,7 @@ const {
 const {
   NativeTerminalOwners,
   createNativeHostTransport,
+  createNativeShellTransport,
 } = require("./generated/native-host-transport.cjs");
 const { ServiceConnection } = require("./service-connection.cjs");
 const {
@@ -163,6 +164,8 @@ class SharedCoreBackend {
     this.onBrowserRequest = undefined;
     /** @type {Awaited<ReturnType<typeof createNativeHostTransport>>|undefined} */
     this.nativeBrowser = undefined;
+    /** @type {Awaited<ReturnType<typeof createNativeShellTransport>>|undefined} */
+    this.nativeShell = undefined;
     /** @type {ReturnType<typeof createNativeHostTransport>|undefined} */
     this.nativeBrowserConnecting = undefined;
     /** @type {object|undefined} */
@@ -304,6 +307,8 @@ class SharedCoreBackend {
     this.nativeBrowser = undefined;
     this.nativeBrowserConnecting = undefined;
     this.nativeBrowserScopes.clear();
+    this.nativeShell?.close();
+    this.nativeShell = undefined;
     original?.close();
     if (original) this.onBrowserDisconnected?.();
   }
@@ -366,6 +371,29 @@ class SharedCoreBackend {
     this.nativeBrowser = transport;
     this.nativeBrowserConnecting = undefined;
   }
+  /** @param {{home:string,sourceId:string}} source */
+  async connectNativeShell(source) {
+    const epoch = this.nativeBrowserEpoch;
+    const transport = this.nativeBrowser;
+    if (!epoch || !transport || !this.options.guiProfile)
+      throw new Error("Native source attachment unavailable");
+    const shell = await createNativeShellTransport({
+      home: source.home,
+      profile: this.options.guiProfile,
+      hostId: transport.hostId,
+      generation: transport.generation,
+      onShell: (value) => this.acceptNativeShell(value, source.sourceId, epoch),
+      onClosed: () => {
+        if (this.nativeBrowserEpoch === epoch && !this.disposed) this.disconnected();
+      },
+    });
+    if (this.nativeBrowserEpoch !== epoch || this.disposed) {
+      shell.close();
+      throw new Error("Original native source changed");
+    }
+    this.nativeShell = shell;
+    this.identity = `${transport.hostId}:${transport.generation}`;
+  }
   /** @param {string} projectId @param {string} threadId */
   ownsThread(projectId, threadId) {
     if (this.value.library.projects[projectId]?.hidden) return false;
@@ -407,6 +435,42 @@ class SharedCoreBackend {
   /** @param {string} projectId @param {string} threadId */
   retainsThreadResources(projectId, threadId) {
     return retainsThreadResources(this.value, projectId, threadId);
+  }
+  /** @param {import('@areal/client').ShellView} shell @param {string} sourceId @param {object} epoch */
+  acceptNativeShell(shell, sourceId, epoch) {
+    if (this.disposed || this.nativeBrowserEpoch !== epoch || this.nativeBrowserSource !== sourceId)
+      return;
+    const navigation = shell.navigation.find((source) => source.sourceId === sourceId);
+    if (!navigation || navigation.state !== "available")
+      throw new Error("Original native GUI navigation unavailable");
+    this.value = {
+      library: {
+        projects: navigation.projects,
+        threads: navigation.threads,
+        projectOrder: navigation.projectOrder,
+        settings: navigation.settings,
+        sections: navigation.sections,
+        sidebarThreadOrder: navigation.sidebarThreadOrder,
+        sidebarRevision: navigation.sidebarRevision,
+      },
+      projects: shell.projects.flatMap((project) => {
+        const binding = navigation.bindings.find(
+          (binding) => binding.projectId === project.projectId,
+        );
+        if (!binding) return [];
+        return [
+          {
+            id: binding.alias,
+            root: project.workspace,
+            state: null,
+            summaries: project.summaries.items,
+            projectless: binding.projectless,
+            ...(binding.logicalProjectId ? { logicalProjectId: binding.logicalProjectId } : {}),
+          },
+        ];
+      }),
+    };
+    this.onChange();
   }
   snapshot() {
     const desktopCapabilities = {
