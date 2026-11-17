@@ -165,6 +165,52 @@ pub(crate) fn execute(
     reply_value(response)
 }
 
+/// 主密钥只用来封装凭据，不直接当口令；明文永远不落盘。
+pub(crate) const MASTER_KEY_BYTES: usize = 32;
+const SEAL_TAG_BYTES: usize = 16;
+const SEAL_NONCE_BYTES: usize = 12;
+
+fn seal(key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>> {
+    let unbound = ring::aead::UnboundKey::new(&ring::aead::AES_256_GCM, key)
+        .map_err(|_| error("storageLocked", "invalid credential master key"))?;
+    let mut nonce = [0u8; SEAL_NONCE_BYTES];
+    ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut nonce)
+        .map_err(|_| error("storageLocked", "credential nonce unavailable"))?;
+    let mut sealed = plaintext.to_vec();
+    ring::aead::LessSafeKey::new(unbound)
+        .seal_in_place_append_tag(
+            ring::aead::Nonce::assume_unique_for_key(nonce),
+            ring::aead::Aad::empty(),
+            &mut sealed,
+        )
+        .map_err(|_| error("storageLocked", "credential encryption failed"))?;
+    let mut out = Vec::with_capacity(SEAL_NONCE_BYTES + sealed.len());
+    out.extend_from_slice(&nonce);
+    out.extend_from_slice(&sealed);
+    Ok(out)
+}
+
+fn unseal(key: &[u8], sealed: &[u8]) -> Result<Vec<u8>> {
+    ensure!(
+        sealed.len() > SEAL_NONCE_BYTES + SEAL_TAG_BYTES,
+        error("storageLocked", "credential envelope is truncated")
+    );
+    let (nonce, body) = sealed.split_at(SEAL_NONCE_BYTES);
+    let mut nonce_bytes = [0u8; SEAL_NONCE_BYTES];
+    nonce_bytes.copy_from_slice(nonce);
+    let unbound = ring::aead::UnboundKey::new(&ring::aead::AES_256_GCM, key)
+        .map_err(|_| error("storageLocked", "invalid credential master key"))?;
+    let mut body = body.to_vec();
+    let plaintext = ring::aead::LessSafeKey::new(unbound)
+        .open_in_place(
+            ring::aead::Nonce::assume_unique_for_key(nonce_bytes),
+            ring::aead::Aad::empty(),
+            &mut body,
+        )
+        .map_err(|_| error("storageLocked", "credential envelope failed authentication"))?;
+    Ok(plaintext.to_vec())
+}
+
 fn reply_value(response: Reply) -> Result<Option<Value>> {
     match response.status {
         0 => Ok(response.value),
@@ -376,10 +422,7 @@ pub fn run(channel_fd: i32, owner_fd: i32) -> Result<()> {
     let owner = unsafe { File::from_raw_fd(owner_fd) };
     let invocation: Invocation = receive(&mut channel)?;
     let home = authenticate(&channel, &owner, &invocation.authority)?;
-    let service = format!(
-        "org.areal.host.v1.{}",
-        storage::digest(home.as_os_str().as_encoded_bytes())
-    );
+    let service = master_key_service(&home);
     match &invocation.request {
         Request::Read { entry, .. } | Request::Write { entry, .. } => ensure!(
             entry_is_owned(&home, entry)?,
@@ -402,25 +445,32 @@ pub fn run(channel_fd: i32, owner_fd: i32) -> Result<()> {
                     )?,
                 )
             };
-            match security_framework::passwords::get_generic_password(&service, &entry) {
-                Ok(bytes) => Reply {
-                    status: 0,
-                    value: Some(
-                        serde_json::from_slice(&bytes)
-                            .map_err(|_| error("storageLocked", "invalid stored credential"))?,
-                    ),
-                },
+            match read_sealed(&home, &service, &entry) {
+                Ok(value) => Reply { status: 0, value },
                 Err(cause) => Reply {
-                    status: cause.code(),
+                    status: cause
+                        .downcast_ref::<crate::wire::Error>()
+                        .map_or(-25300, |error| match error.code {
+                            "storageAuthorizationRequired" => -25293,
+                            _ => -1,
+                        }),
                     value: None,
                 },
             }
         }
         Request::Write { entry, value } => {
             let bytes = serde_json::to_vec(&value)?;
-            let status =
-                security_framework::passwords::set_generic_password(&service, &entry, &bytes)
-                    .map_or_else(|cause| cause.code(), |()| 0);
+            let status = write_sealed(&home, &service, &entry, &bytes).map_or_else(
+                |cause| {
+                    cause
+                        .downcast_ref::<crate::wire::Error>()
+                        .map_or(-1, |error| match error.code {
+                            "storageAuthorizationRequired" => -25293,
+                            _ => -1,
+                        })
+                },
+                |()| 0,
+            );
             Reply {
                 status,
                 value: None,
@@ -443,6 +493,122 @@ pub fn run(channel_fd: i32, owner_fd: i32) -> Result<()> {
         }
     };
     send(&mut channel, &response)
+}
+
+/// 主密钥条目按 Home 归属，但**不按可执行文件路径**授权：旧实现把每条凭据直接写进
+/// 登录 keychain，ACL 的「可信应用」记的是内层二进制绝对路径，换包后 CDHash 变化即失效，
+/// 而读取路径禁用用户交互，没有任何恢复入口。现在 keychain 只保存一把主密钥，
+/// 凭据用主密钥加密后写进 Host home 的加密文件，条目本身不再逐个随版本失效。
+fn master_key_service(home: &Path) -> String {
+    format!(
+        "org.areal.credential.v1.{}",
+        storage::digest(home.as_os_str().as_encoded_bytes())
+    )
+}
+
+fn sealed_path(home: &Path, entry: &str) -> PathBuf {
+    home.join("host/vault-sealed").join(format!("{entry}.bin"))
+}
+
+fn master_key(service: &str) -> Result<[u8; MASTER_KEY_BYTES]> {
+    match security_framework::passwords::get_generic_password(service, "master") {
+        Ok(bytes) => {
+            let key: [u8; MASTER_KEY_BYTES] = bytes.as_slice().try_into().map_err(|_| {
+                error(
+                    "storageLocked",
+                    "credential master key has an unexpected length",
+                )
+            })?;
+            Ok(key)
+        }
+        Err(cause) if cause.code() == -25300 => {
+            let mut key = [0u8; MASTER_KEY_BYTES];
+            ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut key)
+                .map_err(|_| error("storageLocked", "credential master key unavailable"))?;
+            security_framework::passwords::set_generic_password(service, "master", &key).map_err(
+                |cause| match cause.code() {
+                    -25293 => error(
+                        "storageAuthorizationRequired",
+                        "Keychain authorization does not permit creating the credential master key",
+                    ),
+                    code => error(
+                        "storageLocked",
+                        format!("Keychain master key write failed ({code})"),
+                    ),
+                },
+            )?;
+            Ok(key)
+        }
+        Err(cause) if cause.code() == -25293 => Err(error(
+            "storageAuthorizationRequired",
+            "Keychain authorization does not permit reading the credential master key",
+        )),
+        Err(cause) => Err(error(
+            "storageLocked",
+            format!("Keychain master key read failed ({})", cause.code()),
+        )),
+    }
+}
+
+fn read_sealed(home: &Path, service: &str, entry: &str) -> Result<Option<Value>> {
+    let Some(sealed) = storage::read_bytes(&sealed_path(home, entry))? else {
+        // 迁移：旧版把每个凭据直接存成一条 keychain 条目。读到就搬到加密文件并删除旧条目，
+        // 之后不再依赖绑定二进制路径的 ACL。旧条目读不出（含授权失败）时保持原状，
+        // 交由上层呈现待恢复，不在这里静默丢弃。
+        return match legacy_secret(home, entry) {
+            Ok(Some(bytes)) => {
+                let value: Value = serde_json::from_slice(&bytes)
+                    .map_err(|_| error("storageLocked", "invalid stored credential"))?;
+                if write_sealed(home, service, entry, &bytes).is_ok() {
+                    let _ = security_framework::passwords::delete_generic_password(
+                        &legacy_service(home),
+                        entry,
+                    );
+                }
+                Ok(Some(value))
+            }
+            Ok(None) => Ok(None),
+            Err(cause) => Err(cause),
+        };
+    };
+    let key = master_key(service)?;
+    let plaintext = unseal(&key, &sealed)?;
+    serde_json::from_slice(&plaintext)
+        .map(Some)
+        .map_err(|_| error("storageLocked", "invalid stored credential"))
+}
+
+/// 旧版条目按「Home + 每凭据一条」存放，只为迁移读取。
+fn legacy_service(home: &Path) -> String {
+    format!(
+        "org.areal.host.v1.{}",
+        storage::digest(home.as_os_str().as_encoded_bytes())
+    )
+}
+
+fn legacy_secret(home: &Path, entry: &str) -> Result<Option<Vec<u8>>> {
+    match security_framework::passwords::get_generic_password(&legacy_service(home), entry) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(cause) if cause.code() == -25300 => Ok(None),
+        Err(cause) if cause.code() == -25293 => Err(error(
+            "storageAuthorizationRequired",
+            "Keychain authorization does not permit migrating the stored credential",
+        )),
+        Err(cause) => Err(error(
+            "storageLocked",
+            format!("Keychain legacy read failed ({})", cause.code()),
+        )),
+    }
+}
+
+fn write_sealed(home: &Path, service: &str, entry: &str, bytes: &[u8]) -> Result<()> {
+    let key = master_key(service)?;
+    let sealed = seal(&key, bytes)?;
+    let directory = home.join("host/vault-sealed");
+    storage::private_dir(&directory)?;
+    std::fs::File::open(home.join("host"))?.sync_all()?;
+    storage::write_bytes(&sealed_path(home, entry), &sealed)?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -675,4 +841,38 @@ fn keychain_identity_rejection_requires_authorization_not_unlocking() {
         .unwrap()
         .is_none()
     );
+}
+
+#[test]
+fn sealed_credentials_round_trip_and_bind_to_the_master_key() {
+    let key = [7u8; MASTER_KEY_BYTES];
+    let plaintext = br#"{"token":"secret-value"}"#.to_vec();
+    let sealed = seal(&key, &plaintext).unwrap();
+    // 密文不能含明文片段，且同一明文两次封装得到不同 nonce。
+    assert!(!sealed.windows(6).any(|window| window == b"secret"));
+    assert_ne!(sealed, seal(&key, &plaintext).unwrap());
+    assert_eq!(unseal(&key, &sealed).unwrap(), plaintext);
+    // 换一把主密钥必须认证失败，而不是返回错误明文。
+    let mut other = key;
+    other[0] ^= 0xff;
+    assert!(unseal(&other, &sealed).is_err());
+    // 篡改任一字节都必须被拒绝。
+    let mut tampered = sealed.clone();
+    let last = tampered.len() - 1;
+    tampered[last] ^= 0x01;
+    assert!(unseal(&key, &tampered).is_err());
+    assert!(unseal(&key, &sealed[..SEAL_NONCE_BYTES + 1]).is_err());
+}
+
+#[test]
+fn sealed_credential_files_are_private_and_home_scoped() {
+    let root = tempfile::tempdir().unwrap();
+    let home = storage::prepare_host_home(root.path()).unwrap();
+    storage::private_dir(&home.join("host")).unwrap();
+    let service = master_key_service(&home);
+    // 服务名只由 Home 决定：换包、换可执行路径都不会改变条目名。
+    assert_eq!(service, master_key_service(&home));
+    assert!(service.starts_with("org.areal.credential.v1."));
+    let path = sealed_path(&home, "entry-id");
+    assert_eq!(path, home.join("host/vault-sealed/entry-id.bin"));
 }
