@@ -79,7 +79,7 @@ async function exportRemoteAssets(source, destination) {
   return { files: files.size, version };
 }
 
-/** @param {string} source @param {string} site */
+/** @param {string} source @param {string|undefined} site */
 async function relayFiles(source, site) {
   /** @type {Map<string,Buffer>} */
   const files = new Map();
@@ -111,8 +111,10 @@ async function relayFiles(source, site) {
   const requireFromSource = createRequire(join(source, "package.json"));
   const ws = dirname(await realpath(requireFromSource.resolve("ws/package.json")));
   await tree(ws, "node_modules/ws/");
-  const assets = await remoteAssets(site);
-  for (const [name, bytes] of assets.files) files.set(`assets/${name}`, bytes);
+  if (site) {
+    const assets = await remoteAssets(site);
+    for (const [name, bytes] of assets.files) files.set(`assets/${name}`, bytes);
+  }
   const manifest = [...files]
     .map(([path, bytes]) => ({ path, sha256: digest(bytes) }))
     .sort((a, b) => a.path.localeCompare(b.path));
@@ -124,9 +126,9 @@ async function relayFiles(source, site) {
   return { files, version };
 }
 
-/** @param {{source:string,site:string,destination:string}} options */
-async function buildRelayResources({ source, site, destination }) {
-  const { files, version } = await relayFiles(source, site);
+/** @param {{source:string,site?:string,destination:string,includeAssets?:boolean}} options */
+async function buildRelayResources({ source, site, destination, includeAssets = true }) {
+  const { files, version } = await relayFiles(source, includeAssets ? site : undefined);
   await writeFiles(destination, files);
   return { bundleDir: destination, version };
 }

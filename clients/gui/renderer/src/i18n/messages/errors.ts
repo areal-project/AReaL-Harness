@@ -198,4 +198,24 @@ export const errorMessages = {
     "zh-CN": "找不到这个对话所属的任务运行。",
     en: "Couldn't find the task run this conversation belongs to.",
   },
+  "errors.storageAuthorizationRequired": {
+    "zh-CN": "macOS 钥匙串未授权当前应用访问凭据，请在钥匙串访问中授权后重试。",
+    en: "macOS Keychain did not authorize this app to access credentials. Grant access in Keychain and try again.",
+  },
+  "errors.storageMissing": {
+    "zh-CN": "系统钥匙串中缺少解密本地凭据的主密钥，请恢复原有凭据或重新配置手机连接。",
+    en: "The Keychain master key for encrypted credentials is missing. Restore the original key or reconfigure mobile access.",
+  },
+  "errors.storageLocked": {
+    "zh-CN": "本地凭据存储已锁定，请解锁钥匙串后重试。",
+    en: "Credential storage is locked. Unlock your Keychain and try again.",
+  },
+  "errors.remoteStateUnavailable": {
+    "zh-CN": "手机连接配置尚未加载完成，请稍后重试。",
+    en: "Remote configuration has not been loaded yet. Try again in a moment.",
+  },
+  "errors.localRelayUnavailable": {
+    "zh-CN": "本机 Relay 组件不完整或签名校验未通过，无法启动内网连接。",
+    en: "The local Relay bundle is incomplete or failed verification and could not start.",
+  },
 } as const;

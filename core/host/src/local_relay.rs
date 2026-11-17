@@ -118,15 +118,20 @@ impl Bundle {
             "localRelayUnavailable",
         )
         .await
-        .and_then(|mut bundle| {
-            ensure!(
-                bundle.files.iter().any(|path| path.starts_with("assets")),
-                "Relay bundle is incomplete"
-            );
-            bundle.assets = Some(bundle.root.join("assets"));
-            Ok(bundle)
+        .map(|mut bundle| {
+            bundle.assets = resolve_packaged_assets(&bundle.root);
+            bundle
         })
     }
+}
+
+fn resolve_packaged_assets(root: &Path) -> Option<PathBuf> {
+    let bundled_assets = root.join("assets");
+    if bundled_assets.is_dir() {
+        return Some(bundled_assets);
+    }
+    let gui_assets = root.parent().map(|dir| dir.join("areal-gui"));
+    gui_assets.filter(|dir| dir.join("remote-assets.json").is_file())
 }
 /// 已签名 macOS 应用内的 Node 资源目录：校验签名与 bundle.json 清单后，用应用自带的 Electron 运行。
 pub(crate) async fn discover_bundle(
@@ -878,5 +883,23 @@ mod tests {
         assert!(is_virtual_interface("awdl0"));
         assert!(!is_virtual_interface("en0"));
         assert!(!is_virtual_interface("wlan0"));
+    }
+
+    #[test]
+    fn packaged_assets_fallback_to_sibling_areal_gui_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let resources = root.path().join("Contents/Resources");
+        let relay = resources.join("areal-relay");
+        let gui = resources.join("areal-gui");
+        std::fs::create_dir_all(&relay).unwrap();
+        std::fs::create_dir_all(&gui).unwrap();
+        assert_eq!(resolve_packaged_assets(&relay), None);
+
+        std::fs::write(gui.join("remote-assets.json"), "{}").unwrap();
+        assert_eq!(resolve_packaged_assets(&relay), Some(gui));
+
+        let local_assets = relay.join("assets");
+        std::fs::create_dir_all(&local_assets).unwrap();
+        assert_eq!(resolve_packaged_assets(&relay), Some(local_assets));
     }
 }

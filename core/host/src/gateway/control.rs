@@ -1,12 +1,17 @@
 use super::*;
 
-fn source(host: &Host, source_id: &str) -> Result<Value> {
-    let snapshot = host.remote.snapshot(&host.migration)?;
+fn matching_source(snapshot: Value, source_id: &str) -> Result<Value> {
     ensure!(
         snapshot["sourceId"] == source_id,
         error("sourceNotFound", "Remote source does not match")
     );
     Ok(snapshot)
+}
+fn source(host: &Host, source_id: &str) -> Result<Value> {
+    matching_source(host.remote.snapshot(&host.migration)?, source_id)
+}
+async fn source_async(host: &Host, source_id: &str) -> Result<Value> {
+    matching_source(host.remote.snapshot_async(&host.migration).await?, source_id)
 }
 fn now() -> u64 {
     std::time::SystemTime::now()
@@ -82,8 +87,15 @@ fn pair_payload(host: &Host, config: &Value, invite: &Invite) -> Result<Value> {
     Ok(json!({"payload":format!("{origin}/#{fragment}"),"expiresAt":invite.expires_at}))
 }
 impl Host {
+    pub(in crate::server) async fn gateway_state_async(&self, source_id: &str) -> Result<Value> {
+        let snapshot = source_async(self, source_id).await?;
+        self.gateway_state_from_snapshot(&snapshot)
+    }
     pub(in crate::server) fn gateway_state(&self, source_id: &str) -> Result<Value> {
         let snapshot = source(self, source_id)?;
+        self.gateway_state_from_snapshot(&snapshot)
+    }
+    fn gateway_state_from_snapshot(&self, snapshot: &Value) -> Result<Value> {
         let config = &snapshot["config"];
         let identity = config["identity"]
             .as_str()
@@ -187,7 +199,7 @@ impl Host {
                 "requestId belongs to another domain operation",
             ));
         }
-        let snapshot = source(self, &input.source_id)?;
+        let snapshot = source_async(self, &input.source_id).await?;
         let digest = self.intent_digest(
             "remote.gateway.control",
             &input.source_id,

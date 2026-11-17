@@ -42,6 +42,7 @@ class NativeRemote {
     this.config = { enabled: false, directEnabled: false };
     this.channels = new Map();
     this.closed = false;
+    this.migrationCode = "";
     this.assetRoot = "";
     /** @type {Reference|null} */ this.pending = null;
     /** @type {Promise<unknown>|undefined} */ this.writes = undefined;
@@ -88,9 +89,21 @@ class NativeRemote {
     try {
       this.config = await this.storage.init();
     } catch (error) {
-      if (!(error instanceof Error && "code" in error && error.code === "migrationPending"))
-        throw error;
-      this.view.migrationError = "手机连接身份尚未恢复，请在凭据可用后重新打开应用。";
+      const code =
+        error instanceof Error && "code" in error && typeof error.code === "string"
+          ? error.code
+          : "";
+      const storageErrors = {
+        migrationPending: "手机连接身份尚未恢复，请在凭据可用后重新打开应用。",
+        storageAuthorizationRequired:
+          "macOS 钥匙串拒绝了当前应用读取手机连接凭据，请在系统钥匙串授权后重试。",
+        storageMissing:
+          "找不到读取手机连接加密凭据所需的钥匙串主密钥，需先恢复原有凭据或重置手机连接配置。",
+        storageLocked: "本地凭据库当前已锁定，请解锁系统钥匙串后重试。",
+      };
+      if (!(code in storageErrors)) throw error;
+      this.migrationCode = code === "migrationPending" ? "MIGRATION_PENDING" : code;
+      this.view.migrationError = storageErrors[code];
       this.view.directError = this.view.migrationError;
       this.view.relayError = this.view.migrationError;
       await this.close();
@@ -280,7 +293,9 @@ class NativeRemote {
     if (!isRemoteRequest(request)) throw new Error("无效手机设置参数");
     if (this.closed && request.operation === "status" && this.view.migrationError)
       return Promise.resolve(this.view);
-    if (this.closed) throw new Error("Host Remote 连接已关闭");
+    if (this.closed && this.view.migrationError)
+      throw Object.assign(new Error(this.view.migrationError), { code: this.migrationCode });
+    if (this.closed) throw Object.assign(new Error("Host Remote 连接已关闭"), { code: "DISCONNECTED" });
     const task = (this.writes ?? Promise.resolve())
       .catch(() => {})
       .then(async () => {
