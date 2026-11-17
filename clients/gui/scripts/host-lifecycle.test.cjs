@@ -1590,3 +1590,32 @@ test("native shell metadata stays bound to the original GUI source and attachmen
   );
   assert.equal(f.backend.snapshot().library.settings.showInMenuBar, false);
 });
+
+test("remaining Node remote adapter delegates control to the native Host owner", async () => {
+  const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
+  const calls = [];
+  const socket = {};
+  const service = {
+    backend: {
+      host: { sourceId: "source" },
+      providers: { redact: (value) => value },
+      hostCall: async (method, params) => {
+        calls.push({ method, params });
+        return { enabled: false };
+      },
+    },
+    clients: new Set([socket]),
+    inflight: 0,
+    schedule() {},
+    remote: { control: async () => assert.fail("Node remote controller must not execute") },
+  };
+  assert.deepEqual(
+    await DesktopService.prototype.execute.call(service, socket, "remoteControl", {
+      operation: "disable",
+    }),
+    { enabled: false },
+  );
+  assert.deepEqual(calls, [
+    { method: "remote.control", params: { sourceId: "source", request: { operation: "disable" } } },
+  ]);
+});

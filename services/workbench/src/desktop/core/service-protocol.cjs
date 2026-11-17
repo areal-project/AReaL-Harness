@@ -893,11 +893,16 @@ class DesktopService {
         return response;
       }
       if (method === "remoteControl") {
-        await this.remoteInitialization;
-        if (!this.remote) throw new Error("手机连接未初始化");
         this.inflight++;
         try {
-          response = await this.remote.control(params);
+          const result = await this.backend.hostCall("remote.control", {
+            sourceId: this.backend.host.sourceId,
+            request: params,
+          });
+          response =
+            params.operation === "pair" && record(result) && typeof result.payload === "string"
+              ? { ...result, qr: await require("qrcode").toDataURL(result.payload) }
+              : result;
         } finally {
           this.inflight--;
           this.schedule();

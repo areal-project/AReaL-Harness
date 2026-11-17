@@ -59,7 +59,19 @@ fn pair_payload(host: &Host, config: &Value, invite: &Invite) -> Result<Value> {
 }
 impl Host {
     pub(in crate::server) fn gateway_state(&self, source_id: &str) -> Result<Value> {
-        let snapshot = source(self, source_id)?;
+        let snapshot = self.remote.snapshot(&self.migration)?;
+        self.gateway_state_snapshot(source_id, snapshot)
+    }
+    pub(in crate::server) fn gateway_state_snapshot(
+        &self,
+        source_id: &str,
+        snapshot: Value,
+    ) -> Result<Value> {
+        if snapshot["sourceId"].is_null() {
+            self.migration.source_profile(source_id)?;
+        } else {
+            ensure!(snapshot["sourceId"] == source_id, "sourceNotFound");
+        }
         let config = &snapshot["config"];
         let identity = config["identity"]
             .as_str()

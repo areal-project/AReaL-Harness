@@ -935,3 +935,21 @@ describe("library Host-only routing", () => {
     },
   );
 });
+
+it("renders the Host pairing payload as a QR code in the shared client", async () => {
+  const client = {
+    writable: () => true,
+    workbench: async () => ({
+      payload: "https://synthetic.invalid/#invite=synthetic",
+      expiresAt: Date.now() + 120000,
+    }),
+  } as unknown as HostClient;
+  const command = hostDesktopCommand(client, hostCommandError);
+  const result = await command("remoteControl", { operation: "pair", transport: "relay" });
+  expect(result.ok).toBe(true);
+  if (!result.ok) throw new Error("Pairing failed");
+  expect(result.value).toMatchObject({
+    payload: "https://synthetic.invalid/#invite=synthetic",
+    qr: expect.stringMatching(/^data:image\/png;base64,/),
+  });
+});

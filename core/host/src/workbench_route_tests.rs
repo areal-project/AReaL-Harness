@@ -2256,3 +2256,37 @@ async fn native_gui_terminal_uses_its_attachment_and_original_process_receipt() 
         core.await.unwrap();
     }).await;
 }
+
+#[tokio::test]
+async fn native_remote_status_and_control_do_not_start_node() {
+    tokio::task::LocalSet::new().run_until(async {
+        let temp=tempfile::tempdir().unwrap();let root=temp.path().canonicalize().unwrap();
+        let (mut host,input,source)=resumable_host(&root);
+        Rc::get_mut(&mut Rc::get_mut(&mut host).unwrap().migration).unwrap().vault=crate::vault::Vault::isolated_files(&host.home);
+        frontend_options(&host,&source,input.options,None).unwrap();
+        std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+        let call=|request:Value| {let host=host.clone();let source=source.clone();async move {desktop_command(&host,"local","remote-fixture",&json!({"params":{"command":"remoteControl","sourceId":source,"request":request}})).await}};
+        let status=call(json!({"operation":"status"})).await.unwrap();
+        assert_eq!(status["enabled"],false);assert_eq!(status["directEnabled"],false);
+        assert!(host.remote.native_owner().unwrap().is_none());
+        let id=uuid::Uuid::new_v4().to_string();
+        let result=call(json!({"operation":"disable","requestId":id})).await.unwrap();
+        assert_eq!(result["enabled"],false);
+        let owned=host.remote.native_owner().unwrap().unwrap();assert_eq!(owned["sourceId"],source);
+        let receipt=host.remote.operation(&id,&host.migration).unwrap().unwrap();
+        assert_eq!(receipt["state"],"completed");
+        let before=host.remote.snapshot(&host.migration).unwrap();
+        assert_eq!(call(json!({"operation":"disable","requestId":id})).await.unwrap()["enabled"],false);
+        assert_eq!(host.remote.snapshot(&host.migration).unwrap()["revision"],before["revision"]);
+        let adapted=reverse(&host)("remote.control".into(),json!({"sourceId":source,"request":{"operation":"status"}})).await.unwrap();
+        assert_eq!(adapted["enabled"],false);
+        let pending=super::super::library_store::source_home(&host,&source).unwrap().join("host-remote-gateway-operation.json");
+        let reference=json!({"version":1,"pending":{"requestId":uuid::Uuid::new_v4().to_string(),"sourceId":source,"hostId":host.identity.host_id,"generation":host.identity.generation,"method":"remote.gateway.control","expectedRevision":before["revision"],"controlDigest":"a".repeat(64)}});
+        storage::write(&pending,&reference).unwrap();let original=std::fs::read(&pending).unwrap();
+        assert_eq!(call(json!({"operation":"status"})).await.unwrap()["enabled"],false);
+        assert!(call(json!({"operation":"disable"})).await.unwrap_err().to_string().contains("SUBMISSION_UNKNOWN"));
+        assert_eq!(std::fs::read(&pending).unwrap(),original);
+        assert_eq!(host.remote.snapshot(&host.migration).unwrap()["revision"],before["revision"]);
+        assert!(!host.gateway.workbench.has_running_backend());
+    }).await;
+}

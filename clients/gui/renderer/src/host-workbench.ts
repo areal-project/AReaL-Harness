@@ -134,10 +134,20 @@ export function hostDesktopCommand(
     if (!DESKTOP_COMMANDS.has(name) || !client.writable("desktop.command"))
       throw new Error("此功能需要桌面应用");
     try {
-      const value = await client.workbench("desktop.command", {
+      let value = await client.workbench("desktop.command", {
         command: name,
         request: params as Parameters<HostClient["workbench"]>[1],
       });
+      if (
+        name === "remoteControl" &&
+        "operation" in params &&
+        params.operation === "pair" &&
+        object(value) &&
+        typeof value.payload === "string"
+      ) {
+        const { toDataURL } = await import("qrcode");
+        value = { ...value, qr: await toDataURL(value.payload) };
+      }
       if (
         value &&
         typeof value === "object" &&

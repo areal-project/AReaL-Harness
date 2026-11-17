@@ -48,6 +48,8 @@ mod provider_catalog;
 mod provider_config;
 #[path = "provider_probe.rs"]
 mod provider_probe;
+#[path = "remote_commands.rs"]
+mod remote_commands;
 #[path = "resources.rs"]
 mod resources;
 #[path = "schedule_connection.rs"]

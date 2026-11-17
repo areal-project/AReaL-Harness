@@ -92,6 +92,7 @@ pub(super) struct Supervisor {
     pub(super) resources: super::resources::Resources,
     pub(super) cloud: super::cloud::Cloud,
     pub(super) projectless: super::projectless::Projectless,
+    remote_commands: super::remote_commands::RemoteCommands,
     /// 桌面后台：界面 Main 原来在进程内启动的 CoreBackend + DesktopService，改由 Host 监督。
     backend: Backend,
 }
@@ -1066,6 +1067,7 @@ pub(super) fn desktop_command<'a>(
             Cmd::Value22 => Some("queue"),
             Cmd::Value23 => Some("queueEdit"),
             Cmd::Value24 => Some("reconcile"),
+            Cmd::Value25 => Some("remoteControl"),
             Cmd::Value26 => Some("resources"),
             Cmd::Value27 => Some("side"),
             Cmd::Value30 => Some("workspace"),
@@ -1084,6 +1086,13 @@ pub(super) fn desktop_command<'a>(
                 "FORBIDDEN"
             );
             return match command {
+                "remoteControl" => {
+                    host.gateway
+                        .workbench
+                        .remote_commands
+                        .command(host, &source, &params.request)
+                        .await
+                }
                 "cloudSession" => {
                     Box::pin(host.gateway.workbench.cloud.sessions.command(
                         host,
@@ -1673,6 +1682,19 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
         Box::pin(async move {
             let host = host.upgrade().context("CAPABILITY_UNAVAILABLE")?;
             match call.as_str() {
+                "remote.control" => {
+                    let source = host
+                        .gateway
+                        .workbench
+                        .active_source()
+                        .context("FORBIDDEN")?;
+                    ensure!(params["sourceId"] == source, "FORBIDDEN");
+                    host.gateway
+                        .workbench
+                        .remote_commands
+                        .command(&host, &source, &params["request"])
+                        .await
+                }
                 "recovery.importProvider" => host.import_provider(serde_json::from_value(params)?),
                 // 桌面命令通道里的插件库操作与网关同一个入口。
                 "plugins.read" | "plugins.command" => {

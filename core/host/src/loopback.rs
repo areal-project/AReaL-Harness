@@ -101,7 +101,7 @@ struct BrowserBinding {
     port: u16,
 }
 
-fn ui_root(bin: &Path) -> Option<PathBuf> {
+pub(super) fn ui_root(bin: &Path) -> Option<PathBuf> {
     [
         bin.join("../../areal-gui"),
         bin.join("../share/areal-gui"),
