@@ -7,7 +7,7 @@ vi.hoisted(() => vi.stubGlobal("window", new EventTarget()));
 vi.mock("../i18n/IntlProvider.js", () => ({ useI18n: () => ({ t: (id: string) => id }) }));
 afterEach(() => vi.unstubAllGlobals());
 
-function fixture(settings: readonly string[]) {
+function fixture(settings: readonly string[], initialReleased = true) {
   const page = new EventTarget();
   vi.stubGlobal("window", page);
   vi.stubGlobal("document", { querySelector: () => null });
@@ -34,7 +34,7 @@ function fixture(settings: readonly string[]) {
         },
       } as Args[4],
       {} as Args[5],
-      true,
+      initialReleased,
       "bottom",
       { current: null },
     );
@@ -70,4 +70,36 @@ it("an observe-only client cannot open settings through the button handler", () 
   const f = fixture([]);
   f.navigation.showPanel("设置");
   expect(f.state).toEqual({ open: false, tab: "" });
+});
+
+it.each(["direct", "panel", "shortcut"])(
+  "opens recovery settings before startup releases via %s",
+  (entry) => {
+    const f = fixture(["模型服务"], false);
+    if (entry === "direct") f.navigation.openSettings("模型服务");
+    else if (entry === "panel") f.navigation.showPanel("设置");
+    else {
+      const unsubscribe = f.navigation.subscribeShortcuts();
+      const event = new Event("keydown", { cancelable: true });
+      Object.assign(event, {
+        key: ",",
+        ctrlKey: true,
+        metaKey: false,
+        altKey: false,
+        shiftKey: false,
+      });
+      f.page.dispatchEvent(event);
+      unsubscribe();
+    }
+    expect(f.state).toEqual({ open: true, tab: "模型服务" });
+    expect(f.selectPanel).not.toHaveBeenCalled();
+  },
+);
+
+it("does not grant settings or execution panels during failed startup", () => {
+  const f = fixture([], false);
+  f.navigation.openSettings("模型服务");
+  f.navigation.showPanel("进程");
+  expect(f.state.open).toBe(false);
+  expect(f.selectPanel).not.toHaveBeenCalled();
 });

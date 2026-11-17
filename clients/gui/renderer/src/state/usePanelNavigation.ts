@@ -82,7 +82,7 @@ export function usePanelNavigation(
       });
   };
   const openSettings = (target: string) => {
-    if (!initialReleased) return;
+    // 设置是连接失败时的恢复入口，不能等待连接恢复后才放行。
     const supported = session.services.capabilities?.settings;
     if (session.readOnly && !supported?.includes(target)) return;
     if (!session.readOnly) workspacePanels.exposePanel();
@@ -90,7 +90,6 @@ export function usePanelNavigation(
     setSettingsOpen(true);
   };
   const showPanel = (name: string) => {
-    if (!initialReleased) return;
     if (
       ["设置", "Skills", "MCP", "高级诊断", "后台服务", "会话配置"].includes(name) &&
       !(name === "Skills" && thread)
@@ -101,7 +100,7 @@ export function usePanelNavigation(
       );
       return;
     }
-    if (session.readOnly) return;
+    if (!initialReleased || session.readOnly) return;
     if (name === "预览") {
       void openBrowser();
       return;
@@ -156,7 +155,7 @@ export function usePanelNavigation(
   };
   const subscribeShortcuts = () => {
     const listener = (event: KeyboardEvent) => {
-      if (!initialReleased || event.isComposing) return;
+      if (event.isComposing) return;
       if (
         session.readOnly &&
         !(
@@ -177,6 +176,7 @@ export function usePanelNavigation(
           showPanel("设置");
         return;
       }
+      if (!initialReleased) return;
       if (project?.id && !settingsOpen && !event.altKey) {
         const key = event.key.toLowerCase();
         const panelShortcut =
