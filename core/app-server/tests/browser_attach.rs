@@ -821,3 +821,35 @@ async fn denied_browser_discovery_never_dispatches_to_the_client_host() {
     stop.cancel();
     task.await.unwrap().unwrap();
 }
+
+#[tokio::test]
+async fn empty_native_thread_accepts_browser_from_a_separate_desktop_connection() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(ModelFixture), Limits::default()).unwrap();
+    let (url, stop, task) = server(engine).await;
+    let mut creator = connected(&url).await;
+    let created = call(
+        &mut creator,
+        "areal/thread/start",
+        json!({
+            "requestId":"empty-native-start","cwd":"/workspace"
+        }),
+    )
+    .await;
+    let thread_id = created["result"]["thread"]["id"].as_str().unwrap();
+    let mut browser = connected(&url).await;
+    let attached = call(&mut browser, "areal/thread/tools/attach", json!({
+        "threadId":thread_id,"requestId":"empty-native-browser","expectedToolsetRevision":0,"bundleId":"areal.browser.v1"
+    })).await;
+    assert_eq!(attached["result"]["toolsetRevision"], 1, "{attached}");
+    assert!(
+        call(&mut creator, "areal/capabilities", json!({}))
+            .await
+            .get("result")
+            .is_some()
+    );
+    drop(browser);
+    drop(creator);
+    stop.cancel();
+    task.await.unwrap().unwrap();
+}

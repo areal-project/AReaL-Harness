@@ -503,7 +503,9 @@ impl Engine {
                 return Err(Error::Conflict);
             }
             let mut bindings = cell.bindings.write().await;
-            if bindings.host.as_ref().is_some_and(|old| old.id() != host.id() && !old.is_closed()) {
+            // 空工具表没有客户端工具执行权，共享连接不能阻止原生浏览器附件。
+            if !state.thread.dynamic_tools.is_empty()
+                && bindings.host.as_ref().is_some_and(|old| old.id() != host.id() && !old.is_closed()) {
                 return Err(Error::Conflict);
             }
             let present = state.thread.dynamic_tools.iter().find(|entry| entry.name == tool.name);

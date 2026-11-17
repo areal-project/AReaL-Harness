@@ -297,7 +297,7 @@ Core 的4 MiB WS帧上限是全链路实际约束；适配器更大的本地帧�
 | `areal/thread/tools/attach` | requestId, threadId, expectedToolsetRevision, bundleId=`areal.browser.v1` | 仅 interact+tools 的可信部署客户端；Thread 空闲；原子追加部署固定工具包并绑定当前宿主；同名不同schema冲突；重复返回原结果 |
 | `areal/thread/observe` | threadId | 原子历史/状态快照+后续增量；只需 observe 权限；不重绑 ToolHost，不改变现有 `thread/resume` 行为 |
 
-`Thread.toolsetRevision` 可选，旧 Thread 缺省 0。固定 `areal.browser.v1` 包由 Core 定义；请求不传工具 schema。附加返回 `threadId`、`toolsetRevision`、`bundleId`。同一主体、方法和 `requestId` 的相同请求从 Thread 内持久回执返回原结果；输入不同返回冲突。忙碌、存档、版本不符、同名不同定义或其他仍在线的宿主返回冲突。原始 `dynamicTools` 和历史保持原样，只追加部署包，不提供任意删除或替换接口；附加不结束 Turn 或发起新 Turn。
+`Thread.toolsetRevision` 可选，旧 Thread 缺省 0。固定 `areal.browser.v1` 包由 Core 定义；请求不传工具 schema。附加返回 `threadId`、`toolsetRevision`、`bundleId`。同一主体、方法和 `requestId` 的相同请求从 Thread 内持久回执返回原结果；输入不同返回冲突。忙碌、存档、版本不符、同名不同定义或持有既有客户端工具的其他在线宿主返回冲突。空客户端工具表不因共享创建连接仍在线而拒绝可信浏览器附件。原始 `dynamicTools` 和历史保持原样，只追加部署包，不提供任意删除或替换接口；附加不结束 Turn 或发起新 Turn。
 
 提交后 Core 发出 `areal/thread/tools/attached`，包含 `threadId`、新 `toolsetRevision` 与完整 `dynamicTools`；GUI 用该权威事件更新已有 Thread 投影，旧快照不能覆盖更新版本。工具回调仍由绑定的 Core 宿主和原生页认领校验，不依赖可能滞后的 GUI 投影。
 
