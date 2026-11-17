@@ -1,7 +1,7 @@
 import { remoteLocator } from "@areal/remote/wire";
 import { isLocalRelayOrigin } from "./local-socket.mjs";
 
-export function parsePairingLink(value) {
+export function parsePairingLink(value, { requireInvite = true } = {}) {
   try {
     const url = new URL(value);
     const fragment = new URLSearchParams(url.hash.slice(1));
@@ -20,12 +20,23 @@ export function parsePairingLink(value) {
       throw new Error("INVALID_PAIRING_LINK");
     const { host, room } = remoteLocator(fragment);
     const invite = fragment.get("invite");
-    if (!host || !room || !invite || !/^[a-f0-9]{64}$/.test(invite))
+    if (!host || !room) throw new Error("INVALID_PAIRING_LINK");
+    if (requireInvite && (!invite || !/^[a-f0-9]{64}$/.test(invite)))
       throw new Error("INVALID_PAIRING_LINK");
-    return { host, room, invite, relayOrigin: url.origin };
+    if (invite && !/^[a-f0-9]{64}$/.test(invite)) throw new Error("INVALID_PAIRING_LINK");
+    return {
+      host,
+      room,
+      ...(invite ? { invite } : {}),
+      relayOrigin: url.origin,
+    };
   } catch {
     throw new Error("INVALID_PAIRING_LINK");
   }
+}
+
+export function parseEndpointLink(value) {
+  return parsePairingLink(value, { requireInvite: false });
 }
 
 export class DeviceStore {

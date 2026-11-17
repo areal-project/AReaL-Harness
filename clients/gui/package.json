@@ -178,7 +178,7 @@
     "mobile:build": "pnpm mobile:prepare && pnpm --filter @areal/gui-renderer exec vp build --config vite.mobile.config.ts",
     "mobile:sync": "pnpm mobile:build && pnpm --filter @areal/mobile sync",
     "mobile:typecheck": "pnpm mobile:prepare && pnpm --filter @areal/gui-renderer exec tsc --noEmit -p tsconfig.mobile.json",
-    "test:mobile-storage": "node --test scripts/mobile-device-store.test.mjs",
+    "test:mobile-storage": "node --test scripts/mobile-device-store.test.mjs scripts/mobile-cache-store.test.mjs",
     "test:resize-observer": "node scripts/resize-observer-smoke.mjs",
     "mobile:dev": "pnpm mobile:prepare && pnpm --filter @areal/gui-renderer exec vp dev --config vite.mobile.config.ts",
     "mobile:ios:live": "node scripts/mobile-live.mjs",

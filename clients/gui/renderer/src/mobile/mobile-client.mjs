@@ -1,9 +1,9 @@
 import { createIdentity, identityId } from "@areal/remote";
 import { ClientState, RemoteConnection } from "@areal/remote-client";
-import { DeviceStore, parsePairingLink } from "./device-store.mjs";
+import { DeviceStore, parseEndpointLink, parsePairingLink } from "./device-store.mjs";
 import { createMobileSocket } from "./local-socket.mjs";
 
-/** @typedef {{kind:"loading"|"connecting"|"offline"|"background"|"revoked"|"blocked"}|{kind:"unpaired",cleared?:boolean,error?:"invalidLink"|"pairFailed"}|{kind:"pairing",fingerprint:string}|{kind:"connected",ready:{capabilities:string[],grantRevision:number,hostId:string,gatewayGeneration:string},remembered:boolean,fingerprint:string}} MobileConnectionState */
+/** @typedef {{kind:"loading"}|{kind:"connecting"|"offline"|"background"|"revoked"|"blocked",hostId?:string}|{kind:"unpaired",cleared?:boolean,error?:"invalidLink"|"pairFailed"}|{kind:"pairing",fingerprint:string,hostId?:string}|{kind:"connected",ready:{capabilities:string[],grantRevision:number,hostId:string,gatewayGeneration:string},remembered:boolean,fingerprint:string,hostId:string}} MobileConnectionState */
 export class MobileClient {
   /** @param {{keychain: import("./device-store.mjs").DeviceStore["keychain"], clientKind:"ios"|"android", socket?:(url:string)=>WebSocket, capabilities?:string[]}} options */
   constructor({ keychain, clientKind, socket = createMobileSocket, capabilities }) {
@@ -19,9 +19,15 @@ export class MobileClient {
     this.epoch = 0;
     this.active = false;
     this.attempts = 0;
+    /** @type {string | undefined} */
+    this.pairedHostId = undefined;
     /** @type {(message: unknown) => void} */
     this.onSession = () => {};
     this.onReady = async () => {};
+    /** @type {(hostId?: string) => void | Promise<void>} */
+    this.onRevoked = () => {};
+    /** @type {(hostId?: string) => void | Promise<void>} */
+    this.onCleared = () => {};
   }
   snapshot = () => this.state;
   subscribe = (listener) => {
@@ -45,7 +51,7 @@ export class MobileClient {
     this.active = active;
     this.disconnect();
     if (!active) {
-      this.publish({ kind: "background" });
+      this.publish({ kind: "background", ...(this.pairedHostId ? { hostId: this.pairedHostId } : {}) });
       return;
     }
     await this.restore();
@@ -53,17 +59,20 @@ export class MobileClient {
   async restore() {
     const epoch = this.epoch;
     let hasDevice = false;
-    this.publish({ kind: "connecting" });
+    this.publish({ kind: "connecting", ...(this.pairedHostId ? { hostId: this.pairedHostId } : {}) });
     try {
       const device = await this.store.load();
       if (epoch !== this.epoch || !this.active) return;
       const token = await this.identities.restore();
       if (epoch !== this.epoch || !this.active) return;
       if (!device || !token) {
+        this.pairedHostId = undefined;
         this.publish({ kind: "unpaired" });
         return;
       }
       hasDevice = true;
+      this.pairedHostId = token.hostId;
+      this.publish({ kind: "connecting", hostId: token.hostId });
       await this.connect(
         { host: token.hostId, room: token.relayRoom, relayOrigin: device.relayOrigin },
         token,
@@ -80,6 +89,7 @@ export class MobileClient {
     try {
       const pairing = parsePairingLink(value);
       value = "";
+      this.pairedHostId = undefined;
       this.publish({ kind: "connecting" });
       const guest = await this.identities.guest();
       const token = await this.identities.prepareRemember(guest);
@@ -92,6 +102,25 @@ export class MobileClient {
         kind: "unpaired",
         error: error.message === "INVALID_PAIRING_LINK" ? "invalidLink" : "pairFailed",
       });
+    }
+  }
+  /** 电脑切换 Wi-Fi 导致本机 Relay IP 变更时，保留身份和缓存只更新同 Host 的连接入口。 */
+  async updateEndpoint(value) {
+    const endpoint = parseEndpointLink(value);
+    const token = this.identities.current();
+    if (!token || token.mode !== "remembered" || token.hostId !== endpoint.host) {
+      throw Object.assign(new Error("HOST_MISMATCH"), { code: "HOST_MISMATCH" });
+    }
+    this.disconnect();
+    const epoch = this.epoch;
+    this.store.connection = {
+      relayOrigin: endpoint.relayOrigin,
+      grantRevision: (await this.store.load())?.grantRevision ?? 0,
+    };
+    await this.identities.remember(token, endpoint.host, endpoint.room);
+    if (epoch === this.epoch && this.active) {
+      this.attempts = 0;
+      await this.restore();
     }
   }
   async connect(target, token, epoch, displayName) {
@@ -120,11 +149,13 @@ export class MobileClient {
     const ready = await connection.connect({
       onHandshake: (event) => {
         delete target.invite;
-        if (event === "pairing") this.publish({ kind: "pairing", fingerprint: token.peerId });
+        if (event === "pairing")
+          this.publish({ kind: "pairing", fingerprint: token.peerId, hostId: target.host });
       },
       onReady: async (ready) => {
         if (ready.apiVersion !== "areal.remote.v2")
           throw Object.assign(new Error("PROTOCOL_MISMATCH"), { code: "PROTOCOL_MISMATCH" });
+        this.pairedHostId = target.host;
         this.identityTarget = { host: target.host, room: target.room };
         this.store.connection = {
           relayOrigin: target.relayOrigin,
@@ -140,7 +171,13 @@ export class MobileClient {
     });
     if (epoch !== this.epoch) return;
     this.attempts = 0;
-    this.publish({ kind: "connected", ready, remembered, fingerprint: token.peerId });
+    this.publish({
+      kind: "connected",
+      ready,
+      remembered,
+      fingerprint: token.peerId,
+      hostId: target.host,
+    });
     await this.onReady(ready);
   }
   failure(error, reconnect) {
@@ -148,7 +185,6 @@ export class MobileClient {
     if (
       [
         "AUTH_REVOKED",
-        "GRANT_CHANGED",
         "PROTOCOL_MISMATCH",
         "PROTOCOL_UNSUPPORTED",
         "CORE_INCOMPATIBLE",
@@ -156,16 +192,26 @@ export class MobileClient {
         "HOST_MISMATCH",
       ].includes(code)
     ) {
+      const revokedHost = this.pairedHostId;
       this.disconnect();
-      this.publish({ kind: ["AUTH_REVOKED", "FORBIDDEN"].includes(code) ? "revoked" : "blocked" });
+      const revoked = ["AUTH_REVOKED", "FORBIDDEN"].includes(code);
+      if (revoked) void Promise.resolve(this.onRevoked?.(revokedHost)).catch(() => {});
+      this.publish({
+        kind: revoked ? "revoked" : "blocked",
+        ...(revokedHost ? { hostId: revokedHost } : {}),
+      });
       return;
     }
-    this.publish({ kind: reconnect ? "offline" : "blocked" });
+    this.publish({
+      kind: reconnect ? "offline" : "blocked",
+      ...(this.pairedHostId ? { hostId: this.pairedHostId } : {}),
+    });
     if (!reconnect) return;
-    const delay = Math.min(
-      30000,
-      500 * 2 ** Math.min(this.attempts++, 6) * (1 + Math.random() * 0.2),
-    );
+    // 桌面变更授权项目后返回 GRANT_CHANGED，立即快速重连以拉取新的授权项目范围与版本号。
+    const delay =
+      code === "GRANT_CHANGED"
+        ? 300
+        : Math.min(30000, 500 * 2 ** Math.min(this.attempts++, 6) * (1 + Math.random() * 0.2));
     this.retry = setTimeout(() => {
       if (this.active) {
         this.disconnect();
@@ -174,11 +220,14 @@ export class MobileClient {
     }, delay);
   }
   async clear() {
+    const hostId = this.pairedHostId;
     this.disconnect();
     this.identities.invalidate();
-    this.publish({ kind: "blocked" });
+    this.publish({ kind: "blocked", ...(hostId ? { hostId } : {}) });
     await this.store.clear();
+    await Promise.resolve(this.onCleared?.(hostId)).catch(() => {});
     this.store.connection = null;
+    this.pairedHostId = undefined;
     this.publish({ kind: "unpaired", cleared: true });
   }
   async remember() {
@@ -203,7 +252,8 @@ export class MobileClient {
     try {
       return await this.connection.request(envelope, onResult);
     } catch (error) {
-      if (["AUTH_REVOKED", "GRANT_CHANGED"].includes(error?.code)) this.failure(error, false);
+      if (error?.code === "AUTH_REVOKED") this.failure(error, false);
+      else if (error?.code === "GRANT_CHANGED") this.failure(error, true);
       throw error;
     }
   }

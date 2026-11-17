@@ -51,6 +51,7 @@ pub(crate) struct Bundle {
     pub(crate) runtime: PathBuf,
     pub(crate) runner: PathBuf,
     root: PathBuf,
+    assets: Option<PathBuf>,
     version: String,
     files: BTreeSet<PathBuf>,
 }
@@ -66,8 +67,46 @@ struct BundleFile {
     path: String,
     sha256: String,
 }
+/// 源码开发与验收用仓库相邻的 remote-relay 和 Node；发行包仍只接受签名清单。
+fn source_bundle(bin: &Path) -> Option<Bundle> {
+    if !cfg!(debug_assertions)
+        || bin.file_name()? != "debug"
+        || bin.parent()?.file_name()? != "target"
+    {
+        return None;
+    }
+    let root = bin.join("../../services/remote-relay").canonicalize().ok()?;
+    let runner = root.join("src/host-runner.mjs");
+    if !runner.is_file()
+        || !root.join("package.json").is_file()
+        || !root.join("node_modules/ws/package.json").is_file()
+    {
+        return None;
+    }
+    let runtime = std::env::var_os("AREAL_RELAY_NODE")
+        .map(PathBuf::from)
+        .filter(|path| path.is_file())
+        .and_then(|path| path.canonicalize().ok())
+        .or_else(|| {
+            std::env::split_paths(&std::env::var_os("PATH")?)
+                .map(|path| path.join("node"))
+                .find_map(|path| path.is_file().then(|| path.canonicalize().ok()).flatten())
+        })?;
+    let assets = root.join("assets");
+    Some(Bundle {
+        runtime,
+        runner,
+        assets: assets.is_dir().then_some(assets),
+        root,
+        version: "source".into(),
+        files: BTreeSet::new(),
+    })
+}
 impl Bundle {
     async fn discover(bin: &Path) -> Result<Self> {
+        if let Some(bundle) = source_bundle(bin) {
+            return Ok(bundle);
+        }
         discover_bundle(
             bin,
             "areal-relay",
@@ -76,11 +115,12 @@ impl Bundle {
             "localRelayUnavailable",
         )
         .await
-        .and_then(|bundle| {
+        .and_then(|mut bundle| {
             ensure!(
                 bundle.files.iter().any(|path| path.starts_with("assets")),
                 "Relay bundle is incomplete"
             );
+            bundle.assets = Some(bundle.root.join("assets"));
             Ok(bundle)
         })
     }
@@ -139,6 +179,7 @@ pub(crate) async fn discover_bundle(
         runtime: contents.join("MacOS/AReaL Harness GUI"),
         runner: root.join(runner),
         root,
+        assets: None,
         version: manifest.version,
         files,
     })
@@ -219,6 +260,14 @@ pub(crate) fn local_origin(config: &Value) -> Result<url::Url> {
     );
     Ok(origin)
 }
+fn is_virtual_interface(name: &str) -> bool {
+    [
+        "utun", "tun", "tap", "ppp", "ipsec", "wg", "bridge", "docker", "veth", "vmnet",
+        "vboxnet", "awdl", "llw", "anpi",
+    ]
+    .iter()
+    .any(|prefix| name.starts_with(prefix))
+}
 pub(crate) fn address() -> Result<IpAddr> {
     struct Interfaces(*mut libc::ifaddrs);
     impl Drop for Interfaces {
@@ -233,13 +282,20 @@ pub(crate) fn address() -> Result<IpAddr> {
     );
     let interfaces = Interfaces(pointer);
     let mut current = interfaces.0;
-    let mut ipv6 = None;
+    let mut fallback_v4 = None;
+    let mut preferred_v6 = None;
+    let mut fallback_v6 = None;
     while !current.is_null() {
         let interface = unsafe { &*current };
         if !interface.ifa_addr.is_null()
             && interface.ifa_flags & libc::IFF_UP as u32 != 0
             && interface.ifa_flags & libc::IFF_LOOPBACK as u32 == 0
         {
+            let name = (!interface.ifa_name.is_null())
+                .then(|| unsafe { std::ffi::CStr::from_ptr(interface.ifa_name) })
+                .and_then(|name| name.to_str().ok())
+                .unwrap_or_default();
+            let virtual_if = is_virtual_interface(name);
             let family = unsafe { (*interface.ifa_addr).sa_family } as i32;
             let address = unsafe {
                 match family {
@@ -259,14 +315,23 @@ pub(crate) fn address() -> Result<IpAddr> {
             };
             if let Some(address) = address.filter(|address| private_address(*address)) {
                 if address.is_ipv4() {
-                    return Ok(address);
+                    if !virtual_if {
+                        return Ok(address);
+                    }
+                    fallback_v4.get_or_insert(address);
+                } else if !virtual_if {
+                    preferred_v6.get_or_insert(address);
+                } else {
+                    fallback_v6.get_or_insert(address);
                 }
-                ipv6 = Some(address);
             }
         }
         current = interface.ifa_next;
     }
-    ipv6.context("没有可用的内网地址，请连接可互通的内网或 VPN 后重试")
+    fallback_v4
+        .or(preferred_v6)
+        .or(fallback_v6)
+        .context("没有可用的内网地址，请连接可互通的内网或 VPN 后重试")
 }
 pub(crate) fn configure(config: &mut Value) -> Result<()> {
     configure_at(config, address()?)
@@ -534,7 +599,11 @@ async fn start_runners(
         .map(|profile| &profile["room"])
         .or_else(|| (config["relay"] == address).then_some(&config["room"]))
         .context("local Relay profile missing")?;
-    let frame = json!({"version":1,"config":{"local":true,"publicOrigin":address,"listen":format!("{listen}:{}",origin.port().unwrap()),"allowedClientOrigins":[address],"allowedAppOrigins":["capacitor://localhost"],"dataDir":data,"assetsDir":bundle.root.join("assets")},"room":room});
+    let mut runner_config = json!({"local":true,"publicOrigin":address,"listen":format!("{listen}:{}",origin.port().unwrap()),"allowedClientOrigins":[address],"allowedAppOrigins":["capacitor://localhost"],"dataDir":data});
+    if let Some(assets) = &bundle.assets {
+        runner_config["assetsDir"] = json!(assets);
+    }
+    let frame = json!({"version":1,"config":runner_config,"room":room});
     inner.running = Some(Running {
         child: command.spawn().await?,
         _lease: lease,
@@ -797,5 +866,14 @@ mod tests {
     #[tokio::test]
     async fn cli_source_path_cannot_select_a_runtime() {
         assert!(Bundle::discover(Path::new("/usr/local/bin")).await.is_err());
+    }
+
+    #[test]
+    fn virtual_interface_classification_deprioritizes_tunnels_and_bridges() {
+        assert!(is_virtual_interface("utun4"));
+        assert!(is_virtual_interface("bridge100"));
+        assert!(is_virtual_interface("awdl0"));
+        assert!(!is_virtual_interface("en0"));
+        assert!(!is_virtual_interface("wlan0"));
     }
 }

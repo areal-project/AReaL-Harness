@@ -73,11 +73,18 @@ class NativeRemote {
     };
   }
   async init() {
-    this.assetRoot = await realpath(
+    const assetCandidate =
       process.defaultApp || !process.resourcesPath
         ? resolve(__dirname, "../../../../../clients/gui/renderer/dist")
-        : join(process.resourcesPath, "areal-gui"),
-    );
+        : join(process.resourcesPath, "areal-gui");
+    try {
+      const resolved = await realpath(assetCandidate);
+      await readFile(join(resolved, "remote-assets.json"), "utf8");
+      this.assetRoot = resolved;
+    } catch {
+      // 未导出静态网页包时仍保留 Relay 与状态查询能力；仅在启用 Direct 网页时才需要 assetRoot。
+      this.assetRoot = "";
+    }
     try {
       this.config = await this.storage.init();
     } catch (error) {
@@ -207,7 +214,7 @@ class NativeRemote {
         requestId: reference.requestId,
         expectedGeneration: reference.generation,
         sourceId: reference.sourceId,
-        assetRoot: this.assetRoot,
+        ...(this.assetRoot ? { assetRoot: this.assetRoot } : {}),
         ...(method === "remote.gateway.handoff"
           ? { expectedRevision: reference.expectedRevision }
           : {}),

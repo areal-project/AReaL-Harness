@@ -57,6 +57,11 @@ export type HistoryEntry = ReturnType<typeof readHistoryEntry>;
 export type HistoryPage = ReturnType<typeof readHistoryPage> & { pageId: string; cursor: string };
 export type PageRecord = { id: string; cursor: string; items: ReturnType<typeof pageTopology> };
 
+const serviceDisposers = new WeakMap<PlatformServices, () => void>();
+export function disposeHostReadServices(services: PlatformServices | undefined) {
+  if (services) serviceDisposers.get(services)?.();
+}
+
 export function createHostReadServices(
   desktop: PlatformServices | undefined,
   options: Omit<HostClientOptions, "writes"> & {
@@ -516,13 +521,16 @@ export function createHostReadServices(
       .catch(() => {});
   }
   client.retry();
+  const dispose = () => {
+    clearTimeout(cacheTimer);
+    windows.clear();
+    pages?.dispose();
+    client.close();
+  };
   if (typeof window !== "undefined")
     window.addEventListener("pagehide", (event) => {
       if (event.persisted) return;
-      clearTimeout(cacheTimer);
-      windows.clear();
-      pages?.dispose();
-      client.close();
+      dispose();
     });
   // A2：停止与审批/回答在写开关下走 Host 回执；Host 明确不接管的会话退回桌面原路径。
   const HOST_DECLINED = new Set(["TASK_CONTROL_REQUIRED"]);
@@ -861,7 +869,7 @@ export function createHostReadServices(
     () => librarySourceId,
     closedSidePublisher(client, commandOutcomes, hostTarget, publish),
   ) as PlatformServices["command"];
-  return {
+  const result: PlatformServices = {
     ...(desktop ?? {
       chooseProject: () => chooseHostProject(client),
       theme: async () => ({
@@ -889,4 +897,6 @@ export function createHostReadServices(
       };
     },
   };
+  serviceDisposers.set(result, dispose);
+  return result;
 }
