@@ -264,7 +264,8 @@ class ProjectConnections {
                   "RESPONSE_TOO_LARGE",
                 ].includes(modelRecord(error) ? String(error.code) : "") ||
                 (modelRecord(error) && error.reason === "RESPONSE_TOO_LARGE") ||
-                project.client?.closeFailure?.code === "RESPONSE_TOO_LARGE";
+                project.client?.closeFailure?.code === "RESPONSE_TOO_LARGE" ||
+                nonRetryableCredentialFailure(error);
               project.reconnectAttempt = (project.reconnectAttempt ?? 0) + 1;
               this.host.stopReconciliation(project);
               project.client?.close();
@@ -623,6 +624,18 @@ class ProjectConnections {
       throw error;
     }
   }
+}
+
+/**
+ * A credential authorization failure cannot be repaired by restarting Core.
+ * Retrying it immediately creates a new project connection and floods the
+ * Host command queue while the user still needs to re-authorize the secret.
+ */
+function nonRetryableCredentialFailure(error) {
+  const text = error instanceof Error ? error.message : String(error ?? "");
+  return /storageAuthorizationRequired|Keychain authorization does not permit this application identity|credential unavailable/i.test(
+    text,
+  );
 }
 
 module.exports = { ProjectConnections };

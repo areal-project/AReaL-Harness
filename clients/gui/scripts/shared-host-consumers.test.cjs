@@ -542,3 +542,46 @@ test("a short recovered connection preserves reconnect backoff", async (t) => {
   connections.scheduleReconnect(project);
   assert.equal(delay, 4000);
 });
+
+test("credential authorization failures stop the reconnect storm until explicit retry", async (t) => {
+  const { ProjectConnections } = require("@areal/workbench-service/desktop/core/project-connections.cjs");
+  let run;
+  t.mock.method(globalThis, "setTimeout", (callback) => {
+    run = callback;
+    return { unref() {} };
+  });
+  const project = {
+    id: "project",
+    service: { generation: "core" },
+    client: { ready: false, close() {} },
+    model: { connection() {} },
+  };
+  const host = {
+    projects: new Map([[project.id, project]]),
+    starting: new Map(),
+    lifecycleOperations: { assertProject() {}, schedulingSuppressed: () => false },
+    startProject: async (id) => {
+      assert.equal(id, project.id);
+      project.client = { ready: true, close() {} };
+      return project;
+    },
+    stopReconciliation() {},
+    providers: { redact: (message) => message },
+  };
+  const connections = new ProjectConnections(host);
+  connections.reconnectProject = async () => {
+    throw new Error(
+      "storageAuthorizationRequired: Keychain authorization does not permit this application identity",
+    );
+  };
+  connections.scheduleReconnect(project);
+  assert.equal(typeof run, "function");
+  run();
+  await assert.rejects(host.starting.get(project.id), /storageAuthorizationRequired/);
+  assert.equal(project.reconnectBlocked, true);
+  assert.equal(project.reconnectTimer, null);
+  assert.equal(project.reconnectAttempt, 1);
+  await connections.start(project.id, { resumeScheduling: true });
+  assert.equal(project.reconnectBlocked, false);
+  assert.equal(project.client.ready, true);
+});
