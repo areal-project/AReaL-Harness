@@ -291,16 +291,16 @@ mod tests {
     fn exact_common_search_reports_the_existing_schema() {
         let mut exposure = ToolExposure {
             common_catalog: vec![ToolSummary {
-                name: "edit_files".into(),
+                name: "skill_load".into(),
                 server_id: "native".into(),
-                description: "Edit authorized files".into(),
+                description: "Load the complete skill".into(),
             }],
             ..Default::default()
         };
 
-        let result = exposure.search_native(" edit_files ", 1);
+        let result = exposure.search_native(" Skill_Load ", 1);
         assert_eq!(result["schemaStatus"], "already_available");
-        assert_eq!(result["tools"][0]["name"], "edit_files");
+        assert_eq!(result["tools"][0]["name"], "skill_load");
         assert!(exposure.loaded.is_empty());
     }
 
