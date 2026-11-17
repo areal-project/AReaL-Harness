@@ -1584,6 +1584,13 @@ test("native shell metadata stays bound to the original GUI source and attachmen
   assert.equal(snapshot.projects[0].root, f.root);
   assert.equal(snapshot.projects[0].summaries[0].id, "thread");
   f.backend.acceptNativeShell(
+    { ...shell, navigation: [{ ...navigation, state: "unknown", settings: {} }] },
+    "source",
+    epoch,
+  );
+  assert.equal(f.backend.snapshot().library.settings.showInMenuBar, false);
+  assert.equal(f.backend.snapshot().projects[0].summaries[0].id, "thread");
+  f.backend.acceptNativeShell(
     { ...shell, navigation: [{ ...navigation, settings: { showInMenuBar: true } }] },
     "source",
     {},
@@ -1731,4 +1738,126 @@ test("native update keeps one original stop receipt and restarts only after comp
   assert.equal(starts, 1);
   assert.equal(f.calls.filter((q) => q.method === "host.stop").length, 1);
   assert.equal(f.backend.hostReferences.has(stopId), true);
+});
+
+test("Main startup prepares the source and attaches native Host without Node startup or projection", async (t) => {
+  const f = await fixture(t);
+  const { GuiSourceSession } = require("node:module").createRequire(
+    require.resolve("../app/package.json"),
+  )("@areal/client/gui-source");
+  const requireApp = require("node:module").createRequire(require.resolve("../app/package.json"));
+  const upgrade = requireApp("@areal/client/desktop-upgrade");
+  const config = require("../app/src/core/service-config.cjs");
+  const patch = (owner, name, value) => {
+    const original = owner[name];
+    owner[name] = value;
+    t.after(() => {
+      owner[name] = original;
+    });
+  };
+  const steps = [];
+  patch(upgrade, "ensureDesktopHost", async () => async () => {
+    steps.push("upgrade-complete");
+  });
+  patch(upgrade, "desktopBuildIdentity", async () => "build");
+  patch(config, "serviceIdentity", async () => "service");
+  patch(GuiSourceSession.prototype, "init", async function () {
+    steps.push("source");
+    this.sourceId = "source";
+  });
+  patch(GuiSourceSession.prototype, "prepareNative", async function () {
+    steps.push("prepare");
+    this.environmentCredentials = {};
+    return { options: { prepared: true } };
+  });
+  f.backend.options = {
+    ...f.backend.options,
+    binary: "/synthetic/areal",
+    guiProfile: f.profile,
+    harnessHome: f.hostHome,
+  };
+  f.backend.prerequisiteCheck = async () => {};
+  f.backend.attach = async () => assert.fail("Node projection must not attach");
+  f.backend.connectNativeBrowser = async (source, options) => {
+    assert.equal(source.sourceId, "source");
+    assert.equal(options.prepared, true);
+    steps.push("native");
+  };
+  f.backend.connectNativeShell = async (source) => {
+    assert.equal(source.sourceId, "source");
+    steps.push("shell");
+  };
+  f.backend.importNativeCloud = async () => {};
+  await f.backend.initializeHostBackend();
+  assert.deepEqual(steps, ["source", "prepare", "native", "shell", "upgrade-complete"]);
+  assert.equal(f.backend.connectionState.state, "ready");
+  assert.equal(f.backend.status.connected, true);
+  assert.equal(f.backend.connection, undefined);
+  steps.length = 0;
+  await f.backend.initializeHostBackend({ recover: true });
+  assert.deepEqual(steps, ["source", "prepare", "native", "shell", "upgrade-complete"]);
+  let revoked = 0;
+  f.backend.closeNativeBrowser = () => {
+    revoked++;
+  };
+  f.backend.connectNativeShell = async () => {
+    throw new Error("synthetic shell observation failure");
+  };
+  await assert.rejects(f.backend.initializeHostBackend(), /synthetic shell observation failure/);
+  assert.equal(revoked, 1);
+  assert.equal(f.backend.status.connected, false);
+});
+
+test("native update readiness requires the original stopped Host PID to exit", async (t) => {
+  const { spawn } = require("node:child_process");
+  const f = await fixture(t);
+  const child = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { stdio: "ignore" });
+  await once(child, "spawn");
+  t.after(() => {
+    if (child.exitCode === null && child.signalCode === null) child.kill();
+  });
+  const requestId = randomUUID();
+  const reference = {
+    kind: "stopHost",
+    requestId,
+    home: f.hostHome,
+    hostId: f.hostId,
+    generation: f.generation,
+    strategy: "cancel",
+    pid: child.pid,
+  };
+  f.backend.hostReferences.set(requestId, reference);
+  f.backend.hostReceipts.set(requestId, f.receipt(requestId));
+  f.backend.status.connected = false;
+  assert.equal(f.backend.serviceExited, false, "receipt alone is not process exit");
+  const readiness = f.backend.hasUpdateWork();
+  child.kill();
+  await once(child, "exit");
+  assert.equal(f.backend.serviceExited, true);
+  assert.equal(await readiness, false);
+  assert.equal(await f.backend.hasUpdateWork(), false);
+  f.backend.status.connected = true;
+  assert.equal(f.backend.serviceExited, false, "an old stop cannot stop a new attachment");
+});
+
+test("native application readiness leaves accepted business work with Host", async (t) => {
+  const f = await fixture(t);
+  f.backend.nativeBrowserEpoch = {};
+  f.backend.status.connected = true;
+  f.backend.requireConnection = () =>
+    assert.fail("native quit must not read the retired Node snapshot");
+  await f.backend.waitForApplicationReady();
+});
+
+test("native shutdown revokes its attachment without requesting Node activity", async (t) => {
+  const f = await fixture(t);
+  f.backend.nativeBrowserEpoch = {};
+  let closed = 0;
+  f.backend.nativeBrowser = { close: () => closed++ };
+  f.backend.status.connected = true;
+  f.backend.requireConnection = () =>
+    assert.fail("native shutdown cannot require a Node projection");
+  await f.backend.shutdown();
+  assert.equal(closed, 1);
+  assert.equal(f.backend.nativeBrowserEpoch, undefined);
 });

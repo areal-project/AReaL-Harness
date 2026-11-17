@@ -380,3 +380,55 @@ test("source adapter runs independent slots concurrently and preserves same-slot
     await importing;
   }
 });
+
+test("native GUI source session publishes the original source without project projections", async (t) => {
+  const { GuiSourceSession } = require("node:module").createRequire(
+    require.resolve("../app/package.json"),
+  )("@areal/client/gui-source");
+  const root = await mkdtemp(join(tmpdir(), "areal-native-source-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const owner = new GuiSourceSession({
+    binary: "/unused",
+    home: join(root, "host"),
+    singletonHeld: true,
+    source: {
+      profile: join(root, "profile"),
+      coreHome: join(root, "core"),
+      legacyServiceHome: join(root, "legacy"),
+    },
+  });
+  const state = {
+    sourceId: "source",
+    migrationId: "original-migration",
+    migration: { state: "pending" },
+  };
+  owner.client.connectOrStart = async () => {};
+  owner.client.requireCapability = () => {};
+  owner.client.sourceState = async () => state;
+  owner.client.listProjects = async () =>
+    assert.fail("native source cannot build a Node project projection");
+  const imported = GuiSourceAdapter.prototype.import,
+    retired = GuiSourceAdapter.prototype.retire;
+  t.after(() => {
+    GuiSourceAdapter.prototype.import = imported;
+    GuiSourceAdapter.prototype.retire = retired;
+    owner.close();
+  });
+  const calls = [];
+  GuiSourceAdapter.prototype.import = async function (requestId) {
+    calls.push(["import", requestId, this.source]);
+    return { kind: "ready" };
+  };
+  GuiSourceAdapter.prototype.retire = async function (requestId) {
+    calls.push(["retire", requestId, this.source]);
+    return { state: "completed" };
+  };
+  await owner.init({ deferCredentials: true });
+  assert.equal(owner.sourceId, "source");
+  assert.equal(owner.migrationId, "original-migration");
+  owner.close();
+  await owner.migrating;
+  assert.equal(calls.at(-1)[0], "retire");
+  assert.equal(calls.at(-1)[1], "original-migration");
+  assert.deepEqual(calls.at(-1)[2], owner.source);
+});

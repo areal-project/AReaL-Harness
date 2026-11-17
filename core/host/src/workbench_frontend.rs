@@ -284,6 +284,7 @@ impl Connections {
                 callbacks: BTreeMap::new(),
             },
         );
+        host.changed();
         Ok((json!({"attachmentId":id}), receiver))
     }
     pub(crate) fn frontend_disconnect(&self, connection: &str) {

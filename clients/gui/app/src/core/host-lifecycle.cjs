@@ -1,7 +1,7 @@
 // @ts-check
 "use strict";
 const { executeHost } = require("@areal/client/node");
-/** @typedef {{kind:'stopHost',requestId:string,home:string,hostId:string,generation:string,strategy:'ifIdle'|'cancel'}} HostReference */
+/** @typedef {{kind:'stopHost',requestId:string,home:string,hostId:string,generation:string,strategy:'ifIdle'|'cancel',pid?:number}} HostReference */
 /** @typedef {{projectId:string,serviceId:string,serviceGeneration:string,requestId:string,dispatch:'notStarted'|'started',receipt?:{version:1,requestId:string,projectId:string,serviceId:string,serviceGeneration:string,strategy:'ifIdle'|'cancel',state:string,message?:string}}} HostTarget */
 /** @typedef {{version:1,requestId:string,hostId:string,generation:string,strategy:'ifIdle'|'cancel',state:string,preparationInterrupted?:boolean,projects:HostTarget[]}} HostReceipt */
 const states = new Set([
@@ -27,6 +27,7 @@ function hostReference(value) {
     uuid(value.hostId) &&
     uuid(value.generation) &&
     typeof value.home === "string" &&
+    (value.pid === undefined || (Number.isSafeInteger(value.pid) && Number(value.pid) > 1)) &&
     require("node:path").isAbsolute(value.home) &&
     (value.strategy === "ifIdle" || value.strategy === "cancel")
   );

@@ -886,6 +886,7 @@ describe("library Host-only routing", () => {
     "queue",
     "queueEdit",
     "reconcile",
+    "recovery",
     "side",
     "workspace",
   ])("never falls back %s to native Main when Host is unready or declines", async (name) => {

@@ -2293,3 +2293,60 @@ async fn native_remote_status_and_control_do_not_start_node() {
         assert!(!host.gateway.workbench.has_running_backend());
     }).await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn first_gui_activation_waits_for_its_native_launch_configuration() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let root = root.path().canonicalize().unwrap();
+            let (host, mut input, source) = resumable_host(&root);
+            std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+            let profile = root.join("profile");
+            let alias = "0123456789abcdef01234567";
+            let registration = {
+                let mut slots = host.slots.borrow_mut();
+                let slot = slots.get_mut("project").unwrap();
+                slot.registration.source = crate::ProjectSource::Gui {
+                    profile,
+                    legacy_project_id: alias.into(),
+                };
+                slot.registration.clone()
+            };
+            storage::private_dir(&registration.workspace).unwrap();
+            storage::write(
+                &root.join("data/projects.json"),
+                &json!([{"id":alias,"root":registration.workspace}]),
+            )
+            .unwrap();
+            let configuration = root.join("configuration");
+            storage::private_dir(&configuration).unwrap();
+            input.options["configHome"] = json!(configuration);
+            let mut preparation = Box::pin(super::super::gui_project::missing_inputs(
+                &host,
+                &registration,
+            ));
+            assert!(
+                matches!(
+                    futures_util::poll!(preparation.as_mut()),
+                    std::task::Poll::Pending
+                ),
+                "published source must await its Main launch configuration before activation"
+            );
+            host.schedules
+                .connections
+                .frontend_subscribe(&host, "native-initial-source", &source, input.options, None)
+                .unwrap();
+            let inputs = tokio::time::timeout(std::time::Duration::from_secs(1), preparation)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(inputs.workspace, registration.workspace);
+            assert_eq!(inputs.config_home, configuration);
+            assert!(!host.gateway.workbench.has_running_backend());
+            host.schedules
+                .connections
+                .frontend_disconnect("native-initial-source");
+        })
+        .await;
+}

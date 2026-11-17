@@ -284,7 +284,7 @@ export function useSessionNavigation(
               try {
                 await resourceAction("connect", {
                   projectId: owner.projectId,
-                  threadId: owner.threadId,
+                  ...(owner.threadId ? { threadId: owner.threadId } : {}),
                   ...(options.resumeScheduling ? { resumeScheduling: true } : {}),
                 });
                 if (!current()) return;

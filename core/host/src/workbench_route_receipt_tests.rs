@@ -521,3 +521,22 @@ async fn prepared_creation_cannot_rebind_to_a_later_core_generation() {
         close();server.await.unwrap();
     }).await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn recovery_inspection_uses_host_space_owner_without_node() {
+    tokio::task::LocalSet::new().run_until(async {
+        let root=tempfile::tempdir().unwrap();
+        let (host,source,server,close)=setup_archive_fixture(root.path(),|method,_|Some(json!({"result":match method {
+            "initialize"|"areal/server/status"=>json!({}),
+            other=>panic!("unexpected recovery RPC {other}"),
+        }}))).await;
+        let request=json!({"params":{"sourceId":source,"command":"recovery","request":{"operation":"inspect"}}});
+        let result=desktop_command(&host,"local","recovery-reader",&request).await.unwrap();
+        assert_eq!(result,json!({"kind":"none"}));
+        assert!(!host.gateway.workbench.has_running_backend());
+        let mut invalid=request;
+        invalid["params"]["request"]["unexpected"]=json!(true);
+        assert!(desktop_command(&host,"local","recovery-reader",&invalid).await.is_err());
+        close();server.await.unwrap();
+    }).await;
+}

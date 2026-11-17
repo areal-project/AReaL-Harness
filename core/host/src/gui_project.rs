@@ -34,7 +34,7 @@ pub(super) async fn initialize(
     if storage::read_optional::<LaunchInputs>(&path)?.is_some() {
         return Ok(());
     }
-    let options = options(host, source)?;
+    let options = initial_options(host, source).await?;
     let inputs = prepare(host, source, project, &options).await?;
     ensure!(self::options(host, source)? == options, "RESYNC_REQUIRED");
     launch::write_initial(&host.home, project, &inputs)
@@ -54,7 +54,7 @@ pub(super) async fn missing_inputs(
         .migration
         .credential_source(project)?
         .context("GUI_SOURCE_PENDING")?;
-    let original = options(host, &source)?;
+    let original = initial_options(host, &source).await?;
     let prepared = prepare(host, &source, project, &original).await?;
     ensure!(options(host, &source)? == original, "RESYNC_REQUIRED");
     Ok(prepared)
@@ -66,6 +66,23 @@ pub(super) fn options(host: &Host, source: &str) -> Result<Value> {
         .frontend_launch_options(source)
         .map(Ok)
         .unwrap_or_else(|| host.gateway.workbench.utility_options(source))
+}
+
+async fn initial_options(host: &Host, source: &str) -> Result<Value> {
+    let mut changes = host.changes.subscribe();
+    // 来源可先于Main附件公开；首次启动等待同来源的配置事件，不扩大到其它后台。
+    tokio::time::timeout(std::time::Duration::from_secs(15), async {
+        loop {
+            host.admission()?;
+            host.migration.source_profile(source)?;
+            if let Ok(options) = options(host, source) {
+                return Ok::<_, anyhow::Error>(options);
+            }
+            changes.changed().await.context("GUI_SOURCE_PENDING")?;
+        }
+    })
+    .await
+    .map_err(|_| crate::wire::error("GUI_SOURCE_PENDING", "原生启动配置尚未就绪"))?
 }
 
 pub(super) fn managed(host: &Host, options: &Value) -> Result<bool> {

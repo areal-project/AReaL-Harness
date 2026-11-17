@@ -805,6 +805,7 @@ async fn pending_workbench_requests_do_not_block_queries() {
                                                     "version": 1
                                                 },
                                                 "pendingQueueItems": 0,
+                                                "queues": [],
                                                 "productVersion": "fixture",
                                                 "resources": [],
                                                 "restartSafe": true,

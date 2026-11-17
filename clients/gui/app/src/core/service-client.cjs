@@ -312,7 +312,7 @@ class SharedCoreBackend {
     original?.close();
     if (original) this.onBrowserDisconnected?.();
   }
-  /** @param {InstanceType<typeof import('@areal/workbench-service/desktop/core/gui-host-projects.cjs').GuiHostProjects>} source
+  /** @param {InstanceType<typeof import('@areal/client/gui-source').GuiSourceSession>} source
    * @param {Record<string,unknown>} options */
   async connectNativeBrowser(source, options) {
     this.closeNativeBrowser();
@@ -441,18 +441,20 @@ class SharedCoreBackend {
     if (this.disposed || this.nativeBrowserEpoch !== epoch || this.nativeBrowserSource !== sourceId)
       return;
     const navigation = shell.navigation.find((source) => source.sourceId === sourceId);
-    if (!navigation || navigation.state !== "available")
-      throw new Error("Original native GUI navigation unavailable");
+    if (!navigation) throw new Error("Original native GUI navigation unavailable");
     this.value = {
-      library: {
-        projects: navigation.projects,
-        threads: navigation.threads,
-        projectOrder: navigation.projectOrder,
-        settings: navigation.settings,
-        sections: navigation.sections,
-        sidebarThreadOrder: navigation.sidebarThreadOrder,
-        sidebarRevision: navigation.sidebarRevision,
-      },
+      library:
+        navigation.state === "available"
+          ? {
+              projects: navigation.projects,
+              threads: navigation.threads,
+              projectOrder: navigation.projectOrder,
+              settings: navigation.settings,
+              sections: navigation.sections,
+              sidebarThreadOrder: navigation.sidebarThreadOrder,
+              sidebarRevision: navigation.sidebarRevision,
+            }
+          : this.value.library,
       projects: shell.projects.flatMap((project) => {
         const binding = navigation.bindings.find(
           (binding) => binding.projectId === project.projectId,
@@ -920,10 +922,8 @@ class SharedCoreBackend {
     if (!options.binary || !options.hostHome || !options.guiProfile || !options.harnessHome)
       throw new Error("Host 后台启动配置不完整");
     // 初次旧凭据导入仍由持有原单实例和 safeStorage 的 Main 完成。
-    const {
-      GuiHostProjects,
-    } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
-    const source = new GuiHostProjects({
+    const { GuiSourceSession } = require("@areal/client/gui-source");
+    const source = new GuiSourceSession({
       binary: options.binary,
       home: options.hostHome,
       source: {
@@ -953,20 +953,24 @@ class SharedCoreBackend {
         closed: () => this.disposed === true,
       });
       source.client.close();
-      if (recover) await source.client.connect(options.hostHome);
-      else await source.init({ deferCredentials: true });
-      const owner = await source.ensureBackend(options, process.env);
+      await source.init({ deferCredentials: true });
+      const prepared = await source.prepareNative(options, process.env);
       if (this.disposed) throw new Error("GUI 连接已关闭");
-      if (!(await this.attach({ expectedIdentity: owner.identity })))
-        throw new Error("Host 后台尚未就绪");
-      // 旧 Host 退出期间可能短暂报告身份不匹配；新 Host 完成 attach 且身份确认后，
-      // 清掉这条过期错误，避免启动页继续停在失败状态。
-      await this.connectNativeBrowser(source, options);
+      await this.connectNativeBrowser(source, prepared.options);
+      await this.connectNativeShell(source);
+      this.status = { connected: true, commandContract: COMMAND_CONTRACT };
+      this.connectionState = { state: "ready" };
+      this.clearReconnect();
+      this.reconnectAttempts = 0;
       // Cloud 导入未完成由该设置页显示，不能阻塞无关历史与已确认项目。
       await this.importNativeCloud(source.sourceId).catch(() => {});
       this.lifecycleError = null;
       await completeUpgrade();
       this.backendUpdate = undefined;
+    } catch (error) {
+      this.closeNativeBrowser();
+      this.status.connected = false;
+      throw error;
     } finally {
       source.close();
     }
@@ -1370,10 +1374,36 @@ class SharedCoreBackend {
     };
   }
   get serviceExited() {
-    return !!this.exitConfirmation && this.exitConfirmation === this.metadata;
+    if (this.exitConfirmation && this.exitConfirmation === this.metadata) return true;
+    const original = [...this.hostReferences.values()].at(-1);
+    if (
+      this.status.connected ||
+      !original?.pid ||
+      this.hostReceipts.get(original.requestId)?.state !== "completed"
+    )
+      return false;
+    try {
+      process.kill(original.pid, 0);
+    } catch (error) {
+      return desktopError(error).code === "ESRCH";
+    }
+    return false;
   }
   async hasUpdateWork() {
     if (this.serviceExited) return false;
+    const original = [...this.hostReferences.values()].at(-1);
+    if (
+      !this.status.connected &&
+      original?.pid &&
+      this.hostReceipts.get(original.requestId)?.state === "completed"
+    ) {
+      try {
+        await waitForProcessExit(original.pid);
+        return this.status.connected || !this.serviceExited;
+      } catch {
+        return true;
+      }
+    }
     if (this.nativeBrowserEpoch) {
       try {
         return (await this.serviceStatus()).canStop !== true;
@@ -1545,6 +1575,7 @@ class SharedCoreBackend {
         hostId: client.hostId,
         generation: client.generation,
         strategy,
+        ...(this.nativeBrowserEpoch && client.identity ? { pid: client.identity.pid } : {}),
       };
       this.hostReferences.set(reference.requestId, reference);
       try {
@@ -1898,6 +1929,8 @@ class SharedCoreBackend {
   }
   async waitForApplicationReady() {
     if (this.connecting) await this.connecting.catch(() => {});
+    // 原生业务受理由Host结算；Main仅等待自己的启动和终端附件。
+    if (this.nativeBrowserEpoch) return;
     const deadline = Date.now() + 20000;
     while (this.status.connected) {
       const { service } = readServicePacket(
@@ -1922,7 +1955,7 @@ class SharedCoreBackend {
     return (this.shutdownPromise = (async () => {
       try {
         await this.settleGuiTerminals();
-        if (this.status.connected)
+        if (this.status.connected && this.connection)
           await this.requireConnection()
             .request("activity", { focused: false, idleSeconds: 0 })
             .catch(() => {});

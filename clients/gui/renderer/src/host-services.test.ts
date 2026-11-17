@@ -9,7 +9,7 @@ import {
   settleHostCommand,
 } from "./host-snapshot.js";
 import { currentErrorText } from "./errors/currentErrorText.js";
-import type { Action, PlatformServices, Snapshot } from "./services.js";
+import { call, type Action, type PlatformServices, type Snapshot } from "./services.js";
 import { PlatformReadProvider } from "./PlatformReadContext.js";
 import { useConversationHistory } from "./ConversationHistory.js";
 import { draftModelOptions, draftModelSelection } from "./lib/draftModelSelection.js";
@@ -2006,4 +2006,57 @@ it("reprojects completed inspection and fences its connection and Core generatio
     extras,
   ).snapshot.projects[0].configurations.thread as Record<string, unknown>;
   expect(replacement.modelName).toBeUndefined();
+});
+
+it("connects a foreground project through Host activation without a Node desktop command", async () => {
+  const page = new EventTarget();
+  vi.stubGlobal("window", page);
+  let phase = "stopped";
+  const wire = transport();
+  const activated: unknown[] = [];
+  const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+    const base = await wire.factory(lifecycle);
+    return {
+      ...base,
+      identity: { ...base.identity, writeMethods: ["project.activate"] },
+      transport: {
+        ...base.transport,
+        async request(method, params, context) {
+          if (method === "shell.subscribe")
+            return {
+              ...identity,
+              subscriptionId: "shell",
+              sequence: 0,
+              snapshot: {
+                projects: [
+                  {
+                    ...project,
+                    state: phase,
+                    serviceGeneration: phase === "ready" ? "core-gen" : undefined,
+                  },
+                ],
+                navigation: [navigation],
+              },
+            };
+          return base.transport.request(method, params, context);
+        },
+        async write(method, params, context) {
+          expect(method).toBe("project.activate");
+          activated.push({ params, context });
+          phase = "ready";
+          return { projectId: "canonical", state: "ready", serviceGeneration: "core-gen" };
+        },
+      },
+    };
+  };
+  const services = createHostReadServices(undefined, options(factory));
+  try {
+    await until(services);
+    const result = await call(services, "connect", { projectId: "alias" });
+    expect(result).toMatchObject({ projects: [{ id: "alias", state: { connected: true } }] });
+    expect(activated).toEqual([{ params: {}, context: { projectId: "canonical" } }]);
+  } finally {
+    page.dispatchEvent(new Event("pagehide"));
+    vi.unstubAllGlobals();
+  }
 });

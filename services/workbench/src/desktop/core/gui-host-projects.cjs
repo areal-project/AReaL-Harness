@@ -1,11 +1,10 @@
 // @ts-check
 "use strict";
 const { createHash } = require("node:crypto");
-const { mkdir, readFile } = require("node:fs/promises");
+const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
 const { isDeepStrictEqual } = require("node:util");
-const { HostClient } = require("@areal/client/node");
-const { canonicalSource, GuiSourceAdapter } = require("@areal/client/gui-source");
+const { GuiSourceSession, GuiSourceAdapter, requestIdFor } = require("@areal/client/gui-source");
 const { startupTrace } = require("./startup-timing.cjs");
 const diagnostics = require("./diagnostics.cjs");
 /** @typedef {import('./project-index.cjs').SavedProject} SavedProject */
@@ -15,23 +14,11 @@ const diagnostics = require("./diagnostics.cjs");
 /** @typedef {{state:'pending'|'completed',requestId?:string,error:string|null,code?:string}} RetirementState */
 /** @param {string} value */
 const digest = (value) => createHash("sha256").update(value).digest("hex");
-/** @param {string} value */
-const requestIdFor = (value) => {
-  const hash = digest(value);
-  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
-};
 
-class GuiHostProjects {
+class GuiHostProjects extends GuiSourceSession {
   /** @param {{binary:string,home:string,source:import('@areal/client/gui-source').GuiSource,encryption?:import('electron').SafeStorage,singletonHeld:boolean}} options */
   constructor(options) {
-    this.options = options;
-    this.client = new HostClient();
-    this.home = options.home;
-    this.source = options.source;
-    this.sourceId = "";
-    this.migrationId = "";
-    /** @type {Record<string,string>|undefined} */
-    this.environmentCredentials = undefined;
+    super(options);
     /** @type {RetirementState} */
     this.retirement = { state: "pending", error: "旧凭据清理尚未确认，ChatGPT 订阅暂不可用。" };
     /** @type {Promise<RetirementState>|undefined} */
@@ -53,77 +40,9 @@ class GuiHostProjects {
   async ensureBackend(options, environment) {
     return this.client.request("backend.ensure", await this.prepareNative(options, environment));
   }
-  /** @param {Record<string,unknown> & {guiProfile?:string}} options @param {NodeJS.ProcessEnv} environment */
-  async prepareNative(options, environment) {
-    const backendOptions = { ...options, applicationOwner: undefined };
-    const params = { profile: options.guiProfile, options: backendOptions };
-    const result = await this.client.request("backend.credentialNames", params);
-    if (
-      !result ||
-      typeof result !== "object" ||
-      !Array.isArray(result.names) ||
-      result.names.some((/** @type {unknown} */ name) => typeof name !== "string" || !name) ||
-      (result.configurationError !== undefined && typeof result.configurationError !== "boolean")
-    )
-      throw new Error("环境凭据引用无效");
-    const credentials = Object.fromEntries(
-      result.names.flatMap((/** @type {string} */ name) =>
-        typeof environment[name] === "string" ? [[name, environment[name]]] : [],
-      ),
-    );
-    this.environmentCredentials = result.configurationError ? undefined : credentials;
-    return result.configurationError ? params : { ...params, environmentCredentials: credentials };
-  }
   /** @param {{deferCredentials?:boolean}} [options] */
   async init({ deferCredentials = false } = {}) {
-    for (const path of Object.values(this.source))
-      await mkdir(path, { recursive: true, mode: 0o700 });
-    this.source = await canonicalSource(this.source);
-    await this.client.connectOrStart(this.home, this.options.binary);
-    this.client.requireCapability("scheduledActivation");
-    this.client.requireCapability("scheduledPreparation");
-    let state = await this.client.sourceState(this.source);
-    if (!state || (state.migration?.state === "pending" && this.options.singletonHeld)) {
-      if (!this.options.singletonHeld)
-        throw new Error("GUI source import requires the original singleton");
-      const adapter = new GuiSourceAdapter({
-        source: this.source,
-        hostHome: this.home,
-        encryption: this.options.encryption,
-        singletonHeld: true,
-      });
-      const result = await adapter.import(requestIdFor(JSON.stringify(this.source)), {
-        publishOnly: deferCredentials,
-      });
-      if (result.kind !== "ready" && result.sourcePublished !== true) {
-        const reasons = new Set();
-        for (const blocker of Array.isArray(result.blockers) ? result.blockers : []) {
-          switch (blocker?.code) {
-            case "sourceGuardRequired":
-              reasons.add("请从持有原桌面单实例的应用恢复迁移。");
-              break;
-            case "credentialsRequired":
-              reasons.add("原凭据尚未完成导入，请检查凭据可用状态后重试。");
-              break;
-            case "legacyPending":
-              reasons.add("无法确认旧后台已完成清理，请先检查原任务和停止回执。");
-              break;
-            default:
-              reasons.add("无法确认迁移阻塞原因，请检查原后台状态。");
-          }
-        }
-        if (!reasons.size) reasons.add("无法确认迁移阻塞原因，请检查原后台状态。");
-        throw Object.assign(new Error(`GUI 数据迁移尚未完成。${[...reasons].join(" ")}`), {
-          code: "GUI_SOURCE_PENDING",
-          migration: result,
-        });
-      }
-      state = await this.client.sourceState(this.source);
-    }
-    if (!state) throw new Error("Host source publication is unavailable");
-    this.state = state;
-    this.sourceId = state.sourceId;
-    this.migrationId = state.migrationId;
+    await this.publish({ deferCredentials });
     await this.list();
     for (const project of this.metadata) {
       if (!this.bindings.has(project.id))

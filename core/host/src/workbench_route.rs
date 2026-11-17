@@ -1074,6 +1074,7 @@ pub(super) fn desktop_command<'a>(
             Cmd::Value26 => Some("resources"),
             Cmd::Value27 => Some("side"),
             Cmd::Value30 => Some("workspace"),
+            Cmd::Value31 => Some("recovery"),
             _ => None,
         };
         if let Some(command) = native_command {
@@ -1089,6 +1090,43 @@ pub(super) fn desktop_command<'a>(
                 "FORBIDDEN"
             );
             return match command {
+                "recovery" => {
+                    let mut query = params.request;
+                    let operation = query
+                        .as_object_mut()
+                        .context("INVALID_PARAMS")?
+                        .remove("operation")
+                        .context("INVALID_PARAMS")?;
+                    match operation.as_str() {
+                        Some("history") => {
+                            crate::space::history::for_host(
+                                &host.home,
+                                serde_json::from_value(query)?,
+                            )
+                            .await
+                        }
+                        Some("importProvider") => {
+                            host.import_provider(serde_json::from_value(query)?)
+                        }
+                        Some("inspect" | "openWorkspace") => {
+                            let catalog =
+                                crate::space::inspect_params_for_host(&host.home, &query)?;
+                            if operation == "inspect" {
+                                return Ok(catalog);
+                            }
+                            let root = catalog["workspace"]
+                                .as_str()
+                                .context("RESOURCE_UNAVAILABLE")?;
+                            super::worktree_catalog::add_project(
+                                host,
+                                &source,
+                                json!({"root":root}),
+                            )
+                            .await
+                        }
+                        _ => anyhow::bail!("INVALID_PARAMS"),
+                    }
+                }
                 "remoteControl" => {
                     host.gateway
                         .workbench

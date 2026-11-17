@@ -554,12 +554,53 @@ export function createHostReadServices(
     const hostProjectId = threadTargets.get(`${projectId}:${threadId}`) ?? project?.hostProjectId;
     return project && hostProjectId ? { project, hostProjectId, threadId } : undefined;
   }
+  async function activateProject(projectId: string) {
+    const activation = await client.query("project.activate", projectId, {});
+    if (!object(activation) || activation.projectId !== projectId)
+      throw new Error("Invalid project activation response");
+    if (activation.state !== "ready")
+      throw Object.assign(
+        new Error(
+          activation.reason === "explicitlyStopped"
+            ? "项目已停止，请先恢复项目。"
+            : "项目启动尚未完成，消息尚未提交，草稿已保留。",
+        ),
+        {
+          code: activation.state === "pending" ? "ACTIVATION_PENDING" : "ACTIVATION_BLOCKED",
+          activationId: activation.activationId,
+        },
+      );
+    return activation;
+  }
   const writes: NonNullable<PlatformServices["writes"]> = {
     async route(name, params) {
       if (client.snapshot().connection !== "ready") return undefined;
       const project = snapshot.projects.find((value) => value.id === params.projectId) as
         | ReadProject
         | undefined;
+      if (project && name === "connect" && params.resumeScheduling !== true) {
+        const original = client.snapshot();
+        if (original.connection !== "ready") throw new Error("Host unavailable");
+        const activationProjectId =
+          typeof params.threadId === "string"
+            ? (threadTargets.get(`${project.id}:${params.threadId}`) ?? project.hostProjectId)
+            : project.hostProjectId;
+        const activation = await activateProject(activationProjectId);
+        await client.refreshShell();
+        const current = client.snapshot();
+        const shell = client.readsSnapshot().shell;
+        if (
+          current.connection !== "ready" ||
+          current.identity.connectionId !== original.identity.connectionId ||
+          shell.state !== "fresh" ||
+          shell.value.snapshot.projects.find((value) => value.projectId === activationProjectId)
+            ?.serviceGeneration !== activation.serviceGeneration
+        )
+          throw Object.assign(new Error("Original project activation changed"), {
+            code: "RESYNC_REQUIRED",
+          });
+        return { routed: true };
+      }
       if (project && name === "create" && client.writable("session.create")) {
         const { projectId: _projectId, ...input } = params;
         const commandId =
@@ -652,21 +693,7 @@ export function createHostReadServices(
               code: "STALE_CONNECTION",
             });
         };
-        const activation = await client.query("project.activate", project.hostProjectId, {});
-        if (!object(activation) || activation.projectId !== project.hostProjectId)
-          throw new Error("Invalid project activation response");
-        if (activation.state !== "ready")
-          throw Object.assign(
-            new Error(
-              activation.reason === "explicitlyStopped"
-                ? "项目已停止，请先恢复项目。"
-                : "项目启动尚未完成，消息尚未提交，草稿已保留。",
-            ),
-            {
-              code: activation.state === "pending" ? "ACTIVATION_PENDING" : "ACTIVATION_BLOCKED",
-              activationId: activation.activationId,
-            },
-          );
+        await activateProject(project.hostProjectId);
         requireOriginal();
         await client.refreshShell();
         requireOriginal();

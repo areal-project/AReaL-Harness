@@ -672,6 +672,7 @@ const HOST_ONLY_DESKTOP_COMMANDS = new Set([
   "queue",
   "queueEdit",
   "reconcile",
+  "recovery",
   "side",
   "workspace",
 ]);

@@ -338,7 +338,7 @@ async function executeCall<N extends CommandName, P extends CommandParams<N>>(
     const value =
       "value" in written
         ? written.value
-        : name === "respond" || name === "steer"
+        : name === "connect" || name === "respond" || name === "steer"
           ? await services.snapshot()
           : { stopped: true };
     if ("value" in written) await contract.validateCommandResponse(name, params, value);
