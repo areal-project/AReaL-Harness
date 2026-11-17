@@ -44,6 +44,8 @@ mod schedule_connection;
 mod schedules;
 #[path = "session_commands.rs"]
 mod session_commands;
+#[path = "session_creation.rs"]
+mod session_creation;
 #[path = "shell_subscription.rs"]
 mod shell_subscription;
 #[path = "side_owners.rs"]

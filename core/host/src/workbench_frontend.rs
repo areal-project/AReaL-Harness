@@ -19,7 +19,53 @@ pub(super) struct Frontend {
     callbacks: BTreeMap<String, oneshot::Sender<Result<Value>>>,
 }
 impl Connections {
-    pub(super) fn frontend_owns(&self, lease: &str) -> bool {
+    pub(crate) async fn frontend_browser_lease(
+        &self,
+        host: &Rc<Host>,
+        source: &str,
+        project: &str,
+    ) -> Result<Option<String>> {
+        let owner = self
+            .frontends
+            .borrow()
+            .iter()
+            .find(|(_, frontend)| frontend.source == source)
+            .map(|(id, frontend)| {
+                (
+                    id.clone(),
+                    frontend
+                        .leases
+                        .iter()
+                        .find(|(lease, id)| {
+                            id.as_str() == project
+                                && self.terminals.borrow().get(*lease).is_some_and(|session| {
+                                    session.desktop.get() && !session.closed.get()
+                                })
+                        })
+                        .map(|(lease, _)| lease.clone()),
+                )
+            });
+        let Some((attachment, existing)) = owner else {
+            return Ok(None);
+        };
+        if let Some(lease) = existing {
+            self.workbench_identity(host, project, &lease)?;
+            return Ok(Some(lease));
+        }
+        let value = self.workbench_desktop_attach(host, project).await?;
+        let lease = value["lease"]
+            .as_str()
+            .context("INVALID_RESPONSE")?
+            .to_owned();
+        if let Some(frontend) = self.frontends.borrow_mut().get_mut(&attachment) {
+            frontend.leases.insert(lease.clone(), project.into());
+            return Ok(Some(lease));
+        }
+        self.workbench_detach(host, project, &lease)?;
+        anyhow::bail!("CAPABILITY_UNAVAILABLE")
+    }
+
+    pub(crate) fn frontend_owns(&self, lease: &str) -> bool {
         self.frontends
             .borrow()
             .values()
@@ -480,6 +526,10 @@ mod tests {
                                 let frame:Value=serde_json::from_str(&text).unwrap();if frame["method"]=="initialized"{continue;}
                                 if frame["method"]=="initialize" {socket.send(Message::Text(json!({"id":frame["id"],"result":{}}).to_string().into())).await.unwrap();}
                                 else if index==0 {socket.send(Message::Text(json!({"id":frame["id"],"result":{"alive":true}}).to_string().into())).await.unwrap();}
+                                else if frame["method"]=="areal/thread/start" {
+                                    assert_eq!(frame["params"]["dynamicTools"][0]["name"],"browser_v1");
+                                    socket.send(Message::Text(json!({"id":frame["id"],"result":{"thread":{"id":"browser-created"},"requestId":frame["params"]["requestId"]}}).to_string().into())).await.unwrap();
+                                }
                                 else if frame["method"]=="areal/server/status" {original=frame["id"].clone();socket.send(Message::Text(json!({"id":17,"method":"item/tool/call","params":{"tool":"js"}}).to_string().into())).await.unwrap();}
                                 else {assert_eq!(frame["id"],17);assert_eq!(frame["result"],json!({"handled":true}));socket.send(Message::Text(json!({"id":original,"result":{"alive":true}}).to_string().into())).await.unwrap();}
                             }
@@ -499,6 +549,12 @@ mod tests {
                 send(&mut reply_writer,"reply","desktop.core.callback",json!({"attachmentId":attachment,"requestId":event["params"]["event"]["requestId"],"result":{"handled":true}})).await;
                 assert_eq!(crate::wire::read(&mut replies).await.unwrap().unwrap()["result"]["received"],true);
                 assert_eq!(crate::wire::read(&mut calls).await.unwrap().unwrap()["result"]["result"]["alive"],true);
+                let launch_dir=host.home.join("host/launch").join(storage::digest(b"project"));storage::private_dir(&launch_dir).unwrap();
+                storage::write(&launch_dir.join("inputs.json"),&crate::LaunchInputs{workspace:shared.service.identity.workspace.clone(),cwd:shared.service.identity.workspace.clone(),config_home:root.path().to_owned(),homedir:None,config_path:None,deployment_path:None,schedule_preparation:None,environment:Default::default(),credential_names:Vec::new(),options:Default::default()}).unwrap();
+                let creation=uuid::Uuid::new_v4().to_string();
+                super::super::super::worktree_catalog::prepare_thread_target(&host,"host","project",json!({"requestId":creation})).await.unwrap();
+                let created=super::super::super::worktree_catalog::bind_thread_target_with_lease(&host,"host","project",&creation,json!({"requestId":creation,"dynamicTools":[areal_protocol::desktop::browser_v1_tool()]}),Some(&lease)).await.unwrap();
+                assert_eq!(created["threadId"],"browser-created","creation must use the original Main callback connection");
                 host.schedules.connections.workbench_close_terminals();
                 assert!(!session.closed.get(),"backend cleanup cannot revoke an independent Main attachment");
                 assert!(!shared.closed.get());

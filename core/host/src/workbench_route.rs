@@ -190,12 +190,19 @@ pub(super) fn backend_project_alias(host: &Host, source: &str, project: &str) ->
 
 /// 只存在于当前请求的准备句柄；journal 只保存 Core 参数，不保存可重放句柄。
 pub(super) struct PreparedExecution {
-    backend: Rc<Workbench>,
-    connection: String,
-    handle: String,
+    owner: PreparedOwner,
     pub params: Value,
     pub source: String,
     dispatched: bool,
+}
+enum PreparedOwner {
+    Creation(super::session_creation::PreparedCreation),
+    Backend(PreparedBackend),
+}
+struct PreparedBackend {
+    backend: Rc<Workbench>,
+    connection: String,
+    handle: String,
     host_dispatch: Option<HostDispatch>,
 }
 type HostDispatch = (Weak<Host>, String, String, (String, String, String));
@@ -203,10 +210,20 @@ impl PreparedExecution {
     pub(super) async fn dispatch(&mut self) -> Result<Value> {
         ensure!(!self.dispatched, "SUBMISSION_UNKNOWN");
         self.dispatched = true;
+        match &self.owner {
+            PreparedOwner::Creation(creation) => {
+                creation.dispatch(&self.source, &self.params).await
+            }
+            PreparedOwner::Backend(backend) => backend.dispatch(&self.source, &self.params).await,
+        }
+    }
+}
+impl PreparedBackend {
+    async fn dispatch(&self, source: &str, params: &Value) -> Result<Value> {
         if let Some((host, project, method, scope)) = &self.host_dispatch {
             let host = host.upgrade().context("CAPABILITY_UNAVAILABLE")?;
             ensure!(
-                host.gateway.workbench.backend_has_source(&self.source),
+                host.gateway.workbench.backend_has_source(source),
                 "RESYNC_REQUIRED"
             );
             let current = host.gateway.workbench.backend.running.borrow().clone();
@@ -225,7 +242,7 @@ impl PreparedExecution {
                     project,
                     (&scope.0, &scope.1, &scope.2),
                     method,
-                    self.params.clone(),
+                    params.clone(),
                 )
                 .await;
             // 回执以 Core 为准；页面租约结算失败不能把已受理的执行改成拒绝或重发。
@@ -258,8 +275,11 @@ impl Drop for PreparedExecution {
         if self.dispatched {
             return;
         }
-        let backend = self.backend.clone();
-        let params = json!({"connection":self.connection,"handle":self.handle});
+        let PreparedOwner::Backend(owner) = &self.owner else {
+            return;
+        };
+        let backend = owner.backend.clone();
+        let params = json!({"connection":owner.connection,"handle":owner.handle});
         tokio::task::spawn_local(async move {
             backend.notify("execution.cancel", params).await;
         });
@@ -489,6 +509,23 @@ impl Supervisor {
         method: &str,
         mut params: Value,
     ) -> Result<Option<PreparedExecution>> {
+        if method == "workbench/thread/create" {
+            self.restore_source(host)?;
+            let source = self.active_source().context("CAPABILITY_UNAVAILABLE")?;
+            let alias = backend_project_alias(host, &source, project)?;
+            ensure!(
+                params.get("projectId").is_none_or(|id| id == &alias),
+                "INVALID_PARAMS"
+            );
+            params["projectId"] = json!(alias);
+            let creation = super::session_creation::prepare(host, &source, &alias, &params).await?;
+            return Ok(Some(PreparedExecution {
+                owner: PreparedOwner::Creation(creation),
+                params,
+                source,
+                dispatched: false,
+            }));
+        }
         // 拉不起后台时按没有桌面后台处理，不挡住不需要桌面工具的提交。
         let _ = self.resume_backend(host).await;
         let Some(source) = self.backend.source.borrow().clone() else {
@@ -510,7 +547,7 @@ impl Supervisor {
             json!({"projectId":alias,"call":{"method":method,"params":params},"coreInstanceId":scope.0,"coreGeneration":scope.1}),
             json!({"connection":connection}),
         ).await?;
-        let result = PreparedExecution {
+        let owner = PreparedBackend {
             backend: backend.clone(),
             connection: connection.to_owned(),
             handle: response["handle"]
@@ -518,9 +555,6 @@ impl Supervisor {
                 .filter(|value| !value.is_empty() && value.len() <= 128)
                 .context("INVALID_RESPONSE")?
                 .to_owned(),
-            params: response["call"]["params"].clone(),
-            source: source.clone(),
-            dispatched: false,
             host_dispatch: (response["hostDispatch"] == true).then(|| {
                 (
                     Rc::downgrade(host),
@@ -529,6 +563,12 @@ impl Supervisor {
                     scope.clone(),
                 )
             }),
+        };
+        let result = PreparedExecution {
+            owner: PreparedOwner::Backend(owner),
+            params: response["call"]["params"].clone(),
+            source: source.clone(),
+            dispatched: false,
         };
         ensure!(response["call"]["method"] == method, "INVALID_RESPONSE");
         ensure!(

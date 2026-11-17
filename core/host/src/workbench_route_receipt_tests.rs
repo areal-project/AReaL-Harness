@@ -130,6 +130,56 @@ where
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn thread_creation_preparation_and_original_receipt_need_no_node_backend() {
+    tokio::task::LocalSet::new().run_until(async {
+        let root = tempfile::tempdir().unwrap();
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let observed = calls.clone();
+        let (host, _source, server, close) = setup_archive_fixture(root.path(), move |method, params| {
+            observed.borrow_mut().push((method.to_owned(), params.clone()));
+            Some(json!({"result":match method {
+                "initialize" | "areal/server/status" => json!({}),
+                "areal/task/list" => json!({"data":[],"nextCursor":null}),
+                "areal/capabilities" => json!({"methods":["areal/thread/start","areal/request/read"],"features":{"threadCreationJournal":{"binding":{"identity":"fixture","journalEpoch":"epoch","coreInstanceId":"fixture"}}}}),
+                "areal/thread/start" => json!({"thread":{"id":"native-created"},"requestId":params["requestId"]}),
+                other => panic!("unexpected {other}"),
+            }}))
+        }).await;
+        let registration = host.slots.borrow()["project"].registration.clone();
+        let launch_dir = host.home.join("host/launch").join(storage::digest(b"project"));
+        storage::private_dir(&launch_dir).unwrap();
+        storage::write(&launch_dir.join("inputs.json"), &crate::LaunchInputs {
+            workspace:registration.workspace.clone(),cwd:registration.workspace.clone(),
+            config_home:root.path().join("data"),homedir:None,config_path:None,deployment_path:None,
+            schedule_preparation:None,environment:Default::default(),credential_names:Vec::new(),options:Default::default(),
+        }).unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let params = json!({"projectId":TEST_PROJECT_ALIAS,"requestId":id,"options":{"permissionPreset":"ask","appendInstructions":"keep this"},"model":{"providerId":"fixture","modelId":"model"},"parameters":{"temperature":0.25},"browserEnabled":false});
+        let mut prepared = host.gateway.workbench.prepare_execution(&host,"owner","project","workbench/thread/create",params.clone()).await.unwrap().unwrap();
+        assert_eq!(prepared.params,params);
+        let receipt = prepared.dispatch().await.unwrap();
+        assert_eq!(receipt["state"],"ready");
+        assert_eq!(receipt["threadId"],"native-created");
+        let again = host.gateway.workbench.prepare_execution(&host,"owner","project","workbench/thread/create",params.clone()).await.unwrap().unwrap().dispatch().await.unwrap();
+        assert_eq!(again,receipt);
+        let calls = calls.borrow();
+        let starts:Vec<_> = calls.iter().filter(|(method,_)|method=="areal/thread/start").collect();
+        assert_eq!(starts.len(),1);
+        assert_eq!(starts[0].1["options"]["appendInstructions"],"keep this");
+        assert_eq!(starts[0].1["model"],params["model"]);
+        assert_eq!(starts[0].1["parameters"]["temperature"],params["parameters"]["temperature"]);
+        assert_eq!(starts[0].1["cwd"],json!(registration.workspace));
+        assert!(host.gateway.workbench.backend.running.borrow().is_none());
+        drop(calls);
+        let mut changed = params.clone();
+        changed["model"]["modelId"] = json!("different-model");
+        let rejected = host.gateway.workbench.prepare_execution(&host,"owner","project","workbench/thread/create",changed).await;
+        assert_eq!(rejected.err().unwrap().to_string(),"COMMAND_CONFLICT");
+        close();server.abort();
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn explicit_backend_failure_settles_as_rejection_not_unknown() {
     tokio::task::LocalSet::new().run_until(async {
         let root = tempfile::tempdir().unwrap();

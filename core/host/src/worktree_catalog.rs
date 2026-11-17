@@ -1558,6 +1558,19 @@ fn target_launch_inputs(
     Ok(launch)
 }
 
+fn creation_owner(host: &Host, source: &str) -> Result<Value> {
+    if source == "host" {
+        return Ok(Value::Null);
+    }
+    ensure!(
+        host.gateway.workbench.active_source().as_deref() == Some(source),
+        "RESYNC_REQUIRED"
+    );
+    Ok(
+        json!({"hostId":host.identity.host_id,"generation":host.identity.generation,"sourceId":source}),
+    )
+}
+
 fn freeze_prepared_core(
     host: &Rc<Host>,
     source: &str,
@@ -1568,14 +1581,7 @@ fn freeze_prepared_core(
         .schedules
         .connections
         .shared_identity(host, execution)?;
-    let backend = if source == "host" {
-        Value::Null
-    } else {
-        host.gateway
-            .workbench
-            .worktree_backend_identity(source)
-            .context("CAPABILITY_UNAVAILABLE")?
-    };
+    let backend = creation_owner(host, source)?;
     let inputs = super::schedule_connection::inputs(host, execution)?;
     let resources = prepared_resources(&inputs)?;
     value["preparedCore"] = json!({"projectId":execution,"instanceId":scope.0,"generation":scope.1,"connectionId":scope.2,"backend":backend,
@@ -1624,11 +1630,7 @@ fn prepared_core(host: &Rc<Host>, source: &str, value: &Value) -> Result<(String
     );
     if source != "host" {
         ensure!(
-            host.gateway
-                .workbench
-                .worktree_backend_identity(source)
-                .as_ref()
-                == Some(&expected["backend"]),
+            creation_owner(host, source)? == expected["backend"],
             "RESYNC_REQUIRED"
         );
     }
@@ -1801,7 +1803,18 @@ pub(super) async fn bind_thread_target(
     source: &str,
     logical: &str,
     id: &str,
+    core_params: Value,
+) -> Result<Value> {
+    bind_thread_target_with_lease(host, source, logical, id, core_params, None).await
+}
+
+pub(super) async fn bind_thread_target_with_lease(
+    host: &Rc<Host>,
+    source: &str,
+    logical: &str,
+    id: &str,
     mut core_params: Value,
+    browser_lease: Option<&str>,
 ) -> Result<Value> {
     let home = super::library_store::source_home(host, source)?;
     let mut value = record(&home, id, logical)?;
@@ -1839,20 +1852,49 @@ pub(super) async fn bind_thread_target(
         ensure!(value["state"] == "created", "SUBMISSION_UNKNOWN");
         host.admission()?;
         let scope = prepared_core(host, source, &value)?;
+        if let Some(lease) = browser_lease {
+            let browser = host.schedules.connections.workbench_identity(
+                host,
+                &execution.project_id,
+                lease,
+            )?;
+            ensure!(
+                browser.0 == scope.0 && browser.1 == scope.1,
+                "RESYNC_REQUIRED"
+            );
+        }
         value["bindingParams"] = core_params.clone();
         event(&mut value, "binding");
         persist_and_notify(host, source, &home, &mut value).await?;
-        let started = host
-            .schedules
-            .connections
-            .remote_request(
-                host,
-                &execution.project_id,
-                (&scope.0, &scope.1, &scope.2),
-                "areal/thread/start",
-                core_params,
-            )
-            .await;
+        let started = if let Some(lease) = browser_lease {
+            let response = host
+                .schedules
+                .connections
+                .workbench_request(
+                    host,
+                    &execution.project_id,
+                    lease,
+                    "areal/thread/start",
+                    core_params,
+                )
+                .await?;
+            if let Some(error) = response.get("error") {
+                Err(crate::server::schedule_connection::RpcFailure(error.clone()).into())
+            } else {
+                response.get("result").cloned().context("INVALID_RESPONSE")
+            }
+        } else {
+            host.schedules
+                .connections
+                .remote_request(
+                    host,
+                    &execution.project_id,
+                    (&scope.0, &scope.1, &scope.2),
+                    "areal/thread/start",
+                    core_params,
+                )
+                .await
+        };
         match started {
             Ok(reply) => reply,
             Err(error) => {

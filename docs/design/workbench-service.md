@@ -52,17 +52,14 @@ Host 与服务通过私有 Unix socket pair 传送逐行 JSON，带 `version: 1`
 
 供应商预设与连接投影的公共元数据位于 `schemas/provider-config`，Rust 与客户端共享同一份定义；修改定义同时使 Core 和 GUI 构建身份失效。
 
-启用 `pages` 领域后，`pages.command` 与 `pages.resource` 复用原 MCP Apps/Gen-UI 宿主，页面会话归已鉴权的 Host 连接。连接身份由 Host 注入，页面 token 不能跨连接使用；页面事件只发给原 owner。断开先撤销现有请求，再结算迟到打开回执与页面工具租约，不登记原生 `computerHost`，不写含页面参数的 journal。重连只能重新打开来源，不能收养旧 token 或重放未知页面请求。
 
-本机 `gui-write-v1` 及配对来源与后台一致的远程会话，在 send/enqueue 与 steer 受理前，经私有 `input.prepare` 复用后台 `genUiText` 的状态投影；只有 modelContent 进入有效输入，privateContent 保留在页面状态。Host 按原始请求去重，把准备后的输入冻结在原 journal 中；重复命令不重新读取状态。未绑定桌面后台的旧入口保持原行为，已绑定后台失联则明确失败。Host 项目 ID 先经已绑定 source 的权威绑定转为后台 alias，再由后台解析线程执行项目。
 
 Host 与工作台在同一个 Core 连接上分别持有 Thread 订阅兴趣；任一方释放后，只有最后一个持有者离开才撤销 Core 订阅。工作台兴趣绑定原租约，旧租约不能撤销新连接持有的兴趣。
 
-私有 `execution.prepare` 复用页面宿主的供应商与工具准备，send/enqueue 与 steer 的 Core 派发由 Host 共享连接执行。带 Worktree 的创建仍经后台薄适配衔接 Host 原生准备与绑定；后台的 Core 请求同样经过 Host。创建准备与原 `createThreadInProject` 共享实现，发送沿用 `ensureBrowserTools` 和 `browserEntrypoints`；Host 冻结原 Core requestId/参数并写 journal，后台只消费一次性页面宿主句柄。句柄绑定原 Host 连接、项目/线程、Core 代际、client 与原生 owner；失败或断开不重放。浏览器发现和页面认领沿原 Main attach 回调，断开原 Host 连接会撤销其入口、发现计划与认领。原生窗口行为仍需桌面端验收。 远程普通新建、发送和引导使用相同执行路径，仍按原设备、项目和 submit 授权校验；仅凭项目别名相同不能取得其他来源的后台。连接结束会撤销后台入口，已发布客户端的请求形状与权限预设不变。工具宿主断开后的确定拒绝通过 Core 的 `TOOL_HOST_UNAVAILABLE` 原因映射为 Host `CAPABILITY_UNAVAILABLE`；保留原命令回执，不自动重发。
+带模型、配置和工作树选项的会话创建由 Host 的 `session_creation` 准备并绑定 Core 原回执，无需启动 Node。创建记录绑定 Host 来源、Core 实例、代际和连接；同一请求 ID 改参数会被拒绝，重复读取不会再创建会话。浏览器工具只绑定原 Main 附件的专用 Core 租约，附件断开后不能沿用。普通 Core 创建、send/enqueue 与 steer 仍通过私有 `execution.prepare` 准备桌面工具；发送沿用 `ensureBrowserTools` 和 `browserEntrypoints`；Host 冻结原 Core requestId/参数并写 journal，后台只消费一次性页面宿主句柄。句柄绑定原 Host 连接、项目/线程、Core 代际、client 与原生 owner；失败或断开不重放。浏览器发现和页面认领沿原 Main attach 回调，断开原 Host 连接会撤销其入口、发现计划与认领。原生窗口行为仍需桌面端验收。 远程普通新建、发送和引导使用相同执行路径，仍按原设备、项目和 submit 授权校验；仅凭项目别名相同不能取得其他来源的后台。连接结束会撤销后台入口，已发布客户端的请求形状与权限预设不变。工具宿主断开后的确定拒绝通过 Core 的 `TOOL_HOST_UNAVAILABLE` 原因映射为 Host `CAPABILITY_UNAVAILABLE`；保留原命令回执，不自动重发。
 
 Electron 的进程命令保留 Main 原生连接适配，即使启用 `manage` 领域也不绕过其终端租约；该适配仍经 Host 连接 Core。浏览器继续经 Host 的 `manage` 合同访问受授权的进程能力。
 
-资源经认证 WebSocket 分块读取，每块最多 192 KiB、单资源最多 8 MiB。公开 `/host/pages/proxy` 仅含固定代理代码，外层与内层均为不带同源权限的 sandbox；页面 HTML 和资源不进入公开 HTTP 路由。Gen-UI 固定资源沿原白名单读取后内联，页面继续受原 CSP 限制。当前仅开放本机回环连接，要求 `gui-write-v1` 与 manage；手动打开 MCP App 与页面 JSON-RPC 请求另需 submit。这是保守的阶段授权，尚未覆盖仅有 submit 的普通设备或远程 Noise。原生文件选择和打开仍属外壳能力。
 
 ## Rust 领域实现
 
