@@ -2,6 +2,8 @@
 
 # Shared Host protocol
 
+Local WebSocket responses are limited to 1 MiB. An oversized response returns `LIMIT_EXCEEDED` with `reason:responseTooLarge` for that request while keeping the connection open. This does not prove that a write was rejected; an existing commandId must still be reconciled through its original receipt. Background workspace change summaries use `workspace.review` with `summaryOnly:true` to omit the diff and line hunks while retaining file change counts. Full reviews use the ordinary request.
+
 The implementation provides authenticated project management, stop receipts, status subscriptions, legacy service migration, source import, legacy-secret retirement, submission journals, and fixed credential slots. Host owns the Remote Gateway, scheduled activation and preparation, provider subscription transport, and sleep prevention; GUI consumes these services through Host. `hello` advertises `projects`, `stopOperations`, `subscriptions`, `legacyMigration`, `guiImport`, `submissionJournal`, `credentialVault`, `remoteState`, `remoteGatewayV1`, `subscriptionOwnerV1`, `activity`, `scheduledActivation`, `scheduledPreparation`, `powerV1`, and `updates`. Clients negotiate capabilities; development layouts can still return `updateUnavailable` for controlled updates. System-service installation and controlled-update interfaces are implemented, but full H0–H4 acceptance remains incomplete. Protocol definitions do not establish physical-device, real-login, or signed-package acceptance. See the [implementation spec](../development/shared-host-spec.en.md), [ownership decision](../adr/0016-shared-host.en.md), and [per-project service contract](local-service.en.md).
 
 ## Transport and authentication

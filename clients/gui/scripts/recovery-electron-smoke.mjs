@@ -134,6 +134,7 @@ async function transportProxy(metadata, events) {
       queue: [],
       fault: null,
       reads: new Map(),
+      reviews: new Map(),
     };
     sessions.add(entry);
     connections++;
@@ -144,6 +145,13 @@ async function transportProxy(metadata, events) {
     });
     down.on("message", (bytes, binary) => {
       const message = JSON.parse(bytes.toString());
+      if (
+        message.method === "desktop.command" &&
+        message.params?.command === "workspace" &&
+        message.params?.request?.operation === "review"
+      ) {
+        entry.reviews.set(message.id, message.params.request.summaryOnly === true);
+      }
       if (
         armed &&
         !armed.dispatched &&
@@ -180,6 +188,16 @@ async function transportProxy(metadata, events) {
     entry.up.on("message", (bytes, binary) => {
       const message = JSON.parse(bytes.toString()),
         fault = entry.fault;
+      if (entry.reviews.has(message.id)) {
+        events.push({
+          at: Date.now(),
+          type: "workspace-review-response",
+          summaryOnly: entry.reviews.get(message.id),
+          bytes: bytes.length,
+          error: !!message.error,
+        });
+        entry.reviews.delete(message.id);
+      }
       if (entry.reads.has(message.id)) {
         events.push({
           type: "command-reconciled",
@@ -399,6 +417,23 @@ if (command === "doctor") {
       env.AREAL_HARNESS_SERVICE_HOME,
     ]);
     execFileSync("git", ["init", "-b", "main"], { cwd: workspace, stdio: "ignore" });
+    // 完整审查结果超过 Host 帧上限；后台摘要不得触发断连与恢复重放。
+    await writeFile(join(workspace, "large-review.txt"), "baseline\n");
+    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
+    execFileSync(
+      "git",
+      [
+        "-c",
+        "user.name=Recovery fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-m",
+        "fixture",
+      ],
+      { cwd: workspace, stdio: "ignore" },
+    );
+    await writeFile(join(workspace, "large-review.txt"), "new line\n".repeat(30000));
     model = createServer(async (request, response) => {
       try {
         let raw = "";
@@ -473,6 +508,14 @@ if (command === "doctor") {
     await capture("02-history");
     const endpoint = JSON.parse(await readFile(join(state, "registry/host/endpoint.json"), "utf8"));
     proxy = await transportProxy(endpoint, events);
+    let skillsBegins = 0;
+    page.on("console", (message) => {
+      if (
+        message.text().includes("[composer-skills]") &&
+        message.text().includes('"outcome":"begin"')
+      )
+        skillsBegins++;
+    });
     await page.addInitScript(
       ({ target, replacement }) => {
         const NativeWebSocket = window.WebSocket;
@@ -490,6 +533,33 @@ if (command === "doctor") {
       .getByText("RECOVERY_HISTORY_SENTINEL_1", { exact: true })
       .waitFor();
     assert.ok(proxy.connections > 0, "Renderer connected through the Host fault proxy");
+    await until(
+      () =>
+        events.some(
+          (event) =>
+            event.type === "workspace-review-response" && event.summaryOnly && !event.error,
+        ),
+      "summary workspace review response",
+    );
+    const review = events.find(
+      (event) => event.type === "workspace-review-response" && event.summaryOnly && !event.error,
+    );
+    assert.ok(review.bytes < 1024 * 1024, `Summary review response is ${review.bytes} bytes`);
+    const stableConnections = proxy.connections,
+      stableSkills = skillsBegins;
+    await sleep(6000);
+    assert.equal(
+      proxy.connections,
+      stableConnections,
+      "Large review must not cause spontaneous reconnect",
+    );
+    assert.ok(skillsBegins - stableSkills <= 1, "Skills must not reload repeatedly while idle");
+    checks.push({
+      name: "large-review-stable-connection",
+      responseBytes: review.bytes,
+      connections: stableConnections,
+      idleSkillsBegins: skillsBegins - stableSkills,
+    });
     const before = structuredClone(thread(await snapshot())),
       beforeModel = workRequests();
     const send = proxy.arm("send");

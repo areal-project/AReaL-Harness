@@ -526,8 +526,16 @@ async function review(root, storage, options = {}) {
   return {
     head,
     base,
-    diff,
-    files,
+    diff: options.summaryOnly ? "" : diff,
+    files: options.summaryOnly
+      ? files.map(({ path, additions, deletions, binary }) => ({
+          path,
+          additions,
+          deletions,
+          binary,
+          hunks: [],
+        }))
+      : files,
     scope,
     reference,
     root: top,

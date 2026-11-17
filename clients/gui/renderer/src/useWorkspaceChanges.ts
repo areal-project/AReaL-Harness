@@ -41,6 +41,7 @@ export function useWorkspaceChanges(project: Data, thread: Data, action: Action)
                 threadId: thread.id,
                 operation: "review",
                 scope: "unstaged",
+                summaryOnly: true,
               })
             : undefined;
         if (live) setGit({ info, review });

@@ -264,3 +264,36 @@ test("MCP app opening retains logical page identity and physical Core connection
   assert.equal(calls.at(-1).method, "areal/mcp/app/tools/revoke");
   assert.equal(calls[0].params.threadId, "t");
 });
+
+test("background review summary stays bounded for a large diff", async (t) => {
+  const api = require("../packages/workspace-git");
+  const scratch = await realpath(await mkdtemp(join(tmpdir(), "areal-review-summary-")));
+  t.after(() => rm(scratch, { recursive: true, force: true }));
+  const f = { root: join(scratch, "repo"), storage: join(scratch, "state") };
+  await mkdir(f.root);
+  const git = (...args) =>
+    require("node:child_process").execFileSync("git", args, { cwd: f.root, stdio: "ignore" });
+  git("init", "-b", "main");
+  await writeFile(join(f.root, "tracked.txt"), "committed\n");
+  git("add", ".");
+  git(
+    "-c",
+    "user.name=Review fixture",
+    "-c",
+    "user.email=fixture@example.invalid",
+    "commit",
+    "-m",
+    "fixture",
+  );
+  await writeFile(join(f.root, "tracked.txt"), "new line\n".repeat(30000));
+  const full = await api.review(f.root, f.storage, { scope: "unstaged" });
+  assert.ok(Buffer.byteLength(JSON.stringify(full)) > 1024 * 1024);
+  const summary = await api.review(f.root, f.storage, { scope: "unstaged", summaryOnly: true });
+  assert.equal(summary.diff, "");
+  assert.deepEqual(
+    summary.files.map(({ path, additions, deletions }) => ({ path, additions, deletions })),
+    full.files.map(({ path, additions, deletions }) => ({ path, additions, deletions })),
+  );
+  assert.equal(summary.token, full.token);
+  assert.ok(Buffer.byteLength(JSON.stringify(summary)) < 4096);
+});

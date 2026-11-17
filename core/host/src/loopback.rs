@@ -1046,8 +1046,21 @@ async fn notify(socket: &mut Socket, event: Value) -> Result<()> {
     .await
 }
 
-async fn send(socket: &mut Socket, value: &Value) -> Result<()> {
-    let bytes = serde_json::to_string(value)?;
+async fn send<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
+    socket: &mut WebSocketStream<S>,
+    value: &Value,
+) -> Result<()> {
+    let mut bytes = serde_json::to_string(value)?;
+    if bytes.len() > wire::MAX_FRAME && value.get("id").is_some() {
+        // 响应超限只结算传输失败，不能断开整个连接，也不能把已执行的写入改判为未受理。
+        let mut error = json!({"code":"LIMIT_EXCEEDED",
+            "message":"请求结果超过传输大小限制，请缩小读取范围；连接仍可继续使用",
+            "reason":"responseTooLarge","submissionUnknown":true});
+        if let Some(command) = value["result"].get("commandId") {
+            error["commandId"] = command.clone();
+        }
+        bytes = serde_json::to_string(&json!({"version":VERSION,"id":value["id"],"error":error}))?;
+    }
     ensure!(
         bytes.len() <= wire::MAX_FRAME,
         "response exceeds frame limit"

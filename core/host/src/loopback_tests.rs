@@ -1,4 +1,35 @@
 use super::*;
+#[tokio::test]
+async fn oversized_response_keeps_connection_and_original_command_recoverable() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut socket = WebSocketStream::from_raw_socket(stream, Role::Server, None).await;
+        let large = json!({"version":1,"id":"large","result":{
+            "commandId":"original","data":"x".repeat(wire::MAX_FRAME)}});
+        send(&mut socket, &large).await.unwrap();
+        send(
+            &mut socket,
+            &json!({"version":1,"id":"next","result":{"ok":true}}),
+        )
+        .await
+        .unwrap();
+    });
+    let stream = tokio::net::TcpStream::connect(address).await.unwrap();
+    let mut socket = WebSocketStream::from_raw_socket(stream, Role::Client, None).await;
+    let first = socket.next().await.unwrap().unwrap();
+    let first: Value = serde_json::from_str(first.to_text().unwrap()).unwrap();
+    assert_eq!(first["id"], "large");
+    assert_eq!(first["error"]["code"], "LIMIT_EXCEEDED");
+    assert_eq!(first["error"]["commandId"], "original");
+    assert_eq!(first["error"]["submissionUnknown"], true);
+    let next = socket.next().await.unwrap().unwrap();
+    let next: Value = serde_json::from_str(next.to_text().unwrap()).unwrap();
+    assert_eq!(next["result"]["ok"], true);
+    server.await.unwrap();
+}
+
 #[test]
 fn task_rejection_is_definitive_on_loopback_wire() {
     let error: anyhow::Error = super::super::task_catalog::TaskRejection(

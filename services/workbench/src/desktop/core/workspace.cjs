@@ -93,6 +93,7 @@ async function executeWorkspaceCommand(backend, request) {
       return git.review(project.root, backend.home, {
         scope: request.scope ?? "unstaged",
         ref: request.ref,
+        summaryOnly: request.summaryOnly,
       });
     case "reviewCommits":
       return git.reviewCommits(project.root);
