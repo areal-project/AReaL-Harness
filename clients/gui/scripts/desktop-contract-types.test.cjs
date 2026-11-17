@@ -11,6 +11,27 @@ const {
 } = require("../packages/workbench/client/desktop-contract.cjs");
 
 const cases = [
+  [
+    "serviceStatus",
+    {},
+    {
+      canStop: false,
+      connected: true,
+      busy: false,
+      starting: 0,
+      providerUpdating: false,
+      projects: [],
+    },
+    {
+      canStop: false,
+      connected: true,
+      busy: false,
+      clients: "unknown",
+      starting: 0,
+      providerUpdating: false,
+      projects: [],
+    },
+  ],
   ["recovery", { operation: "inspect" }, { kind: "none" }, { kind: "none", projects: [] }],
   [
     "recovery",

@@ -216,6 +216,9 @@ impl PreparedExecution {
     }
 }
 impl Supervisor {
+    pub(super) fn provider_updating(&self) -> bool {
+        self.providers.updating()
+    }
     pub(super) fn tasks_event(&self, host: &Host, canonical: &str, mut body: Value) {
         let Some(source) = self.active_source() else {
             return;
@@ -1683,6 +1686,15 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
             let host = host.upgrade().context("CAPABILITY_UNAVAILABLE")?;
             match call.as_str() {
                 "remote.control" => {
+                    ensure!(
+                        params.as_object().is_some_and(|params| params.len() == 2
+                            && params.contains_key("sourceId")
+                            && params.contains_key("request")),
+                        "INVALID_PARAMS"
+                    );
+                    let _: areal_protocol::host::GatewayControl =
+                        serde_json::from_value(params["request"].clone())
+                            .context("INVALID_PARAMS")?;
                     let source = host
                         .gateway
                         .workbench

@@ -78640,6 +78640,35 @@
         "productVersion": {
           "type": "string"
         },
+        "queues": {
+          "items": {
+            "additionalProperties": true,
+            "properties": {
+              "paused": {
+                "type": "boolean"
+              },
+              "pending": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "running": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "threadId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "paused",
+              "pending",
+              "running",
+              "threadId"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
         "readReady": {
           "type": "boolean"
         },
@@ -78852,6 +78881,7 @@
         "lifecycle",
         "pendingQueueItems",
         "productVersion",
+        "queues",
         "readReady",
         "resources",
         "restartSafe",
@@ -79421,6 +79451,35 @@
         "productVersion": {
           "type": "string"
         },
+        "queues": {
+          "items": {
+            "additionalProperties": true,
+            "properties": {
+              "paused": {
+                "type": "boolean"
+              },
+              "pending": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "running": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "threadId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "paused",
+              "pending",
+              "running",
+              "threadId"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
         "readReady": {
           "type": "boolean"
         },
@@ -79633,6 +79692,7 @@
         "lifecycle",
         "pendingQueueItems",
         "productVersion",
+        "queues",
         "readReady",
         "resources",
         "restartSafe",

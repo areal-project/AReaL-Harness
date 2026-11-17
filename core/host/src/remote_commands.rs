@@ -90,6 +90,9 @@ async fn settled(host: &Host, source: &str) -> Result<()> {
     }
     Ok(())
 }
+pub(super) async fn unresolved(host: &Host, source: &str) -> bool {
+    settled(host, source).await.is_err()
+}
 
 impl RemoteCommands {
     pub(super) async fn command(

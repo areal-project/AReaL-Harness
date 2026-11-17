@@ -272,6 +272,42 @@ pub(super) fn config_inputs(
     }
 }
 
+fn initial_marker(home: &Path, registration: &ProjectRegistration) -> std::path::PathBuf {
+    home.join("host/launch")
+        .join(storage::digest(registration.project_id.as_bytes()))
+        .join("preparation-only.json")
+}
+
+pub(crate) fn write_initial(
+    home: &Path,
+    registration: &ProjectRegistration,
+    inputs: &LaunchInputs,
+) -> Result<()> {
+    let marker = initial_marker(home, registration);
+    storage::private_dir(marker.parent().unwrap())?;
+    let digest = storage::digest(&serde_json::to_vec(inputs)?);
+    storage::write(
+        &marker,
+        &serde_json::json!({"version":1,"projectId":registration.project_id,"sha256":digest}),
+    )?;
+    storage::write(&marker.parent().unwrap().join("inputs.json"), inputs)
+}
+
+pub(crate) fn preparation_only(home: &Path, registration: &ProjectRegistration) -> Result<bool> {
+    let marker = initial_marker(home, registration);
+    let Some(proof): Option<serde_json::Value> = storage::read_optional(&marker)? else {
+        return Ok(false);
+    };
+    ensure!(
+        proof["version"] == 1
+            && proof["projectId"] == registration.project_id
+            && proof["sha256"].is_string(),
+        "invalid initial launch preparation"
+    );
+    let inputs: LaunchInputs = storage::read(&marker.parent().unwrap().join("inputs.json"))?;
+    Ok(proof["sha256"] == storage::digest(&serde_json::to_vec(&inputs)?))
+}
+
 pub(crate) fn prepare(
     home: &Path,
     bin: &Path,
@@ -280,6 +316,13 @@ pub(crate) fn prepare(
     credentials: &BTreeMap<String, String>,
 ) -> Result<(LaunchSpec, LaunchInputs)> {
     validate(inputs, registration)?;
+    // 撤销仅准备证明必须先落盘，不能在启动受理后因Host重启重新宣称从未尝试启动。
+    let marker = initial_marker(home, registration);
+    match std::fs::remove_file(&marker) {
+        Ok(()) => std::fs::File::open(marker.parent().unwrap())?.sync_all()?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
     let mut saved = inputs.clone();
     let directory = home
         .join("host/launch")

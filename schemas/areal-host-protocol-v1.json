@@ -26582,6 +26582,35 @@
             "type": "object"
           },
           "type": "array"
+        },
+        "queues": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "paused": {
+                "type": "boolean"
+              },
+              "pending": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "running": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "threadId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "threadId",
+              "paused",
+              "pending",
+              "running"
+            ],
+            "type": "object"
+          },
+          "type": "array"
         }
       },
       "required": [
@@ -26604,7 +26633,8 @@
         "runtime",
         "stateVersion",
         "unresolvedTools",
-        "workgroups"
+        "workgroups",
+        "queues"
       ],
       "type": "object"
     },
@@ -63753,6 +63783,32 @@
             "content"
           ],
           "additionalProperties": false
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "includeTasks": {
+              "type": "boolean"
+            },
+            "operation": {
+              "enum": [
+                "inspect",
+                "status"
+              ],
+              "type": "string"
+            },
+            "purpose": {
+              "enum": [
+                "quit",
+                "manage"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "operation"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -64025,6 +64081,15 @@
             "projects"
           ],
           "additionalProperties": false
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/LocalDesktopResourceInspection"
+          },
+          "type": "array"
+        },
+        {
+          "$ref": "#/$defs/LocalDesktopResourceStatus"
         }
       ]
     },
@@ -64639,6 +64704,127 @@
     "LocalDesktopTerminalCommandResult": {
       "type": "object",
       "description": "Core process response through a GUI-owned connection lease."
+    },
+    "LocalDesktopResourceInspection": {
+      "additionalProperties": true,
+      "description": "Source-bound Core resource observation; no process arguments or saved credentials.",
+      "properties": {
+        "observation": {
+          "enum": [
+            "known",
+            "unavailable"
+          ],
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        },
+        "started": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "projectId",
+        "root",
+        "started",
+        "observation"
+      ],
+      "type": "object"
+    },
+    "LocalDesktopResourceStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "activeCommands": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "busy": {
+          "type": "boolean"
+        },
+        "canStop": {
+          "type": "boolean"
+        },
+        "clients": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "connected": {
+          "type": "boolean"
+        },
+        "projects": {
+          "items": {
+            "$ref": "#/$defs/LocalDesktopResourceInspection"
+          },
+          "type": "array"
+        },
+        "providerUpdating": {
+          "type": "boolean"
+        },
+        "starting": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "canStop",
+        "connected",
+        "busy",
+        "providerUpdating",
+        "starting",
+        "projects"
+      ],
+      "type": "object"
+    },
+    "WorkbenchPrivateRemoteControlParams": {
+      "additionalProperties": false,
+      "properties": {
+        "request": {
+          "$ref": "#/$defs/GatewayControl"
+        },
+        "sourceId": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "sourceId",
+        "request"
+      ],
+      "type": "object"
+    },
+    "WorkbenchPrivateRemoteControlRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "call": {
+          "const": "remote.control",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/WorkbenchPrivateRemoteControlParams"
+        },
+        "version": {
+          "const": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "call",
+        "params"
+      ],
+      "type": "object"
+    },
+    "WorkbenchPrivateRemoteControlResult": {
+      "$ref": "#/$defs/NativeCoreObject"
     }
   },
   "x-current": {
@@ -65663,6 +65849,13 @@
           "direction": "workbenchToHost",
           "x-owner": "host",
           "source": "core/host/src/workbench_route.rs"
+        },
+        "remote.control": {
+          "direction": "workbenchToHost",
+          "request": "#/$defs/WorkbenchPrivateRemoteControlRequest",
+          "result": "#/$defs/WorkbenchPrivateRemoteControlResult",
+          "source": "core/host/src/workbench_route.rs",
+          "x-owner": "host"
         }
       },
       "events": {

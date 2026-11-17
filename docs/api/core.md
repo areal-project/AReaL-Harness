@@ -551,6 +551,8 @@ Rust `Limits` 与 `ResolvedCoreConfig` 增加上述实验控制字段及 `comman
 
 ## 空闲回收
 
+`areal/server/status` 的 `queues` 由 Core 当前线程状态生成，只包含有待处理或运行消息的队列，字段为 `threadId`、`paused`、`pending`、`running`；不返回消息正文或配置。
+
 `areal/server/status` 返回 `idleForMs`，表示当前执行实例连续无工作的毫秒数。Core 重启、活动工作、持久 thread/turn 的最新变更都会收紧此值；只读观察和连接心跳不延长空闲时间。该字段不作为执行完成的独立凭据。
 
 `areal/server/drain` 新增可选 `idleTimeoutMs`（1–604800000），仅用于 `strategy:"ifIdle"`。Core 在同一准入锁中检查空闲时长和全部生命周期阻塞条件；不满足时拒绝且保持准入开放。满足时关闭新工作准入并执行既有安全排空。控制面必须继续验证排空响应和 writer 隔离凭据，再销毁沙箱。旧客户端省略此字段时行为保持不变；不支持该字段的旧 Core 不能用于自动空闲回收。

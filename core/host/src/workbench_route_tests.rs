@@ -1772,6 +1772,7 @@ async fn fresh_gui_registration_prepares_launch_without_node_or_core() {
         let alias=result["projectId"].as_str().unwrap();
         let registration=super::super::worktree_catalog::project(&host,&source,alias).unwrap();
         let saved=host.home.join("host/launch").join(storage::digest(registration.project_id.as_bytes())).join("inputs.json");
+        assert!(matches!(crate::activity::observe(&host.home,&registration,&host.owner(),false,None).await.unwrap(),crate::ProjectActivity::Observed{idle_allowed:true,..}),"preparing a fresh GUI project must not claim Core was launched");
         let inputs:crate::LaunchInputs=storage::read(&saved).expect("new GUI registration must prepare its first native launch");
         assert_eq!(inputs.workspace,workspace);assert_eq!(inputs.cwd,workspace);
         assert!(inputs.credential_names.iter().any(|name|name=="FIXTURE_KEY"));
@@ -1784,9 +1785,11 @@ async fn fresh_gui_registration_prepares_launch_without_node_or_core() {
         assert!(deployment["profiles"].as_array().unwrap().iter().any(|profile|profile["revision"].as_str().is_some_and(|revision|revision.starts_with("resources-"))));
         for name in ["areal-runtime","areal-runtime-fs","areal-runtime-reaper"] {std::fs::write(host.bin.join(name),b"fixture").unwrap();}
         let (launch,_)=crate::launch::prepare(&host.home,&host.bin,&registration,&inputs,&Default::default()).unwrap();
+        assert!(crate::activity::observe(&host.home,&registration,&host.owner(),false,None).await.is_err(),"launch admission must consume initial preparation proof");
         assert!(!launch.args.history_only,"native deployment must pass the shared Core launch preparation");
         let before=std::fs::read(&saved).unwrap();
         super::super::worktree_catalog::add_project(&host,&source,json!({"root":workspace})).await.unwrap();
+        assert!(crate::activity::observe(&host.home,&registration,&host.owner(),false,None).await.is_err(),"re-registering cannot reset unknown launch history");
         assert_eq!(std::fs::read(&saved).unwrap(),before,"repeated registration retains original launch inputs");
         let same=super::super::gui_project::refresh_inputs(&host,&registration).await.unwrap().unwrap();
         assert!(super::super::gui_project::same_inputs(&inputs,&same).unwrap(),"unchanged settings must not request a restart; differing keys: {:?}", serde_json::to_value(&inputs).unwrap().as_object().unwrap().iter().filter_map(|(key,value)|(Some(value)!=serde_json::to_value(&same).unwrap().get(key)).then_some(key)).collect::<Vec<_>>());

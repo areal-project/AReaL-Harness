@@ -542,6 +542,8 @@ Rust `Limits` and `ResolvedCoreConfig` gain these experimental control fields pl
 
 ## Idle reclamation
 
+The `queues` field in `areal/server/status` comes from current Core thread state. It includes only queues with pending or running messages and exposes `threadId`, `paused`, `pending`, and `running`, without message content or configuration.
+
 `areal/server/status` returns `idleForMs`, the current execution instance's continuous idle duration in milliseconds. Core startup, active work, and recent persisted thread/turn changes bound this value; read-only observation and connection heartbeats do not extend idle time. This field alone is not execution-completion evidence.
 
 `areal/server/drain` accepts optional `idleTimeoutMs` (1–604800000), only with `strategy:"ifIdle"`. Core checks the duration and all lifecycle blockers under the same admission lock. Rejection leaves admission open; acceptance closes admission and performs existing safe drain. The control plane must still verify the drain result and writer isolation receipt before destroying the sandbox. Existing clients omitting the field retain their behavior. Older Core packages without this field cannot participate in automatic idle reclamation.

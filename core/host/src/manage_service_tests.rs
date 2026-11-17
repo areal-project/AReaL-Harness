@@ -146,6 +146,7 @@ fn fixture_server_status() -> Value {
             "version": 1
         },
         "pendingQueueItems": 0,
+        "queues": [],
         "productVersion": "fixture",
         "resources": [],
         "restartSafe": true,
@@ -790,4 +791,36 @@ async fn manage_mutations_artifacts_and_plugin_credentials_run_without_node_back
             server.abort();
         })
         .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn native_resource_inspection_uses_current_core_and_redacts_process_arguments() {
+    tokio::task::LocalSet::new().run_until(async {
+        let temp=tempfile::tempdir().unwrap();let base=temp.path().canonicalize().unwrap();
+        let (host,source,alias,workspace)=test_host(&base);
+        let (server,close)=start_mock_core(&host,|method,_params| match method {
+            "initialize"=>json!({}),
+            "areal/capabilities"=>json!({"methods":[],"features":{}}),
+            "areal/server/status"=>{let mut status=fixture_server_status();status["resources"]=json!([{"threadId":"thread","id":"process"}]);status["runtime"]=json!({"runtimeEpoch":"runtime"});status["lifecycle"]["ifIdle"]["allowed"]=json!(false);status},
+            "areal/process/list"=>json!({"data":[{"id":"process","runtimeEpoch":"runtime","state":"running","argv":["/bin/sh","synthetic-secret-argument"],"cleanupConfirmed":false}]}),
+            "areal/task/list"=>json!({"data":[],"nextCursor":null}),
+            other=>panic!("unexpected inspection RPC {other}"),
+        }).await;
+        let (revision,mut journal)=host.journal.native_snapshot("project").unwrap();
+        journal["pending"]=json!([{"method":"areal/process/start","params":{"requestId":uuid::Uuid::new_v4().to_string(),"threadId":"thread","argv":["synthetic-pending-secret"]}}]);
+        host.journal.native_replace("project",revision,journal.clone()).unwrap();
+        let value=host.gateway.workbench.resources.command(&host,&source,&json!({"operation":"inspect","includeTasks":true})).await.unwrap();
+        assert_eq!(value[0]["projectId"],alias);assert_eq!(value[0]["root"],json!(workspace));
+        assert_eq!(value[0]["observation"],"known");assert_eq!(value[0]["restartSafe"],false);
+        assert_eq!(value[0]["resources"][0]["executable"],"/bin/sh");
+        assert!(!value.to_string().contains("synthetic-secret-argument"));
+        assert!(!value.to_string().contains("synthetic-pending-secret"));
+        assert_eq!(value[0]["pendingRequests"][0]["threadId"],"thread");
+        assert_eq!(host.journal.native_snapshot("project").unwrap().1["pending"],journal["pending"]);
+        assert!(!host.gateway.workbench.has_running_backend());
+        close();server.await.unwrap();
+        let stopped=host.gateway.workbench.resources.command(&host,&source,&json!({"operation":"inspect"})).await.unwrap();
+        assert_eq!(stopped[0]["observation"],"unavailable");
+        assert!(!host.gateway.workbench.has_running_backend());
+    }).await;
 }

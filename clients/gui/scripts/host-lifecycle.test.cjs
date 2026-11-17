@@ -1619,3 +1619,41 @@ test("remaining Node remote adapter delegates control to the native Host owner",
     { method: "remote.control", params: { sourceId: "source", request: { operation: "disable" } } },
   ]);
 });
+
+test("Main resource and service status reads use native Host without a Node connection", async (t) => {
+  const f = await fixture(t);
+  const rows = [
+    {
+      projectId: "project",
+      root: "/synthetic/project",
+      started: true,
+      observation: "known",
+      restartSafe: false,
+      resources: [],
+      pendingRequests: [{ threadId: "thread", awaitingResponse: false }],
+    },
+  ];
+  const status = {
+    canStop: false,
+    connected: true,
+    busy: true,
+    starting: 0,
+    providerUpdating: false,
+    projects: rows,
+  };
+  const operations = [];
+  f.setHandler(async (q) => {
+    if (q.method === "desktop.core.subscribe") return { attachmentId: "attachment" };
+    assert.equal(q.method, "desktop.core.call");
+    assert.equal(q.params.call, "resources.command");
+    operations.push(q.params.params.operation);
+    return q.params.params.operation === "status" ? status : rows;
+  });
+  await f.backend.connectNativeBrowser({ home: f.hostHome, sourceId: "source" }, {});
+  t.after(() => f.backend.closeNativeBrowser());
+  f.backend.status.connected = true;
+  assert.deepEqual(await f.backend.resources({ operation: "inspect", includeTasks: true }), rows);
+  assert.deepEqual(await f.backend.serviceStatus(), status);
+  assert.deepEqual(operations, ["inspect", "status"]);
+  assert.equal(f.backend.connection, undefined);
+});

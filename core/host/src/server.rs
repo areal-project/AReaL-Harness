@@ -50,6 +50,8 @@ mod provider_config;
 mod provider_probe;
 #[path = "remote_commands.rs"]
 mod remote_commands;
+#[path = "resource_inspections.rs"]
+mod resource_inspections;
 #[path = "resources.rs"]
 mod resources;
 #[path = "schedule_connection.rs"]

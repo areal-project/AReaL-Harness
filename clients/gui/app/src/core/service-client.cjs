@@ -1236,10 +1236,22 @@ class SharedCoreBackend {
     }
   }
   /** @param {Record<string,unknown>} request @returns {Promise<unknown>} */
+  async nativeResourceRead(request) {
+    const epoch = this.nativeBrowserEpoch;
+    const value = await this.nativeBrowserCall("resources.command", request);
+    if (!epoch || this.nativeBrowserEpoch !== epoch || this.disposed)
+      throw Object.assign(new Error("Original native source changed"), { code: "RESYNC_REQUIRED" });
+    return value;
+  }
+  /** @param {Record<string,unknown>} request @returns {Promise<unknown>} */
   async resources(request) {
     if (request.operation !== "inspect") this.assertApplicationWrite();
     if (!this.status.connected)
       throw new Error("后台尚未连接，请点击“重新连接后台”检查并恢复旧服务");
+    if (request.operation === "inspect" && this.nativeBrowserEpoch)
+      return require("@areal/workbench/desktop-contract/desktop-control-resources").readResourceInspections(
+        await this.nativeResourceRead(request),
+      );
     return this.requireConnection().request("resources", request, request.operation !== "inspect");
   }
   /** @param {Record<string,unknown>} request */
@@ -1254,6 +1266,14 @@ class SharedCoreBackend {
   }
   async serviceStatus() {
     if (!this.status.connected) throw new Error("后台尚未连接");
+    if (this.nativeBrowserEpoch) {
+      const value = await this.nativeResourceRead({ operation: "status" });
+      /** @type {typeof import('@areal/workbench/desktop-contract/desktop-control').validateResponse} */
+      const validate =
+        require("@areal/workbench/desktop-contract/desktop-control").validateResponse;
+      validate("serviceStatus", {}, value);
+      return value;
+    }
     const connection = this.requireConnection();
     const projects =
       require("@areal/workbench-service/desktop/core/resource-observation.cjs").readResourceInspections(

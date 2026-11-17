@@ -190,6 +190,9 @@ impl Resources {
     ) -> Result<Value> {
         let _: areal_protocol::host::LocalDesktopResourceParams =
             serde_json::from_value(request.clone()).context("INVALID_PARAMS")?;
+        if matches!(request["operation"].as_str(), Some("inspect" | "status")) {
+            return super::resource_inspections::read(host, source, request).await;
+        }
         let _guard = self.gate.lock().await;
         host.admission()?;
         let home = library_store::source_home(host, source)?;

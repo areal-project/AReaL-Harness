@@ -37,8 +37,7 @@ pub(super) async fn initialize(
     let options = options(host, source)?;
     let inputs = prepare(host, source, project, &options).await?;
     ensure!(self::options(host, source)? == options, "RESYNC_REQUIRED");
-    storage::private_dir(path.parent().unwrap())?;
-    storage::write(&path, &inputs)
+    launch::write_initial(&host.home, project, &inputs)
 }
 
 pub(super) async fn missing_inputs(
