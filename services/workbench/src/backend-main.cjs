@@ -248,9 +248,6 @@ const privateMethods = [
   "core.callback",
   "library.dependencies",
   "desktop.command",
-  "execution.prepare",
-  "execution.dispatch",
-  "execution.complete",
 ];
 /** @type {Record<string,string>} */
 const domains = {
@@ -461,31 +458,14 @@ async function start({ input, output }) {
         desktop.backend.onChange();
         continue;
       }
-      if (
-        request.event === "execution.complete" &&
-        typeof request.connection === "string" &&
-        typeof request.handle === "string"
-      ) {
-        desktop.adapter.completeHostExecution(request, request.connection);
-        continue;
-      }
       if (request.event === "tasks.event") {
         desktop.backend.ownerTasks.hostEvent(request);
-        continue;
-      }
-      if (
-        request.event === "execution.cancel" &&
-        typeof request.connection === "string" &&
-        typeof request.handle === "string"
-      ) {
-        desktop.adapter.cancelHostExecution(request.handle, request.connection);
         continue;
       }
       if (request.event === "connection.disconnect" && typeof request.connection === "string") {
         sideOwners.disconnect(request.connection, (side) =>
           desktop.adapter.executeRemote("side", side),
         );
-        desktop.adapter.disconnectHostExecution(request.connection);
         continue;
       }
       if (!Object.hasOwn(domains, request.method) && !privateMethods.includes(request.method))
@@ -616,20 +596,6 @@ async function start({ input, output }) {
                 : await desktop.adapter.executeRemote(command, params);
           contract.validateCommandResponse(command, params, result);
           return result ?? null;
-        }
-        if (
-          request.method === "execution.prepare" ||
-          request.method === "execution.dispatch" ||
-          request.method === "execution.complete"
-        ) {
-          const connection = request.context?.connection;
-          if (typeof connection !== "string" || !connection || connection.length > 256)
-            throw Error("Invalid execution owner");
-          return request.method === "execution.prepare"
-            ? desktop.adapter.prepareHostExecution(request.params, connection)
-            : request.method === "execution.complete"
-              ? desktop.adapter.completeHostExecution(request.params, connection)
-              : desktop.adapter.dispatchHostExecution(request.params.handle, connection);
         }
         const result = await desktop.adapter.executeRemote(domain, request.params);
         appRequire("@areal/workbench/desktop-contract").validateCommandResponse(

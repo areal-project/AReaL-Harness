@@ -44,11 +44,10 @@ const mainClient = (client) => !!client && "kind" in client && client.kind === "
 const connected = (client) =>
   !!client && (mainClient(client) ? !client.closed : client.readyState === 1);
 /** @typedef {{pageId:string,pageGeneration:number,controlEpoch:number}} PageClaim */
-/** @typedef {{socket:ServiceSocket,hostConnection?:string,coreInstanceId:string,coreGeneration:string,browserHostId:string,hostGeneration:number,pages:Map<string,PageClaim>,revokedPages:Set<string>}} BrowserClaim */
+/** @typedef {{socket:ServiceSocket,coreInstanceId:string,coreGeneration:string,browserHostId:string,hostGeneration:number,pages:Map<string,PageClaim>,revokedPages:Set<string>}} BrowserClaim */
 /** @typedef {{turnId?:string,queueItemId?:string}|null} AcceptedEntry */
-/** @typedef {{socket:ServiceSocket,hostConnection?:string,project:Project,client:CoreClient|null|undefined,ready:Promise<AcceptedEntry>,resolve:(value:AcceptedEntry)=>void,accepted?:AcceptedEntry}} BrowserEntry */
-/** @typedef {{socket:ServiceSocket,timer?:NodeJS.Timeout,hostConnection?:string,resolve:(value:unknown)=>void,reject:(error:unknown)=>void,key?:string,bootstrap?:boolean,discovery?:boolean,coreInstanceId?:string,coreGeneration?:string,tool?:string}} BrowserPending */
-/** @typedef {{connection:string,method:string,params:Fields,project:Project,client:CoreClient,current:()=>boolean,key:string,entry:BrowserEntry|null,timer:NodeJS.Timeout}} HostExecution */
+/** @typedef {{socket:ServiceSocket,project:Project,client:CoreClient|null|undefined,ready:Promise<AcceptedEntry>,resolve:(value:AcceptedEntry)=>void,accepted?:AcceptedEntry}} BrowserEntry */
+/** @typedef {{socket:ServiceSocket,timer?:NodeJS.Timeout,resolve:(value:unknown)=>void,reject:(error:unknown)=>void,key?:string,bootstrap?:boolean,discovery?:boolean,coreInstanceId?:string,coreGeneration?:string,tool?:string}} BrowserPending */
 /** @typedef {{key:string,plan:import('./service-transport-contract.cjs').DiscoveryPlan,claim:BrowserClaim|undefined,entry:BrowserEntry|null,socket:ServiceSocket,pages:PageClaim[]}} DiscoveryRecord */
 const PROTOCOL = "areal.desktop-service.v1";
 const COMMAND_CONTRACT = "areal.desktop-commands.v3";
@@ -122,8 +121,6 @@ class DesktopService {
     /** @type {Map<string,{socket:ServiceSocket,pageId:string,cancelled:boolean}>} */ this.browserClaimAttempts =
       new Map();
     /** @type {Map<string,Set<BrowserEntry>>} */ this.browserEntrypoints = new Map();
-    /** @type {Map<string,HostExecution>} */ this.hostExecutions = new Map();
-    /** @type {Map<string,object>} */ this.hostConnections = new Map();
     /** @type {Map<string,DiscoveryRecord>} */ this.browserDiscoveryPlans = new Map();
     /** @type {Map<number,BrowserPending>} */ this.browserPending = new Map();
     this.nextBrowserId = 0;
@@ -633,9 +630,7 @@ class DesktopService {
         if (
           record(params.capabilities) &&
           params.capabilities.browserHost === 1 &&
-          (!this.browserSocket ||
-            this.browserSocket === socket ||
-            !connected(this.browserSocket))
+          (!this.browserSocket || this.browserSocket === socket || !connected(this.browserSocket))
         ) {
           if (this.browserSocket !== socket) {
             if (this.browserSocket)
@@ -832,12 +827,10 @@ class DesktopService {
             previous.coreInstanceId === coreInstanceId &&
             previous.coreGeneration === coreGeneration &&
             previous.browserHostId === browserHostId &&
-            previous.hostGeneration === hostGeneration &&
-            previous.hostConnection === bootstrap?.hostConnection
+            previous.hostGeneration === hostGeneration
               ? previous
               : {
                   socket,
-                  hostConnection: bootstrap?.hostConnection,
                   coreInstanceId,
                   coreGeneration,
                   browserHostId,
@@ -1202,7 +1195,6 @@ class DesktopService {
     this.browserPending.clear();
     this.browserClaims.clear();
     this.browserEntrypoints.clear();
-    for (const connection of this.hostConnections.keys()) this.disconnectHostExecution(connection);
     this.browserDiscoveryPlans.clear();
     this.remote?.close();
     this.power?.close();
@@ -1233,192 +1225,8 @@ class DesktopService {
       this.schedule();
     }
   }
-  /** Host 私有准备阶段只登记一次性句柄；真正提交仍由 Host journal 放行。
-   * @param {Fields} request @param {string} connection */
-  async prepareHostExecution(request, connection) {
-    if (!connection || this.closed || this.recovering || this.hostExecutions.size >= 128)
-      throw new Error("Host execution unavailable");
-    const { projectId, coreInstanceId, coreGeneration } = request;
-    if (!record(request.call)) throw new Error("Invalid Host execution call");
-    const { method } = request.call;
-    if (
-      typeof projectId !== "string" ||
-      typeof method !== "string" ||
-      ![
-        "workbench/thread/create",
-        "areal/thread/start",
-        "areal/turn/start",
-        "areal/turn/enqueue",
-        "turn/steer",
-      ].includes(method) ||
-      !record(request.call.params)
-    )
-      throw new Error("Invalid Host execution");
-    const params = structuredClone(request.call.params);
-    const creating = method === "areal/thread/start" || method === "workbench/thread/create";
-    if (method === "workbench/thread/create") {
-      params.projectId = projectId;
-      desktopContract.readCommandInvocation("create", params);
-    }
-    const threadId = params.threadId;
-    const project = creating
-      ? this.backend.projects.get(projectId)
-      : typeof threadId === "string"
-        ? this.projectForThread(projectId, threadId)
-        : undefined;
-    const client = project?.client;
-    if (!project || !client) throw new Error("Host execution project unavailable");
-    const owner = this.hostConnections.get(connection) ?? {};
-    this.hostConnections.set(connection, owner);
-    const socket = this.browserSocket;
-    const current = () =>
-      !this.closed &&
-      !this.recovering &&
-      this.hostConnections.get(connection) === owner &&
-      this.browserSocket === socket &&
-      this.backend.currentConnection(project, client) &&
-      project.service?.serviceId === coreInstanceId &&
-      project.service?.generation === coreGeneration &&
-      (creating
-        ? this.backend.projects.get(projectId) === project
-        : typeof threadId === "string" && this.projectForThread(projectId, threadId) === project);
-    if (!current()) throw new Error("Host execution owner changed");
-    let ready = current;
-    if (method === "areal/thread/start") {
-      const prepared = await this.backend.prepareThreadInProject(project, {
-        options: params.options,
-        profile: params.agentProfile,
-        parameters: params.parameters,
-        ...(params.model ? { model: params.model } : {}),
-      });
-      Object.assign(params, prepared.params);
-      ready = () => current() && prepared.current();
-    } else if (!creating && method !== "turn/steer") {
-      await this.backend.ensureBrowserTools(project, /** @type {string} */ (threadId));
-    }
-    if (!ready()) throw new Error("Host execution owner changed");
-    const key = browserKey(projectId, threadId);
-    const entry =
-      !creating && method !== "turn/steer" && connected(socket)
-        ? this.beginBrowserEntrypoint(socket, { projectId, threadId }, connection)
-        : null;
-    const handle = randomUUID();
-    const timer = setTimeout(() => this.cancelHostExecution(handle, connection), 30000);
-    this.hostExecutions.set(handle, {
-      connection,
-      method,
-      params,
-      project,
-      client,
-      current: ready,
-      key,
-      entry,
-      timer,
-    });
-    return {
-      handle,
-      call: { method, params },
-      ...(method !== "workbench/thread/create" ? { hostDispatch: true } : {}),
-    };
-  }
-
-  /** @param {string} handle @param {string} connection */
-  cancelHostExecution(handle, connection) {
-    const pending = this.hostExecutions.get(handle);
-    if (!pending || pending.connection !== connection) return;
-    this.hostExecutions.delete(handle);
-    clearTimeout(pending.timer);
-    if (pending.entry) this.forgetBrowserEntrypoint(pending.key, pending.entry);
-  }
-
-  /** @param {string} connection */
-  disconnectHostExecution(connection) {
-    this.hostConnections.delete(connection);
-    for (const [handle, pending] of this.hostExecutions)
-      if (pending.connection === connection) this.cancelHostExecution(handle, connection);
-    for (const [key, entries] of this.browserEntrypoints)
-      for (const entry of entries)
-        if (entry.hostConnection === connection) this.forgetBrowserEntrypoint(key, entry);
-    for (const [id, plan] of this.browserDiscoveryPlans)
-      if (plan.entry?.hostConnection === connection) this.browserDiscoveryPlans.delete(id);
-    for (const [key, claim] of this.browserClaims)
-      if (claim.hostConnection === connection) this.browserClaims.delete(key);
-    for (const pending of this.browserPending.values())
-      if (pending.hostConnection === connection)
-        pending.reject(new Error("Host execution owner disconnected; outcome unknown"));
-  }
-
-  /** Rust 已完成 Core 调用；这里只结算原页面宿主租约，不再发送 Core 请求。
-   * @param {{handle:string,result?:unknown,error?:unknown}} outcome @param {string} connection
-   */
-  completeHostExecution(outcome, connection) {
-    const pending = this.hostExecutions.get(outcome.handle);
-    if (!pending || pending.connection !== connection) return { completed: false };
-    this.hostExecutions.delete(outcome.handle);
-    clearTimeout(pending.timer);
-    if (pending.entry) {
-      const result = outcome.result;
-      if (!pending.current() || outcome.error !== undefined)
-        this.forgetBrowserEntrypoint(pending.key, pending.entry);
-      else if (record(result) && typeof result.queueItemId === "string")
-        pending.entry.resolve({ queueItemId: result.queueItemId });
-      else if (record(result) && record(result.turn) && typeof result.turn.id === "string")
-        pending.entry.resolve({ turnId: result.turn.id });
-      else this.forgetBrowserEntrypoint(pending.key, pending.entry);
-    }
-    return { completed: true };
-  }
-
-  /** @param {string} handle @param {string} connection */
-  async dispatchHostExecution(handle, connection) {
-    const pending = this.hostExecutions.get(handle);
-    if (!pending || pending.connection !== connection || !pending.current()) {
-      this.cancelHostExecution(handle, connection);
-      return {
-        error: {
-          code: -32602,
-          message: "Host execution owner changed",
-          data: { outcome: { kind: "noMutation" } },
-        },
-      };
-    }
-    // 先消费句柄；Core 结果未知时原句柄也不能重放。
-    this.hostExecutions.delete(handle);
-    clearTimeout(pending.timer);
-    try {
-      if (pending.method === "workbench/thread/create") {
-        await this.backend.command("create", pending.params);
-        return {
-          result: this.backend.worktrees.readThreadCreation(pending.project.id, pending.params),
-        };
-      }
-      const result = await pending.client.request(pending.method, pending.params);
-      if (pending.entry) {
-        if (!pending.current()) this.forgetBrowserEntrypoint(pending.key, pending.entry);
-        else if (record(result) && typeof result.queueItemId === "string")
-          pending.entry.resolve({ queueItemId: result.queueItemId });
-        else if (record(result) && record(result.turn) && typeof result.turn.id === "string")
-          pending.entry.resolve({ turnId: result.turn.id });
-        else this.forgetBrowserEntrypoint(pending.key, pending.entry);
-      }
-      return { result };
-    } catch (error) {
-      if (pending.entry) this.forgetBrowserEntrypoint(pending.key, pending.entry);
-      return {
-        error:
-          record(error) && typeof error.code === "number"
-            ? {
-                code: error.code,
-                message: error instanceof Error ? error.message : "Core execution failed",
-                data: error.data,
-              }
-            : { code: -32603, message: "Core execution outcome unknown" },
-      };
-    }
-  }
-
-  /** @param {ServiceSocket} socket @param {Fields} request @param {string} [hostConnection] */
-  beginBrowserEntrypoint(socket, request, hostConnection) {
+  /** @param {ServiceSocket} socket @param {Fields} request */
+  beginBrowserEntrypoint(socket, request) {
     const entryKey = browserKey(request.projectId, request.threadId);
     const entryProject =
       typeof request.projectId === "string" && typeof request.threadId === "string"
@@ -1445,7 +1253,6 @@ class DesktopService {
       /** @type {BrowserEntry} */
       const owned = {
         socket,
-        hostConnection,
         project: entryProject,
         client: entryProject.client,
         ready,
@@ -1519,8 +1326,8 @@ class DesktopService {
     }
     return null;
   }
-  /** @param {ToolRequest} request @param {string} key @param {ServiceSocket} socket @param {"prepare"|"execute"} phase @param {ToolRequest["browserApproval"]} [browserApproval] @param {string} [hostConnection] @returns {Promise<unknown>} */
-  async dispatchBrowserDiscovery(request, key, socket, phase, browserApproval, hostConnection) {
+  /** @param {ToolRequest} request @param {string} key @param {ServiceSocket} socket @param {"prepare"|"execute"} phase @param {ToolRequest["browserApproval"]} [browserApproval] @returns {Promise<unknown>} */
+  async dispatchBrowserDiscovery(request, key, socket, phase, browserApproval) {
     if (request.signal?.aborted || !connected(socket) || this.browserPending.size >= 8)
       throw new Error("Browser entry unavailable");
     const requestId = ++this.nextBrowserId;
@@ -1540,7 +1347,6 @@ class DesktopService {
       this.browserPending.set(requestId, {
         socket,
         key,
-        hostConnection,
         bootstrap: phase === "execute",
         discovery: true,
         coreInstanceId: request.coreInstanceId,
@@ -1572,14 +1378,7 @@ class DesktopService {
     const entry = await this.browserEntrypoint(request, key);
     if (!entry || !this.browserEntrypoints.get(key)?.has(entry)) return;
     this.forgetBrowserEntrypoint(key, entry);
-    await this.dispatchBrowserDiscovery(
-      request,
-      key,
-      entry.socket,
-      "execute",
-      undefined,
-      entry.hostConnection,
-    );
+    await this.dispatchBrowserDiscovery(request, key, entry.socket, "execute", undefined);
   }
 
   /** @param {ToolRequest} request @param {string} key @param {BrowserClaim|undefined} claim */
@@ -1603,14 +1402,7 @@ class DesktopService {
       this.projectForThread(request.projectId, request.threadId)?.service?.generation ===
         request.coreGeneration;
     if (!socket || !current()) return { error: "human_control", dispatch: "not_sent" };
-    const result = await this.dispatchBrowserDiscovery(
-      request,
-      key,
-      socket,
-      "prepare",
-      undefined,
-      entry?.hostConnection ?? claim?.hostConnection,
-    );
+    const result = await this.dispatchBrowserDiscovery(request, key, socket, "prepare", undefined);
     if (!current()) return { error: "human_control", dispatch: "not_sent" };
     if (!record(result)) throw new Error("Invalid browser discovery response");
     if (result.error) {
@@ -1798,20 +1590,6 @@ class DesktopService {
     const key = browserKey(projectId, threadId);
     let claim = this.browserClaims.get(key);
     const origin = await this.browserEntrypoint(request, key);
-    if (origin?.hostConnection && claim && !claim.hostConnection) {
-      claim = { ...claim, hostConnection: origin.hostConnection };
-      this.browserClaims.set(key, claim);
-    }
-    if (
-      claim?.hostConnection &&
-      (!this.hostConnections.has(claim.hostConnection) ||
-        (origin?.hostConnection && origin.hostConnection !== claim.hostConnection)) &&
-      input.operation !== "describe"
-    )
-      return browserFailure(
-        "human_control",
-        "Browser session owner changed; request discovery again",
-      );
     if (input.operation === "describe" && phase === "prepare")
       return this.prepareBrowserDiscovery(request, key, claim);
     /** @type {Fields|undefined} */ let discoveryResult;
@@ -1829,7 +1607,6 @@ class DesktopService {
         prepared.socket,
         "execute",
         browserApproval,
-        prepared.entry?.hostConnection ?? claim?.hostConnection,
       );
       if (!record(received)) throw new Error("Invalid browser discovery response");
       discoveryResult = received;
@@ -2006,7 +1783,6 @@ class DesktopService {
       }, timeoutMs);
       this.browserPending.set(requestId, {
         socket: claim.socket,
-        hostConnection: claim.hostConnection,
         resolve: (value) => finish(resolve, value),
         reject: (error) => finish(reject, error),
         timer,

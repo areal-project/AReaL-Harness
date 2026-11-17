@@ -56,7 +56,7 @@ Host 与服务通过私有 Unix socket pair 传送逐行 JSON，带 `version: 1`
 
 Host 与工作台在同一个 Core 连接上分别持有 Thread 订阅兴趣；任一方释放后，只有最后一个持有者离开才撤销 Core 订阅。工作台兴趣绑定原租约，旧租约不能撤销新连接持有的兴趣。
 
-带模型、配置和工作树选项的会话创建由 Host 的 `session_creation` 准备并绑定 Core 原回执，无需启动 Node。创建记录绑定 Host 来源、Core 实例、代际和连接；同一请求 ID 改参数会被拒绝，重复读取不会再创建会话。浏览器工具只绑定原 Main 附件的专用 Core 租约，附件断开后不能沿用。普通 Core 创建、send/enqueue 与 steer 仍通过私有 `execution.prepare` 准备桌面工具；发送沿用 `ensureBrowserTools` 和 `browserEntrypoints`；Host 冻结原 Core requestId/参数并写 journal，后台只消费一次性页面宿主句柄。句柄绑定原 Host 连接、项目/线程、Core 代际、client 与原生 owner；失败或断开不重放。浏览器发现和页面认领沿原 Main attach 回调，断开原 Host 连接会撤销其入口、发现计划与认领。原生窗口行为仍需桌面端验收。 远程普通新建、发送和引导使用相同执行路径，仍按原设备、项目和 submit 授权校验；仅凭项目别名相同不能取得其他来源的后台。连接结束会撤销后台入口，已发布客户端的请求形状与权限预设不变。工具宿主断开后的确定拒绝通过 Core 的 `TOOL_HOST_UNAVAILABLE` 原因映射为 Host `CAPABILITY_UNAVAILABLE`；保留原命令回执，不自动重发。
+`execution_preparation` 在 Host 内准备会话创建、发送、排队与引导，不再调用 Node 的 `execution.prepare/dispatch`。Host journal 冻结原 Core requestId 与参数，派发前重新校验来源及 Core 实例、代际和连接。浏览器工具使用原 Main 附件的专用 Core 租约；普通操作复用 Host 共享 Core 连接。带模型、配置和工作树选项的创建绑定原 Core 回执，同一请求 ID 改参数会被拒绝，重复读取不会再次创建。断开或结果未知时查询原回执，不重放提交。Main 的浏览器回调接入与原生窗口行为需独立验收。
 
 Electron 的进程命令保留 Main 原生连接适配，即使启用 `manage` 领域也不绕过其终端租约；该适配仍经 Host 连接 Core。浏览器继续经 Host 的 `manage` 合同访问受授权的进程能力。
 

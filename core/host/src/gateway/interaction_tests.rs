@@ -1793,105 +1793,10 @@ async fn local_desktop_principal_sends_through_the_shared_journal_without_device
 }
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "需要 GUI 的 Node 依赖；由 make host-protocol-check 运行"]
-async fn local_send_and_steer_dispatch_without_input_prepare_and_forward_disconnect() {
+async fn local_send_and_steer_dispatch_without_node_and_retain_original_receipts() {
     tokio::task::LocalSet::new().run_until(async {
         let mut f = Fixture::new().await;
-        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let runner = f.root.path().join("prepare.cjs");
-        let source = r#"
-const {createRequire} = require('node:module');
-const {join} = require('node:path');
-const {once} = require('node:events');
-const appRequire = createRequire(join(REPO,'clients/gui/app/package.json'));
-const {CoreBackend} = appRequire('@areal/workbench-service/desktop/core/backend.cjs');
-const {DesktopService} = appRequire('@areal/workbench-service/desktop/core/service-protocol.cjs');
-const out = value => console.log(JSON.stringify({version:1,...value}));
-(async () => {
-  const home = process.env.AREAL_WORKBENCH_DATA;
-  const backend = new CoreBackend({home,binary:'/bin/true'});
-  const project = {id:PROJECT_ALIAS,root:PROJECT_ROOT,state:{threads:{thread:{id:'thread'}}}};
-  project.model = {state:project.state};
-  const socket = new (appRequire('ws'))(CORE_ENDPOINT,{headers:{Authorization:'Bearer original-owner-token'}});
-  await once(socket,'open');
-  let next = 0;
-  const calls = new Map();
-  socket.on('message', bytes => { const message = JSON.parse(bytes); const pending = calls.get(message.id);
-    if (!pending) return; calls.delete(message.id);
-    if (message.error) pending.reject(Object.assign(new Error(message.error.message),message.error));
-    else pending.resolve(message.result);
-  });
-  project.client = {closed:false, request:(method,params) => new Promise((resolve,reject) => {
-    const id = ++next; calls.set(id,{resolve,reject}); socket.send(JSON.stringify({id,method,params}));
-  })};
-  project.service = {serviceId:'original-service',generation:'core-generation'};
-  backend.projects.set(project.id,project);
-  backend.saved = [project];
-  const adapter = new DesktopService(backend,'fixture');
-  adapter.schedule = () => {};
-  let nextHost = 0;
-  const hostCalls = new Map();
-  const hostCall = (call, params) => new Promise((resolve,reject) => {
-    const id = `journal-${++nextHost}`; hostCalls.set(id,{resolve,reject}); out({id,call,params});
-  });
-  backend.hostCall = hostCall;
-  backend.host.journal = id => ({
-    read:async()=>hostCall('fixture.journal.read',{}),
-    change:async change=>{ const {revision,snapshot}=await hostCall('fixture.journal.read',{});
-      await hostCall('fixture.journal.replace',{revision,snapshot:change(snapshot)}); },
-  });
-  backend.start = async id => { if(id!==project.id)throw Error('wrong project');return project; };
-  backend.refreshHostProjects = async () => {};
-  backend.worktrees.reloadNative = async () => {};
-  backend.host.resolve = () => ({projectId:'project'});
-  backend.loadProjectJournal = async () => project;
-  backend.openThread = async () => {};
-  project.client.ready = true;
-  backend.resources.beforeCreate = async () => {};
-  backend.providers.manages = () => false;
-  backend.refreshAfterAdmission = async () => {};
-  project.client.capabilities = {features:{permissionPresets:true}};
-  out({event:'ready',methods:['execution.prepare','execution.dispatch']});
-  require('node:readline').createInterface({input:process.stdin}).on('line', async line => {
-    const frame = JSON.parse(line);
-    try {
-      if (hostCalls.has(frame.id)) { const pending=hostCalls.get(frame.id);hostCalls.delete(frame.id);
-        if(frame.error)pending.reject(Error(frame.error.code));else pending.resolve(frame.result);return; }
-      if (frame.event === 'execution.cancel') { adapter.cancelHostExecution(frame.handle,frame.connection); return; }
-      if (frame.event === 'connection.disconnect') { adapter.disconnectHostExecution(frame.connection); await hostCall('fixture.disconnected',{connection:frame.connection}); return; }
-      if (frame.method === 'execution.prepare') {
-        out({id:frame.id,result:await adapter.prepareHostExecution(frame.params,frame.context.connection)}); return;
-      }
-      if (frame.method === 'execution.dispatch') {
-        out({id:frame.id,result:await adapter.dispatchHostExecution(frame.params.handle,frame.context.connection)}); return;
-      }
-      throw Error(`unexpected method ${frame.method}`);
-    } catch(error) { out({id:frame.id,error:{code:'INVALID_PARAMS',message:error.message}}); }
-  });
-})().catch(error => { console.error(error); process.exit(1); });
-"#.replace("REPO", &serde_json::to_string(&repo).unwrap())
-          .replace("PROJECT_ALIAS", &serde_json::to_string(&f.alias).unwrap())
-          .replace("PROJECT_ROOT", &serde_json::to_string(&f.host.slots.borrow()["project"].registration.workspace).unwrap())
-          .replace("CORE_ENDPOINT", &serde_json::to_string(&f.host.slots.borrow()["project"].service.as_ref().unwrap().endpoint).unwrap());
-        std::fs::write(&runner, source).unwrap();
-        let runtime = std::env::split_paths(&std::env::var_os("PATH").unwrap())
-            .map(|path| path.join("node")).find(|path| path.is_file()).expect("Node is required");
-        let journal_host = f.host.clone();
-        let (disconnected, mut disconnects) = mpsc::unbounded_channel();
-        let reverse: crate::workbench::Reverse = Rc::new(move |method, params| {
-            let host = journal_host.clone();
-            let disconnected = disconnected.clone();
-            Box::pin(async move {
-                match method.as_str() {
-                    "fixture.disconnected" => { disconnected.send(params["connection"].clone()).unwrap(); Ok(json!({})) }
-                    "fixture.journal.read" => { let (revision, snapshot) = host.journal.native_snapshot("project")?; Ok(json!({"revision":revision,"snapshot":snapshot})) }
-                    "fixture.journal.replace" => { host.journal.native_replace("project", params["revision"].as_u64().unwrap(), params["snapshot"].clone())?; Ok(json!({})) }
-                    _ => crate::server::workbench_route::reverse(&host)(method, params).await,
-                }
-            })
-        });
-        let backend = crate::workbench::Workbench::start(&runtime, &runner, f.root.path(), reverse).await.unwrap();
-        f.host.gateway.workbench.bind_test_backend(backend, &f.source);
+        f.host.gateway.workbench.test_source(&f.source);
         let session = Session::local(f.host.clone(), "local-connection".into()).unwrap();
         let context = json!({"projectId":"project","gatewayGeneration":f.host.identity.generation,"grantRevision":0,"serviceGeneration":"core-generation"});
         let mut send = f.request("session.send", json!({"threadId":"thread","expectedConfigRevision":1,"text":"Continue"}), Some(&uuid::Uuid::new_v4().to_string()));
@@ -1932,6 +1837,7 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         create["context"] = steer["context"].clone();
         let mut creating = Fixture::dispatch(session, create.clone());
         f.call("areal/server/status").await.reply(json!({"acceptingWork":true}));
+        f.call("areal/capabilities").await.reply(json!({"methods":["areal/thread/start","areal/request/read"],"features":{"threadCreationJournal":{"binding":{"identity":"store","journalEpoch":"epoch","coreInstanceId":"instance"}}}}));
         let native_create = tokio::select! { call = f.call("areal/thread/start") => call, result = &mut creating => panic!("local create returned before dispatch: {:?}", result.unwrap().1) };
         assert_eq!(native_create.request["params"]["requestId"], creation_id);
         assert_eq!(native_create.request["params"]["parameters"]["serviceTier"], "fast");
@@ -1979,14 +1885,15 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         let (_, created) = creating.await.unwrap();
         assert_eq!(created.unwrap()["admissionState"], "accepted");
         drop(SessionSlot {host:f.host.clone(),peer:None,pending:false,connection:Some(remote_connection.clone())});
-        assert_eq!(tokio::time::timeout(Duration::from_secs(5), disconnects.recv()).await.unwrap().unwrap(), remote_connection);
-        f.host.gateway.workbench.stop_backend().await;
+        assert!(!f.host.gateway.workbench.has_running_backend());
         steer["commandId"] = json!(uuid::Uuid::new_v4().to_string());
-        let failing = Fixture::dispatch(session, steer);
+        let independent = Fixture::dispatch(session, steer);
         f.call("areal/capabilities").await.reply(caps);
         f.call("areal/thread/observe").await.reply(json!({"thread":{"id":"thread","status":{"type":"active"},"turns":[{"id":"turn","status":"inProgress","items":[]}]},"ownership":{"kind":"ordinary"}}));
-        let (_, result) = failing.await.unwrap();
-        assert_eq!(result.unwrap_err().to_string(), "CAPABILITY_UNAVAILABLE");
+        f.workspace_admission().await;
+        f.call("turn/steer").await.reply(json!({"turnId":"turn"}));
+        let (_, result) = independent.await.unwrap();
+        assert_eq!(result.unwrap()["admissionState"],"accepted");
         assert!(f.calls.try_recv().is_err());
     }).await;
 }

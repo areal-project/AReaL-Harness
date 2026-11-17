@@ -142,6 +142,7 @@ async fn thread_creation_preparation_and_original_receipt_need_no_node_backend()
                 "areal/task/list" => json!({"data":[],"nextCursor":null}),
                 "areal/capabilities" => json!({"methods":["areal/thread/start","areal/request/read"],"features":{"threadCreationJournal":{"binding":{"identity":"fixture","journalEpoch":"epoch","coreInstanceId":"fixture"}}}}),
                 "areal/thread/start" => json!({"thread":{"id":"native-created"},"requestId":params["requestId"]}),
+                "areal/turn/start" | "areal/turn/enqueue" | "turn/steer" => json!({"threadId":params["threadId"],"turn":{"id":"native-turn"},"queueItemId":"queued"}),
                 other => panic!("unexpected {other}"),
             }}))
         }).await;
@@ -175,6 +176,17 @@ async fn thread_creation_preparation_and_original_receipt_need_no_node_backend()
         changed["model"]["modelId"] = json!("different-model");
         let rejected = host.gateway.workbench.prepare_execution(&host,"owner","project","workbench/thread/create",changed).await;
         assert_eq!(rejected.err().unwrap().to_string(),"COMMAND_CONFLICT");
+        for method in ["areal/thread/start","areal/turn/start","areal/turn/enqueue","turn/steer"] {
+            let native = if method == "areal/thread/start" {
+                json!({"requestId":uuid::Uuid::new_v4().to_string(),"cwd":registration.workspace,"options":{"permissionPreset":"ask"}})
+            } else { json!({"requestId":uuid::Uuid::new_v4().to_string(),"threadId":"native-created","input":[{"type":"text","text":"original input"}]}) };
+            let mut prepared = host.gateway.workbench.prepare_execution(&host,"owner","project",method,native.clone()).await.unwrap().unwrap();
+            assert_eq!(prepared.params,native);
+            let result=prepared.dispatch().await.unwrap();
+            assert!(result.is_object());
+            assert_eq!(prepared.dispatch().await.unwrap_err().to_string(),"SUBMISSION_UNKNOWN");
+        }
+        assert!(host.gateway.workbench.backend.running.borrow().is_none());
         close();server.abort();
     }).await;
 }

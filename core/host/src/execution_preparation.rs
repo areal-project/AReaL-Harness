@@ -1,8 +1,162 @@
-//! 会话创建由 Host 准备目录、配置和工具归属；Core 与原创建回执拥有执行结果。
+//! Host 准备目录、配置和工具归属；Core 与原请求回执拥有执行结果。
 use super::{Host, library_store, session_commands, worktree_catalog};
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
 use std::rc::{Rc, Weak};
+
+pub(super) struct PreparedCore {
+    host: Weak<Host>,
+    project: String,
+    method: String,
+    scope: (String, String, String),
+    browser: Option<(String, (String, String, String))>,
+}
+
+fn core_result(response: Value) -> Result<Value> {
+    if let Some(error) = response.get("error") {
+        return Err(crate::server::schedule_connection::RpcFailure(error.clone()).into());
+    }
+    response.get("result").cloned().context("INVALID_RESPONSE")
+}
+
+fn browser_capability(caps: &Value) -> Result<()> {
+    ensure!(
+        caps["features"]["browserToolAttachment"] == true
+            && caps["browserToolBundles"]
+                .as_array()
+                .is_some_and(|bundles| bundles
+                    .iter()
+                    .any(|bundle| bundle["bundleId"] == "areal.browser.v1")),
+        "CORE_INCOMPATIBLE"
+    );
+    Ok(())
+}
+
+pub(super) async fn prepare_core(
+    host: &Rc<Host>,
+    source: &str,
+    project: &str,
+    method: &str,
+    params: &mut Value,
+) -> Result<PreparedCore> {
+    ensure!(
+        [
+            "areal/thread/start",
+            "areal/turn/start",
+            "areal/turn/enqueue",
+            "turn/steer"
+        ]
+        .contains(&method)
+            && params.is_object(),
+        "INVALID_PARAMS"
+    );
+    let connections = &host.schedules.connections;
+    let scope = connections.shared_identity(host, project)?;
+    let browser = match connections
+        .frontend_browser_lease(host, source, project)
+        .await?
+    {
+        None => None,
+        Some(lease) => {
+            let identity = connections.workbench_identity(host, project, &lease)?;
+            ensure!(
+                identity.0 == scope.0 && identity.1 == scope.1,
+                "RESYNC_REQUIRED"
+            );
+            let caps = core_result(
+                connections
+                    .workbench_request(
+                        host,
+                        project,
+                        &lease,
+                        "areal/capabilities",
+                        json!({"apiVersion":"areal.core.v1"}),
+                    )
+                    .await?,
+            )?;
+            browser_capability(&caps)?;
+            if method == "areal/thread/start" {
+                params["dynamicTools"] = json!([areal_protocol::desktop::browser_v1_tool()]);
+            } else if method != "turn/steer" {
+                let thread = params["threadId"].as_str().context("INVALID_PARAMS")?;
+                let observed = core_result(
+                    connections
+                        .workbench_request(
+                            host,
+                            project,
+                            &lease,
+                            "thread/read",
+                            json!({"threadId":thread,"includeTurns":false}),
+                        )
+                        .await?,
+                )?;
+                let state = &observed["thread"];
+                if state["status"]["type"] == "idle"
+                    && state["desktop"]["archived"] != true
+                    && state["parentThreadId"].is_null()
+                    && state["conversation"]["policy"]["kind"] != "sideReadOnlyV1"
+                {
+                    let attached = super::workbench_submissions::submit(host,project,&lease,"areal/thread/tools/attach",json!({"requestId":uuid::Uuid::new_v4().to_string(),"threadId":thread,"expectedToolsetRevision":state["toolsetRevision"].as_u64().unwrap_or(0),"bundleId":"areal.browser.v1"}),false,true).await?;
+                    core_result(attached)?;
+                }
+            }
+            Some((lease, identity))
+        }
+    };
+    if params["model"]["providerId"] == "areal_openai" {
+        host.ensure_subscription_for_project(source, project)
+            .await?;
+    }
+    ensure!(
+        connections.shared_identity(host, project)? == scope,
+        "RESYNC_REQUIRED"
+    );
+    Ok(PreparedCore {
+        host: Rc::downgrade(host),
+        project: project.into(),
+        method: method.into(),
+        scope,
+        browser,
+    })
+}
+
+impl PreparedCore {
+    pub(super) async fn dispatch(&self, source: &str, params: &Value) -> Result<Value> {
+        let host = self.host.upgrade().context("CAPABILITY_UNAVAILABLE")?;
+        host.admission()?;
+        ensure!(
+            host.gateway.workbench.active_source().as_deref() == Some(source),
+            "RESYNC_REQUIRED"
+        );
+        let connections = &host.schedules.connections;
+        ensure!(
+            connections.shared_identity(&host, &self.project)? == self.scope,
+            "RESYNC_REQUIRED"
+        );
+        if let Some((lease, identity)) = &self.browser {
+            ensure!(
+                connections.frontend_owns(lease)
+                    && connections.workbench_identity(&host, &self.project, lease)? == *identity,
+                "CAPABILITY_UNAVAILABLE"
+            );
+            core_result(
+                connections
+                    .workbench_request(&host, &self.project, lease, &self.method, params.clone())
+                    .await?,
+            )
+        } else {
+            connections
+                .remote_request(
+                    &host,
+                    &self.project,
+                    (&self.scope.0, &self.scope.1, &self.scope.2),
+                    &self.method,
+                    params.clone(),
+                )
+                .await
+        }
+    }
+}
 
 pub(super) struct PreparedCreation {
     host: Weak<Host>,
@@ -92,10 +246,7 @@ pub(super) async fn prepare(
             .await?;
     }
     let browser_lease = if input["browserEnabled"] == true {
-        ensure!(
-            caps["features"]["browserToolAttachment"] == true,
-            "CORE_INCOMPATIBLE"
-        );
+        browser_capability(&caps)?;
         let lease = connections
             .frontend_browser_lease(host, source, &project)
             .await?
