@@ -48,6 +48,32 @@ impl CoreObservation {
     pub(super) fn service(&self) -> &Service {
         &self.session.service
     }
+    pub(super) async fn remote_media(
+        &self,
+        host: &Host,
+        reference: &super::conversation_media::MediaReference,
+    ) -> Result<Option<Vec<u8>>> {
+        use base64::Engine;
+        let Some(token) = &self.session.remote_token else {
+            return Ok(None);
+        };
+        let result = super::conversation_media::remote_blob(
+            &self.session.service.endpoint,
+            token,
+            &json!({"operation":"read","threadId":reference.source_thread_id,"uri":reference.uri}),
+            || {
+                ensure!(self.current(host), "RESYNC_REQUIRED");
+                Ok(())
+            },
+        )
+        .await?;
+        let encoded = result["base64"].as_str().context("RESOURCE_UNAVAILABLE")?;
+        Ok(Some(
+            base64::engine::general_purpose::STANDARD
+                .decode(encoded)
+                .context("RESOURCE_UNAVAILABLE")?,
+        ))
+    }
     pub fn current(&self, host: &Host) -> bool {
         self.session.shared_current(host)
     }
@@ -362,6 +388,41 @@ impl Connections {
             session.shared_current(host) && session.service.identity.generation == generation,
             unavailable()
         );
+        self.observe_session(host, session, options).await
+    }
+    pub(super) async fn cloud_observe(
+        &self,
+        host: &Host,
+        id: &str,
+        lease: &str,
+        generation: &str,
+        thread: &str,
+        max_bytes: usize,
+    ) -> Result<(Value, u64, CoreObservation)> {
+        let session = self.workbench_session(host, id, lease)?;
+        ensure!(
+            session.host_owned.get()
+                && session.remote_source.is_some()
+                && session.service.identity.generation == generation,
+            "RESYNC_REQUIRED"
+        );
+        self.observe_session(
+            host,
+            session,
+            areal_protocol::desktop::ObserveThread {
+                thread_id: thread.into(),
+                mode: Some(areal_protocol::desktop::ObservationMode::Conversation),
+                max_bytes: Some(max_bytes),
+            },
+        )
+        .await
+    }
+    async fn observe_session(
+        &self,
+        host: &Host,
+        session: Rc<CoreSession>,
+        options: areal_protocol::desktop::ObserveThread,
+    ) -> Result<(Value, u64, CoreObservation)> {
         if options.mode.is_some() {
             let capabilities = session
                 .conversation_capabilities
@@ -397,7 +458,7 @@ impl Connections {
             .sessions
             .borrow()
             .values()
-            .filter(|session| session.shared_current(host))
+            .filter(|session| session.remote_source.is_none() && session.shared_current(host))
             .cloned()
             .collect();
         for session in sessions {
@@ -677,6 +738,8 @@ struct CoreSession {
     desktop: Cell<bool>,
     remote_source: Option<String>,
     remote_token: Option<String>,
+    remote_revision: Cell<Option<u64>>,
+    host_owned: Cell<bool>,
     conversation_capabilities: tokio::sync::OnceCell<Value>,
     refresh: Notify,
     refresh_requested: Cell<bool>,
@@ -747,6 +810,11 @@ impl CoreSession {
     fn shared_current(&self, host: &Host) -> bool {
         !self.closed.get()
             && host.admission().is_ok()
+            && self.remote_revision.get().is_none_or(|revision| {
+                self.remote_source.as_deref().is_some_and(|source| {
+                    host.migration.vault.cloud_revision(source).ok() == Some(revision)
+                })
+            })
             && (self.remote_source.is_some()
                 || host
                     .slots
@@ -1021,6 +1089,8 @@ async fn connect_authorized(
         observer: Cell::new(false),
         desktop: Cell::new(false),
         remote_token: remote_source.as_ref().map(|_| token.clone()),
+        remote_revision: Cell::new(None),
+        host_owned: Cell::new(false),
         remote_source,
         conversation_capabilities: tokio::sync::OnceCell::new(),
         refresh: Notify::new(),

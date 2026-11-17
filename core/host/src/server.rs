@@ -1,5 +1,7 @@
 #[path = "cloud.rs"]
 mod cloud;
+#[path = "cloud_sessions.rs"]
+mod cloud_sessions;
 #[path = "conversation_media.rs"]
 pub(crate) mod conversation_media;
 #[path = "conversation_read.rs"]
@@ -490,6 +492,7 @@ pub(crate) async fn run_local_mode(
         }
     };
     drop(loopback);
+    host.gateway.workbench.cloud.sessions.close_all(&host);
     host.gateway.workbench.stop_backend().await;
     host.gateway.workbench.stop().await;
     host.close_subscriptions().await;

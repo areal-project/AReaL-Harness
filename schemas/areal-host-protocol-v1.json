@@ -13593,6 +13593,9 @@
             "archived"
           ],
           "additionalProperties": false
+        },
+        "cloud": {
+          "$ref": "#/$defs/CloudSummary"
         }
       },
       "required": [
@@ -58682,6 +58685,27 @@
             "params"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "attachmentId": {
+              "type": "string"
+            },
+            "call": {
+              "type": "string",
+              "const": "cloud.session"
+            },
+            "params": {
+              "$ref": "#/$defs/LocalDesktopCloudSessionParams"
+            }
+          },
+          "required": [
+            "attachmentId",
+            "call",
+            "params"
+          ],
+          "additionalProperties": false
         }
       ]
     },
@@ -58731,6 +58755,9 @@
         },
         {
           "$ref": "#/$defs/LocalDesktopCloudSettingsResult"
+        },
+        {
+          "$ref": "#/$defs/LocalDesktopCloudSessionResult"
         }
       ],
       "examples": [
@@ -64248,6 +64275,246 @@
         "params"
       ],
       "additionalProperties": false
+    },
+    "LocalDesktopCloudSessionParams": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "create"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "requestId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "operation",
+            "projectId",
+            "requestId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "open"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "threadId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "operation",
+            "projectId",
+            "threadId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "reconnect"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "threadId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "operation",
+            "projectId",
+            "threadId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "send"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "threadId": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            },
+            "attachments": {
+              "type": "array",
+              "maxItems": 16,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "image",
+                      "audio",
+                      "file"
+                    ]
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "mimeType": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "url"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "operation",
+            "projectId",
+            "threadId",
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "stop"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "threadId": {
+              "type": "string"
+            },
+            "turnId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "operation",
+            "projectId",
+            "threadId",
+            "turnId"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "CloudSummary": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "connected": {
+          "type": "boolean"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "sessionId",
+        "connected",
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    "LocalDesktopCloudSessionResult": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "threadId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sessionId": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "required": [
+            "threadId",
+            "sessionId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "projects": {
+              "type": "array",
+              "maxItems": 0,
+              "items": {
+                "type": "object"
+              }
+            }
+          },
+          "required": [
+            "projects"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "turn": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "turn"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "queueRevision": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "queueRevision"
+          ]
+        },
+        {
+          "type": "object",
+          "maxProperties": 0
+        }
+      ]
     }
   },
   "x-current": {

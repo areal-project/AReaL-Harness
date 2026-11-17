@@ -245,7 +245,13 @@ export function useSessionNavigation(
             );
             let persisted = false;
             let connectError: unknown;
-            if (operation === "connect" && !target?.state?.connected) {
+            if (
+              operation === "connect" &&
+              !target?.state?.connected &&
+              !target?.state?.threads?.[owner.threadId ?? ""]?.cloud &&
+              !target?.summaries?.find((summary: { id: string }) => summary.id === owner.threadId)
+                ?.cloud
+            ) {
               const connection = services.reads.status();
               const canReadPersisted =
                 !!owner.threadId &&

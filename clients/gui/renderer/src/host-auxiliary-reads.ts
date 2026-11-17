@@ -103,6 +103,7 @@ export function refreshInspections(
   for (const project of projects) {
     if (!project.state.connected) continue;
     for (const threadId of Object.keys(project.state.threads)) {
+      if (project.state.threads[threadId]?.cloud) continue;
       const configuration = project.state.threads[threadId]?.desktop?.configuration;
       if (!object(configuration)) continue;
       const key = `${project.id}:${threadId}`;

@@ -146,6 +146,7 @@ export function hostDesktopCommand(
       ) {
         onSnapshot?.(value as Record<string, unknown>);
       }
+      if (name === "cloudSession") await client.refreshShell();
       if (name === "providers") modelServiceObserved(client, value);
       return { ok: true, value: reviveBytes(value) };
     } catch (error) {
@@ -648,6 +649,8 @@ export async function openInBrowser(url: string) {
 }
 
 const HOST_ONLY_DESKTOP_COMMANDS = new Set([
+  "cloud",
+  "cloudSession",
   "chatgpt",
   "configure",
   "continue",

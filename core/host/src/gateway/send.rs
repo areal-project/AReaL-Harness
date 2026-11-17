@@ -187,7 +187,9 @@ impl Session {
             json!({"requestId":operation,"threadId":params.thread_id,"input":message_input(&effective)?,"expectedConfigRevision":params.expected_config_revision,"admissionGuard":guard}),
         )?;
         let native = serde_json::to_value(native)?;
-        let mut execution = if self.uses_workbench_execution() {
+        let mut execution = if !crate::server::cloud_sessions::CloudSessions::is_virtual(&id)
+            && self.uses_workbench_execution()
+        {
             self.host
                 .gateway
                 .workbench

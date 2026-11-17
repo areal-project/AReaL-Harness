@@ -242,6 +242,24 @@ impl Connections {
         Ok(())
     }
 
+    pub(crate) fn bind_cloud_revision(
+        &self,
+        host: &Host,
+        id: &str,
+        lease: &str,
+        revision: u64,
+    ) -> Result<()> {
+        let session = self.workbench_session(host, id, lease)?;
+        ensure!(session.remote_source.is_some(), "FORBIDDEN");
+        session.remote_revision.set(Some(revision));
+        ensure!(session.shared_current(host), "TARGET_CHANGED");
+        if session.host_owned.get() {
+            self.sessions.borrow_mut().insert(id.into(), session);
+            self.changed.notify_waiters();
+        }
+        Ok(())
+    }
+
     pub(crate) fn hold_attachment(
         &self,
         host: &Host,
@@ -284,15 +302,34 @@ impl Connections {
         ))
     }
 
+    pub(crate) fn prune_cloud_revisions(&self, host: &Host) {
+        let stale: Vec<_> = self
+            .terminals
+            .borrow()
+            .iter()
+            .filter(|(_, session)| {
+                session.remote_revision.get().is_some() && !session.shared_current(host)
+            })
+            .map(|(lease, session)| (lease.clone(), session.project_id.clone()))
+            .collect();
+        let changed = !stale.is_empty();
+        for (lease, project) in stale {
+            let _ = self.workbench_detach(host, &project, &lease);
+        }
+        if changed {
+            host.changed();
+        }
+    }
+
     pub(crate) fn workbench_close_terminals(&self) {
         self.terminal_epoch
             .set(self.terminal_epoch.get().wrapping_add(1));
         let leases = self
             .terminals
             .borrow()
-            .keys()
-            .filter(|lease| !self.frontend_owns(lease))
-            .cloned()
+            .iter()
+            .filter(|(lease, session)| !self.frontend_owns(lease) && !session.host_owned.get())
+            .map(|(lease, _)| lease.clone())
             .collect::<Vec<_>>();
         for lease in leases {
             if let Some(session) = self.terminals.borrow_mut().remove(&lease) {
@@ -621,6 +658,14 @@ impl Connections {
         if let Some(session) = terminal {
             ensure!(session.project_id == id, "FORBIDDEN");
             self.terminals.borrow_mut().remove(lease);
+            if self
+                .sessions
+                .borrow()
+                .get(id)
+                .is_some_and(|current| Rc::ptr_eq(current, &session))
+            {
+                self.sessions.borrow_mut().remove(id);
+            }
             session.close();
             return Ok(json!({"closed":true}));
         }
@@ -718,6 +763,11 @@ impl Connections {
             admission_diagnostic(id, "current", &cause);
             return Err(cause);
         }
+        if session.remote_source.is_some() {
+            // 远端工作区的准入属于远端 Core；本机逻辑项目只承载导航与授权。
+            ensure!(lease.is_some() || session.host_owned.get(), "FORBIDDEN");
+            return Ok(json!({"admitted":true}));
+        }
         let registrations = host
             .slots
             .borrow()
@@ -783,6 +833,28 @@ impl Connections {
         source: &str,
         params: &Value,
     ) -> Result<Value> {
+        self.cloud_attach(host, source, params, None).await
+    }
+    pub(crate) async fn owned_cloud_attach(
+        &self,
+        host: &Rc<Host>,
+        source: &str,
+        id: &str,
+        params: &Value,
+    ) -> Result<Value> {
+        let record = id
+            .strip_prefix(&format!("cloud-session:{source}:"))
+            .context("FORBIDDEN")?;
+        crate::wire::request_id(record)?;
+        self.cloud_attach(host, source, params, Some(id)).await
+    }
+    async fn cloud_attach(
+        &self,
+        host: &Rc<Host>,
+        source: &str,
+        params: &Value,
+        owner: Option<&str>,
+    ) -> Result<Value> {
         host.migration.source_profile(source)?;
         let url = params["baseURL"].as_str().context("INVALID_PARAMS")?;
         let url = url::Url::parse(url)?;
@@ -800,6 +872,7 @@ impl Connections {
                 !token.is_empty() && token.len() <= 16384 && !token.contains(['\r', '\n'])
             })
             .context("INVALID_PARAMS")?;
+        self.prune_cloud_revisions(host);
         self.terminals
             .borrow_mut()
             .retain(|_, session| !session.closed.get());
@@ -812,7 +885,9 @@ impl Connections {
         let _permit = TerminalPermit(&self.terminal_connecting);
         let epoch = self.terminal_epoch.get();
         let lease = uuid::Uuid::new_v4().to_string();
-        let project = format!("cloud:{lease}");
+        let project = owner
+            .map(str::to_owned)
+            .unwrap_or_else(|| format!("cloud:{lease}"));
         let service = Service {
             identity: areal_protocol::service::Identity {
                 protocol_version: 1,
@@ -851,6 +926,8 @@ impl Connections {
             "CORE_INCOMPATIBLE"
         );
         *session.workbench_lease.borrow_mut() = Some(lease.clone());
+        session.host_owned.set(owner.is_some());
+        *session.capabilities.borrow_mut() = capabilities.clone();
         session.ready.set(true);
         let result = json!({"projectId":project,"lease":lease,"coreInstanceId":session.service.identity.service_id,"coreGeneration":session.service.identity.generation,"connectionId":session.connection_id,"capabilities":capabilities});
         self.terminals.borrow_mut().insert(lease, session);

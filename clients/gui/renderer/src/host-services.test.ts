@@ -1620,6 +1620,29 @@ describe("Host renderer read authority", () => {
     expect(thread.executionCore.serviceGeneration).toBe("execution-gen");
     expect(thread.worktree.branch).toBe("feature");
   });
+  it("preserves Cloud ownership after reading the remote thread", async () => {
+    const execution = {
+      ...project,
+      projectId: "cloud-session:source:record",
+      logicalProjectId: "canonical",
+      alias: { sourceId: "source", projectId: "record" },
+      workspace: "cloud://record",
+      summaries: {
+        state: "fresh",
+        items: [{ ...project.summaries.items[0], cloud: { sessionId: "record", connected: true } }],
+      },
+    };
+    const wire = transport(observation, undefined, {
+      projects: [{ ...project, summaries: { state: "fresh", items: [] } }, execution],
+      navigation: [navigation],
+    });
+    const services = createHostReadServices(undefined, options(wire.factory));
+    await until(services);
+    await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
+    const thread = (await services.snapshot()).projects[0].state.threads.thread;
+    expect(thread.cloud).toEqual({ sessionId: "record", connected: true });
+    expect(thread.executionProjectId).toBe("record");
+  });
   it("retains unrelated project projections during a native session delta", async () => {
     const other = {
       ...project,

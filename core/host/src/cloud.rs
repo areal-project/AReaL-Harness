@@ -6,7 +6,9 @@ use serde_json::{Value, json};
 use std::rc::Rc;
 
 #[derive(Default)]
-pub(super) struct Cloud;
+pub(super) struct Cloud {
+    pub(super) sessions: super::cloud_sessions::CloudSessions,
+}
 fn service_url(value: &str) -> Result<String> {
     let mut url = url::Url::parse(value).context("INVALID_PARAMS")?;
     ensure!(
@@ -137,6 +139,7 @@ impl Cloud {
         let value = json!({"baseURL":base,"token":secret});
         let result=host.migration.vault.dispatch_async("vault.replace",json!({"requestId":request_id,"expectedGeneration":host.identity.generation,"slot":Slot::CloudAccount{source_id:source.into()},"expectedRevision":0,"value":value}),&host.identity.generation,&host.migration).await?;
         settled(&result)?;
+        host.schedules.connections.prune_cloud_revisions(host);
         public(&value)
     }
 
@@ -145,6 +148,24 @@ impl Cloud {
         host: &Rc<Host>,
         source: &str,
         request: &Value,
+    ) -> Result<Value> {
+        self.attach_for(host, source, request, None).await
+    }
+    pub(super) async fn attach_owned(
+        &self,
+        host: &Rc<Host>,
+        source: &str,
+        id: &str,
+        request: &Value,
+    ) -> Result<Value> {
+        self.attach_for(host, source, request, Some(id)).await
+    }
+    async fn attach_for(
+        &self,
+        host: &Rc<Host>,
+        source: &str,
+        request: &Value,
+        owner: Option<&str>,
     ) -> Result<Value> {
         let (revision, account) = self.current(host, source).await?;
         public(&account)?;
@@ -178,15 +199,18 @@ impl Cloud {
                         .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))),
             "TARGET_CHANGED"
         );
-        let result = host
-            .schedules
-            .connections
-            .workbench_cloud_attach(
-                host,
-                source,
-                &json!({"baseURL":target.as_str(),"token":account["token"]}),
-            )
-            .await?;
+        let params = json!({"baseURL":target.as_str(),"token":account["token"]});
+        let result = if let Some(owner) = owner {
+            host.schedules
+                .connections
+                .owned_cloud_attach(host, source, owner, &params)
+                .await?
+        } else {
+            host.schedules
+                .connections
+                .workbench_cloud_attach(host, source, &params)
+                .await?
+        };
         let guard = host.schedules.connections.hold_attachment(
             host,
             result["projectId"].as_str().context("INVALID_RESPONSE")?,
@@ -200,6 +224,12 @@ impl Cloud {
             current?;
             anyhow::bail!("TARGET_CHANGED");
         }
+        host.schedules.connections.bind_cloud_revision(
+            host,
+            result["projectId"].as_str().context("INVALID_RESPONSE")?,
+            result["lease"].as_str().context("INVALID_RESPONSE")?,
+            revision,
+        )?;
         guard.retain();
         Ok(result)
     }
@@ -259,6 +289,7 @@ impl Cloud {
         let request_id = uuid::Uuid::new_v4().to_string();
         let result=host.migration.vault.dispatch_async("vault.replace",json!({"requestId":request_id,"expectedGeneration":host.identity.generation,"slot":Slot::CloudAccount{source_id:source.into()},"expectedRevision":revision,"value":value}),&host.identity.generation,&host.migration).await?;
         settled(&result)?;
+        host.schedules.connections.prune_cloud_revisions(host);
         public(&value)
     }
 }

@@ -463,6 +463,10 @@ impl Connections {
                 )?;
             }
             "tasks.preview" => exact(input, &["projectId", "limit", "sourceThreadId"])?,
+            "cloud.session" => {
+                let _: areal_protocol::host::LocalDesktopCloudSessionParams =
+                    serde_json::from_value(input.clone()).context("INVALID_PARAMS")?;
+            }
             "cloud.settings" => {
                 let _: areal_protocol::host::LocalDesktopCloudSettingsParams =
                     serde_json::from_value(input.clone()).context("INVALID_PARAMS")?;
@@ -567,6 +571,16 @@ impl Connections {
             let mut params = input.clone();
             params["sourceId"] = json!(source);
             return super::super::task_catalog::preview(host, &params).await;
+        }
+        if call == "cloud.session" {
+            return Box::pin(
+                host.gateway
+                    .workbench
+                    .cloud
+                    .sessions
+                    .command(host, &source, input),
+            )
+            .await;
         }
         if call == "cloud.settings" {
             return host

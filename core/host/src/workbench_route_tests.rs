@@ -2070,3 +2070,121 @@ async fn configured_cloud_handshake_cannot_publish_after_token_revision_changes(
         })
         .await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn native_cloud_sessions_create_and_submit_without_node_or_local_core() {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::{
+        Message,
+        handshake::server::{Request, Response},
+    };
+    tokio::task::LocalSet::new().run_until(async {
+        let temp=tempfile::tempdir().unwrap();let root=temp.path().canonicalize().unwrap();
+        let (mut host,input,source)=resumable_host(&root);
+        Rc::get_mut(&mut Rc::get_mut(&mut host).unwrap().migration).unwrap().vault=crate::vault::Vault::isolated_files(&host.home);
+        storage::private_dir(&host.home.join("host/projects")).unwrap();
+        std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+        let options=frontend_options(&host,&source,input.options,None).unwrap();
+        host.schedules.connections.frontend_subscribe(&host,"cloud-sessions",&source,options,None).unwrap();
+        let workspace=root.join("workspace");storage::private_dir(&workspace).unwrap();
+        let alias=super::super::worktree_catalog::add_project(&host,&source,json!({"root":workspace})).await.unwrap()["projectId"].as_str().unwrap().to_owned();
+        let registration=super::super::worktree_catalog::project(&host,&source,&alias).unwrap();
+        let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        host.gateway.workbench.cloud.settings(&host,&source,&json!({"operation":"save","baseURL":format!("ws://{}/app-server/",listener.local_addr().unwrap()),"token":"synthetic-cloud-token"})).await.unwrap();
+        let calls=Rc::new(RefCell::new(Vec::<Value>::new()));let observed=calls.clone();
+        let creation_id=uuid::Uuid::new_v4().to_string();let requested_id=creation_id.clone();
+        let server=tokio::task::spawn_local(async move {
+            let (stream,_)=listener.accept().await.unwrap();
+            let mut socket=tokio_tungstenite::accept_hdr_async(stream,move|request:&Request,response:Response|{
+                assert_eq!(request.headers().get("authorization").unwrap(),"Bearer synthetic-cloud-token");
+                assert_eq!(request.uri().path(),format!("/app-server/{requested_id}/"));Ok(response)
+            }).await.unwrap();
+            let upload = tokio::task::spawn_local(async move {
+                use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut head=Vec::new();
+                while !head.ends_with(b"\r\n\r\n") {
+                    head.push(stream.read_u8().await.unwrap());
+                    assert!(head.len()<8192);
+                }
+                let head=String::from_utf8(head).unwrap().to_lowercase();
+                assert!(head.starts_with("post /app-server/"));
+                assert!(head.contains("/areal/blobs?threadid=native-cloud-thread http/1.1"));
+                assert!(head.contains("authorization: bearer synthetic-cloud-token\r\n"));
+                let mut body=[0;5];stream.read_exact(&mut body).await.unwrap();assert_eq!(&body,b"hello");
+                let body=json!({"uri":format!("areal://blob/{}",storage::digest(b"hello")),"mimeType":"text/plain","sizeBytes":5}).to_string();
+                let response=format!("HTTP/1.1 201 Created\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len());
+                stream.write_all(response.as_bytes()).await.unwrap();
+            });
+            let mut thread=json!({"id":"native-cloud-thread","turns":[],"status":{"type":"idle"},"desktop":{"archived":false,"configuration":{"revision":0}}});
+            while let Some(Ok(Message::Text(raw)))=socket.next().await {
+                let request:Value=serde_json::from_str(&raw).unwrap();if request.get("id").is_none(){continue;}
+                observed.borrow_mut().push(request.clone());
+                let result=match request["method"].as_str().unwrap() {
+                    "initialize"=>json!({}),
+                    "areal/capabilities"=>json!({"apiVersion":"areal.core.v1","methods":["areal/profile/list","areal/thread/start","thread/read","areal/thread/observe","areal/conversation/history","areal/turn/start","turn/interrupt","areal/request/read"],"features":{"conversationObservation":true,"threadCreationJournal":{"binding":{"identity":"remote-cloud-store","journalEpoch":"epoch","coreInstanceId":"remote-core"}}},"methodSemantics":{"areal/thread/start":{"effect":"mutation","receipt":"management"},"areal/turn/start":{"effect":"mutation","receipt":"management"},"turn/interrupt":{"effect":"mutation","receipt":"management"}}}),
+                    "areal/profile/list"=>json!({"data":[{"id":"remote-default","revision":"v1"}]}),
+                    "areal/model/list"=>json!({"data":[{"providerId":"remote","modelId":"remote-model","displayName":"Remote model","available":true}]}),
+                    "areal/thread/start"=>{
+                        assert_eq!(request["params"]["agentProfile"],json!({"id":"remote-default","revision":"v1"}));
+                        assert!(request["params"].get("dynamicTools").is_none_or(|tools|tools==&json!([])));
+                        json!({"thread":thread,"requestId":request["params"]["requestId"]})
+                    },
+                    "thread/read"|"areal/thread/observe"=>json!({"thread":thread}),
+                    "areal/request/read"=>json!({"data":[]}),
+                    "areal/turn/start"=>{
+                        let turn=json!({"id":"native-cloud-turn","status":"completed","items":[{"id":"answer","type":"agentMessage","text":"REMOTE_OK"}]});
+                        thread["turns"].as_array_mut().unwrap().push(turn.clone());
+                        json!({"threadId":thread["id"],"turn":turn,"requestId":request["params"]["requestId"],"accepted":true})
+                    },
+                    "turn/interrupt"=>json!({}),
+                    other=>panic!("unexpected {other}"),
+                };
+                socket.send(Message::Text(json!({"jsonrpc":"2.0","id":request["id"],"result":result}).to_string().into())).await.unwrap();
+            }
+            upload.await.unwrap();
+        });
+        let command=|request:Value|{let host=host.clone();let source=source.clone();async move {desktop_command(&host,"local","cloud-session",&json!({"params":{"sourceId":source,"command":"cloudSession","request":request}})).await}};
+        let request=json!({"operation":"create","projectId":alias,"requestId":creation_id});
+        let created=command(request.clone()).await.unwrap();
+        assert_eq!(created,json!({"threadId":"native-cloud-thread","sessionId":creation_id}));
+        assert_eq!(command(request).await.unwrap(),created);
+        let view=serde_json::to_value(host.read_models.shell(&host).await.unwrap()).unwrap();
+        let remote=view["projects"].as_array().unwrap().iter().find(|row|row["logicalProjectId"]==registration.project_id && row["summaries"]["items"].as_array().is_some_and(|rows|rows.iter().any(|row|row["id"]=="native-cloud-thread"))).expect("native shell must publish the real remote Thread under its logical project");
+        assert_eq!(remote["state"],"ready");assert!(remote["serviceGeneration"].is_string());
+        let virtual_id=remote["projectId"].as_str().unwrap();
+        let mut gateway=crate::server::gateway_owner::LocalSession::new(host.clone(),"native-cloud-reader".into()).unwrap();
+        let activated=gateway.request(&json!({"id":"cloud-activate","method":"project.activate","context":{"projectId":virtual_id},"params":{}})).await.unwrap();
+        assert_eq!(activated["state"],"ready");
+        assert!(!remote["workspace"].as_str().unwrap().is_empty());
+        assert!(host.schedules.connections.shared_identity(&host,virtual_id).is_ok());
+
+        let sent=command(json!({"operation":"send","projectId":alias,"threadId":"native-cloud-thread","text":"Hello remote"})).await.unwrap();
+        assert_eq!(sent["turn"]["id"],"native-cloud-turn");
+        command(json!({"operation":"stop","projectId":alias,"threadId":"native-cloud-thread","turnId":"native-cloud-turn"})).await.unwrap();
+        let opened=gateway.request(&json!({"id":"cloud-read","method":"session.open","context":{"projectId":virtual_id,"serviceGeneration":remote["serviceGeneration"]},"params":{"threadId":"native-cloud-thread","view":"conversation"}})).await.unwrap();
+        assert_eq!(opened["snapshot"]["thread"]["turns"][0]["items"][0]["text"],"REMOTE_OK");
+        assert!(gateway.request(&json!({"id":"cloud-other","method":"session.open","context":{"projectId":virtual_id,"serviceGeneration":remote["serviceGeneration"]},"params":{"threadId":"another-thread","view":"conversation"}})).await.is_err());
+        let models=gateway.request(&json!({"id":"cloud-models","method":"project.models","context":{"projectId":virtual_id},"params":{}})).await.unwrap();
+        assert_eq!(models["models"][0]["modelId"],"remote-model");
+        let uploaded=gateway.request(&json!({"id":"cloud-upload","method":"attachment.upload","context":{"projectId":virtual_id,"gatewayGeneration":host.identity.generation,"grantRevision":0,"serviceGeneration":remote["serviceGeneration"]},"params":{"threadId":"native-cloud-thread","uploadId":uuid::Uuid::new_v4().to_string(),"mimeType":"text/plain","sizeBytes":5,"offset":0,"base64":"aGVsbG8="}})).await.unwrap();
+        assert_eq!(uploaded["attachment"]["uri"],format!("areal://blob/{}",storage::digest(b"hello")));
+        host.schedules.connections.workbench_close_terminals();
+        assert!(host.gateway.workbench.cloud.sessions.scope(&host,virtual_id).is_ok());
+        let calls=calls.borrow();assert_eq!(calls.iter().filter(|call|call["method"]=="areal/thread/start").count(),1);assert_eq!(calls.iter().filter(|call|call["method"]=="areal/turn/start").count(),1);drop(calls);
+        assert!(host.slots.borrow()[&registration.project_id].service.is_none());assert!(!host.gateway.workbench.has_running_backend());
+        let unknown_id=uuid::Uuid::new_v4().to_string();
+        let home=super::super::library_store::source_home(&host,&source).unwrap();
+        let path=home.join("cloud-sessions.json");
+        let mut rows:Vec<Value>=storage::read(&path).unwrap();
+        rows.push(json!({"id":unknown_id,"projectId":alias,"binding":{"baseURL":"ws://example.invalid/app-server/old","threadRequestId":unknown_id},"originalUnknown":true}));
+        storage::write(&path,&rows).unwrap();
+        let original=std::fs::read(&path).unwrap();
+        assert!(command(json!({"operation":"create","projectId":alias,"requestId":unknown_id})).await.unwrap_err().to_string().contains("SUBMISSION_UNKNOWN"));
+        assert_eq!(std::fs::read(&path).unwrap(),original);
+        host.gateway.workbench.cloud.settings(&host,&source,&json!({"operation":"save","baseURL":host.gateway.workbench.cloud.settings(&host,&source,&json!({"operation":"status"})).await.unwrap()["baseURL"],"token":"revised-synthetic-token"})).await.unwrap();
+        assert!(host.gateway.workbench.cloud.sessions.scope(&host,virtual_id).is_err());
+        assert!(host.schedules.connections.shared_identity(&host,virtual_id).is_err());
+        host.gateway.workbench.cloud.sessions.close_all(&host);server.await.unwrap();
+    }).await;
+}

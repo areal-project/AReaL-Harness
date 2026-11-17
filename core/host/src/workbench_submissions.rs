@@ -151,7 +151,7 @@ fn entry_id(entry: &Value) -> Option<&str> {
         .as_str()
         .or_else(|| entry["params"]["requestId"].as_str())
 }
-fn find(host: &Host, project: &str, id: &str) -> Result<Option<Value>> {
+pub(super) fn find(host: &Host, project: &str, id: &str) -> Result<Option<Value>> {
     let (_, snapshot) = host.journal.native_snapshot(project)?;
     Ok(snapshot["outcomes"].get(id).cloned().or_else(|| {
         snapshot["pending"]

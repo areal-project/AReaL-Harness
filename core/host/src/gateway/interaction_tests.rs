@@ -2232,3 +2232,35 @@ async fn remote_authorization_uses_committed_grants_during_credential_io_and_rev
         assert!(after.is_err(), "revoked grant remained usable after durable commit");
     }).await;
 }
+
+#[tokio::test]
+async fn cloud_navigation_inherits_only_the_original_source_and_project_grant() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let f = Fixture::new().await;
+            let record = uuid::Uuid::new_v4().to_string();
+            let id = format!("cloud-session:{}:{record}", f.source);
+            let home = crate::server::library_store::source_home(&f.host, &f.source).unwrap();
+            storage::write(
+                &home.join("cloud-sessions.json"),
+                &json!([
+                    {"id":record,"projectId":f.alias,"binding":{"threadId":"remote-thread"}}
+                ]),
+            )
+            .unwrap();
+            let mut remote = f.session("a");
+            assert!(remote.authorize(Some(&id), "observe").is_ok());
+            assert_eq!(remote.project_id(&id).unwrap(), id);
+            remote.source_id = "another-source".into();
+            assert!(remote.authorize(Some(&id), "observe").is_err());
+            remote.source_id = f.source.clone();
+            f.grant("a", |grant| grant["projectIds"] = json!([]));
+            assert!(remote.authorize(Some(&id), "observe").is_err());
+            let local = Session::local(f.host.clone(), "local-cloud".into()).unwrap();
+            assert!(local.authorize(Some(&id), "observe").is_ok());
+            let removed = f.host.slots.borrow_mut().remove("project").unwrap();
+            assert!(local.authorize(Some(&id), "observe").is_err());
+            f.host.slots.borrow_mut().insert("project".into(), removed);
+        })
+        .await;
+}

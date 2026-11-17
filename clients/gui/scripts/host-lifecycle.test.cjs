@@ -1313,3 +1313,29 @@ test("legacy Cloud import binds original bytes and native source without rewriti
   await assert.rejects(f.backend.importNativeCloud("source", encryption), /source changed/);
   assert.notEqual(f.backend.nativeBrowserEpoch, original);
 });
+
+for (const [command, call, request, response] of [
+  ["cloud", "cloud.settings", { operation: "status" }, { baseURL: "", tokenConfigured: false }],
+  [
+    "cloudSession",
+    "cloud.session",
+    { operation: "create", projectId: "project", requestId: "creation" },
+    { threadId: "thread", sessionId: "creation" },
+  ],
+]) {
+  test(`${command} uses the native source without a Node connection`, async (t) => {
+    const f = await fixture(t);
+    f.setHandler(async (frame) => {
+      if (frame.method === "desktop.core.subscribe") return { attachmentId: "attachment" };
+      assert.equal(frame.method, "desktop.core.call");
+      assert.equal(frame.params.call, call);
+      assert.deepEqual(frame.params.params, request);
+      return response;
+    });
+    await f.backend.connectNativeBrowser({ home: f.hostHome, sourceId: "source" }, {});
+    t.after(() => f.backend.closeNativeBrowser());
+    f.backend.status.connected = true;
+    assert.deepEqual(await f.backend.command(command, request), response);
+    assert.equal(f.backend.connection, undefined);
+  });
+}

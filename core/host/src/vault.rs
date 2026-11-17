@@ -500,6 +500,20 @@ impl Vault {
             storage::digest(&serde_json::to_vec(slot)?)
         )))
     }
+    /// 已连接的 Cloud 只核对持久修订，不解密凭据或创建槽位。
+    pub(crate) fn cloud_revision(&self, source: &str) -> Result<u64> {
+        let slot = Slot::CloudAccount {
+            source_id: source.into(),
+        };
+        let state: Option<SlotState> = storage::read_optional(&self.state_path(&slot)?)?;
+        if let Some(state) = state {
+            ensure!(state.slot == slot, "vault slot metadata mismatch");
+            Ok(state.revision)
+        } else {
+            Ok(0)
+        }
+    }
+
     /// 目录失效只读版本与条目身份，不访问钥匙串，也不创建槽位。
     pub(crate) fn provider_stamp(&self, source: &str) -> Result<Value> {
         let mut stamps = BTreeMap::new();

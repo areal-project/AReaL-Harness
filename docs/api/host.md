@@ -119,6 +119,8 @@ GUI 来源的新项目登记由 Host 生成首次 `LaunchInputs`，不等待 Nod
 
 项目外目录的 `projectless` 命令与本机附件的 `projectless.command` 共用 Rust Host 所有者。Host 先将原 requestId 和规范目录写入来源的预约文件，再创建目录与登记项目；重复请求只能恢复原目录，不能改绑，已有普通项目目录不能被转成项目外任务。预约与登记跨异步调用串行处理。模型目录复用 Host 的配置与订阅投影，响应不含端点或凭据值。
 
+Cloud 会话由 Rust Host 管理原来源的 `cloud-sessions.json` 绑定，并复用原生提交 journal。`desktop.core.call` 的 `cloud.session` 与 `desktop.command` 的 `cloudSession` 进入同一所有者。Shell 使用 `cloud-session:<sourceId>:<recordId>` 作为逻辑项目下的执行子项目，读取、附件和既有会话激活沿 Host 连接执行；远程授权只继承原来源和逻辑项目的 grant。凭据修订变化使旧观察与媒体失效；没有原创建受理证据的历史记录保持 UNKNOWN，不重新创建。Cloud 连接归 Host 生命周期，Node 投影退出不关闭它。
+
 ## 定时项目激活与准备
 
 `scheduledPreparation` 表示 Host 通过常驻认证连接注册 Core 调度宿主并处理 `areal/task/prepare`。普通 GUI 工具连接和调度连接可以不同，但必须属于同一认证身份；来源会话和执行锚点仍校验原连接与目录归属。Core 保留 Task、Run、准备结果及触发权威。Host 不为缺席的 Main 发布浏览器工具。

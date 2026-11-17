@@ -1035,126 +1035,140 @@ pub(super) fn desktop_command_capability(params: &Value) -> Option<&'static str>
 
 /// 本机网页的桌面命令：与桌面窗口同一用户，由后台按桌面命令合同校验后执行。
 /// 不进 Host journal，丢回复与桌面窗口原路径一样只能重新读取。
-pub(super) async fn desktop_command(
-    host: &Rc<Host>,
-    principal: &str,
-    connection: &str,
-    request: &Value,
-) -> Result<Value> {
-    use areal_protocol::host::DesktopCommandParamsFieldCommand as Cmd;
-    ensure!(request.get("commandId").is_none(), "INVALID_PARAMS");
-    let mut params = serde_json::from_value::<areal_protocol::host::DesktopCommandParams>(
-        request["params"].clone(),
-    )
-    .context("INVALID_PARAMS")?;
-    host.admission()?;
-    let native_command = match params.command {
-        Cmd::Value3 => Some("chatgpt"),
-        Cmd::Value4 => Some("cloud"),
-        Cmd::Value6 => Some("configure"),
-        Cmd::Value8 => Some("continue"),
-        Cmd::Value9 => Some("dismissRecovery"),
-        Cmd::Value10 => Some("editMessage"),
-        Cmd::Value12 => Some("fork"),
-        Cmd::Value15 => Some("manage"),
-        Cmd::Value18 => Some("prediction"),
-        Cmd::Value19 => Some("prepareCreator"),
-        Cmd::Value20 => Some("projectless"),
-        Cmd::Value22 => Some("queue"),
-        Cmd::Value23 => Some("queueEdit"),
-        Cmd::Value24 => Some("reconcile"),
-        Cmd::Value26 => Some("resources"),
-        Cmd::Value27 => Some("side"),
-        Cmd::Value30 => Some("workspace"),
-        _ => None,
-    };
-    if let Some(command) = native_command {
-        host.gateway.workbench.restore_source(host)?;
-        let source = host.gateway.workbench.active_source().ok_or_else(|| {
+pub(super) fn desktop_command<'a>(
+    host: &'a Rc<Host>,
+    principal: &'a str,
+    connection: &'a str,
+    request: &'a Value,
+) -> futures_util::future::LocalBoxFuture<'a, Result<Value>> {
+    // 多领域分发的 future 固定在堆上，避免每个调用方内联保存整棵异步状态。
+    Box::pin(async move {
+        use areal_protocol::host::DesktopCommandParamsFieldCommand as Cmd;
+        ensure!(request.get("commandId").is_none(), "INVALID_PARAMS");
+        let mut params = serde_json::from_value::<areal_protocol::host::DesktopCommandParams>(
+            request["params"].clone(),
+        )
+        .context("INVALID_PARAMS")?;
+        host.admission()?;
+        let native_command = match params.command {
+            Cmd::Value3 => Some("chatgpt"),
+            Cmd::Value4 => Some("cloud"),
+            Cmd::Value5 => Some("cloudSession"),
+            Cmd::Value6 => Some("configure"),
+            Cmd::Value8 => Some("continue"),
+            Cmd::Value9 => Some("dismissRecovery"),
+            Cmd::Value10 => Some("editMessage"),
+            Cmd::Value12 => Some("fork"),
+            Cmd::Value15 => Some("manage"),
+            Cmd::Value18 => Some("prediction"),
+            Cmd::Value19 => Some("prepareCreator"),
+            Cmd::Value20 => Some("projectless"),
+            Cmd::Value22 => Some("queue"),
+            Cmd::Value23 => Some("queueEdit"),
+            Cmd::Value24 => Some("reconcile"),
+            Cmd::Value26 => Some("resources"),
+            Cmd::Value27 => Some("side"),
+            Cmd::Value30 => Some("workspace"),
+            _ => None,
+        };
+        if let Some(command) = native_command {
+            host.gateway.workbench.restore_source(host)?;
+            let source = host.gateway.workbench.active_source().ok_or_else(|| {
+                crate::wire::error(
+                    "CAPABILITY_UNAVAILABLE",
+                    "桌面后台未运行，请先打开一次桌面应用",
+                )
+            })?;
+            ensure!(
+                params.source_id.take().is_none_or(|id| id == source),
+                "FORBIDDEN"
+            );
+            return match command {
+                "cloudSession" => {
+                    Box::pin(host.gateway.workbench.cloud.sessions.command(
+                        host,
+                        &source,
+                        &params.request,
+                    ))
+                    .await
+                }
+                "cloud" => {
+                    host.gateway
+                        .workbench
+                        .cloud
+                        .settings(host, &source, &params.request)
+                        .await
+                }
+                "prepareCreator" => {
+                    host.gateway
+                        .workbench
+                        .resources
+                        .prepare_creator(host, &source, &params.request)
+                        .await
+                }
+                "resources" => {
+                    host.gateway
+                        .workbench
+                        .resources
+                        .command(host, &source, &params.request)
+                        .await
+                }
+                "projectless" => {
+                    host.gateway
+                        .workbench
+                        .projectless
+                        .command(host, &source, &params.request)
+                        .await
+                }
+                "chatgpt" => host.chatgpt_desktop_command(&source, &params.request).await,
+                "manage" => {
+                    host.gateway
+                        .workbench
+                        .manage_service
+                        .desktop_command(host, principal, &source, &params.request)
+                        .await
+                }
+                "side" => {
+                    host.gateway
+                        .workbench
+                        .side_owners
+                        .command(host, &source, connection, &params.request)
+                        .await
+                }
+                "workspace" => {
+                    host.gateway
+                        .workbench
+                        .workspace_ops
+                        .execute(host, &source, &params.request)
+                        .await
+                }
+                _ => {
+                    super::session_commands::execute(host, &source, command, &params.request).await
+                }
+            };
+        }
+        host.gateway.workbench.resume_backend(host).await?;
+        let source = host.gateway.workbench.backend.source.borrow().clone();
+        ensure!(
+            source.is_some(),
             crate::wire::error(
                 "CAPABILITY_UNAVAILABLE",
-                "桌面后台未运行，请先打开一次桌面应用",
+                "桌面后台未运行，请先打开一次桌面应用"
             )
-        })?;
-        ensure!(
-            params.source_id.take().is_none_or(|id| id == source),
-            "FORBIDDEN"
         );
-        return match command {
-            "cloud" => {
-                host.gateway
-                    .workbench
-                    .cloud
-                    .settings(host, &source, &params.request)
-                    .await
-            }
-            "prepareCreator" => {
-                host.gateway
-                    .workbench
-                    .resources
-                    .prepare_creator(host, &source, &params.request)
-                    .await
-            }
-            "resources" => {
-                host.gateway
-                    .workbench
-                    .resources
-                    .command(host, &source, &params.request)
-                    .await
-            }
-            "projectless" => {
-                host.gateway
-                    .workbench
-                    .projectless
-                    .command(host, &source, &params.request)
-                    .await
-            }
-            "chatgpt" => host.chatgpt_desktop_command(&source, &params.request).await,
-            "manage" => {
-                host.gateway
-                    .workbench
-                    .manage_service
-                    .desktop_command(host, principal, &source, &params.request)
-                    .await
-            }
-            "side" => {
-                host.gateway
-                    .workbench
-                    .side_owners
-                    .command(host, &source, connection, &params.request)
-                    .await
-            }
-            "workspace" => {
-                host.gateway
-                    .workbench
-                    .workspace_ops
-                    .execute(host, &source, &params.request)
-                    .await
-            }
-            _ => super::session_commands::execute(host, &source, command, &params.request).await,
-        };
-    }
-    host.gateway.workbench.resume_backend(host).await?;
-    let source = host.gateway.workbench.backend.source.borrow().clone();
-    ensure!(
-        source.is_some(),
-        crate::wire::error(
-            "CAPABILITY_UNAVAILABLE",
-            "桌面后台未运行，请先打开一次桌面应用"
-        )
-    );
-    let matched = params.source_id.take().is_none_or(|id| source == Some(id));
-    ensure!(matched, "FORBIDDEN");
-    let params = serde_json::to_value(params)?;
-    host.gateway
-        .workbench
-        .request(
-            host,
-            "desktop.command",
-            params,
-            json!({"principal":principal,"connection":connection}),
-        )
-        .await
+        let matched = params.source_id.take().is_none_or(|id| source == Some(id));
+        ensure!(matched, "FORBIDDEN");
+        let params = serde_json::to_value(params)?;
+        host.gateway
+            .workbench
+            .request(
+                host,
+                "desktop.command",
+                params,
+                json!({"principal":principal,"connection":connection}),
+            )
+            .await
+    })
 }
 
 pub(super) async fn backend_read(

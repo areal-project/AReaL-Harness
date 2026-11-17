@@ -844,8 +844,23 @@ impl Session {
                 "FORBIDDEN"
             );
         }
+        let cloud_owner = project
+            .filter(|id| crate::server::cloud_sessions::CloudSessions::is_virtual(id))
+            .map(|id| {
+                self.host
+                    .gateway
+                    .workbench
+                    .cloud
+                    .sessions
+                    .owner(&self.host, id)
+            })
+            .transpose()?;
         if self.local {
             if let Some(project) = project {
+                let project = cloud_owner
+                    .as_ref()
+                    .map(|(_, id, _)| id.as_str())
+                    .unwrap_or(project);
                 ensure!(self.host.slots.borrow().contains_key(project), "FORBIDDEN");
             }
             return Ok(());
@@ -872,6 +887,12 @@ impl Session {
             "FORBIDDEN"
         );
         if let Some(project) = project {
+            let project = if let Some((source, _, alias)) = &cloud_owner {
+                ensure!(source == &self.source_id, "FORBIDDEN");
+                alias.as_str()
+            } else {
+                project
+            };
             ensure!(
                 current["projectIds"]
                     .as_array()
@@ -905,6 +926,10 @@ impl Session {
         }
     }
     fn project_id(&self, alias: &str) -> Result<String> {
+        if crate::server::cloud_sessions::CloudSessions::is_virtual(alias) {
+            self.authorize(Some(alias), "observe")?;
+            return Ok(alias.into());
+        }
         self.bindings()?
             .into_iter()
             .find(|(_, candidate)| candidate == alias)
@@ -914,6 +939,16 @@ impl Session {
     }
     fn project(&self, alias: &str) -> Result<(String, String)> {
         let id = self.project_id(alias)?;
+        if crate::server::cloud_sessions::CloudSessions::is_virtual(&id) {
+            let scope = self
+                .host
+                .gateway
+                .workbench
+                .cloud
+                .sessions
+                .scope(&self.host, &id)?;
+            return Ok((id, scope.identity.1));
+        }
         let slots = self.host.slots.borrow();
         let slot = slots.get(&id).context("FORBIDDEN")?;
         let service = slot
@@ -933,6 +968,19 @@ impl Session {
         self.authorize(Some(alias), "observe")?;
         let (id, current) = self.project(alias)?;
         ensure!(current == generation, "RESYNC_REQUIRED");
+        if crate::server::cloud_sessions::CloudSessions::is_virtual(&id) {
+            let result = self
+                .host
+                .gateway
+                .workbench
+                .cloud
+                .sessions
+                .request(&self.host, &id, method, params)
+                .await;
+            self.authorize(Some(alias), "observe")?;
+            ensure!(self.project(alias)?.1 == generation, "RESYNC_REQUIRED");
+            return result;
+        }
         let (service_id, current, connection_id) = self
             .host
             .schedules
@@ -1206,7 +1254,39 @@ impl Session {
             && (params["view"] == "conversation"
                 || (method == "session.history" && params.get("subscriptionId").is_some())
                 || (method == "subscription.close" && self.conversation_active()));
-        let project = if native {
+        let supplied = request["context"]["projectId"].as_str();
+        let cloud =
+            supplied.filter(|id| crate::server::cloud_sessions::CloudSessions::is_virtual(id));
+        let project = if let Some(id) = cloud {
+            self.authorize(Some(id), "observe")?;
+            ensure!(
+                [
+                    "project.activate",
+                    "project.models",
+                    "session.open",
+                    "session.history",
+                    "session.body",
+                    "subscription.close",
+                    "session.send",
+                    "turn.stop",
+                    "attachment.upload",
+                    "artifact.read",
+                    "command.read",
+                    "interaction.respond",
+                ]
+                .contains(&method),
+                "FORBIDDEN"
+            );
+            if let Some(thread) = params["threadId"].as_str() {
+                self.host
+                    .gateway
+                    .workbench
+                    .cloud
+                    .sessions
+                    .bound_thread(&self.host, id, thread)?;
+            }
+            id.to_owned()
+        } else if native {
             self.native_alias(text(&request["context"], "projectId")?)?
         } else if self.gui_write {
             // 共享清单给出 Host ID；旧远程调用仍可用别名，授权和 journal 统一回到来源别名。

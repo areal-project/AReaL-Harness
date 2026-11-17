@@ -100,9 +100,19 @@ pub(crate) enum Attention {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct CloudSummary {
+    pub session_id: String,
+    pub connected: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct NavigationSummary {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cloud: Option<CloudSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_thread_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -415,6 +425,7 @@ pub(crate) fn snapshot(
                     .filter_map(|key| key.strip_prefix(&prefix))
                     .map(|id| NavigationSummary {
                         id: id.into(),
+                        cloud: None,
                         parent_thread_id: None,
                         conversation: None,
                         name: None,

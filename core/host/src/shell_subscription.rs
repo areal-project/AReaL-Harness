@@ -112,7 +112,13 @@ impl ReadModels {
                 )
             })
             .collect::<BTreeMap<_, _>>();
-        let stamp = json!({"projects":status.projects,"sources":source_stamps,"revisions":revisions,"models":model_revisions,"epoch":self.epoch.get(),
+        let cloud = host
+            .gateway
+            .workbench
+            .cloud
+            .sessions
+            .catalog(host, &sources)?;
+        let stamp = json!({"cloud":cloud,"projects":status.projects,"sources":source_stamps,"revisions":revisions,"models":model_revisions,"epoch":self.epoch.get(),
                 "observations":self.online.borrow().iter().map(|(id,online)|json!([id,online.revision,online.epoch])).collect::<Vec<_>>()});
         if let Some((previous, view)) = &*self.cached.borrow()
             && *previous == stamp
@@ -161,6 +167,7 @@ impl ReadModels {
                 }
             }
         }
+        view.projects.extend(cloud);
         *self.cached.borrow_mut() = Some((stamp, view.clone()));
         Ok(view)
     }
@@ -469,8 +476,18 @@ fn restrict(
     mut view: ShellView,
     (projects, source): &(std::collections::BTreeSet<String>, String),
 ) -> ShellView {
-    view.projects
-        .retain(|project| projects.contains(&project.project_id));
+    view.projects.retain(|project| {
+        projects.contains(&project.project_id)
+            || (super::cloud_sessions::CloudSessions::is_virtual(&project.project_id)
+                && project
+                    .logical_project_id
+                    .as_ref()
+                    .is_some_and(|logical| projects.contains(logical))
+                && project
+                    .alias
+                    .as_ref()
+                    .is_some_and(|alias| alias.source_id == *source))
+    });
     view.navigation
         .retain(|navigation| navigation.source_id == *source);
     for navigation in &mut view.navigation {

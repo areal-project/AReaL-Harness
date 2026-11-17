@@ -140,28 +140,43 @@ impl Session {
         // 未知结果保留缓冲供原末块核对；明确拒收则释放容量。
         let body = upload.bytes.clone();
         let (id, _) = self.project(project)?;
-        let service = self
-            .host
-            .slots
-            .borrow()
-            .get(&id)
-            .and_then(|slot| slot.service.clone())
-            .context("CORE_UNAVAILABLE")?;
-        let media =
-            match conversation_media::upload(&service, &chunk.thread_id, &chunk.mime_type, body)
-                .await
-            {
-                Ok(media) => media,
-                Err(error) => {
-                    if matches!(
-                        error.to_string().as_str(),
-                        "ATTACHMENT_UNSUPPORTED" | "LIMIT_EXCEEDED"
-                    ) {
-                        self.uploads.active.remove(&upload_id);
-                    }
-                    return Err(error);
-                }
+        let uploaded =
+            if crate::server::cloud_sessions::CloudSessions::is_virtual(&id) {
+                use base64::Engine;
+                let scope = self
+                    .host
+                    .gateway
+                    .workbench
+                    .cloud
+                    .sessions
+                    .scope(&self.host, &id)?;
+                self.host.schedules.connections.workbench_blob(&self.host, &id, &scope.lease,
+                &json!({"operation":"upload","threadId":chunk.thread_id,"mime":chunk.mime_type,
+                    "base64":base64::engine::general_purpose::STANDARD.encode(body)})).await
+            } else {
+                let service = self
+                    .host
+                    .slots
+                    .borrow()
+                    .get(&id)
+                    .and_then(|slot| slot.service.clone())
+                    .context("CORE_UNAVAILABLE")?;
+                conversation_media::upload(&service, &chunk.thread_id, &chunk.mime_type, body).await
             };
+        self.authorize(Some(project), "submit")?;
+        ensure!(self.project(project)?.1 == generation, "RESYNC_REQUIRED");
+        let media = match uploaded {
+            Ok(media) => media,
+            Err(error) => {
+                if matches!(
+                    error.to_string().as_str(),
+                    "ATTACHMENT_UNSUPPORTED" | "LIMIT_EXCEEDED"
+                ) {
+                    self.uploads.active.remove(&upload_id);
+                }
+                return Err(error);
+            }
+        };
         self.uploads.active.remove(&upload_id);
         let receipt = json!({"uploadId":upload_id,"receivedBytes":received,"attachment":media});
         if self.uploads.done.len() == RECEIPTS {

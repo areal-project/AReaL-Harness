@@ -1038,14 +1038,18 @@ class SharedCoreBackend {
       });
     }
     this.assertLifecycleScope(name, request);
-    if (["projectless", "resources", "prepareCreator"].includes(name)) {
+    if (["projectless", "resources", "prepareCreator", "cloud", "cloudSession"].includes(name)) {
       const epoch = this.nativeBrowserEpoch;
       const value = await this.nativeBrowserCall(
-        name === "resources"
-          ? "resources.command"
-          : name === "prepareCreator"
-            ? "resources.prepareCreator"
-            : "projectless.command",
+        name === "cloud"
+          ? "cloud.settings"
+          : name === "cloudSession"
+            ? "cloud.session"
+            : name === "resources"
+              ? "resources.command"
+              : name === "prepareCreator"
+                ? "resources.prepareCreator"
+                : "projectless.command",
         request,
       );
       if (!epoch || this.nativeBrowserEpoch !== epoch || this.disposed)

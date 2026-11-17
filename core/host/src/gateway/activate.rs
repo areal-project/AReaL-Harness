@@ -13,6 +13,20 @@ impl Session {
         self.authorize(Some(project), "submit")?;
         self.host.admission()?;
         let id = self.project_id(project)?;
+        if crate::server::cloud_sessions::CloudSessions::is_virtual(&id) {
+            let scope = self
+                .host
+                .gateway
+                .workbench
+                .cloud
+                .sessions
+                .activate(&self.host, &id)
+                .await?;
+            self.authorize(Some(project), "submit")?;
+            return Ok(
+                json!({"projectId":project,"state":"ready","serviceGeneration":scope.identity.1}),
+            );
+        }
         if self.host.schedules.suppressed(&id) {
             return Ok(json!({"projectId":project,"state":"blocked","reason":"explicitlyStopped"}));
         }

@@ -273,6 +273,20 @@ export function createHostReadServices(
         threadTargets.get(`${target.projectId}:${target.threadId}`) ??
         [...ids].find(([, alias]) => alias === target.projectId)?.[0] ??
         target.projectId;
+      const shellState = client.readsSnapshot().shell;
+      const shell = "value" in shellState ? shellState.value : shellState.previous;
+      const execution = shell?.snapshot.projects.find((project) => project.projectId === canonical);
+      if (
+        execution?.summaries.items.some(
+          (summary) => summary.id === target.threadId && summary.cloud,
+        ) &&
+        execution.state !== "ready"
+      ) {
+        const activated = await client.query("project.activate", canonical, {});
+        if (!object(activated) || activated.state !== "ready")
+          throw new Error("Cloud 连接尚未恢复");
+        await client.refreshShell();
+      }
       await client.selectSession({ ...target, projectId: canonical });
     },
     history,

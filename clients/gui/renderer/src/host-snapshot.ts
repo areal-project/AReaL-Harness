@@ -177,6 +177,7 @@ type ExecutionView = {
   executionConnected: boolean;
   executionHostState?: ShellProject["state"];
   executionError: null;
+  cloud?: NavigationSummary["cloud"];
   worktree?: WorktreeDisplay;
 };
 export type ReadProject = Record<string, unknown> & {
@@ -476,7 +477,9 @@ export function createHostSnapshotProjector(
         instanceId: project.serviceGeneration ?? "",
         serviceGeneration: project.serviceGeneration ?? null,
       };
+      const cloud = project.summaries.items.find((summary) => summary.cloud)?.cloud;
       const execution = {
+        ...(cloud ? { cloud } : {}),
         executionProjectId: id,
         executionRoot: project.workspace,
         executionCore,

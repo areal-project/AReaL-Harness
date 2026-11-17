@@ -113,6 +113,10 @@ impl Session {
         );
         self.authorize(Some(project), "observe")?;
         let id = self.project_id(project)?;
+        ensure!(
+            !crate::server::cloud_sessions::CloudSessions::is_virtual(&id),
+            "CORE_UNAVAILABLE"
+        );
         let registration = self.host.slots.borrow()[&id].registration.clone();
         let path = self
             .host
@@ -184,6 +188,9 @@ impl Session {
         self.authorize(Some(project), "observe")?;
         let (id, current) = self.project(project)?;
         ensure!(current == generation, "RESYNC_REQUIRED");
+        if crate::server::cloud_sessions::CloudSessions::is_virtual(&id) {
+            return self.cloud_models(project, generation).await;
+        }
         let metadata = self
             .host
             .schedules
@@ -281,6 +288,80 @@ impl Session {
         Ok(result)
     }
 
+    async fn cloud_models(&self, project: &str, generation: &str) -> Result<Value> {
+        let core = self
+            .rpc(project, generation, "areal/model/list", json!({}))
+            .await?;
+        let models = core["data"].as_array().context("CORE_UNAVAILABLE")?;
+        ensure!(models.len() <= 200, "LIMIT_EXCEEDED");
+        let models: Vec<_> = models
+            .iter()
+            .map(|model| {
+                projection::pick(
+                    model,
+                    &[
+                        "providerId",
+                        "modelId",
+                        "displayName",
+                        "reasoningEffortOptions",
+                        "available",
+                        "unavailableReason",
+                        "providerName",
+                        "providerRevision",
+                        "isDefault",
+                        "credentialState",
+                        "availability",
+                        "parameters",
+                        "contextWindowTokens",
+                        "maxOutputTokens",
+                        "capabilities",
+                    ],
+                )
+            })
+            .collect();
+        let profiles = self
+            .rpc(project, generation, "areal/profile/list", json!({}))
+            .await?;
+        let profiles = profiles["data"].as_array().context("CORE_UNAVAILABLE")?;
+        ensure!(profiles.len() <= 200, "LIMIT_EXCEEDED");
+        let profiles: Vec<_> = profiles
+            .iter()
+            .map(|profile| {
+                projection::pick(
+                    profile,
+                    &[
+                        "id",
+                        "revision",
+                        "displayName",
+                        "instructions",
+                        "model",
+                        "readOnly",
+                        "skills",
+                        "workflow",
+                        "toolAllowlist",
+                        "approvalTools",
+                        "allowThreadProcesses",
+                        "allowConnectionProcesses",
+                        "allowPluginSkills",
+                        "requiredModalities",
+                    ],
+                )
+            })
+            .collect();
+        let caps = self
+            .rpc(project, generation, "areal/capabilities", json!({}))
+            .await?;
+        let result = json!({"projectId":project,"gatewayGeneration":self.generation,
+            "grantRevision":self.grant["revision"],"serviceGeneration":generation,
+            "models":models,"profiles":profiles,"defaultProfile":null,
+            "lastAcceptedModel":core.get("lastAcceptedModel"),"features":public_features(&caps)});
+        ensure!(
+            serde_json::to_vec(&result)?.len() <= 128 * 1024,
+            "LIMIT_EXCEEDED"
+        );
+        Ok(result)
+    }
+
     fn accepted_model(&self, source: &str, mut accepted: Value) -> Result<Value> {
         if self.gui_read
             && let Some(home) = self.host.migration.power_sources()?.get(source)
@@ -303,6 +384,9 @@ impl Session {
         observed_model: impl FnOnce() -> Result<Option<Value>>,
     ) -> Result<Value> {
         let (id, _) = self.project(project)?;
+        if crate::server::cloud_sessions::CloudSessions::is_virtual(&id) {
+            return self.cloud_models(project, generation).await;
+        }
         let identity = self
             .host
             .schedules

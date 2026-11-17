@@ -97,15 +97,36 @@ impl ConversationReader {
             !thread_id.is_empty() && thread_id.len() <= 256,
             "INVALID_PARAMS"
         );
-        host.schedules
-            .connections
-            .ready(host, project, generation)
-            .await?;
-        let (snapshot, barrier, observation) = host
-            .schedules
-            .connections
-            .conversation_observe(host, project, generation, thread_id, PAGE_BYTES)
-            .await?;
+        let (snapshot, barrier, observation) =
+            if super::cloud_sessions::CloudSessions::is_virtual(project) {
+                host.gateway
+                    .workbench
+                    .cloud
+                    .sessions
+                    .bound_thread(host, project, thread_id)?;
+                let scope = host.gateway.workbench.cloud.sessions.scope(host, project)?;
+                ensure!(scope.identity.1 == generation, "RESYNC_REQUIRED");
+                host.schedules
+                    .connections
+                    .cloud_observe(
+                        host,
+                        project,
+                        &scope.lease,
+                        generation,
+                        thread_id,
+                        PAGE_BYTES,
+                    )
+                    .await?
+            } else {
+                host.schedules
+                    .connections
+                    .ready(host, project, generation)
+                    .await?;
+                host.schedules
+                    .connections
+                    .conversation_observe(host, project, generation, thread_id, PAGE_BYTES)
+                    .await?
+            };
         check_size(&snapshot)?;
         let reader = Self {
             identity: Identity {
@@ -437,6 +458,14 @@ impl ConversationReader {
                 })
                 .await?
                 .map_err(|_| anyhow::anyhow!("RESOURCE_UNAVAILABLE"))?;
+                conversation_media::from_bytes(reference, bytes)
+            } else if let Some(bytes) = self
+                .observation
+                .as_ref()
+                .context("RESYNC_REQUIRED")?
+                .remote_media(host, &reference)
+                .await?
+            {
                 conversation_media::from_bytes(reference, bytes)
             } else {
                 conversation_media::fetch(
