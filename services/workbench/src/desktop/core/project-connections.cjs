@@ -262,6 +262,7 @@ class ProjectConnections {
                   "LIFECYCLE_INCOMPLETE",
                   "LIFECYCLE_EXIT_REQUESTED",
                   "RESPONSE_TOO_LARGE",
+                  "CREDENTIAL_AUTHORIZATION_REQUIRED",
                 ].includes(modelRecord(error) ? String(error.code) : "") ||
                 (modelRecord(error) && error.reason === "RESPONSE_TOO_LARGE") ||
                 project.client?.closeFailure?.code === "RESPONSE_TOO_LARGE" ||
@@ -534,6 +535,15 @@ class ProjectConnections {
         : (execution.executionError ?? "执行配置不可用，历史仍可查看。");
       await this.host.providers.reconcileProject(project, { refreshModels: false });
       this.requireConnection(project, client);
+      // 凭据授权失败不会因为重连而消失：用户必须在系统弹窗里重新授权。
+      // 在这里显式结束本轮并标记不可重试，避免同一 Core 代际被反复连接。
+      if (this.host.providers.config?.authorizationRequired())
+        throw Object.assign(
+          new Error(
+            "Keychain 未授权当前应用读取已保存的凭据，请在系统提示中允许访问后重新连接。",
+          ),
+          { code: "CREDENTIAL_AUTHORIZATION_REQUIRED" },
+        );
       if (!observeOnly && !project.executionError) {
         trace.advance("providers");
         await this.host.providers.syncLocal(project);

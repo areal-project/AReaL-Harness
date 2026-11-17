@@ -10,6 +10,19 @@ const {
   modelSnapshot,
 } = require("./provider-contract.cjs");
 
+/**
+ * Host 能报告的凭据失败码，与 Core 侧 storageLocked/storageMissing/
+ * storageAuthorizationRequired 以及迁移中的 migrationPending 对应。
+ * storageAuthorizationRequired 表示 Keychain ACL 拒绝当前应用身份，必须让用户
+ * 重新授权而不是当作无效响应重试。
+ */
+const CREDENTIAL_ERROR_CODES = [
+  "storageLocked",
+  "storageMissing",
+  "storageAuthorizationRequired",
+  "migrationPending",
+];
+
 /** @param {string} value */
 const protocolToCore = (value) => (value === "chatCompletions" ? "chat-completions" : value);
 /** @param {string} endpoint */
@@ -31,8 +44,13 @@ class ModelConfiguration {
   constructor(backend, hostVault) {
     this.backend = backend;
     this.hostVault = hostVault;
-    /** @type {{keys:Record<string,string>,locked:Set<string>,pending:Set<string>}} */
-    this.vault = { keys: {}, locked: new Set(), pending: new Set() };
+    /** @type {{keys:Record<string,string>,locked:Set<string>,authorizationRequired:Set<string>,pending:Set<string>}} */
+    this.vault = {
+      keys: {},
+      locked: new Set(),
+      authorizationRequired: new Set(),
+      pending: new Set(),
+    };
     /** @type {Set<string>} */ this.references = new Set();
     /** @type {Map<string, string>} */ this.credentialErrors = new Map();
     /** @type {{data:Array<{id:string,name:string,baseUrl:string,protocol:string,enabled:boolean,models:import('./provider-contract.cjs').ModelConfig[],parameters:import('./provider-contract.cjs').ModelParameters,apiKeyEnv?:string}>,retired?:string[]}|undefined} */
@@ -63,6 +81,7 @@ class ModelConfiguration {
     const names = references ?? source.state.credentials.references;
     if (!strings(names)) throw new Error("Host 凭据来源元数据无效");
     const locked = new Set();
+    const authorizationRequired = new Set();
     const pending = new Set();
     const errors = new Map();
     const keys = Object.fromEntries(
@@ -76,13 +95,10 @@ class ModelConfiguration {
             );
           } catch (error) {
             const code = record(error) ? error.code : undefined;
-            if (
-              code !== "storageLocked" &&
-              code !== "storageMissing" &&
-              code !== "migrationPending"
-            )
+            if (!CREDENTIAL_ERROR_CODES.includes(/** @type {string} */ (code)))
               throw error;
             if (code === "storageLocked") locked.add(reference);
+            if (code === "storageAuthorizationRequired") authorizationRequired.add(reference);
             if (code === "migrationPending") pending.add(reference);
             errors.set(reference, code);
             diagnostics.record({
@@ -100,6 +116,7 @@ class ModelConfiguration {
       ),
     );
     this.vault.locked = locked;
+    this.vault.authorizationRequired = authorizationRequired;
     this.vault.pending = pending;
     this.credentialErrors = errors;
     this.references = new Set(names);
@@ -153,7 +170,7 @@ class ModelConfiguration {
         if (
           !references.includes(reference) ||
           typeof code !== "string" ||
-          !["storageLocked", "storageMissing", "migrationPending"].includes(code)
+          !CREDENTIAL_ERROR_CODES.includes(code)
         )
           throw new Error();
         failures.set(reference, code);
@@ -164,7 +181,15 @@ class ModelConfiguration {
       this.vault.keys = keys;
       this.credentialErrors = failures;
       this.vault.locked = new Set(
-        [...failures].filter(([, code]) => code === "storageLocked").map(([id]) => id),
+        [...failures]
+          .filter(([, code]) => code === "storageLocked")
+          .map(([id]) => id),
+      );
+      // 授权失败同样无法靠重启 Core 修复：等待用户重新授权，重连只会制造代际风暴。
+      this.vault.authorizationRequired = new Set(
+        [...failures]
+          .filter(([, code]) => code === "storageAuthorizationRequired")
+          .map(([id]) => id),
       );
       this.vault.pending = new Set(
         [...failures].filter(([, code]) => code === "migrationPending").map(([id]) => id),
@@ -173,6 +198,10 @@ class ModelConfiguration {
     } catch {
       throw new Error("Core 返回了无效的模型配置");
     }
+  }
+  /** 是否存在等待用户重新授权的凭据；这类失败重连不会自愈。 */
+  authorizationRequired() {
+    return this.vault.authorizationRequired.size > 0;
   }
   async catalog() {
     const snapshot = modelSnapshot(

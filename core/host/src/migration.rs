@@ -1990,15 +1990,42 @@ impl Migration {
                 reference: reference.to_owned(),
             }
         };
-        let result = self
-            .vault
-            .dispatch_async(
-                "vault.read",
-                json!({"slot":slot,"interactionAllowed":false}),
-                "",
-                self,
-            )
-            .await?;
+        let read = |interaction_allowed: bool| {
+            let slot = slot.clone();
+            async move {
+                self.vault
+                    .dispatch_async(
+                        "vault.read",
+                        json!({"slot":slot,"interactionAllowed":interaction_allowed}),
+                        "",
+                        self,
+                    )
+                    .await
+            }
+        };
+        let result = match read(false).await {
+            Ok(result) => result,
+            // 非交互读取被 Keychain ACL 拒绝时重试一次并允许系统弹窗：换包会让登记在
+            // ACL 里的可执行身份失效，只有用户授权才能恢复，静默失败会让项目永远连不上。
+            Err(cause)
+                if cause
+                    .downcast_ref::<wire::Error>()
+                    .is_some_and(|error| error.code == "storageAuthorizationRequired") =>
+            {
+                // 弹窗可能无人应答（无头启动、远程会话）：设上限，超时后仍按未授权处理，
+                // 让上层呈现待恢复而不是让启动流程无限挂起。
+                match tokio::time::timeout(std::time::Duration::from_secs(120), read(true)).await {
+                    Ok(result) => result?,
+                    Err(_) => {
+                        return Err(error(
+                            "storageAuthorizationRequired",
+                            "Keychain authorization prompt timed out",
+                        ));
+                    }
+                }
+            }
+            Err(cause) => return Err(cause),
+        };
         let value = if subscription {
             &result["value"]["token"]
         } else {
