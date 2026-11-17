@@ -141,6 +141,25 @@ fn setting<'a>(settings: &'a Value, key: &str) -> Result<&'a str> {
     );
     Ok(text.trim())
 }
+/// 在不触发系统代理探测的情况下校验并归一化资料库里的网络设置项。
+pub(crate) fn validate_setting(key: &str, value: &str) -> Result<String> {
+    ensure!(
+        value.chars().count() <= 4096 && !value.chars().any(char::is_control),
+        "invalid network setting"
+    );
+    let text = value.trim();
+    match key {
+        "httpProxy" => proxy_setting(text),
+        "httpProxyNoProxy" => bypass_setting(text),
+        "httpProxyCaCertPath" => {
+            if !text.is_empty() {
+                ca_bundle(Path::new(text), true)?;
+            }
+            Ok(text.to_owned())
+        }
+        _ => anyhow::bail!("unknown network setting"),
+    }
+}
 fn proxy_setting(text: &str) -> Result<String> {
     if text.is_empty() {
         return Ok(String::new());

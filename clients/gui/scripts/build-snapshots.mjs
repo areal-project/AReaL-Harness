@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-const require = createRequire(new URL("../packages/gen-ui/package.json", import.meta.url));
+const require = createRequire(new URL("../packages/browser-data/package.json", import.meta.url));
 const { build, transformSync } = require("esbuild");
 const gui = fileURLToPath(new URL("..", import.meta.url));
 // Main 的 TypeScript 都从这里构建成 CommonJS，产物进 src 内已忽略的 build/ 或 generated/，

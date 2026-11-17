@@ -138,7 +138,7 @@ fn resumable_host(root: &Path) -> (Rc<Host>, Ensure, String) {
         readline.createInterface({input:process.stdin}).on('line', line => {
             const frame = JSON.parse(line);
             if (frame.method === 'backend.start') {
-                out({event:'ready',methods:['providers.read','pages.command'],service:{pid:process.pid,identity:String(process.pid)}});
+                out({event:'ready',methods:['providers.read','desktop.command'],service:{pid:process.pid,identity:String(process.pid)}});
             } else if (frame.params?.crash) {
                 process.exit(1);
             } else if (frame.id !== undefined) {
@@ -580,18 +580,18 @@ async fn cold_native_provider_read_and_managed_requests_restore_the_persisted_la
             );
             host.gateway.workbench.stop_backend().await;
             let (host, _, _) = resumable_host(&root);
-            let page = host
+            let desktop = host
                 .gateway
                 .workbench
                 .request(
                     &host,
-                    "pages.command",
+                    "desktop.command",
                     json!({}),
                     json!({"connection":"fixture"}),
                 )
                 .await
                 .unwrap();
-            assert!(page["pid"].as_u64().is_some());
+            assert!(desktop["pid"].as_u64().is_some());
             host.gateway.workbench.stop_backend().await;
         })
         .await;
@@ -612,7 +612,7 @@ async fn backend_first_exit_recovers_immediately_but_repeated_exits_back_off() {
             let request = |params| {
                 host.gateway.workbench.request(
                     &host,
-                    "pages.command",
+                    "desktop.command",
                     params,
                     json!({"connection":"fixture"}),
                 )
@@ -656,7 +656,7 @@ async fn backend_business_errors_preserve_only_codes_supported_by_the_host() {
         std::fs::create_dir_all(&runner_root).unwrap();
         let contract = app.join("node_modules/@areal/workbench");
         std::fs::create_dir_all(&contract).unwrap();
-        for file in ["backend-main.cjs", "channel.cjs", "pages.cjs"] {
+        for file in ["backend-main.cjs", "channel.cjs"] {
             std::fs::copy(repository.join("services/workbench/src").join(file), runner_root.join(file)).unwrap();
         }
         std::fs::write(contract.join("package.json"), r#"{"exports":{"./desktop-contract":"./contract.cjs","./desktop-contract/shared":"./shared.cjs"}}"#).unwrap();
@@ -671,50 +671,46 @@ async fn backend_business_errors_preserve_only_codes_supported_by_the_host() {
             "appRoot":app,"options":{"home":data,"userHome":root.path()},
         }))), &[]).await.unwrap();
         for (code, expected) in [(json!("COMMAND_CONFLICT"), "COMMAND_CONFLICT"), (json!("TURN_BUSY"), "TURN_BUSY"), (json!("MIGRATION_PENDING"), "MIGRATION_PENDING"), (json!("migrationBlocked"), "migrationBlocked"), (json!("ENOENT"), "CORE_UNAVAILABLE"), (json!(-32602), "CORE_UNAVAILABLE")] {
-            assert_eq!(backend.request("feedback.read", json!({"code":code}), json!({})).await.unwrap_err().to_string(), expected);
+            assert_eq!(backend.request("trajectory.read", json!({"code":code}), json!({})).await.unwrap_err().to_string(), expected);
         }
         backend.stop().await.unwrap();
     }).await;
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn pages_bind_authenticated_connection_and_forward_disconnect_without_a_journal() {
+async fn connection_disconnect_is_forwarded_without_a_journal() {
     tokio::task::LocalSet::new().run_until(async {
         let root = tempfile::tempdir().unwrap();
         let host = Rc::new(crate::server::schedules::tests::fixture(root.path()));
         let runtime = std::env::split_paths(&std::env::var_os("PATH").unwrap())
             .map(|path| path.join("node")).find(|path| path.is_file()).expect("Node is required");
-        let runner = root.path().join("pages.cjs");
+        let runner = root.path().join("disconnect.cjs");
         std::fs::write(&runner, r#"
             const out = value => console.log(JSON.stringify({version:1,...value}));
-            out({event:'ready',methods:['pages.command','pages.resource']});
+            out({event:'ready',methods:['desktop.command']});
             require('node:readline').createInterface({input:process.stdin}).on('line', line => {
               const frame = JSON.parse(line);
-              if (frame.event === 'pages.disconnect') {
-                out({event:'pages.event',params:{connection:frame.connection,token:'page',notification:{jsonrpc:'2.0',method:'ui/notifications/closed'}}});
+              if (frame.event === 'connection.disconnect') {
+                out({id:'disconnected',call:'fixture.disconnected',params:{connection:frame.connection}});
               } else {
-                out({id:frame.id,result:{owner:frame.context.connection}});
+                out({id:frame.id,result:{}});
               }
             });
         "#).unwrap();
-        let backend = Workbench::start(&runtime, &runner, root.path(), reverse(&host)).await.unwrap();
+        let (disconnected, mut disconnects) = tokio::sync::mpsc::unbounded_channel();
+        let reverse_call: crate::workbench::Reverse = Rc::new(move |method, params| {
+            let disconnected = disconnected.clone();
+            Box::pin(async move {
+                assert_eq!(method, "fixture.disconnected");
+                disconnected.send(params["connection"].clone()).unwrap();
+                Ok(json!({}))
+            })
+        });
+        let backend = Workbench::start(&runtime, &runner, root.path(), reverse_call).await.unwrap();
         *host.gateway.workbench.backend.running.borrow_mut() = Some(Rc::new(backend));
-        let mut first = crate::server::gateway_owner::LocalSession::new(host.clone(), "first".into()).unwrap();
-        let mut second = crate::server::gateway_owner::LocalSession::new(host.clone(), "second".into()).unwrap();
-        let request = json!({"id":"page","method":"pages.command","params":{"operation":"close","token":"page"}});
-        assert_eq!(first.request(&request).await.unwrap()["owner"], "first");
-        assert_eq!(second.request(&request).await.unwrap()["owner"], "second");
-        let mut forged = request.clone();
-        forged["context"] = json!({"connection":"second"});
-        assert_eq!(first.request(&forged).await.unwrap_err().to_string(), "INVALID_PARAMS");
-        forged = request.clone();
-        forged["params"]["connection"] = json!("second");
-        assert_eq!(first.request(&forged).await.unwrap_err().to_string(), "INVALID_PARAMS");
-        let mut events = host.gateway.workbench.page_events();
-        host.gateway.workbench.disconnect_pages("first");
-        let event = tokio::time::timeout(Duration::from_secs(2), events.recv()).await.unwrap().unwrap();
-        assert_eq!(event["connection"], "first");
-        assert_eq!(event["notification"]["method"], "ui/notifications/closed");
+        host.gateway.workbench.disconnect_connection("first");
+        let connection = tokio::time::timeout(Duration::from_secs(2), disconnects.recv()).await.unwrap().unwrap();
+        assert_eq!(connection, "first");
         assert!(backend_receipt(&host, "local", &uuid::Uuid::new_v4().to_string()).unwrap().is_none());
         host.gateway.workbench.stop_backend().await;
     }).await;
@@ -1455,7 +1451,7 @@ async fn feedback_receiver_uses_source_credentials_without_cli_node_or_core() {
         std::fs::write(host.home.join("host/vault").join(format!("{}.json",unused["entryId"].as_str().unwrap())),"invalid unrelated vault entry").unwrap();
         let server = tokio::task::spawn_local(async move {
             let mut posts = 0;
-            for _ in 0..4 {
+            for _ in 0..12 {
                 let (mut stream,_) = listener.accept().await.unwrap();
                 let mut bytes = Vec::new();
                 let (header_end,length) = loop {
@@ -1476,28 +1472,152 @@ async fn feedback_receiver_uses_source_credentials_without_cli_node_or_core() {
                     let body:Value=serde_json::from_slice(&bytes[header_end..]).unwrap();
                     assert_eq!(body["installation_id"],installation);
                     assert!(body.get("expected_owner").is_none());
-                    json!({"feedback_id":body["feedback_id"],"rating":body["rating"]})
+                    assert_eq!(body["context"],json!({"frozen":"original evidence"}));
+                    assert_eq!(body["reason"],"original reason");
+                    json!({"feedback_id":if posts==1{json!("uncertain-receipt")}else{body["feedback_id"].clone()},"rating":body["rating"]})
                 };
                 let body=response.to_string();stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).as_bytes()).await.unwrap();
             }
-            assert_eq!(posts,1);
+            assert_eq!(posts,2);
         });
-        let status = super::super::workbench_utility::execute_with_options(&host,&source,json!({"operation":"feedbackStatus"}),input.options.clone()).await.unwrap();
+        storage::private_dir(&host.home.join("host/projects")).unwrap();
+        let alias = super::super::worktree_catalog::add_project(&host,&source,json!({"root":root.join("workspace")})).await.unwrap()["projectId"].as_str().unwrap().to_owned();
+        let status = backend_read(&host,"local",&json!({"method":"feedback.read","params":{"sourceId":source,"operation":"status"}})).await.unwrap();
         assert_eq!(status["connected"],true);
+        assert_eq!(status["opted_in"],true);
         assert!(!status.to_string().contains("synthetic-feedback-secret"));
         let document=json!({"feedback_id":uuid::Uuid::new_v4().to_string(),"rating":"up","context":{},
             "expected_destination":status["destination"],"expected_owner":status["account"],"expected_installation":status["installation"]});
-        let receipt=super::super::workbench_utility::execute_with_options(&host,&source,json!({"operation":"feedbackSubmit","document":document.to_string()}),input.options.clone()).await.unwrap();
-        assert_eq!(receipt["feedback_id"],document["feedback_id"]);
+        let draft=json!({"id":document["feedback_id"],"projectId":alias,"threadId":"original-thread","turnId":"original-turn","itemId":"original-item","rating":"up","reason":"original reason","analysis":"",
+            "context":{"frozen":"original evidence"},"contextSha256":"a".repeat(64),"expectedDestination":status["destination"],"expectedOwner":status["account"],"expectedInstallation":status["installation"],"state":"draft","createdAt":1});
+        let draft_path=root.join("data").join(format!("feedback-{}.json",document["feedback_id"].as_str().unwrap()));
+        storage::write(&draft_path,&draft).unwrap();
+        let query=json!({"sourceId":source,"operation":"read","id":draft["id"],"projectId":alias,"threadId":"original-thread"});
+        let read=backend_read(&host,"local",&json!({"method":"feedback.read","params":query})).await.unwrap();
+        assert_eq!(read["id"],draft["id"]);
+        assert!(read.get("context").is_none()&&read.get("expectedOwner").is_none());
+        let submit=json!({"method":"feedback.command","commandId":uuid::Uuid::new_v4().to_string(),"params":{"sourceId":source,"operation":"submit","id":draft["id"],"projectId":alias,"threadId":"original-thread"}});
+        let preference=|enabled|json!({"method":"feedback.command","commandId":uuid::Uuid::new_v4().to_string(),"params":{"sourceId":source,"operation":"preference","enabled":enabled}});
+        assert_eq!(backend_command(&host,"local",&preference(false)).await.unwrap()["receipt"]["opted_in"],false);
+        let mut denied=submit.clone();denied["commandId"]=json!(uuid::Uuid::new_v4().to_string());
+        assert!(backend_command(&host,"local",&denied).await.is_err());
+        assert_eq!(backend_receipt_raw(&host,"local",denied["commandId"].as_str().unwrap()).unwrap().unwrap()["submissionUnknown"],false);
+        backend_command(&host,"local",&preference(true)).await.unwrap();
+        for field in ["expectedOwner","expectedDestination","expectedInstallation"] {
+            let mut changed=draft.clone();changed[field]=json!("different-binding");storage::write(&draft_path,&changed).unwrap();
+            denied["commandId"]=json!(uuid::Uuid::new_v4().to_string());
+            assert!(backend_command(&host,"local",&denied).await.is_err());
+            assert_eq!(backend_receipt_raw(&host,"local",denied["commandId"].as_str().unwrap()).unwrap().unwrap()["submissionUnknown"],false);
+        }
+        storage::write(&draft_path,&draft).unwrap();
+        let uncertain=backend_command(&host,"local",&submit).await.unwrap();
+        assert_eq!(uncertain["submissionUnknown"],true);
+        assert_eq!(backend_command(&host,"local",&submit).await.unwrap(),uncertain,"original command lookup never repeats a feedback POST");
+        let frozen:Value=storage::read(&draft_path).unwrap();assert!(frozen["submission"].is_object());assert_eq!(frozen["state"],"draft");
+        let mut retry=submit.clone();retry["commandId"]=json!(uuid::Uuid::new_v4().to_string());retry["params"]["reason"]=json!("new editor contents must not alter an uncertain submission");
+        let receipt=backend_command(&host,"local",&retry).await.unwrap();
+        assert_eq!(receipt["submissionUnknown"],false);
+        assert_eq!(receipt["receipt"]["receipt"]["feedback_id"],document["feedback_id"]);
+        assert_eq!(backend_command(&host,"local",&retry).await.unwrap(),receipt);
+        let saved:Value=storage::read(&draft_path).unwrap();
+        assert_eq!(saved["context"],draft["context"]);
+        assert_eq!(saved["submission"],frozen["submission"]);
+        assert_eq!(saved["submission"]["reason"],"original reason");
+        assert_eq!(saved["state"],"submitted");
         let mut changed=document;changed["expected_owner"]=json!("other-owner");
-        assert!(super::super::workbench_utility::execute_with_options(&host,&source,json!({"operation":"feedbackSubmit","document":changed.to_string()}),input.options.clone()).await.is_err());
-        server.await.unwrap();
+        assert!(super::super::workbench_utility::feedback(&host,&source,Some(changed)).await.is_err());
+        tokio::time::timeout(Duration::from_secs(5),server).await.unwrap().unwrap();
         let missing = std::fs::read_to_string(&config_path).unwrap().replace(reference,"AREAL_CREDENTIAL_missing");
         std::fs::write(&config_path,&missing).unwrap();
-        assert_eq!(super::super::workbench_utility::execute_with_options(&host,&source,json!({"operation":"feedbackStatus"}),input.options.clone()).await.unwrap_err().to_string(),"feedback_credential_unavailable");
+        assert_eq!(super::super::workbench_utility::feedback(&host,&source,None).await.unwrap_err().to_string(),"feedback_credential_unavailable");
         std::fs::write(&config_path,missing.replace("enabled=true","enabled=false")).unwrap();
-        assert_eq!(super::super::workbench_utility::execute_with_options(&host,&source,json!({"operation":"feedbackStatus"}),input.options).await.unwrap(),json!({"enabled":false,"connected":false}));
+        assert_eq!(super::super::workbench_utility::feedback(&host,&source,None).await.unwrap(),json!({"enabled":false,"connected":false}));
         assert!(host.gateway.workbench.backend.running.borrow().is_none());
         assert!(host.slots.borrow().values().all(|slot|slot.service.is_none()));
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn feedback_refinement_recovers_the_original_core_receipt_and_closes_without_node() {
+    use futures_util::{SinkExt, StreamExt};
+    use std::cell::Cell;
+    use tokio_tungstenite::tungstenite::Message;
+    tokio::task::LocalSet::new().run_until(async {
+        let temp=tempfile::tempdir().unwrap(); let root=temp.path().canonicalize().unwrap();
+        let (host,input,source)=resumable_host(&root);
+        storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();
+        storage::write(&launch_record(&host),&input).unwrap();
+        host.gateway.workbench.restore_source(&host).unwrap();
+        let registration=host.slots.borrow()["project"].registration.clone();
+        let alias=host.migration.remote_bindings(&source,&[registration.clone()]).unwrap().remove(0).1;
+        storage::write(&root.join("data/projects.json"),&json!([{"id":alias,"root":registration.workspace}])).unwrap();
+        let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let service=areal_protocol::service::Service {
+            identity:areal_protocol::service::Identity {protocol_version:1,service_id:"fixture".into(),generation:"first".into(),workspace:registration.workspace,data_dir:registration.data_dir,config_fingerprint:"fixture".into()},
+            owner:Some(host.owner()),endpoint:format!("ws://{}/",listener.local_addr().unwrap()),web_url:String::new(),auth_file:root.join("core-auth.json"),log_file:root.join("core.log"),host_pid:1,core_pid:2,state:areal_protocol::service::State::Ready,
+        };
+        storage::write(&service.auth_file,&json!({"principals":[{"id":"desktop-owner","token":"fixture"}]})).unwrap();
+        {let mut slots=host.slots.borrow_mut();let slot=slots.get_mut("project").unwrap();let(writer,lifetime)=areal_local_service::OwnerLifetime::pair().unwrap();slot.writer=Some(writer);slot.lifetime=Some(Rc::new(lifetime));slot.service=Some(service.clone());slot.state="ready".into();}
+        let starts=Rc::new(Cell::new(0));let sends=Rc::new(Cell::new(0));let stops=Rc::new(Cell::new(0));
+        let receipt=Rc::new(RefCell::new(Value::Null));let active=Rc::new(Cell::new(false));
+        let spawned=Rc::new(RefCell::new(Vec::<tokio::task::JoinHandle<()>>::new()));
+        let handles=spawned.clone();let counts=(starts.clone(),sends.clone(),stops.clone());let workspace=root.join("workspace");
+        let accepting=tokio::task::spawn_local(async move {
+            loop {
+                let(stream,_)=listener.accept().await.unwrap();
+                let(starts,sends,stops)=counts.clone();let receipt=receipt.clone();let active=active.clone();let workspace=workspace.clone();
+                handles.borrow_mut().push(tokio::task::spawn_local(async move {
+                    let mut socket=tokio_tungstenite::accept_async(stream).await.unwrap();
+                    while let Some(Ok(Message::Text(bytes)))=socket.next().await {
+                        let call:Value=serde_json::from_str(&bytes).unwrap();if call.get("id").is_none(){continue;}
+                        let caps=json!({"methods":["turn/interrupt"],"features":{"conversationObservation":true,"turnInterruptAdmissionGuard":true,"atomicObserveOwnership":true,"threadCreationJournal":{"binding":{"identity":"store","journalEpoch":"epoch"}}},
+                            "methodSemantics":{"areal/side/start":{"effect":"mutation","receipt":"request"},"areal/turn/start":{"effect":"mutation","receipt":"thread"},"turn/interrupt":{"effect":"mutation","receipt":"thread"}}});
+                        let method=call["method"].as_str().unwrap();let p=&call["params"];
+                        let value=match method {
+                            "initialize"=>json!({"capabilities":caps}),"areal/capabilities"=>caps,
+                            "thread/read"|"areal/thread/observe"=>{
+                                let side=p["threadId"]=="side";
+                                let mut thread=json!({"id":p["threadId"],"sessionId":"author","cwd":workspace,"turns":[{"id":if side{"refine-turn"}else{"original-turn"},"status":if side&&active.get(){"inProgress"}else{"completed"},"items":[{"id":"reply","type":"agentMessage","text":"original"}]}]});
+                                if side {thread["conversation"]=json!({"kind":"side","policy":{"kind":"sideReadOnlyV1"},"origin":{"sourceThreadId":"main"}});}
+                                json!({"thread":thread,"ownership":{"kind":"ordinary"}})
+                            },
+                            "areal/side/start"=>{
+                                starts.set(starts.get()+1);assert_eq!(starts.get(),1,"unknown creation must not be resent");
+                                assert_eq!(p["workspaceAccess"],"none");assert_eq!(p["anchor"],json!({"kind":"turn","turnId":"original-turn","boundary":"after"}));
+                                assert!(p["input"][0]["text"].as_str().unwrap().contains("original opinion"));
+                                let typed:areal_protocol::desktop::SideStart=serde_json::from_value(p.clone()).unwrap();
+                                *receipt.borrow_mut()=json!({"requestId":p["requestId"],"method":method,"identity":"store","digest":storage::digest(&serde_json::to_vec(&typed).unwrap()),"threadId":"side","accepted":true,"status":"completed","result":{"thread":{"id":"side"},"turn":{"id":"first-refinement"}}});
+                                socket.send(Message::Text(json!({"id":call["id"],"error":{"code":-32011,"message":"ambiguous","data":{"outcome":{"kind":"unconfirmed"}}}}).to_string().into())).await.unwrap();continue;
+                            },
+                            "areal/request/read"=>{assert_eq!(p["requestId"],receipt.borrow()["requestId"]);json!({"data":[receipt.borrow().clone()]})},
+                            "areal/turn/start"=>{sends.set(sends.get()+1);active.set(true);assert_eq!(p["threadId"],"side");assert_eq!(p["input"][0]["text"],"follow-up opinion");json!({"turn":{"id":"refine-turn"}})},
+                            "turn/interrupt"=>{stops.set(stops.get()+1);active.set(false);assert_eq!(p,&json!({"threadId":"side","turnId":"refine-turn","admissionGuard":{"ordinarySession":true}}));assert!(p.get("requestId").is_none());json!({})},
+                            "areal/subscription/remove"=>json!({"subscriptionCount":0}),
+                            "areal/task/list"=>json!({"data":[],"hasMore":false}),
+                            "areal/server/status"=>json!({"restartSafe":true}),
+                            other=>panic!("unexpected feedback Core request {other}"),
+                        };
+                        socket.send(Message::Text(json!({"id":call["id"],"result":value}).to_string().into())).await.unwrap();
+                    }
+                }));
+            }
+        });
+        let close=host.schedules.connections.connect_test_core(host.clone(),"project",service).await.unwrap();
+        let id=uuid::Uuid::new_v4().to_string();
+        let draft=json!({"id":id,"projectId":alias,"threadId":"main","turnId":"original-turn","itemId":"reply","rating":"down","reason":"","analysis":"","context":{"frozen":"source prefix"},"contextSha256":"a".repeat(64),"expectedDestination":"destination","expectedOwner":"owner","expectedInstallation":"installation","state":"draft","createdAt":1});
+        let path=root.join("data").join(format!("feedback-{id}.json"));storage::write(&path,&draft).unwrap();
+        let request=|operation:&str,extra:Value|{let mut params=json!({"sourceId":source,"operation":operation,"id":id,"projectId":alias,"threadId":"main"});params.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());json!({"method":"feedback.command","commandId":uuid::Uuid::new_v4().to_string(),"params":params})};
+        let unknown=backend_command(&host,"local",&request("refine",json!({"reason":"original opinion"}))).await.unwrap();
+        assert_eq!(unknown["submissionUnknown"],true);
+        let stored:Value=storage::read(&path).unwrap();assert_eq!(stored["refinementUnknown"],true);
+        let original=stored["refineRequestId"].clone();let prompt=stored["refineInput"].clone();
+        let recovered=backend_command(&host,"local",&request("refine",json!({"reason":"updated opinion"}))).await.unwrap();
+        assert_eq!(recovered["receipt"]["sideThreadId"],"side");assert_eq!(recovered["receipt"]["refinementUnknown"],false);
+        let stored:Value=storage::read(&path).unwrap();assert_eq!(stored["refineRequestId"],original);assert_eq!(stored["refineInput"],prompt);
+        let followup=backend_command(&host,"local",&request("refine",json!({"text":"follow-up opinion"}))).await.unwrap();assert_eq!(followup["submissionUnknown"],false);
+        let closed=backend_command(&host,"local",&request("close",json!({}))).await.unwrap();assert_eq!(closed["receipt"]["closed"],true);
+        assert_eq!((starts.get(),sends.get(),stops.get()),(1,1,1));
+        assert_eq!(host.gateway.workbench.backend_status(&host).await.unwrap()["owned"],false);
+        close();accepting.abort();for handle in spawned.borrow().iter(){handle.abort();}
     }).await;
 }

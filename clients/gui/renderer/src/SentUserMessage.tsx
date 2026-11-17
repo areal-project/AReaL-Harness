@@ -3,7 +3,7 @@ import type { Data, Action } from "./services.js";
 import { isSnapShotDecoration, sentSnapShots } from "./snapshots/source.js";
 import { sentReviewFeedback, reviewCommentsFromContextParts } from "./reviewComments.js";
 import { SentReviewComments } from "./ReviewCommentViews.js";
-import { McpContentLabel } from "./McpComposerAttachments.js";
+import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 import { SentBrowserAnnotations } from "./BrowserAnnotationAttachments.js";
 import { sentBrowserAnnotations } from "./browserAnnotations.js";
 import { sentImageAnnotations } from "./imageAnnotations.js";
@@ -15,6 +15,43 @@ import { MessageTime } from "./ConversationTimeline.js";
 import { MessageActions } from "./MessageActions.js";
 import { UserPromptEdit } from "./UserPromptEdit.js";
 import { useI18n } from "./i18n/IntlProvider.js";
+
+type McpBlock = {
+  type?: string;
+  mimeType?: string;
+  data?: string;
+  text?: string;
+  title?: string;
+  name?: string;
+  resource?: { uri?: string };
+  _meta?: Record<string, unknown>;
+};
+
+function McpContentLabel({ block }: { block: McpBlock }) {
+  const { t } = useI18n();
+  const title = block._meta?.["openai/title"];
+  if (block.type === "image")
+    return (
+      <>
+        <img
+          alt={typeof title === "string" ? title : t("mcp.attachments.image")}
+          src={`data:${block.mimeType};base64,${block.data}`}
+          style={{ maxWidth: 96, maxHeight: 72 }}
+        />
+        <span>{typeof title === "string" ? title : t("mcp.attachments.image")}</span>
+      </>
+    );
+  if (block.type === "text")
+    return (
+      <SettingsDisclosure title={typeof title === "string" ? title : t("mcp.attachments.text")}>
+        <p style={{ whiteSpace: "pre-wrap" }}>{block.text ?? ""}</p>
+      </SettingsDisclosure>
+    );
+  if (block.type === "resource_link") return <span>{block.title ?? block.name}</span>;
+  if (block.type === "resource")
+    return <span>{typeof title === "string" ? title : block.resource?.uri}</span>;
+  return null;
+}
 
 /** 时间线里已发送的用户消息：附件、批注、折叠正文与编辑入口。 */
 export function SentUserMessage({

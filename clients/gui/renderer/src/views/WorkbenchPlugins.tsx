@@ -1,4 +1,3 @@
-import { McpAppsHub, type useMcpAppsWorkspace } from "../McpAppsWorkspace.js";
 import { PluginCenter } from "../settings/PluginCenter.js";
 import type { useSessionNavigation } from "../state/useSessionNavigation.js";
 import type { useWorkbenchNavigation } from "../state/useWorkbenchNavigation.js";
@@ -7,12 +6,10 @@ export function WorkbenchPlugins({
   session,
   surfaces,
   navigationCommands,
-  mcpWorkspace,
 }: {
   session: ReturnType<typeof useSessionNavigation>;
   surfaces: ReturnType<typeof useWorkbenchSurfaces>;
   navigationCommands: ReturnType<typeof useWorkbenchNavigation>;
-  mcpWorkspace: ReturnType<typeof useMcpAppsWorkspace>;
 }) {
   const { project, snapshot, thread, threadId, resourceAction } = session;
   const {
@@ -34,16 +31,6 @@ export function WorkbenchPlugins({
       projects={snapshot.projects}
       thread={thread}
       action={resourceAction}
-      apps={(pluginId) => (
-        <McpAppsHub
-          key={pluginId}
-          pluginId={pluginId}
-          workspace={mcpWorkspace}
-          project={project}
-          threadId={threadId}
-          action={resourceAction}
-        />
-      )}
       onOpenThread={(pid, tid) => {
         surfaces.leavePlugins();
         surfaces.leaveSettings();

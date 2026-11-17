@@ -16,20 +16,16 @@
 | --- | --- | --- |
 | 正文、列表、表格、代码 | [MessageResponse](../renderer/src/components/ai-elements/message.tsx)使用Streamdown，UI包提供MarkdownSurface和阅读组合；CodeViewer/DiffViewer保留宿主偏好 | 缩减重复表格实现；复制、导出、长内容与流式结束后的布局合同 |
 | 公式 | 同一正文接入`@streamdown/math`，生产[样式入口](../renderer/src/styles.css)加载KaTeX CSS | 长公式、矩阵/对齐、未闭合公式、原式复制与辅助阅读；不承诺支持任意LaTeX文档或全部宏包 |
-| 图与交互 | 正文接入Mermaid；Gen UI有固定的本地D3等资源 | 静态图与可调参数仿真分开选择；统一文字摘要、数据表/原数据入口和降级 |
-| HTML交互回答 | [GenUiWorkspace](../renderer/src/GenUiWorkspace.tsx)展示；[发布适配](../../../services/workbench/src/desktop/core/gen-ui.cjs)核对原消息、制品摘要与owner；Core持有不可变制品 | 内容外壳、尺寸/展开、状态和操作；Gen UI描述符只公布inline能力 |
-| 工具应用UI | [McpAppHost](../renderer/src/McpAppHost.tsx)、[McpAppsWorkspace](../renderer/src/McpAppsWorkspace.tsx)通过ext-apps桥提供工具结果应用，按宿主能力提供inline/fullscreen | 与Gen UI共享呈现规则，但不合并工具权限或擅自赋予Gen UI工具调用能力 |
-| 混合消息 | [Messages](../renderer/src/Messages.tsx)已经将文字与visualize引用交错渲染；[引用解析](../packages/gen-ui/references.ts)区分text/ui/pending/invalid，并排除代码区指令 | 分散渲染入口的共同状态、稳定身份与退化规则；不必重写Core历史格式 |
-| 交互状态 | [现有契约](../packages/gen-ui/contract.ts)区分modelContent/privateContent；Desktop按作用域原子保存；追问经过宿主确认 | 明确哪些状态只是阅读，哪些进入下一轮模型上下文，哪些属于权威业务；跨设备持久化尚不是当前能力 |
-| 主题和字号 | UI包有Token；[guest运行时](../packages/gen-ui/guest.ts)可接收`styles.variables`与`zcode/genUiStyles` | 当前Gen UI宿主显式传递light/dark，未查到完整字体/字号/Token主动投影链；iframe不自动继承父页面CSS或React组件 |
-
-Gen UI在已完成的助手消息上解析并核对引用，随后打开已发布制品。它不等同于逐token运行尚未完整的HTML/JavaScript。页面的后续本地交互也不表示模型持续生成新页面。
+| 图与交互 | 正文接入Mermaid | 静态图与可调参数仿真分开选择；统一文字摘要、数据表/原数据入口和降级 |
+| 混合消息 | [Messages](../renderer/src/Messages.tsx)将正文与只读结构化内容块交错渲染；[内容投影](../renderer/src/conversationContent.ts)统一区分markdown/native/pending/unsupported | 分散渲染入口的共同状态、稳定身份与退化规则；不必重写Core历史格式 |
+| 交互状态 | 追问、批准与问答走宿主确认/提交链 | 明确哪些状态只是阅读，哪些进入下一轮模型上下文，哪些属于权威业务；跨设备持久化尚不是当前能力 |
+| 主题和字号 | UI包有Token | 统一字体/字号/Token投影 |
 
 ## 推荐的四层职责
 
 | 层 | 职责和输入 | 现有所有者与建议 |
 | --- | --- | --- |
-| 渲染适配 | 文本/公式/代码/图形及页面运行时 | Streamdown及插件、CodeViewer、已有React组件、GenUiWorkspace/McpAppHost各管自己的实际渲染 |
+| 渲染适配 | 文本/公式/代码/图形 | Streamdown及插件、CodeViewer、已有React组件各管自己的实际渲染 |
 
 ### 选择哪种呈现
 
@@ -55,7 +51,7 @@ Gen UI在已完成的助手消息上解析并核对引用，随后打开已发�
 
 当前实现与后续边界如下。新增来源核验见[外部建议复核](../../../design/archive/content/native-content-reference-review.md)，区分已发布能力、开放PR和小样本观察。
 
-`R-CONTENT-028` 必须覆盖的验收场景：流式中不完整公式与引用；结束后静态一致；重复打开不重新执行业务；本地调参不请求模型；追问确认与取消、只读/离线/过期实例；privateContent不泄露给模型；重载后恢复；后台/隐藏页面不能提交；撤权与关闭释放；缩放与列表虚拟化保留身份；内容失败仍可读原文。现有[Gen UI验收脚本](../scripts/gen-ui-smoke.mjs)、[MCP Apps生命周期脚本](../scripts/mcp-app-lifecycle-smoke.mjs)和设计预览沿用既有入口；首轮实施已复验混合内容、Gen UI主聊/Side及恢复链，未将其等同于全部MCP应用或真实供应商验收。
+现有[内容阅读验收脚本](../scripts/conversation-content-reading-smoke.mjs)和设计预览沿用既有入口。
 
 这条内容系统规范与本轮审批/Ask User共享同一展示边界；字体核对见[记录](../../../design/archive/content/codex-typography-review.md)。执行机制继续以[系统架构](../../../docs/design/architecture.md)及实际源码为准；本文件不扩展当前权限、协议或Base准入。
 

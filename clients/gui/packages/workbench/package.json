@@ -13,10 +13,6 @@
       "types": "./client/desktop-contract/transport.cjs",
       "default": "./client/desktop-contract/transport.cjs"
     },
-    "./desktop-contract/mcp-page": {
-      "types": "./client/desktop-contract/mcp-page.cjs",
-      "default": "./client/desktop-contract/mcp-page.cjs"
-    },
     "./desktop-contract/plugin-store": {
       "types": "./client/desktop-contract/plugin-store.cjs",
       "default": "./client/desktop-contract/plugin-store.cjs"

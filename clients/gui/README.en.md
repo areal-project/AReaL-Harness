@@ -131,12 +131,6 @@ The browser can read the committed document before images and other subresources
 
 Each new Browser request starts with `describe` and fresh observation; earlier-turn refs/snapshots are refused. A navigation-ready `documentReady` wait does not depend on element observations and may span document loads within the same authorized Origin. Page changes invalidate in-flight observations with `plan_stale`; human takeover returns `human_control`. Run `node clients/gui/scripts/browser-google-smoke.mjs` from the repository root for isolated real Electron/Core and live Google acceptance with deterministic local inference: opening Google, searching `AI Agent`, reading results, and rejecting old refs/revoked access. It retains GUI/native screenshots and history, and does not certify real-provider inference or packaged distribution. A Google CAPTCHA does not count as successful result reading. Set `AREAL_BROWSER_LOCAL_SEARCH=1` for local regression; its evidence is explicitly labeled as a synthetic search page.
 
-Global app entrypoints live in the existing plugin/app panel rather than above New chat. In both new and existing conversations, find, filter, and open conversation apps in the Apps group of the Composer `/` or `+` menu. File apps remain in the file panel. Selecting an app uses the existing conversation ownership and page-opening path without sending the draft.
-
-MCP app pages stay live within a window. Tab switches, panel hiding, conversation and project navigation, settings, and scheduled tasks preserve the same iframe, unsaved content, and in-flight calls. Explicit close, conversation archive, or source revocation releases the page. Each window allows eight live or opening pages and explicitly refuses additional pages. Background messages keep their original conversation and cannot create a conversation or edit the composer. `pnpm --dir clients/gui run test:mcp-app-lifecycle` verifies these paths with isolated Electron/Core and a local MCP fixture. It does not establish packaged or real-provider acceptance.
-
-Supported successful MCP tool records offer **Open interactive result**. Opening reads the saved effective input and result without repeating the business tool. Repeated opening focuses the same page and preserves edits. Explicit close permits a fresh reopen; an old request cannot revive a closed page. Missing old provenance, an invalid package or original connection, and page failures preserve the readable result. Reading history does not automatically mount pages. `AREAL_MCP_RESULT_MODE=1 pnpm --dir clients/gui run test:mcp-app-lifecycle` exercises this path with an ordinary model call and an independent MCP counter.
-
 ## SnapShots
 
 On macOS, open **Settings > SnapShots** to capture the foreground window and attach it to the current draft. SnapShots starts disabled. The default shortcut is both Shift keys. Include app text, capture sound, flash, and animations start enabled. The sound menu offers **Whoosh (Default)**, **Click**, and **Off**.
@@ -146,14 +140,6 @@ The setup dialog checks Screen Recording access and optional Accessibility acces
 Captures keep the draft selected when capture starts. Screenshot attachments survive app restart and follow a new draft when it becomes a conversation. The desktop retains a pending capture until its image, source, and draft destination are saved. Sending uses the existing media upload path. An unconfirmed send retains the attachment.
 
 The screenshot card shows the source application and window. Its details expose available captured text and controls. Captured content enters the user message as external window data associated with the image. SnapShots supports the macOS desktop backend; Windows and Linux capture backends are unavailable.
-
-## Generated interactive answers
-
-Main and Side Chat can display generated interactive pages after an assistant reply completes. The model publishes an HTML fragment of up to 48 KiB through Core's `gen_ui_publish`, then references the protected artifact with `::visualize`. Ordinary file paths, user messages, and code examples cannot open executable pages inside the app. Pages share the MCP Apps sandbox and the eight-page limit per window. They have no Node, arbitrary file, tool, or network access.
-
-Saved page state contains `modelContent` and `privateContent`, limited to 16 KiB per entry and 100 entries per conversation. Reopening a page in the same Desktop profile restores saved state. Later main and Side submissions append only bounded `modelContent`, excluding `privateContent` from model requests. Parameter changes and saves do not send messages. Page follow-ups wait for saves, then present an editable host confirmation before using the original conversation's send path. Unknown admission reads the original receipt without automatic resend. State does not synchronize across devices.
-
-`pnpm --dir clients/gui run test:gen-ui` runs the focused checks for this feature. See the [desktop API](../../docs/api/desktop.en.md#generated-interactive-answers) for the contract and limits.
 
 Local `.html` and `.htm` links in replies open with the system default HTML application, including generated files outside the workspace and historical `file://` links. This action is independent of the editor preference. Opening failures appear in the conversation. This delivery is available for local conversations; cloud file paths cannot map to local files.
 

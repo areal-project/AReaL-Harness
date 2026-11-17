@@ -41,7 +41,6 @@ import {
   hostPlatformCapabilities,
   desktopWindowCommand,
 } from "./host-workbench.js";
-import { createHostPages } from "./host-pages.js";
 import { createWatchedHistory } from "./host-watched-history.js";
 import {
   chooseHostProject,
@@ -64,7 +63,6 @@ export function createHostReadServices(
   },
 ): PlatformServices {
   const client = new HostClient({ ...options, writes: true });
-  const pages = createHostPages(client);
   const listeners = new Set<(snapshot: Snapshot) => void>();
   let shellExtras: ShellSnapshot | undefined;
   const { watchedThreads, resolveWatched, reservedBytes, watch } = createWatchedHistory(
@@ -521,11 +519,17 @@ export function createHostReadServices(
       if (event.persisted) return;
       clearTimeout(cacheTimer);
       windows.clear();
-      pages?.dispose();
       client.close();
     });
   // A2：停止与审批/回答在写开关下走 Host 回执；Host 明确不接管的会话退回桌面原路径。
   const HOST_DECLINED = new Set(["TASK_CONTROL_REQUIRED"]);
+  function shouldActivatePersisted(name: string, params: Record<string, unknown>) {
+    if (["send", "configure", "media", "fork", "editMessage"].includes(name)) return true;
+    if (name !== "side") return false;
+    return (
+      params.operation === undefined || ["create", "recover"].includes(String(params.operation))
+    );
+  }
   function hostTarget(params: Record<string, unknown>) {
     const projectId = params.projectId;
     const threadId = params.threadId;
@@ -605,11 +609,17 @@ export function createHostReadServices(
           },
         };
       }
+      const persistedThreadId =
+        typeof params.threadId === "string"
+          ? params.threadId
+          : typeof params.sourceThreadId === "string"
+            ? params.sourceThreadId
+            : undefined;
       if (
         project &&
-        typeof params.threadId === "string" &&
-        project.state.threads[params.threadId]?.persistedHistory === true &&
-        ["send", "configure", "media"].includes(name)
+        persistedThreadId !== undefined &&
+        project.state.threads[persistedThreadId]?.persistedHistory === true &&
+        shouldActivatePersisted(name, params)
       ) {
         const original = readingWindow?.session;
         const connection = client.snapshot();
@@ -622,7 +632,7 @@ export function createHostReadServices(
             current.connection !== "ready" ||
             current.identity.connectionId !== connection.identity.connectionId ||
             selected?.projectId !== original.projectId ||
-            selected?.threadId !== params.threadId
+            selected?.threadId !== persistedThreadId
           )
             throw Object.assign(new Error("会话已切换，输入已保留。"), {
               code: "STALE_CONNECTION",
@@ -646,7 +656,7 @@ export function createHostReadServices(
         requireOriginal();
         await client.refreshShell();
         requireOriginal();
-        await reads.selectSession({ projectId: project.id, threadId: params.threadId });
+        await reads.selectSession({ projectId: project.id, threadId: persistedThreadId });
       }
       const target = hostTarget(params);
       if (!target) return undefined;
@@ -835,8 +845,6 @@ export function createHostReadServices(
     reads,
     writes,
     workbench,
-    mcpApp: pages.mcpApp,
-    onMcpAppEvent: pages.onMcpAppEvent,
     snapshot: async () => snapshot,
     onState(listener) {
       listeners.add(listener);

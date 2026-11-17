@@ -5,7 +5,9 @@ import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 
 const appRequire = createRequire(new URL("../app/package.json", import.meta.url));
-const buildRequire = createRequire(new URL("../packages/gen-ui/package.json", import.meta.url));
+const buildRequire = createRequire(
+  new URL("../packages/browser-data/package.json", import.meta.url),
+);
 const { WebSocketServer } = appRequire("ws");
 const { outputFiles } = await buildRequire("esbuild").build({
   entryPoints: [fileURLToPath(new URL("../packages/client/src/index.ts", import.meta.url))],
@@ -469,37 +471,6 @@ test("UI restoration joins the selected conversation's automatic reconnect", asy
   assert.equal(client.readsSnapshot().session.state, "fresh");
   assert.equal(frames.filter((frame) => frame.method === "session.open").length, 2);
   assert.equal(frames.filter((frame) => frame.method === "subscription.close").length, 0);
-});
-
-test("page events are bound to the ready connection and stop after unsubscribe", async (t) => {
-  const { client, send } = await readServer(t);
-  const events = [];
-  const page = {
-    event: "pages.event",
-    connectionId: "read-connection",
-    gatewayGeneration: generation,
-    token: "page",
-    notification: { jsonrpc: "2.0", method: "ui/notifications/test" },
-  };
-  let accepted;
-  const arrived = new Promise((resolve) => {
-    accepted = resolve;
-  });
-  const off = client.subscribePageEvents((event) => {
-    events.push(event);
-    accepted();
-  });
-  send({ ...page, connectionId: "old-connection" });
-  send({ ...page, gatewayGeneration: "old-generation" });
-  send({ ...page, notification: [] });
-  send(page);
-  await arrived;
-  assert.deepEqual(events, [page]);
-  off();
-  const barrier = new Promise((resolve) => client.subscribePageEvents(resolve));
-  send({ ...page, token: "next" });
-  await barrier;
-  assert.equal(events.length, 1);
 });
 
 test("one WS multiplexes shell and native session; deltas retain native fields and untouched references", async (t) => {

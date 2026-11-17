@@ -37,10 +37,6 @@ const {
   encodeMedia,
   decodeMedia,
 } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
-const {
-  genUiScope,
-  createGenUiState,
-} = require("@areal/workbench-service/desktop/core/gen-ui-state.cjs");
 const { checkHostPrerequisites } = require("./host-prerequisites.cjs");
 /** @param {number} ms */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -158,16 +154,10 @@ class SharedCoreBackend {
     this.computerHostOwned = undefined;
     /** @type {(()=>void)|undefined} */
     this.onBrowserDisconnected = undefined;
-    /** @type {((event?:unknown)=>void)|undefined} */
-    this.onMcpPageToolsDisconnected = undefined;
     /** @type {((request:Record<string,unknown>&{requestId:number})=>unknown)|undefined} */
     this.onBrowserRequest = undefined;
     /** @type {((request:unknown)=>void)|undefined} */
     this.onBrowserCancel = undefined;
-    /** @type {((event:unknown)=>void)|undefined} */
-    this.onMcpAppNotification = undefined;
-    /** @type {((event:unknown)=>void)|undefined} */
-    this.onMcpPageToolNotice = undefined;
     this.prerequisiteCheck = prerequisiteCheck;
     this.onNotification = onNotification;
     this.onNotificationOpen = onNotificationOpen;
@@ -177,7 +167,6 @@ class SharedCoreBackend {
     this.applicationOwner = options.applicationOwner;
     this.home = options.home;
     this.onChange = onChange;
-    this.genUiState = createGenUiState(this.home);
     /** @type {import("@areal/workbench-service/desktop/core/service-state.cjs").ServiceSnapshot} */
     this.value = {
       library: {
@@ -227,10 +216,6 @@ class SharedCoreBackend {
       },
       flush: async () => {},
     };
-  }
-  /** @param {import("@areal/workbench-service/desktop/core/gen-ui-state.cjs").GenUiProject} project @param {string} threadId */
-  genUiScope(project, threadId) {
-    return genUiScope(this.home, project, threadId);
   }
   requireConnection() {
     if (!this.status.connected || !this.connection)
@@ -310,7 +295,6 @@ class SharedCoreBackend {
     this.terminalConnections.close();
     this.computerHostOwned = false;
     this.onBrowserDisconnected?.();
-    this.onMcpPageToolsDisconnected?.();
     const stopped = !!this.connection && this.stoppedConnection === this.connection;
     const message = stopped ? "后台服务已停止，可按需重新连接" : "后台服务已断开，请重新连接";
     this.connectionState = { state: "unavailable", message };
@@ -417,16 +401,6 @@ class SharedCoreBackend {
       (request) => {
         if (this.connection === connection) this.onBrowserCancel?.(request);
       },
-      (event) => {
-        if (this.connection === connection && !this.disposed) this.onMcpAppNotification?.(event);
-      },
-      (event) => {
-        if (this.connection === connection && !this.disposed) this.onMcpPageToolNotice?.(event);
-      },
-      (event) => {
-        if (this.connection === connection && !this.disposed)
-          this.onMcpPageToolsDisconnected?.(event);
-      },
     );
     return connection;
   }
@@ -484,7 +458,6 @@ class SharedCoreBackend {
       connection.close();
       return false;
     }
-    if (this.connection) this.onMcpPageToolsDisconnected?.();
     this.connection?.close();
     this.connection = connection;
     this.sequence = -1;
@@ -794,12 +767,6 @@ class SharedCoreBackend {
       return project.id;
     }
   }
-  /** @param {Record<string,unknown>} request */
-  async mcpPageTools(request) {
-    if (!this.status.connected || !this.connection)
-      throw new Error("Page tool owner lease is disconnected");
-    return this.requireConnection().request("mcpPageTools", request, true);
-  }
   /** @param {Record<string,unknown>} identity */
   async browserClaim(identity) {
     this.assertLifecycleScope("browserClaim");
@@ -867,19 +834,6 @@ class SharedCoreBackend {
     // 队列业务键跨 GUI/共享服务连接保留，外层丢失响应后也能只读核对。
     const semantics = commandSemantics(name, params);
     if (semantics.requestId) params[semantics.requestId] ??= randomUUID();
-    if (
-      ["send", "steer", "editMessage"].includes(name) ||
-      (name === "side" && request.operation === "send")
-    ) {
-      const project = this.saved.find((project) => project.id === request.projectId);
-      if (project) {
-        if (typeof request.threadId !== "string")
-          throw Object.assign(new Error("无效桌面任务身份"), {
-            code: "INVALID_DESKTOP_REQUEST",
-          });
-        await this.genUiState.list(this.genUiScope(project, request.threadId));
-      }
-    }
     const originalCore = operationCore(
       this.value.projects.find((project) => project.id === params.projectId),
       params,
@@ -1592,7 +1546,6 @@ class SharedCoreBackend {
   async shutdown() {
     if (this.shutdownPromise) return this.shutdownPromise;
     this.disposed = true;
-    this.genUiState.dispose();
     this.clearReconnect();
     return (this.shutdownPromise = (async () => {
       try {

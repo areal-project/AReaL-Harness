@@ -84,8 +84,6 @@ const WRITE_METHODS: &[&str] = &[
     "plugins.read",
     "plugins.command",
     "worktree.command",
-    "pages.command",
-    "pages.resource",
     "desktop.command",
 ];
 const TTL: Duration = Duration::from_secs(30);
@@ -122,18 +120,18 @@ struct Ticket {
     generation: String,
     deadline: Instant,
 }
-struct PageConnection {
+struct ClientConnection {
     host: Rc<Host>,
     connection: String,
 }
-impl Drop for PageConnection {
+impl Drop for ClientConnection {
     fn drop(&mut self) {
         self.host.clients.borrow_mut().remove(&self.connection);
         self.host.changed();
         self.host
             .gateway
             .workbench
-            .disconnect_pages(&self.connection);
+            .disconnect_connection(&self.connection);
     }
 }
 #[derive(Default)]
@@ -144,16 +142,6 @@ pub(super) struct Loopback {
     ui_root: RefCell<Option<PathBuf>>,
 }
 impl Loopback {
-    pub(super) fn page_proxy_url(&self) -> Result<String> {
-        Ok(format!(
-            "{}/host/pages/proxy",
-            self.endpoint
-                .borrow()
-                .as_ref()
-                .context("CAPABILITY_UNAVAILABLE")?
-                .origin
-        ))
-    }
     pub(super) fn ticket(&self, input: LocalWebTicketParams) -> Result<LocalWebTicketResult> {
         self.mint_ticket(input, None)
     }
@@ -265,8 +253,9 @@ impl Loopback {
             "library.command" | "analytics.import" | "worktree.read" | "worktree.command"
             | "tasks.read" | "trajectory.read" | "trajectory.command" | "feedback.read"
             | "feedback.command" | "manage.read" | "manage.command" | "providers.read"
-            | "providers.command" | "plugins.read" | "plugins.command" | "pages.command"
-            | "pages.resource" | "desktop.command" => "manage",
+            | "providers.command" | "plugins.read" | "plugins.command" | "desktop.command" => {
+                "manage"
+            }
             _ if WRITE_METHODS.contains(&method) => "observe",
             _ => return false,
         };
@@ -526,11 +515,10 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
     host.clients
         .borrow_mut()
         .insert(connection_id.clone(), None);
-    let _pages = PageConnection {
+    let _connection = ClientConnection {
         host: host.clone(),
         connection: connection_id.clone(),
     };
-    let mut page_events = host.gateway.workbench.page_events();
     // 写能力同时要求协议协商和本机用户明确授予的范围；旧浏览器仍只有 observe。
     let mut writer = (negotiated
         && device_id.as_ref().is_none_or(|id| {
@@ -647,23 +635,6 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                 writer = Some(local);
                 ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
                 send(&mut socket, &response).await?;
-            }
-            event = page_events.recv() => {
-                let event = match event {
-                    Ok(event) => event,
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                    Err(error) => return Err(error).context("page event stream interrupted"),
-                };
-                if event["connection"] != connection_id { continue; }
-                ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
-                if let Some(device) = &device_id {
-                    ensure!(host.loopback.browser_permits(device, "manage"), "FORBIDDEN");
-                }
-                send(&mut socket, &json!({"version":VERSION,"method":"pages.event","params":{
-                    "event":"pages.event","connectionId":connection_id,
-                    "gatewayGeneration":host.identity.generation,
-                    "token":event["token"],"notification":event["notification"]
-                }})).await?;
             }
             message = socket.next() => {
                 let Some(message) = message else { break; };
@@ -830,16 +801,7 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
             }
             _=changes.changed()=>{
                 if !host.loopback.current(device_id.as_deref()) { break; }
-                if let Some(active)=&reader
-                    && !active.current(&host) {
-                        let event=keys(&host,&connection_id,active.invalidated(&anyhow::anyhow!("RESYNC_REQUIRED")));
-                        reader=None;
-                        notify(&mut socket,event).await?;
-                    }
-                while let Some(index)=watched.iter().position(|value|!value.current(&host)) {
-                    let event=keys(&host,&connection_id,watched.remove(index).invalidated(&anyhow::anyhow!("RESYNC_REQUIRED")));
-                    notify(&mut socket,event).await?;
-                }
+                // 先发布最新的 shell 状态，再通知持久化快照失效，避免客户端沿旧 stopped 状态重读。
                 if let Some(active)=shell.as_mut() {
                     let refreshed = active.refresh(&host).await;
                     ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
@@ -853,6 +815,16 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                             notify(&mut socket,event).await?;
                         }
                     }
+                }
+                if let Some(active)=&reader
+                    && !active.current(&host) {
+                        let event=keys(&host,&connection_id,active.invalidated(&anyhow::anyhow!("RESYNC_REQUIRED")));
+                        reader=None;
+                        notify(&mut socket,event).await?;
+                    }
+                while let Some(index)=watched.iter().position(|value|!value.current(&host)) {
+                    let event=keys(&host,&connection_id,watched.remove(index).invalidated(&anyhow::anyhow!("RESYNC_REQUIRED")));
+                    notify(&mut socket,event).await?;
                 }
             }
         }

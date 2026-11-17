@@ -19,6 +19,7 @@ import { parseArgs } from "node:util";
 import relayResources from "@areal/workbench-service/desktop/core/relay-resources.cjs";
 import { signLocalMacOSApp } from "./macos-signing-paths.mjs";
 import { buildWorkbenchResources } from "./workbench-resources.mjs";
+import { checkIcon } from "./macos-icon.mjs";
 const gui = fileURLToPath(new URL("..", import.meta.url));
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
@@ -145,7 +146,6 @@ try {
   const guiOutputs = [
     "renderer/dist",
     "packages/ui/dist",
-    "packages/gen-ui/dist",
     "packages/browser-automation/dist",
     "packages/browser-data/dist",
     "app/src/core/snapshots/build",
@@ -241,26 +241,7 @@ try {
           "release",
           "GUI release requires a release Core bundle",
         );
-      const iconset = join(staged, "app.iconset");
-      await mkdir(iconset);
-      for (const size of [16, 32, 128, 256, 512]) {
-        for (const scale of [1, 2]) {
-          execFileSync(
-            "/usr/bin/sips",
-            [
-              "-z",
-              String(size * scale),
-              String(size * scale),
-              join(gui, "app/assets/icon-1024.png"),
-              "--out",
-              join(iconset, `icon_${size}x${size}${scale === 2 ? "@2x" : ""}.png`),
-            ],
-            { stdio: "ignore" },
-          );
-        }
-      }
-      const icon = join(staged, "app.icns");
-      execFileSync("/usr/bin/iconutil", ["-c", "icns", iconset, "-o", icon]);
+      const icon = await checkIcon();
       const { build, Platform, Arch } = require("electron-builder");
       const relayBundle = await relayResources.buildRelayResources({
         source: join(root, "services/remote-relay"),

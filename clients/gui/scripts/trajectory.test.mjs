@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -7,7 +7,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 const require = createRequire(new URL("../app/package.json", import.meta.url));
-const { TrajectoryExport, publicStatus } = require("@areal/workbench-service/trajectory");
+const { publicStatus } = require("@areal/workbench/desktop-contract/trajectory");
 const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const { validateCommand } = require("@areal/workbench/desktop-contract");
 const { hostCoreClient } = createRequire(import.meta.url)("./support/host-core-fixture.cjs");
@@ -45,44 +45,6 @@ const status = {
   ],
   limits: { max_retries: 5, upload_interval_ms: 1000, max_memory_bytes: 4096 },
 };
-
-async function fixture(t) {
-  const directory = await trackedMkdtemp(join(tmpdir(), "areal-trajectory-gui-"));
-  t.after(() => rm(directory, { recursive: true, force: true }));
-  const binary = join(directory, "core fixture.cjs"),
-    response = join(directory, "response.json"),
-    calls = join(directory, "calls.json");
-  await writeFile(
-    binary,
-    `#!/usr/bin/env node
-const fs = require('node:fs');
-fs.writeFileSync(process.env.FIXTURE_CALLS, JSON.stringify({args:process.argv.slice(2), home:process.env.AREAL_HARNESS_HOME, credential:process.env.AREAL_CREDENTIAL_fixture}));
-const value=fs.readFileSync(process.env.FIXTURE_RESPONSE,'utf8');
-if(value==='fail') { process.stderr.write('credential fixture-secret rejected'); process.exit(1); }
-process.stdout.write(value);
-`,
-    { mode: 0o700 },
-  );
-  await writeFile(response, JSON.stringify(status));
-  const exporter = new TrajectoryExport({
-    binary,
-    config: status.configPath,
-    hooks: {
-      environment: () => ({
-        ...process.env,
-        AREAL_HARNESS_HOME: directory,
-        FIXTURE_CALLS: calls,
-        FIXTURE_RESPONSE: response,
-      }),
-    },
-    providers: {
-      config: { refreshCredentials: async () => {} },
-      environment: () => ({ AREAL_CREDENTIAL_fixture: "fixture-secret" }),
-      redact: (text) => text.replaceAll("fixture-secret", "[redacted]"),
-    },
-  });
-  return { exporter, response, calls, directory };
-}
 
 function deferred() {
   let resolve, reject;
@@ -166,18 +128,17 @@ async function backendFixture(t) {
   return backend;
 }
 
-test("read-only status keeps real validation and closing checks while retry keeps configuration gates", async (t) => {
-  const { exporter } = await fixture(t);
+test("trajectory operations require Host protocol while invalid requests and shutdown gates stay intact", async (t) => {
   const backend = await backendFixture(t);
-  backend.trajectory = exporter;
+  await assert.rejects(backend.command("trajectory", { operation: "status" }), /Host protocol/);
+  await assert.rejects(backend.command("trajectory", { operation: "retry" }), /Host protocol/);
   for (const gate of ["providerUpdating", "resourcesUpdating"]) {
     backend[gate] = true;
-    assert.deepEqual(await backend.command("trajectory", { operation: "status" }), status);
     await assert.rejects(
       backend.command("trajectory", { operation: "status", config: "/other.toml" }),
       { code: "INVALID_DESKTOP_REQUEST" },
     );
-    await assert.rejects(backend.command("trajectory", { operation: "retry" }), /配置正在应用/);
+    await assert.rejects(backend.command("trajectory", { operation: "retry" }), /Host protocol/);
     await assert.rejects(backend.command("trajectory", { operation: "unknown" }), {
       code: "INVALID_DESKTOP_REQUEST",
     });
@@ -193,52 +154,24 @@ test("read-only status keeps real validation and closing checks while retry keep
   });
   assert.equal(backend.activeCommands, 0);
   backend.closing = true;
-  for (const [name, request] of [
-    ["trajectory", { operation: "status" }],
-    ["trajectory", { operation: "retry" }],
-    ["send", { projectId: "p", threadId: "t", text: "hello" }],
+  for (const [name, request, pattern] of [
+    ["trajectory", { operation: "status" }, /Host protocol/],
+    ["trajectory", { operation: "retry" }, /Host protocol/],
+    ["send", { projectId: "p", threadId: "t", text: "hello" }, /应用正在退出/],
   ]) {
-    await assert.rejects(backend.command(name, request), /应用正在退出/);
+    await assert.rejects(backend.command(name, request), pattern);
   }
   assert.equal(backend.activeCommands, 0);
 });
 
-test("explicit retry and ordinary send still count as work and release admission on completion or failure", async (t) => {
+test("ordinary send still counts as work and releases admission on completion", async (t) => {
   const backend = await backendFixture(t);
-  const retry = deferred(),
-    retryEntered = deferred(),
-    submitted = deferred(),
+  const submitted = deferred(),
     releaseSend = deferred();
   t.after(() => {
-    retry.resolve(status);
     releaseSend.resolve();
   });
-  backend.trajectory.command = (request) => {
-    validateCommand("trajectory", request);
-    if (request.operation === "retry") {
-      retryEntered.resolve();
-      return retry.promise;
-    }
-    return Promise.resolve(status);
-  };
-  const retrying = backend.command("trajectory", { operation: "retry" });
-  await Promise.race([
-    retryEntered.promise,
-    retrying.then(() => {
-      throw new Error("retry completed before admission");
-    }),
-  ]);
-  assert.equal(backend.activeCommands, 1);
-  await assert.rejects(
-    backend.command("providers", { operation: "apply", expectedRevision: "fixture" }),
-    { code: "CAPABILITY_UNAVAILABLE" },
-  );
-  assert.deepEqual(await backend.command("trajectory", { operation: "status" }), status);
-  assert.equal(backend.activeCommands, 1);
-  const retryFailure = new Error("fixture retry failed");
-  const rejected = assert.rejects(retrying, (error) => error === retryFailure);
-  retry.reject(retryFailure);
-  await rejected;
+  await assert.rejects(backend.command("trajectory", { operation: "retry" }), /Host protocol/);
   assert.equal(backend.activeCommands, 0);
 
   const project = {
@@ -310,99 +243,7 @@ test("desktop trajectory capability rejects configuration and destination overri
   }
 });
 
-test("fixed CLI arguments preserve GUI config and environment; only public fields cross IPC", async (t) => {
-  const { exporter, response, calls, directory } = await fixture(t);
-  await writeFile(
-    response,
-    JSON.stringify({
-      ...status,
-      credential: "must-not-cross-ipc",
-      records: [{ ...status.records[0], content: "private trajectory" }],
-    }),
-  );
-  assert.deepEqual(await exporter.command({ operation: "status" }), status);
-  assert.deepEqual(JSON.parse(await readFile(calls, "utf8")), {
-    args: ["trajectory", "status", "--config", status.configPath],
-    home: directory,
-  });
-  assert.deepEqual(await exporter.command({ operation: "retry" }), status);
-  assert.equal(JSON.parse(await readFile(calls, "utf8")).args[1], "retry");
-  assert.equal(JSON.parse(await readFile(calls, "utf8")).credential, "fixture-secret");
-  const toggle = { operation: "setEnabled", enabled: false, expectedRevision: "a".repeat(64) };
-  assert.deepEqual(await exporter.command(toggle), status);
-  const toggled = JSON.parse(await readFile(calls, "utf8"));
-  assert.deepEqual(toggled.args, [
-    "trajectory",
-    "set-enabled",
-    "false",
-    "--expected-revision",
-    toggle.expectedRevision,
-    "--config",
-    status.configPath,
-  ]);
-  assert.equal(toggled.credential, "fixture-secret");
-  await assert.rejects(exporter.command({ operation: "status", config: "/other.toml" }), {
-    code: "INVALID_DESKTOP_REQUEST",
-  });
-});
-
-test("invalid CLI responses fail explicitly and stderr uses credential redaction", async (t) => {
-  const { exporter, response } = await fixture(t);
-  for (const value of [
-    "not-json",
-    JSON.stringify({ ...status, queue: { ...status.queue, failed: -1 } }),
-    JSON.stringify({ ...status, records: [{ ...status.records[0], status: "unknown" }] }),
-  ]) {
-    await writeFile(response, value);
-    await assert.rejects(exporter.command({ operation: "status" }), /无效的数据飞轮状态/);
-  }
-  await writeFile(response, "fail");
-  await assert.rejects(
-    exporter.command({ operation: "retry" }),
-    (error) => error.message.includes("[redacted]") && !error.message.includes("fixture-secret"),
-  );
-});
-
-test("retry refreshes Host credentials before constructing the upload environment", async (t) => {
-  const { exporter, calls } = await fixture(t);
-  let credential = "stale-fixture";
-  exporter.backend.providers.config.refreshCredentials = async () => {
-    credential = "rotated-fixture";
-  };
-  exporter.backend.providers.environment = () => ({ AREAL_CREDENTIAL_fixture: credential });
-  await exporter.command({ operation: "retry" });
-  assert.equal(JSON.parse(await readFile(calls, "utf8")).credential, "rotated-fixture");
-});
-
-test("credential refresh gates retry but never blocks read-only status", async (t) => {
-  const { exporter, calls } = await fixture(t);
-  let refreshes = 0;
-  exporter.backend.providers.config.refreshCredentials = async () => {
-    refreshes++;
-    throw new Error("Host 凭据来源已变化");
-  };
-  // 只读状态不解密凭据，刷新失败不能让用户看不到队列。
-  assert.deepEqual(await exporter.command({ operation: "status" }), status);
-  assert.equal(refreshes, 0);
-  const afterStatus = JSON.parse(await readFile(calls, "utf8"));
-  assert.deepEqual(afterStatus.args.slice(0, 2), ["trajectory", "status"]);
-  // 重试必须先用新凭据构造环境；刷新失败时不能启动上传 CLI。
-  await assert.rejects(exporter.command({ operation: "retry" }), /Host 凭据来源已变化/);
-  assert.equal(refreshes, 1);
-  assert.deepEqual(JSON.parse(await readFile(calls, "utf8")), afterStatus);
-});
-
-test("status remains readable when the GUI credential vault cannot be unlocked", async (t) => {
-  const { exporter } = await fixture(t);
-  exporter.backend.providers.environment = () => {
-    throw new Error("fixture vault locked");
-  };
-  assert.deepEqual(await exporter.command({ operation: "status" }), status);
-  await assert.rejects(exporter.command({ operation: "retry" }), /fixture vault locked/);
-});
-
-test("optional execution metadata is projected without changing legacy records", async (t) => {
-  const { exporter, response } = await fixture(t);
+test("optional execution metadata is projected without changing legacy records", () => {
   const metadata = {
     turn_id: "turn-42",
     event_name: "areal.turn.completed",
@@ -412,30 +253,32 @@ test("optional execution metadata is projected without changing legacy records",
     occurred_at: 800,
   };
   const enriched = { ...status, records: [{ ...status.records[0], ...metadata }] };
-  await writeFile(
-    response,
-    JSON.stringify({
+  assert.deepEqual(
+    publicStatus({
       ...enriched,
+      credential: "must-not-cross-ipc",
       records: [{ ...enriched.records[0], internal_trace: "private" }],
     }),
+    enriched,
   );
-  assert.deepEqual(await exporter.command({ operation: "status" }), enriched);
   const missing = {
     ...status,
     records: [{ ...status.records[0], occurred_at: null, model_name: null }],
   };
-  await writeFile(response, JSON.stringify(missing));
-  assert.deepEqual(await exporter.command({ operation: "status" }), missing);
+  assert.deepEqual(publicStatus(missing), missing);
   for (const invalid of [
     { model_name: 5 },
     { occurred_at: "800" },
     { execution_duration_ms: -1 },
   ]) {
-    await writeFile(
-      response,
-      JSON.stringify({ ...status, records: [{ ...status.records[0], ...invalid }] }),
+    assert.throws(
+      () =>
+        publicStatus({
+          ...status,
+          records: [{ ...status.records[0], ...invalid }],
+        }),
+      /无效的数据飞轮状态/,
     );
-    await assert.rejects(exporter.command({ operation: "status" }), /无效的数据飞轮状态/);
   }
 });
 

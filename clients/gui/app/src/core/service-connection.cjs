@@ -36,8 +36,6 @@ class ServiceConnection {
    * @param {(value:unknown)=>void} [onNotification] @param {(value:unknown)=>void} [onNotificationOpen]
    * @param {((value:Record<string,unknown>&{requestId:number})=>unknown)|null} [onBrowserRequest]
    * @param {((value:unknown)=>void)|null} [onBrowserCancel]
-   * @param {(value:unknown)=>void} [onMcpAppNotification] @param {(value:unknown)=>void} [onMcpPageToolNotice]
-   * @param {(value:unknown)=>void} [onMcpPageToolsRevoked]
    * @param {((value:unknown)=>Promise<unknown>)|null} [onTerminalRequest] */
   constructor(
     onState = () => {},
@@ -46,9 +44,6 @@ class ServiceConnection {
     onNotificationOpen = () => {},
     onBrowserRequest = null,
     onBrowserCancel = null,
-    onMcpAppNotification = () => {},
-    onMcpPageToolNotice = () => {},
-    onMcpPageToolsRevoked = () => {},
     onTerminalRequest = null,
   ) {
     this.onTerminalRequest = onTerminalRequest;
@@ -56,9 +51,6 @@ class ServiceConnection {
     this.onNotificationOpen = onNotificationOpen;
     this.onBrowserRequest = onBrowserRequest;
     this.onBrowserCancel = onBrowserCancel;
-    this.onMcpAppNotification = onMcpAppNotification;
-    this.onMcpPageToolNotice = onMcpPageToolNotice;
-    this.onMcpPageToolsRevoked = onMcpPageToolsRevoked;
     this.onState = onState;
     this.onClose = onClose;
     /** @type {Map<number,PendingRequest>} */
@@ -81,9 +73,6 @@ class ServiceConnection {
           notification: this.onNotification,
           notificationOpen: this.onNotificationOpen,
           browserCancel: this.onBrowserCancel,
-          mcpAppNotification: this.onMcpAppNotification,
-          mcpPageToolNotice: this.onMcpPageToolNotice,
-          mcpPageToolsRevoked: this.onMcpPageToolsRevoked,
         };
         const method = message.method;
         if (typeof method !== "string") return;
@@ -194,18 +183,6 @@ class ServiceConnection {
           message[key] = { ...packet, snapshot: projection.read(packet.snapshot) };
       } catch {
         socket.terminate();
-        return;
-      }
-      if (message.method === "mcpPageToolNotice") {
-        this.onMcpPageToolNotice(message.params);
-        return;
-      }
-      if (message.method === "mcpPageToolsRevoked") {
-        this.onMcpPageToolsRevoked(message.params);
-        return;
-      }
-      if (message.method === "mcpAppNotification") {
-        if (this.socket === socket) this.onMcpAppNotification?.(message.params);
         return;
       }
       if (message.method === "notification") {

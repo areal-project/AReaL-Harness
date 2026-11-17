@@ -114,7 +114,6 @@ const bridge: DesktopBridge = {
   onWindowClosing: () => () => {},
   onWindowOpened: () => () => {},
   onNotificationOpen: () => () => {},
-  onMcpAppDeepLink: () => () => {},
   updateState: async () => ({ state: "idle" }),
   downloadUpdate: async () => ({ state: "idle" }),
   recoverUpdateResources: async () => ({ state: "idle" }),
@@ -123,9 +122,6 @@ const bridge: DesktopBridge = {
   chooseTaskDirectory: async () => null,
   fileOpen: async () => null,
   installCommandLineTools: async () => ({}),
-  mcpApp: async () => ({}),
-  mcpFormResource: async () => ({}),
-  onMcpAppEvent: () => () => {},
   presentReady: async () => {},
   preview: async () => ({}),
   command: async (name, raw) => {

@@ -327,7 +327,7 @@ async function openAuth() {
 }
 async function publicBoundary() {
   noSecret(await state(), "public desktop snapshot");
-  for (const operation of ["plugins", "pluginMcp", "mcpApps"]) await call(operation);
+  for (const operation of ["plugins", "pluginMcp"]) await call(operation);
   await call("plugin", { id: pluginId });
 }
 const {
@@ -607,10 +607,12 @@ try {
   assert.equal(await button("信任并连接").isEnabled(), true);
   await button("信任并连接").click();
   await poll(
-    () => call("mcpApps"),
+    () => call("pluginMcp"),
     (v) =>
       v.data.some(
-        (s) => s.pluginId === pluginId && s.tools.some((t) => t.name === "fixture.authenticated"),
+        (s) =>
+          s.pluginId === pluginId &&
+          s.servers?.some((server) => server.serverId === serverId && server.state === "connected"),
       ),
     "authenticated discovery",
   );
@@ -671,8 +673,11 @@ try {
   });
   await button("断开并撤销信任").click();
   await poll(
-    () => call("mcpApps"),
-    (v) => !v.data.some((s) => s.pluginId === pluginId),
+    () => call("pluginMcp"),
+    (v) =>
+      !v.data.some(
+        (s) => s.pluginId === pluginId && s.servers?.some((server) => server.state === "connected"),
+      ),
     "disconnect removes authenticated server",
   );
   assert.deepEqual(errors, []);

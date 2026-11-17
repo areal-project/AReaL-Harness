@@ -69,10 +69,40 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, params: Value) -> Res
         host.gateway.workbench.backend_has_source(source),
         "CAPABILITY_UNAVAILABLE"
     );
+    if params["operation"] == "settings"
+        && !params["key"]
+            .as_str()
+            .is_some_and(library_commands::navigation_setting)
+    {
+        let value = library_store::change(host, source, |state| {
+            library_commands::apply(state, &params, &ContextView::default())
+        })?;
+        host.gateway.workbench.library_changed().await;
+        return Ok(value);
+    }
     let home = library_store::source_home(host, source)?;
     let projects = worktree_catalog::saved_projects(&home)?;
     let aliases = bindings(host, source)?;
-    let private = host.gateway.workbench.library_dependencies(source).await?;
+    let private = if host.gateway.workbench.has_running_backend() {
+        host.gateway.workbench.library_dependencies(source).await?
+    } else {
+        let sessions = areal_local_service::storage::read_optional::<Value>(
+            &home.join("cloud-sessions.json"),
+        )?
+        .unwrap_or_else(|| json!([]));
+        let cloud_threads = sessions
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|row| {
+                Some(json!({
+                    "projectId": row["projectId"].as_str()?,
+                    "threadId": row["binding"]["threadId"].as_str()?,
+                }))
+            })
+            .collect::<Vec<_>>();
+        json!({"cloudThreads": cloud_threads, "pendingProjects": []})
+    };
     let current = library_store::read_source(host, source)?;
     let mut context = ContextView {
         projects,

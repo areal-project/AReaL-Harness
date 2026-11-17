@@ -192,24 +192,9 @@ class Module:
         req['properties']['projectId'] = {'type':'string'}
         req['required'] += ['operation','projectId']
         req['additionalProperties'] = True
-        if operation == 'mcpApps':
-            # mcp_apps.rs:573 forwards the complete protocol Tool metadata with one routing name.
-            item = res['properties']['data']['items']
-            item['properties']['tools']['items'] = {'allOf':[{'$mcpOwner':'McpToolMetadata'},{'type':'object','properties':{'toolName':{'type':'string'}},'required':['toolName']}]}
-            item['properties']['icons'] = {'anyOf':[{'type':'array','items':{'$mcpOwner':'McpIcon'}},{'type':'null'}]}
-        if operation == 'mcpForms':
-            # rmcp ElicitRequestParams.message is a String (core/mcp/src/lib.rs:144).
-            res['properties']['data']['items']['properties']['message'] = {'type':'string'}
-        if operation == 'mcpToolResult':
-            res['properties']['toolMetadata'] = {'$mcpOwner':'McpToolMetadata'}
-        if operation in ('mcpToolResult','mcpExtensionCall','mcpAppOpen','mcpAppOpenFromResult'):
-            # mcp_apps.rs:1966,2268 forwards the original validated MCP result content.
-            if operation in ('mcpAppOpen','mcpAppOpenFromResult'):
-                instance = res if operation == 'mcpAppOpen' else res['oneOf'][0]['properties']['instance']
-                instance['properties']['toolMetadata'] = {'$mcpOwner':'McpToolMetadata'}
-                result = instance['properties']['initialResult']['anyOf'][0]
-            else: result = res['properties']['mcpResult'] if operation == 'mcpToolResult' else res
-            result['properties']['content']['items'] = {'$mcpOwner':'McpContentBlock'}
+        if operation == 'mcpExtensionCall':
+            # mcp_apps.rs forwards the original validated MCP result content.
+            res['properties']['content']['items'] = {'$mcpOwner':'McpContentBlock'}
         if operation in ('skills','skill'):
             # core/app-server/src/desktop.rs:83-99,833-858: exactly one owner.
             version = resolve(SCHEMAS['requests']['areal/skill/read'],SCHEMAS['requests']['areal/skill/read'])['properties']['skill']
@@ -276,15 +261,6 @@ class Module:
             res['required'].append('questionId')
         if operation == 'processStart':
             res['properties'].update({'shell':{'type':'string'},'fontFamily':{'type':'string'},'fontSize':{'type':'number'},'theme':{'type':'object','additionalProperties':{'type':'string'}},'fontFamilySource':{'enum':['custom','system','fallback']}})
-        if operation == 'mcpAppRequest':
-            identity={'type':['string','number','null']}
-            req['properties']['request']={'type':'object','properties':{'jsonrpc':{'const':'2.0'},'id':identity,'method':{'type':'string'},'params':True},'required':['jsonrpc','method']}
-            for branch in res['oneOf']: branch['properties']['id']=identity
-        if operation == 'mcpAppOpen':
-            req['properties']['fileResource']={'type':'object','properties':{'uri':{'type':'string'},'path':{'type':'string'}},'required':['uri','path'],'additionalProperties':False}
-        if operation in ('mcpAppOpen','mcpAppOpenFromResult'):
-            resource=res if operation == 'mcpAppOpen' else res['oneOf'][0]['properties']['instance']
-            resource['properties']['resource']['properties']['mimeType']={'enum':['text/html;profile=mcp-app','text/html']}
         if operation in ('agentSpawn','agentWait'):
             # desktop/agents.rs:179,224,385 projects known configuration and isolated results.
             version = resolve(SCHEMAS['requests']['areal/skill/read'],SCHEMAS['requests']['areal/skill/read'])['properties']['skill']
@@ -334,7 +310,7 @@ def main():
     })
     groups={}
     for op,(method,fields) in routes.items():
-        domain=('plugin-setup' if op == 'pluginSetup' else 'tasks' if method.startswith(('areal/task/','areal/channel/','areal/inbox/')) else 'plugins' if method.startswith(('areal/plugin/','areal/marketplace/','areal/hook/')) else 'mcp' if method.startswith(('areal/mcp/','areal/genUi/')) else 'workgroups' if method.startswith(('areal/workgroup/','areal/workflow/')) else 'processes' if method.startswith('areal/process/') else 'agents' if method.startswith('areal/agent/') else 'execution' if method.startswith('areal/execution/') else 'configuration' if method.startswith(('areal/provider/','areal/profile/','areal/skill/')) else 'thread')
+        domain=('plugin-setup' if op == 'pluginSetup' else 'tasks' if method.startswith(('areal/task/','areal/channel/','areal/inbox/')) else 'plugins' if method.startswith(('areal/plugin/','areal/marketplace/','areal/hook/')) else 'mcp' if method.startswith('areal/mcp/') else 'workgroups' if method.startswith(('areal/workgroup/','areal/workflow/')) else 'processes' if method.startswith('areal/process/') else 'agents' if method.startswith('areal/agent/') else 'execution' if method.startswith('areal/execution/') else 'configuration' if method.startswith(('areal/provider/','areal/profile/','areal/skill/')) else 'thread')
         groups.setdefault(domain,Module(domain)).add(op,method,fields)
     owner = Module('owner-directory')
     page = SCHEMAS['responses']['areal/task/directory/list']

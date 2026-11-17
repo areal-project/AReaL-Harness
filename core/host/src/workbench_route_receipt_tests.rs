@@ -10,7 +10,7 @@ async fn explicit_backend_failure_settles_as_rejection_not_unknown() {
             .map(|path| path.join("node")).find(|path| path.is_file()).expect("Node is required for the workbench boundary test");
         let runner = root.path().join("refuse.cjs");
         std::fs::write(&runner, r#"
-            console.log(JSON.stringify({version:1,event:'ready',methods:['feedback.command']}));
+            console.log(JSON.stringify({version:1,event:'ready',methods:['manage.command']}));
             require('node:readline').createInterface({input:process.stdin}).on('line', (line) => {
               const request = JSON.parse(line);
               console.log(JSON.stringify({version:1,id:request.id,error:{code:'TARGET_CHANGED'}}));
@@ -21,7 +21,7 @@ async fn explicit_backend_failure_settles_as_rejection_not_unknown() {
         *host.gateway.workbench.backend.running.borrow_mut() = Some(Rc::new(backend));
         *host.gateway.workbench.backend.source.borrow_mut() = Some("fixture".into());
         let command = uuid::Uuid::new_v4().to_string();
-        let request = json!({"method":"feedback.command","commandId":command,"params":{"sourceId":"fixture","operation":"preference","enabled":true}});
+        let request = json!({"method":"manage.command","commandId":command,"params":{"sourceId":"fixture","operation":"archive","projectId":"p","threadId":"t"}});
         assert_eq!(backend_command(&host, "local", &request).await.unwrap_err().to_string(), "TARGET_CHANGED");
         // 同一命令再来一次只读原结论，不重新派发，也不留在待核对列表里。
         assert_eq!(backend_command(&host, "local", &request).await.unwrap_err().to_string(), "TARGET_CHANGED");
@@ -44,7 +44,7 @@ async fn lost_backend_reply_keeps_the_original_library_command_unknown() {
         let runner = root.path().join("lost-reply.cjs");
         std::fs::write(&runner, r#"
             const fs = require('node:fs');
-            console.log(JSON.stringify({version:1,event:'ready',methods:['feedback.command']}));
+            console.log(JSON.stringify({version:1,event:'ready',methods:['manage.command']}));
             require('node:readline').createInterface({input:process.stdin}).on('line', () => {
               fs.appendFileSync(process.env.AREAL_WORKBENCH_DATA + '/effects', 'once\n');
               process.exit(0);
@@ -55,13 +55,13 @@ async fn lost_backend_reply_keeps_the_original_library_command_unknown() {
         *host.gateway.workbench.backend.running.borrow_mut() = Some(Rc::new(backend));
         *host.gateway.workbench.backend.source.borrow_mut() = Some("fixture".into());
         let command = uuid::Uuid::new_v4().to_string();
-        let request = json!({"method":"feedback.command","commandId":command,"params":{"sourceId":"fixture","operation":"preference","enabled":true}});
+        let request = json!({"method":"manage.command","commandId":command,"params":{"sourceId":"fixture","operation":"archive","projectId":"p","threadId":"t"}});
         let first = backend_command(&host, "local", &request).await.unwrap();
         assert_eq!(first["submissionUnknown"], true);
         assert_eq!(backend_command(&host, "local", &request).await.unwrap(), first);
         assert_eq!(std::fs::read_to_string(root.path().join("effects")).unwrap(), "once\n");
         let mut conflict = request.clone();
-        conflict["params"]["enabled"] = json!(false);
+        conflict["params"]["threadId"] = json!("other");
         assert_eq!(backend_command(&host, "local", &conflict).await.unwrap_err().to_string(), "COMMAND_CONFLICT");
         assert_eq!(backend_receipt(&host, "local", &command).unwrap().unwrap()["submissionUnknown"], true);
         let other_method = json!({"method":"worktree.command","commandId":command,"params":{"sourceId":"fixture","operation":"worktreeSettings","worktreeRoot":"/isolated","branchPrefix":"fixture"}});
@@ -80,7 +80,7 @@ async fn lost_library_preference_reply_is_not_replayed() {
         let runner = root.path().join("lost-reply.cjs");
         std::fs::write(&runner, r#"
             const fs = require('node:fs');
-            console.log(JSON.stringify({version:1,event:'ready',methods:['library.command']}));
+            console.log(JSON.stringify({version:1,event:'ready',methods:['manage.command']}));
             require('node:readline').createInterface({input:process.stdin}).on('line', () => {
               fs.appendFileSync(process.env.AREAL_WORKBENCH_DATA + '/effects', 'once\n');
               process.exit(0);
@@ -91,13 +91,13 @@ async fn lost_library_preference_reply_is_not_replayed() {
         *host.gateway.workbench.backend.running.borrow_mut() = Some(Rc::new(backend));
         *host.gateway.workbench.backend.source.borrow_mut() = Some("fixture".into());
         let command = uuid::Uuid::new_v4().to_string();
-        let request = json!({"method":"library.command","commandId":command,"params":{"sourceId":"fixture","operation":"settings","key":"terminalFontFamily","value":"monospace"}});
+        let request = json!({"method":"manage.command","commandId":command,"params":{"sourceId":"fixture","operation":"archive","projectId":"p","threadId":"t"}});
         let first = backend_command(&host, "local", &request).await.unwrap();
         assert_eq!(first["submissionUnknown"], true);
         assert_eq!(backend_command(&host, "local", &request).await.unwrap(), first);
         assert_eq!(std::fs::read_to_string(root.path().join("effects")).unwrap(), "once\n");
         let mut conflict = request.clone();
-        conflict["params"]["value"] = json!("serif");
+        conflict["params"]["threadId"] = json!("other");
         assert_eq!(backend_command(&host, "local", &conflict).await.unwrap_err().to_string(), "COMMAND_CONFLICT");
         assert_eq!(backend_receipt(&host, "local", &command).unwrap().unwrap()["submissionUnknown"], true);
         let other_method = json!({"method":"worktree.command","commandId":command,"params":{"sourceId":"fixture","operation":"worktreeSettings","worktreeRoot":"/isolated","branchPrefix":"fixture"}});

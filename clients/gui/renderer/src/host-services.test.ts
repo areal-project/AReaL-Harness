@@ -492,6 +492,118 @@ describe("Host renderer read authority", () => {
       }
     },
   );
+  it.each([
+    {
+      name: "fork",
+      params: {
+        projectId: "alias",
+        sourceThreadId: "thread",
+        anchor: { turnId: "latest-turn", boundary: "after" },
+      },
+      shouldActivate: true,
+    },
+    {
+      name: "editMessage",
+      params: {
+        projectId: "alias",
+        threadId: "thread",
+        text: "edited",
+        requestId: crypto.randomUUID(),
+      },
+      shouldActivate: true,
+    },
+    {
+      name: "side",
+      params: {
+        operation: "create",
+        projectId: "alias",
+        sourceThreadId: "thread",
+        requestId: crypto.randomUUID(),
+      },
+      shouldActivate: true,
+    },
+    {
+      name: "side",
+      params: { operation: "closeOwned" },
+      shouldActivate: false,
+    },
+  ])(
+    "routes persisted wake for $name (shouldActivate=$shouldActivate)",
+    async ({ name, params, shouldActivate }) => {
+      const page = new EventTarget();
+      vi.stubGlobal("window", page);
+      let phase = "stopped";
+      const events: string[] = [];
+      const wire = transport(observation);
+      const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+        const base = await wire.factory(lifecycle);
+        return {
+          ...base,
+          identity: {
+            ...base.identity,
+            persistedHistory: true,
+            writeMethods: ["project.activate", "session.send"],
+          },
+          transport: {
+            ...base.transport,
+            async request(method, reqParams, context) {
+              if (method === "shell.subscribe") {
+                return {
+                  ...identity,
+                  subscriptionId: "shell",
+                  snapshot: {
+                    projects: [
+                      {
+                        ...project,
+                        state: phase,
+                        serviceGeneration: phase === "ready" ? "core-gen" : undefined,
+                      },
+                    ],
+                    navigation: [navigation],
+                  },
+                };
+              }
+              if (method === "session.openPersisted") {
+                return {
+                  ...identity,
+                  ...context,
+                  serviceGeneration: "old-gen",
+                  threadId: reqParams.threadId,
+                  snapshot: observation,
+                  access: { kind: "persisted", readOnly: true, snapshotId: "saved" },
+                };
+              }
+              if (method === "session.open") events.push("live-read");
+              return base.transport.request(method, reqParams, context);
+            },
+            async write(method) {
+              if (method === "project.activate") {
+                events.push("project.activate");
+                phase = "ready";
+                return { projectId: "canonical", state: "ready", serviceGeneration: "core-gen" };
+              }
+              return { admissionState: "accepted" };
+            },
+          },
+        };
+      };
+      const services = createHostReadServices(undefined, options(factory));
+      try {
+        await until(services);
+        await services.reads!.selectSession({
+          projectId: "alias",
+          threadId: "thread",
+          persisted: true,
+        });
+        const result = await services.writes!.route(name, params);
+        expect(result).toBeUndefined();
+        expect(events).toEqual(shouldActivate ? ["project.activate", "live-read"] : []);
+      } finally {
+        page.dispatchEvent(new Event("pagehide"));
+        vi.unstubAllGlobals();
+      }
+    },
+  );
   it("projects a stopped project's persisted history as read-only without marking it connected", async () => {
     const page = new EventTarget();
     vi.stubGlobal("window", page);
@@ -675,14 +787,7 @@ describe("Host renderer read authority", () => {
           identity: {
             ...connected.identity,
             writeMethods: permitted
-              ? [
-                  "library.command",
-                  "tasks.read",
-                  "manage.command",
-                  "providers.read",
-                  "pages.command",
-                  "pages.resource",
-                ]
+              ? ["library.command", "tasks.read", "manage.command", "providers.read"]
               : [],
             writeLimits: {},
           },
@@ -698,7 +803,6 @@ describe("Host renderer read authority", () => {
           library: permitted,
           taskCatalog: permitted,
           taskManage: permitted,
-          pages: permitted,
           settings: permitted ? ["模型服务"] : [],
           mutations: false,
           conversationSubmit: false,
@@ -1276,7 +1380,6 @@ describe("Host renderer read authority", () => {
       library: false,
       taskCatalog: false,
       taskManage: false,
-      pages: false,
       settings: [],
     });
     expect(wire.requests.map((request) => request.method)).toEqual([

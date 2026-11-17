@@ -22,7 +22,6 @@ import {
   readTheme,
   readUpdateState,
 } from "./desktop-response.js";
-import type { McpFormOwner, McpFormResource } from "./mcp-app-services.js";
 export type { DesktopBridge } from "@areal/workbench/desktop-contract";
 export type {
   CommandName,
@@ -30,7 +29,6 @@ export type {
   CommandResponse,
   DesktopError,
   DesktopResult,
-  McpAppDeepLink,
   NotificationTarget,
   OwnedPreviewRequest,
   PreviewRequest,
@@ -80,11 +78,6 @@ export type {
   PluginStoreOperation,
 } from "@areal/workbench/desktop-contract/management";
 export { generationStats, modelUsage } from "@areal/workbench/desktop-contract/management-context";
-export {
-  validateMcpPageCall,
-  validateMcpPageDeclaration,
-  validateMcpPageReply,
-} from "@areal/workbench/desktop-contract/mcp-page";
 export type {
   ChatGPTStatus,
   DiscoveryConnection,
@@ -200,24 +193,6 @@ export function createDesktopServices(bridge: DesktopBridge): PlatformServices {
     if (value === null && request.operation === "show") return null;
     return readPreviewResult(value);
   }
-  async function mcpFormResource(
-    operation: "pick",
-    request: McpFormOwner,
-  ): Promise<{ resources: McpFormResource[] }>;
-  async function mcpFormResource(
-    operation: "release",
-    request: McpFormOwner & { uri: string },
-  ): Promise<unknown>;
-  async function mcpFormResource(
-    operation: "pick" | "release",
-    request: McpFormOwner & { uri?: string },
-  ): Promise<unknown> {
-    const { createMcpFormResourceCommand } = await import("./mcp-app-response.js");
-    const command = createMcpFormResourceCommand(bridge.mcpFormResource);
-    if (operation === "pick") return command(operation, request);
-    if (typeof request.uri !== "string") throw new Error("Invalid form resource URI");
-    return command(operation, { ...request, uri: request.uri });
-  }
   const snapShots: PlatformServices["snapShots"] = bridge.getSnapShotState
     ? {
         getSnapShotState: async () => readSnapShotState(await bridge.getSnapShotState!()),
@@ -310,26 +285,6 @@ export function createDesktopServices(bridge: DesktopBridge): PlatformServices {
     onWindowOpened: bridge.onWindowOpened,
     onQuitProgress: bridge.onQuitProgress,
     onNotificationOpen: bridge.onNotificationOpen,
-    onMcpAppDeepLink: bridge.onMcpAppDeepLink,
-    mcpApp: async (request) => {
-      const { createMcpAppCommand } = await import("./mcp-app-response.js");
-      return createMcpAppCommand(bridge.mcpApp)(request);
-    },
-    mcpFormResource,
-    onMcpAppEvent(listener) {
-      let active = true;
-      const unsubscribe = bridge.onMcpAppEvent((value) => {
-        void import("./mcp-app-response.js")
-          .then(({ readMcpAppEvent }) => {
-            if (active) listener(readMcpAppEvent(value));
-          })
-          .catch(() => {});
-      });
-      return () => {
-        active = false;
-        unsubscribe();
-      };
-    },
   };
 }
 

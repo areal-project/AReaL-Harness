@@ -659,16 +659,10 @@ test("an unadvertised backend rejects current commands before sending or inventi
       },
     ],
     ["manage", { ...thread, operation: "marketplaceUpdate", expectedRevision: 1 }],
-    ...[
-      "plugins",
-      "marketplaces",
-      "mcpApps",
-      "mcpAppOpen",
-      "mcpForms",
-      "mcpFormRespond",
-      "mcpExtensionCall",
-      "mcpToolResult",
-    ].map((operation) => ["manage", { ...thread, operation }]),
+    ...["plugins", "marketplaces", "mcpExtensionCall"].map((operation) => [
+      "manage",
+      { ...thread, operation },
+    ]),
     [
       "manage",
       {
@@ -1087,7 +1081,7 @@ test("deployment identity includes split contracts and relocated workbench domai
   );
   await writeFile(catalog, content);
   assert.equal(await identity(f.backend.options), before);
-  const domain = join(modules, "workbench-service/src/domains/feedback.cjs");
+  const domain = join(modules, "workbench-service/src/generated/host-core-client.cjs");
   const original = await readFile(domain, "utf8");
   await writeFile(domain, original + "\n// 兼容性回归：迁出领域仍参与后台身份。\n");
   assert.notEqual(await identity(f.backend.options), before);

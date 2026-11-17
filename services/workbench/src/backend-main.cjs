@@ -6,7 +6,6 @@ const { isAbsolute, join } = require("node:path");
 const { readFile, realpath, stat, writeFile, unlink } = require("node:fs/promises");
 const { createInterface } = require("node:readline");
 const { MAX_FRAME } = require("./channel.cjs");
-const { createPageSession, prepareInput } = require("./pages.cjs");
 const { randomUUID } = require("node:crypto");
 /** @typedef {{operation:string,requestId?:string,projectId?:string,sourceThreadId?:string,threadId?:string,method?:string,[key:string]:unknown}} SideParams */
 /** @typedef {{threadId?:string,requestId?:string,cleanupConfirmed?:boolean,confirmed?:boolean,status?:string,accepted?:boolean,[key:string]:unknown}} SideResult */
@@ -210,7 +209,6 @@ class SideWindowOwners {
       .catch(() => {});
   }
 }
-const pageMethods = ["pages.command", "pages.resource"];
 // 本机网页的桌面命令；与 Host 协议的 DesktopCommandParams.command 一致。
 const desktopCommands = new Set([
   "addProject",
@@ -223,7 +221,6 @@ const desktopCommands = new Set([
   "continue",
   "dismissRecovery",
   "editMessage",
-  "feedback",
   "fork",
   "history",
   "list",
@@ -251,22 +248,15 @@ const privateMethods = [
   "core.callback",
   "library.dependencies",
   "desktop.command",
-  "input.prepare",
   "execution.prepare",
   "execution.dispatch",
   "execution.complete",
 ];
 /** @type {Record<string,string>} */
 const domains = {
-  "library.command": "library",
   "worktree.read": "workspace",
   "worktree.command": "workspace",
   "tasks.read": "tasks",
-  "trajectory.read": "trajectory",
-  "trajectory.command": "trajectory",
-  "feedback.read": "feedback",
-  "feedback.command": "feedback",
-  "providers.command": "providers",
   "manage.read": "manage",
   "manage.command": "manage",
 };
@@ -391,20 +381,7 @@ async function start({ input, output }) {
   let cleanupDesktop;
   let metadata,
     claimed = false;
-  const pages = new Map();
   const sideOwners = new SideWindowOwners(appRequire);
-  const retiredPages = new Set();
-  /** @param {string} connection */
-  const closePages = async (connection) => {
-    retiredPages.add(connection);
-    const opening = pages.get(connection);
-    pages.delete(connection);
-    try {
-      await (await opening)?.close();
-    } finally {
-      retiredPages.delete(connection);
-    }
-  };
   const path = join(options.home, "service.json");
   try {
     if (retired) {
@@ -454,7 +431,7 @@ async function start({ input, output }) {
       JSON.stringify({
         version: 1,
         event: "ready",
-        methods: [...Object.keys(domains), ...pageMethods, ...privateMethods],
+        methods: [...Object.keys(domains), ...privateMethods],
         service: {
           pid: metadata.pid,
           identity: metadata.identity,
@@ -504,21 +481,14 @@ async function start({ input, output }) {
         desktop.adapter.cancelHostExecution(request.handle, request.connection);
         continue;
       }
-      if (request.event === "pages.disconnect" && typeof request.connection === "string") {
+      if (request.event === "connection.disconnect" && typeof request.connection === "string") {
         sideOwners.disconnect(request.connection, (side) =>
           desktop.adapter.executeRemote("side", side),
         );
         desktop.adapter.disconnectHostExecution(request.connection);
-        const closing = closePages(request.connection).catch(() => {});
-        pending.add(closing);
-        void closing.finally(() => pending.delete(closing));
         continue;
       }
-      if (
-        !Object.hasOwn(domains, request.method) &&
-        !pageMethods.includes(request.method) &&
-        !privateMethods.includes(request.method)
-      )
+      if (!Object.hasOwn(domains, request.method) && !privateMethods.includes(request.method))
         throw new Error("INVALID_PARAMS");
       const domain = domains[request.method];
       const execute = async () => {
@@ -647,8 +617,6 @@ async function start({ input, output }) {
           contract.validateCommandResponse(command, params, result);
           return result ?? null;
         }
-        if (request.method === "input.prepare")
-          return prepareInput({ desktop, request: request.params });
         if (
           request.method === "execution.prepare" ||
           request.method === "execution.dispatch" ||
@@ -662,55 +630,6 @@ async function start({ input, output }) {
             : request.method === "execution.complete"
               ? desktop.adapter.completeHostExecution(request.params, connection)
               : desktop.adapter.dispatchHostExecution(request.params.handle, connection);
-        }
-        if (pageMethods.includes(request.method)) {
-          const connection = request.context?.connection;
-          if (
-            typeof connection !== "string" ||
-            !connection ||
-            connection.length > 256 ||
-            retiredPages.has(connection)
-          )
-            throw Error("Invalid page connection");
-          if (!pages.has(connection)) {
-            if (request.method !== "pages.command") throw Error("Page owner disconnected");
-            if (pages.size >= 32) throw Error("Page connection limit reached");
-            const opening = createPageSession({
-              appRequire,
-              desktop,
-              notify: (event) => {
-                if (!retiredPages.has(connection))
-                  output.write(
-                    JSON.stringify({
-                      version: 1,
-                      event: "pages.event",
-                      params: { connection, ...event },
-                    }) + "\n",
-                  );
-              },
-            });
-            pages.set(connection, opening);
-            void opening.catch(() => {
-              if (pages.get(connection) === opening) pages.delete(connection);
-            });
-          }
-          const session = await pages.get(connection);
-          if (retiredPages.has(connection)) throw Error("Page connection closed");
-          if (request.method === "pages.command")
-            return (await session.command(request.params)) ?? {};
-          const response = await session.resource(request.params.token, request.params.path);
-          const offset = request.params.offset ?? 0;
-          if (!Number.isSafeInteger(offset) || offset < 0) throw Error("Invalid resource offset");
-          const bytes = Buffer.from(await response.arrayBuffer());
-          if (bytes.length > 8 * 1024 * 1024 || offset > bytes.length)
-            throw Error("Page resource limit reached");
-          return {
-            status: response.status,
-            headers: Object.fromEntries(response.headers),
-            body: bytes.subarray(offset, offset + 192 * 1024).toString("base64"),
-            offset,
-            total: bytes.length,
-          };
         }
         const result = await desktop.adapter.executeRemote(domain, request.params);
         appRequire("@areal/workbench/desktop-contract").validateCommandResponse(
@@ -737,11 +656,8 @@ async function start({ input, output }) {
         () => pending.delete(task),
       );
     }
-    // EOF 先撤销页面请求；等请求完成之后才关闭页面会让两者互相等待。
-    await Promise.allSettled([...pages.keys()].map(closePages));
     await Promise.allSettled(pending);
   } finally {
-    await Promise.allSettled([...pages.keys()].map(closePages));
     await cleanupDesktop?.close();
     const current = JSON.parse(await readFile(path, "utf8").catch(() => "null"));
     if (

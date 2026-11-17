@@ -692,34 +692,6 @@ describe("provider Host routing", () => {
   });
 });
 
-describe("MCP Apps catalog without a desktop adapter", () => {
-  it("routes the normal manage directory action through pages without command submission", async () => {
-    const calls: unknown[][] = [];
-    const catalog = { data: [{ serverId: "fixture" }], requestEpoch: "epoch" };
-    const client = {
-      writable: () => true,
-      workbench: async (...args: unknown[]) => {
-        calls.push(args);
-        return catalog;
-      },
-    } as unknown as HostClient;
-    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => undefined)!;
-    expect(
-      await routes.call("manage", {
-        operation: "mcpApps",
-        projectId: "project",
-        threadId: "thread",
-      }),
-    ).toEqual({ value: catalog });
-    expect(calls).toEqual([
-      ["pages.command", { operation: "catalog", projectId: "project", threadId: "thread" }],
-    ]);
-    expect(
-      await routes.call("manage", { operation: "mcpForms", projectId: "project" }),
-    ).toBeUndefined();
-  });
-});
-
 describe("authorization pages", () => {
   it("opens plugin and ChatGPT authorization pages and cancels a login it cannot open", async () => {
     const calls: unknown[] = [];

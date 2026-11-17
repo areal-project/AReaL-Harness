@@ -349,7 +349,6 @@ const settingsFiles = (await walk("renderer/src/settings")).filter(
   (file) => !file.endsWith("provider-ui-state.js"),
 );
 const shared = [
-  "renderer/src/McpAppsWorkspace.tsx",
   "renderer/src/components/ui/dialog.tsx",
   "renderer/src/components/ui/feedback.tsx",
   "renderer/src/app-shell/WorkbenchShell.tsx",

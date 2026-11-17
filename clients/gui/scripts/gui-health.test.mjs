@@ -450,12 +450,12 @@ test("package root and client implementations share production caps while build 
   assert.equal(f.run("--write").status, 0);
   await f.put("packages/provider-config/connections.cjs", "module.exports = {};\n".repeat(801));
   await f.put("packages/workbench/client/model.js", "export {};\n".repeat(801));
-  await f.put("packages/gen-ui/build.mjs", "build();\n".repeat(1001));
+  await f.put("packages/browser-data/build.mjs", "build();\n".repeat(1001));
   await f.put("packages/runtime-client/core.d.ts", "export {};\n".repeat(1001));
   const report = JSON.parse(f.run().stdout);
   assert.equal(report.sourceLines["packages/provider-config/connections.cjs"], 801);
   assert.equal(report.sourceLines["packages/workbench/client/model.js"], 801);
-  assert.equal(report.sourceLines["packages/gen-ui/build.mjs"], undefined);
+  assert.equal(report.sourceLines["packages/browser-data/build.mjs"], undefined);
   assert.equal(report.sourceLines["packages/runtime-client/core.d.ts"], undefined);
   const result = f.run("--check");
   assert.equal(result.status, 0);

@@ -1,7 +1,6 @@
 import { useI18n } from "./i18n/IntlProvider.js";
 import { errorText } from "./errors/errorCopy.js";
 import "./UserPromptEdit.css";
-import { stripGenUiModelContext } from "@areal/gen-ui/contract";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ChatPromptEditor } from "./prompt-editor/ChatPromptEditor.js";
 import { EditMessageIcon } from "./interfaceIcons.js";
@@ -25,12 +24,10 @@ export function UserPromptEdit({
   const { t } = useI18n();
   const key = `areal-gui:edit:${project.id}:${thread.id}:${item.id}`;
   const composerKey = `areal-gui:draft:${project.id}:${thread.id}`;
-  const original = stripGenUiModelContext(
-    (item.content ?? [])
-      .filter((part: Data) => part.type === "text" && !part.mcpContent)
-      .map((part: Data) => part.text)
-      .join("\n"),
-  );
+  const original = (item.content ?? [])
+    .filter((part: Data) => part.type === "text" && !part.mcpContent)
+    .map((part: Data) => part.text)
+    .join("\n");
   const [unknown, setUnknown] = useState<string | null>(() =>
     localStorage.getItem(`${key}:pending`),
   );

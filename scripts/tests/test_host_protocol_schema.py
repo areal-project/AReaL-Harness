@@ -145,7 +145,7 @@ class HostProtocolSchemaTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid private owner"):
             GEN.validate_schema(changed)
         changed = copy.deepcopy(self.schema)
-        changed["x-current"]["workbench"]["events"]["pages.event"]["x-owner"] = "host"
+        changed["x-current"]["workbench"]["events"]["tasks.event"]["x-owner"] = "workbench"
         with self.assertRaisesRegex(ValueError, "invalid event owner"):
             GEN.validate_schema(changed)
         changed = copy.deepcopy(self.schema)
@@ -252,9 +252,6 @@ validate('#/$defs/WorkbenchPrivateCoreBlobParams', {...blobUpload,callId:'call'}
 validate('#/$defs/WorkbenchPrivateCoreBlobParams', {...blobUpload,callId:'call',hostGeneration:'generation'});
 validate('#/$defs/WorkbenchPrivateWorkbenchUtilityParams', {operation:'feedbackSubmit',document:'a'.repeat(1048577)});
 validate('#/$defs/WorkbenchPrivateWorkbenchUtilityParams', {operation:'modelsWrite',document:'a'.repeat(1048577)}, false);
-
-validate('#/$defs/WorkbenchPrivatePagesEvent', {version:1,event:'pages.event',params:{connection:'connection',token:'page',notification:{jsonrpc:'2.0',method:'ui/notifications/closed'}}});
-validate('#/$defs/WorkbenchPrivatePagesEvent', {version:1,event:'pages.event',params:{connection:'connection',token:'page',notification:{},extra:true}}, false);
 
 
 

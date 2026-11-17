@@ -390,8 +390,6 @@ try {
         if (name === "reconcile")
           return { ok: true, value: { outcomes: structuredClone(project.outcomes) } };
         if (name === "library") return { ok: true, value: structuredClone(snapshot.library) };
-        if (name === "manage" && params.operation === "mcpApps")
-          return { ok: true, value: { data: [], requestEpoch: "fixture-epoch" } };
         if (name === "manage" && params.operation === "pluginCapabilities")
           return { ok: true, value: { enabled: true } };
         if (name === "manage" && params.operation === "plugins")

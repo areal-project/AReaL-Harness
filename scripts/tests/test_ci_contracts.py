@@ -750,7 +750,6 @@ class CiContracts(unittest.TestCase):
             outputs = [
                 root / "clients/gui" / relative / "fixture.cjs"
                 for relative in (
-                    "packages/gen-ui/dist",
                     "packages/browser-automation/dist",
                     "packages/browser-data/dist",
                     "app/src/core/snapshots/build",

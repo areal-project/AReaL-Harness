@@ -1683,8 +1683,6 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
                 error.downcast_ref::<crate::wire::Error>().map(|error| error.code),
                 Some("CAPABILITY_UNAVAILABLE")
             );
-            // 元数据图片是页面入口的合法操作，不能被参数校验挡在 Host。
-            serde_json::from_value::<areal_protocol::host::WorkbenchPageCommandParams>(json!({"operation":"metadataImage","source":"https://example.invalid/icon.png","projectId":"project"})).unwrap();
             let unsourced = json!({"id":"providers","method":"providers.read","params":{"operation":"list"}});
             assert_eq!(local.request(&unsourced).await.unwrap_err().to_string(), "CAPABILITY_UNAVAILABLE");
             f.grant("a", |grant| grant["projectIds"] = json!([]));
@@ -1796,7 +1794,7 @@ async fn local_desktop_principal_sends_through_the_shared_journal_without_device
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "需要 GUI 的 Node 依赖；由 make host-protocol-check 运行"]
-async fn local_send_and_steer_freeze_authoritative_gen_ui_context_without_private_state() {
+async fn local_send_and_steer_dispatch_without_input_prepare_and_forward_disconnect() {
     tokio::task::LocalSet::new().run_until(async {
         let mut f = Fixture::new().await;
         let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -1804,12 +1802,10 @@ async fn local_send_and_steer_freeze_authoritative_gen_ui_context_without_privat
         let source = r#"
 const {createRequire} = require('node:module');
 const {join} = require('node:path');
-const fs = require('node:fs');
 const {once} = require('node:events');
 const appRequire = createRequire(join(REPO,'clients/gui/app/package.json'));
 const {CoreBackend} = appRequire('@areal/workbench-service/desktop/core/backend.cjs');
 const {DesktopService} = appRequire('@areal/workbench-service/desktop/core/service-protocol.cjs');
-const {prepareInput} = require(join(REPO,'services/workbench/src/pages.cjs'));
 const out = value => console.log(JSON.stringify({version:1,...value}));
 (async () => {
   const home = process.env.AREAL_WORKBENCH_DATA;
@@ -1833,9 +1829,6 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
   backend.saved = [project];
   const adapter = new DesktopService(backend,'fixture');
   adapter.schedule = () => {};
-  const scope = {...backend.genUiScope(project,'thread'),path:'/artifacts/widget.html'};
-  const save = selection => backend.genUiState.set(scope,{modelContent:{selection},privateContent:{secret:'fixture-private'}});
-  await save(7);
   let nextHost = 0;
   const hostCalls = new Map();
   const hostCall = (call, params) => new Promise((resolve,reject) => {
@@ -1858,25 +1851,21 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
   backend.providers.manages = () => false;
   backend.refreshAfterAdmission = async () => {};
   project.client.capabilities = {features:{permissionPresets:true}};
-  out({event:'ready',methods:['input.prepare','execution.prepare','execution.dispatch']});
+  out({event:'ready',methods:['execution.prepare','execution.dispatch']});
   require('node:readline').createInterface({input:process.stdin}).on('line', async line => {
     const frame = JSON.parse(line);
     try {
       if (hostCalls.has(frame.id)) { const pending=hostCalls.get(frame.id);hostCalls.delete(frame.id);
         if(frame.error)pending.reject(Error(frame.error.code));else pending.resolve(frame.result);return; }
       if (frame.event === 'execution.cancel') { adapter.cancelHostExecution(frame.handle,frame.connection); return; }
-      if (frame.event === 'pages.disconnect') { adapter.disconnectHostExecution(frame.connection); await hostCall('fixture.disconnected',{connection:frame.connection}); return; }
+      if (frame.event === 'connection.disconnect') { adapter.disconnectHostExecution(frame.connection); await hostCall('fixture.disconnected',{connection:frame.connection}); return; }
       if (frame.method === 'execution.prepare') {
         out({id:frame.id,result:await adapter.prepareHostExecution(frame.params,frame.context.connection)}); return;
       }
       if (frame.method === 'execution.dispatch') {
         out({id:frame.id,result:await adapter.dispatchHostExecution(frame.params.handle,frame.context.connection)}); return;
       }
-      if (frame.method !== 'input.prepare') throw Error('unexpected method');
-      fs.appendFileSync(join(home,'preparations'),'once\n');
-      const result = await prepareInput({desktop:{backend,adapter},request:frame.params});
-      await save(8);
-      out({id:frame.id,result});
+      throw Error(`unexpected method ${frame.method}`);
     } catch(error) { out({id:frame.id,error:{code:'INVALID_PARAMS',message:error.message}}); }
   });
 })().catch(error => { console.error(error); process.exit(1); });
@@ -1913,18 +1902,12 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         f.workspace_admission().await;
         let turn = f.call("areal/turn/start").await;
         let input = turn.request["params"]["input"][0]["text"].as_str().unwrap().to_owned();
-        assert!(input.starts_with("Continue"));
-        assert!(input.contains("\"selection\":7"), "{input}");
-        assert!(!input.contains("private"));
-        let (_, journal) = f.host.journal.native_snapshot("project").unwrap();
-        assert!(journal.to_string().contains("selection"));
-        assert!(!journal.to_string().contains("fixture-private"));
+        assert_eq!(input, "Continue");
         turn.reply(json!({"turn":{"id":"desktop-turn"}}));
         let (session, accepted) = sending.await.unwrap();
         let accepted = accepted.unwrap();
         let (session, duplicate) = Fixture::dispatch(session, send).await.unwrap();
         assert_eq!(duplicate.unwrap(), accepted);
-        assert_eq!(std::fs::read_to_string(f.root.path().join("preparations")).unwrap(), "once\n");
         let mut steer = f.request("session.control", json!({"threadId":"thread","operation":"steer","expectedRevision":1,"values":{"text":"Adjust","expectedTurnId":"turn","conversationQuotes":[{"text":"quoted-message"}],"attachments":[{"type":"image","url":"areal://blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],"mcpContent":[{"type":"text","text":"mcp-message"}]}}), Some(&uuid::Uuid::new_v4().to_string()));
         steer["context"] = context;
         let steering = Fixture::dispatch(session, steer.clone());
@@ -1938,15 +1921,12 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         assert_eq!(turn.request["params"]["input"].as_array().unwrap().len(), 4);
         assert!(turn.request["params"]["input"].to_string().contains("quoted-message"));
         assert!(turn.request["params"]["input"].to_string().contains("mcp-message"));
-        assert!(text.starts_with("Adjust"));
-        assert!(text.contains("\"selection\":8"), "{text}");
-        assert!(!text.contains("private"));
+        assert_eq!(text, "Adjust");
         turn.reply(json!({"turnId":"turn"}));
         let (session, result) = steering.await.unwrap();
         assert_eq!(result.unwrap()["admissionState"], "accepted");
         let (session, repeated) = Fixture::dispatch(session, steer.clone()).await.unwrap();
         assert_eq!(repeated.unwrap()["admissionState"], "accepted");
-        assert_eq!(std::fs::read_to_string(f.root.path().join("preparations")).unwrap(), "once\nonce\n");
         let creation_id = uuid::Uuid::new_v4().to_string();
         let mut create = f.request("session.create", json!({"requestId":creation_id,"parameters":{"reasoningEffort":"high","serviceTier":"fast"},"options":{"permissionPreset":"ask"},"model":{"providerId":"provider","modelId":"model"},"worktree":{"mode":"source"}}), Some(&creation_id));
         create["context"] = steer["context"].clone();
@@ -1968,7 +1948,7 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         assert_eq!(command_complete["outcomes"][&creation_id]["method"], "workbench/thread/create");
         let (session, duplicate) = Fixture::dispatch(session, create).await.unwrap();
         assert_eq!(duplicate.unwrap(), created);
-        // 旧远程客户端仍用原请求形状，执行与模型上下文来自同源后台。
+        // 旧远程客户端仍用原请求形状，执行来自同源后台。
         let mut remote = f.session("a");
         assert!(remote.uses_workbench_execution());
         remote.source_id = "another-source".into();
@@ -1984,8 +1964,7 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         f.workspace_admission().await;
         let turn = f.call("areal/turn/start").await;
         let text = turn.request["params"]["input"][0]["text"].as_str().unwrap();
-        assert!(text.starts_with("Remote continue") && text.contains("\"selection\":8"));
-        assert!(!text.contains("fixture-private"));
+        assert_eq!(text, "Remote continue");
         turn.reply(json!({"turn":{"id":"remote-turn"}}));
         let (remote, accepted) = sending.await.unwrap();
         let accepted = accepted.unwrap();
@@ -2005,6 +1984,7 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         steer["commandId"] = json!(uuid::Uuid::new_v4().to_string());
         let failing = Fixture::dispatch(session, steer);
         f.call("areal/capabilities").await.reply(caps);
+        f.call("areal/thread/observe").await.reply(json!({"thread":{"id":"thread","status":{"type":"active"},"turns":[{"id":"turn","status":"inProgress","items":[]}]},"ownership":{"kind":"ordinary"}}));
         let (_, result) = failing.await.unwrap();
         assert_eq!(result.unwrap_err().to_string(), "CAPABILITY_UNAVAILABLE");
         assert!(f.calls.try_recv().is_err());

@@ -9,7 +9,6 @@ const {
   BrowserWindow,
   Menu,
   dialog,
-  protocol,
   nativeTheme,
   nativeImage,
   WebContentsView,
@@ -43,11 +42,6 @@ const { MenuBar } = require("./menu-bar.cjs");
 const { fileOpen, fileWorkspace } = require("./file-open.cjs");
 const { normalizeNativeImage, exportDiagnostics: saveDiagnostics } = require("./bug-reports.cjs");
 const { PluginArchives } = require("./plugin-archives.cjs");
-const { McpFormResources } = require("./mcp-form-resources.cjs");
-const {
-  McpAppsHost,
-  parseDeepLink,
-} = require("@areal/workbench-service/desktop/core/mcp-apps.cjs");
 const { readCommandInvocation, desktopError } = require("@areal/workbench/desktop-contract");
 /** @type {typeof import("@areal/workbench/desktop-contract").validatePreview} */
 const validatePreview = require("@areal/workbench/desktop-contract").validatePreview;
@@ -165,8 +159,6 @@ function startDesktop() {
   let backend;
   /** @type {InstanceType<typeof CorePreview>|undefined} */
   let preview;
-  /** @type {InstanceType<typeof McpAppsHost>|undefined} */
-  let mcpApps;
   /** @type {Awaited<ReturnType<typeof setupUpdater>>|undefined} */
   let updates;
   let quitting = false,
@@ -478,29 +470,6 @@ function startDesktop() {
     if (startupPresentation === "presented") revealWindow();
     sendDesktopEvent(window.webContents, "areal-core:notification-open");
   }
-  /** @type {(NonNullable<ReturnType<typeof parseDeepLink>>&{id:number})|null} */
-  let mcpAppDeepLink = null;
-  let mcpAppDeepLinkSequence = 0;
-  /** @param {string} raw */
-  function receiveMcpAppDeepLink(raw) {
-    try {
-      mcpAppDeepLink = { ...parseDeepLink(raw), id: ++mcpAppDeepLinkSequence };
-    } catch {
-      return false;
-    }
-    if (window && !window.isDestroyed())
-      sendDesktopEvent(window.webContents, "areal-core:mcp-app-deep-link");
-    return true;
-  }
-  app.on("open-url", (event, url) => {
-    if (receiveMcpAppDeepLink(url)) event.preventDefault();
-  });
-  app.on("second-instance", (_event, argv) => {
-    for (const arg of argv)
-      if (/^(areal|codex):\/\/plugins\//.test(arg)) receiveMcpAppDeepLink(arg);
-  });
-  for (const arg of process.argv)
-    if (/^(areal|codex):\/\/plugins\//.test(arg)) receiveMcpAppDeepLink(arg);
   const themes = loadThemes();
   app.on("second-instance", revealWindow);
 
@@ -535,7 +504,6 @@ function startDesktop() {
   function publish() {
     refreshHostMenu();
     preview?.releaseInvalidOwners();
-    mcpApps?.revokeInvalid();
     if (publishPending) return;
     publishPending = true;
     setImmediate(() => {
@@ -712,7 +680,6 @@ function startDesktop() {
           computerUiAvailable = false;
           void stopComputer("ui_navigation").catch(() => {});
           projections.delete(owner);
-          mcpApps?.dispose();
         }
       });
       owner.on("did-finish-load", () => {
@@ -730,15 +697,9 @@ function startDesktop() {
         computerUiAvailable = false;
         void stopComputer("ui_crashed").catch(() => {});
         projections.delete(owner);
-        mcpApps?.dispose();
       });
       createdWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
       createdWindow.webContents.on("will-navigate", (event) => event.preventDefault());
-      createdWindow.webContents.on("will-frame-navigate", (event) => {
-        const from = event.initiator?.url ?? event.frame?.url ?? "";
-        if (from.startsWith("areal-mcp:") && !event.url.startsWith("areal-mcp:"))
-          event.preventDefault();
-      });
       createdWindow.webContents.on("will-prevent-unload", (event) => {
         if (
           exitReady &&
@@ -768,7 +729,6 @@ function startDesktop() {
         windowClosePromise = settleWindow(owner)
           .then(async () => {
             await preview?.dispose();
-            mcpApps?.dispose();
             if (!owner.isDestroyed()) owner.hide();
           })
           .catch((error) => {
@@ -1075,7 +1035,6 @@ function startDesktop() {
             }
           };
           app.on("will-quit", () => {
-            mcpApps?.dispose();
             void closeComputer().catch(() => {});
           });
           /** @param {Parameters<InstanceType<typeof CorePreview>["openDocument"]>[0]} request */
@@ -1092,121 +1051,6 @@ function startDesktop() {
               });
             return result;
           };
-          const mcpHost = (mcpApps = new McpAppsHost({
-            backend: serviceBackend,
-            ownerId: () =>
-              window && !window.isDestroyed() && !window.webContents.isDestroyed()
-                ? window.webContents.id
-                : undefined,
-            notify: (value) => {
-              if (window && !window.isDestroyed() && !window.webContents.isDestroyed())
-                sendDesktopEvent(window.webContents, "areal-core:mcp-app-event", value);
-            },
-            openFile: (request, current) =>
-              fileOpen(
-                {
-                  backend: serviceBackend,
-                  shell,
-                  home: app.getPath("home"),
-                  openHtml,
-                  authorize: current,
-                  chooseSave: (options) => showSaveDialog(options),
-                },
-                request,
-              ),
-          }));
-          serviceBackend.onMcpAppNotification = (event) => mcpHost.notification(event);
-          serviceBackend.onMcpPageToolNotice = (event) => {
-            void mcpHost.pageToolNotice(event).catch(() => {});
-          };
-          serviceBackend.onMcpPageToolsDisconnected = (event) =>
-            mcpHost.pageToolsDisconnected(event);
-          protocol.handle("areal-mcp", (request) => mcpHost.resource(request));
-          handleDesktopIpc("areal-core:mcp-app-deep-link-target", (event) => {
-            trusted(event);
-            return mcpAppDeepLink;
-          });
-          handleDesktopIpc("areal-core:mcp-app-deep-link-consumed", (event, id) => {
-            trusted(event);
-            if (mcpAppDeepLink?.id === id) mcpAppDeepLink = null;
-          });
-          const mcpFormResources = new McpFormResources({
-            backend: serviceBackend,
-            choose: (options) => showOpenDialog(options),
-            confirm: (options) => showMessageBox(options),
-          });
-          app.on("will-quit", () => mcpFormResources.dispose());
-          handleDesktopIpc("areal-core:mcp-form-resource", async (event, operation, request) => {
-            trusted(event);
-            const ownerWindow = trusted(event);
-            const current = () => {
-              trusted(event);
-              if (window !== ownerWindow || ownerWindow.isDestroyed())
-                throw new Error("Form window expired");
-            };
-            if (operation === "pick") return mcpFormResources.pick(request, current);
-            if (operation === "release") return mcpFormResources.release(request, current);
-            throw new Error("Invalid form resource operation");
-          });
-          handleDesktopIpc("areal-core:mcp-app", async (event, request) => {
-            trusted(event);
-            if (!modelRecord(request)) throw new Error("Invalid app request");
-            if (request.operation === "openGenUi")
-              return mcpHost.openGenUi(request, event.sender.id);
-            if (request.operation === "genUiVisibility")
-              return mcpHost.genUiVisibility(request, event.sender.id);
-            if (request.operation === "openFromResult")
-              return mcpHost.openFromResult(request, event.sender.id);
-            if (request.operation === "open")
-              return mcpHost.open(request, event.sender.id).catch(() => {
-                throw new Error("MCP App could not be opened");
-              });
-            if (request.operation === "close" && request.token === undefined) return {};
-            if (
-              ["request", "pageToolsReady", "pageToolsUnmount", "pageToolResult", "close"].includes(
-                String(request.operation),
-              ) &&
-              typeof request.token !== "string"
-            )
-              throw new Error("Invalid MCP App token");
-            if (request.operation === "request" && typeof request.token === "string")
-              return mcpHost.request(request.token, request.request, event.sender.id).catch(() => {
-                throw new Error("MCP App request rejected or incomplete");
-              });
-            if (
-              request.operation === "pageToolsReady" &&
-              typeof request.token === "string" &&
-              typeof request.mountId === "string"
-            )
-              return mcpHost.pageToolsReady(
-                request.token,
-                request.mountId,
-                request.declaration,
-                event.sender.id,
-              );
-            if (
-              request.operation === "pageToolsUnmount" &&
-              typeof request.token === "string" &&
-              typeof request.mountId === "string"
-            )
-              return mcpHost.pageToolsUnmount(request.token, request.mountId, event.sender.id);
-            if (
-              request.operation === "pageToolResult" &&
-              typeof request.token === "string" &&
-              typeof request.mountId === "string" &&
-              typeof request.callId === "string"
-            )
-              return mcpHost.pageToolResult(
-                request.token,
-                request.mountId,
-                request.callId,
-                request.reply,
-                event.sender.id,
-              );
-            if (request.operation === "close" && typeof request.token === "string")
-              return mcpHost.close(request.token, event.sender.id);
-            throw new Error("Unsupported app operation");
-          });
           handleDesktopIpc("areal-core:preview", async (event, request) => {
             const ownerWindow = trustedSender(event);
             validatePreview(request);
@@ -1827,6 +1671,7 @@ function startDesktop() {
             .on("resume", () => resumeActivity("suspend"))
             .on("unlock-screen", () => resumeActivity("lock-screen"));
           app.on("before-quit", () => {
+            if (exitReady || quitting) return;
             sampleActivity();
             void serviceBackend.analytics.flush();
           });

@@ -27,11 +27,6 @@ const {
 } = require("./desktop-contract/transport.cjs");
 /** @type {typeof import("./desktop-contract/transport.cjs").invalid} */
 const invalid = require("./desktop-contract/transport.cjs").invalid;
-const {
-  validateMcpPageDeclaration,
-  validateMcpPageCall,
-  validateMcpPageReply,
-} = require("./desktop-contract/mcp-page.cjs");
 
 /** Raw Electron payloads have no precision until the receiving owner validates them.
  * @typedef {{
@@ -42,10 +37,6 @@ const {
  * "areal-core:file-open":[request:unknown],
  * "areal-core:open-external":[url:unknown],
  * "areal-core:install-command-line-tools":[],
- * "areal-core:mcp-app":[request:unknown],
- * "areal-core:mcp-app-deep-link-consumed":[id:unknown],
- * "areal-core:mcp-app-deep-link-target":[],
- * "areal-core:mcp-form-resource":[operation:unknown,request:unknown],
  * "areal-core:notification-consumed":[id:unknown],
  * "areal-core:notification-target":[],
  * "areal-core:present-ready":[],
@@ -74,8 +65,6 @@ const {
  * "areal-core:quit-decision":[decision:unknown]
  * }} DesktopSendArguments */
 /** @typedef {{
- * "areal-core:mcp-app-deep-link":[],
- * "areal-core:mcp-app-event":[event:unknown],
  * "areal-core:notification-open":[],
  * "areal-core:preview-event":[event:unknown],
  * "areal-core:snap-shot-event":[event:unknown],
@@ -91,7 +80,6 @@ const {
 /** @typedef {<N extends keyof DesktopSendArguments>(channel:N,...args:DesktopSendArguments[N])=>void} DesktopSend */
 
 /** @typedef {{state:'idle'}|{state:'quitting',phase:'checking'|'stopping'|'finishing'}} QuitProgress */
-/** @typedef {{id:number,pluginId:string,marketplace?:string,toolName:string,path:string}} McpAppDeepLink */
 /** @typedef {{projectId:string}&({threadId:string,taskId?:never}|{taskId:string,runId?:string,questionId?:string})} NotificationTarget */
 
 /** @template {keyof DesktopInvokeArguments} N @typedef {(...args:DesktopInvokeArguments[N])=>Promise<unknown>} BridgeInvoke */
@@ -119,17 +107,15 @@ const {
  * theme:BridgeInvoke<'areal-core:theme'>,preview:BridgeInvoke<'areal-core:preview'>,
  * updateState:BridgeInvoke<'areal-core:update-state'>,downloadUpdate:BridgeInvoke<'areal-core:update-download'>,
  * recoverUpdateResources:BridgeInvoke<'areal-core:update-recover-resources'>,
- * mcpApp:BridgeInvoke<'areal-core:mcp-app'>,mcpFormResource:BridgeInvoke<'areal-core:mcp-form-resource'>,
  * setInterfaceLocale:(locale:unknown)=>void,requestProjection:(requestId:unknown)=>void,
  * onProjection:(listener:(value:unknown)=>void)=>()=>void,
  * onPreviewEvent:(listener:(value:unknown)=>void)=>()=>void,onTheme:(listener:(value:unknown)=>void)=>()=>void,
- * onUpdate:(listener:(value:unknown)=>void)=>()=>void,onMcpAppEvent:(listener:(value:unknown)=>void)=>()=>void,
+ * onUpdate:(listener:(value:unknown)=>void)=>()=>void,
  * onQuitProgress:(listener:(value:QuitProgress)=>void)=>()=>void,
  * onQuitRequested:(listener:()=>boolean|Promise<boolean>)=>()=>void,
  * onWindowClosing:(listener:()=>boolean|Promise<boolean>)=>()=>void,
  * onWindowOpened:(listener:()=>void)=>()=>void,
- * onNotificationOpen:(listener:(value:NotificationTarget)=>void)=>()=>void,
- * onMcpAppDeepLink:(listener:(value:McpAppDeepLink)=>void|Promise<void>)=>()=>void
+ * onNotificationOpen:(listener:(value:NotificationTarget)=>void)=>()=>void
  * }} DesktopBridge */
 
 /** @typedef {{message:string, code?:string|number, reason?:string, submissionUnknown?:boolean, requestId?:string, delivery?:'resultUnavailable', outcome?:import('../../runtime-client/core.js').FailureOutcome, recovery?:import('../../runtime-client/core.js').Recovery}} DesktopError */
@@ -713,7 +699,4 @@ module.exports = {
   /** @type {(request:unknown)=>asserts request is PreviewRequest} */
   validatePreview: validatePreview,
   desktopError,
-  validateMcpPageDeclaration,
-  validateMcpPageCall,
-  validateMcpPageReply,
 };

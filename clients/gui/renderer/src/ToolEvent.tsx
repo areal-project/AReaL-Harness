@@ -27,7 +27,6 @@ import { verifiedFileReceipts } from "./TurnFileSummary.js";
 import { DiffViewer } from "./components/ui/diff-viewer.js";
 import { MessageActions } from "./MessageActions.js";
 import { SentAttachment } from "./MessageAttachment.js";
-import type { McpResultSource, McpResultState } from "./mcp-app-services.js";
 import type { Action, Data } from "./services.js";
 /** 文件和目录只显示末段名称；完整路径放在悬停提示里。 */
 function fileName(path: string): string {
@@ -45,8 +44,6 @@ export function ToolEvent({
   action,
   projectId,
   threadId,
-  onOpenResult,
-  resultState,
   onLoadDetails,
   detailsLoading,
   detailsError,
@@ -56,8 +53,6 @@ export function ToolEvent({
   detailsLoading?: boolean;
   detailsError?: string;
   mediaGeneration?: string;
-  onOpenResult?: (source: McpResultSource) => Promise<void>;
-  resultState?: McpResultState;
   /** Accepted for host compatibility; running rows stay static (CONV-STATUS-01). */
   animate?: boolean;
   item: Data;
@@ -198,22 +193,6 @@ export function ToolEvent({
       active = false;
     };
   }, [turnId, item.id, file?.path, readOnly, readTurnReview]);
-  useEffect(() => {
-    if (resultState?.message) {
-      setHasOpened(true);
-      setOpen(true);
-    }
-  }, [resultState?.message]);
-  const eligibleResult =
-    onOpenResult &&
-    projectId &&
-    threadId &&
-    turnId &&
-    item.execution?.interactiveResult === true &&
-    item.status === "completed" &&
-    item.success === true &&
-    item.execution?.outcome === "succeeded" &&
-    item.execution?.backend === "mcp";
   const current = review?.itemId === item.id ? review : undefined;
   const mediaSource = turnId
     ? {
@@ -411,23 +390,9 @@ export function ToolEvent({
           <ActivityRowChevron open={open} />
         </ActivityRowButton>
       )}
-      {eligibleResult && (
-        <Button
-          variant="ghost"
-          disabled={resultState?.opening}
-          onClick={() => void onOpenResult({ projectId, threadId, turnId, itemId: item.id })}
-        >
-          {resultState?.opening ? t("operations.openingResult") : t("operations.openResult")}
-        </Button>
-      )}
       {imageError && (
         <p role="status" className="tool-result tool-failed">
           {imageError}
-        </p>
-      )}
-      {resultState?.message && (
-        <p role="status" className="notice">
-          {resultState.message}
         </p>
       )}
       {file && diffOpen && current && !current.error && (

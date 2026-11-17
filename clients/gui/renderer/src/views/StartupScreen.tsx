@@ -84,7 +84,7 @@ export function StartupScreen({
               <p role={failed ? "alert" : "status"}>
                 {t(failed ? "startup.failed" : delayed ? "startup.delayed" : "startup.loading")}
               </p>
-              {failed && (
+              {(failed || delayed) && (
                 <>
                   <div className="startup-actions">
                     {state.restoration.failed && (

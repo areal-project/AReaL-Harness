@@ -294,7 +294,6 @@ export function ContentSystemPreview({ dark }: { dark: boolean }) {
               {text}
             </MessageResponse>
           )}
-          interactive={() => <p>交互页面由原有制品宿主打开；此离线样例没有制品。</p>}
         />
       </section>
       <details>

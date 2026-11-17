@@ -1,6 +1,5 @@
 import React from "react";
 import { projectUserState } from "../state/userStates.js";
-import { errorText } from "../errors/errorCopy.js";
 import { AgentHistoryPane } from "../AgentHistoryPane.js";
 import { browserPageId, isBrowserTab } from "../app-shell/useBrowserWorkspace.js";
 import { ContextPane } from "../ContextPane.js";
@@ -9,7 +8,6 @@ import { ExecutionsPane } from "../ExecutionsPane.js";
 import { GitPane } from "../GitPane.js";
 import { GoalEditor } from "../Goal.js";
 import { useI18n } from "../i18n/IntlProvider.js";
-import { useMcpAppsWorkspace } from "../McpAppsWorkspace.js";
 import { ModelTrajectoryPane } from "../ModelTrajectoryPane.js";
 import { PlanPane } from "../PlanPane.js";
 import { Preview } from "../Preview.js";
@@ -18,7 +16,6 @@ import { ProcessesPane } from "../ProcessesPane.js";
 import { Queue } from "../Queue.js";
 import { SavedPermissionsPane } from "../SavedPermissionsPane.js";
 import { type Action, type Data, type PlatformServices } from "../services.js";
-import { McpAppEntrypoints } from "../settings/McpAppsSettings.js";
 import { McpSettings, TaskSkillsSettings } from "../settings/ResourceSettings.js";
 import { SideChatPane } from "../SideChatPane.js";
 import { projectExecutionBlocked } from "../state/projectExecution.js";
@@ -32,14 +29,13 @@ import { isTerminalTab } from "../terminal/terminalWorkspace.js";
 import { isSideChatTab, parseSideResourceTab } from "../useSideChatTabs.js";
 import { ConversationUsage } from "../views/ConversationUsage.js";
 import { WorkgroupsPane } from "../WorkgroupsPane.js";
-import { WorkspaceFilePane, workspaceDocumentOwner } from "../WorkspaceFilePane.js";
+import { WorkspaceFilePane } from "../WorkspaceFilePane.js";
 
 type WorkspacePanelProps = {
   panel: string;
   session: ReturnType<typeof useSessionNavigation>;
   services: PlatformServices;
   action: Action;
-  mcpWorkspace: ReturnType<typeof useMcpAppsWorkspace>;
   workspacePanels: ReturnType<typeof useWorkspacePanels>;
   preview: ReturnType<typeof useWorkspacePreview>;
   panelNavigation: ReturnType<typeof usePanelNavigation>;
@@ -62,7 +58,6 @@ export function WorkspacePanelContent({
   session,
   services,
   action,
-  mcpWorkspace,
   workspacePanels,
   preview,
   panelNavigation,
@@ -81,14 +76,13 @@ export function WorkspacePanelContent({
   const { browserWorkspace, openBrowser, onLink, rememberPanelTrigger } = preview;
   const { showPanel, hidePanel } = panelNavigation;
   const { open } = navigationCommands;
-  const { openFile, dirtyFiles, reviewRequest, requestReview: setReviewRequest } = documents;
+  const { openFile, reviewRequest, requestReview: setReviewRequest } = documents;
   const { filesOpen } = workspacePanels.view;
   const queue = project?.state?.queues[threadId];
   const { t } = useI18n();
 
   if (!project) return null;
   const props = { project, thread, action };
-  if (panel.startsWith("mcp-app:")) return mcpWorkspace.render(panel);
   if (
     (panel === "旁路讨论" || panel === "历史旁路讨论") &&
     thread &&
@@ -143,44 +137,23 @@ export function WorkspacePanelContent({
     );
   if (panel.startsWith("file:"))
     return (
-      <div className="flex h-full min-h-0 flex-col">
-        {threadId && (
-          <McpAppEntrypoints
-            servers={mcpWorkspace.servers}
-            loadMetadataImage={mcpWorkspace.loadMetadataImage}
-            kind="file"
-            fileName={panel.slice(5)}
-            onOpen={(server, tool) => {
-              if (
-                dirtyFiles[`${workspaceDocumentOwner(project.id, project.root)}:${panel.slice(5)}`]
-              ) {
-                setError("请先保存当前文件，再用应用打开。");
-                return;
-              }
-              void mcpWorkspace
-                .openApp(server, tool, { kind: "file", filePath: panel.slice(5) })
-                .catch((cause) => setError(errorText(t, cause)));
-            }}
-          />
-        )}
-        <WorkspaceFilePane
-          key={`${project.id}:${project.root}:${panel}`}
-          projectId={project.id}
-          root={project.root}
-          path={panel.slice(5)}
-          location={workspacePanels.view.fileLocation}
-          action={action}
-          onDirty={(path, dirty) => {
-            documents.markDirty(project.id, project.root, path, dirty);
-          }}
-          onLink={onLink}
-          fileOpen={thread?.cloud ? undefined : contextualFileOpen}
-          preferredFileOpenTarget={library.settings?.fileOpenTarget}
-          filesOpen={filesOpen}
-          onToggleFiles={workspacePanels.toggleFiles}
-          tree={workspaceFileTree}
-        />
-      </div>
+      <WorkspaceFilePane
+        key={`${project.id}:${project.root}:${panel}`}
+        projectId={project.id}
+        root={project.root}
+        path={panel.slice(5)}
+        location={workspacePanels.view.fileLocation}
+        action={action}
+        onDirty={(path, dirty) => {
+          documents.markDirty(project.id, project.root, path, dirty);
+        }}
+        onLink={onLink}
+        fileOpen={thread?.cloud ? undefined : contextualFileOpen}
+        preferredFileOpenTarget={library.settings?.fileOpenTarget}
+        filesOpen={filesOpen}
+        onToggleFiles={workspacePanels.toggleFiles}
+        tree={workspaceFileTree}
+      />
     );
   if (panel === "文件")
     return <div className="file-preview-empty">{t("common.files.selectPreview")}</div>;

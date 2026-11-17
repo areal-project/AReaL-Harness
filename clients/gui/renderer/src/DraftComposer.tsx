@@ -49,7 +49,6 @@ import {
   clearComposerSkills,
   readComposerSkills,
 } from "./ComposerSkills.js";
-import { ComposerMcp } from "./ComposerMcp.js";
 import { composerFeatureEntries } from "./composerFeatures.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { CircleAlert } from "lucide-react";
@@ -155,7 +154,6 @@ export function DraftComposer({
   const annotationBlocked = imageAnnotationBlocked(key, input.files);
   const chosenProfile = resolveDraftProfile(project, profileSelection);
   const [menuAnchor, setMenuAnchor] = useState<HTMLDivElement | null>(null);
-  const [mcpOpen, setMcpOpen] = useState(false);
   const setPlanMode = (enabled: boolean) => {
     setPlan(enabled);
     localStorage.setItem(`${key}:plan`, String(enabled));
@@ -885,15 +883,6 @@ export function DraftComposer({
                     if (!editLocked) upload.current?.click();
                   },
                 },
-                mcp:
-                  project.id !== "projectless"
-                    ? {
-                        disabled: !executionReady,
-                        run: () => {
-                          if (executionReady) setMcpOpen(true);
-                        },
-                      }
-                    : undefined,
                 files: project.root
                   ? {
                       disabled: !executionReady,
@@ -1068,16 +1057,6 @@ export function DraftComposer({
           {preferenceNotice}
         </p>
       )}
-      <ComposerMcp
-        projectId={project.id}
-        action={readAction}
-        open={executionReady && mcpOpen}
-        anchor={menuAnchor}
-        onClose={() => {
-          setMcpOpen(false);
-          api.current?.focus();
-        }}
-      />
     </div>
   );
 }

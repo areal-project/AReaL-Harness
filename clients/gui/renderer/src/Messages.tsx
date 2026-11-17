@@ -33,13 +33,10 @@ import { pendingMessageProjected, setPendingMessage, usePendingMessage } from ".
 import type { ConversationSelectionReference } from "./conversationSelectionReference.js";
 import { projectConversationContent, conversationContentToText } from "./conversationContent.js";
 import { ConversationContentView } from "./ConversationContentView.js";
-import { GenUiCard } from "./GenUiWorkspace.js";
-import { submitMessage, sending, markSending } from "./Composer.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { errorText } from "./errors/errorCopy.js";
 import { WorktreeStatus } from "./WorktreeStatus.js";
 import { TurnUsage } from "./TurnUsage.js";
-import { mcpResultKey, type McpResultSource, type McpResultState } from "./mcp-app-services.js";
 import { useForkHistory } from "./ForkHistory.js";
 import { DeferredHistoryItem, useConversationHistory } from "./ConversationHistory.js";
 import { UnknownToolInspection } from "./UnknownToolInspection.js";
@@ -122,21 +119,13 @@ export function Messages({
   embedded = false,
   showTurnNavigation = true,
   readOnly = false,
-  interactivePages = !readOnly,
   decisionShown = false,
   afterTurns,
   reserveResponseSpace = !embedded,
-  onOpenResult,
-  resultStates,
-  onGenUiFollowUp,
 }: {
-  onGenUiFollowUp?: (prompt: string) => Promise<void>;
-  onOpenResult?: (source: McpResultSource) => Promise<void>;
-  resultStates?: Record<string, McpResultState>;
   embedded?: boolean;
   showTurnNavigation?: boolean;
   readOnly?: boolean;
-  interactivePages?: boolean;
   /** The host renders this thread's pending decision cards (Composer); the transcript tail then does not repeat the wait. */
   decisionShown?: boolean;
   afterTurns?: ReactNode;
@@ -545,31 +534,6 @@ export function Messages({
     },
     [fileOpen, onFile, project.id, thread.id],
   );
-  const sendGenUi = async (prompt: string) => {
-    if (readOnly || !project.state?.connected || localThread.desktop?.archived)
-      throw Error("Conversation unavailable");
-    if (onGenUiFollowUp) return onGenUiFollowUp(prompt);
-    if (
-      localThread.conversation?.kind === "side" &&
-      localThread.conversation.policy?.kind !== "sideExecutableV2"
-    )
-      throw Error("Side submission unavailable");
-    const key = `areal-gui:draft:${project.id}:${localThread.id}`;
-    if (
-      sending.has(key) ||
-      project.pending?.some((entry: Data) => entry.params?.threadId === localThread.id)
-    )
-      throw Error("Submission needs confirmation");
-    markSending(key, true);
-    try {
-      await submitMessage(action, project.id, localThread.id, prompt, [], {
-        appMessage: true,
-        enqueue: !!localThread.turns?.some((turn: Data) => turn.status === "inProgress"),
-      });
-    } finally {
-      markSending(key, false);
-    }
-  };
   const renderAgentMessage = (entry: Data, turn: Data, deferActions = false) => {
     if (!entry.text?.trim()) return null;
     const blocks = projectConversationContent(
@@ -615,29 +579,6 @@ export function Messages({
               {text}
             </MessageResponse>
           )}
-          interactive={(part) =>
-            interactivePages && !inheritedIds.has(turn.id) ? (
-              <GenUiCard
-                key={`${entry.id}:${part.offset}`}
-                source={{
-                  projectId: project.id,
-                  threadId: localThread.id,
-                  turnId: turn.id,
-                  itemId: entry.id,
-                  referenceOffset: part.offset,
-                }}
-                title={part.reference.title ?? t("genUi.title")}
-                dark={dark}
-                send={
-                  readOnly || localThread.desktop?.archived || !project.state?.connected
-                    ? undefined
-                    : live.sendGenUi
-                }
-              />
-            ) : (
-              <p role="status">{t("genUi.unavailable")}</p>
-            )
-          }
         />
       </div>
     );
@@ -915,9 +856,7 @@ export function Messages({
     rememberReading,
     renderAgentMessage,
     loadHistory: history.load,
-    sendGenUi,
     onFork,
-    onOpenResult,
     onFile,
     onAgent,
     readTurnReview,
@@ -928,24 +867,12 @@ export function Messages({
   const turnStamp = turnContextStamp(
     project,
     localThread,
-    [
-      owner,
-      dark,
-      readOnly,
-      interactivePages,
-      decisionShown,
-      embedded,
-      canFork,
-      forking,
-      ordinary,
-      editable,
-    ],
+    [owner, dark, readOnly, decisionShown, embedded, canFork, forking, ordinary, editable],
     live,
   ).concat(
     JSON.stringify([
       creationAnchor,
       latestSchedules,
-      resultStates,
       history.failure,
       history.generation,
       turnIdentity(t),
@@ -1463,26 +1390,6 @@ export function Messages({
                                         // prettier-ignore
                                         detailsError={processRecords.some((record: Data) => record.id === history.failure?.itemId) ? /* raw-error-ok: 历史读取错误已在 ConversationHistory 中转为词条 */ history.failure?.message : undefined}
                                         {...disclosure}
-                                        onOpenResult={
-                                          (ordinary ||
-                                            localThread.conversation?.policy?.kind ===
-                                              "sideExecutableV2") &&
-                                          interactivePages &&
-                                          !isInherited &&
-                                          !localThread.desktop?.archived
-                                            ? live.onOpenResult
-                                            : undefined
-                                        }
-                                        resultState={
-                                          resultStates?.[
-                                            mcpResultKey({
-                                              projectId: project.id,
-                                              threadId: thread.id,
-                                              turnId: turn.id,
-                                              itemId: entry.id,
-                                            })
-                                          ]
-                                        }
                                         onFile={readOnly ? undefined : live.onFile}
                                         onAgent={readOnly || isInherited ? undefined : live.onAgent}
                                         agents={isInherited ? undefined : project.state?.threads}

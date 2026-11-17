@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 let hostClientModule;
 export async function libraryCommand(page, params) {
   hostClientModule ??= createRequire(
-    new URL("../../packages/gen-ui/package.json", import.meta.url),
+    new URL("../../packages/browser-data/package.json", import.meta.url),
   )("esbuild")
     .build({
       entryPoints: [fileURLToPath(new URL("../../packages/client/src/index.ts", import.meta.url))],

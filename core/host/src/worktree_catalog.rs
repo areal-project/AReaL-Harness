@@ -225,7 +225,7 @@ pub(super) async fn add_project(host: &Rc<Host>, source: &str, params: Value) ->
     host.changed();
     Ok(json!({"projectId":alias}))
 }
-fn project(host: &Host, source: &str, alias: &str) -> Result<ProjectRegistration> {
+pub(super) fn project(host: &Host, source: &str, alias: &str) -> Result<ProjectRegistration> {
     if source == "host" {
         return host
             .slots
@@ -251,6 +251,86 @@ fn project(host: &Host, source: &str, alias: &str) -> Result<ProjectRegistration
         .into_iter()
         .find(|registration| registration.project_id == matches[0].0)
         .context("RESOURCE_UNAVAILABLE")
+}
+
+/// 会话操作沿既有归属索引与创建记录定位执行工作树，不把逻辑项目当成执行实例。
+pub(super) async fn thread_project(
+    host: &Host,
+    source: &str,
+    requested: &str,
+    thread: &str,
+) -> Result<String> {
+    let home = super::library_store::source_home(host, source)?;
+    let rows = saved_projects(&home)?;
+    let original = rows
+        .iter()
+        .find(|row| row["id"] == requested)
+        .context("RESOURCE_UNAVAILABLE")?;
+    let logical = original["logicalProjectId"].as_str().unwrap_or(requested);
+    let logical_of = |row: &Value| {
+        row["logicalProjectId"]
+            .as_str()
+            .or_else(|| row["id"].as_str())
+            .map(str::to_owned)
+    };
+    let mut matches = BTreeSet::new();
+    let library = super::library_store::read_source(host, source)?;
+    let shell = host.read_models.shell(host).await?;
+    for row in &rows {
+        let alias = row["id"].as_str().unwrap();
+        let indexed = if alias.len() == 24 && alias.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            storage::read_optional::<Vec<String>>(
+                &home.join("thread-owners").join(format!("{alias}.json")),
+            )?
+            .is_some_and(|ids| ids.iter().any(|id| id == thread))
+        } else {
+            false
+        };
+        let cached = library["projects"][alias]["navigationSummaries"]
+            .as_array()
+            .is_some_and(|items| items.iter().any(|item| item["id"] == thread));
+        let observed =
+            shell.projects.iter().any(|project| {
+                project.alias.as_ref().is_some_and(|binding| {
+                    binding.source_id == source && binding.project_id == alias
+                }) && match &project.summaries {
+                    crate::shell::Summaries::Fresh { items }
+                    | crate::shell::Summaries::Cached { items }
+                    | crate::shell::Summaries::Unknown { items } => {
+                        items.iter().any(|item| item.id == thread)
+                    }
+                }
+            });
+        if indexed || cached || observed {
+            ensure!(logical_of(row).as_deref() == Some(logical), "FORBIDDEN");
+            matches.insert(alias.to_owned());
+        }
+    }
+    for record in operations(&home)? {
+        if record["projectId"] == logical
+            && record["threadId"] == thread
+            && let Some(alias) = record["executionProjectId"].as_str()
+        {
+            let row = rows
+                .iter()
+                .find(|row| row["id"] == alias)
+                .context("RESOURCE_UNAVAILABLE")?;
+            ensure!(logical_of(row).as_deref() == Some(logical), "FORBIDDEN");
+            matches.insert(alias.into());
+        }
+    }
+    ensure!(matches.len() <= 1, "RESOURCE_UNAVAILABLE");
+    if let Some(alias) = matches.into_iter().next() {
+        return Ok(alias);
+    }
+    ensure!(
+        rows.iter()
+            .filter(|row| logical_of(row).as_deref() == Some(logical))
+            .count()
+            == 1,
+        "RESOURCE_UNAVAILABLE"
+    );
+    Ok(logical.into())
 }
 async fn request(host: &Rc<Host>, id: &str, method: &str, params: Value) -> Result<Value> {
     let connections = &host.schedules.connections;

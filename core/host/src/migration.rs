@@ -1439,6 +1439,14 @@ impl Migration {
             .map(|(_, alias)| alias)
             .collect())
     }
+    pub(crate) fn source_migration_id(&self, source_id: &str) -> Result<String> {
+        for record in self.records()? {
+            if record.source_id == source_id && self.source_ready(&record)? {
+                return Ok(record.request_id);
+            }
+        }
+        Err(error("sourceNotFound", "GUI source is not ready"))
+    }
     pub(crate) fn remote_bindings(
         &self,
         source_id: &str,

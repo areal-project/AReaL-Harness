@@ -6,7 +6,6 @@ import { Button } from "./components/ui/button.js";
 import { sending, subscribeSending } from "./Composer.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { Inbox } from "./Inbox.js";
-import { useMcpAppsWorkspace } from "./McpAppsWorkspace.js";
 import { recoverySettings } from "./recoveryPresentation.js";
 import { type Data, type PlatformServices } from "./services.js";
 import { useApplicationPreferences } from "./settings/applicationPreferences.js";
@@ -298,32 +297,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     threadId,
     thread,
   ]);
-  const mcpWorkspace = useMcpAppsWorkspace({
-    services,
-    project,
-    deepLinksEnabled: initialReleased,
-    projects: snapshot.projects,
-    activeTab:
-      !annotationVisible &&
-      !pluginsOpen &&
-      !settingsOpen &&
-      !taskCenterOpen &&
-      workspaceView !== "conversation"
-        ? panel
-        : "",
-    threadId,
-    action: resourceAction,
-    onOpenThread: async (pid, tid) => {
-      surfaces.leaveSettings();
-      await open(pid, tid);
-    },
-    onReveal: (tab, owner) => {
-      if (workspacePanels.revealApp(tab, owner)) surfaces.leaveSettings();
-    },
-    onRemoveTab: workspacePanels.removeApp,
-    onError: setError,
-  });
-  const composerWorkspace = useComposerWorkspace(project, thread, mcpWorkspace, setError);
+  const composerWorkspace = useComposerWorkspace(project);
 
   useEffect(navigationCommands.subscribeNotifications, [
     services,
@@ -404,7 +378,6 @@ function AppContent({ services }: { services: PlatformServices }) {
       session={session}
       services={services}
       action={action}
-      mcpWorkspace={mcpWorkspace}
       workspacePanels={workspacePanels}
       preview={preview}
       panelNavigation={panelNavigation}
@@ -688,7 +661,6 @@ function AppContent({ services }: { services: PlatformServices }) {
                     session={session}
                     surfaces={surfaces}
                     navigationCommands={navigationCommands}
-                    mcpWorkspace={mcpWorkspace}
                   />
                 }
                 {pluginCenterActive ? null : settingsOpen ? (
@@ -729,7 +701,6 @@ function AppContent({ services }: { services: PlatformServices }) {
                     admitting={admitting}
                     mainPane={mainPane}
                     workspacePanels={workspacePanels}
-                    mcpWorkspace={mcpWorkspace}
                     side={side}
                     fork={fork}
                     preview={preview}
@@ -748,7 +719,6 @@ function AppContent({ services }: { services: PlatformServices }) {
                   />
                 )}
               </WorkSurface>
-              {mcpWorkspace.pages}
               <WorkspacePanels
                 session={session}
                 workspacePanels={workspacePanels}
@@ -757,7 +727,6 @@ function AppContent({ services }: { services: PlatformServices }) {
                 annotation={annotation}
                 surfaces={surfaces}
                 browserWorkspace={browserWorkspace}
-                mcpWorkspace={mcpWorkspace}
                 taskCenterOpen={taskCenterOpen}
                 services={services}
                 dark={dark}

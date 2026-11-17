@@ -9,10 +9,9 @@ const currentCommands = new Set([
   "create",
   "configure",
 ]);
-const currentManagePrefixes = ["plugin", "marketplace", "mcpApp", "mcpForm"];
+const currentManagePrefixes = ["plugin", "marketplace"];
 const currentManageOperations = new Set([
   "mcpExtensionCall",
-  "mcpToolResult",
   "hookAcknowledge",
   "taskCreate",
   "taskUpdate",

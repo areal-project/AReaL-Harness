@@ -74,7 +74,6 @@ function shellFromManagedArgv(argv) {
 /** @type {Record<string,string> & Record<import("@areal/workbench/desktop-contract/management").PluginMutation,string>} */
 const mutations = {
   pluginArchiveImport: "areal/plugin/importArchive",
-  mcpFormResourceStage: "areal/mcp/form/resource/stage",
   pluginHooksConfigure: "areal/plugin/hooks/configure",
   hookAcknowledge: "areal/hook/acknowledge",
   pluginAuthConfigure: "areal/plugin/auth/configure",
@@ -114,7 +113,6 @@ const managementMethods = new Set([
 /** @type {Record<string,string[]>} */
 const fields = {
   pluginArchiveImport: ["path", "expectedRevision"],
-  mcpFormResourceStage: ["selectionToken", "paths"],
   pluginHooksConfigure: [
     "id",
     "expectedDigest",
@@ -166,20 +164,8 @@ const fields = {
 };
 /** @type {Record<string,[string,string[]]>} */
 const reads = {
-  mcpFormResourcePrepare: [
-    "areal/mcp/form/resource/prepare",
-    ["threadId", "requestId", "fieldName"],
-  ],
-  mcpFormResourceRelease: [
-    "areal/mcp/form/resource/release",
-    ["threadId", "requestId", "fieldName", "uri"],
-  ],
   pluginHooks: ["areal/plugin/hooks/list", []],
   pluginMcp: ["areal/plugin/mcp/list", []],
-  mcpApps: ["areal/mcp/apps/list", ["threadId"]],
-  genUiSource: ["areal/genUi/source", ["threadId", "turnId", "itemId", "path"]],
-  mcpForms: ["areal/mcp/forms/list", ["threadId"]],
-  mcpToolResult: ["areal/mcp/tool/result", ["threadId", "callId"]],
   plugins: ["areal/plugin/list", []],
   plugin: ["areal/plugin/read", ["id"]],
   pluginComponents: ["areal/plugin/components", ["id"]],
@@ -232,7 +218,7 @@ const pick = (value, keys) =>
   Object.fromEntries(
     keys.filter((key) => value[key] !== undefined).map((key) => [key, value[key]]),
   );
-/** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {import("@areal/workbench/desktop-contract/management").ManagementRequest} rawRequest @param {{guiTerminalClient?:import('@areal/workbench-service/host-core-client').HostCoreClient,guiTerminalRequest?:(method:string,params:import("./project-state.cjs").SubmissionParams)=>Promise<unknown>,onMcpAppOpened?:(project:Project,client:import("@areal/runtime-client/core").CoreClient,request:Record<string,unknown>,result:unknown)=>void}} [context] @returns {Promise<unknown>} */
+/** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {import("@areal/workbench/desktop-contract/management").ManagementRequest} rawRequest @param {{guiTerminalClient?:import('@areal/workbench-service/host-core-client').HostCoreClient,guiTerminalRequest?:(method:string,params:import("./project-state.cjs").SubmissionParams)=>Promise<unknown>}} [context] @returns {Promise<unknown>} */
 async function executeManagement(backend, project, rawRequest, context = {}) {
   if (typeof rawRequest.operation === "string" && taskOperations.has(rawRequest.operation))
     return manageTask(backend, project, rawRequest);
@@ -241,12 +227,6 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
   if (!current) throw new Error("Core 未连接");
   const { operation } = request;
   const terminalRequest = context.guiTerminalRequest;
-  if (operation === "mcpFormResourceSubmission") {
-    const method = "areal/mcp/form/resource/stage";
-    if (typeof request.requestId !== "string" || !request.requestId.trim())
-      throw new Error("Missing upload submission ID");
-    return backend.readSubmission(project, method, { requestId: request.requestId });
-  }
   if (operation === "pluginSubmission")
     return readPluginSubmission(
       backend,
@@ -262,67 +242,21 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
     );
   if (operation === "pluginAuthCredential")
     return configurePluginAuthentication(backend, project, request);
-  if (
-    operation === "pluginAuth" ||
-    [
-      "mcpAppOpen",
-      "mcpAppOpenFromResult",
-      "mcpAppRequest",
-      "mcpAppClose",
-      "mcpExtensionCall",
-      "mcpFormRespond",
-      "mcpFormPreview",
-    ].includes(operation)
-  ) {
+  if (operation === "pluginAuth" || operation === "mcpExtensionCall") {
     /** @type {Record<string,[string,string[]]>} */
     const operations = {
       pluginAuth: ["areal/plugin/auth", ["id", "server", "operation"]],
-      mcpAppOpenFromResult: [
-        "areal/mcp/app/openFromResult",
-        ["threadId", "turnId", "itemId", "requestId"],
-      ],
-      mcpAppOpen: [
-        "areal/mcp/app/open",
-        [
-          "threadId",
-          "serverId",
-          "expectedGeneration",
-          "toolName",
-          "arguments",
-          "requestId",
-          "fileResource",
-          "deepLink",
-        ],
-      ],
-      mcpAppRequest: [
-        "areal/mcp/app/request",
-        ["threadId", "instanceId", "generation", "request", "requestId"],
-      ],
-      mcpAppClose: ["areal/mcp/app/close", ["threadId", "instanceId", "generation"]],
       mcpExtensionCall: [
         "areal/mcp/extension/call",
         ["threadId", "serverId", "expectedGeneration", "kind", "arguments", "requestId"],
       ],
-      mcpFormRespond: ["areal/mcp/form/respond", ["threadId", "requestId", "response"]],
-      mcpFormPreview: ["areal/mcp/form/preview", ["threadId", "requestId", "target"]],
     };
     const [method, keys] = operations[operation];
     const params = pick(request, keys);
     if (operation === "pluginAuth") params.operation = request.authOperation;
     const client = current;
-    if (operation === "mcpAppOpen") {
-      const observed = await backend.readObservation(project, requireThread(request), { client });
-      if (!modelRecord(observed.thread.status) || observed.thread.status.type !== "idle")
-        throw new Error("聊天正在执行，请等待结束后打开应用");
-      backend.connections.claimDesktopToolHost(project, client);
-      await backend.readObservation(project, requireThread(request), { client, resume: true });
-      backend.requireConnection(project, client);
-    }
     try {
-      const result = await client.request(method, params, { timeoutMs: 120000 });
-      if (operation === "mcpAppOpen" || operation === "mcpAppOpenFromResult")
-        context.onMcpAppOpened?.(project, client, request, result);
-      return result;
+      return await client.request(method, params, { timeoutMs: 120000 });
     } catch (cause) {
       const error = submissionError(cause);
       if (!error.settled && (typeof error.code !== "number" || error.code === -32603)) {
@@ -764,7 +698,7 @@ function readPlan(value) {
   if (!isCorePlan(value)) throw new Error("Core 计划结构无效");
   return value;
 }
-/** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {Record<string,unknown>} rawRequest @param {{guiTerminalClient?:import('@areal/workbench-service/host-core-client').HostCoreClient,guiTerminalRequest?:(method:string,params:import("./project-state.cjs").SubmissionParams)=>Promise<unknown>,onMcpAppOpened?:(project:Project,client:import("@areal/runtime-client/core").CoreClient,request:Record<string,unknown>,result:unknown)=>void}} [context] */
+/** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {Record<string,unknown>} rawRequest @param {{guiTerminalClient?:import('@areal/workbench-service/host-core-client').HostCoreClient,guiTerminalRequest?:(method:string,params:import("./project-state.cjs").SubmissionParams)=>Promise<unknown>}} [context] */
 async function manage(backend, project, rawRequest, context = {}) {
   const request = readManagementRequest(rawRequest);
   const result = await executeManagement(backend, project, request, context);

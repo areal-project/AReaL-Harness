@@ -43,7 +43,6 @@ const cleanup = new Set([
   "toolAcknowledge",
   "hookAcknowledge",
   "serverDrain",
-  "mcpAppClose",
 ]);
 const workspaceEffects = new Set(["save", "gitStage", "gitUnstage", "gitCommit", "gitPush"]);
 const threadEffects = new Set([

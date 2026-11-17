@@ -57,7 +57,6 @@ assert.ok(
 );
 const creatorWorkspace = creatorOnly ? workspace : join(scratch, "creator-workspace");
 const archiveEvidence = {};
-let appEvidence;
 let creatorEvidence;
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 const json = (path, value) => writeFile(path, JSON.stringify(value, null, 2));
@@ -508,31 +507,6 @@ async function launch() {
     timeout: 120_000,
   });
   page = await app.firstWindow();
-  await app.evaluate(
-    (_electron, modulePath) => {
-      const { McpAppsHost } = process.getBuiltinModule("node:module").createRequire(modulePath)(
-        modulePath,
-      );
-      globalThis.__conceptAppTrace = [];
-      for (const method of ["open", "adopt"]) {
-        const original = McpAppsHost.prototype[method];
-        McpAppsHost.prototype[method] = async function (...args) {
-          try {
-            return await original.apply(this, args);
-          } catch (error) {
-            globalThis.__conceptAppTrace.push({
-              method,
-              at: Date.now(),
-              message: error.message,
-              stack: error.stack,
-            });
-            throw error;
-          }
-        };
-      }
-    },
-    join(gui, "../../services/workbench/src/desktop/core/mcp-apps.cjs"),
-  );
   await app.evaluate(({ dialog }) => {
     const original = dialog.showMessageBox;
     dialog.showMessageBox = async (...args) => {
@@ -735,86 +709,6 @@ async function connectPackage(detail) {
     );
     return plugin?.servers.length === 1 && plugin.servers[0].state === "connected" ? plugin : null;
   }, "explicit digest trust connects package MCP");
-}
-const echoRequests = (entries) =>
-  entries.filter(
-    (event) =>
-      event.owner === "package" &&
-      event.event === "request" &&
-      event.method === "tools/call" &&
-      event.params.name === "concept.echo",
-  );
-async function settleAppApproval(read, label) {
-  let approvals = 0;
-  const value = await until(async () => {
-    const result = await read();
-    if (result) return result;
-    const approval = page.locator('[data-interaction="approval"]');
-    const allow = approval.getByRole("button", { name: "允许一次", exact: true });
-    if (!approvals && (await allow.count()) && (await allow.isVisible())) {
-      let enabled = false;
-      try {
-        enabled = await allow.isEnabled({ timeout: 250 });
-      } catch (error) {
-        if (await allow.count()) throw error;
-      }
-      if (enabled) {
-        await allow.click();
-        approvals++;
-      }
-    }
-    return null;
-  }, label);
-  assert.equal(approvals, 1, "the App action uses its ordinary visible Core approval");
-  return value;
-}
-async function openAndEchoApp(detail, ownerThreadId, expectedCalls) {
-  const before = (await state()).projects.find((project) => project.id === projectId);
-  const beforeThreads = Object.keys(before.state.threads).sort();
-  assert.equal(before.root, workspace);
-  assert.ok(before.state.threads[ownerThreadId], "App owner is a persisted source conversation");
-  assert.equal(
-    await page.getByTestId("areal-workbench").getAttribute("data-thread-id"),
-    ownerThreadId,
-  );
-  await detail.getByRole("button", { name: "Concept App", exact: true }).click();
-  await page.getByTestId("chat-input").waitFor();
-  const frame = await settleAppApproval(
-    async () => page.frames().find((frame) => /^areal-mcp:\/\/[^/]+\/view$/.test(frame.url())),
-    "actual MCP App frame after ordinary approval",
-  );
-  await frame.locator("#ready").filter({ hasText: "initialized" }).waitFor();
-  assert.equal(
-    await page.getByTestId("areal-workbench").getAttribute("data-thread-id"),
-    ownerThreadId,
-    "global App preserves its selected persisted owner",
-  );
-  assert.deepEqual(
-    Object.keys(
-      (await state()).projects.find((project) => project.id === projectId).state.threads,
-    ).sort(),
-    beforeThreads,
-    "opening App cannot create another execution thread",
-  );
-  assert.equal(requests.length, 0, "opening App cannot invoke inference");
-  await frame.getByRole("button", { name: "Echo literal", exact: true }).click();
-  await settleAppApproval(
-    async () =>
-      await frame.locator("#result").filter({ hasText: "ECHO_CONCEPT_LITERAL" }).isVisible(),
-    "App Echo after ordinary approval",
-  );
-  assert.deepEqual(JSON.parse(await frame.locator("#result").innerText()).content, [
-    { type: "text", text: "ECHO_CONCEPT_LITERAL" },
-  ]);
-  const echoes = echoRequests(await events());
-  assert.equal(
-    echoes.length,
-    expectedCalls,
-    "one explicit Echo produces one transport call without replay",
-  );
-  assert.ok(echoes.every((event) => event.params.arguments.value === "CONCEPT_LITERAL"));
-  assert.equal(requests.length, 0, "interactive App echo cannot invoke model inference");
-  return { frameUrl: frame.url(), threadId: ownerThreadId };
 }
 async function ownedCoreGeneration(ownerRoot) {
   return until(async () => {
@@ -1611,61 +1505,23 @@ try {
     checks.push(
       "package MCP is listed before connection, delegates management to the package, and shows the real connected state after explicit digest trust",
     );
-    const unboundThreads = Object.keys(
-      (await state()).projects.find((project) => project.id === projectId).state.threads,
-    ).sort();
-    assert.equal(await page.getByTestId("areal-workbench").getAttribute("data-thread-id"), "");
-    const unboundDetail = await detailFromResource(mcpRow("plugin"));
-    await unboundDetail.getByRole("button", { name: "Concept App", exact: true }).click();
-    await page.getByText("请先在侧栏选择已有会话，再打开应用。", { exact: true }).waitFor();
-    assert.deepEqual(
-      Object.keys(
-        (await state()).projects.find((project) => project.id === projectId).state.threads,
-      ).sort(),
-      unboundThreads,
-      "unbound global App refuses without implicitly creating or choosing a conversation",
-    );
-    assert.equal(echoRequests(await events()).length, 0);
-    assert.equal(requests.length, 0);
-    checks.push(
-      "unbound global App requests an explicit conversation without creating a worktree, dispatching a tool or submitting a draft",
-    );
     await selectOwner(legacyThread.threadId);
     threadId = legacyThread.threadId;
-    await settings();
-    await tab("MCP");
-    await scopeProject();
-    const appDialog = await detailFromResource(mcpRow("plugin"));
-    const directoryBeforeRestart = await call("manage", {
-      operation: "mcpApps",
-      projectId,
-      threadId,
-    });
-    const initialApp = await openAndEchoApp(appDialog, threadId, 1);
-    const appOwner = await call("manage", { projectId, threadId, operation: "inspect" });
+    const ownerProfile = await call("manage", { projectId, threadId, operation: "inspect" });
     assert.deepEqual(
-      { id: appOwner.configuration.profile.id, revision: appOwner.configuration.profile.revision },
+      {
+        id: ownerProfile.configuration.profile.id,
+        revision: ownerProfile.configuration.profile.revision,
+      },
       { id: "areal-standard", revision: "resources-00000000" },
-      "App preserves the selected historical profile binding",
+      "conversation preserves the selected historical profile binding",
     );
-    appEvidence = {
-      initial: initialApp,
-      epochBefore: directoryBeforeRestart.requestEpoch,
-      serverBefore: directoryBeforeRestart.data.find(
-        (server) => server.pluginId === fixture.pluginId,
-      ),
-    };
-    checks.push(
-      "interactive App remains reachable from plugin detail and returns the literal echo through an actual sandbox frame and MCP transport",
-    );
-    await capture("05-plugin-interactive-app");
     const oldDesktop = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
     const oldCore = await ownedCoreGeneration(workspace);
     const oldElectronPid = app.process().pid;
     await closeSmokeApplication(app);
     app = null;
     await assertApplicationStopped(env.AREAL_CORE_BIN, env, oldDesktop);
-    appEvidence.applicationStopped = true;
     await launch();
     await until(
       async () =>
@@ -1731,52 +1587,13 @@ try {
     );
     assert.equal(restoredPackage.trusted, true, "installed digest trust survives cold restart");
     assert.equal(restoredPackage.installedDigest, installed.installedDigest);
-    assert.equal(
-      echoRequests(await events()).length,
-      1,
-      "cold restart cannot replay the previous Echo",
-    );
     const reopenedDetail = await detailFromResource(mcpRow("plugin"));
     const reconnectedPackage = await connectPackage(reopenedDetail);
     assert.equal(reconnectedPackage.trusted, true);
     assert.equal(reconnectedPackage.installedDigest, installed.installedDigest);
-    const directoryAfterRestart = await call("manage", {
-      operation: "mcpApps",
-      projectId,
-      threadId,
-    });
-    assert.equal(typeof directoryBeforeRestart.requestEpoch, "string");
-    assert.equal(typeof directoryAfterRestart.requestEpoch, "string");
-    assert.notEqual(
-      directoryAfterRestart.requestEpoch,
-      directoryBeforeRestart.requestEpoch,
-      "cold Core restart invalidates the previous App epoch",
-    );
-    const reopenedApp = await openAndEchoApp(reopenedDetail, threadId, 2);
-    assert.notEqual(
-      reopenedApp.frameUrl,
-      initialApp.frameUrl,
-      "explicit reopen uses a new sandbox App token",
-    );
-    Object.assign(appEvidence, {
-      reopened: reopenedApp,
-      oldElectronPid,
-      newElectronPid: app.process().pid,
-      desktopBefore: { pid: oldDesktop.pid, generation: oldDesktop.desktopGeneration },
-      desktopAfter: { pid: newDesktop.pid, generation: newDesktop.desktopGeneration },
-      coreBefore: oldCore,
-      coreAfter: newCore,
-      epochBefore: directoryBeforeRestart.requestEpoch,
-      epochAfter: directoryAfterRestart.requestEpoch,
-      serverBefore: directoryBeforeRestart.data.find(
-        (server) => server.pluginId === fixture.pluginId,
-      ),
-      serverAfter: directoryAfterRestart.data.find(
-        (server) => server.pluginId === fixture.pluginId,
-      ),
-    });
+    await closeDetail();
     checks.push(
-      "cold GUI restart stops old Desktop and Core generations, retains resource identity and trust, and explicitly reconnects and reopens App for one new literal Echo without inference or replay",
+      "cold GUI restart stops old Desktop and Core generations, retains resource identity and trust, and explicitly reconnects package MCP",
     );
     await capture("06-reopened-resources");
     const beforeTry = Object.keys(
@@ -2043,13 +1860,6 @@ try {
 } catch (error) {
   failure = { message: error.message, stack: error.stack };
   process.exitCode = 1;
-  if (app)
-    await json(
-      join(scratch, "app-failure-trace.json"),
-      await app
-        .evaluate(() => globalThis.__conceptAppTrace)
-        .catch((e) => ({ unavailable: e.message })),
-    );
   if (page) await captureSmokeFailure(page, scratch, error);
 } finally {
   if (app)
@@ -2080,7 +1890,6 @@ try {
     instances,
     cleanup,
     archive: archiveEvidence,
-    app: appEvidence,
     creator: creatorEvidence,
     source: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
     sourceFiles,

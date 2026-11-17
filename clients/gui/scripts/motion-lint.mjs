@@ -5,8 +5,7 @@ import { fileURLToPath } from "node:url";
 // R-CHECK-021：时长用 --motion-* token、曲线用 --ease-* token、常驻循环用 var(--motion-loop)，减少动效时才能全部归零。
 const gui = fileURLToPath(new URL("../", import.meta.url));
 const ROOTS = ["renderer/src", "packages"];
-// gen-ui 的资源在沙箱 iframe 里运行，拿不到设计 token。
-const SKIP = /(?:^|\/)(?:node_modules|dist|generated|vendor)\/|^packages\/gen-ui\/assets\//;
+const SKIP = /(?:^|\/)(?:node_modules|dist|generated|vendor)\//;
 const DECLARATION =
   /(?<![\w-])(transition|transition-duration|transition-property|transition-timing-function|animation|animation-duration|animation-iteration-count|animation-timing-function)\s*:\s*([^;{}]*)/g;
 const LITERAL_EASING =

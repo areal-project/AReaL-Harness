@@ -469,16 +469,6 @@ export function createWorkbenchRoutes(
       // 原生进程的连接租约归 Main；其薄适配仍经 Host 访问 Core。
       if (desktop && name === "manage" && String(params.operation).startsWith("process"))
         return undefined;
-      if (name === "manage" && params.operation === "mcpApps") {
-        if (!client.writable("pages.command")) return undefined;
-        return {
-          value: await client.workbench("pages.command", {
-            operation: "catalog",
-            projectId: params.projectId,
-            ...(params.threadId ? { threadId: params.threadId } : {}),
-          } as Parameters<HostClient["workbench"]>[1]),
-        };
-      }
       if (name === "manage") {
         const operation = String(params.operation);
         const read = operation === "plugins" || operation === "plugin" || operation === "mcp";
@@ -642,9 +632,6 @@ export function hostPlatformCapabilities(
       (client.writable("session.send") && client.writable("session.control")),
     conversationCreate: desktop !== undefined || client.writable("session.create"),
     native: desktop !== undefined,
-    pages:
-      desktop !== undefined ||
-      (client.writable("pages.command") && client.writable("pages.resource")),
     library: desktop !== undefined || available("library.command"),
     ...(desktop === undefined && {
       taskCatalog: available("tasks.read"),
@@ -679,8 +666,12 @@ export function routeDesktopCommand(
   if (!desktop) return hostCommand as Run;
   const native = desktop.command as Run;
   return async (name, params) => {
-    // 非原生资料库操作必须先经过 workbench 的回执路径，不能旁路派发。
-    if (name === "library" && !desktopKeepsCommand(name, params))
+    // 非原生资料库与已迁至 Host 的域不能在失败后旁路回 Main。
+    if (
+      (name === "library" && !desktopKeepsCommand(name, params)) ||
+      name === "trajectory" ||
+      name === "feedback"
+    )
       throw backendUnavailable("资料库操作入口尚未就绪，请重新连接");
     if (!DESKTOP_COMMANDS.has(name) || desktopKeepsCommand(name, params) || !hostReady())
       return native(name, params);

@@ -74,20 +74,13 @@ export default defineConfig({
         },
       },
     },
-    ignorePatterns: [
-      "**/dist/**",
-      "**/vendor/**",
-      "**/generated/**",
-      "packages/gen-ui/assets/**",
-      "renderer/public/**",
-    ],
+    ignorePatterns: ["**/dist/**", "**/vendor/**", "**/generated/**", "renderer/public/**"],
   },
   fmt: {
     ignorePatterns: [
       "**/dist/**",
       "**/vendor/**",
       "**/generated/**",
-      "packages/gen-ui/assets/**",
       "renderer/public/**",
       "pnpm-lock.yaml",
       "patches/**",
@@ -143,19 +136,9 @@ export default defineConfig({
         },
       },
       "desktop-build": {
-        command: "node build.mjs",
-        cwd: "packages/gen-ui",
+        command: 'node -e ""',
         dependsOn: ["browser-automation-build", "browser-data-build", "snapshots-build"],
-        cache: {
-          input: [
-            { pattern: "packages/gen-ui/*.ts", base: "workspace" },
-            { pattern: "packages/gen-ui/build.mjs", base: "workspace" },
-            { pattern: "packages/gen-ui/assets/**", base: "workspace" },
-            { pattern: "packages/gen-ui/*.json", base: "workspace" },
-            { pattern: "pnpm-lock.yaml", base: "workspace" },
-          ],
-          output: [{ pattern: "packages/gen-ui/dist/**", base: "workspace" }],
-        },
+        cache: false,
       },
       "snapshots-build": {
         command: "node scripts/build-snapshots.mjs",
@@ -217,7 +200,6 @@ export default defineConfig({
       },
       "types-suite": {
         command: [
-          "pnpm --filter @areal/gen-ui typecheck",
           "pnpm --filter @areal/gui-renderer typecheck",
           "pnpm --filter @areal/gui-renderer exec tsc --ignoreConfig --project ../app/tsconfig.json",
           "pnpm --filter @areal/gui-renderer exec tsc --ignoreConfig --allowJs --checkJs --noEmit --skipLibCheck --target ES2022 --module NodeNext ../packages/workbench/client/desktop-contract.cjs",

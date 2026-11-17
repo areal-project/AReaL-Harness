@@ -22,7 +22,7 @@ const { modelRecord, isCoreTask } = require("@areal/workbench/core-model-contrac
  * reconcile:(project:Project,options:{observeOnly:boolean})=>Promise<unknown>,
  * desktopToolOwner:()=>object|null,desktopTools:(project:Project)=>unknown[],supportsBrowser:(project:Project)=>boolean|undefined,supportsComputer:(project:Project)=>boolean|undefined,
  * cuaRead:(request:Record<string,unknown>)=>Promise<unknown>|undefined,computerRead:(request:Record<string,unknown>)=>Promise<unknown>|undefined,browserRead?:(request:Record<string,unknown>)=>Promise<unknown>|undefined,
- * observeNotification:(project:Project,client:Client,method:string,params:unknown)=>void,onMcpPageToolsDisconnected?:(client:Client)=>void,
+ * observeNotification:(project:Project,client:Client,method:string,params:unknown)=>void,
  * listThreads:(project:Project)=>Promise<unknown>,openThread:(project:Project,threadId:string)=>Promise<unknown>,startTaskMonitor:(project:Project,client:Client)=>Promise<void>
  * }} ConnectionHost */
 
@@ -478,7 +478,6 @@ class ProjectConnections {
               toolHostGeneration: cuaHostGeneration,
             }),
           ).catch(() => {});
-        this.host.onMcpPageToolsDisconnected?.(client);
         if (project.client === client) {
           project.taskNotificationMonitor?.stop();
           this.host.stopReconciliation(project);

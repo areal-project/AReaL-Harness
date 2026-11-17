@@ -25,7 +25,7 @@ struct PersistedRead {
 fn persisted_capacity() -> Arc<tokio::sync::Semaphore> {
     static CAPACITY: OnceLock<Arc<tokio::sync::Semaphore>> = OnceLock::new();
     CAPACITY
-        .get_or_init(|| Arc::new(tokio::sync::Semaphore::new(2)))
+        .get_or_init(|| Arc::new(tokio::sync::Semaphore::new(6)))
         .clone()
 }
 
@@ -268,10 +268,11 @@ impl ConversationReader {
         host.slots.borrow().get(self.project()).is_some_and(|slot| {
             slot.registration.data_dir == persisted.data_dir
                 && slot.registration.workspace == persisted.workspace
-                && slot
-                    .service
-                    .as_ref()
-                    .is_none_or(|service| service.identity.generation == self.generation())
+                && (slot.state == "starting"
+                    || slot
+                        .service
+                        .as_ref()
+                        .is_none_or(|service| service.identity.generation == self.generation()))
         })
     }
     pub(super) fn model(&self) -> Option<Value> {
@@ -767,6 +768,91 @@ mod tests {
                 &difference(&changed, &after).unwrap().unwrap()
             ),
             after
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn persisted_reader_stays_current_while_slot_is_starting_and_invalidates_after_ready() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let host = super::super::schedules::tests::fixture(&root);
+        let registration = host.slots.borrow()["project"].registration.clone();
+        storage::private_dir(&registration.data_dir).unwrap();
+        let directory = storage::registry(&host.home, &Host::service_id(&registration)).unwrap();
+        storage::private_dir(&directory).unwrap();
+        for path in [
+            directory.join("start.lock"),
+            registration.data_dir.join("service.lock"),
+            registration.data_dir.join("owner.lock"),
+        ] {
+            storage::open_private(&path, true).unwrap();
+        }
+        storage::write(
+            &registration.data_dir.join("service-workspace"),
+            &registration.workspace,
+        )
+        .unwrap();
+        let service: areal_protocol::service::Service = serde_json::from_value(json!({
+            "protocolVersion": 1,
+            "serviceId": Host::service_id(&registration),
+            "generation": "first",
+            "workspace": registration.workspace,
+            "dataDir": registration.data_dir,
+            "configFingerprint": "old",
+            "endpoint": "http://127.0.0.1:1",
+            "webUrl": "http://127.0.0.1:1",
+            "authFile": directory.join("auth.json"),
+            "logFile": directory.join("host.log"),
+            "hostPid": 1,
+            "corePid": 2,
+            "state": "stopped"
+        }))
+        .unwrap();
+        storage::write(&directory.join("service.json"), &service).unwrap();
+        let thread = uuid::Uuid::new_v4().to_string();
+        storage::write(
+            &registration.data_dir.join(format!("{thread}.json")),
+            &json!({
+                "version": 17,
+                "thread": {
+                    "id": thread,
+                    "sessionId": thread,
+                    "parentThreadId": null,
+                    "preview": "fixture",
+                    "modelProvider": "fixture",
+                    "createdAt": 1,
+                    "updatedAt": 2,
+                    "status": { "type": "idle" },
+                    "cwd": registration.workspace,
+                    "cliVersion": "fixture",
+                    "source": "cli",
+                    "ephemeral": false,
+                    "turns": []
+                }
+            }),
+        )
+        .unwrap();
+        let (reader, _) =
+            ConversationReader::open_persisted(&host, "project", Some("first"), &thread)
+                .await
+                .unwrap();
+        assert!(reader.current(&host));
+        {
+            let mut slots = host.slots.borrow_mut();
+            let slot = slots.get_mut("project").unwrap();
+            let mut next = service.clone();
+            next.identity.generation = "second".into();
+            slot.service = Some(next);
+            slot.state = "starting".into();
+        }
+        assert!(
+            reader.current(&host),
+            "persisted history should remain valid while Core activation is in progress"
+        );
+        host.slots.borrow_mut().get_mut("project").unwrap().state = "ready".into();
+        assert!(
+            !reader.current(&host),
+            "persisted reader must invalidate once replacement generation is ready"
         );
     }
 }

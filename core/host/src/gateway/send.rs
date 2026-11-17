@@ -176,15 +176,7 @@ impl Session {
                         .all(|required| methods.iter().any(|method| method == required))),
             "CORE_INCOMPATIBLE"
         );
-        let mut effective = params.clone();
-        if self.uses_workbench_execution() {
-            effective.text = self
-                .host
-                .gateway
-                .workbench
-                .prepare_input(&self.host, &id, &params.thread_id, &params.text)
-                .await?;
-        }
+        let effective = params.clone();
         let operation = uuid::Uuid::new_v4().to_string();
         let mut guard =
             json!({"ordinarySession":true,"configRevision":params.expected_config_revision});

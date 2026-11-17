@@ -12,6 +12,10 @@ mod vault_liveness_tests;
 pub(crate) use gateway_owner::error_code;
 #[path = "analytics.rs"]
 mod analytics;
+#[path = "feedback.rs"]
+mod feedback;
+#[path = "feedback_context.rs"]
+mod feedback_context;
 #[path = "idle.rs"]
 mod idle;
 #[path = "library_commands.rs"]
@@ -42,6 +46,8 @@ mod shell_subscription;
 mod subscriptions;
 #[path = "task_catalog.rs"]
 mod task_catalog;
+#[path = "trajectory.rs"]
+mod trajectory;
 #[path = "updates.rs"]
 pub(crate) mod updates;
 #[path = "workbench_lifecycle.rs"]
@@ -1842,6 +1848,23 @@ impl Host {
                 if name.starts_with("AREAL_CREDENTIAL_") && !inputs.credential_names.contains(name)
                 {
                     inputs.credential_names.push(name.clone());
+                }
+            }
+        } else if matches!(registration.source, crate::ProjectSource::Gui { .. }) {
+            let mut cfg_inputs = launch::config_inputs(&self.home, &inputs, &BTreeMap::new());
+            cfg_inputs.overrides.data_dir = Some(registration.data_dir.clone());
+            if let Ok((config, _)) = areal_config::load_service_config(&cfg_inputs) {
+                for name in config.model.api_key_env.iter().chain(
+                    config
+                        .model_catalog
+                        .iter()
+                        .filter_map(|provider| provider.api_key_env.as_ref()),
+                ) {
+                    if name.starts_with("AREAL_CREDENTIAL_")
+                        && !inputs.credential_names.contains(name)
+                    {
+                        inputs.credential_names.push(name.clone());
+                    }
                 }
             }
         }

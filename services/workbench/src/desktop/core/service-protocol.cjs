@@ -5,11 +5,7 @@ const { isDeepStrictEqual } = require("node:util");
 const { appendFileSync } = require("node:fs");
 const { WebSocketServer } = require("ws");
 const { NativeRemote } = require("./native-remote.cjs");
-const {
-  desktopError,
-  validateMcpPageDeclaration,
-  validateMcpPageReply,
-} = require("@areal/workbench/desktop-contract");
+const { desktopError } = require("@areal/workbench/desktop-contract");
 /** @type {typeof import('@areal/workbench/desktop-contract')} */
 const desktopContract = require("@areal/workbench/desktop-contract");
 const { inspectResources, recoverResource, blocked } = require("./resource-recovery.cjs");
@@ -30,9 +26,6 @@ const {
   strings,
   toolRequest,
   discoveryPlan,
-  pageRegistration,
-  pageToolRequest,
-  pageCoordinates,
   queueList,
 } = require("./service-transport-contract.cjs");
 /** @typedef {Record<string,unknown>} Fields */
@@ -43,8 +36,8 @@ const {
 /** @typedef {{kind:'packet',packet:ReturnType<InstanceType<typeof DesktopService>['packet']>,header:{method:'state'}|{id:number},full:boolean,bytes:number}} PacketEntry */
 /** @typedef {PacketEntry|{kind:'message',value:Fields,bytes:number}} OutboundEntry */
 /** @typedef {{queue:OutboundEntry[],bytes:number,active:boolean,state:PacketEntry|null,closed:boolean,timer?:NodeJS.Timeout}} Outbound */
-/** @typedef {import('ws') & {outbound?:Outbound,projection?:InstanceType<typeof ProjectionEncoder>|null,notifications?:boolean,activity?:{time:number,windowFocused:boolean,focused:boolean},lastFocused?:number,historyViews?:Map<string,Fields & {viewId:string}>,mcpPageOwnerId?:string}} RemoteServiceSocket */
-/** @typedef {Pick<RemoteServiceSocket,'notifications'|'activity'|'lastFocused'|'historyViews'|'mcpPageOwnerId'> & {kind:'main',internal:boolean,closed:boolean,onMessage:(message:Fields)=>void,onClose:()=>void}} MainClient */
+/** @typedef {import('ws') & {outbound?:Outbound,projection?:InstanceType<typeof ProjectionEncoder>|null,notifications?:boolean,activity?:{time:number,windowFocused:boolean,focused:boolean},lastFocused?:number,historyViews?:Map<string,Fields & {viewId:string}>}} RemoteServiceSocket */
+/** @typedef {Pick<RemoteServiceSocket,'notifications'|'activity'|'lastFocused'|'historyViews'> & {kind:'main',internal:boolean,closed:boolean,onMessage:(message:Fields)=>void,onClose:()=>void}} MainClient */
 /** @typedef {RemoteServiceSocket|MainClient} ServiceSocket */
 /** @param {ServiceSocket|null|undefined} client @returns {client is MainClient} */
 const mainClient = (client) => !!client && "kind" in client && client.kind === "main";
@@ -56,10 +49,6 @@ const connected = (client) =>
 /** @typedef {{turnId?:string,queueItemId?:string}|null} AcceptedEntry */
 /** @typedef {{socket:ServiceSocket,hostConnection?:string,project:Project,client:CoreClient|null|undefined,ready:Promise<AcceptedEntry>,resolve:(value:AcceptedEntry)=>void,accepted?:AcceptedEntry}} BrowserEntry */
 /** @typedef {{socket:ServiceSocket,timer?:NodeJS.Timeout,hostConnection?:string,resolve:(value:unknown)=>void,reject:(error:unknown)=>void,key?:string,bootstrap?:boolean,discovery?:boolean,coreInstanceId?:string,coreGeneration?:string,tool?:string}} BrowserPending */
-/** @typedef {{projectId:string,client:CoreClient,method:string,params:import('./service-transport-contract.cjs').PageCoordinates}} PageNotice */
-/** @typedef {{projectId:string,threadId:string,instanceId:string,generation:string|number,ownerId:string,revoked:boolean,retired?:boolean,retireAt?:number}} RetiredPageOwner */
-/** @typedef {RetiredPageOwner & {socket:ServiceSocket,project:Project,client:CoreClient,declaration?:string,registration?:import('./service-transport-contract.cjs').PageRegistration,registrationPromise?:Promise<import('./service-transport-contract.cjs').PageRegistration>,pendingNotices?:PageNotice[]}} LivePageOwner */
-/** @typedef {RetiredPageOwner & Partial<Omit<LivePageOwner,keyof RetiredPageOwner>>} PageOwner */
 /** @typedef {{connection:string,method:string,params:Fields,project:Project,client:CoreClient,current:()=>boolean,key:string,entry:BrowserEntry|null,timer:NodeJS.Timeout}} HostExecution */
 /** @typedef {{key:string,plan:import('./service-transport-contract.cjs').DiscoveryPlan,claim:BrowserClaim|undefined,entry:BrowserEntry|null,socket:ServiceSocket,pages:PageClaim[]}} DiscoveryRecord */
 const PROTOCOL = "areal.desktop-service.v1";
@@ -138,11 +127,6 @@ class DesktopService {
     /** @type {Set<ServiceSocket>} */ this.clients = new Set();
     /** @type {Map<ServiceSocket,Map<string,{client:import('@areal/workbench-service/host-core-client').HostCoreClient,ready:Promise<unknown>,key:string}>>} */
     this.hostTerminals = new Map();
-    /** @type {Map<string,PageOwner>} */
-    this.mcpPageOwners = new Map();
-    backend.onMcpPageToolNotice = (event) => this.mcpPageToolNotice(event);
-    backend.onMcpPageToolsDisconnected = (client) =>
-      this.revokeMcpPageTools((lease) => lease.client === client);
     /** @type {Map<string,BrowserClaim>} */ this.browserClaims = new Map();
     /** @type {Map<string,{socket:ServiceSocket,pageId:string,cancelled:boolean}>} */ this.browserClaimAttempts =
       new Map();
@@ -170,7 +154,6 @@ class DesktopService {
     backend.desktopToolOwner = () =>
       !this.closed && connected(this.computerSocket) ? this.computerSocket : null;
     /** @type {NodeJS.Timeout|null|undefined} */ this.timer = undefined;
-    /** @type {NodeJS.Timeout|undefined} */ this.mcpPageExpiryTimer = undefined;
     /** @type {NodeJS.Timeout|undefined} */ this.activityTimer = undefined;
     /** @type {NodeJS.Timeout|undefined} */ this.flushTimer = undefined;
     /** @type {import('ws').WebSocketServer|undefined} */ this.server = undefined;
@@ -180,355 +163,11 @@ class DesktopService {
     this.recovering = false;
     backend.onChange = () => this.schedule();
     backend.onNotification = (notice) => this.notify(notice);
-    backend.onMcpAppNotification = (event) => {
-      if (!record(event)) return;
-      const notification = event.notification;
-      if (
-        this.closed ||
-        !["projectId", "threadId", "instanceId"].every((key) => typeof event?.[key] === "string") ||
-        !["string", "number"].includes(typeof event.generation) ||
-        !record(notification) ||
-        notification.jsonrpc !== "2.0" ||
-        notification.id !== undefined ||
-        ![
-          "notifications/resources/updated",
-          "notifications/resources/list_changed",
-          "notifications/tools/list_changed",
-          "ui/notifications/host-context-changed",
-          "ui/notifications/closed",
-        ].some((method) => method === notification.method)
-      )
-        return;
-      // Only authenticated clients that completed hello are present in this set.
-      // Main owns the final app-instance/window match; background events never reveal a pane.
-      const params = {
-        projectId: event.projectId,
-        threadId: event.threadId,
-        instanceId: event.instanceId,
-        generation: event.generation,
-        notification: {
-          jsonrpc: "2.0",
-          method: notification.method,
-          ...(notification.params === undefined ? {} : { params: notification.params }),
-        },
-      };
-      if (notification.method === "ui/notifications/closed") {
-        const lease = this.mcpPageOwners.get(JSON.stringify([event.projectId, event.instanceId]));
-        if (lease && lease.threadId === event.threadId && lease.generation === event.generation)
-          this.retireMcpPageOwner(lease, true);
-      }
-      for (const socket of this.clients)
-        this.send(socket, { method: "mcpAppNotification", params });
-    };
   }
   /** @param {string} projectId @param {string} threadId */
   projectForThread(projectId, threadId) {
     const owner = this.backend.worktrees?.executionProjectId(projectId, threadId) ?? projectId;
     return this.backend.projects.get(owner);
-  }
-  /** @param {ServiceSocket} socket @param {Project} project @param {CoreClient} client @param {Fields} request @param {unknown} response */
-  bindMcpPageOwner(socket, project, client, request, response) {
-    const instance =
-      request.operation === "mcpAppOpenFromResult"
-        ? record(response) && response.status === "open" && response.instance
-        : response;
-    if (!record(instance) || !instance.instanceId) return;
-    if (
-      typeof instance.instanceId !== "string" ||
-      (typeof instance.generation !== "string" && typeof instance.generation !== "number")
-    )
-      throw new Error("Invalid MCP app identity");
-    const projectId = request.logicalProjectId ?? project.logicalProjectId ?? request.projectId;
-    if (typeof projectId !== "string" || typeof request.threadId !== "string")
-      throw new Error("Invalid MCP app owner");
-    const key = JSON.stringify([projectId, instance.instanceId]);
-    const previous = this.mcpPageOwners.get(key);
-    if (
-      this.closed ||
-      !this.clients.has(socket) ||
-      !connected(socket) ||
-      project.client !== client ||
-      !client.ready ||
-      (previous && (previous.socket !== socket || previous.client !== client || previous.revoked))
-    )
-      throw new Error("Page tool opening owner lease is stale");
-    if (previous) return;
-    if (this.mcpPageOwners.size >= 128) throw new Error("Page tool owner capacity reached");
-    this.mcpPageOwners.set(key, {
-      project,
-      client,
-      socket,
-      ownerId: (socket.mcpPageOwnerId ??= randomUUID()),
-      projectId,
-      threadId: request.threadId,
-      instanceId: instance.instanceId,
-      generation: instance.generation,
-      revoked: false,
-    });
-  }
-  /** @param {ServiceSocket} socket @param {unknown} params */
-  async mcpPageTools(socket, params) {
-    if (!pageToolRequest(params)) throw new Error("Invalid page tool operation");
-    const fields = ["operation", "projectId", "threadId", "instanceId", "generation"];
-    const extra =
-      params.operation === "register"
-        ? ["declaration"]
-        : params.operation === "revoke"
-          ? ["registrationId"]
-          : [
-              "turnId",
-              "callId",
-              "registrationId",
-              "ownerId",
-              "schemaDigest",
-              ...(params.operation === "resolve" ? ["claimId", "reply"] : []),
-            ];
-    if (Object.keys(params).some((key) => ![...fields, ...extra].includes(key)))
-      throw new Error("Invalid page tool fields");
-    const lease = this.mcpPageOwners.get(JSON.stringify([params.projectId, params.instanceId]));
-    const current = () =>
-      lease &&
-      livePageOwner(lease) &&
-      this.mcpPageOwners.get(JSON.stringify([params.projectId, params.instanceId])) === lease &&
-      lease.socket === socket &&
-      lease.client === lease.project.client &&
-      lease.client.ready &&
-      this.clients.has(socket) &&
-      connected(socket) &&
-      !this.closed;
-    if (
-      !lease ||
-      !livePageOwner(lease) ||
-      !current() ||
-      lease.threadId !== params.threadId ||
-      lease.generation !== params.generation ||
-      (lease.revoked && !["resolve", "revoke"].includes(params.operation))
-    )
-      throw new Error("Page tool owner lease is stale");
-    const binding = {
-      threadId: lease.threadId,
-      instanceId: lease.instanceId,
-      generation: lease.generation,
-      ownerId: lease.ownerId,
-    };
-    if (params.operation === "register") {
-      validateMcpPageDeclaration(params.declaration);
-      const fingerprint = JSON.stringify(params.declaration);
-      if (lease.registrationPromise) {
-        if (lease.declaration !== fingerprint) throw new Error("Page tool declaration changed");
-        return lease.registrationPromise;
-      }
-      lease.declaration = fingerprint;
-      lease.pendingNotices = [];
-      lease.registrationPromise = (async () => {
-        const registration = await lease.client.request(
-          "areal/mcp/app/tools/register",
-          { ...binding, declaration: params.declaration },
-          { decode: pageRegistration },
-        );
-        lease.registration = registration;
-        if (!current() || lease.revoked) {
-          this.retireMcpPageOwner(lease);
-          if (lease.client.ready)
-            void lease.client
-              .request("areal/mcp/app/tools/revoke", {
-                ...binding,
-                registrationId: registration.registrationId,
-              })
-              .then((result) => {
-                if (record(result) && result.revoked === true) this.retireMcpPageOwner(lease, true);
-              })
-              .catch(() => {});
-          throw new Error("Page tool owner lease is stale");
-        }
-        const notices = lease.pendingNotices;
-        lease.pendingNotices = undefined;
-        for (const notice of notices ?? [])
-          if (notice.params.registrationId === registration.registrationId)
-            this.mcpPageToolNotice(notice);
-        return registration;
-      })().catch((error) => {
-        this.retireMcpPageOwner(lease);
-        throw error;
-      });
-      return lease.registrationPromise;
-    }
-    if (!lease.registration || params.registrationId !== lease.registration.registrationId)
-      throw new Error("Invalid page tool registration");
-    if (params.operation === "revoke") {
-      this.retireMcpPageOwner(lease);
-      const result = await lease.client.request("areal/mcp/app/tools/revoke", {
-        ...binding,
-        registrationId: lease.registration.registrationId,
-      });
-      if (record(result) && result.revoked === true) this.retireMcpPageOwner(lease, true);
-      return result;
-    }
-    if (
-      params.ownerId !== lease.ownerId ||
-      !lease.registration.tools.some((tool) => tool.schemaDigest === params.schemaDigest) ||
-      !text(params.turnId) ||
-      !text(params.callId)
-    )
-      throw new Error("Invalid page tool owner or call");
-    const coordinates = {
-      threadId: lease.threadId,
-      turnId: params.turnId,
-      callId: params.callId,
-      registrationId: lease.registration.registrationId,
-      ownerId: lease.ownerId,
-      schemaDigest: params.schemaDigest,
-    };
-    if (params.operation === "resolve") validateMcpPageReply(params.reply);
-    return lease.client.request(`areal/mcp/app/tools/${params.operation}`, {
-      ...coordinates,
-      ...(params.operation === "resolve"
-        ? {
-            ...(params.claimId === undefined ? {} : { claimId: params.claimId }),
-            reply: params.reply,
-          }
-        : {}),
-    });
-  }
-  /** @param {{projectId:string,client:CoreClient,method:string,params:unknown}} event */
-  mcpPageToolNotice(event) {
-    if (
-      this.closed ||
-      !["areal/mcp/app/tools/pending", "areal/mcp/app/tools/cancelled"].includes(event?.method)
-    )
-      return;
-    const params = event.params;
-    const coordinates = [
-      "threadId",
-      "turnId",
-      "callId",
-      "registrationId",
-      "ownerId",
-      "schemaDigest",
-    ];
-    if (!pageCoordinates(params)) return;
-    const candidates = [...this.mcpPageOwners.values()]
-      .filter(livePageOwner)
-      .filter(
-        (lease) =>
-          lease.projectId === event.projectId &&
-          lease.client === event.client &&
-          lease.project?.client === event.client &&
-          lease.client?.ready &&
-          connected(lease.socket) &&
-          this.clients.has(lease.socket) &&
-          lease.threadId === params.threadId &&
-          lease.ownerId === params.ownerId &&
-          !(lease.revoked && event.method.endsWith("/pending")),
-      );
-    const owner = candidates.find(
-      (lease) => lease.registration?.registrationId === params.registrationId,
-    );
-    if (owner?.registration) {
-      if (owner.registration.tools.some((tool) => tool.schemaDigest === params.schemaDigest))
-        this.send(owner.socket, {
-          method: "mcpPageToolNotice",
-          params: {
-            projectId: owner.projectId,
-            instanceId: owner.instanceId,
-            generation: owner.generation,
-            method: event.method,
-            params,
-          },
-        });
-      return;
-    }
-    for (const lease of candidates) {
-      if (lease.registration || !lease.pendingNotices) continue;
-      if (
-        lease.pendingNotices.length < 32 &&
-        !lease.pendingNotices.some(
-          (notice) =>
-            notice.method === event.method &&
-            coordinates.every((key) => notice.params[key] === params[key]) &&
-            notice.params.claimId === params.claimId,
-        )
-      )
-        lease.pendingNotices.push({
-          projectId: event.projectId,
-          client: event.client,
-          method: event.method,
-          params: { ...params },
-        });
-    }
-  }
-
-  /** @param {PageOwner} lease @param {boolean} [confirmed] */
-  retireMcpPageOwner(lease, confirmed = false) {
-    const key = JSON.stringify([lease.projectId, lease.instanceId]);
-    const current = this.mcpPageOwners.get(key);
-    if (!current || current.ownerId !== lease.ownerId) return;
-    if (!current.socket && confirmed) {
-      this.mcpPageOwners.delete(key);
-      return;
-    }
-    current.revoked = true;
-    current.pendingNotices = undefined;
-    current.retired ||= confirmed;
-    current.retireAt ??= lease.retireAt ?? Date.now() + 32_000;
-    this.sweepMcpPageOwners();
-  }
-  sweepMcpPageOwners() {
-    clearTimeout(this.mcpPageExpiryTimer);
-    this.mcpPageExpiryTimer = undefined;
-    let next = Infinity;
-    for (const [key, lease] of this.mcpPageOwners) {
-      if (lease.retireAt === undefined) continue;
-      if (lease.retireAt > Date.now()) {
-        next = Math.min(next, lease.retireAt);
-        continue;
-      }
-      if (lease.retired) this.mcpPageOwners.delete(key);
-      else
-        this.mcpPageOwners.set(key, {
-          projectId: lease.projectId,
-          threadId: lease.threadId,
-          instanceId: lease.instanceId,
-          generation: lease.generation,
-          ownerId: lease.ownerId,
-          revoked: true,
-        });
-    }
-    if (next !== Infinity && !this.closed) {
-      this.mcpPageExpiryTimer = setTimeout(
-        () => this.sweepMcpPageOwners(),
-        Math.max(0, next - Date.now()),
-      );
-      this.mcpPageExpiryTimer.unref?.();
-    }
-  }
-  /** @param {(lease:LivePageOwner)=>boolean} predicate */
-  revokeMcpPageTools(predicate) {
-    for (const lease of this.mcpPageOwners.values()) {
-      if (!livePageOwner(lease) || !predicate(lease)) continue;
-      this.retireMcpPageOwner(lease);
-      this.send(lease.socket, {
-        method: "mcpPageToolsRevoked",
-        params: {
-          projectId: lease.projectId,
-          instanceId: lease.instanceId,
-          generation: lease.generation,
-        },
-      });
-      if (lease.registration && lease.client.ready)
-        void lease.client
-          .request("areal/mcp/app/tools/revoke", {
-            threadId: lease.threadId,
-            instanceId: lease.instanceId,
-            generation: lease.generation,
-            registrationId: lease.registration.registrationId,
-            ownerId: lease.ownerId,
-          })
-          .then((result) => {
-            if (record(result) && result.revoked === true) this.retireMcpPageOwner(lease, true);
-          })
-          .catch(() => {});
-    }
   }
   packet() {
     return {
@@ -792,7 +431,6 @@ class DesktopService {
         this.terminalPending.delete(requestId);
         pending.reject(new Error("GUI terminal owner disconnected; outcome may be unknown"));
       }
-    this.revokeMcpPageTools((lease) => lease.socket === socket);
     this.stopSending(socket);
     this.releaseHistoryViews(socket);
     if (this.computerSocket === socket) {
@@ -1330,10 +968,6 @@ class DesktopService {
         }
         return response;
       }
-      if (method === "mcpPageTools") {
-        response = await this.mcpPageTools(socket, params);
-        return response;
-      }
       if (method === "snapshot") {
         const packet = this.packet();
         response = packet;
@@ -1413,8 +1047,6 @@ class DesktopService {
                           },
                         }
                       : {}),
-                    onMcpAppOpened: (project, client, request, result) =>
-                      this.bindMcpPageOwner(socket, project, client, request, result),
                     onBrowserTurnStarted: (turnId) => entry?.resolve({ turnId }),
                     onBrowserTurnQueued: (queueItemId) => entry?.resolve({ queueItemId }),
                   })
@@ -1424,23 +1056,6 @@ class DesktopService {
           throw error;
         } finally {
           entry?.resolve(null);
-        }
-        if (
-          method === "command" &&
-          name === "manage" &&
-          request.operation === "mcpAppClose" &&
-          record(result) &&
-          result.closed === true
-        ) {
-          const lease = this.mcpPageOwners.get(
-            JSON.stringify([request.projectId, request.instanceId]),
-          );
-          if (
-            lease &&
-            lease.threadId === request.threadId &&
-            lease.generation === request.generation
-          )
-            this.retireMcpPageOwner(lease, true);
         }
         if (method === "command" && name === "media") result = encodeMedia(result);
         if (
@@ -1589,9 +1204,6 @@ class DesktopService {
       pending.reject(new Error("GUI terminal service closed; outcome may be unknown"));
     }
     this.terminalPending.clear();
-    this.revokeMcpPageTools(() => true);
-    clearTimeout(this.mcpPageExpiryTimer);
-    this.mcpPageOwners.clear();
     for (const attempt of this.browserClaimAttempts.values()) attempt.cancelled = true;
     this.browserClaimAttempts.clear();
     for (const pending of this.browserPending.values()) {
@@ -2890,11 +2502,6 @@ module.exports = {
   encodeMedia,
   decodeMedia,
 };
-
-/** @param {PageOwner} lease @returns {lease is LivePageOwner} */
-function livePageOwner(lease) {
-  return !!lease.socket && !!lease.client && !!lease.project;
-}
 
 /** @param {OutboundEntry} entry @param {RemoteServiceSocket['projection']} [projection] */
 function outboundMessage(entry, projection) {

@@ -10,12 +10,6 @@ import type {
   ChatGPTStatus,
   SnapShotServices,
 } from "./desktop-services.js";
-import type {
-  McpAppCommand,
-  McpAppDeepLink,
-  McpAppEvent,
-  McpFormResourceCommand,
-} from "./mcp-app-services.js";
 export type { CommandName, CommandParams, CommandResponse, PreviewRequest };
 export type {
   Attachment,
@@ -29,7 +23,6 @@ export type {
   ManagementRequestMap,
   ManagementResponse,
   ManagementResponseMap,
-  McpAppDeepLink,
   ModelParameters,
   ObservedCatalogOwner,
   OwnedPreviewRequest,
@@ -64,9 +57,6 @@ export {
   sideAnchor,
   sideSelection,
   snapShotShortcutModifierPair,
-  validateMcpPageCall,
-  validateMcpPageDeclaration,
-  validateMcpPageReply,
 } from "./desktop-services.js";
 export type Data = Record<string, any>;
 export type FileOpenTargets = {
@@ -206,7 +196,6 @@ export interface PlatformServices {
     library?: boolean;
     taskCatalog?: boolean;
     taskManage?: boolean;
-    pages?: boolean;
     settings?: readonly string[];
   };
   reads?: PlatformReadServices;
@@ -225,10 +214,6 @@ export interface PlatformServices {
   recoverPersistedHistory?(target: { projectId: string; threadId: string } | null): Promise<void>;
   getHostTicket?(): Promise<unknown>;
   snapShots?: SnapShotServices;
-  mcpApp?: McpAppCommand;
-  onMcpAppEvent?(listener: (event: McpAppEvent) => void): () => void;
-  onMcpAppDeepLink?(listener: (link: McpAppDeepLink) => Promise<void> | void): () => void;
-  mcpFormResource?: McpFormResourceCommand;
   /** The themed initial window has painted; desktop may reveal before backend or history restoration. */
   presentReady?(): Promise<void>;
   installCommandLineTools?(): Promise<{ started: boolean; message?: string }>;

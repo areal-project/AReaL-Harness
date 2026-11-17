@@ -29,7 +29,6 @@ add("shell", "安装命令行工具到系统路径", "installCommandLineTools");
 add("shell", "退出流程与进度", "onQuitProgress onQuitRequested");
 add("shell", "原生窗口关闭确认与重新显示", "onWindowClosing onWindowOpened");
 add("shell", "桌面自动更新", "updateState downloadUpdate recoverUpdateResources onUpdate");
-add("shell", "系统深链接", "onMcpAppDeepLink");
 add("shell", "内嵌预览窗口", "preview onPreviewEvent");
 add("shell", "系统目录选择框", "chooseTaskDirectory chooseProjectlessDirectory");
 add("shell", "用系统应用打开文件", "fileOpen");
@@ -44,7 +43,6 @@ add(
   "snapshot requestProjection onProjection",
 );
 add("transitional", "选目录后加项目，加项目这一步是业务", "chooseProject");
-add("transitional", "MCP 页面读写；网页走 Host 页面", "mcpApp mcpFormResource onMcpAppEvent");
 
 /**
  * 主进程直接处理、不转给后台的命令（transport.cjs 里标为 main 的那些）。
@@ -90,6 +88,6 @@ const desktopOperations = {
 };
 
 /** 业务仍走 IPC 的上限：迁走一项就把对应数字减一，不允许加回去。 */
-const transitionalLimit = { bridge: 8, mainCommands: 4 };
+const transitionalLimit = { bridge: 5, mainCommands: 4 };
 
 module.exports = { bridge, mainCommands, desktopOperations, transitionalLimit };

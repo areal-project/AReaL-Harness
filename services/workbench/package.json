@@ -10,10 +10,6 @@
     "test": "node --test test/*.test.cjs"
   },
   "exports": {
-    "./trajectory": "./src/domains/trajectory.cjs",
-    "./trajectory-apply": "./src/domains/trajectory-apply.cjs",
-    "./feedback": "./src/domains/feedback.cjs",
-    "./feedback-context": "./src/domains/feedback-context.cjs",
     "./desktop/*": "./src/desktop/*",
     "./package.json": "./package.json",
     "./native-host-transport": { "types": "./src/native-host-transport.ts", "default": "./src/generated/native-host-transport.cjs" },
@@ -26,7 +22,6 @@
     "@areal/browser-automation": "workspace:*",
     "@areal/chatgpt-provider": "workspace:*",
     "@areal/client": "workspace:*",
-    "@areal/gen-ui": "workspace:*",
     "@areal/provider-config": "workspace:*",
     "@areal/remote": "workspace:*",
     "@areal/runtime-client": "workspace:*",

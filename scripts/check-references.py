@@ -63,7 +63,7 @@ def tracked():
     output = subprocess.check_output(
         ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"], cwd=ROOT
     ).decode()
-    return [path for path in output.split("\0") if path]
+    return [path for path in output.split("\0") if path and (ROOT / path).exists()]
 
 
 def matches(pattern, files, base):

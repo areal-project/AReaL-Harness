@@ -20,8 +20,6 @@
   "clients/gui/renderer/src/host-workbench.ts": 14,
   "clients/gui/renderer/src/i18n/messages/common.ts": 1,
   "clients/gui/renderer/src/i18n/messages/errors.ts": 1,
-  "clients/gui/renderer/src/mcp-app-response.ts": 1,
-  "clients/gui/renderer/src/McpAppsWorkspace.tsx": 2,
   "clients/gui/renderer/src/mobile/product-driver.ts": 1,
   "clients/gui/renderer/src/ProcessesPane.tsx": 6,
   "clients/gui/renderer/src/Queue.tsx": 2,

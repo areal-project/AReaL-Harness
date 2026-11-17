@@ -748,34 +748,6 @@
     "requires": ["git"]
   },
   {
-    "script": "test:mcp-app-lifecycle",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["mcp"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
-  },
-  {
-    "script": "test:mcp-platform",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["mcp"],
-    "requires": ["browser", "git", "gui-build"]
-  },
-  {
-    "script": "test:mcp-page-tools",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["mcp"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
-  },
-  {
-    "script": "test:mcp-page-tools-transport",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["mcp"],
-    "requires": []
-  },
-  {
     "script": "test:plugins",
     "notes": "Runs plugin presentation, offline read, configuration-secret, and ordinary command contracts before real Electron acceptance.",
     "layer": "e2e",
@@ -834,13 +806,6 @@
     "areas": ["recovery", "lifecycle"],
     "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
     "platformReason": "Runner explicitly asserts darwin and uses its existing macOS acceptance setup."
-  },
-  {
-    "script": "test:gen-ui",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["gen-ui"],
-    "requires": ["electron", "core-binary", "gui-build", "git"]
   },
   {
     "script": "test:conversation-derivation",

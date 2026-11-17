@@ -254,7 +254,6 @@ def artifacts(item, root):
     if item["id"].endswith(":desktop"):
         # 将同一构建的桌面模块连同摘要交付给消费者，禁止重新编译混入新输出。
         for relative in (
-            "packages/gen-ui/dist",
             "packages/browser-automation/dist",
             "packages/browser-data/dist",
             "app/src/core/snapshots/build",

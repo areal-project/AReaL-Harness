@@ -17,8 +17,6 @@ const { mkdir, writeFile, rename, realpath } = require("node:fs/promises");
 const { join, isAbsolute } = require("node:path");
 const { ScopedResources } = require("./scoped-resources.cjs");
 const { AppHooks } = require("./hooks.cjs");
-const { TrajectoryExport } = require("@areal/workbench-service/trajectory");
-const { UserFeedback } = require("@areal/workbench-service/feedback");
 const { AppProviders } = require("./providers.cjs");
 const { snapshotProject } = require("./project-snapshot.cjs");
 const { CloudSettings } = require("./cloud-settings.cjs");
@@ -39,8 +37,6 @@ const { ProjectlessWorkspaces } = require("./projectless.cjs");
 const { inspectCoreCapabilities, projectCoreCapabilities } = require("./core-capabilities.cjs");
 const { definition: browserTool } = require("./browser-tool.cjs");
 const { definition: computerTool } = require("./computer-tool.cjs");
-const { buildGenUiModelContext, stripGenUiModelContext } = require("@areal/gen-ui/node");
-const { genUiScope, createGenUiState } = require("./gen-ui-state.cjs");
 
 const {
   readAdmission,
@@ -105,7 +101,6 @@ class CoreBackend {
     });
     this.configHome = configHome ?? join(userHome || require("node:os").homedir(), ".areal");
     this.home = home;
-    this.genUiState = createGenUiState(home);
     this.harnessHome = harnessHome;
     this.config = config;
     this.proxyEnvironment = proxyEnvironment;
@@ -130,12 +125,6 @@ class CoreBackend {
     this.computerRead = undefined;
     /** @type {((input:import('./service-transport-contract.cjs').ToolHostInput)=>Promise<unknown>)|undefined} */
     this.cuaRead = undefined;
-    /** @type {((event:unknown)=>void)|undefined} */
-    this.onMcpAppNotification = undefined;
-    /** @type {((event:{projectId:string,client:import('@areal/runtime-client/core').CoreClient,method:string,params:unknown})=>void)|undefined} */
-    this.onMcpPageToolNotice = undefined;
-    /** @type {((client:import('@areal/runtime-client/core').CoreClient)=>void)|undefined} */
-    this.onMcpPageToolsDisconnected = undefined;
 
     /** @type {Map<string,import('./project-state.cjs').CoreProject>} */
     this.projects = new Map();
@@ -167,8 +156,6 @@ class CoreBackend {
     this.analytics = new UsageAnalytics(this);
     this.resources = new ScopedResources(this);
     this.hooks = new AppHooks(this);
-    this.trajectory = new TrajectoryExport(this);
-    this.feedback = new UserFeedback(this);
     this.providers = new AppProviders(this);
     this.cloud = new CloudSettings(this, encryption);
     this.cloudConversations = new CloudConversations(this);
@@ -181,20 +168,6 @@ class CoreBackend {
     /** @type {Set<string>} */
     this.awaitingResponses = new Set();
     this.lifecycleOperations = new LifecycleOperations(this);
-  }
-
-  /** @param {Project} project @param {string} threadId */
-  genUiScope(project, threadId) {
-    return genUiScope(this.home, project, threadId);
-  }
-
-  /** @param {Project} project @param {string} threadId @param {unknown} text */
-  async genUiText(project, threadId, text) {
-    text = typeof text === "string" ? stripGenUiModelContext(text) : text;
-    const context = buildGenUiModelContext(
-      await this.genUiState.list(this.genUiScope(project, threadId)),
-    );
-    return context ? `${text || ""}\n\n${context}` : text;
   }
 
   get connections() {
@@ -240,7 +213,6 @@ class CoreBackend {
         onChange: () => backend.onChange(),
         observeNotification: (...args) => backend.observations.notification(...args),
         startTaskMonitor: (...args) => backend.observations.startTaskMonitor(...args),
-        onMcpPageToolsDisconnected: (...args) => backend.onMcpPageToolsDisconnected?.(...args),
         openThread: (...args) => backend.openThread(...args),
         prepareServiceLaunch: (...args) => backend.prepareServiceLaunch(...args),
         get projects() {
@@ -296,8 +268,6 @@ class CoreBackend {
         get taskWorkspaceOwners() {
           return backend.taskWorkspaceOwners;
         },
-        onMcpAppNotification: (...args) => backend.onMcpAppNotification?.(...args),
-        onMcpPageToolNotice: (...args) => backend.onMcpPageToolNotice?.(...args),
         scheduleReconciliation: (...args) => backend.scheduleReconciliation(...args),
         currentConnection: backend.currentConnection.bind(backend),
         get library() {
@@ -386,8 +356,6 @@ class CoreBackend {
       await inspectCoreCapabilities(this);
       trace.advance("providers");
       await this.providers.init();
-      trace.advance("feedback");
-      await this.feedback.init();
       trace.advance("resources");
       await this.resources.init();
       await this.lifecycleOperations.reconcileLoaded();
@@ -594,8 +562,8 @@ class CoreBackend {
       return { value: {}, revision: "unavailable" };
     });
     project.hookRevision = null;
-    const genUiExtensions = join(directory, "desktop-tool-extensions.json");
-    await writeFile(genUiExtensions, JSON.stringify({ ...hookDeployment.value, genUi: true }), {
+    const toolExtensionsPath = join(directory, "desktop-tool-extensions.json");
+    await writeFile(toolExtensionsPath, JSON.stringify(hookDeployment.value), {
       mode: 0o600,
     });
     const providerEnvironment = providerReady ? this.providers.environment() : {};
@@ -612,7 +580,7 @@ class CoreBackend {
     const environment = Object.fromEntries(
       Object.entries({
         ...hookEnvironment,
-        AREAL_HARNESS_TOOL_EXTENSIONS: genUiExtensions,
+        AREAL_HARNESS_TOOL_EXTENSIONS: toolExtensionsPath,
       }).filter(
         ([name, value]) =>
           typeof value === "string" && require("./gui-host-projects.cjs").allowedEnvironment(name),
@@ -1460,7 +1428,7 @@ class CoreBackend {
   }
 
   /** @param {string} commandName @param {Record<string,unknown>} rawRequest
-   * @param {{guiTerminalClient?:import('@areal/workbench-service/host-core-client').HostCoreClient,guiTerminalRequest?:(method:string,params:import("./project-state.cjs").SubmissionParams)=>Promise<unknown>,onMcpAppOpened?:(project:import('./project-state.cjs').CoreProject,client:import('@areal/runtime-client/core').CoreClient,request:Record<string,unknown>,result:unknown)=>void,onBrowserTurnStarted?:(turnId:string)=>void,onBrowserTurnQueued?:(queueItemId:string)=>void}} [context] */
+   * @param {{guiTerminalClient?:import('@areal/workbench-service/host-core-client').HostCoreClient,guiTerminalRequest?:(method:string,params:import("./project-state.cjs").SubmissionParams)=>Promise<unknown>,onBrowserTurnStarted?:(turnId:string)=>void,onBrowserTurnQueued?:(queueItemId:string)=>void}} [context] */
   async command(commandName, rawRequest, context = {}) {
     const semantics = commandSemantics(commandName, rawRequest);
     if (semantics.requestId && !rawRequest[semantics.requestId])
@@ -1484,6 +1452,8 @@ class CoreBackend {
   /** @param {string} commandName @param {Record<string,unknown>} rawRequest @param {NonNullable<Parameters<CoreBackend["command"]>[2]>} context */
   async commandObserved(commandName, rawRequest, context) {
     const invocation = readCommandInvocation(commandName, { ...rawRequest });
+    if (commandName === "feedback") throw new Error("Feedback operations require Host protocol");
+    if (commandName === "trajectory") throw new Error("Trajectory operations require Host protocol");
     if (this.worktrees && !this.cloudConversations?.routes(commandName, rawRequest))
       Object.assign(
         invocation.request,
@@ -1579,12 +1549,6 @@ class CoreBackend {
     }
     if (name === "analytics") return this.analytics.command(request);
     // 后台只读状态不占任务或配置准入；参数仍由轨迹能力校验。
-    if (name === "trajectory" && request?.operation === "status")
-      return this.trajectory.command(request);
-    if (name === "trajectory" && request?.operation === "setEnabled")
-      return this.trajectory.setEnabled(request);
-    if (name === "feedback" && request?.operation === "status")
-      return this.feedback.command(request);
     if (name === "chatgpt") return this.providers.chatgpt(request);
     if (name === "providers") return this.providers.command(request);
     if (name === "cloud") return this.cloud.command(request);
@@ -1766,8 +1730,6 @@ class CoreBackend {
         );
       }
     }
-    if (name === "trajectory") return this.trajectory.command(request);
-    if (name === "feedback") return this.feedback.command(request);
     if (name === "tasks") return taskCatalog(this, request);
     if (name === "projectless") return this.projectless.command(request);
     if (name === "library") {
@@ -2093,7 +2055,7 @@ class CoreBackend {
               input: [
                 {
                   type: "text",
-                  text: await this.genUiText(project, request.threadId, request.text),
+                  text: request.text,
                 },
               ],
             },
@@ -2157,10 +2119,7 @@ class CoreBackend {
           });
         }
         await this.ensureBrowserTools(project, request.threadId);
-        const input = messageInput(this, {
-          ...request,
-          text: await this.genUiText(project, request.threadId, request.text),
-        });
+        const input = messageInput(this, request);
         const current = project.model.state.threads[request.threadId];
         let submitted;
         if (
@@ -2230,10 +2189,7 @@ class CoreBackend {
                 ...(request.command ? { command: request.command } : {}),
                 expectedTurnId: request.expectedTurnId,
                 itemId: request.itemId,
-                input: messageInput(this, {
-                  ...request,
-                  text: await this.genUiText(project, request.threadId, request.text),
-                }),
+                input: messageInput(this, request),
               },
             },
             { requestId: request.requestId },
@@ -2286,10 +2242,7 @@ class CoreBackend {
           {
             threadId: request.threadId,
             expectedTurnId: active.id,
-            input: messageInput(this, {
-              ...request,
-              text: await this.genUiText(project, request.threadId, request.text),
-            }),
+            input: messageInput(this, request),
             previousItems: (active.items ?? []).map((item) => item.id),
           },
           { requestId },

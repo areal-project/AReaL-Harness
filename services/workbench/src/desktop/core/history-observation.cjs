@@ -84,20 +84,6 @@ class HistoryObservation {
       };
       this.host.onChange();
     }
-    if (["areal/mcp/app/tools/pending", "areal/mcp/app/tools/cancelled"].includes(method)) {
-      this.host.onMcpPageToolNotice?.({
-        projectId: project.logicalProjectId ?? project.id,
-        client,
-        method,
-        params,
-      });
-      return;
-    }
-    if (method === "areal/mcp/app/notification")
-      this.host.onMcpAppNotification?.({
-        projectId: project.logicalProjectId ?? project.id,
-        ...params,
-      });
     this.host.analytics.observe(project.id, method, params);
     if (threadId && method === "areal/thread/edited" && this.supportsBoundedHistory(client)) {
       const window = this.historyWindow(project, threadId);

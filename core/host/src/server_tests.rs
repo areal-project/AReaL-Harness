@@ -732,6 +732,36 @@ async fn unpublished_cli_import_blocks_journal_read_prepare_and_bound_commit() {
         host.slots.borrow()[&gui_registration.project_id].credentials[reference],
         "vault-secret"
     );
+    let mut deferred_cred_gui = gui_input.clone();
+    deferred_cred_gui.request_id = uuid::Uuid::new_v4().to_string();
+    deferred_cred_gui
+        .launch_inputs
+        .as_mut()
+        .unwrap()
+        .credential_names
+        .clear();
+    deferred_cred_gui.credentials.clear();
+    std::fs::write(
+        deferred_cred_gui
+            .launch_inputs
+            .as_ref()
+            .unwrap()
+            .config_home
+            .join("config.toml"),
+        "schema_version=2\n[model]\nprovider='cold'\nname='fixture'\n[model.providers.cold]\nname='Cold'\nendpoint='http://127.0.0.1:1/v1/chat/completions'\nprotocol='chat-completions'\napi_key_env='AREAL_CREDENTIAL_key'\nmodels=[{id='fixture'}]\n",
+    )
+    .unwrap();
+    host.slots
+        .borrow_mut()
+        .get_mut(&gui_registration.project_id)
+        .unwrap()
+        .credentials
+        .clear();
+    let _ = host.ensure_inner(&deferred_cred_gui).await.unwrap_err();
+    assert_eq!(
+        host.slots.borrow()[&gui_registration.project_id].credentials[reference],
+        "vault-secret"
+    );
     host.client_state("vault.replace",json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":"generation","slot":credential_slot,"expectedRevision":1,"value":null}),&connection).unwrap();
     assert!(
         host.ensure_inner(&gui_input)

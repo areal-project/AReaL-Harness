@@ -591,35 +591,6 @@ function SideChatEditor({
       if (mounted.current && workspace.isCurrent(token, generation)) setBusy(false);
     }
   };
-  const submitGenUi = async (question: string) => {
-    if (
-      executionBlocked ||
-      busy ||
-      pendingId ||
-      unsettled ||
-      active ||
-      !project.state?.connected ||
-      !sideId ||
-      !validSide ||
-      side.desktop?.archived
-    )
-      throw Error("Side conversation is not available");
-    const token = workspace.capture(generation);
-    setBusy(true);
-    setError("");
-    try {
-      if (!mounted.current || !workspace.isCurrent(token, generation))
-        throw Error("Side conversation changed");
-      await action("side", {
-        projectId: project.id,
-        operation: "send",
-        threadId: sideId,
-        text: question,
-      });
-    } finally {
-      if (mounted.current && workspace.isCurrent(token, generation)) setBusy(false);
-    }
-  };
   const configure = async (values: Data) => {
     if (
       busy ||
@@ -834,7 +805,6 @@ function SideChatEditor({
         )}
         {validSide && (
           <Messages
-            onGenUiFollowUp={submitGenUi}
             key={`${owner}:${sideId}`}
             project={project}
             thread={side}

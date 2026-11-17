@@ -1,7 +1,6 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { PlatformServices, QuitProgress, SnapShotServices } from "../services.js";
 import { PlatformReadProvider } from "../PlatformReadContext.js";
-import { GenUiWorkspace } from "../GenUiWorkspace.js";
 import { QuitProgressDialog } from "../QuitProgressDialog.js";
 import { UnsavedChangesProvider } from "../settings/UnsavedChanges.js";
 import { ComputerControlContext } from "../ComputerControlEntry.js";
@@ -85,7 +84,7 @@ export function AppProviders({
       conversationCreateReadOnly={(flags & 16) !== 0}
     >
       <UnsavedChangesProvider>
-        <GenUiWorkspace services={services}>{children}</GenUiWorkspace>
+        {children}
         <QuitProgressDialog progress={quitProgress} />
       </UnsavedChangesProvider>
     </PlatformReadProvider>

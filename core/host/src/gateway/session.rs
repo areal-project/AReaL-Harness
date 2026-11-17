@@ -240,7 +240,10 @@ impl Drop for SessionSlot {
                 .set(self.host.gateway.pending.get() - 1);
         }
         if let Some(connection) = &self.connection {
-            self.host.gateway.workbench.disconnect_pages(connection);
+            self.host
+                .gateway
+                .workbench
+                .disconnect_connection(connection);
             if let Some(active) = self.host.gateway.active.borrow_mut().remove(connection) {
                 self.host
                     .gateway
@@ -1069,57 +1072,6 @@ impl Session {
         let params = &request["params"];
         ensure!(params.is_object(), "INVALID_PARAMS");
         self.authorize(None, "observe")?;
-        if matches!(method, "pages.command" | "pages.resource") {
-            ensure!(self.local && self.gui_write, "FORBIDDEN");
-            self.authorize(None, "manage")?;
-            ensure!(
-                request.get("context").is_none() && request.get("commandId").is_none(),
-                "INVALID_PARAMS"
-            );
-            // 手动打开会执行入口工具；不能用 manage 绕过 submit。
-            if method == "pages.command"
-                && matches!(params["operation"].as_str(), Some("open" | "request"))
-            {
-                self.authorize(None, "submit")?;
-            }
-            let params = if method == "pages.command" {
-                serde_json::to_value(
-                    serde_json::from_value::<areal_protocol::host::WorkbenchPageCommandParams>(
-                        params.clone(),
-                    )
-                    .context("INVALID_PARAMS")?,
-                )?
-            } else {
-                serde_json::to_value(
-                    serde_json::from_value::<areal_protocol::host::WorkbenchPageResourceParams>(
-                        params.clone(),
-                    )
-                    .context("INVALID_PARAMS")?,
-                )?
-            };
-            let mut value = self
-                .host
-                .gateway
-                .workbench
-                .request(
-                    &self.host,
-                    method,
-                    params,
-                    json!({"principal":self.peer,"connection":self.connection}),
-                )
-                .await?;
-            if method == "pages.command" {
-                let descriptor = if value["status"] == "open" {
-                    &mut value["app"]
-                } else {
-                    &mut value
-                };
-                if descriptor.get("frameUrl").is_some() {
-                    descriptor["frameUrl"] = json!(self.host.loopback.page_proxy_url()?);
-                }
-            }
-            return Ok(value);
-        }
         if matches!(
             method,
             "library.command"

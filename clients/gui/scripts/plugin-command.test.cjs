@@ -36,9 +36,6 @@ function fixture(overrides = {}) {
     },
     requireConnection() {},
     async ensureBrowserTools() {},
-    async genUiText(_project, _thread, text) {
-      return text;
-    },
     textInput(text) {
       return [{ type: "text", text }];
     },

@@ -66,7 +66,7 @@ function readServicePacket(packet, metadata) {
   return packet;
 }
 
-/** @typedef {{projects:(import('@areal/workbench-service/desktop/core/gen-ui-state.cjs').GenUiProject & {outcomes?:unknown})[],library:{projects:Record<string,unknown>}}} PageSnapshot */
+/** @typedef {{projects:({id:string,state?:Record<string,unknown>|null} & {outcomes?:unknown})[],library:{projects:Record<string,unknown>}}} PageSnapshot */
 /** @param {PageSnapshot} snapshot @param {string} projectId @param {string} threadId */
 function ownsThread(snapshot, projectId, threadId) {
   const project = snapshot.library.projects[projectId];

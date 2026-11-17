@@ -52,7 +52,7 @@ function registerUiProtocol(guiRoot, hostConnectSource) {
       return new Response(await readFile(path), {
         headers: {
           "Content-Type": mime[extname(path)] ?? "application/octet-stream",
-          "Content-Security-Policy": `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' ${connectSource}; worker-src 'self' blob:; object-src 'none'; frame-src areal-mcp: ${frameSource}`,
+          "Content-Security-Policy": `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' ${connectSource}; worker-src 'self' blob:; object-src 'none'; frame-src ${frameSource || "'none'"}`,
         },
       });
     } catch {
@@ -106,7 +106,6 @@ function registerDesktopShell(app, diagnostics) {
   );
   app.on("will-quit", () => diagnostics.record({ type: "exit-requested", exitCode: 0 }));
   protocol.registerSchemesAsPrivileged([
-    { scheme: "areal-mcp", privileges: { standard: true, secure: true, supportFetchAPI: true } },
     { scheme: "areal-ui", privileges: { standard: true, secure: true, supportFetchAPI: true } },
   ]);
 }

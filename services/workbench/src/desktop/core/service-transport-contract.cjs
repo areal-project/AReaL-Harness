@@ -64,39 +64,6 @@ function discoveryPlan(value) {
     )
   );
 }
-/** @param {unknown} value @returns {PageRegistration} */
-function pageRegistration(value) {
-  if (!record(value) || typeof value.registrationId !== "string" || !Array.isArray(value.tools))
-    throw new Error("Invalid page tool registration");
-  const tools = value.tools.map((tool) => {
-    if (!record(tool) || typeof tool.schemaDigest !== "string")
-      throw new Error("Invalid page tool schema digest");
-    return { ...tool, schemaDigest: tool.schemaDigest };
-  });
-  return { ...value, registrationId: value.registrationId, tools };
-}
-/** @param {unknown} value @returns {value is PageToolRequest} */
-function pageToolRequest(value) {
-  return (
-    record(value) &&
-    ["register", "revoke", "claim", "resolve"].some((operation) => operation === value.operation) &&
-    ["projectId", "threadId", "instanceId"].every((key) => text(value[key])) &&
-    (typeof value.generation === "string" || typeof value.generation === "number") &&
-    ["registrationId", "turnId", "callId", "ownerId", "schemaDigest", "claimId"].every(
-      (key) => value[key] === undefined || typeof value[key] === "string",
-    )
-  );
-}
-/** @param {unknown} value @returns {value is PageCoordinates} */
-function pageCoordinates(value) {
-  const coordinates = ["threadId", "turnId", "callId", "registrationId", "ownerId", "schemaDigest"];
-  return (
-    record(value) &&
-    coordinates.every((key) => text(value[key])) &&
-    Object.keys(value).every((key) => coordinates.includes(key) || key === "claimId") &&
-    (value.claimId === undefined || text(value.claimId))
-  );
-}
 /** @param {unknown} value */
 function queueList(value) {
   if (!record(value) || !Array.isArray(value.items)) throw new Error("Invalid browser entry queue");
@@ -119,8 +86,5 @@ module.exports = {
   strings,
   toolRequest,
   discoveryPlan,
-  pageRegistration,
-  pageToolRequest,
-  pageCoordinates,
   queueList,
 };

@@ -80,8 +80,8 @@ pub(super) async fn execute_with_options(
     host.migration.source_profile(source)?;
     let operation = params["operation"].as_str().context("INVALID_PARAMS")?;
     let fields: &[&str] = match operation {
-        "modelsCatalog" | "modelsRead" | "configShow" | "feedbackStatus" => &["operation"],
-        "configValidate" | "feedbackSubmit" => &["operation", "document"],
+        "modelsCatalog" | "modelsRead" | "configShow" => &["operation"],
+        "configValidate" => &["operation", "document"],
         "pluginSnapshot" => &["operation", "projectId", "pluginId"],
         "pluginDoctor" => &["operation", "projectId"],
         _ => anyhow::bail!("INVALID_PARAMS"),
@@ -148,14 +148,6 @@ pub(super) async fn execute_with_options(
                 Err(error) => return Err(error),
             }
         }
-    }
-    if operation == "feedbackStatus" || operation == "feedbackSubmit" {
-        return tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            feedback(host, source, inputs, &params),
-        )
-        .await
-        .map_err(|_| anyhow::anyhow!("feedback outcome unknown"))?;
     }
     match operation {
         // 模型读取沿规范配置；写入只经公共 providers.command。
@@ -232,21 +224,30 @@ pub(super) async fn execute_with_options(
     }
 }
 
-async fn feedback(
+pub(super) async fn feedback(host: &Host, source: &str, document: Option<Value>) -> Result<Value> {
+    host.migration.source_profile(source)?;
+    if let Some(document) = &document {
+        ensure!(document.is_object(), "INVALID_PARAMS");
+        ensure!(
+            serde_json::to_vec(document)?.len() <= (16 << 20) + (128 << 10),
+            "LIMIT_EXCEEDED"
+        );
+    }
+    let options = host.gateway.workbench.utility_options(source)?;
+    tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        feedback_inner(host, source, inputs(&options)?, document),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("feedback outcome unknown"))?
+}
+
+async fn feedback_inner(
     host: &Host,
     source: &str,
     mut inputs: ConfigInputs,
-    params: &Value,
+    document: Option<Value>,
 ) -> Result<Value> {
-    let document = if params["operation"] == "feedbackSubmit" {
-        let text = params["document"].as_str().context("INVALID_PARAMS")?;
-        ensure!(text.len() <= (16 << 20) + (128 << 10), "LIMIT_EXCEEDED");
-        let value: Value = serde_json::from_str(text).context("INVALID_PARAMS")?;
-        ensure!(value.is_object(), "INVALID_PARAMS");
-        Some(value)
-    } else {
-        None
-    };
     for (name, value) in host.gateway.workbench.environment_credentials(source) {
         inputs.env.insert(name.into(), value.into());
     }

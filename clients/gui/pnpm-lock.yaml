@@ -80,9 +80,6 @@ importers:
       '@areal/client':
         specifier: workspace:*
         version: link:../../clients/gui/packages/client
-      '@areal/gen-ui':
-        specifier: workspace:*
-        version: link:../../clients/gui/packages/gen-ui
       '@areal/provider-config':
         specifier: workspace:*
         version: link:../../schemas/provider-config
@@ -157,9 +154,6 @@ importers:
       '@areal/client':
         specifier: workspace:*
         version: link:../packages/client
-      '@areal/gen-ui':
-        specifier: workspace:*
-        version: link:../packages/gen-ui
       '@areal/provider-config':
         specifier: workspace:*
         version: link:../../../schemas/provider-config
@@ -293,25 +287,6 @@ importers:
         specifier: workspace:*
         version: link:../remote-client
 
-  packages/gen-ui:
-    dependencies:
-      '@modelcontextprotocol/ext-apps':
-        specifier: 2.0.3
-        version: 2.0.3(@modelcontextprotocol/client@2.3.0)(@modelcontextprotocol/core@2.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.6.6)
-      zod:
-        specifier: 4.6.6
-        version: 4.6.6
-    devDependencies:
-      '@types/node':
-        specifier: 26.6.4
-        version: 26.6.4
-      esbuild:
-        specifier: 0.28.2
-        version: 0.28.2
-      typescript:
-        specifier: 7.0.2
-        version: 7.0.2
-
   packages/remote:
     dependencies:
       '@chainsafe/libp2p-noise':
@@ -410,9 +385,6 @@ importers:
       '@areal/client':
         specifier: workspace:*
         version: link:../packages/client
-      '@areal/gen-ui':
-        specifier: workspace:*
-        version: link:../packages/gen-ui
       '@areal/provider-config':
         specifier: workspace:*
         version: link:../../../schemas/provider-config
@@ -473,15 +445,6 @@ importers:
       '@lexical/react':
         specifier: 0.42.0
         version: 0.42.0(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(yjs@13.6.33)
-      '@modelcontextprotocol/client':
-        specifier: 2.3.0
-        version: 2.3.0
-      '@modelcontextprotocol/core':
-        specifier: 2.3.0
-        version: 2.3.0
-      '@modelcontextprotocol/ext-apps':
-        specifier: 2.0.3
-        version: 2.0.3(@modelcontextprotocol/client@2.3.0)(@modelcontextprotocol/core@2.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.6.6)
       '@pierre/diffs':
         specifier: 1.4.3
         version: 1.4.3(patch_hash=a590d3e3f3235fceb199592460197a66cef75259193e33960c5a684f2c175b7a)(@shikijs/themes@4.4.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1587,31 +1550,9 @@ packages:
   '@mermaid-js/parser@1.2.1':
     resolution: {integrity: sha512-n12NohV3mrUyUL2o93IgG/ifeW9FTyeJn3zDxkhwa8MJ9Fxg3HQMlA3RiGmD/3UnJvheztkjjQAjA2T4LmUcpw==}
 
-  '@modelcontextprotocol/client@2.3.0':
-    resolution: {integrity: sha512-pbHtGj6EeFCHngFE8gtNPaKrsj8Mb1IMw45BLcaPML/m2WTxI7pyYmeNQvaux88Lw8BSO5r7nyRbUyIkICmGrg==}
-    engines: {node: '>=20'}
-
   '@modelcontextprotocol/core@2.3.0':
     resolution: {integrity: sha512-09BHFaNVBe5pB2AhzCfLj0cqmsKLERvZQ4FblzP90UMGLaXVqdZPByFjURwsUYCmxonUW2yAwgTTvle+8O2/8w==}
     engines: {node: '>=20'}
-
-  '@modelcontextprotocol/ext-apps@2.0.3':
-    resolution: {integrity: sha512-Tn+4+cyhO4f4cQSDxNyLiIfEE+qlTTuIbWBJB8JTinEXOhDYgCT4wDTQplxD9MBYZH5pCYGC59GaxiwIT4bu8w==}
-    engines: {node: '>=20'}
-    peerDependencies:
-      '@modelcontextprotocol/client': ^2.0.0
-      '@modelcontextprotocol/core': ^2.0.0
-      '@modelcontextprotocol/server': ^2.0.0
-      react: ^17.0.0 || ^18.0.0 || ^19.0.0
-      react-dom: ^17.0.0 || ^18.0.0 || ^19.0.0
-      zod: 4.6.6
-    peerDependenciesMeta:
-      '@modelcontextprotocol/server':
-        optional: true
-      react:
-        optional: true
-      react-dom:
-        optional: true
 
   '@modelcontextprotocol/sdk@1.32.0':
     resolution: {integrity: sha512-8BviX/hK4Gd2eL1KdTwm0gfl4d3wdoErW0Jd00h6nomUAtk6IJk5vwQJc6kfWtJTzN5OEV/lgIiJKI8fiDGAlA==}
@@ -2606,9 +2547,6 @@ packages:
   '@smithy/util-utf8@2.3.0':
     resolution: {integrity: sha512-R8Rdn8Hy72KKcebgLiv8jQcQkXoLMOGGv5uI1/k0l+snqkOzQ1R0ChUBCxWMlBsFMekWjq0wRudIweFs7sKT5A==}
     engines: {node: '>=14.0.0'}
-
-  '@standard-schema/spec@1.1.0':
-    resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
   '@streamdown/cjk@1.0.3':
     resolution: {integrity: sha512-WRg8HR/gHbBoTgsMd91OKFUClIoDcEFVofJvluvEAyjx3KpU0aGgD9tGDqHkHj14ShoMSkX0IYetWGegTcwIJw==}
@@ -7616,29 +7554,9 @@ snapshots:
     dependencies:
       '@chevrotain/types': 11.1.2
 
-  '@modelcontextprotocol/client@2.3.0':
-    dependencies:
-      '@modelcontextprotocol/core': 2.3.0
-      cross-spawn: 7.0.6
-      eventsource: 3.0.7
-      eventsource-parser: 3.1.1
-      jose: 6.2.9
-      pkce-challenge: 5.0.1
-      zod: 4.6.6
-
   '@modelcontextprotocol/core@2.3.0':
     dependencies:
       zod: 4.6.6
-
-  '@modelcontextprotocol/ext-apps@2.0.3(@modelcontextprotocol/client@2.3.0)(@modelcontextprotocol/core@2.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.6.6)':
-    dependencies:
-      '@modelcontextprotocol/client': 2.3.0
-      '@modelcontextprotocol/core': 2.3.0
-      '@standard-schema/spec': 1.1.0
-      zod: 4.6.6
-    optionalDependencies:
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
 
   '@modelcontextprotocol/sdk@1.32.0(zod@4.6.6)':
     dependencies:
@@ -8366,8 +8284,6 @@ snapshots:
     dependencies:
       '@smithy/util-buffer-from': 2.2.0
       tslib: 2.8.1
-
-  '@standard-schema/spec@1.1.0': {}
 
   '@streamdown/cjk@1.0.3(@types/mdast@4.0.4)(micromark-util-types@2.0.3)(micromark@4.0.3)(react@19.2.8)(unified@11.0.5)':
     dependencies:

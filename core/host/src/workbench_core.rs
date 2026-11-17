@@ -26,7 +26,6 @@ const WORKBENCH_METHODS: &[&str] = &[
     "areal/execution/trace",
     "areal/execution/traceResult",
     "areal/execution/wait",
-    "areal/genUi/source",
     "areal/goal/clear",
     "areal/goal/create",
     "areal/goal/get",
@@ -37,21 +36,7 @@ const WORKBENCH_METHODS: &[&str] = &[
     "areal/inbox/list",
     "areal/interaction/list",
     "areal/interaction/respond",
-    "areal/mcp/app/close",
-    "areal/mcp/app/open",
-    "areal/mcp/app/openFromResult",
-    "areal/mcp/app/request",
-    "areal/mcp/app/tools/register",
-    "areal/mcp/app/tools/revoke",
-    "areal/mcp/apps/list",
     "areal/mcp/extension/call",
-    "areal/mcp/form/preview",
-    "areal/mcp/form/resource/prepare",
-    "areal/mcp/form/resource/release",
-    "areal/mcp/form/resource/stage",
-    "areal/mcp/form/respond",
-    "areal/mcp/forms/list",
-    "areal/mcp/tool/result",
     "areal/model/list",
     "areal/owner/unwatch",
     "areal/owner/watch",
@@ -965,7 +950,6 @@ fn core_admission_command(method: &str, params: &Value) -> Option<(&'static str,
         | "areal/tool/acknowledge"
         | "areal/hook/acknowledge"
         | "areal/server/drain"
-        | "areal/mcp/app/close"
         | "turn/interrupt"
         | "areal/task/pause"
         | "areal/task/cancel"

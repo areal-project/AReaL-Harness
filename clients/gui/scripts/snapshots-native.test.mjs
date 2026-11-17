@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 const gui = fileURLToPath(new URL("..", import.meta.url));
-const require = createRequire(new URL("../packages/gen-ui/package.json", import.meta.url));
+const require = createRequire(new URL("../packages/browser-data/package.json", import.meta.url));
 const { build } = require("esbuild");
 const contract = require(join(gui, "packages/workbench/client/desktop-contract/snapshots.cjs"));
 const output = await build({

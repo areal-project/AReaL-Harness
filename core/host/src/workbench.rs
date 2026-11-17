@@ -165,10 +165,6 @@ impl Workbench {
                     Ok(Some(frame)) => frame,
                     _ => break,
                 };
-                if frame["event"] == "pages.event" {
-                    let _ = reverse("pages.event".into(), frame["params"].clone()).await;
-                    continue;
-                }
                 if let Some(call) = frame["call"].as_str() {
                     let id = frame["id"].clone();
                     let reply = reverse(call.to_owned(), frame["params"].clone());

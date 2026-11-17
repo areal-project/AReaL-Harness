@@ -71,13 +71,11 @@ async function serviceIdentity(options) {
   hashContracts(contracts);
   hashContracts(dirname(require.resolve("@areal/provider-config")));
   // 迁出 Main 的领域仍决定后台部署身份，保留进程不能漏判业务更新。
-  hashContracts(dirname(require.resolve("@areal/workbench-service/feedback")));
   hashContracts(dirname(require.resolve("@areal/workbench-service/host-core-client")));
   hash.update(readFileSync(require.resolve("@areal/workbench/state-projection")));
   hash.update(readFileSync(require.resolve("@areal/remote")));
   hash.update(readFileSync(require.resolve("../workspace-files.js")));
   hash.update(readFileSync(require.resolve("@areal/workspace-git")));
-  hash.update(readFileSync(require.resolve("@areal/gen-ui/node")));
   hash.update(
     readFileSync(
       join(dirname(require.resolve("@areal/workspace-git/package.json")), "worktrees.js"),

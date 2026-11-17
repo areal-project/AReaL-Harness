@@ -283,22 +283,6 @@ impl Session {
                 "CORE_INCOMPATIBLE"
             );
         }
-        let prepared = if params.operation == "steer" && self.uses_workbench_execution() {
-            Some(
-                self.host
-                    .gateway
-                    .workbench
-                    .prepare_input(
-                        &self.host,
-                        &id,
-                        &params.thread_id,
-                        params.values["text"].as_str().unwrap_or_default(),
-                    )
-                    .await?,
-            )
-        } else {
-            None
-        };
         let (native, _, _observation) = self
             .host
             .schedules
@@ -404,9 +388,6 @@ impl Session {
         }
         let operation = uuid::Uuid::new_v4().to_string();
         let mut native = params.values.clone();
-        if let Some(text) = prepared {
-            native["text"] = json!(text);
-        }
         native["threadId"] = json!(params.thread_id);
         if params.operation != "steer" {
             native["requestId"] = json!(operation);

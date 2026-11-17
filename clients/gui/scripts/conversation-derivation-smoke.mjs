@@ -199,12 +199,10 @@ for (const entry of [
       text: "mutation",
     },
   })),
-  ...["mcpFormRespond", "mcpExtensionCall", "mcpConnect", "contextCompact", "processStart"].map(
-    (operation) => ({
-      command: "manage",
-      parameters: { projectId: "project", threadId: "source", operation },
-    }),
-  ),
+  ...["mcpExtensionCall", "mcpConnect", "contextCompact", "processStart"].map((operation) => ({
+    command: "manage",
+    parameters: { projectId: "project", threadId: "source", operation },
+  })),
   { command: "feedback", parameters: { operation: "preference", enabled: true } },
   { command: "trajectory", parameters: { operation: "retry" } },
   { command: "unknown", parameters: {} },
