@@ -1,0 +1,21 @@
+core/engine/src/desktop/tools.rs
+  s_f12f82d708da68::t_2c51d4ec441509 21
+core/engine/src/desktop/mcp_tools.rs
+  s_f12f82d708da68::t_8a164961cb6716 294,296,301,303
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c1971364c573154a2152a86e3a63e5af669190c6",
+  "prompts": {},
+  "sessions": {
+    "s_f12f82d708da68": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d39b-5e9e-71a0-b28d-b29ad3693a4b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
