@@ -1007,6 +1007,33 @@ class SharedCoreBackend {
     if (!this.status.connected || !this.connection) return;
     return this.requireConnection().request("browserRevoke", identity, true);
   }
+  /** @param {Record<string,unknown>} request */
+  async nativeGuiTerminalCommand(request) {
+    const epoch = this.nativeBrowserEpoch;
+    try {
+      const value = await this.nativeBrowserCall("terminal.command", {
+        ...request,
+        guiOwned: true,
+      });
+      if (!epoch || this.nativeBrowserEpoch !== epoch)
+        throw Object.assign(new Error("Original terminal attachment changed"), {
+          code: "RESYNC_REQUIRED",
+        });
+      return value;
+    } catch (error) {
+      const semantics = commandSemantics("manage", request);
+      if (semantics.effect === "mutation" && record(error)) {
+        error.requestId ??= request.requestId;
+        const code = String(error.code ?? "");
+        if (
+          !error.outcome &&
+          !["COMMAND_FAILED", "INVALID_PARAMS", "FORBIDDEN", "CORE_INCOMPATIBLE"].includes(code)
+        )
+          error.submissionUnknown = true;
+      }
+      throw error;
+    }
+  }
   /** @param {string} name @param {Record<string,unknown>} request @returns {Promise<unknown>} */
   async command(name, request) {
     if (this.disposed) throw new Error("GUI 连接已关闭");
@@ -1059,6 +1086,31 @@ class SharedCoreBackend {
       return value;
     }
     if (
+      name === "manage" &&
+      (request.guiOwned === true ||
+        (typeof request.id === "string" && this.guiTerminals.has(request.id)))
+    ) {
+      const params = { ...request };
+      const semantics = commandSemantics(name, params);
+      if (semantics.requestId) params[semantics.requestId] ??= randomUUID();
+      const recovery = request.operation === "processSubmission";
+      const starting = request.operation === "processStart" || recovery;
+      const scope = starting ? readGuiThreadIdentity(request) : undefined;
+      const pending = this.nativeGuiTerminalCommand(params).then((value) => {
+        if (scope) {
+          const response = readGuiProcessResponse(value, params.requestId, recovery);
+          if (response.confirmed) this.guiTerminals.set(response.id, { ...scope, id: response.id });
+        }
+        return value;
+      });
+      if (starting) this.guiTerminalStarts.add(pending);
+      try {
+        return await pending;
+      } finally {
+        this.guiTerminalStarts.delete(pending);
+      }
+    }
+    if (
       this.status.commandContract !== COMMAND_CONTRACT &&
       requiresCurrentCommands(name, request)
     ) {
@@ -1069,13 +1121,6 @@ class SharedCoreBackend {
         { code: "SERVICE_COMMAND_UNSUPPORTED" },
       );
     }
-    // Only explicitly GUI-owned shells are tied to this GUI's lifetime. Model
-    // tools and manually managed thread processes keep their Core lifetime.
-    const ownedStart =
-      name === "manage" && request.operation === "processStart" && request.guiOwned === true;
-    const ownedRecovery =
-      name === "manage" && request.operation === "processSubmission" && request.guiOwned === true;
-    const ownedScope = ownedStart || ownedRecovery ? readGuiThreadIdentity(request) : undefined;
     const { guiOwned: _guiOwned, ...params } = request;
     if (name === "connect" && this.status.selectedThreadObservation !== true)
       delete params.threadId;
@@ -1087,29 +1132,13 @@ class SharedCoreBackend {
       params,
     );
     const connection = this.requireConnection();
-    const ownedTerminal =
-      ownedStart ||
-      ownedRecovery ||
-      (name === "manage" &&
-        typeof params.operation === "string" &&
-        params.operation.startsWith("process") &&
-        typeof params.id === "string" &&
-        this.guiTerminals.has(params.id));
     const pending = connection
       .request(
-        ownedTerminal ? "guiTerminalCommand" : "command",
+        "command",
         { name, request: name === "media" ? encodeMedia(params) : params },
         semantics.effect === "mutation",
       )
-      .then((value) => {
-        if (ownedScope) {
-          const response = readGuiProcessResponse(value, params.requestId, ownedRecovery);
-          if (response.confirmed)
-            this.guiTerminals.set(response.id, { ...ownedScope, id: response.id });
-        }
-        return name === "media" ? decodeMedia(value) : value;
-      });
-    if (ownedStart || ownedRecovery) this.guiTerminalStarts.add(pending);
+      .then((value) => (name === "media" ? decodeMedia(value) : value));
     try {
       return await pending;
     } catch (error) {
@@ -1140,8 +1169,6 @@ class SharedCoreBackend {
         }
       }
       throw error;
-    } finally {
-      this.guiTerminalStarts.delete(pending);
     }
   }
   /** @param {Record<string,unknown>} request @returns {Promise<unknown>} */
@@ -1691,11 +1718,11 @@ class SharedCoreBackend {
           throw new Error("后台已断开，GUI 终端清理未确认，请从后台资源入口检查");
         /** @param {string} operation @param {boolean} [mutation] */
         const call = (operation, mutation = false) =>
-          this.requireConnection().request(
-            "guiTerminalCommand",
-            { name: "manage", request: { ...terminal, operation } },
-            mutation,
-          );
+          this.nativeGuiTerminalCommand({
+            ...terminal,
+            operation,
+            ...(mutation ? { requestId: randomUUID() } : {}),
+          });
         const before = readGuiProcesses(await call("processes")).find((p) => p.id === terminal.id);
         if (!before) throw new Error("找不到 GUI 终端，无法确认资源清理");
         if (!before.cleanupConfirmed) {

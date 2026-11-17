@@ -9,7 +9,7 @@ const { GuiSourceAdapter } = require("node:module").createRequire(
   require.resolve("../app/package.json"),
 )("@areal/client/gui-source");
 
-test("backend setup sends only configured environment credentials and preserves config errors", async () => {
+test("native source preparation sends only configured environment credentials without starting Node", async () => {
   const owner = new GuiHostProjects({
     binary: "/unused",
     home: "/unused",
@@ -23,8 +23,12 @@ test("backend setup sends only configured environment credentials and preserves 
     return { identity: "owner" };
   };
   const options = { guiProfile: "/profile" };
-  await owner.ensureBackend(options, { FIXTURE_KEY: "secret", OTHER: "hidden" });
-  assert.deepEqual(calls[1].params.environmentCredentials, { FIXTURE_KEY: "secret" });
+  const prepared = await owner.prepareNative(options, { FIXTURE_KEY: "secret", OTHER: "hidden" });
+  assert.deepEqual(prepared.environmentCredentials, { FIXTURE_KEY: "secret" });
+  assert.deepEqual(
+    calls.map((call) => call.method),
+    ["backend.credentialNames"],
+  );
   calls.length = 0;
   owner.client.request = async (method, params) => {
     calls.push({ method, params });
@@ -32,8 +36,12 @@ test("backend setup sends only configured environment credentials and preserves 
       ? { names: [], configurationError: true }
       : { identity: "owner" };
   };
-  await owner.ensureBackend(options, { FIXTURE_KEY: "secret" });
-  assert.equal("environmentCredentials" in calls[1].params, false);
+  const invalid = await owner.prepareNative(options, { FIXTURE_KEY: "secret" });
+  assert.equal("environmentCredentials" in invalid, false);
+  assert.deepEqual(
+    calls.map((call) => call.method),
+    ["backend.credentialNames"],
+  );
 });
 
 test("source migration reports safe actionable blockers without exposing source data", async (t) => {

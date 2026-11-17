@@ -2188,3 +2188,71 @@ async fn native_cloud_sessions_create_and_submit_without_node_or_local_core() {
         host.gateway.workbench.cloud.sessions.close_all(&host);server.await.unwrap();
     }).await;
 }
+
+#[tokio::test]
+async fn native_gui_terminal_uses_its_attachment_and_original_process_receipt() {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::Message;
+    tokio::task::LocalSet::new().run_until(async {
+        let temp=tempfile::tempdir().unwrap();let root=temp.path().canonicalize().unwrap();
+        let (host,input,source)=resumable_host(&root);
+        storage::private_dir(&host.home.join("host/projects")).unwrap();
+        let options=frontend_options(&host,&source,input.options,None).unwrap();
+        let (attached,_events)=host.schedules.connections.frontend_subscribe(&host,"terminal-main",&source,options,None).unwrap();
+        let attachment=attached["attachmentId"].as_str().unwrap();
+        host.slots.borrow_mut().remove("project");
+        let workspace=root.join("workspace");storage::private_dir(&workspace).unwrap();
+        let alias=super::super::worktree_catalog::add_project(&host,&source,json!({"root":workspace})).await.unwrap()["projectId"].as_str().unwrap().to_owned();
+        let registration=super::super::worktree_catalog::project(&host,&source,&alias).unwrap();
+        let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let service=areal_protocol::service::Service {
+            identity:areal_protocol::service::Identity {protocol_version:1,service_id:"terminal-core".into(),generation:"terminal-generation".into(),workspace:registration.workspace.clone(),data_dir:registration.data_dir.clone(),config_fingerprint:"fixture".into()},
+            owner:Some(host.owner()),endpoint:format!("ws://{}/",listener.local_addr().unwrap()),web_url:String::new(),auth_file:root.join("core-auth.json"),log_file:root.join("core.log"),host_pid:1,core_pid:2,state:areal_protocol::service::State::Ready,
+        };
+        storage::write(&service.auth_file,&json!({"principals":[{"id":"desktop-owner","token":"synthetic-terminal-token"}]})).unwrap();
+        {let mut slots=host.slots.borrow_mut();let slot=slots.get_mut(&registration.project_id).unwrap();slot.state="ready".into();slot.service=Some(service);let(writer,lifetime)=areal_local_service::OwnerLifetime::pair().unwrap();slot.writer=Some(writer);slot.lifetime=Some(Rc::new(lifetime));}
+        let home=super::super::library_store::source_home(&host,&source).unwrap();
+        storage::private_dir(&home.join("thread-owners")).unwrap();storage::write(&home.join("thread-owners").join(format!("{alias}.json")),&json!(["terminal-thread"])).unwrap();
+        std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+        let calls=Rc::new(RefCell::new(Vec::<Value>::new()));let recorded=calls.clone();let remote_cwd=workspace.clone();
+        let core=tokio::task::spawn_local(async move {
+            let(stream,_)=listener.accept().await.unwrap();let mut socket=tokio_tungstenite::accept_async(stream).await.unwrap();let mut process_receipt=Value::Null;
+            while let Some(Ok(Message::Text(raw)))=socket.next().await {
+                let q:Value=serde_json::from_str(&raw).unwrap();if q.get("id").is_none(){continue;}
+                recorded.borrow_mut().push(q.clone());
+                let result=match q["method"].as_str().unwrap() {
+                    "initialize"=>json!({}),
+                    "areal/capabilities"=>json!({"apiVersion":"areal.core.v1","methods":["areal/process/start","areal/process/list","areal/process/get","areal/request/read"],"features":{"connectionProcesses":true,"threadCreationJournal":{"binding":{"identity":"terminal-store","journalEpoch":"epoch","coreInstanceId":"terminal-core"}}},"methodSemantics":{"areal/process/start":{"effect":"mutation","receipt":"thread"}}}),
+                    "thread/read"=>json!({"thread":{"id":"terminal-thread","sessionId":"terminal-thread","cwd":remote_cwd,"conversation":{"kind":"ordinary","policy":{"kind":"ordinaryV1"}},"desktop":{"archived":false}}}),
+                    "areal/task/list"=>json!({"data":[],"nextCursor":null}),
+                    "areal/process/start"=>{
+                        assert_eq!(q["params"]["lifetime"],"connection");assert_eq!(q["params"]["threadId"],"terminal-thread");
+                        let params:areal_protocol::desktop::ProcessStart=serde_json::from_value(q["params"].clone()).unwrap();
+                        let result=json!({"id":"native-process","processId":41});
+                        process_receipt=json!({"requestId":q["params"]["requestId"],"method":"areal/process/start","threadId":"terminal-thread","identity":"terminal-store","digest":storage::digest(&serde_json::to_vec(&params).unwrap()),"status":"completed","operation":{"requestId":q["params"]["requestId"],"method":"areal/process/start","target":{"kind":"thread","threadId":"terminal-thread"}},"result":result});
+                        result
+                    },
+                    "areal/process/list"=>json!({"data":[{"id":"native-process","processId":41,"argv":["/bin/sh"],"inputs":[],"cleanupConfirmed":false}]}),
+                    "areal/process/get"=>json!({"id":"native-process","processId":41,"argv":["/bin/sh"],"cleanupConfirmed":false}),
+                    "areal/request/read"=>{assert_eq!(q["params"]["threadId"],"terminal-thread");json!({"data":if process_receipt["requestId"]==q["params"]["requestId"] {vec![process_receipt.clone()]}else{vec![]}})},
+                    other=>panic!("unexpected terminal RPC {other}"),
+                };
+                socket.send(Message::Text(json!({"jsonrpc":"2.0","id":q["id"],"result":result}).to_string().into())).await.unwrap();
+            }
+        });
+        let command=|request:Value| {let host=host.clone();let attachment=attachment.to_owned();async move {host.schedules.connections.frontend_call(&host,&json!({"attachmentId":attachment,"call":"terminal.command","params":request})).await}};
+        let request_id=uuid::Uuid::new_v4().to_string();
+        let request=json!({"operation":"processStart","projectId":alias,"threadId":"terminal-thread","guiOwned":true,"requestId":request_id,"lifetime":"thread","argv":["/bin/sh"],"tty":true});
+        assert_eq!(command(request.clone()).await.unwrap()["id"],"native-process");
+        assert_eq!(command(request).await.unwrap()["id"],"native-process");
+        let original=command(json!({"operation":"processSubmission","projectId":alias,"threadId":"terminal-thread","requestId":request_id,"guiOwned":true})).await.unwrap();
+        assert_eq!(original["confirmed"],true);assert_eq!(original["result"]["id"],"native-process");
+        host.schedules.connections.workbench_close_terminals();
+        assert_eq!(command(json!({"operation":"process","projectId":alias,"threadId":"terminal-thread","id":"native-process","guiOwned":true})).await.unwrap()["id"],"native-process");
+        assert_eq!(calls.borrow().iter().filter(|call|call["method"]=="areal/process/start").count(),1);
+        assert!(!host.gateway.workbench.has_running_backend());
+        host.schedules.connections.frontend_disconnect("terminal-main");
+        assert!(command(json!({"operation":"process","projectId":alias,"threadId":"terminal-thread","id":"native-process","guiOwned":true})).await.is_err());
+        core.await.unwrap();
+    }).await;
+}

@@ -1339,3 +1339,49 @@ for (const [command, call, request, response] of [
     assert.equal(f.backend.connection, undefined);
   });
 }
+
+test("GUI terminals use native Host commands and confirm cleanup without a Node connection", async (t) => {
+  const f = await fixture(t);
+  const request = {
+    operation: "processStart",
+    projectId: "project",
+    threadId: "thread",
+    requestId: randomUUID(),
+    guiOwned: true,
+    lifetime: "connection",
+    terminal: true,
+    tty: true,
+  };
+  let closed = false;
+  const operations = [];
+  f.setHandler(async (frame) => {
+    if (frame.method === "desktop.core.subscribe") return { attachmentId: "attachment" };
+    assert.equal(frame.method, "desktop.core.call");
+    assert.equal(frame.params.call, "terminal.command");
+    const params = frame.params.params;
+    operations.push(params.operation);
+    assert.equal(params.projectId, "project");
+    assert.equal(params.threadId, "thread");
+    assert.equal(params.guiOwned, true);
+    if (params.operation === "processStart") {
+      assert.equal(params.requestId, request.requestId);
+      return { id: "native-terminal" };
+    }
+    if (params.operation === "processes")
+      return { data: [{ id: "native-terminal", cleanupConfirmed: closed }] };
+    if (params.operation === "processTerminate") {
+      closed = true;
+      return {};
+    }
+    assert.fail(`unexpected native terminal operation ${params.operation}`);
+  });
+  await f.backend.connectNativeBrowser({ home: f.hostHome, sourceId: "source" }, {});
+  t.after(() => f.backend.closeNativeBrowser());
+  f.backend.status.connected = true;
+  assert.deepEqual(await f.backend.command("manage", request), { id: "native-terminal" });
+  assert.equal(f.backend.guiTerminals.has("native-terminal"), true);
+  await f.backend.settleGuiTerminals();
+  assert.deepEqual(operations, ["processStart", "processes", "processTerminate", "processes"]);
+  assert.equal(f.backend.guiTerminals.size, 0);
+  assert.equal(f.backend.connection, undefined);
+});

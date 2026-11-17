@@ -88,7 +88,7 @@ pub(super) struct Supervisor {
     trajectory: Rc<super::trajectory::Trajectory>,
     pub(super) side_owners: super::side_owners::SideWindowOwners,
     workspace_ops: super::workspace_ops::WorkspaceOps,
-    manage_service: super::manage_service::ManageService,
+    pub(super) manage_service: super::manage_service::ManageService,
     pub(super) resources: super::resources::Resources,
     pub(super) cloud: super::cloud::Cloud,
     pub(super) projectless: super::projectless::Projectless,

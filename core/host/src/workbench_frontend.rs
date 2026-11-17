@@ -109,6 +109,89 @@ impl Connections {
         });
     }
 
+    async fn frontend_terminal_command(
+        &self,
+        host: &Rc<Host>,
+        attachment: &str,
+        source: &str,
+        request: &Value,
+    ) -> Result<Value> {
+        let operation = request["operation"].as_str().context("INVALID_PARAMS")?;
+        let mutation = !matches!(
+            operation,
+            "processes" | "process" | "processOutput" | "processWait" | "processSubmission"
+        );
+        let scope = super::super::session_commands::resolve_project_scope(
+            host, source, request, mutation, false,
+        )
+        .await?;
+        let project = &scope.canonical_id;
+        let gate = {
+            let mut frontends = self.frontends.borrow_mut();
+            frontends
+                .get_mut(attachment)
+                .context("FORBIDDEN")?
+                .browser_gates
+                .entry(format!("terminal:{project}"))
+                .or_insert_with(|| Rc::new(tokio::sync::Mutex::new(())))
+                .clone()
+        };
+        let _attach = gate.lock().await;
+        let existing = {
+            let frontends = self.frontends.borrow();
+            let frontend = frontends.get(attachment).context("FORBIDDEN")?;
+            frontend
+                .leases
+                .iter()
+                .find(|(lease, id)| {
+                    id.as_str() == project
+                        && self.terminals.borrow().get(*lease).is_some_and(|session| {
+                            session.terminal
+                                && !session.desktop.get()
+                                && !session.observer.get()
+                                && session.remote_source.is_none()
+                                && session.shared_current(host)
+                        })
+                })
+                .map(|(lease, _)| lease.clone())
+        };
+        let lease = if let Some(lease) = existing {
+            lease
+        } else {
+            let attached = self
+                .workbench_attach(host, project, Some("terminal"))
+                .await?;
+            let lease = attached["lease"]
+                .as_str()
+                .context("INVALID_RESPONSE")?
+                .to_owned();
+            if let Some(frontend) = self.frontends.borrow_mut().get_mut(attachment) {
+                frontend.leases.insert(lease.clone(), project.clone());
+            } else {
+                self.workbench_detach(host, project, &lease)?;
+                anyhow::bail!("FORBIDDEN");
+            }
+            lease
+        };
+        drop(_attach);
+        let result = host
+            .gateway
+            .workbench
+            .manage_service
+            .terminal_command(host, source, &scope, &lease, request)
+            .await;
+        ensure!(
+            self.frontends
+                .borrow()
+                .get(attachment)
+                .is_some_and(|frontend| frontend.source == source
+                    && frontend.leases.get(&lease) == Some(project)),
+            "RESYNC_REQUIRED"
+        );
+        self.workbench_identity(host, project, &lease)?;
+        result
+    }
+
     async fn frontend_publish_browser(
         &self,
         host: &Rc<Host>,
@@ -378,6 +461,10 @@ impl Connections {
         host.migration.source_profile(&source)?;
         let input = &params["params"];
         match call {
+            "terminal.command" => {
+                let _: areal_protocol::host::LocalDesktopTerminalCommandParams =
+                    serde_json::from_value(input.clone()).context("INVALID_PARAMS")?;
+            }
             "browser.scope" => exact(input, &["projectId", "threadId"])?,
             "resources.prepareCreator" => {
                 let _: areal_protocol::host::LocalDesktopCreatorParams =
@@ -486,6 +573,10 @@ impl Connections {
             input.get("sourceId").is_none_or(|id| id == &source),
             "FORBIDDEN"
         );
+        if call == "terminal.command" {
+            return Box::pin(self.frontend_terminal_command(host, attachment, &source, input))
+                .await;
+        }
         if call == "resources.prepareCreator" {
             return host
                 .gateway

@@ -51,6 +51,10 @@ class GuiHostProjects {
   }
   /** @param {Record<string,unknown> & {guiProfile?:string}} options @param {NodeJS.ProcessEnv} environment */
   async ensureBackend(options, environment) {
+    return this.client.request("backend.ensure", await this.prepareNative(options, environment));
+  }
+  /** @param {Record<string,unknown> & {guiProfile?:string}} options @param {NodeJS.ProcessEnv} environment */
+  async prepareNative(options, environment) {
     const backendOptions = { ...options, applicationOwner: undefined };
     const params = { profile: options.guiProfile, options: backendOptions };
     const result = await this.client.request("backend.credentialNames", params);
@@ -68,15 +72,7 @@ class GuiHostProjects {
       ),
     );
     this.environmentCredentials = result.configurationError ? undefined : credentials;
-    return this.client.request(
-      "backend.ensure",
-      result.configurationError
-        ? params
-        : {
-            ...params,
-            environmentCredentials: credentials,
-          },
-    );
+    return result.configurationError ? params : { ...params, environmentCredentials: credentials };
   }
   /** @param {{deferCredentials?:boolean}} [options] */
   async init({ deferCredentials = false } = {}) {

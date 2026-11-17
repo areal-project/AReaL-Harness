@@ -2163,6 +2163,27 @@ async fn plugin_auth_credential(
     Ok(result)
 }
 
+async fn process_rpc(
+    host: &Rc<Host>,
+    project: &str,
+    lease: Option<&str>,
+    method: &str,
+    params: Value,
+) -> Result<Value> {
+    if let Some(lease) = lease {
+        let response = host
+            .schedules
+            .connections
+            .workbench_request(host, project, lease, method, params)
+            .await?;
+        if let Some(error) = response.get("error") {
+            return Err(super::schedule_connection::RpcFailure(error.clone()).into());
+        }
+        return response.get("result").cloned().context("INVALID_RESPONSE");
+    }
+    shared_rpc(host, project, method, params).await
+}
+
 impl ManageService {
     pub(super) async fn read_rpc(
         &self,
@@ -2320,7 +2341,10 @@ impl ManageService {
             "pluginSubmission" => self.plugin_submission(host, &scope, request).await,
             "workgroupSubmission" => self.workgroup_submission(host, &scope, request).await,
             "agentSubmission" => self.agent_submission(host, &scope, request).await,
-            "processSubmission" => self.process_submission(host, source, &scope, request).await,
+            "processSubmission" => {
+                self.process_submission(host, source, &scope, request, None)
+                    .await
+            }
             "pluginAuth" => {
                 let mut params = pick_fields(request, &["id", "server"]);
                 params["operation"] = request["authOperation"].clone();
@@ -2909,12 +2933,115 @@ impl ManageService {
         Ok(Value::Object(out))
     }
 
+    pub(super) async fn terminal_command(
+        &self,
+        host: &Rc<Host>,
+        source: &str,
+        scope: &ResolvedScope,
+        lease: &str,
+        request: &Value,
+    ) -> Result<Value> {
+        let operation = request["operation"].as_str().context("INVALID_PARAMS")?;
+        if operation == "processSubmission" {
+            return self
+                .process_submission(host, source, scope, request, Some(lease))
+                .await;
+        }
+        if let Some((method, fields)) = direct_read_spec(operation) {
+            return process_rpc(
+                host,
+                &scope.canonical_id,
+                Some(lease),
+                method,
+                pick_fields(request, fields),
+            )
+            .await;
+        }
+        let (method, fields) = journaled_mutation_spec(operation).context("INVALID_PARAMS")?;
+        let mut params = pick_fields(request, fields);
+        let request_id = request["requestId"]
+            .as_str()
+            .map(str::to_owned)
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        crate::wire::request_id(&request_id)?;
+        params["requestId"] = json!(request_id);
+        let shell = if operation == "processStart" && request["terminal"] == true {
+            ensure!(
+                request.get("argv").is_none() && request["tty"] == true,
+                "INVALID_PARAMS"
+            );
+            let (shell, argv) = login_terminal_command()?;
+            params["argv"] = json!(argv);
+            Some(shell)
+        } else {
+            None
+        };
+        if operation == "processStart" {
+            // GUI 的 turn/thread 只决定页面回收时机，Core 资源始终归原窗口连接。
+            params["lifetime"] = json!("connection");
+        }
+        let response = workbench_submissions::submit(
+            host,
+            &scope.canonical_id,
+            lease,
+            method,
+            params,
+            true,
+            false,
+        )
+        .await;
+        let response = match response {
+            Ok(response) => response,
+            Err(error) => {
+                if workbench_submissions::find(host, &scope.canonical_id, &request_id)?
+                    .is_some_and(|entry| entry.get("status").is_none())
+                {
+                    anyhow::bail!("SUBMISSION_UNKNOWN");
+                }
+                return Err(error);
+            }
+        };
+        if let Some(error) = response.get("error") {
+            if matches!(
+                error["data"]["outcome"]["kind"].as_str(),
+                Some("rejected" | "noMutation")
+            ) {
+                return Err(crate::wire::error(
+                    "COMMAND_FAILED",
+                    error["message"]
+                        .as_str()
+                        .unwrap_or("Core rejected terminal operation")
+                        .chars()
+                        .take(512)
+                        .collect::<String>(),
+                ));
+            }
+            anyhow::bail!("SUBMISSION_UNKNOWN");
+        }
+        let mut result = response
+            .get("result")
+            .cloned()
+            .context("INVALID_RESPONSE")?;
+        if let Some(shell) = shell {
+            result["shell"] = json!(shell);
+            let presentation = resolve_terminal_presentation(&scope.home, host, source).await;
+            if let Some(fields) = presentation.as_object() {
+                for (key, value) in fields {
+                    result[key] = value.clone();
+                }
+            }
+        }
+        host.changed();
+        Ok(result)
+    }
+
     async fn process_submission(
         &self,
         host: &Rc<Host>,
         source: &str,
         scope: &ResolvedScope,
         request: &Value,
+        lease: Option<&str>,
     ) -> Result<Value> {
         let thread_id = request
             .get("threadId")
@@ -2948,22 +3075,35 @@ impl ManageService {
             return Ok(json!({ "confirmed": false }));
         }
 
-        let receipt = workbench_submissions::reconcile_shared(
-            host,
-            &scope.canonical_id,
-            "areal/process/start",
-            json!({ "requestId": req_id, "threadId": thread_id }),
-        )
-        .await?;
+        let identity = json!({ "requestId": req_id, "threadId": thread_id });
+        let receipt = if let Some(lease) = lease {
+            workbench_submissions::reconcile(
+                host,
+                &scope.canonical_id,
+                lease,
+                "areal/process/start",
+                identity,
+            )
+            .await?
+        } else {
+            workbench_submissions::reconcile_shared(
+                host,
+                &scope.canonical_id,
+                "areal/process/start",
+                identity,
+            )
+            .await?
+        };
         let result_val = if receipt["confirmed"] == true {
             if receipt.get("error").is_some() {
                 return Ok(json!({ "confirmed": false }));
             }
             receipt["result"].clone()
         } else {
-            let direct = shared_rpc(
+            let direct = process_rpc(
                 host,
                 &scope.canonical_id,
+                lease,
                 "areal/request/read",
                 json!({ "requestId": req_id, "threadId": thread_id }),
             )
@@ -2987,9 +3127,10 @@ impl ManageService {
         let Some(proc_id) = result_val["id"].as_str() else {
             return Ok(json!({ "confirmed": false }));
         };
-        let processes = shared_rpc(
+        let processes = process_rpc(
             host,
             &scope.canonical_id,
+            lease,
             "areal/process/list",
             json!({ "threadId": thread_id }),
         )
@@ -3006,9 +3147,10 @@ impl ManageService {
             return Ok(json!({ "confirmed": false }));
         }
         if !cleanup_confirmed {
-            shared_rpc(
+            process_rpc(
                 host,
                 &scope.canonical_id,
+                lease,
                 "areal/process/get",
                 json!({ "threadId": thread_id, "id": proc_id }),
             )

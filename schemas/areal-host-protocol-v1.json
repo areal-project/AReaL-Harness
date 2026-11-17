@@ -58706,6 +58706,28 @@
             "params"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "attachmentId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "call": {
+              "type": "string",
+              "const": "terminal.command"
+            },
+            "params": {
+              "$ref": "#/$defs/LocalDesktopTerminalCommandParams"
+            }
+          },
+          "required": [
+            "attachmentId",
+            "call",
+            "params"
+          ],
+          "additionalProperties": false
         }
       ]
     },
@@ -58758,6 +58780,9 @@
         },
         {
           "$ref": "#/$defs/LocalDesktopCloudSessionResult"
+        },
+        {
+          "$ref": "#/$defs/LocalDesktopTerminalCommandResult"
         }
       ],
       "examples": [
@@ -64515,6 +64540,105 @@
           "maxProperties": 0
         }
       ]
+    },
+    "LocalDesktopTerminalCommandParams": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": [
+            "processStart",
+            "processSubmission",
+            "processes",
+            "process",
+            "processOutput",
+            "processWait",
+            "processWrite",
+            "processResize",
+            "processCloseStdin",
+            "processTerminate"
+          ]
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "threadId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "guiOwned": {
+          "type": "boolean",
+          "const": true
+        },
+        "requestId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "id": {
+          "type": "string"
+        },
+        "terminal": {
+          "type": "boolean"
+        },
+        "lifetime": {
+          "type": "string",
+          "enum": [
+            "turn",
+            "thread",
+            "connection"
+          ]
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "tty": {
+          "type": "boolean"
+        },
+        "dataBase64": {
+          "type": "string"
+        },
+        "after": {
+          "type": "string"
+        },
+        "cols": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "waitMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "operation",
+        "projectId",
+        "threadId",
+        "guiOwned"
+      ],
+      "additionalProperties": false
+    },
+    "LocalDesktopTerminalCommandResult": {
+      "type": "object",
+      "description": "Core process response through a GUI-owned connection lease."
     }
   },
   "x-current": {
