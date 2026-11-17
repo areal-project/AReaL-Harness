@@ -437,7 +437,7 @@ Cloud 支持文本及图片、音频、文件附件；可选择文件、粘贴�
 
 Cloud 对话的已读标记保存在本地导航元数据中，不要求云端支持桌面整理命令。
 
-`pnpm --dir clients/gui run test:cloud-lifecycle` 使用构建后的真实 Renderer 和 Cloud 适配器，以及本地 WebSocket 协议替身，验证保存配置和项目新聊天不分配云端会话，以及已有云端会话的顶部通知、沙箱回收后的恢复和未知提交草稿保留，并输出截图和请求记录；不替代真实 ARCA、UPFS 或模型验收。
+`pnpm --dir clients/gui run test:cloud-lifecycle` 使用构建后的真实 Renderer、隔离的 Rust Host 和合成远端 Core，断言配置与新聊天草稿不分配 Cloud 会话、原 Thread 读取与发送、断线恢复以及明确拒绝和未知提交的草稿保留。`AREAL_CORE_BIN` 必须指向与当前源码和 GUI 构建匹配的锁定验收目录；macOS 还须设置 `AREAL_TEST_HOST_KEYCHAIN=1` 允许测试自身的合成钥匙串条目。脚本输出截图、请求记录、首个失败阶段、未到达阶段与清理结果。
 交互设计从[用户交互模式](design-system/interactions.md)进入，页面是既有模式的组合；[设置页阶段一](../../design/archive/gui/exercises/settings-stage1.md)使用真实隔离Electron验证，第二阶段在审查后选择。
 
 真实对话的发送、命令、子代理及面板返回迁移和同状态验证见[对话阶段二](../../design/archive/gui/exercises/conversation-stage2.md)。

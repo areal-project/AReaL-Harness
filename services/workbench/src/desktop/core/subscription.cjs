@@ -49,21 +49,6 @@ class SubscriptionStore {
     return result;
   }
 }
-/** @param {unknown} value */
-function transportRecord(value) {
-  if (
-    !providerContract.record(value) ||
-    typeof value.token !== "string" ||
-    !/^[a-f0-9]{64}$/.test(value.token) ||
-    typeof value.port !== "number" ||
-    !Number.isInteger(value.port) ||
-    value.port < 0 ||
-    value.port > 65535
-  )
-    throw new Error("本地订阅传输配置无效");
-  return { token: value.token, port: value.port };
-}
-
 /** @param {import('@areal/workbench/desktop-contract/provider').SubscriptionModel[]} models */
 function publicSubscriptionModels(models) {
   return models.map((model) => ({
@@ -146,7 +131,6 @@ function subscriptionContexts(models) {
 module.exports = {
   subscriptionContexts,
   requestAudit,
-  transportRecord,
   publicSubscriptionModels,
   SubscriptionStore,
 };

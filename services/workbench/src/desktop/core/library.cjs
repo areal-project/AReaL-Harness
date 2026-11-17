@@ -13,7 +13,7 @@ const {
 /** @typedef {import("@areal/workbench/desktop-contract/library-media").NavigationSummary} NavigationSummary */
 /** @typedef {import("@areal/workbench/desktop-contract/library-media").LibraryMetadata} LibraryMetadata */
 /** @typedef {import("@areal/workbench/desktop-contract/library-media").LibraryState} LibraryState */
-/** @typedef {{home:string,saved:import('./project-index.cjs').SavedProject[],projects:Map<string,import('./project-state.cjs').CoreProject>,cloudConversations?:{owns:(projectId:string,threadId:string)=>boolean},worktrees?:{owners:(id:string)=>import('./project-index.cjs').SavedProject[]},start:(id:string)=>Promise<import('./project-state.cjs').CoreProject>,save:(name:string,value:unknown)=>Promise<unknown>,onChange:()=>void,hostCall:(call:string,params:unknown)=>Promise<unknown>}} LibraryHost */
+/** @typedef {{home:string,saved:import('./project-index.cjs').SavedProject[],projects:Map<string,import('./project-state.cjs').CoreProject>,worktrees?:{owners:(id:string)=>import('./project-index.cjs').SavedProject[]},start:(id:string)=>Promise<import('./project-state.cjs').CoreProject>,save:(name:string,value:unknown)=>Promise<unknown>,onChange:()=>void,hostCall:(call:string,params:unknown)=>Promise<unknown>}} LibraryHost */
 /** @typedef {import("@areal/workbench/desktop-contract/library-media").SidebarItem} SidebarItem */
 /** @typedef {import("@areal/workbench/desktop-contract/library-media").LibraryRequest} LibraryRequest */
 const DESKTOP_SETTING_DEFAULTS = Object.freeze({

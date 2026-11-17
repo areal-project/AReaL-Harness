@@ -11,6 +11,7 @@
     ".": "./src/index.ts",
     "./node": "./node/host-client.cjs",
     "./desktop-upgrade": "./node/desktop-upgrade.cjs",
-    "./protocol": "./src/protocol.ts"
+    "./protocol": "./src/protocol.ts",
+    "./gui-source": "./node/gui-source.cjs"
   }
 }

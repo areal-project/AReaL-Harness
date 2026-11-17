@@ -19,8 +19,6 @@ const { ScopedResources } = require("./scoped-resources.cjs");
 const { AppHooks } = require("./hooks.cjs");
 const { AppProviders } = require("./providers.cjs");
 const { snapshotProject } = require("./project-snapshot.cjs");
-const { CloudSettings } = require("./cloud-settings.cjs");
-const { CloudConversations } = require("./cloud-conversations.cjs");
 const { UsageAnalytics } = require("./analytics.cjs");
 const { CoreLibrary } = require("./library.cjs");
 const { CoreNotifications } = require("./notifications.cjs");
@@ -153,8 +151,6 @@ class CoreBackend {
     this.resources = new ScopedResources(this);
     this.hooks = new AppHooks(this);
     this.providers = new AppProviders(this);
-    this.cloud = new CloudSettings(this);
-    this.cloudConversations = new CloudConversations(this);
     this.activeCommands = 0;
     /** @type {Map<Promise<void>, ReadCommandOwner>} */ this.activeReadCommands = new Map();
     /** @type {boolean|undefined} */
@@ -339,7 +335,6 @@ class CoreBackend {
       await this.lifecycleOperations.init();
       trace.advance("library");
       await this.library.init();
-      await this.cloudConversations.init();
       await this.worktrees.init();
       trace.advance("projectless");
       await this.projectless.init();
@@ -1429,7 +1424,7 @@ class CoreBackend {
     if (commandName === "feedback") throw new Error("Feedback operations require Host protocol");
     if (commandName === "trajectory")
       throw new Error("Trajectory operations require Host protocol");
-    if (this.worktrees && !this.cloudConversations?.routes(commandName, rawRequest))
+    if (this.worktrees)
       Object.assign(
         invocation.request,
         await this.worktrees.resolveRequest(commandName, invocation.request),
@@ -1526,10 +1521,6 @@ class CoreBackend {
     // 后台只读状态不占任务或配置准入；参数仍由轨迹能力校验。
     if (name === "chatgpt") return this.providers.chatgpt(request);
     if (name === "providers") return this.providers.command(request);
-    if (name === "cloud") return this.cloud.command(request);
-    if (name === "cloudSession") return this.cloudConversations.command(request);
-    if (this.cloudConversations?.owns(projectId, threadId))
-      return this.cloudConversations.route(name, request);
     if (name === "resources") return this.resources.command(request);
     if (this.providerUpdating || this.resourcesUpdating)
       throw new Error("配置正在应用，请稍后重试");
@@ -2258,7 +2249,6 @@ class CoreBackend {
 
   async disconnect() {
     this.closing = true;
-    this.cloudConversations.close();
     this.ownerTasks.stop();
     for (const project of this.projects.values()) {
       if (project.reconnectTimer) clearTimeout(project.reconnectTimer);

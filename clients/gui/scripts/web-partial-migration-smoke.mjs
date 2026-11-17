@@ -15,7 +15,7 @@ const sha = (b) => createHash("sha256").update(b).digest("hex");
 assert.equal(sha(await readFile(binary)), expected, "Core identity changed");
 const require = createRequire(join(gui, "app/package.json"));
 const { HostClient } = require("@areal/client/node");
-const { GuiSourceAdapter } = require("@areal/workbench-service/desktop/core/gui-source.cjs");
+const { GuiSourceAdapter } = require("@areal/client/gui-source");
 const { GuiHostProjects } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
 const { SharedCoreBackend } = require("../app/src/core/service-client.cjs");
 const { chromium } = require("playwright-core");

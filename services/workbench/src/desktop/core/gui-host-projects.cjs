@@ -5,7 +5,7 @@ const { mkdir, readFile } = require("node:fs/promises");
 const { join } = require("node:path");
 const { isDeepStrictEqual } = require("node:util");
 const { HostClient } = require("@areal/client/node");
-const { canonicalSource, GuiSourceAdapter } = require("./gui-source.cjs");
+const { canonicalSource, GuiSourceAdapter } = require("@areal/client/gui-source");
 const { startupTrace } = require("./startup-timing.cjs");
 const diagnostics = require("./diagnostics.cjs");
 /** @typedef {import('./project-index.cjs').SavedProject} SavedProject */
@@ -22,7 +22,7 @@ const requestIdFor = (value) => {
 };
 
 class GuiHostProjects {
-  /** @param {{binary:string,home:string,source:import('./gui-source.cjs').GuiSource,encryption?:import('electron').SafeStorage,singletonHeld:boolean}} options */
+  /** @param {{binary:string,home:string,source:import('@areal/client/gui-source').GuiSource,encryption?:import('electron').SafeStorage,singletonHeld:boolean}} options */
   constructor(options) {
     this.options = options;
     this.client = new HostClient();

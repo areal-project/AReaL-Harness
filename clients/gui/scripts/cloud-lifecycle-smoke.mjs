@@ -1,302 +1,377 @@
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
+import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve, join, extname, sep } from "node:path";
+import { lockVerificationSlot, verificationDoctor } from "./verification-build.mjs";
+import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-
-// 真实 Renderer 与适配器；显式 WS 协议替身只验证资源准入，不代表 ARCA 验收。
-const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const gui = resolve(fileURLToPath(new URL("..", import.meta.url))),
+  root = await realpath(await mkdtemp(join(tmpdir(), "cloud-native-")));
 const require = createRequire(join(gui, "app/package.json"));
-const { chromium } = require("playwright-core");
-const { WebSocketServer } = require("ws");
-const { CloudSettings } = require("@areal/workbench-service/desktop/core/cloud-settings.cjs");
-const {
-  CloudConversations,
-} = require("@areal/workbench-service/desktop/core/cloud-conversations.cjs");
-const scratch = await mkdtemp(join(tmpdir(), "cloud-lifecycle-"));
-const projectId = "cloud-fixture-project";
-const errors = [],
-  calls = [],
-  workspaces = new Map();
+const { HostClient } = require("@areal/client/node");
+const { createNativeHostTransport } = require(
+  join(gui, "app/src/core/generated/native-host-transport.cjs"),
+);
+const { chromium } = require("playwright-core"),
+  WebSocket = require("ws"),
+  { WebSocketServer } = WebSocket;
+const repository = resolve(gui, "../..");
+const binary = resolve(
+  process.env.AREAL_CORE_BIN || join(repository, ".local/shared-host-bin/areal"),
+);
+const { cleanupSyntheticHostKeychain } = await import(join(gui, "scripts/application-cleanup.mjs"));
+const home = join(root, "host"),
+  user = join(root, "user"),
+  workspace = join(root, "workspace");
+const source = {
+  profile: join(root, "profile"),
+  coreHome: join(root, "core"),
+  legacyServiceHome: join(root, "legacy"),
+};
+for (const p of [home, user, workspace, ...Object.values(source)]) await mkdir(p, { mode: 0o700 });
+const projectId = createHash("sha256").update(workspace).digest("hex").slice(0, 24);
+await writeFile(
+  join(source.coreHome, "projects.json"),
+  JSON.stringify([{ id: projectId, root: workspace }]),
+  { mode: 0o600 },
+);
+const evidence = {
+  root,
+  binary,
+  reached: [],
+  calls: [],
+  cleanup: {},
+};
+const host = new HostClient();
+let transport,
+  browser,
+  page,
+  socket,
+  hostPid,
+  release,
+  stage = "verification preflight";
+const pending = new Map();
+const pageErrors = [];
+const remote = createServer((_q, r) => {
+  r.writeHead(404);
+  r.end();
+});
+const wss = new WebSocketServer({ server: remote });
 let allocations = 0,
   queries = 0,
+  unknown = false,
   deferNext = false,
-  malformedNext = false,
-  rejectNext = false,
-  page,
-  browser,
-  publishing = Promise.resolve();
-const native = createServer((_request, response) => {
-  response.writeHead(404);
-  response.end();
-});
-const sockets = new WebSocketServer({ server: native });
-sockets.on("connection", (socket, request) => {
-  assert.equal(request.headers.authorization, "Bearer fixture-token");
-  const workspace = request.url.split("/").filter(Boolean).at(-1);
-  if (!workspaces.has(workspace)) workspaces.set(workspace, { thread: null, alive: false });
-  const state = workspaces.get(workspace);
-  if (!state.alive) {
-    state.alive = true;
-    allocations++;
-  }
-  socket.on("message", (raw) => {
-    const { id, method, params } = JSON.parse(raw);
-    if (!id) return;
-    calls.push({ workspace, method });
-    const reply = (result) => socket.send(JSON.stringify({ id, result }));
-    if (method === "initialize") return reply({});
-    if (method === "areal/capabilities")
-      return reply({
-        apiVersion: "areal.core.v1",
-        methods: ["areal/thread/start", "areal/thread/observe"],
-      });
-    if (method === "areal/profile/list") return reply({ data: [] });
-    if (method === "areal/thread/start") {
-      state.thread ??= { id: `thread-${workspace}`, turns: [], status: { type: "idle" } };
-      return reply({ thread: state.thread });
+  rejectNext = false;
+const thread = {
+  id: "native-cloud-thread",
+  turns: [],
+  status: { type: "idle" },
+  desktop: { archived: false, configuration: { revision: 0 } },
+};
+wss.on("connection", (ws, req) => {
+  assert.equal(req.headers.authorization, "Bearer fixture-token");
+  allocations++;
+  ws.on("message", (raw) => {
+    const q = JSON.parse(raw);
+    if (!q.id) return;
+    evidence.calls.push({ method: q.method, requestId: q.params?.requestId });
+    let result;
+    switch (q.method) {
+      case "initialize":
+        result = {};
+        break;
+      case "areal/capabilities":
+        result = {
+          apiVersion: "areal.core.v1",
+          methods: [
+            "areal/profile/list",
+            "areal/thread/start",
+            "thread/read",
+            "areal/thread/observe",
+            "areal/conversation/history",
+            "areal/turn/start",
+            "turn/interrupt",
+            "areal/request/read",
+          ],
+          features: {
+            conversationObservation: true,
+            threadCreationJournal: {
+              binding: {
+                identity: "remote-cloud-store",
+                journalEpoch: "epoch",
+                coreInstanceId: "remote-core",
+              },
+            },
+          },
+          methodSemantics: {
+            "areal/thread/start": { effect: "mutation", receipt: "management" },
+            "areal/turn/start": { effect: "mutation", receipt: "management" },
+            "turn/interrupt": { effect: "mutation", receipt: "management" },
+          },
+        };
+        break;
+      case "areal/profile/list":
+        result = { data: [{ id: "remote-default", revision: "v1" }] };
+        break;
+      case "areal/model/list":
+        result = {
+          data: [
+            {
+              providerId: "remote",
+              modelId: "remote-model",
+              displayName: "Remote model",
+              available: true,
+            },
+          ],
+        };
+        break;
+      case "areal/thread/start":
+        result = { thread, requestId: q.params.requestId };
+        break;
+      case "thread/read":
+      case "areal/thread/observe":
+        result = { thread };
+        break;
+      case "areal/request/read":
+        result = { data: [] };
+        break;
+      case "areal/turn/start": {
+        if (rejectNext) {
+          rejectNext = false;
+          ws.send(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: q.id,
+              error: {
+                code: -32000,
+                message: "fixture rejection",
+                data: { outcome: { kind: "rejected" }, recovery: { kind: "none" } },
+              },
+            }),
+          );
+          return;
+        }
+        queries++;
+        const turn = {
+          id: `turn-${queries}`,
+          status: "completed",
+          items: [{ id: `answer-${queries}`, type: "agentMessage", text: `QUERY_OK_${queries}` }],
+        };
+        if (deferNext) {
+          deferNext = false;
+          turn.status = "inProgress";
+          turn.items = [];
+        }
+        thread.turns.push(turn);
+        result = unknown
+          ? {}
+          : { threadId: thread.id, turn, requestId: q.params.requestId, accepted: true };
+        unknown = false;
+        break;
+      }
+      case "turn/interrupt":
+        result = {};
+        break;
+      default:
+        throw Error(`Unexpected remote method ${q.method}`);
     }
-    if (method === "areal/thread/observe") return reply({ thread: state.thread });
-    assert.equal(method, "turn/start");
-    assert.equal(params.threadId, state.thread.id);
-    if (rejectNext) {
-      rejectNext = false;
-      socket.send(JSON.stringify({ id, error: { code: -32000, message: "fixture rejection" } }));
-      return;
-    }
-    queries++;
-    const turn = {
-      id: `turn-${queries}`,
-      status: "completed",
-      items: [{ id: `answer-${queries}`, type: "agentMessage", text: `QUERY_OK_${queries}` }],
-      error: null,
-    };
-    if (deferNext) {
-      deferNext = false;
-      turn.status = "inProgress";
-      turn.items = [];
-      state.thread.turns.push(turn);
-      reply({ turn });
-      socket.send(
-        JSON.stringify({ method: "turn/started", params: { threadId: state.thread.id, turn } }),
-      );
-    } else {
-      state.thread.turns.push(turn);
-      reply(malformedNext ? {} : { turn });
-      malformedNext = false;
-      socket.send(
-        JSON.stringify({ method: "turn/completed", params: { threadId: state.thread.id, turn } }),
+    ws.send(JSON.stringify({ jsonrpc: "2.0", id: q.id, result }));
+    if (q.method === "areal/turn/start" && thread.turns.length) {
+      const turn = thread.turns.at(-1);
+      ws.send(
+        JSON.stringify({
+          method: turn.status === "inProgress" ? "turn/started" : "turn/completed",
+          params: { threadId: thread.id, turn },
+        }),
       );
     }
   });
 });
-native.listen(0, "127.0.0.1");
-await once(native, "listening");
-const backend = {
-  home: scratch,
-  saved: [{ id: projectId, root: "/fixture-project" }],
-  textInput: (text) => [{ type: "text", text }],
-  save: (name, value) => writeFile(join(scratch, name), JSON.stringify(value)),
-  onChange() {
-    if (page && !page.isClosed())
-      publishing = publishing
-        .then(() => page.evaluate((state) => window.cloudState?.(state), backend.snapshot()))
-        .catch((error) => errors.push(error.message));
-  },
-};
-backend.cloud = new CloudSettings(backend, {
-  isEncryptionAvailable: () => true,
-  encryptString: (value) => Buffer.from(value),
-  decryptString: (value) => value.toString(),
-});
-const manager = new CloudConversations(backend);
-backend.snapshot = () => {
-  const cloud = manager.projection(projectId);
-  return {
-    connection: { state: "ready" },
-    library: { projects: {}, threads: {}, projectOrder: [], settings: {} },
-    projects: [
-      {
-        id: projectId,
-        root: "/fixture-project",
-        backend: "areal",
-        pending: [],
-        outcomes: {},
-        models: [],
-        profiles: [],
-        configurations: {},
-        summariesLoaded: true,
-        summaries: cloud.summaries,
-        core: { features: {} },
-        desktopCapabilities: { currentCommands: true },
-        state: { connected: true, threads: cloud.threads, interactions: {}, queues: {} },
-      },
-    ],
-  };
-};
-const dist = join(gui, "renderer/dist");
-const assets = createServer(async (request, response) => {
-  try {
-    const pathname = new URL(request.url, "http://local").pathname;
-    const file = resolve(
-      dist,
-      pathname === "/" ? "index.html" : `.${decodeURIComponent(pathname)}`,
-    );
-    assert.ok(file.startsWith(dist + sep));
-    response.setHeader(
-      "Content-Type",
-      { ".html": "text/html", ".js": "text/javascript", ".css": "text/css" }[extname(file)] ??
-        "application/octet-stream",
-    );
-    response.end(await readFile(file));
-  } catch {
-    response.writeHead(404);
-    response.end();
-  }
-});
-assets.listen(0, "127.0.0.1");
-await once(assets, "listening");
+remote.listen(0, "127.0.0.1");
+await once(remote, "listening");
+async function rpc(method, params) {
+  const id = randomUUID();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pending.delete(id);
+      reject(Error("socket reply deadline"));
+    }, 30000);
+    pending.set(id, { resolve, reject, timer });
+    socket.send(JSON.stringify({ version: 1, id, method, params }));
+  });
+}
+
 try {
+  assert.ok(
+    process.platform !== "darwin" || process.env.AREAL_TEST_HOST_KEYCHAIN === "1",
+    "Isolated synthetic Host Keychain authorization required",
+  );
+  evidence.binarySha256 = createHash("sha256")
+    .update(await readFile(binary))
+    .digest("hex");
+  release = await lockVerificationSlot(binary);
+  await verificationDoctor({ root: repository, binary, evidence: root });
+  evidence.reached.push("verification preflight");
+  stage = "host startup";
+  await host.connectOrStart(home, binary);
+  hostPid = JSON.parse(await readFile(join(home, "host/host.json"))).pid;
+  stage = "attach source";
+  await host.attachSource(source);
+  stage = "import source";
+  const imported = await host.importSource(randomUUID(), source);
+  assert.equal(imported.kind, "ready");
+  const sourceId = (await host.sourceState(source)).sourceId;
+  evidence.host = { pid: hostPid, hostId: host.hostId, generation: host.generation, sourceId };
+  stage = "desktop subscription";
+  transport = await createNativeHostTransport({
+    home,
+    sourceId,
+    launch: {
+      binary,
+      home: source.coreHome,
+      guiProfile: source.profile,
+      hostHome: home,
+      harnessHome: source.legacyServiceHome,
+      userHome: user,
+      configHome: user,
+    },
+    onCallback: async () => {
+      throw Error("no callback");
+    },
+    onEvent: () => {},
+    onClosed: () => {},
+  });
+  evidence.reached.push("native Host source and desktop subscription");
+  stage = "web ticket";
+  const ticket = await host.request("web.ticket", {
+    origin: "areal-ui://app",
+    expectedGeneration: host.generation,
+  });
+  socket = new WebSocket(ticket.websocketUrl, { origin: ticket.origin });
+  socket.on("message", (raw) => {
+    const p = JSON.parse(raw);
+    const entry = pending.get(p.id);
+    if (!entry) return;
+    pending.delete(p.id);
+    clearTimeout(entry.timer);
+    if (p.error) entry.reject(Error(JSON.stringify(p.error)));
+    else entry.resolve(p.result);
+  });
+  await once(socket, "open");
+  await rpc("hello", {
+    protocolVersions: [1],
+    capabilities: ["gui-read-v1", "gui-write-v1"],
+    ticket: ticket.ticket,
+    expectedGeneration: ticket.generation,
+  });
+  stage = "hello";
+  const endpoint = JSON.parse(await readFile(join(home, "host/endpoint.json")));
   browser = await chromium.launch({ headless: true, channel: "chrome" });
   page = await browser.newPage({
     viewport: { width: 1440, height: 1000 },
     serviceWorkers: "block",
   });
-  page.setDefaultTimeout(20_000);
-  page.on("pageerror", (error) => errors.push(error.message));
-  await page.exposeFunction("cloudSnapshot", () => backend.snapshot());
-  await page.exposeFunction("cloudCommand", async (name, params) => {
-    try {
-      let value;
-      if (name === "cloud") value = await backend.cloud.command(params);
-      else if (name === "cloudSession") value = await manager.command(params);
-      else if (name === "open") value = await manager.command({ ...params, operation: "open" });
-      else value = { data: [], projects: [], pendingApply: false };
-      return { ok: true, value };
-    } catch (error) {
-      return {
-        ok: false,
-        error: {
-          message: error.message,
-          submissionUnknown: error.submissionUnknown,
-          outcome: error.outcome,
-          recovery: error.recovery,
-        },
-      };
-    }
-  });
-  await page.addInitScript(
-    ({ projectId }) => {
-      localStorage.setItem("areal-gui:project", projectId);
-      localStorage.setItem(`areal-draft-environment:${projectId}`, "cloud");
-      let listener,
-        sequence = 0;
-      window.cloudState = (snapshot) =>
-        listener?.({
-          frame: {
-            projection: 1,
-            stream: "cloud-lifecycle",
-            sequence: ++sequence,
-            kind: "full",
-            snapshot,
-          },
-        });
-      window.arealDesktop = {
-        onProjection: (callback) => {
-          listener = callback;
-          return () => {};
-        },
-        requestProjection: (requestId) =>
-          window.cloudSnapshot().then((snapshot) =>
-            listener?.({
-              requestId,
-              frame: {
-                projection: 1,
-                stream: "cloud-lifecycle",
-                sequence: ++sequence,
-                kind: "full",
-                snapshot,
-              },
-            }),
-          ),
-        setInterfaceLocale: () => {},
-        snapshot: () => window.cloudSnapshot(),
-        command: (name, params) => window.cloudCommand(name, params),
-        theme: async () => ({ platform: "darwin", dark: false, id: "light" }),
-        onTheme: () => () => {},
-        onPreviewEvent: () => () => {},
-        onUpdate: () => () => {},
-        onMcpAppEvent: () => () => {},
-        presentReady: async () => {},
-        preview: async () => ({}),
-      };
-    },
-    { projectId },
+  page.setDefaultTimeout(20000);
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  stage = "browser authorization";
+  const pairing = page.waitForResponse(
+    (r) => r.url().endsWith("/host/auth/challenge") && r.request().method() === "POST",
   );
-  await page.goto(`http://127.0.0.1:${assets.address().port}`);
+  await page.goto(endpoint.origin);
+  const challenge = await (await pairing).json();
+  await host.request("web.approve", {
+    requestId: challenge.requestId,
+    expectedGeneration: host.generation,
+    scopes: ["observe", "submit", "approve", "manage"],
+  });
+  await page.getByRole("button", { name: /检查批准状态|Check approval/i }).click();
+  await page.getByTestId("areal-workbench").waitFor({ timeout: 60000 });
+  evidence.backendStatus = await host.request("backend.status", {});
+  assert.equal(evidence.backendStatus.owned, false);
+  assert.equal(evidence.backendStatus.service, null);
+  evidence.reached.push("browser authorized against native Host without Node backend");
+  stage = "settings";
   await page.getByRole("button", { name: "设置", exact: true }).click();
   await page.getByRole("button", { name: "云端", exact: true }).click();
   await page
     .getByRole("textbox", { name: "Cloud 后端地址" })
-    .fill(`http://127.0.0.1:${native.address().port}/openapi/v1/app-server/`);
+    .fill(`http://127.0.0.1:${remote.address().port}/app-server/`);
   await page.getByRole("textbox", { name: "Cloud token", exact: true }).fill("fixture-token");
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  await page.getByRole("status").filter({ hasText: "配置已保存" }).waitFor();
+  await page.getByText(/配置已保存|credential helper exited without a result/).waitFor();
+  assert.equal(
+    await page.getByText("credential helper exited without a result").count(),
+    0,
+    "credential helper exited without a result",
+  );
   assert.equal(allocations, 0);
-  assert.equal(calls.length, 0);
-  await page.screenshot({ path: join(scratch, "saved-without-connection.png") });
+  assert.equal(evidence.calls.length, 0);
+  await page.screenshot({ path: join(root, "saved-without-connection.png") });
+  evidence.reached.push("settings saved without remote allocation");
   await page.getByRole("button", { name: "返回应用", exact: true }).click();
   await page.getByTestId("chat-input").waitFor();
+  assert.equal(allocations, 0);
   assert.equal(await page.getByTestId("cloud-chat-input").count(), 0);
   assert.doesNotMatch(await page.locator(".composer-project-bar").innerText(), /Cloud|Local|本地/);
-  assert.equal(allocations, 0);
-  assert.equal(manager.records.length, 0);
-  assert.equal(calls.length, 0);
-  await page.screenshot({ path: join(scratch, "draft-without-allocation.png") });
-  // 显式创建既有云端会话，后续从项目列表的公开入口打开。
-  await manager.command({
-    operation: "create",
-    projectId,
-    requestId: "12345678-1234-1234-1234-123456789abc",
+  assert.equal(evidence.calls.length, 0);
+  await page.screenshot({ path: join(root, "draft-without-allocation.png") });
+  evidence.reached.push("new project draft without allocation");
+  stage = "cloud creation";
+  const created = await rpc("desktop.command", {
+    sourceId,
+    command: "cloudSession",
+    request: { operation: "create", projectId, requestId: randomUUID() },
   });
-  const first = manager.records[0];
-  assert.equal(first.binding.workspace, first.id);
-  await page.getByText("云端", { exact: true }).last().click();
+  assert.equal(created.threadId, thread.id);
+  await page.reload();
+  await page.getByTestId(`task-item-${thread.id}`).click();
+  await page.waitForFunction(
+    (id) => document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId === id,
+    thread.id,
+  );
   await page.getByTestId("cloud-chat-input").waitFor();
   await page.getByTestId("cloud-chat-input").fill("first query");
   await page.getByTestId("cloud-chat-send").click();
   await page.getByText("QUERY_OK_1", { exact: true }).waitFor();
   assert.equal(allocations, 1);
-  await page.screenshot({ path: join(scratch, "connected-session.png") });
-  // 显式模拟回收：保留权威 thread（UPFS），关闭执行实例与连接。
-  workspaces.get(first.id).alive = false;
-  for (const socket of sockets.clients) socket.close();
-  await page.getByTestId("toast").waitFor();
+  assert.equal(queries, 1);
+  await page.screenshot({ path: join(root, "connected-session.png") });
+  evidence.reached.push("actual remote thread created and turn observed");
+  stage = "reconnect";
+  for (const ws of wss.clients) ws.close();
+  await page
+    .getByTestId("chat-view")
+    .getByRole("button", { name: "恢复连接", exact: true })
+    .waitFor();
+  await page
+    .getByTestId("chat-view")
+    .getByRole("button", { name: "恢复连接", exact: true })
+    .click();
   await page.getByTestId("cloud-chat-input").fill("second query");
   await page.getByTestId("cloud-chat-send").click();
   await page.getByText("QUERY_OK_2", { exact: true }).waitFor();
-  assert.equal(allocations, 2);
   assert.equal(queries, 2);
-  assert.equal(manager.records.length, 1);
-  assert.equal(calls.filter((v) => v.method === "areal/thread/start").length, 1);
-  // 在途断线后服务端离线完成，显式恢复读取快照，不重放 Turn。
+  assert.equal(evidence.calls.filter((x) => x.method === "areal/thread/start").length, 1);
+  await page.screenshot({ path: join(root, "reconnected.png") });
+  evidence.reached.push("disconnect and reconnect preserves remote thread");
+  stage = "offline completion";
   deferNext = true;
   await page.getByTestId("cloud-chat-input").fill("complete while offline");
   await page.getByTestId("cloud-chat-send").click();
   await page.getByRole("button", { name: "停止", exact: true }).waitFor();
-  for (const socket of sockets.clients) socket.close();
+  for (const ws of wss.clients) ws.close();
   await page
     .getByTestId("chat-view")
     .getByRole("button", { name: "恢复连接", exact: true })
     .waitFor();
   assert.equal(await page.getByTestId("cloud-chat-input").getAttribute("contenteditable"), "false");
-  const offline = workspaces.get(first.id).thread.turns.at(-1);
+  const offline = thread.turns.at(-1);
   offline.status = "completed";
   offline.items = [{ id: "offline-answer", type: "agentMessage", text: "OFFLINE_COMPLETED" }];
-  await page.screenshot({ path: join(scratch, "running-disconnected.png") });
+  await page.screenshot({ path: join(root, "running-disconnected.png") });
   await page
     .getByTestId("chat-view")
     .getByRole("button", { name: "恢复连接", exact: true })
@@ -305,10 +380,10 @@ try {
   await page.getByRole("button", { name: "停止", exact: true }).waitFor({ state: "hidden" });
   assert.equal(await page.getByTestId("cloud-chat-input").getAttribute("contenteditable"), "true");
   assert.equal(queries, 3);
-  assert.equal(manager.records.length, 1);
-  assert.equal(calls.filter((v) => v.method === "areal/thread/start").length, 1);
-  await page.screenshot({ path: join(scratch, "reconnected-completed.png") });
-  // 存活的提示跟随语言切换，不将翻译结果持久化到草稿。
+  assert.equal(evidence.calls.filter((x) => x.method === "areal/thread/start").length, 1);
+  await page.screenshot({ path: join(root, "reconnected-completed.png") });
+  evidence.reached.push("offline completion reconciled without replay");
+  stage = "localized reconnect";
   await page.evaluate(() => {
     const key = "areal-gui:application-preferences";
     const newValue = JSON.stringify({
@@ -319,27 +394,26 @@ try {
     window.dispatchEvent(new StorageEvent("storage", { key, newValue }));
   });
   assert.equal(await page.getByText("Cloud connected", { exact: true }).count(), 0);
-  for (const socket of sockets.clients) socket.close();
+  for (const ws of wss.clients) ws.close();
   await page
     .getByTestId("chat-view")
     .getByRole("button", { name: "Reconnect", exact: true })
     .waitFor();
-  await page.screenshot({ path: join(scratch, "reconnect-english.png") });
+  await page.screenshot({ path: join(root, "reconnect-english.png") });
   await page
     .getByTestId("chat-view")
     .getByRole("button", { name: "Reconnect", exact: true })
     .click();
-  assert.equal(await page.getByText("Cloud connected", { exact: true }).count(), 0);
   await page
     .getByTestId("chat-view")
     .getByRole("button", { name: "Reconnect", exact: true })
     .waitFor({ state: "hidden" });
   assert.equal(queries, 3);
+  assert.equal(await page.getByText("Cloud connected", { exact: true }).count(), 0);
   await page.waitForFunction(
     () =>
-      document
-        .querySelector('[data-testid="cloud-chat-input"]')
-        ?.getAttribute("contenteditable") === "true",
+      document.querySelector("[data-testid=cloud-chat-input]")?.getAttribute("contenteditable") ===
+      "true",
   );
   await page.getByTestId("cloud-chat-input").fill("after reconnect");
   await page.getByTestId("cloud-chat-send").click();
@@ -353,73 +427,97 @@ try {
     localStorage.setItem(key, newValue);
     window.dispatchEvent(new StorageEvent("storage", { key, newValue }));
   });
+  evidence.reached.push("localized reconnect without replay");
+  stage = "rejected submission";
   rejectNext = true;
   await page.getByTestId("cloud-chat-input").fill("rejected draft");
   await page.getByTestId("cloud-chat-send").click();
-  const rejectionNotice = page.getByTestId("toast").filter({ hasText: "提交结果未知" });
-  await rejectionNotice.waitFor();
-  await rejectionNotice.getByRole("button", { name: "查看详情", exact: true }).click();
-  assert.ok((await page.locator("body").innerText()).includes("fixture rejection"));
+  await page.getByText("操作没有完成，请重试。", { exact: true }).waitFor();
+  assert.equal(await page.getByText("提交结果未知", { exact: false }).count(), 0);
   assert.equal(queries, 4);
   assert.equal(await page.getByTestId("cloud-chat-input").innerText(), "rejected draft");
-  await page.getByRole("button", { name: "已核对，编辑后续消息", exact: true }).click();
-  // 成功体畸形仍按未知提交处理，文本和附件草稿不能清空或自动重发。
-  malformedNext = true;
+  assert.equal(await page.getByTestId("cloud-chat-input").getAttribute("contenteditable"), "true");
+  evidence.reached.push("rejection retains draft");
+  stage = "unknown";
+  unknown = true;
   await page.getByTestId("cloud-chat-input").fill("keep this unknown draft");
   await page.getByTestId("cloud-chat-send").click();
   await page.getByText("QUERY_OK_5", { exact: true }).waitFor();
   await page.getByTestId("toast").filter({ hasText: "提交结果未知" }).waitFor();
   assert.equal(await page.getByTestId("cloud-chat-input").innerText(), "keep this unknown draft");
   assert.equal(queries, 5);
-  const noticeBounds = await page.getByTestId("toast").boundingBox();
-  assert.ok(noticeBounds.y < 100 && Math.abs(noticeBounds.x + noticeBounds.width / 2 - 720) < 5);
+  const bounds = await page.getByTestId("toast").boundingBox();
+  assert.ok(bounds.y < 100 && Math.abs(bounds.x + bounds.width / 2 - 720) < 5);
   assert.equal(await page.getByTestId("chat-view").getByRole("alert").count(), 0);
-  await page.screenshot({ path: join(scratch, "unknown-receipt-draft.png") });
+  await page.screenshot({ path: join(root, "unknown-receipt-draft.png") });
+  evidence.reached.push("unknown receipt retains draft without replay");
   await page.getByRole("button", { name: "新聊天", exact: true }).click();
   await page.getByTestId("chat-input").waitFor();
   assert.equal(await page.getByTestId("cloud-chat-input").count(), 0);
   assert.doesNotMatch(await page.locator(".composer-project-bar").innerText(), /Cloud|Local|本地/);
-  assert.equal(allocations, 2);
-  assert.equal(manager.records.length, 1);
   assert.equal(queries, 5);
-  await page.screenshot({ path: join(scratch, "new-chat-without-allocation.png") });
-  assert.deepEqual(errors, []);
-  await writeFile(
-    join(scratch, "evidence.json"),
-    JSON.stringify(
-      { fixture: true, allocations, queries, workspaces: [...workspaces.keys()], calls },
-      null,
-      2,
-    ),
-  );
-  console.log(`PASS Cloud lifecycle GUI fixture: ${scratch}`);
+  assert.equal(evidence.calls.filter((x) => x.method === "areal/thread/start").length, 1);
+  await page.screenshot({ path: join(root, "new-draft-after-unknown.png") });
+  assert.deepEqual(pageErrors, []);
+  evidence.reached.push("new draft creates no remote session");
 } catch (error) {
-  await page?.screenshot({ path: join(scratch, "failure.png") }).catch(() => {});
-  await writeFile(
-    join(scratch, "failure.json"),
-    JSON.stringify(
-      {
-        error: error.message,
-        errors,
-        calls,
-        body: await page
-          ?.locator("body")
-          .innerText()
-          .catch(() => ""),
-      },
-      null,
-      2,
-    ),
-  );
-  console.error(`Cloud lifecycle failure evidence: ${scratch}`);
-  throw error;
+  evidence.firstFailure = { stage, message: error.message };
+  if (page) await page.screenshot({ path: join(root, "failure.png") }).catch(() => {});
+  process.exitCode = 1;
 } finally {
-  manager.close();
   await browser?.close();
-  for (const socket of sockets.clients) socket.terminate();
-  sockets.close();
-  native.closeAllConnections();
-  native.close();
-  assets.closeAllConnections();
-  assets.close();
+  socket?.terminate();
+  transport?.close();
+  for (const ws of wss.clients) ws.terminate();
+  await new Promise((r) => wss.close(r));
+  await new Promise((r) => remote.close(r));
+  try {
+    if (host.generation) {
+      const receipt = await host.stop(randomUUID(), host.generation, "cancel");
+      evidence.cleanup.hostReceipt = receipt.state;
+      assert.equal(receipt.state, "completed");
+      host.close();
+      const deadline = Date.now() + 10000;
+      while (Date.now() < deadline) {
+        try {
+          process.kill(hostPid, 0);
+        } catch (e) {
+          if (e.code === "ESRCH") {
+            evidence.cleanup.hostExited = true;
+            break;
+          }
+          evidence.cleanup.probeError = e.message;
+          process.exitCode = 1;
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      assert.equal(evidence.cleanup.hostExited, true, "owned Host did not exit");
+    }
+  } catch (error) {
+    evidence.cleanup.error = error.message;
+    process.exitCode = 1;
+  }
+  host.close();
+  try {
+    if (evidence.cleanup.hostExited)
+      evidence.cleanup.keychain = await cleanupSyntheticHostKeychain(home, root);
+    if (release) await release();
+  } catch (error) {
+    evidence.cleanup.error = error.message;
+    process.exitCode = 1;
+  }
+  evidence.unreached = [
+    "settings saved without remote allocation",
+    "new project draft without allocation",
+    "actual remote thread created and turn observed",
+    "disconnect and reconnect preserves remote thread",
+    "offline completion reconciled without replay",
+    "localized reconnect without replay",
+    "rejection retains draft",
+    "unknown receipt retains draft without replay",
+    "new draft creates no remote session",
+  ].filter((x) => !evidence.reached.includes(x));
+  await writeFile(join(root, "result.json"), JSON.stringify(evidence, null, 2), { mode: 0o600 });
+  console.log(JSON.stringify(evidence));
 }

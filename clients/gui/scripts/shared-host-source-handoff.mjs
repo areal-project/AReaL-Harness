@@ -19,10 +19,7 @@ const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { HostClient } = require("@areal/client/node");
 const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
-const {
-  GuiSourceAdapter,
-  assertLegacySourceWritable,
-} = require("@areal/workbench-service/desktop/core/gui-source.cjs");
+const { GuiSourceAdapter, assertLegacySourceWritable } = require("@areal/client/gui-source");
 const { readHostReceipt, readOfflineHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
 const WebSocket = require("ws");
 const { CoreClient } = await import(join(gui, "packages/runtime-client/core.js"));
@@ -1807,9 +1804,7 @@ check("after-load");
       executionSources: {
         hostBinary: { path: binary, sha256: sha(await readFile(binary)) },
         hostClient: sha(await readFile(join(gui, "packages/client/node/host-client.cjs"))),
-        guiSource: sha(
-          await readFile(join(gui, "../../services/workbench/src/desktop/core/gui-source.cjs")),
-        ),
+        guiSource: sha(await readFile(join(gui, "packages/client/node/gui-source.cjs"))),
         backend: sha(
           await readFile(join(gui, "../../services/workbench/src/desktop/core/backend.cjs")),
         ),

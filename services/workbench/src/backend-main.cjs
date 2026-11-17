@@ -214,8 +214,6 @@ const desktopCommands = new Set([
   "addProject",
   "analytics",
   "chatgpt",
-  "cloud",
-  "cloudSession",
   "configure",
   "connect",
   "continue",
@@ -487,28 +485,15 @@ async function start({ input, output }) {
           return client.callback(request.params);
         }
         if (request.method === "library.dependencies") {
-          const cloudThreads = desktop.backend.cloudConversations.records
-            .filter(
-              (row) =>
-                typeof row.projectId === "string" && typeof row.binding?.threadId === "string",
-            )
-            .map((row) => ({
-              projectId: row.projectId,
-              threadId: row.binding.threadId,
-            }));
           const pendingProjects = [...desktop.backend.projects.values()]
             .filter((project) => project.pending.length > 0)
             .map((project) => project.id);
           if (
-            cloudThreads.length > 65536 ||
             pendingProjects.length > 65536 ||
-            [
-              ...pendingProjects,
-              ...cloudThreads.flatMap((row) => [row.projectId, row.threadId]),
-            ].some((id) => typeof id !== "string" || !id || id.length > 512)
+            pendingProjects.some((id) => typeof id !== "string" || !id || id.length > 512)
           )
             throw Error("Library dependency limit reached");
-          return { cloudThreads, pendingProjects };
+          return { cloudThreads: [], pendingProjects };
         }
         if (request.method === "desktop.command") {
           const { command, request: params } = request.params ?? {};

@@ -5,6 +5,14 @@ export const errorMessages = {
     "zh-CN": "操作没有完成，请重试。",
     en: "That didn't work. Please try again.",
   },
+  "errors.CLOUD_IMPORT_REQUIRED": {
+    "zh-CN": "旧版 Cloud 凭据尚未导入。请在桌面应用中解锁凭据后重新连接。",
+    en: "Your previous Cloud credentials still need to be imported. Unlock credentials in the desktop app, then reconnect.",
+  },
+  "errors.SOURCE_CHANGED": {
+    "zh-CN": "来源已变化。请刷新后重试。",
+    en: "The source has changed. Refresh and try again.",
+  },
   "errors.FORBIDDEN": {
     "zh-CN": "这台设备没有权限做这个操作。请在桌面应用“手机与网页”设置里允许它。",
     en: "This device isn't allowed to do that. Allow it again in the desktop app under Mobile & Web.",

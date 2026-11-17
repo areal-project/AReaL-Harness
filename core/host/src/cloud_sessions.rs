@@ -249,6 +249,11 @@ impl CloudSessions {
             .await?,
         )
     }
+    pub(super) fn dependencies(&self, host: &Host, source: &str) -> Result<Vec<Value>> {
+        Ok(records(&library_store::source_home(host, source)?)?.into_iter().filter_map(|row| {
+            Some(json!({"projectId":row["projectId"].as_str()?,"threadId":row["binding"]["threadId"].as_str()?}))
+        }).collect())
+    }
     pub(super) fn catalog(
         &self,
         host: &Host,

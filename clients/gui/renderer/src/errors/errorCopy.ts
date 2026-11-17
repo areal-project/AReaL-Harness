@@ -18,6 +18,8 @@ export const ERROR_CODES = {
   CAPABILITY_UNAVAILABLE: { action: "retry", retryable: true },
   CORE_UNAVAILABLE: { action: "retry", retryable: true },
   CORE_INCOMPATIBLE: { action: "none", retryable: false },
+  CLOUD_IMPORT_REQUIRED: { action: "openSettings", retryable: false },
+  SOURCE_CHANGED: { action: "refresh", retryable: false },
   CONFLICT: { action: "none", retryable: false },
   RESYNC_REQUIRED: { action: "refresh", retryable: false },
   INVALID_PARAMS: { action: "refresh", retryable: false },

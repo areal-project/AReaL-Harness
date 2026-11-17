@@ -5,7 +5,9 @@ const { mkdtemp, rm } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
 const { GuiHostProjects } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
-const { GuiSourceAdapter } = require("@areal/workbench-service/desktop/core/gui-source.cjs");
+const { GuiSourceAdapter } = require("node:module").createRequire(
+  require.resolve("../app/package.json"),
+)("@areal/client/gui-source");
 
 test("backend setup sends only configured environment credentials and preserves config errors", async () => {
   const owner = new GuiHostProjects({

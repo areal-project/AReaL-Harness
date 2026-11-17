@@ -83,26 +83,18 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, params: Value) -> Res
     let home = library_store::source_home(host, source)?;
     let projects = worktree_catalog::saved_projects(&home)?;
     let aliases = bindings(host, source)?;
-    let private = if host.gateway.workbench.has_running_backend() {
+    let mut private = if host.gateway.workbench.has_running_backend() {
         host.gateway.workbench.library_dependencies(source).await?
     } else {
-        let sessions = areal_local_service::storage::read_optional::<Value>(
-            &home.join("cloud-sessions.json"),
-        )?
-        .unwrap_or_else(|| json!([]));
-        let cloud_threads = sessions
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|row| {
-                Some(json!({
-                    "projectId": row["projectId"].as_str()?,
-                    "threadId": row["binding"]["threadId"].as_str()?,
-                }))
-            })
-            .collect::<Vec<_>>();
-        json!({"cloudThreads": cloud_threads, "pendingProjects": []})
+        json!({"pendingProjects": []})
     };
+    private["cloudThreads"] = json!(
+        host.gateway
+            .workbench
+            .cloud
+            .sessions
+            .dependencies(host, source)?
+    );
     let current = library_store::read_source(host, source)?;
     let mut context = ContextView {
         projects,

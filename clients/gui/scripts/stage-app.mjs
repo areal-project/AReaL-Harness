@@ -208,11 +208,10 @@ export async function verifyCoreApp(appRoot) {
       "-e",
       `const { createRequire } = require("node:module");
 const stagedRequire = createRequire(process.argv[1]);
-stagedRequire("@areal/workbench-service/desktop/core/cloud-settings.cjs");
-const { CloudConversations } = stagedRequire("@areal/workbench-service/desktop/core/cloud-conversations.cjs");
-const cloud = new CloudConversations({ library: { command: async (request) => request } });
-cloud.route("library", { operation: "readThread", projectId: "project", threadId: "thread", read: true })
-  .catch((error) => { console.error(error); process.exitCode = 1; });`,
+stagedRequire("@areal/client/node");
+stagedRequire("@areal/client/desktop-upgrade");
+const native = stagedRequire("./src/core/generated/native-host-transport.cjs");
+if (typeof native.createNativeHostTransport !== "function") throw new Error("Native Host transport unavailable");`,
       join(appRoot, "package.json"),
     ],
     { stdio: "inherit", timeout: 30000 },

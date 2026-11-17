@@ -38,12 +38,9 @@ test("business boundaries preserve results and classify observable outcomes", as
   const backend = {
     projects: new Map([[project.id, project]]),
     lifecycleOperations: { blocking: () => null, activeTargets: new Map(), assertProject() {} },
-    cloudConversations: {
-      owns: () => true,
-      route: async (name, request) => {
-        calls.push({ name, request });
-        return { threadId: request.threadId };
-      },
+    dispatchCommand: async ({ name, request }) => {
+      calls.push({ name, request });
+      return { threadId: request.threadId };
     },
   };
   await CoreBackend.prototype.command.call(backend, "send", {

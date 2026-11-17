@@ -93,7 +93,7 @@ function startDesktop() {
   }
   if (process.argv.some((value) => value.startsWith("--areal-host-import-source="))) {
     const options = cfg.serviceOptions(app);
-    void require("@areal/workbench-service/desktop/core/gui-source.cjs")
+    void require("@areal/client/gui-source")
       .prepareGuiSource({
         app,
         guiUserData: applicationOwner.profile,
