@@ -292,7 +292,7 @@ try {
             files: ["**/*"],
             extraResources: [
               { from: bundle, to: "areal-core" },
-              { from: relayBundle.bundleDir, to: "areal-relay", filter: ["**/*", "!assets{,/**}"] },
+              { from: relayBundle.bundleDir, to: "areal-relay", filter: ["**/*"] },
               {
                 from: join(relayBundle.bundleDir, "node_modules"),
                 to: "areal-relay/node_modules",
