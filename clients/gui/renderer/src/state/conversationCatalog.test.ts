@@ -37,3 +37,8 @@ test("pending only while a started project is still loading its list", () => {
   const loading = { ...project(true), summariesLoaded: false };
   expect(conversationCatalog([loading], library).every((row) => row.statePending)).toBe(true);
 });
+
+test("cached Host summaries do not flash pending indicators during refresh", () => {
+  const refreshing = { ...project(true), summariesLoaded: false, summariesFreshness: "cached" };
+  expect(conversationCatalog([refreshing], library).some((row) => row.statePending)).toBe(false);
+});

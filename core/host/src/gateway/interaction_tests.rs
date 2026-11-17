@@ -61,6 +61,29 @@ fn unavailable_tool_host_retains_determinate_rejection() {
     );
 }
 
+#[test]
+fn configuration_rejections_preserve_safe_public_causes() {
+    for (reason, expected) in [
+        ("CREDENTIAL_UNAVAILABLE", "PROVIDER_CREDENTIAL_REQUIRED"),
+        (
+            "MODEL_CREDENTIAL_UNAVAILABLE",
+            "PROVIDER_CREDENTIAL_REQUIRED",
+        ),
+        (
+            "EXECUTION_CONFIGURATION_UNAVAILABLE",
+            "EXECUTION_CONFIGURATION_UNAVAILABLE",
+        ),
+    ] {
+        let record = json!({"method":"areal/turn/start","admissionState":"rejected",
+            "remote":{"method":"session.send"},
+            "error":{"code":-32602,"message":"private credential details", "data":{"reason":reason}}});
+        let result = Session::command_view(Some(&record), "original");
+        assert_eq!(result["error"]["code"], expected);
+        assert_eq!(result["submissionUnknown"], false);
+        assert!(!result.to_string().contains("private credential"));
+    }
+}
+
 enum CoreResponse {
     Message(Value),
     Disconnect,

@@ -77,18 +77,25 @@ export function settleHostCommand(
     typeof error.code === "string"
       ? error.code
       : undefined;
+  const detail =
+    error && typeof error === "object" && !Array.isArray(error)
+      ? (error as Record<string, unknown>)
+      : undefined;
+  const message =
+    typeof detail?.message === "string" && detail.message ? detail.message : "Host 拒绝了该操作";
   const outcome = rejected
     ? { kind: "rejected" }
     : operation
       ? { kind: "unconfirmed", operation }
       : undefined;
   throw Object.assign(
-    new Error(rejected ? "Host 拒绝了该操作" : "操作结果尚未确认。正在核对原请求，不会自动重发。"),
+    new Error(rejected ? message : "操作结果尚未确认。正在核对原请求，不会自动重发。"),
     {
       commandId: result.commandId,
       requestId: result.commandId,
       submissionUnknown: !rejected,
       ...(code ? { code } : {}),
+      ...(typeof detail?.reason === "string" ? { reason: detail.reason } : {}),
       outcome,
     },
   );

@@ -1247,3 +1247,25 @@ test("a ready Core selection never reopens a persisted Store reader", async (t) 
   assert.equal(fixture.frames.filter((f) => f.method === "session.openPersisted").length, 0);
   assert.equal(fixture.frames.filter((f) => f.method === "session.open").length, 1);
 });
+
+test("failed conversation reads retain the Host code and method in their detail", async (t) => {
+  let fixture;
+  fixture = await readServer(t, ({ frame }) => {
+    if (frame.method !== "session.open") return false;
+    [...fixture.listener.clients][0].send(
+      JSON.stringify({
+        version: 1,
+        id: frame.id,
+        error: { code: "CORE_UNAVAILABLE", message: "Host read request failed" },
+      }),
+    );
+    return true;
+  });
+  await assert.rejects(
+    fixture.client.selectSession({ projectId: project.projectId, threadId: "thread" }),
+  );
+  const read = fixture.client.readsSnapshot().session;
+  assert.equal(read.state, "unavailable");
+  assert.match(read.error, /CORE_UNAVAILABLE/);
+  assert.match(read.error, /session\.open/);
+});

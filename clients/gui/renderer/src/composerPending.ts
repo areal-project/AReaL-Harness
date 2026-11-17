@@ -6,7 +6,7 @@ export function composerPending(
   configurationRequestId: string | null,
 ) {
   const owned = entries.filter((entry) => entry.params?.threadId === threadId);
-  // 回执与投影可能交错；已知在途的配置只锁提交，未知结果仍阻塞编辑。
+  // 回执与投影可能交错；已知在途的配置只锁提交，未知结果仍阻塞再次提交。
   const saving = (entry: Data) =>
     entry.method === "areal/thread/configure" && entry.awaitingResponse === true;
   return {

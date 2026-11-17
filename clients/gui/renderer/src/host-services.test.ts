@@ -1776,6 +1776,13 @@ describe("Host renderer read authority", () => {
       params: { commandId: original.requestId },
     });
     expect(writes.filter((write) => write.method === "session.send")).toHaveLength(2);
+    admissionState = "notFound";
+    expect(
+      await services.writes!.route("reconcile", {
+        projectId: "alias",
+        requestId: "workbench-original",
+      }),
+    ).toBeUndefined();
     expect(services.capabilities).toMatchObject({
       mutations: false,
       conversationSubmit: true,
@@ -1932,4 +1939,18 @@ it("reprojects completed inspection and fences its connection and Core generatio
     extras,
   ).snapshot.projects[0].configurations.thread as Record<string, unknown>;
   expect(replacement.modelName).toBeUndefined();
+});
+
+it("preserves safe Host rejection detail and reason for diagnosis", () => {
+  expect(() =>
+    settleHostCommand({
+      commandId: "original",
+      admissionState: "rejected",
+      error: {
+        code: "INVALID_PARAMS",
+        message: "expectedRevision does not match",
+        reason: "configurationChanged",
+      },
+    }),
+  ).toThrow("expectedRevision does not match");
 });

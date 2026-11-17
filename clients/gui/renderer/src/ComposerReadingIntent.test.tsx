@@ -22,6 +22,7 @@ const observed = vi.hoisted(() => {
   return {
     submit: undefined as ((value: string) => unknown) | undefined,
     modifiedSubmit: undefined as ((value: string) => unknown) | undefined,
+    reconcile: undefined as (() => void) | undefined,
     approve: undefined as (() => void) | undefined,
     composer: undefined as ComponentProps<typeof ConversationComposer> | undefined,
   };
@@ -35,11 +36,12 @@ vi.mock("./ConversationComposer.js", () => ({
     observed.composer = props;
     observed.submit = props.onSubmit;
     observed.modifiedSubmit = props.onModifiedSubmit;
-    return props.topContent;
+    return createElement("div", null, props.topContent, props.leadingActions);
   },
 }));
 vi.mock("./components/ui/button.js", () => ({
   Button: (props: { children?: unknown; onClick?: () => void }) => {
+    if (props.children === "recovery.checkOriginal") observed.reconcile = props.onClick;
     if (props.children === "批准并执行") observed.approve = props.onClick;
     return null;
   },
@@ -53,6 +55,7 @@ function fixture(
   empty = false,
   web = false,
   persisted = false,
+  disconnected = false,
 ) {
   const projectId = crypto.randomUUID();
   const key = `areal-gui:draft:${projectId}:thread`;
@@ -89,7 +92,12 @@ function fixture(
         models: [],
         pending: [],
         configurations: { thread: config },
-        state: { connected: !persisted, threads: { thread }, interactions: {}, queues: {} },
+        state: {
+          connected: !persisted && !disconnected,
+          threads: { thread },
+          interactions: {},
+          queues: {},
+        },
       },
       thread,
       action: action as Action,
@@ -112,6 +120,33 @@ function fixture(
 }
 
 describe("Composer reading intent across unknown boundaries", () => {
+  it.each([false, true])(
+    "allows editing an unknown draft with disconnected=%s",
+    async (disconnected) => {
+      const f = fixture(false, false, false, false, false, false, disconnected);
+      localStorage.setItem(`${f.key}:pending`, "original-request");
+      f.render();
+      expect(observed.composer?.disabled).toBe(false);
+      expect(observed.composer?.submitDisabled).toBe(true);
+      observed.submit!("next draft");
+      expect(f.action).not.toHaveBeenCalled();
+      f.action.mockResolvedValue({ outcomes: {} });
+      if (disconnected) {
+        localStorage.removeItem(`${f.key}:pending`);
+        readingViews.delete(f.owner);
+        return;
+      }
+      observed.reconcile!();
+      await vi.waitFor(() =>
+        expect(f.action).toHaveBeenCalledExactlyOnceWith("reconcile", {
+          projectId: JSON.parse(f.owner)[0],
+          requestId: "original-request",
+        }),
+      );
+      localStorage.removeItem(`${f.key}:pending`);
+      readingViews.delete(f.owner);
+    },
+  );
   it("allows drafting and submitting from persisted history without claiming a live connection", async () => {
     const f = fixture(false, false, false, false, false, true);
     expect(observed.composer?.disabled).toBe(false);

@@ -594,7 +594,9 @@ export function createHostReadServices(
             : project.hostProjectId);
         const result = await client.commandStatus(owner, params.requestId);
         if (client.snapshot() !== connection) throw new Error("Host command read cancelled");
+        // 工作台提交仍由原 journal 核对；缺少 Host 回执不是未受理，也不能重发。
         const outcome = hostCommandOutcome(result, params.requestId);
+        if (outcome.admissionState === "notFound") return undefined;
         const key = JSON.stringify([connection.identity.hostId, owner]);
         commandOutcomes.set(key, { ...commandOutcomes.get(key), [params.requestId]: outcome });
         publish();

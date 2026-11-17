@@ -1421,7 +1421,14 @@ impl Session {
             let core = error["coreCode"]
                 .as_i64()
                 .or_else(|| error["code"].as_i64());
-            let code = if error["data"]["reason"] == "INPUT_LIMIT_EXCEEDED" {
+            let code = if matches!(
+                error["data"]["reason"].as_str(),
+                Some("CREDENTIAL_UNAVAILABLE" | "MODEL_CREDENTIAL_UNAVAILABLE")
+            ) {
+                "PROVIDER_CREDENTIAL_REQUIRED"
+            } else if error["data"]["reason"] == "EXECUTION_CONFIGURATION_UNAVAILABLE" {
+                "EXECUTION_CONFIGURATION_UNAVAILABLE"
+            } else if error["data"]["reason"] == "INPUT_LIMIT_EXCEEDED" {
                 "INPUT_LIMIT_EXCEEDED"
             } else if error["data"]["reason"] == "MODEL_REASONING_EFFORT_UNSUPPORTED" {
                 "MODEL_REASONING_EFFORT_UNSUPPORTED"
@@ -1441,10 +1448,13 @@ impl Session {
                     _ => "CORE_UNAVAILABLE",
                 }
             };
-            let message = if code == "CAPABILITY_UNAVAILABLE" {
-                "桌面工具宿主不可用，请重新打开提供工具的桌面端"
-            } else {
-                "命令未受理，请刷新状态后检查草稿"
+            let message = match code {
+                "CAPABILITY_UNAVAILABLE" => "桌面工具宿主不可用，请重新打开提供工具的桌面端",
+                "PROVIDER_CREDENTIAL_REQUIRED" => "模型服务凭据不可用，请检查模型服务设置后重试",
+                "EXECUTION_CONFIGURATION_UNAVAILABLE" => {
+                    "历史仍可读取，请修复会话的执行配置后再发送"
+                }
+                _ => "命令未受理，请刷新状态后检查草稿",
             };
             result["error"] = json!({"code":code,"message":message});
             if let Some(core) = core {

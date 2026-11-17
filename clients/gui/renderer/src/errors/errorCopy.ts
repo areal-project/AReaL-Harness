@@ -23,6 +23,7 @@ export const ERROR_CODES = {
   INVALID_PARAMS: { action: "refresh", retryable: false },
   ATTACHMENT_UNSUPPORTED: { action: "none", retryable: false },
   PROVIDER_CREDENTIAL_REQUIRED: { action: "none", retryable: false },
+  EXECUTION_CONFIGURATION_UNAVAILABLE: { action: "openSettings", retryable: false },
   INVALID_RESPONSE: { action: "retry", retryable: true },
   LIMIT_EXCEEDED: { action: "none", retryable: false },
   INPUT_LIMIT_EXCEEDED: { action: "none", retryable: false },

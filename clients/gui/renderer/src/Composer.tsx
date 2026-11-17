@@ -294,15 +294,11 @@ export function Composer({
     if (hadQuestion.current && !questions.length) api.current?.focus();
     hadQuestion.current = questions.length > 0;
   }, [questions.length]);
-  const baseDisabled =
+  const connectionUnavailable =
     (!project.state?.connected &&
       !("persistedHistory" in thread && thread.persistedHistory === true)) ||
-    !!project.observationErrors?.[thread.id] ||
-    archived ||
-    (busy && !configuring) ||
-    pending ||
-    !!unknown ||
-    !!reviewDraft.error;
+    !!project.observationErrors?.[thread.id];
+  const baseDisabled = archived || (busy && !configuring) || !!reviewDraft.error;
   const queueEditor = useComposerQueueEdit({
     project,
     threadId: thread.id,
@@ -321,7 +317,8 @@ export function Composer({
       uploadComposerFiles(action, project.id, thread.id, selected, undefined, uploadOwner),
   });
   // 配置写入仍占用提交锁，但不把草稿编辑和模型浮层切成消息发送态。
-  const editorDisabled = baseDisabled || (queueEditor.busy && !configuring) || queueEditor.locked;
+  const draftDisabled = baseDisabled || (queueEditor.busy && !configuring) || queueEditor.locked;
+  const editorDisabled = draftDisabled || connectionUnavailable || pending || !!unknown;
   const disabled = editorDisabled || executionBlocked || configuring;
   const compatibilityDescription = useId();
   const desktopUnsupported =
@@ -490,6 +487,10 @@ export function Composer({
       JSON.stringify([project.id, thread.id, false]),
     )?.pendingTurnStart;
     if (outcome.accepted === false && turnStart?.requestId === unknown) cancelTurnStart(turnStart);
+    const draftUnchanged =
+      composerDraftStorage.getItem(`${key}:pending-draft-version`) ===
+      (composerDraftStorage.getItem(`${key}:version`) ?? "0");
+    composerDraftStorage.removeItem(`${key}:pending-draft-version`);
     composerDraftStorage.removeItem(`${key}:pending`);
     composerDraftStorage.removeItem(`${key}:pending-operation`);
     window.dispatchEvent(new Event("areal-snapshot-drain"));
@@ -510,17 +511,16 @@ export function Composer({
         detail: outcome.message || undefined,
       });
     else if (wasContinue || wasConfigure) setDeliveryNotice(null);
-    else if (wasGoal) {
+    else if (wasGoal && draftUnchanged) {
       clearText();
       changeGoalMode(false);
-    } else clear();
+    } else if (draftUnchanged) clear();
   }, [unknown, pending, project.outcomes]);
   const reconcileUnknown = async () => {
     await readAction("reconcile", {
       projectId: project.id,
       requestId: unknown ?? undefined,
     }).catch(() => {});
-    await readAction("reconcile", { projectId: project.id }).catch(() => {});
   };
   useAutoReconcile(unknown, project.state?.connected === true, reconcileUnknown, () => {
     // 自动核对结束只提示；原身份和草稿仍由权威回执结算。
@@ -570,6 +570,7 @@ export function Composer({
     markSending(key, true);
     setGoalError("");
     setDeliveryNotice(null);
+    const submittedDraftVersion = composerDraftStorage.getItem(`${key}:version`) ?? "0";
     let configurationRequestId: string | undefined;
     let sendStarted = false;
     const sideCommand = parseSideSlashCommand(
@@ -671,6 +672,7 @@ export function Composer({
         if (configurationRequestId)
           composerDraftStorage.setItem(`${key}:pending-configure`, error.requestId);
         if (creatingGoal) composerDraftStorage.setItem(`${key}:pending-goal`, error.requestId);
+        composerDraftStorage.setItem(`${key}:pending-draft-version`, submittedDraftVersion);
         setUnknown(error.requestId);
         composerDraftStorage.setItem(`${key}:pending`, error.requestId);
       }
@@ -988,7 +990,7 @@ export function Composer({
           project={project}
           thread={thread}
           action={action}
-          disabled={readOnly || baseDisabled || queueEditor.busy || executionBlocked}
+          disabled={readOnly || editorDisabled || executionBlocked}
           editingId={queueEditor.edit?.id}
           onEdit={(item) => {
             if (!readOnly && !disabled) void queueEditor.begin(item);
@@ -1107,7 +1109,7 @@ export function Composer({
                     ? t("chat.composer.approvalPlaceholder")
                     : t("chat.composer.placeholder")
           }
-          disabled={editorDisabled}
+          disabled={draftDisabled}
           submitDisabled={
             workspaceReferencePending ||
             disabled ||
@@ -1160,6 +1162,8 @@ export function Composer({
           onChange={(value) => {
             if (outgoing) return;
             setText(value);
+            // 恢复编辑器原文也会通知 onChange，只有内容变化才推进草稿版本。
+            if (value === (composerDraftStorage.getItem(key) ?? "")) return;
             composerDraftStorage.scheduleItem(key, value);
             composerDraftStorage.scheduleItem(
               `${key}:version`,
@@ -1182,6 +1186,7 @@ export function Composer({
               : undefined
           }
           onPaste={(event) =>
+            !editorDisabled &&
             composerPaste(event, (pasted) => setFiles((current) => [...current, ...pasted]))
           }
           topContent={

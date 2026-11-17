@@ -90,8 +90,11 @@ export function conversationCatalog(
           archived: t?.desktop?.archived || summary.desktop?.archived,
           pinned: !!library.threads?.[`${owner.id}:${summary.id}`]?.pinned,
           unread: !!library.threads?.[`${owner.id}:${summary.id}`]?.unread,
-          // 未启动的项目没有在跑的东西，不画"加载中"；只有已连接但摘要还没到时才算待定。
-          statePending: owner.state?.connected === true && owner.summariesLoaded === false,
+          // 已有缓存的后台刷新不替换整批图标；首次没有摘要时才显示待更新。
+          statePending:
+            owner.state?.connected === true &&
+            owner.summariesLoaded === false &&
+            owner.summariesFreshness !== "cached",
           status,
           running: status.kind === "working",
           attention: status.kind === "needsYou",

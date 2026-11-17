@@ -448,6 +448,11 @@ if (command === "doctor") {
         "UI-added project connected",
       )
     ).id;
+    await until(
+      async () =>
+        project(await snapshot())?.models?.some((model) => model.displayName === "fixture"),
+      "fixture model catalog loaded",
+    );
     await page.getByRole("button", { name: "选择模型", exact: true }).click();
     await page.getByRole("radio", { name: "fixture", exact: true }).click();
     await page.keyboard.press("Escape");
@@ -513,6 +518,17 @@ if (command === "doctor") {
       "pending send retains the original Host command ID",
     );
     await capture("03-send-response-lost");
+    await page.getByTestId("chat-input").fill("A new draft written during recovery");
+    assert.equal(await page.getByTestId("chat-send-button").isDisabled(), true);
+    const sendsWhileUnknown = events.filter(
+      (event) => event.type === "command" && event.name === "send",
+    ).length;
+    await page.getByTestId("chat-input").press("Enter");
+    const editedDraft = await page.getByTestId("chat-input").innerText();
+    assert.equal(
+      events.filter((event) => event.type === "command" && event.name === "send").length,
+      sendsWhileUnknown,
+    );
     proxy.release();
     await until(
       async () =>
@@ -529,6 +545,7 @@ if (command === "doctor") {
       "accepted turn completed",
     );
     await unknown.waitFor({ state: "hidden" });
+    assert.equal(await page.getByTestId("chat-input").innerText(), editedDraft);
     assert.equal(
       await page.evaluate(
         (id) =>
@@ -547,6 +564,11 @@ if (command === "doctor") {
     const accepted = thread(await snapshot());
     assert.equal(accepted.turns.length, before.turns.length + 1);
     assert.equal(workRequests() - beforeModel, 1);
+    assert.equal(
+      events.filter((event) => event.type === "command" && event.name === "send").length,
+      sendsWhileUnknown,
+      "Enter during UNKNOWN never sends another command",
+    );
     assert.deepEqual(
       accepted.turns.slice(0, before.turns.length).map((value) => value.id),
       before.turns.map((value) => value.id),
@@ -564,7 +586,73 @@ if (command === "doctor") {
     );
     await json(join(evidence, "send-fault.json"), send);
     await capture("04-send-converged");
-    const history = displayTurns(accepted.turns),
+    const unchanged = proxy.arm("send");
+    await page.getByTestId("chat-input").fill("An unchanged recovery draft");
+    await page.getByTestId("chat-send-button").click();
+    await until(() => unchanged.completed, "unchanged draft send response intercepted");
+    assert.equal(unchanged.hadError, false, JSON.stringify(unchanged.response));
+    await unknown.waitFor();
+    const draftState = () =>
+      page.evaluate((requestId) => {
+        const pendingKey = Object.keys(localStorage).find(
+          (key) => key.endsWith(":pending") && localStorage.getItem(key) === requestId,
+        );
+        const key = pendingKey?.slice(0, -":pending".length);
+        return key
+          ? {
+              key,
+              text: localStorage.getItem(key),
+              version: localStorage.getItem(`${key}:version`),
+              pendingVersion: localStorage.getItem(`${key}:pending-draft-version`),
+            }
+          : null;
+      }, unchanged.requestId);
+    const draftBefore = await draftState();
+    proxy.release();
+    await unknown.waitFor({ state: "hidden" });
+    const draftAfter = await page.evaluate(
+      (key) => ({
+        text: localStorage.getItem(key),
+        version: localStorage.getItem(`${key}:version`),
+        pendingVersion: localStorage.getItem(`${key}:pending-draft-version`),
+      }),
+      draftBefore.key,
+    );
+    const reconciliation = events.find(
+      (event) => event.type === "command-reconciled" && event.requestId === unchanged.requestId,
+    );
+    await json(join(evidence, "unchanged-draft.json"), {
+      before: draftBefore,
+      after: draftAfter,
+      outcome: {
+        status: reconciliation?.result?.status,
+        accepted: reconciliation?.result?.accepted,
+        admissionState: reconciliation?.result?.admissionState,
+      },
+    });
+    await until(
+      async () => (await page.getByTestId("chat-input").textContent()) === "",
+      "unchanged accepted draft clears",
+    );
+    await until(
+      async () => thread(await snapshot())?.turns.at(-1)?.status === "completed",
+      "unchanged draft turn completed",
+    );
+    assert.equal(thread(await snapshot()).turns.length, accepted.turns.length + 1);
+    assert.equal(workRequests(), beforeModel + 2);
+    assert.equal(
+      events.filter(
+        (event) =>
+          event.type === "command" &&
+          event.name === "send" &&
+          event.requestId === unchanged.requestId,
+      ).length,
+      1,
+    );
+    checks.push(
+      "UNKNOWN allows editing but blocks resubmission; accepted recovery preserves edited text and clears an unchanged draft",
+    );
+    const history = displayTurns(thread(await snapshot()).turns),
       readModel = workRequests();
     await createProjectConversation(page, "workspace");
     const read = proxy.arm("open");

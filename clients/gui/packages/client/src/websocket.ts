@@ -35,6 +35,7 @@ const clientError = (clientCode: "DISCONNECTED" | "TIMEOUT", message: string) =>
   Object.assign(new Error(message), { clientCode });
 
 type Pending = {
+  method: string;
   resolve(value: unknown): void;
   reject(error: Error): void;
   timer: ReturnType<typeof setTimeout>;
@@ -75,7 +76,7 @@ export async function connectWebSocket(
         reject(clientError("TIMEOUT", "Host read timed out"));
         if (method === "session.open" || method === "session.openPersisted") close();
       }, 15_000);
-      pending.set(id, { resolve, reject, timer });
+      pending.set(id, { method, resolve, reject, timer });
       try {
         socket.send(
           JSON.stringify({
@@ -114,7 +115,7 @@ export async function connectWebSocket(
         pending.delete(id);
         reject(clientError("TIMEOUT", "Host command timed out"));
       }, 30_000);
-      pending.set(id, { resolve, reject, timer });
+      pending.set(id, { method, resolve, reject, timer });
       try {
         socket.send(
           JSON.stringify({
@@ -251,10 +252,11 @@ export async function connectWebSocket(
         clearTimeout(handler.timer);
         if (record(message.error)) {
           const generic = message.error.message;
-          const text =
+          const summary =
             typeof generic === "string" && generic && !GENERIC_ERRORS.has(generic)
               ? generic
               : (ERROR_TEXT[String(message.error.code)] ?? "Host 操作失败");
+          const text = `${summary} [${String(message.error.code)}; ${handler.method}]`;
           handler.reject(Object.assign(new Error(text), message.error, { message: text }));
         } else handler.resolve(message.result);
       } catch {

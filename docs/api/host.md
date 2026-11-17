@@ -39,6 +39,8 @@ Host 无法交接时，`areal host history-snapshot --service <service.json> --t
 
 协商 `gui-write-v1` 的 Remote 连接可在模型目录、提交与回执查询等项目请求中使用共享清单的 Host projectId，也可沿用来源别名。Host 从当前配对来源解析为同一个别名后检查原设备项目授权，并使用同一回执范围；知道 Host ID 不授予项目权限。未协商的旧调用仍只接受来源别名。
 
+提交因凭据不可用被 Core 明确拒绝时，Host 返回 `PROVIDER_CREDENTIAL_REQUIRED`；执行配置不可用返回 `EXECUTION_CONFIGURATION_UNAVAILABLE`。这些结果保留明确拒绝语义，不进入 UNKNOWN；公开错误消息不包含凭据环境变量或内部配置详情。
+
 Host 发布包内与 Electron 相同的 Renderer。`areal web` 打开公开 origin，`areal web --json` 只返回不含秘密的 endpoint。浏览器在 IndexedDB 保存不可导出的 P-256 私钥，向同源 `POST /host/auth/challenge` 提交公钥。未授权返回有效 120 秒的请求；用户在本机执行 `areal host web approve REQUEST_ID`，再在浏览器检查批准状态。已授权公钥获取有效 30 秒的一次性 challenge，对 Host 身份、nonce 和 origin 签名，再向 `POST /host/auth/ticket` 换票。HTTP origin 本身不授予访问权。
 
 `areal host web devices` 列出设备身份、公钥指纹和已授予的范围；`areal host web revoke DEVICE_ID` 持久撤销该浏览器，未使用票据和活跃连接随之失效。撤销和批准只在已认证 Unix 连接上提供。私钥、凭据和票据不进入 URL、进程参数、日志或诊断。省略 `web.approve.params.scopes` 时仅授予 `observe`，既有授权不自动扩大。该本机接口可显式授予 Host 全部项目的 `observe`、`submit`、`approve`、`manage` 范围（必须包含 observe）；CLI 默认只读；例如 `areal host web approve REQUEST_ID --scope observe,manage` 仅开放查看和管理。新浏览器还须协商 `gui-write-v1`，hello 仅列出授权内的方法，服务端逐次校验。`submit` 包含提交、附件及停止；`approve` 包含审批与回答；`manage` 包含资料库整理、统计导入和有界的管理操作，不隐含前两者；其中会推动或停止在途工作的管理操作（终端写入、上下文压缩、立即运行任务、恢复本次运行、取消执行、停止 Run）分别另需 `submit` 或 `interrupt`。跨项目资料库通过 `library.command` 写入，以 `commandId` 查 `command.read`，未知结果不重放。后台启动与原生能力边界见[工作台服务](../design/workbench-service.md)。

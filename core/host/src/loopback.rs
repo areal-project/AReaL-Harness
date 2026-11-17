@@ -681,7 +681,7 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                         let raw: Value = serde_json::from_str(&bytes)?;
                         if writable && raw["method"].as_str().is_some_and(|method| WRITE_METHODS.contains(&method)) {
                             let id = raw["id"].as_str().filter(|id| !id.is_empty() && id.len() <= 64).context("invalid request")?.to_owned();
-                            let recovery_request = matches!(raw["method"].as_str(), Some("command.read" | "turn.stop"));
+                            let recovery_request = recovery_request(&raw);
                             let independent = recovery_request || independent_query(&raw);
                             let (full, reason) = if recovery_request {
                                 (recovery.len() >= MAX_PENDING_RECOVERY, "recoveryQueueFull")
@@ -880,6 +880,11 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn recovery_request(raw: &Value) -> bool {
+    matches!(raw["method"].as_str(), Some("command.read" | "turn.stop"))
+        || (raw["method"] == "desktop.command" && raw["params"]["command"] == "reconcile")
 }
 
 fn independent_query(raw: &Value) -> bool {
