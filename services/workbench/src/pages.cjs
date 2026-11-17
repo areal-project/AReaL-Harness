@@ -187,7 +187,15 @@ async function prepareInput({ desktop, request }) {
     typeof request.text !== "string"
   )
     throw Error("Invalid input owner");
-  const project = desktop.adapter.projectForThread(request.projectId, request.threadId);
+  let project = desktop.adapter.projectForThread(request.projectId, request.threadId);
+  if (!project) {
+    const owner =
+      desktop.backend.worktrees?.executionProjectId(request.projectId, request.threadId) ??
+      request.projectId;
+    const loaded = await desktop.backend.loadProjectJournal(owner);
+    project = desktop.adapter.projectForThread(request.projectId, request.threadId);
+    if (project !== loaded) throw Error("Input project changed");
+  }
   if (!project) throw Error("Input project unavailable");
   const text = await desktop.backend.genUiText(project, request.threadId, request.text);
   if (desktop.adapter.projectForThread(request.projectId, request.threadId) !== project)

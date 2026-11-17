@@ -1664,16 +1664,24 @@ class DesktopService {
       desktopContract.readCommandInvocation("create", params);
     }
     const threadId = params.threadId;
-    const project = creating
+    const owner = this.hostConnections.get(connection) ?? {};
+    this.hostConnections.set(connection, owner);
+    const socket = this.computerSocket;
+    let project = creating
       ? this.backend.projects.get(projectId)
       : typeof threadId === "string"
         ? this.projectForThread(projectId, threadId)
         : undefined;
+    if (!project?.client?.ready) {
+      const execution =
+        !creating && typeof threadId === "string"
+          ? (this.backend.worktrees?.executionProjectId(projectId, threadId) ?? projectId)
+          : projectId;
+      // Host 已唤醒 Core；写入前复用工作台原有的连接与资源准备入口。
+      project = await this.backend.start(execution);
+    }
     const client = project?.client;
     if (!project || !client) throw new Error("Host execution project unavailable");
-    const owner = this.hostConnections.get(connection) ?? {};
-    this.hostConnections.set(connection, owner);
-    const socket = this.computerSocket;
     const current = () =>
       !this.closed &&
       !this.recovering &&

@@ -130,6 +130,14 @@ test("后台 Gen-UI 写入同一权威状态，后续模型上下文排除私有
       },
     },
   });
+  const loaded = [];
+  const originalProject = f.backend.projects.get("project");
+  f.backend.projects.delete("project");
+  f.backend.loadProjectJournal = async (id) => {
+    loaded.push(id);
+    f.backend.projects.set(id, originalProject);
+    return originalProject;
+  };
   const { text } = await prepareInput({
     desktop: f,
     request: { projectId: "project", threadId: "thread", text: "Continue" },
@@ -137,6 +145,7 @@ test("后台 Gen-UI 写入同一权威状态，后续模型上下文排除私有
   assert.match(text, /selection/);
   assert.match(text, /42/);
   assert.doesNotMatch(text, /private-note|privateContent/);
+  assert.deepEqual(loaded, ["project"]);
   assert.equal(await f.backend.genUiText(f.project, "other", "Continue"), "Continue");
   await page.close();
   await assert.rejects(
@@ -225,6 +234,47 @@ test(
     }
   },
 );
+
+for (const mode of ["generation", "replacement", "owner-left"]) {
+  test(`Host 冷发送连接仍绑定原 owner 与 Core：${mode}`, async (t) => {
+    const f = await fixture(t);
+    const project = f.backend.projects.get("project");
+    const client = project.client;
+    project.client = null;
+    project.service = {
+      serviceId: "core",
+      generation: mode === "replacement" ? mode : "generation",
+    };
+    let starts = 0;
+    f.backend.start = async (id) => {
+      assert.equal(id, "project");
+      starts++;
+      project.client = client;
+      if (mode === "owner-left") f.adapter.hostConnections.delete("owner");
+      return project;
+    };
+    f.backend.ensureBrowserTools = async () => {};
+    const preparing = f.adapter.prepareHostExecution(
+      {
+        projectId: "project",
+        coreInstanceId: "core",
+        coreGeneration: "generation",
+        call: { method: "areal/turn/start", params: { threadId: "thread", requestId: "original" } },
+      },
+      "owner",
+    );
+    if (mode !== "generation") {
+      await assert.rejects(preparing, /owner changed/);
+      assert.equal(f.adapter.hostExecutions.size, 0);
+    } else {
+      const prepared = await preparing;
+      assert.equal(prepared.hostDispatch, true);
+      assert.equal(prepared.call.params.requestId, "original");
+      assert.equal(f.adapter.hostExecutions.size, 1);
+    }
+    assert.equal(starts, 1);
+  });
+}
 
 test("Host 创建和发送复用原生 owner 与原 Core 连接，句柄不能跨会话或未知重放", async (t) => {
   const f = await fixture(t);
