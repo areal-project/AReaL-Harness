@@ -1146,7 +1146,19 @@ class SharedCoreBackend {
       if (client.hostId !== reference.hostId) throw new Error("Host identity changed");
       value = (await client.operation(reference.requestId)).operation;
     } catch {
-      if (this.options.binary) value = await readOfflineHostReceipt(this.options.binary, reference);
+      if (this.options.binary) {
+        value = await readOfflineHostReceipt(this.options.binary, reference);
+        if (
+          value?.preparationPending === true &&
+          value.projects.every((target) => target.dispatch === "notStarted")
+        ) {
+          // 已确认未派发的停止准备交给轻量 Host 结算；不唤醒 Core，也不另发停止。
+          client.close();
+          await client.connectOrStart(reference.home, this.options.binary);
+          if (client.hostId !== reference.hostId) throw new Error("Host identity changed");
+          value = (await client.operation(reference.requestId)).operation;
+        }
+      }
     } finally {
       client.close();
     }

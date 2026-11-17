@@ -913,3 +913,57 @@ test("automatic initialization resumes after a definitively refused Host stop", 
     false,
   );
 });
+
+test("offline interrupted preparation connects only Host and reconciles the original request", async (t) => {
+  const f = await fixture(t);
+  const requestId = randomUUID();
+  const reference = {
+    kind: "stopHost",
+    requestId,
+    home: f.hostHome,
+    hostId: f.hostId,
+    generation: f.generation,
+    strategy: "cancel",
+  };
+  const binary = join(f.root, "offline-preparation");
+  await writeFile(
+    binary,
+    "#!/usr/bin/env node\nprocess.stdout.write(require('fs').readFileSync(process.env.AREAL_HARNESS_HOME+'/original.json'))\n",
+    { mode: 0o700 },
+  );
+  await writeFile(
+    join(f.hostHome, "original.json"),
+    JSON.stringify({
+      operation: {
+        ...f.receipt(requestId, "acceptedPending"),
+        preparationPending: true,
+      },
+    }),
+  );
+  f.backend.options.binary = binary;
+  f.setHandler(async (_request, socket) => {
+    socket.destroy();
+  });
+  const { HostClient } = require("../packages/client/node/host-client.cjs");
+  let connections = 0;
+  t.mock.method(HostClient.prototype, "connectOrStart", async function (home, executable) {
+    assert.equal(home, reference.home);
+    assert.equal(executable, binary);
+    connections++;
+    this.close();
+    f.setHandler(async (request) => {
+      assert.equal(request.method, "host.operation");
+      assert.equal(request.params.requestId, requestId);
+      return { operation: { ...f.receipt(requestId, "blocked"), preparationInterrupted: true } };
+    });
+    return this.connect(home);
+  });
+  const result = await f.backend.readHostStop(reference);
+  assert.equal(connections, 1);
+  assert.equal(result.receipt.state, "blocked");
+  assert.equal(result.receipt.preparationInterrupted, true);
+  assert.equal(
+    f.calls.some((call) => ["host.stop", "project.ensure"].includes(call.method)),
+    false,
+  );
+});

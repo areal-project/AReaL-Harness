@@ -1225,6 +1225,54 @@ async fn stop_barrier_closes_pre_admission_awaits_and_reconciliation_observes_bu
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn startup_reconciles_interrupted_stop_preparation_before_accepting_clients() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for legacy_admission in [true, false] {
+                let root = tempfile::tempdir().unwrap();
+                let home = root.path().canonicalize().unwrap().join("home");
+                storage::private_dir(&home.join("host/operations")).unwrap();
+                let request = uuid::Uuid::new_v4().to_string();
+                let admission = json!({"version":1,"method":"host.stop","requestId":request,
+                    "hostId":uuid::Uuid::new_v4().to_string(),"generation":uuid::Uuid::new_v4().to_string(),
+                    "projectId":"","strategy":"cancel","state":"acceptedPending"});
+                let mut snapshot = admission.clone();
+                snapshot["projects"] = json!([]);
+                snapshot["localRelay"] = json!({"state":"acceptedPending"});
+                if !legacy_admission {
+                    snapshot["preparationPending"] = json!(true);
+                }
+                storage::write(&home.join("host/stop.json"), &snapshot).unwrap();
+                storage::write(&wire::operation_path(&home, &request), &Operation {
+                    digest: "fixture".into(),
+                    receipt: if legacy_admission { admission } else { snapshot },
+                    evidence: Value::Null,
+                }).unwrap();
+                let bin = std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
+                let task = tokio::task::spawn_local(run_local(RunOptions { home: home.clone(), bin_dir: bin }));
+                let client = loop {
+                    if let Ok(client) = Client::connect_at(home.clone()).await { break client; }
+                    assert!(!task.is_finished(), "Host exited during startup");
+                    tokio::task::yield_now().await;
+                };
+                let status = client.status().await.unwrap();
+                assert!(!status.stop_intent, "interrupted preparation must settle before the first status read");
+                assert_eq!(status.state, "running");
+                let original = client.operation(&request).await.unwrap().unwrap();
+                assert_eq!(original["state"], "blocked");
+                assert_eq!(original["preparationInterrupted"], true);
+                assert_eq!(original["requestId"], request);
+                assert_eq!(original["projects"], json!([]));
+                assert_eq!(client.operation(&request).await.unwrap().unwrap(), original);
+                assert_eq!(storage::json_records(&home.join("host/operations"), true).unwrap().len(), 1);
+                task.abort();
+                assert!(task.await.is_err_and(|error| error.is_cancelled()));
+            }
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn settled_refusals_release_admission_live_and_after_restart_but_unknown_does_not() {
     tokio::task::LocalSet::new().run_until(async {
         for (states,expected,released) in [

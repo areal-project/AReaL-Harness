@@ -406,6 +406,20 @@ pub(crate) async fn run_local_mode(
         read_models: Default::default(),
         loopback: loopback::Loopback::default(),
     });
+    let interrupted_stop = host
+        .stop
+        .borrow()
+        .as_ref()
+        .and_then(|receipt| receipt["requestId"].as_str())
+        .map(str::to_owned);
+    if let Some(request_id) = interrupted_stop
+        && host
+            .receipt(&request_id)?
+            .is_some_and(|record| record.receipt["preparationPending"] == true)
+    {
+        // 新进程已持有 Host 锁；仅结算原准备中断，不重放停止或放行已派发的 UNKNOWN。
+        host.reconcile(&request_id).await?;
+    }
     let registrations = host.registrations();
     host.schedules.import(&host.migration, &registrations)?;
     plugins::import(&host, &registrations);
@@ -2585,6 +2599,9 @@ impl Host {
         let Some(mut record) = self.receipt(id)? else {
             return Ok(None);
         };
+        if record.receipt["preparationInterrupted"] == true && settled_refusal(&record.receipt) {
+            return Ok(Some(record.receipt));
+        }
         let _host_guard =
             if record.receipt["projects"].is_array() || record.receipt["method"] == "host.stop" {
                 match self.host_stop_gate.try_lock() {
