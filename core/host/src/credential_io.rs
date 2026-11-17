@@ -551,7 +551,7 @@ fn master_key(service: &str) -> Result<[u8; MASTER_KEY_BYTES]> {
 }
 
 fn read_sealed(home: &Path, service: &str, entry: &str) -> Result<Option<Value>> {
-    let Some(sealed) = storage::read_bytes(&sealed_path(home, entry))? else {
+    if storage::read_bytes(&sealed_path(home, entry))?.is_none() {
         // 迁移：旧版把每个凭据直接存成一条 keychain 条目。读到就搬到加密文件并删除旧条目，
         // 之后不再依赖绑定二进制路径的 ACL。旧条目读不出（含授权失败）时保持原状，
         // 交由上层呈现待恢复，不在这里静默丢弃。
@@ -559,7 +559,10 @@ fn read_sealed(home: &Path, service: &str, entry: &str) -> Result<Option<Value>>
             Ok(Some(bytes)) => {
                 let value: Value = serde_json::from_slice(&bytes)
                     .map_err(|_| error("storageLocked", "invalid stored credential"))?;
-                if write_sealed(home, service, entry, &bytes).is_ok() {
+                // 只有加密文件确认可读回才删除旧条目；迁移中途失败时旧条目仍在。
+                if write_sealed(home, service, entry, &bytes).is_ok()
+                    && read_sealed_file(home, service, entry)? == Some(value.clone())
+                {
                     let _ = security_framework::passwords::delete_generic_password(
                         &legacy_service(home),
                         entry,
@@ -570,6 +573,14 @@ fn read_sealed(home: &Path, service: &str, entry: &str) -> Result<Option<Value>>
             Ok(None) => Ok(None),
             Err(cause) => Err(cause),
         };
+    };
+    read_sealed_file(home, service, entry)
+}
+
+/// 只读加密文件，不回退旧条目；迁移校验与正常读取共用这一条解密路径。
+fn read_sealed_file(home: &Path, service: &str, entry: &str) -> Result<Option<Value>> {
+    let Some(sealed) = storage::read_bytes(&sealed_path(home, entry))? else {
+        return Ok(None);
     };
     let key = master_key(service)?;
     let plaintext = unseal(&key, &sealed)?;
