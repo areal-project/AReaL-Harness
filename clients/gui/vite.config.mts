@@ -78,6 +78,8 @@ export default defineConfig({
   },
   fmt: {
     ignorePatterns: [
+      // 第三方资产保持原始摘要，文件完整性由公开分发检查验证。
+      "packages/workbench/assets/builtin-skills/**",
       "**/dist/**",
       "**/vendor/**",
       "**/generated/**",

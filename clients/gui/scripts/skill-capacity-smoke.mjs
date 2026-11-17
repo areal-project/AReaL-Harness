@@ -46,7 +46,7 @@ async function fixture(label) {
     home,
     userHome,
     saved: [project],
-    desktopConfig: require.resolve("@areal/workbench-service/desktop/core/desktop-profile.json"),
+    desktopConfig: require.resolve("@areal/workbench/desktop-profile"),
     save: (name, value) => writeFile(join(home, name), JSON.stringify(value)),
   };
   const resources = new ScopedResources(backend);

@@ -12,7 +12,7 @@ The GUI is distributed under the repository Apache-2.0 license, subject to the f
 - Interface glyphs, the file-tree sprite, provider logos and the application icon retain the source repository's assets and provenance comments. Other Lucide icons retain their dependency's ISC license. Appearance previews are original SVG illustrations.
 - Agent avatars use DiceBear Core and Bottts 9.4.2 locally with the authoritative Thread ID as seed. DiceBear code is MIT licensed (copyright Florian Körner); Bottts artwork is by Pablo Stanley and is free for personal and commercial use. See `licenses/dicebear-core-LICENSE` and `licenses/dicebear-bottts-LICENSE`, https://www.dicebear.com/styles/bottts/ and https://bottts.com/.
 - MCP Apps uses the official MIT-licensed `@modelcontextprotocol/ext-apps` 2.0.3 AppBridge and `@modelcontextprotocol/client/core` 2.0.0. Package versions are locked in `pnpm-lock.yaml`; licenses are retained in `licenses/mcp-ext-apps-LICENSE` and `licenses/mcp-sdk-LICENSE`.
-- The bundled official Skill Creator retains the unmodified Apache-2.0 resource from [openai/skills](https://github.com/openai/skills/tree/49f948faa9258a0c61caceaf225e179651397431/skills/.system/skill-creator). Its license and pinned file inventory are retained under `app/assets/builtin-skills`.
+- The bundled official Skill Creator retains the unmodified Apache-2.0 resource from [openai/skills](https://github.com/openai/skills/tree/49f948faa9258a0c61caceaf225e179651397431/skills/.system/skill-creator). Its license and pinned file inventory are retained under `@areal/workbench/assets/builtin-skills`.
 - Settings localization uses BSD-3-Clause licensed `react-intl` 12.1.5 from [FormatJS](https://github.com/formatjs/formatjs). ICU parsing, plurals and locale formatting use its packaged dependencies. See `licenses/react-intl-LICENSE`. Both languages are bundled; no translation service or remote catalog is used.
 - Runtime dependencies retain their package licenses in the staged application. Core binaries, tools and their licenses come from the repository's Core bundle.
 
@@ -28,7 +28,7 @@ Renderer 的来源修订为 ZCode `872ad960de7ec172591f7e1952f7849229f94521`，A
 
 生成式交互回答直接复用并适配 [zai-org/ZCode](https://github.com/zai-org/ZCode/tree/3c5b227649371507ddc4eb46ac5133afe6db1cab) 修订 `3c5b227649371507ddc4eb46ac5133afe6db1cab` 的契约、指令解析器、页面运行时、持久状态存储和 Visualize 资产。来源清单与本地适配记录位于 `packages/gen-ui/source-files.json`，Apache-2.0 许可保留于 `packages/gen-ui/LICENSE` 和 `packages/gen-ui/VISUALIZE-LICENSE.md`。随包的 Floating UI Core 1.7.3 与 DOM 1.7.4 保留 MIT 许可，Lucide 1.17.0 与 D3 7.9.0 保留 ISC 许可。脚本、许可文本和哈希清单位于 `packages/gen-ui/assets/vendor/manifest.json`。AReaL 将发布与历史来源检查接入 Core，将视图状态接入 Desktop，并复用现有 MCP Apps 页面宿主。
 
-内置官方 Skill Creator 保留 OpenAI Skills 修订 `49f948faa9258a0c61caceaf225e179651397431` 的原始资源。Apache-2.0 许可与固定文件清单位于 `app/assets/builtin-skills`。
+内置官方 Skill Creator 保留 OpenAI Skills 修订 `49f948faa9258a0c61caceaf225e179651397431` 的原始资源。Apache-2.0 许可与固定文件清单位于 `@areal/workbench/assets/builtin-skills`。
 
 设置国际化复用 FormatJS 的 `react-intl` 12.1.5，BSD-3-Clause 许可保留于 `licenses/react-intl-LICENSE`。两种语言随应用打包，不连接翻译服务或远程词库。
 

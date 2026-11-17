@@ -51,7 +51,9 @@ async function verifiedFiles(root, manifest) {
 /** @param {string} home @param {string} id */
 async function builtinSkill(home, id) {
   if (id !== ID) throw new Error("未知内置 Skill");
-  const bundle = join(__dirname, "../../assets/builtin-skills");
+  const bundle = dirname(
+    require.resolve("@areal/workbench/builtin-skills/openai-skill-creator.source.json"),
+  );
   /** @type {unknown} */
   const manifest = JSON.parse(await readFile(join(bundle, `${ID}.source.json`), "utf8"));
   if (

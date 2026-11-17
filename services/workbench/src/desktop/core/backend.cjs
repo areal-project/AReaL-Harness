@@ -587,7 +587,7 @@ class CoreBackend {
       configPath: this.config,
       deploymentPath: resourceDeployment.path || undefined,
       schedulePreparation:
-        this.desktopConfig === join(__dirname, "desktop-profile.json")
+        this.desktopConfig === require.resolve("@areal/workbench/desktop-profile")
           ? {
               kind: "managed",
               resourceStatePath: join(this.home, "resources.json"),
@@ -1427,7 +1427,8 @@ class CoreBackend {
   async commandObserved(commandName, rawRequest, context) {
     const invocation = readCommandInvocation(commandName, { ...rawRequest });
     if (commandName === "feedback") throw new Error("Feedback operations require Host protocol");
-    if (commandName === "trajectory") throw new Error("Trajectory operations require Host protocol");
+    if (commandName === "trajectory")
+      throw new Error("Trajectory operations require Host protocol");
     if (this.worktrees && !this.cloudConversations?.routes(commandName, rawRequest))
       Object.assign(
         invocation.request,

@@ -66,7 +66,10 @@ def main():
     checked = 0
     for name in sorted(set(files)):
         path = ROOT / name
-        if name == "services/workbench/src/assets/builtin-skills/openai-skill-creator/SKILL.md":
+        if (
+            name
+            == "clients/gui/packages/workbench/assets/builtin-skills/openai-skill-creator/SKILL.md"
+        ):
             continue
         if path.suffix != ".md" or not path.is_file():
             continue

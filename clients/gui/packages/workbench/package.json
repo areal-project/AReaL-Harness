@@ -115,7 +115,9 @@
     "./desktop-contract/snapshots": {
       "types": "./client/desktop-contract/snapshots.cjs",
       "default": "./client/desktop-contract/snapshots.cjs"
-    }
+    },
+    "./desktop-profile": "./assets/desktop-profile.json",
+    "./builtin-skills/*": "./assets/builtin-skills/*"
   },
   "dependencies": {
     "@modelcontextprotocol/core": "2.3.0"

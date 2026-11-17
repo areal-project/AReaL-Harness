@@ -185,13 +185,13 @@ class ScopedResources {
       })),
       customDeployment:
         !!this.backend.desktopConfig &&
-        this.backend.desktopConfig !== join(__dirname, "desktop-profile.json"),
+        this.backend.desktopConfig !== require.resolve("@areal/workbench/desktop-profile"),
     };
   }
   /** @param {CoreProject} project */
   async deployment(project) {
     // 显式部署保留自身的权限与任务配置契约。
-    if (this.backend.desktopConfig !== join(__dirname, "desktop-profile.json"))
+    if (this.backend.desktopConfig !== require.resolve("@areal/workbench/desktop-profile"))
       return {
         path: this.backend.desktopConfig,
         profile: this.backend.defaultProfile,
@@ -337,7 +337,8 @@ class ScopedResources {
       throw new Error("请先选择要创建 Skill 的项目。");
     const { skill, provenance } = await builtinSkill(this.backend.home, BUILTIN_SKILL_ID);
     await this.beforeCreate(project);
-    const managed = this.backend.desktopConfig === join(__dirname, "desktop-profile.json");
+    const managed =
+      this.backend.desktopConfig === require.resolve("@areal/workbench/desktop-profile");
     const base =
       managed && this.backend.desktopConfig
         ? resourceContract.deployment(
