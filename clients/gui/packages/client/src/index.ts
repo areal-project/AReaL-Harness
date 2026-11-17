@@ -327,7 +327,9 @@ export class HostClient {
     if (this.#target?.persisted && after?.state !== "ready") return;
     if (
       !this.#target ||
-      (before?.serviceGeneration === after?.serviceGeneration && before?.state === after?.state)
+      (before?.serviceGeneration === after?.serviceGeneration &&
+        before?.state === after?.state &&
+        !(this.#target.persisted && after?.state === "ready"))
     )
       return;
     if (this.#target.persisted && after?.state === "ready") this.#target.persisted = false;
@@ -461,6 +463,11 @@ export class HostClient {
     return this.#subscribeShell(true);
   }
   async selectSession(target: { projectId: string; threadId: string; persisted?: boolean } | null) {
+    // 读取方式服从当前项目所有者；Core 已运行时不能再争用其 Store 锁。
+    const project = previous(this.#reads.shell)?.snapshot.projects.find(
+      (value) => value.projectId === target?.projectId,
+    );
+    if (target?.persisted && project?.state === "ready") target = { ...target, persisted: false };
     const timing = target ? sessionLoadTiming(target.threadId) : undefined;
     if (
       target &&
@@ -488,9 +495,6 @@ export class HostClient {
         .request("subscription.close", { subscriptionId: old.subscriptionId }, old)
         .catch(() => {});
     this.#pruneSessionCache();
-    const project = previous(this.#reads.shell)?.snapshot.projects.find(
-      (value) => value.projectId === target?.projectId,
-    );
     const cached =
       target &&
       !target.persisted &&
@@ -538,6 +542,7 @@ export class HostClient {
     const timing = sessionLoadTiming(target.threadId);
     const shell = previous(this.#reads.shell);
     const project = shell?.snapshot.projects.find((p) => p.projectId === target.projectId);
+    if (target.persisted && project?.state === "ready") target.persisted = false;
     const persisted =
       target.persisted === true &&
       this.#state.connection === "ready" &&

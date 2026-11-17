@@ -1210,3 +1210,40 @@ test("browser clients never offer gui-write-v1", async (t) => {
   assert.deepEqual(hello.params.capabilities, ["gui-read-v1", "persistedHistoryV1"]);
   assert.equal(client.writable("session.send"), false);
 });
+
+test("a ready Core selection never reopens a persisted Store reader", async (t) => {
+  let fixture;
+  fixture = await readServer(t, ({ frame, reply }) => {
+    if (frame.method === "hello") {
+      reply({
+        version: 1,
+        hostId,
+        generation,
+        capabilities: [],
+        negotiatedCapabilities: ["gui-read-v1", "persistedHistoryV1"],
+        connectionId: "read-connection",
+        gatewayGeneration: generation,
+      });
+      return true;
+    }
+    if (frame.method === "session.openPersisted") {
+      [...fixture.listener.clients][0].send(
+        JSON.stringify({
+          version: 1,
+          id: frame.id,
+          error: { code: "RESOURCE_BUSY", message: "Host read request failed" },
+        }),
+      );
+      return true;
+    }
+    return false;
+  });
+  await fixture.client.selectSession({
+    projectId: project.projectId,
+    threadId: "thread",
+    persisted: true,
+  });
+  assert.equal(fixture.client.readsSnapshot().session.state, "fresh");
+  assert.equal(fixture.frames.filter((f) => f.method === "session.openPersisted").length, 0);
+  assert.equal(fixture.frames.filter((f) => f.method === "session.open").length, 1);
+});

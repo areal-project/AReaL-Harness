@@ -23,6 +23,8 @@ const ERROR_TEXT: Record<string, string> = {
   LIMIT_EXCEEDED: "内容超过大小限制。",
   COMMAND_CONFLICT: "这个操作与正在进行的操作冲突，请稍后重试。",
   RESOURCE_UNAVAILABLE: "目标已不存在或不可用。",
+  RESOURCE_BUSY: "会话正在切换读取方式，请重新读取。",
+  PERSISTED_HISTORY_UNAVAILABLE: "保存的历史暂不可读，请恢复项目后重新读取。",
 };
 
 /**
