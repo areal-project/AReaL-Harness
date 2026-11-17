@@ -1,7 +1,10 @@
 import type { HostClient } from "@areal/client";
 import { configurationIdentity, type ReadProject } from "./host-snapshot.js";
 
-type Cache = Map<string, { identity: string; scope?: string; value?: Record<string, unknown> }>;
+type Cache = Map<
+  string,
+  { identity: string; scope?: string; connectionId?: string; value?: Record<string, unknown> }
+>;
 type ShellProject = {
   projectId: string;
   state: string;
@@ -63,7 +66,10 @@ export function refreshModelCatalogs(
     const entry: NonNullable<ReturnType<Cache["get"]>> = {
       identity,
       scope,
-      ...(previous?.scope === scope && previous.value ? { value: previous.value } : {}),
+      connectionId: connection.identity.connectionId,
+      ...(previous?.connectionId === connection.identity.connectionId && previous.value
+        ? { value: previous.value }
+        : {}),
     };
     catalogs.set(project.projectId, entry);
     void client

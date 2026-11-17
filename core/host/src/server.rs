@@ -1899,6 +1899,7 @@ impl Host {
 
         let mut deferred_credentials = BTreeSet::new();
         let mut imported_credentials = BTreeMap::new();
+        let mut pending_credentials = Vec::new();
         for name in &inputs.credential_names {
             if let Some(source) = &credential_source
                 && name.starts_with("AREAL_CREDENTIAL_")
@@ -1917,35 +1918,46 @@ impl Host {
                     deferred_credentials.insert(name.clone());
                     continue;
                 }
-                let credential = match self
-                    .migration
-                    .credential_for_source_async(source, name)
-                    .await
-                {
-                    Ok(value) => value,
-                    Err(cause)
-                        if cause
-                            .downcast_ref::<wire::Error>()
-                            .is_some_and(|error| error.code == "migrationPending") =>
-                    {
-                        deferred_credentials.insert(name.clone());
-                        continue;
-                    }
-                    Err(cause)
-                        if cause.downcast_ref::<wire::Error>().is_some_and(|error| {
-                            matches!(
-                                error.code,
-                                "storageLocked" | "storageMissing" | "storageAuthorizationRequired"
-                            )
-                        }) =>
-                    {
-                        eprintln!("Host project credential unavailable: {cause}");
-                        None
-                    }
-                    Err(cause) => return Err(cause),
-                };
-                imported_credentials.insert(name.clone(), credential);
+                pending_credentials.push((source.clone(), name.clone()));
             }
+        }
+        // 多服务凭证并发读取，避免冷启动时受串行 Keychain 往返累加拖慢。
+        let credential_results =
+            futures_util::future::join_all(pending_credentials.into_iter().map(
+                |(source, name)| async move {
+                    let outcome = self
+                        .migration
+                        .credential_for_source_async(&source, &name)
+                        .await;
+                    (name, outcome)
+                },
+            ))
+            .await;
+        for (name, outcome) in credential_results {
+            let credential = match outcome {
+                Ok(value) => value,
+                Err(cause)
+                    if cause
+                        .downcast_ref::<wire::Error>()
+                        .is_some_and(|error| error.code == "migrationPending") =>
+                {
+                    deferred_credentials.insert(name);
+                    continue;
+                }
+                Err(cause)
+                    if cause.downcast_ref::<wire::Error>().is_some_and(|error| {
+                        matches!(
+                            error.code,
+                            "storageLocked" | "storageMissing" | "storageAuthorizationRequired"
+                        )
+                    }) =>
+                {
+                    eprintln!("Host project credential unavailable: {cause}");
+                    None
+                }
+                Err(cause) => return Err(cause),
+            };
+            imported_credentials.insert(name, credential);
         }
         for (name, value) in environment_credentials {
             imported_credentials.insert(name, Some(value));

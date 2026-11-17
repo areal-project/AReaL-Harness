@@ -436,10 +436,19 @@ class GuiHostProjects {
   /** @param {string} id */
   async observe(id) {
     const state = await this.status(id);
-    if (state.state !== "ready" || !state.service)
-      throw Object.assign(new Error("Core 服务已停止或正在停止，请显式重新连接"), {
-        code: "CORE_STOPPED",
-      });
+    if (state.state !== "ready" || !state.service) {
+      const starting = state.state === "starting";
+      throw Object.assign(
+        new Error(
+          starting
+            ? "Core 服务正在启动，请稍候"
+            : "Core 服务已停止或正在停止，请显式重新连接",
+        ),
+        {
+          code: starting ? "CORE_STARTING" : "CORE_STOPPED",
+        },
+      );
+    }
     return require("./local-service.cjs").authenticateService(this, id, state.service);
   }
   /** @param {string} id */

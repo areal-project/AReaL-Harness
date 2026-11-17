@@ -136,7 +136,9 @@ function ConversationContent() {
           {thread && project ? (
             <ActiveConversation />
           ) : threadId ||
-            (project && (restorationFailed || viewRefreshing || loadState.kind !== "reading")) ? (
+            (project &&
+              (conversationCreateReadOnly || conversationSubmitReadOnly) &&
+              (restorationFailed || viewRefreshing || loadState.kind !== "reading")) ? (
             <div
               className="conversation-loading"
               role="status"
@@ -489,10 +491,12 @@ function DraftConversation() {
     composerWorkspace,
     annotation,
     surfaces,
+    startup,
     navigationCommands,
     conversationReferences,
   } = useConversationContext();
-  const { project, thread, projects, library, snapshot, resourceAction } = session;
+  const { project, thread, projects, library, snapshot, resourceAction, retryRestoration } =
+    session;
   const { workspaceView } = workspacePanels.view;
 
   const { showPanel } = panelNavigation;
@@ -502,8 +506,57 @@ function DraftConversation() {
   const { newTask, choose, leaveProject, open } = navigationCommands;
   const { setWorktreeSettingsTarget, setSettingsTab, setSettingsOpen } = surfaces;
   const { t } = useI18n();
+  const draftSettings = startup.viewFailure && recoverySettings(startup.viewFailure);
+  const prepareProject =
+    project && !project.state?.connected
+      ? async () => {
+          const pending = session.pendingRestoration();
+          if (pending) await pending.catch(() => {});
+          const current = (await services.snapshot()).projects.find(
+            (item) => item.id === project.id,
+          );
+          if (current?.state?.connected) return current;
+          await resourceAction("connect", {
+            projectId: project.id,
+            resumeScheduling: true,
+          });
+          const refreshed = (await services.snapshot()).projects.find(
+            (item) => item.id === project.id,
+          );
+          if (!refreshed?.state?.connected) {
+            throw new Error("项目尚未连接完成，草稿已保留，请稍后重试。");
+          }
+          return refreshed;
+        }
+      : undefined;
   return (
     <>
+      {project && !project.state?.connected && startup.restorationFailed && (
+        <FeedbackNotice
+          tone="error"
+          message={startup.restorationError || t("startup.projectStartFailed")}
+          detail={startup.viewFailure ? rawText(startup.viewFailure) : undefined}
+          actions={
+            <>
+              <Button variant="ghost" size="sm" onClick={() => void retryRestoration()}>
+                {t("recovery.retryView")}
+              </Button>
+              {draftSettings && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSettingsTab(draftSettings);
+                    setSettingsOpen(true);
+                  }}
+                >
+                  {t("recovery.checkSettings")}
+                </Button>
+              )}
+            </>
+          }
+        />
+      )}
       <div className="draft-greeting">
         <ConversationDraftEmptyState
           projectName={
@@ -616,6 +669,10 @@ function DraftConversation() {
             key={project.id}
             project={project}
             backendReady={snapshot.connection?.state === "ready"}
+            modelCatalogReady={Boolean(
+              project.models?.length || project.core?.features?.conversation,
+            )}
+            prepareProject={prepareProject}
             action={action}
             readAction={resourceAction}
             onOpen={(pid, id) => open(pid, id, "replace")}

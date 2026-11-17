@@ -154,14 +154,24 @@ impl Session {
             &crate::launch::config_inputs(&self.host.home, &inputs, &credentials),
             &references,
         )?;
-        let subscription = self.host.subscription_model_catalog(if self.local {
+        let effective_source = if self.local {
             source.as_deref().unwrap_or("")
         } else {
             &self.source_id
-        })?;
+        };
+        let subscription = self.host.subscription_model_catalog(effective_source)?;
         let models = configured_models(&config);
-        let value = json!({"projectId":project,"gatewayGeneration":self.generation,
+        let mut value = json!({"projectId":project,"gatewayGeneration":self.generation,
             "grantRevision":self.grant["revision"], "models":catalog(&models, subscription.as_ref(), &[])});
+        let accepted = self.accepted_model(effective_source, Value::Null)?;
+        if !accepted.is_null() {
+            value["lastAcceptedModel"] = accepted;
+        }
+        if self.gui_read
+            && let Some(default_profile) = crate::launch::remote_profile(&inputs)?
+        {
+            value["defaultProfile"] = serde_json::to_value(default_profile)?;
+        }
         ensure!(
             serde_json::to_vec(&value)?.len() <= 128 * 1024,
             "LIMIT_EXCEEDED"

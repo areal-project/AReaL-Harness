@@ -894,7 +894,13 @@ fn independent_query(raw: &Value) -> bool {
         raw["method"].as_str(),
         Some(
             "project.models"
+                | "task.read"
+                | "task.question.read"
+                | "review.read"
+                | "attention.read"
+                | "pages.resource"
                 | "analytics.read"
+                | "analytics.activity"
                 | "providers.read"
                 | "tasks.read"
                 | "manage.read"
@@ -904,8 +910,11 @@ fn independent_query(raw: &Value) -> bool {
                 | "plugins.read"
         )
     ) || (raw["method"] == "desktop.command"
-        && raw["params"]["command"] == "chatgpt"
-        && raw["params"]["request"]["operation"] == "status")
+        && raw["params"]["command"] == "manage"
+        && raw["params"]["request"]["operation"] == "inspect")
+        || (raw["method"] == "desktop.command"
+            && raw["params"]["command"] == "chatgpt"
+            && raw["params"]["request"]["operation"] == "status")
         || (raw["method"] == "desktop.command"
             && raw["params"]["command"] == "prediction"
             && matches!(

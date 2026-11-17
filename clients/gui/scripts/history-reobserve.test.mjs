@@ -577,3 +577,77 @@ test(
     );
   },
 );
+
+test(
+  "observe distinguishes starting projects and scheduleReconnect retries without publishing CORE_STOPPED",
+  { timeout: 5000 },
+  async () => {
+    const {
+      GuiHostProjects,
+    } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
+    const {
+      ProjectConnections,
+    } = require("@areal/workbench-service/desktop/core/project-connections.cjs");
+    const observer = Object.assign(Object.create(GuiHostProjects.prototype), {
+      status: async () => ({ state: "starting", service: null }),
+    });
+    await assert.rejects(observer.observe("project"), (error) => error.code === "CORE_STARTING");
+
+    const model = new CoreTaskModel();
+    const project = {
+      id: "project",
+      model,
+      service: { serviceId: "svc", generation: "gen-1", configFingerprint: "fp" },
+      error: null,
+      reconnectAttempt: 0,
+      reconnectBlocked: false,
+      reconnectStarting: false,
+      reconnectTimer: null,
+      client: null,
+    };
+    const errors = [];
+    model.connection = (connected, message) => {
+      if (!connected && message) errors.push(message);
+    };
+    let attempts = 0;
+    let settledResolve;
+    const settled = new Promise((resolve) => {
+      settledResolve = resolve;
+    });
+    const host = Object.assign(fixture().backend, {
+      closing: false,
+      providerUpdating: false,
+      resourcesUpdating: false,
+      starting: new Map(),
+      worktrees: { assertAvailable() {} },
+      lifecycleOperations: {
+        assertProject() {},
+        schedulingSuppressed: () => false,
+      },
+      async connectExisting() {
+        attempts++;
+        if (attempts === 1) {
+          throw Object.assign(new Error("Core 服务正在启动，请稍候"), {
+            code: "CORE_STARTING",
+          });
+        }
+        return {
+          descriptor: { ...project.service, endpoint: "ws://127.0.0.1:1" },
+          token: "tok",
+        };
+      },
+      async reconcile() {},
+    });
+    const connections = new ProjectConnections(host);
+    connections.connect = async () => {
+      project.client = { ready: true, close() {} };
+      settledResolve();
+    };
+    connections.scheduleReconnect(project);
+    await settled;
+    assert.equal(attempts, 2);
+    assert.equal(project.reconnectBlocked, false);
+    assert.equal(project.reconnectStarting, false);
+    assert.deepEqual(errors, []);
+  },
+);

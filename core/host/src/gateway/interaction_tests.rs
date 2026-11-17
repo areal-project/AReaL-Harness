@@ -1388,6 +1388,16 @@ async fn stopped_project_models_are_native_redacted_and_do_not_activate_executio
         assert!(f.host.gateway.workbench.active_source().is_none());
         assert_eq!(f.host.slots.borrow()["project"].state, "stopped");
         assert!(serde_json::from_value::<areal_protocol::host::RemoteProjectModelsResult>(result).is_ok());
+        storage::write(
+            &f.host.migration.power_sources().unwrap()[&f.source].join("model-selection.json"),
+            &json!({"model":{"providerId":"fixture","modelId":"saved-model"},"modelId":"saved-model","reasoningEffort":null,"acceptedAt":1}),
+        )
+        .unwrap();
+        let mut gui_session = f.session("a");
+        gui_session.gui_read = true;
+        let gui_result = gui_session.request(&request).await.unwrap();
+        assert_eq!(gui_result["lastAcceptedModel"]["model"]["modelId"], "saved-model");
+        assert!(serde_json::from_value::<areal_protocol::host::RemoteProjectModelsResult>(gui_result).is_ok());
         let mut denied = request;
         denied["context"]["projectId"] = json!("not-granted");
         assert_eq!(session.request(&denied).await.unwrap_err().to_string(), "FORBIDDEN");

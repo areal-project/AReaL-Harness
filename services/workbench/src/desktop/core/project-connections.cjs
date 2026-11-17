@@ -243,9 +243,11 @@ class ProjectConnections {
       (project.client?.ready && !project.binaryUpdatePending)
     )
       return;
-    const delay = project.reconnectAttempt
-      ? Math.min(500 * 2 ** Math.min(project.reconnectAttempt, 6), 30000)
-      : 0;
+    const delay = project.reconnectStarting
+      ? 250
+      : project.reconnectAttempt
+        ? Math.min(500 * 2 ** Math.min(project.reconnectAttempt, 6), 30000)
+        : 0;
     project.reconnectTimer = setTimeout(() => {
       project.reconnectTimer = null;
       if (
@@ -271,9 +273,20 @@ class ProjectConnections {
           ? this.host.startProject(project.id)
           : this.reconnectProject(project)
       )
+        .then((result) => {
+          project.reconnectStarting = false;
+          return result;
+        })
         .catch(
           /** @param {unknown} error */ (error) => {
             if (!this.host.closing) {
+              const code = modelRecord(error) ? String(error.code) : "";
+              if (code === "CORE_STARTING") {
+                // Core 仍在启动过渡期，不标为已停止或阻塞重连，避免界面闪现错误横幅。
+                project.reconnectStarting = true;
+                throw error;
+              }
+              project.reconnectStarting = false;
               project.reconnectBlocked =
                 [
                   "CORE_STOPPED",
@@ -283,7 +296,7 @@ class ProjectConnections {
                   "LIFECYCLE_EXIT_REQUESTED",
                   "RESPONSE_TOO_LARGE",
                   "CREDENTIAL_AUTHORIZATION_REQUIRED",
-                ].includes(modelRecord(error) ? String(error.code) : "") ||
+                ].includes(code) ||
                 (modelRecord(error) && error.reason === "RESPONSE_TOO_LARGE") ||
                 project.client?.closeFailure?.code === "RESPONSE_TOO_LARGE" ||
                 nonRetryableCredentialFailure(error) ||
@@ -567,73 +580,87 @@ class ProjectConnections {
           ),
           { code: "CREDENTIAL_AUTHORIZATION_REQUIRED" },
         );
-      if (!observeOnly && !project.executionError) {
-        trace.advance("providers");
-        await this.host.providers.syncLocal(project);
-        this.requireConnection(project, client);
-      }
-      trace.advance("catalogs");
-      const modelsTrace = startupTrace("core.model_list", correlation);
-      modelsTrace.advance("request");
-      const profilesTrace = startupTrace("core.profile_list", correlation);
-      profilesTrace.advance("request");
-      const [models, profiles] = await Promise.all([
-        client
-          .request("areal/model/list", undefined, {
-            decode: require("./provider-contract.cjs").models,
-          })
-          .then(
+      trace.advance("catalogs_and_monitors");
+      const syncAndCatalogs = (async () => {
+        if (!observeOnly && !project.executionError) {
+          await this.host.providers.syncLocal(project);
+          this.requireConnection(project, client);
+        }
+        const modelsTrace = startupTrace("core.model_list", correlation);
+        modelsTrace.advance("request");
+        const profilesTrace = startupTrace("core.profile_list", correlation);
+        profilesTrace.advance("request");
+        const [models, profiles] = await Promise.all([
+          client
+            .request("areal/model/list", undefined, {
+              decode: require("./provider-contract.cjs").models,
+            })
+            .then(
+              (value) => {
+                modelsTrace.finish("ok");
+                return value;
+              },
+              (error) => {
+                modelsTrace.finish("error", error);
+                throw error;
+              },
+            ),
+          client.request("areal/profile/list").then(
             (value) => {
-              modelsTrace.finish("ok");
+              profilesTrace.finish("ok");
               return value;
             },
             (error) => {
-              modelsTrace.finish("error", error);
+              profilesTrace.finish("error", error);
               throw error;
             },
           ),
-        client.request("areal/profile/list").then(
-          (value) => {
-            profilesTrace.finish("ok");
-            return value;
-          },
-          (error) => {
-            profilesTrace.finish("error", error);
-            throw error;
-          },
-        ),
+        ]);
+        this.requireConnection(project, client);
+        if (!modelRecord(profiles)) throw new Error("Core 资源目录响应无效");
+        await this.host.providers.acceptModelSelection(models.lastAcceptedModel);
+        this.requireConnection(project, client);
+        return { models, profiles };
+      })();
+      const taskSubscriptions = (async () => {
+        const taskIds = [...new Set(project.taskViews?.values() ?? [])];
+        if (taskIds.length) {
+          await Promise.all(
+            taskIds.map((taskId) =>
+              client.request(
+                "areal/task/subscribe",
+                { taskId },
+                {
+                  onResult: (task) => {
+                    if (!isCoreTask(task)) throw new Error("Core 任务订阅响应无效");
+                    if (this.currentConnection(project, client)) project.model.setTask(task);
+                  },
+                },
+              ),
+            ),
+          );
+          this.requireConnection(project, client);
+        }
+        await this.host.startTaskMonitor(project, client);
+        this.requireConnection(project, client);
+      })();
+      const scheduleTools = this.host.providers.manages(project)
+        ? this.publishScheduleTools(project, client, owner)
+        : Promise.resolve();
+      const [{ models, profiles }] = await Promise.all([
+        syncAndCatalogs,
+        taskSubscriptions,
+        scheduleTools,
       ]);
-      this.requireConnection(project, client);
-      if (!modelRecord(profiles)) throw new Error("Core 资源目录响应无效");
-      await this.host.providers.acceptModelSelection(models.lastAcceptedModel);
       project.models = models.data;
       project.profiles = profiles.data ?? profiles.profiles ?? [];
       if (!observeOnly) void this.host.analytics.syncProject(project);
-      trace.advance("task_subscriptions");
-      for (const taskId of new Set(project.taskViews?.values() ?? [])) {
-        await client.request(
-          "areal/task/subscribe",
-          { taskId },
-          {
-            onResult: (task) => {
-              if (!isCoreTask(task)) throw new Error("Core 任务订阅响应无效");
-              if (this.currentConnection(project, client)) project.model.setTask(task);
-            },
-          },
-        );
-        this.requireConnection(project, client);
-      }
-      trace.advance("task_monitor");
-      await this.host.startTaskMonitor(project, client);
       this.requireConnection(project, client);
       this.host.lifecycleOperations.assertProject(project.id);
       if (this.host.lifecycleOperations.schedulingSuppressed(project.id))
         throw Object.assign(new Error("后台已由用户停止，请明确启动后继续"), {
           code: "CORE_STOPPED",
         });
-      trace.advance("desktop_tools_ready");
-      if (this.host.providers.manages(project))
-        await this.publishScheduleTools(project, client, owner);
       project.taskNotificationMonitor?.ready();
       this.requireConnection(project, client);
       trace.advance("connected");

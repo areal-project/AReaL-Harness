@@ -373,23 +373,19 @@ class CoreBackend {
       await mkdir(this.home, { recursive: true, mode: 0o700 });
       await this.host.init();
       this.saved = await this.host.list();
-      await this.lifecycleOperations.init();
-      trace.advance("library");
-      await this.library.init();
-      await this.cloudConversations.init();
-      await this.worktrees.init();
-      trace.advance("projectless");
-      await this.projectless.init();
-      trace.advance("analytics");
-      await this.analytics.init();
-      trace.advance("capabilities");
-      await inspectCoreCapabilities(this);
-      trace.advance("providers");
-      await this.providers.init();
-      trace.advance("feedback");
-      await this.feedback.init();
-      trace.advance("resources");
-      await this.resources.init();
+      trace.advance("parallel_stores");
+      await Promise.all([
+        this.lifecycleOperations.init(),
+        this.library.init(),
+        this.cloudConversations.init(),
+        this.worktrees.init(),
+        this.projectless.init(),
+        this.analytics.init(),
+        inspectCoreCapabilities(this),
+        this.providers.init(),
+        this.feedback.init(),
+        this.resources.init(),
+      ]);
       await this.lifecycleOperations.reconcileLoaded();
       await this.refreshHostProjects({ observeForeign: true });
       trace.finish("ok");
@@ -567,32 +563,33 @@ class CoreBackend {
     const dataDir = binding.dataDir;
     const scratch = binding.scratchDir;
     await mkdir(scratch, { recursive: true, mode: 0o700 });
-    trace.advance("resources");
+    trace.advance("launch_inputs");
     let historyOnly = false;
-    const resourceDeployment = await this.resources.deployment(project).catch(() => {
-      historyOnly = true;
-      return { path: undefined, profile: undefined, fingerprint: "unavailable" };
-    });
+    let providerReady = false;
+    const [resourceDeployment, hookDeployment] = await Promise.all([
+      this.resources.deployment(project).catch(() => {
+        historyOnly = true;
+        return { path: undefined, profile: undefined, fingerprint: "unavailable" };
+      }),
+      this.hooks.launch().catch(() => {
+        historyOnly = true;
+        return { value: {}, revision: "unavailable" };
+      }),
+      (async () => {
+        try {
+          await this.providers.prepare();
+          await this.providers.config.current();
+          providerReady = true;
+        } catch (error) {
+          // 执行配置失败留在设置诊断中；Core 用已登记的数据目录提供历史读取。
+          project.providerError = desktopError(error).message;
+        }
+      })(),
+    ]);
     project.resourceProfile = resourceDeployment.profile;
     project.resourceFingerprint = resourceDeployment.fingerprint;
-    trace.advance("provider_prepare");
-    let providerReady = false;
-    try {
-      await this.providers.prepare();
-      trace.advance("provider_config");
-      await this.providers.config.current();
-      providerReady = true;
-    } catch (error) {
-      // 执行配置失败留在设置诊断中；Core 用已登记的数据目录提供历史读取。
-      project.providerError = desktopError(error).message;
-    }
     project.providerRevision = null;
     delete project.providerSnapshot;
-    trace.advance("hooks");
-    const hookDeployment = await this.hooks.launch().catch(() => {
-      historyOnly = true;
-      return { value: {}, revision: "unavailable" };
-    });
     project.hookRevision = null;
     const genUiExtensions = join(directory, "desktop-tool-extensions.json");
     await writeFile(genUiExtensions, JSON.stringify({ ...hookDeployment.value, genUi: true }), {

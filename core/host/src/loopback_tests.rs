@@ -881,6 +881,17 @@ async fn pending_workbench_requests_do_not_block_queries_or_page_events() {
                     let prediction = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
                     assert_eq!(prediction["id"], "prediction-read");
                     assert!(prediction.get("error").is_none(), "prediction must use bounded query admission: {prediction}");
+                    write(&mut socket, json!({"version":1,"id":"inspect-read",
+                        "method":"desktop.command","params":{"command":"manage",
+                        "request":{"projectId":"queued","threadId":"thread","operation":"inspect"}}})).await;
+                    let inspect = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
+                    assert_eq!(inspect["id"], "inspect-read");
+                    assert!(inspect.get("error").is_none(), "manage inspect must use bounded query admission: {inspect}");
+                    write(&mut socket, json!({"version":1,"id":"activity-ping",
+                        "method":"analytics.activity","params":{"focused":true,"idleSeconds":0}})).await;
+                    let activity = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
+                    assert_eq!(activity["id"], "activity-ping");
+                    assert!(activity.get("error").is_none(), "analytics.activity must use bounded query admission: {activity}");
                 }
                 released.notify_one();
                 if progress.is_ok() {

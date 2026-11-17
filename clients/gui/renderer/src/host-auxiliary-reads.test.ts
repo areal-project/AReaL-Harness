@@ -30,6 +30,40 @@ describe("model catalog refresh", () => {
     );
     expect(query).toHaveBeenCalledExactlyOnceWith("project.models", "cold", {});
   });
+
+  it("keeps cached catalog values across serviceGeneration transitions on the same connection", async () => {
+    const pending: ((value: unknown) => void)[] = [];
+    const client = {
+      snapshot: () => ({ connection: "ready", identity: { connectionId: "connection" } }),
+      query: () => new Promise((resolve) => pending.push(resolve)),
+    } as unknown as HostClient;
+    const catalogs = new Map<
+      string,
+      { identity: string; scope?: string; connectionId?: string; value?: Record<string, unknown> }
+    >();
+    refreshModelCatalogs(
+      client,
+      [{ projectId: "host", state: "stopped" }] as unknown as ShellProject[],
+      catalogs,
+      () => {},
+    );
+    pending[0]({ models: [{ modelId: "saved" }] });
+    await Promise.resolve();
+    expect(catalogs.get("host")?.value?.models).toEqual([{ modelId: "saved" }]);
+
+    refreshModelCatalogs(
+      client,
+      [
+        { projectId: "host", state: "ready", serviceGeneration: "gen-1" },
+      ] as unknown as ShellProject[],
+      catalogs,
+      () => {},
+    );
+    expect(catalogs.get("host")?.value?.models).toEqual([{ modelId: "saved" }]);
+    pending[1]({ models: [{ modelId: "live" }] });
+    await Promise.resolve();
+    expect(catalogs.get("host")?.value?.models).toEqual([{ modelId: "live" }]);
+  });
   it("refreshes a project catalog when another client changes its revision", async () => {
     const pending: ((value: unknown) => void)[] = [];
     const client = {
