@@ -38,6 +38,7 @@ async function fixture(t, retired, projectionFixture = false) {
       return { backend, adapter: { listen: async () => ({
         pid: process.pid, identity: 'fixture', desktopGeneration: 'generation', token: 'private-token'
       }), executeRemote: async (name, params) => {
+        if (params.holdMs) await new Promise((done) => setTimeout(done, params.holdMs));
         if (params.coreFailure) throw Object.assign(Error('PROFILE_NOT_SUPPORTED'), params.coreFailure);
         if (params.errorCode) throw Object.assign(Error('private'), { code: params.errorCode, submissionUnknown: params.unknown });
         if (params.fail) throw Error('Core refused: ' + name);
@@ -235,6 +236,50 @@ test("本机网页的桌面命令只放行命令表内、合同通过的请求�
     ).error,
     { code: "COMMAND_FAILED", message: "PROFILE_NOT_SUPPORTED" },
   );
+  f.child.stdin.end();
+  assert.deepEqual(await f.exited, [0, null]);
+});
+
+test("慢补建议不阻塞后续命令的响应", async (t) => {
+  const f = await fixture(t);
+  const ready = f.line();
+  f.start();
+  await ready;
+  // Host 侧由 id 关联回复；这里同样按 id 收，不假设回复顺序。
+  const inbox = new Map();
+  void (async () => {
+    for (;;) {
+      const [line] = await f.line();
+      const frame = JSON.parse(line);
+      const settle = inbox.get(frame.id);
+      if (settle) {
+        inbox.delete(frame.id);
+        settle(frame);
+      }
+    }
+  })().catch(() => {});
+  const call = (id, params) => {
+    const answer = new Promise((resolve) => inbox.set(id, resolve));
+    f.child.stdin.write(
+      JSON.stringify({ version: 1, id, method: "desktop.command", params }) + "\n",
+    );
+    return answer;
+  };
+  // 只读建议和无依赖的后续请求按完成结果独立回包。
+  const slow = call("slow", {
+    command: "prediction",
+    request: {
+      projectId: "p",
+      threadId: "t",
+      sourceTurnId: "turn",
+      operation: "request",
+      holdMs: 400,
+    },
+  });
+  const after = await call("after", { command: "list", request: { projectId: "p" } });
+  assert.equal(after.result.executed, "list");
+  assert.equal(inbox.has("slow"), true, "a completed later request must reply before the slow prediction");
+  assert.equal((await slow).result.executed, "prediction");
   f.child.stdin.end();
   assert.deepEqual(await f.exited, [0, null]);
 });

@@ -862,6 +862,9 @@ async fn pending_workbench_requests_do_not_block_queries_or_page_events() {
                     let rejected = read(&mut socket).await;
                     assert_eq!(rejected["id"], "capacity-14");
                     assert_eq!(rejected["error"]["code"], "CAPACITY_EXCEEDED");
+                    // 详情要能定位哪一队满了；上屏文案不读这些字段。
+                    assert_eq!(rejected["error"]["method"], "desktop.command");
+                    assert_eq!(rejected["error"]["reason"], "commandQueueFull");
                     write(&mut socket, json!({"version":1,"id":"recovery-read","method":"analytics.read","params":{}})).await;
                     let safe = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
                     assert_eq!(safe["id"], "recovery-read");
@@ -872,6 +875,12 @@ async fn pending_workbench_requests_do_not_block_queries_or_page_events() {
                     let receipt = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
                     assert_eq!(receipt["id"], "original-status");
                     assert!(receipt.get("error").is_none(), "full mutation admission must preserve original receipt recovery: {receipt}");
+                    write(&mut socket, json!({"version":1,"id":"prediction-read",
+                        "method":"desktop.command","params":{"command":"prediction",
+                        "request":{"projectId":"queued","threadId":"thread","sourceTurnId":"turn","operation":"request"}}})).await;
+                    let prediction = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
+                    assert_eq!(prediction["id"], "prediction-read");
+                    assert!(prediction.get("error").is_none(), "prediction must use bounded query admission: {prediction}");
                 }
                 released.notify_one();
                 if progress.is_ok() {

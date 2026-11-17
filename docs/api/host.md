@@ -4,6 +4,8 @@
 
 本机 WebSocket 的单个响应受 1 MiB 上限约束。响应超限时，仅原请求返回 `LIMIT_EXCEEDED` 与 `reason:responseTooLarge`，连接继续可用；这不证明写入未受理，已有 commandId 仍须查询原回执。后台工作区改动摘要使用 `workspace.review` 的 `summaryOnly:true`，省略 diff 与行级 hunks，保留文件增删统计；完整审查仍按普通请求读取。
 
+`desktop.command` 的预测建议请求与取消按只读查询准入，使用有界查询队列，不占普通命令队列。项目连接正在恢复时，依赖 Core 的普通工作区与会话命令返回 `RECONNECTING`；明确连接、核对与中断入口保留。恢复不会重放未决写入。
+
 当前实现提供认证后的项目管理、停止回执、状态订阅、旧服务迁移、来源导入、旧秘密退役、提交 journal 和固定凭据槽。Remote Gateway、定时激活与准备、provider subscription transport 和防休眠由 Host 持有；GUI 通过 Host 使用这些服务。`hello` 声明 `projects`、`stopOperations`、`subscriptions`、`legacyMigration`、`guiImport`、`submissionJournal`、`credentialVault`、`remoteState`、`remoteGatewayV1`、`subscriptionOwnerV1`、`activity`、`scheduledActivation`、`scheduledPreparation`、`powerV1` 和 `updates`。客户端按能力协商，开发布局仍可对受控更新返回 `updateUnavailable`。系统服务安装和受控更新接口已实现，完整 H0–H4 验收仍未完成；协议定义不代表真机、真实登录或签名安装包验收通过。另见[实施规格](../development/shared-host-spec.md)、[所有权决策](../adr/0016-shared-host.md)与[每项目服务契约](local-service.md)。
 
 ## 传输与认证

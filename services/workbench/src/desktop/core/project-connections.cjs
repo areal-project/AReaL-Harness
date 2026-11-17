@@ -205,6 +205,26 @@ class ProjectConnections {
       });
   }
 
+  /**
+   * 后台连接正在恢复时，业务命令直接返回，避免等待 Core 恢复而占住 Host 命令队列。
+   * 核对、中断和明确的启动命令不受影响：它们本身就是恢复的入口。
+   * @param {Project} project @param {string} name @param {Record<string,unknown>} request
+   */
+  assertRecovered(project, name, request) {
+    // 复用已有连接与重试计数，保留原 owner；首次启动没有失败记录时仍可连接。
+    if (!project || project.client?.ready || (!project.client && !project.reconnectAttempt)) return;
+    if (
+      name === "connect" ||
+      name === "stop" ||
+      require("./lifecycle.cjs").isRecoveryCommand(name, request)
+    )
+      return;
+    throw Object.assign(
+      new Error("原 Core 连接中断，后台正在恢复；这条操作没有发出，请恢复后重试"),
+      { code: "RECONNECTING", submissionUnknown: false, outcome: { kind: "noMutation" } },
+    );
+  }
+
   /** @param {Project} project */
   scheduleReconnect(project) {
     try {

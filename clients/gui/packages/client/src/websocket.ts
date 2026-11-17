@@ -256,8 +256,14 @@ export async function connectWebSocket(
             typeof generic === "string" && generic && !GENERIC_ERRORS.has(generic)
               ? generic
               : (ERROR_TEXT[String(message.error.code)] ?? "Host 操作失败");
-          const text = `${summary} [${String(message.error.code)}; ${handler.method}]`;
-          handler.reject(Object.assign(new Error(text), message.error, { message: text }));
+          // message 只作原文和详情；上屏按 code 取文案（renderer 的 errors/errorCopy.ts）。
+          // 被拒的方法和 Host 给的排队原因放进详情，用户不必再猜是哪里满了。
+          const method = "method" in message.error ? message.error.method : handler.method;
+          const reason = "reason" in message.error ? message.error.reason : undefined;
+          const detail = [summary, typeof method === "string" ? method : "", reason]
+            .filter((part): part is string => typeof part === "string" && part !== "")
+            .join(" · ");
+          handler.reject(Object.assign(new Error(detail), message.error));
         } else handler.resolve(message.result);
       } catch {
         close();

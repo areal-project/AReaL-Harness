@@ -1743,6 +1743,7 @@ class CoreBackend {
     const { name, request } = invocation;
     const projectId = "projectId" in request ? request.projectId : undefined;
     if (this.closing) throw new Error("应用正在退出");
+    this.connections.assertRecovered(this.projects.get(projectId), name, request);
     if (
       name === "manage" &&
       (request.operation === "pluginStoreSnapshot" || request.operation === "pluginStoreDoctor")

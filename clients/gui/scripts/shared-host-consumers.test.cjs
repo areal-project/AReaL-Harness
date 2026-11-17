@@ -610,3 +610,78 @@ test("credential authorization failures stop the reconnect storm until explicit 
   assert.equal(project.reconnectBlocked, false);
   assert.equal(project.client.ready, true);
 });
+
+test("a recovering connection fast-fails business commands but admits recovery entry points", async (t) => {
+  const {
+    ProjectConnections,
+  } = require("@areal/workbench-service/desktop/core/project-connections.cjs");
+  const project = {
+    id: "gui",
+    service: { generation: "old" },
+    model: { connection() {} },
+    reconnectAttempt: 1,
+  };
+  const host = {
+    lifecycleOperations: { schedulingSuppressed: () => false, assertProject() {} },
+    projects: new Map([[project.id, project]]),
+    starting: new Map(),
+    stopReconciliation() {},
+    providers: { redact: (message) => message },
+    reconnectProject: async () => {
+      throw new Error("fixture reconnect failure");
+    },
+  };
+  const connections = new ProjectConnections(host);
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  connections.scheduleReconnect(project);
+  t.mock.timers.tick(1000);
+  await host.starting.get(project.id).catch(() => {});
+  // 恢复任务失败后，以重试记录识别恢复期；普通业务命令直接回流。
+  for (const [name, request] of [
+    ["workspace", { operation: "info" }],
+    ["library", { operation: "settings" }],
+    ["prediction", { operation: "request" }],
+  ])
+    assert.throws(
+      () => connections.assertRecovered(project, name, request),
+      (error) => error.code === "RECONNECTING",
+      name,
+    );
+  // 恢复的入口本身不能被挡：核对、中断和明确的启动命令。
+  for (const [name, request] of [
+    ["manage", { operation: "inspect" }],
+    ["history", { operation: "acquire" }],
+    ["stop", { operation: "cancel" }],
+    ["connect", { resumeScheduling: true }],
+  ])
+    connections.assertRecovered(project, name, request);
+  assert.equal(project.reconnectAttempt, 2);
+  // 已关闭的原连接也属于恢复期，不能被误认为首次连接。
+  project.client = { ready: false, closed: true };
+  assert.throws(() => connections.assertRecovered(project, "workspace", {}), {
+    code: "RECONNECTING",
+  });
+  // 恢复完成（新连接就绪）后恢复放行；从未连接的项目不被拦截。
+  project.client = { ready: true };
+  connections.assertRecovered(project, "workspace", { operation: "info" });
+  connections.assertRecovered({ id: "fresh" }, "workspace", {});
+});
+
+test("workspace dispatch refuses recovery before starting Core", async () => {
+  const {
+    ProjectConnections,
+  } = require("@areal/workbench-service/desktop/core/project-connections.cjs");
+  const project = { id: "p", client: { ready: false, closed: true } };
+  const backend = {
+    projects: new Map([["p", project]]),
+    dispatchCommand: CoreBackend.prototype.dispatchCommand,
+  };
+  backend.connections = new ProjectConnections(backend);
+  await assert.rejects(
+    CoreBackend.prototype.executeCommand.call(backend, "workspace", {
+      projectId: "p",
+      operation: "info",
+    }),
+    (error) => error.code === "RECONNECTING",
+  );
+});

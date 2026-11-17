@@ -51,7 +51,8 @@ const commandDefinitions = Object.freeze({
       ...operations(recoverable, "start send create close"),
     },
   ],
-  prediction: ["service", "thread", mutation],
+  // 只补一条可丢弃的建议，不占独立业务身份：按读处理，断线不重发。
+  prediction: ["service", "thread", read],
   send: ["service", "thread", recoverable],
   editMessage: ["service", "thread", recoverable],
   continue: ["service", "thread", recoverable],

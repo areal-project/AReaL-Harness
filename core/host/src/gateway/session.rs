@@ -199,6 +199,7 @@ pub(crate) fn error_code(message: &str) -> &str {
         | "TASK_CONTROL_REQUIRED"
         | "MIGRATION_PENDING"
         | "migrationBlocked"
+        | "RECONNECTING"
         | "SUBMISSION_UNKNOWN" => message,
         _ => "CORE_UNAVAILABLE",
     }
