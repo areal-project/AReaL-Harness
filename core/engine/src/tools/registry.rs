@@ -240,28 +240,64 @@ impl RegisteredTool {
         {
             return result;
         }
-        self.input.validate(arguments).map_err(|e| {
-            anyhow::anyhow!(
-                "invalid tool arguments at {} (schema {}): {}",
-                e.instance_path,
-                e.schema_path,
-                e.masked()
-            )
-        })
+        self.input
+            .validate(arguments)
+            .map_err(|e| anyhow::anyhow!(validation_feedback("invalid tool arguments", &e)))
     }
     pub fn validate_output(&self, result: &Value) -> anyhow::Result<()> {
         if let Some(output) = &self.output {
-            output.validate(result).map_err(|e| {
-                anyhow::anyhow!(
-                    "invalid tool result at {} (schema {}): {}",
-                    e.instance_path,
-                    e.schema_path,
-                    e.masked()
-                )
-            })?;
+            output
+                .validate(result)
+                .map_err(|e| anyhow::anyhow!(validation_feedback("invalid tool result", &e)))?;
         }
         Ok(())
     }
+}
+
+fn validation_feedback(label: &str, error: &jsonschema::ValidationError<'_>) -> String {
+    fn bounded(mut text: String, maximum: usize) -> String {
+        if text.len() > maximum {
+            let mut end = maximum - "…".len();
+            while !text.is_char_boundary(end) {
+                end -= 1;
+            }
+            text.truncate(end);
+            text.push('…');
+        }
+        text
+    }
+
+    let mut message = format!(
+        "{label} at {} (schema {}): {}",
+        error.instance_path,
+        error.schema_path,
+        error.masked()
+    );
+    let alternatives = match &error.kind {
+        jsonschema::error::ValidationErrorKind::OneOfNotValid { context }
+        | jsonschema::error::ValidationErrorKind::AnyOf { context } => Some(context),
+        _ => None,
+    };
+    if let Some(alternatives) = alternatives {
+        // 展示校验器已有的分支事实，不猜测目标分支、不改参数，也不回显被拒绝的正文。
+        message = bounded(message, 384);
+        for (index, errors) in alternatives.iter().take(3).enumerate() {
+            let details = errors
+                .iter()
+                .take(2)
+                .map(|error| bounded(format!("{}: {}", error.instance_path, error.masked()), 192))
+                .collect::<Vec<_>>()
+                .join("; ");
+            message.push_str(&format!("; alternative {index}: {details}"));
+            if errors.len() > 2 {
+                message.push_str("; further constraints omitted");
+            }
+        }
+        if alternatives.len() > 3 {
+            message.push_str("; further alternatives omitted");
+        }
+    }
+    bounded(message, 2048)
 }
 
 #[derive(Clone, Default)]
@@ -933,6 +969,83 @@ mod tests {
         assert!(!message.contains("OUTPUT_BODY_MARKER"));
         assert!(message.len() < 512);
         tool.validate_output(&json!(4)).unwrap();
+    }
+
+    #[test]
+    fn validation_feedback_explains_rejected_union_branches() {
+        let registry = Registry::new(true, &ToolExtensions::default()).unwrap();
+        let arguments = json!({"files":[{"path":"renamed.ts","oldText":"before","newText":"REJECTED_BODY".repeat(1024)}]});
+        let original = arguments.clone();
+        let message = registry
+            .get("edit_files")
+            .unwrap()
+            .validate_input(&arguments)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("oneOf"), "{message}");
+        assert!(message.contains("/files/0"), "{message}");
+        assert!(
+            message.contains("\"patches\" is a required property"),
+            "{message}"
+        );
+        assert!(message.contains("oldText"), "{message}");
+        assert!(!message.contains("REJECTED_BODY"));
+        assert!(message.len() <= 2048);
+        assert_eq!(arguments, original);
+
+        let schema = json!({"type":"object","properties":{"value":{"anyOf":[{"$ref":"#/$defs/count"},{"type":"string"}]}},"$defs":{"count":{"type":"integer","minimum":2}}});
+        let mut definition = definition(schema);
+        definition.output_schema =
+            Some(json!({"anyOf":[{"type":"integer","minimum":2},{"type":"string"}]}));
+        let registry = Registry::default().with_dynamic(&[definition]).unwrap();
+        let tool = registry.get("lookup").unwrap();
+        for message in [
+            tool.validate_input(&json!({"value":1}))
+                .unwrap_err()
+                .to_string(),
+            tool.validate_output(&json!(1)).unwrap_err().to_string(),
+        ] {
+            assert!(message.contains("anyOf"), "{message}");
+            assert!(message.contains("minimum of 2"), "{message}");
+            assert!(message.contains("string"), "{message}");
+        }
+        tool.validate_input(&json!({"value":2})).unwrap();
+        tool.validate_input(&json!({"value":"other"})).unwrap();
+    }
+
+    #[test]
+    fn validation_feedback_bounds_union_details_without_choosing_a_branch() {
+        let branches: Vec<_> = (0..16)
+            .map(|index| json!({"type":"object","required":[format!("字段{index}{}", "长".repeat(600))]}))
+            .collect();
+        let registry = Registry::default()
+            .with_dynamic(&[definition(json!({"type":"object","anyOf":branches}))])
+            .unwrap();
+        let message = registry
+            .get("lookup")
+            .unwrap()
+            .validate_input(&json!({}))
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("alternative 0"), "{message}");
+        assert!(message.contains("alternative 1"), "{message}");
+        assert!(
+            message.contains("further alternatives omitted"),
+            "{message}"
+        );
+        assert!(message.len() <= 2048);
+
+        let registry = Registry::default()
+            .with_dynamic(&[definition(json!({"type":"object","properties":{"value":{"oneOf":[{"type":"integer"},{"minimum":0}]}}}))])
+            .unwrap();
+        let message = registry
+            .get("lookup")
+            .unwrap()
+            .validate_input(&json!({"value":2}))
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("more than one"), "{message}");
+        assert!(!message.contains("alternative 0"), "{message}");
     }
     #[test]
     fn rejects_invalid_schemas_external_refs_and_name_collisions() {
