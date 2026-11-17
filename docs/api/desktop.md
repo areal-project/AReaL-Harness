@@ -467,7 +467,7 @@ Host `plugins.command` 返回已受理回执，`receipt` 是插件目录或包�
 
 Hook 报告复用运行时声明选择与强类型文档解析，`mcp_tool` 是受识别的 MCP handler 类型。无效声明仍显示 partial 记录；已有规则选择的默认文档另列记录。Hook 的 `supportedSchema` 仅表示文档和 handler 字段结构，不证明 matcher 行为、平台命令、信任或执行结果。Apps 报告先按组件加载规则解析 manifest 路径数组，再识别文档中的单个字符串 `id` 对象、按 id 索引的对象映射和声明数组。静态连接器声明不证明映射、认证或连接已完成。
 
-## 插件来源、MCP 与桌面 Apps
+## 插件来源与 MCP
 
 新增方法保留无限制 `manage` 授权要求，参数类型见生成 schema。来源解析与市场变更走 Host `plugins.command`，使用目录 CAS。
 
@@ -475,44 +475,11 @@ Hook 报告复用运行时声明选择与强类型文档解析，`mcp_tool` 是�
 
 `areal/plugin/auth/configure {id,server,expectedDigest,configuration,requestId}` 仅持久化宿主凭据引用，要求已断开且摘要匹配，使用持久管理回执。configuration 支持 clientSecretRef/privateKeyRef/privateKeyId/clientMetadataUrl/apiKeyRef/callbackUrl；秘密值只通过可信启动输入注入。配置 revision 隔离替代/取消的认证流程。
 
-`areal/mcp/apps/list {threadId?}` 返回完整工具元信息。`areal/mcp/app/open/request/close` 绑定 `threadId/serverId/instanceId/generation`；工具请求还绑定 `requestId`。`areal/mcp/extension/call` 的 kind 为 `settingsRead/settingsUpdate/settingsAction/mentionsSearch`。`areal/mcp/forms/list`、`areal/mcp/form/respond/preview` 验证完整待回复请求与来源服务器。`areal/mcp/tool/result {threadId,callId}` 读取已持久保存的原始 MCP 结果，模型只用剔除 `_meta` 的投影。
-
-`areal/mcp/app/openFromResult {threadId,turnId,itemId,requestId}` 只接受精确 Core 记录身份，要求无限制 manage 授权。`areal/mcp/apps/list` 的 `requestEpoch` 用于组成 `result-v1.<requestEpoch>.<UUID>`。响应是 `{status:"open",instance}`、`{status:"closed"}` 或 `{status:"unavailable",reason}`；Main 将 open 映射为不透明页面描述符 `app`。Renderer 不提供 HTML、资源 URI、参数或来源证明。
-
-Core 按 turnId 再按 itemId 读取成功完成的 MCP 记录，核对原始快照的长度与 SHA，再使用保存的有效参数和原始 MCP 结果。来源证明在原 MCP 调用时绑定插件摘要、连接世代、Thread、cwd 和 Apps 进程 epoch；发布页面前再次检查当前启用状态与原连接。页面准备只读声明资源，不再次调用原业务工具，也不新增工具 Turn。后续页面调用仍受原有 App 可见性和授权限制。
-
-结果打开回执与实例共同保存在版本化 `mcp-apps.json`，一次原子提交；每个进程 epoch 最多 1024 条、每条最多 1 KiB、整文件最多 8 MiB，回执不逐出。满额后仍可重试旧请求、关闭和撤权。相同请求不同来源冲突，同来源并发共享实例；关闭原子终结全部别名，旧请求只返回 closed。新 UUID 才表示显式重开。旧 epoch 总是失效。UNKNOWN 保留原请求；未知关闭立即撤销页面 token，并保留原关闭意图直至核对完成。
-
-文件授权只来自可信 Main。已认证的非 `desktop-owner` 不能提交 `fileResource` 或私有 `ui/host-file`；App bridge 不暴露这个私有方法。实际写入回执的方法名为 `areal/mcp/app/file/write`，通过既有 `areal/request/read {requestId}` 查询。通知新增 `areal/mcp/app/notification`、`areal/mcp/tool/result`、`areal/mcp/form/requested`；桌面共享服务保留实例和连接版本，旧窗口不得接收其他实例事件。
+`areal/mcp/extension/call` 的 kind 为 `settingsRead/settingsUpdate/settingsAction/mentionsSearch`。`areal/mcp/forms/list`、`areal/mcp/form/respond/preview` 验证完整待回复请求与来源服务器。`areal/mcp/tool/result {threadId,callId}` 读取已持久保存的原始 MCP 结果，模型只用剔除 `_meta` 的投影。MCP 表单和工具结果通知保留原 Thread 与连接世代。
 
 原生 Main 使用 `areal/mcp/form/resource/prepare {threadId,requestId,fieldName}`、`stage {selectionToken,requestId,paths}` 和 `release {threadId,requestId,fieldName,uri}`。prepare/stage 要求带认证的 desktop-owner，通用 Renderer 命令不能调用；stage 按 UUID/参数进入已有管理账本，UNKNOWN 只查原收据。路径和 selection token 留在 Main/Core，Renderer 只见不透明 URI。现代 discovery 协商 MRTR，逐轮保留参数并将 requestState 留在私有层。
 
 固定 Codex0.162.1 的 `plugin/list/installed/read/install/uninstall/reconcile/search` 与 `marketplace/add/remove/upgrade` 共享包所有者。只有 `plugin/search` 需要 initialize 的 `experimentalApi:true`。没有配置私有托管服务时，share/remote catalog 返回 `-32004` 与 capability；不返回伪空成功。`marketplace/add {source,refName?,sparsePaths?}` 已支持顶层 sparse cone 路径和更新保留；完整 hooks 与其余边界见[验收矩阵](../development/codex-plugins-p1-p3-acceptance.md)。
-
-### 有限页面工具
-
-`areal/mcp/app/tools/register`、`revoke`、`claim` 和 `resolve` 要求无限制的 `manage` 与 `tools` 授权。参数与响应由 `core/protocol` 类型生成。页内工具不能通过通用 Renderer 管理转发调用这些接口。
-
-注册是可信 Main 对原页面已完成 SDK initialize 的证明。声明仅包含 `version:1`、`documentId` 和唯一的 `getSelection`、`applyPatch` kind，不接受自定义名称、schema、描述或执行代码。Core 生成带 registration 命名空间的工具名与 schemaDigest，并在普通 Turn 准入时冻结。工具只进入原 Thread 的有效目录，沿用普通权限、hooks、结果预算和 ToolCall 历史。只读 Side、研究任务和未获授权的受限 worker 不继承这些工具。readOnly 声明不授予权限。
-
-| 操作 | 输入中的身份 | 结果 |
-| --- | --- | --- |
-| `register` | `threadId,instanceId,generation,ownerId,declaration` | `registrationId,documentId,tools`，每项包含 kind、name 和 schemaDigest |
-| `revoke` | `threadId,instanceId,generation,registrationId,ownerId` | `revoked:true`，先撤销目录与新 claim，再结算在途调用 |
-| `claim` | `threadId,turnId,callId,registrationId,ownerId,schemaDigest` | `granted` 带 claimId、kind、documentId 和有效 arguments，或 `notGranted` 带 reason |
-| `resolve` | 同一调用身份、可选 claimId 和 reply | 持久提交后返回 `accepted` |
-
-`reply` 只接受 `completed` 加规定结果、`noEffect` 加 `cancelled/closed/unavailable` 原因，或 `unknown`。`getSelection` 返回文档 revision、anchor、head、有界 selectedText、truncated 和 dirty。`applyPatch` 接受 `expectedDocumentRevision` 与 `{from,to,insert}`。成功证据包含前后 revision、原始范围、插入长度和 dirty；冲突或拒绝明确表示未修改。所有偏移与长度使用 UTF-16 单位，LF 占一个单位。拒绝 CR 插入与截断代理对的偏移。
-
-Core 绑定原始实际 ToolHost、App epoch、Thread、实例、MCP generation、插件摘要、registration 与 schema。Desktop 服务在打开响应返回前绑定原 Main socket；ownerId 只是服务生成的句柄。相同 principal 或已知 ID 不能转移归属。Main 再验证原窗口、token、epoch 和初始化 mount。`pending` 与 `cancelled` 通知仅发往原 socket，只含关联身份，不授予执行。
-
-Core 先保存普通调用意图、运行审批及 hooks，再发布待领取调用。claim 必须持久保存后才能返回唯一执行许可。单次 invocation 串行处理领取与结算，端点不独立写历史。相同终态内容重复提交只查询原收据，异内容冲突。已确认终态及结果快照不受后续 hook 错误、反馈或通用 finalizer 覆盖。
-
-领取前取消是确定未执行。领取后仅有效完成证据或原执行端的 `noEffect` 可确定结果，超时、abort 或连接丢失不能证明未修改。取消排空一秒后无证据则保存 UNKNOWN，重启与重开均不重放。任一原连接替换都会撤销工具执行，保留未保存页面。安装包摘要变化同样撤销旧页面工具的目录与新领取许可，旧实例不能重新登记；保留页面不表示恢复执行权限。只有显式新打开的实例可以重新登记，隐藏但有效的页面仍可执行。
-
-Desktop 在撤销后保留原归属 32 秒，供已领取调用结算。确认撤销或关闭后释放记录；无法确认时仅保留不含连接引用的身份标记。归属记录总计最多 128 条，达到上限时拒绝新绑定。注册不能使当前 Thread 的有效工具目录超过现有 128 工具上限；终态 resolve、revoke 与关闭使用保留控制容量。
-
-v1 每实例一份登记、每 Main 八份、每 Core Host 32 份、每 runtime 128 份。每页最多两个在途调用、每 Host 16 个，Host 参数合计最多 128 KiB。声明最多 1 KiB，documentId 最多 64 字节，单次输入和输出各最多 32 KiB。文档最多 65,536 UTF-16 单位，替换和返回选区最多 4,096 单位，截断必须标记。领取期限十秒，领取后执行期限三十秒，取消排空一秒。既有页面请求预算和 2 MiB 资源限制保持有效。该能力不提供 sampling、跨设备编辑或任意页面执行平台。
 
 ## 插件 Hooks
 

@@ -89,16 +89,7 @@ Codex 兼容包由 `core/plugins` 持有本地安装与范围选择；Engine 登
 
 选择这一结构是为了集中来源差异并复用现有权威。每个生态独立运行时会重复授权、取消和恢复逻辑；把所有字段压成通用 JSON 会丢失覆盖与执行语义，因此均不采用。原始安装包、来源与准入摘要、Store 事务、Turn 版本、撤权及 UNKNOWN 不重放保持原契约。以后导入规则若改变有效执行含义，必须定义重新审阅与旧引用策略，不能静默继承旧信任。分阶段范围与完成条件见[插件实施计划](../development/codex-plugins-plan.md#多格式导入演进)。
 
-插件来源解析仍归 `core/plugins`，Git/npm 不执行安装脚本。`core/mcp` 持有认证、资源与连接版本，Engine 固定 Turn 的 schema/调用对象并拥有撤权、受理和清理。Apps 绑定 Core 进程 epoch、Thread 与包摘要；Electron 的独立沙箱只持窄能力。Main 为每个 App 实例记录原窗口 owner，普通导航保留活 iframe；销毁和撤权按实例归属回收，不依赖原生窗口仍然存活。异步打开返回时复核 owner 与 epoch，旧 token 不随活动窗口转移。文件实际读写复用 Runtime 的目录描述符助手，模型投影剔除 `_meta`。原始 Connector ID 通过明确映射接到 GitHub；客户端凭据仅由可信启动环境注入。
-
-成功 MCP 结果的交互入口只提交原 Thread、Turn、Core item 和打开请求身份。Core 校验原始快照的完整性及调用时保存的来源，再用原连接准备资源；挂载不重新执行业务工具。结果打开操作与 App 实例由同一 Manager 原子保存，关闭事实独立于活页面保留，旧进程 epoch 请求不能重开。Main 按原窗口和 Core instance 复用 token，Workspace 保留 iframe。缺来源、摘要改变、撤权或页面失败时保留普通可读结果。
-
-有限页面工具沿用普通 Core 工具目录、审批和 ToolCall 历史。注册只声明固定的选区读取与 revision 条件修改。Core 固定原始 ToolHost、App epoch、包摘要和登记版本；Desktop 服务固定打开实例的 Main socket，Main 固定窗口、token 与已初始化的 bridge。通知仅唤醒原执行端，持久 claim 才授予一次执行。单次调用拥有 claim 与结算写入，已确认终态不能被后续 hook 或通用 finalizer 覆盖。断线撤销工具执行，保留未保存页面；UNKNOWN 不自动重放。协议和预算见[桌面 API](../api/desktop.md#有限页面工具)。
-
-
-启用 `pages` 领域时，上述页面宿主迁入 Host 监督的工作台服务，窗口 owner 改为已鉴权的连接 owner；Main 不再持有该路径的页面 token。资源走认证协议，公开 HTTP 只有固定的 opaque-origin 代理。共享 Renderer 沿同一 AppBridge 转发，断开撤销页面与工具租约；当前本机 manage 与 submit 授权边界见[工作台服务设计](workbench-service.md)，不代表远程页面已开放。
-
-Core 持有执行、历史与 HTML 来源，Desktop 持有当前用户配置目录下的视图状态。移植的 `packages/gen-ui` 状态存储按项目、Thread 和制品路径隔离，原子保存 `{modelContent,privateContent}`。每项最多 16 KiB，每个会话最多保留 100 项。普通主会话和 Side 提交只将有界 `modelContent` 作为不可信上下文附加到下一次输入，`privateContent` 不进入模型请求。该状态可在同一 Desktop 配置下恢复，不提供跨设备同步。生成页没有 Node、文件、工具或网络访问权，生成页不会改变宿主会话权限；旧版只读 Side 保留只读权限。
+插件来源解析归 `core/plugins`，Git/npm 不执行安装脚本。`core/mcp` 持有认证、资源与连接版本，Engine 固定 Turn 的 schema/调用对象并拥有撤权、受理和清理。普通 MCP 工具、扩展调用、表单和原始工具结果沿既有权限与回执路径提供；模型投影剔除 `_meta`。MCP App 与页面工具不再提供公开运行入口。
 
 插件下载与准备不持有 Engine 目录刷新锁；Store 的跨进程锁和 revision CAS 负责提交，随后从同一安装状态快照在刷新锁内发布目录，连接排空在锁外执行。MCP 清理未确认以类型化错误进入 `cleanupUnknown`，不能按普通失败重连；没有清理凭据的后续断开操作也不能清除此状态。跨实例共享启用状态与本实例受审阅定义分开：hook 调用前读取当前启用状态，后台协调取消已停用包的在途 hooks（包括升级后新版已删除定义的旧调用）；固定 Turn 版本不会固定启用权限。显式 Profile 默认排除插件，仅部署定义的 `allowPluginSkills` 可选择加入，且子任务继续受父任务插件范围约束；hook 角色与 matcher 使用已受理 Profile 身份，压缩保留子任务归属。状态轮询只读安装状态，不枚举包。组件解析按包身份、摘要和政策缓存，每次使用通过 NOFOLLOW 描述符检查文件/目录身份、权限、大小、mtime/ctime；变化后重新校验完整摘要。MCP 调用只验证所属包。该缓存不增加对任意同 UID 并发目录替换的隔离承诺。
 

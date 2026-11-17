@@ -1,4 +1,4 @@
-//! Narrow desktop routes for package-bound MCP connections and App instances.
+//! 包绑定的普通 MCP 连接、扩展和表单路由。
 use super::*;
 areal_protocol::method_catalog! {
     "areal/plugin/mcp/list" => Read;
@@ -14,15 +14,6 @@ areal_protocol::method_catalog! {
     "areal/plugin/auth/configure" => Mutation, Management;
     "areal/plugin/credentials/register" => Mutation, Management;
     "areal/mcp/tool/result" => Read;
-    "areal/mcp/apps/list" => Read;
-    "areal/mcp/app/open" => Mutation;
-    "areal/mcp/app/openFromResult" => Mutation;
-    "areal/mcp/app/request" => Mutation;
-    "areal/mcp/app/close" => Mutation;
-    "areal/mcp/app/tools/register" => Mutation;
-    "areal/mcp/app/tools/revoke" => Mutation;
-    "areal/mcp/app/tools/claim" => Mutation;
-    "areal/mcp/app/tools/resolve" => Mutation;
     "areal/mcp/extension/call" => Mutation;
     "areal/mcp/forms/list" => Read;
     "areal/mcp/form/respond" => Mutation;
@@ -35,7 +26,6 @@ use areal_protocol::plugin_runtime::*;
 pub(crate) async fn dispatch(
     engine: &Arc<Engine>,
     identity: &str,
-    host: Arc<dyn areal_engine::tools::DynamicToolHost>,
     method: &str,
     params: Value,
 ) -> Result<Value, RpcError> {
@@ -65,7 +55,7 @@ pub(crate) async fn dispatch(
                 method.clone(),
                 snapshot,
                 move |engine| async move {
-                    match dispatch_inner(&engine, &owned, host, &method, params).await {
+                    match dispatch_inner(&engine, &owned, &method, params).await {
                         Ok(v) => json!({"result":v}),
                         Err(e) => json!({"error":e}),
                     }
@@ -85,26 +75,14 @@ pub(crate) async fn dispatch(
         };
         return Ok(reply["result"].clone());
     }
-    dispatch_inner(engine, identity, host, method, params).await
+    dispatch_inner(engine, identity, method, params).await
 }
 async fn dispatch_inner(
     engine: &Arc<Engine>,
     identity: &str,
-    host: Arc<dyn areal_engine::tools::DynamicToolHost>,
     method: &str,
     params: Value,
 ) -> Result<Value, RpcError> {
-    if method.starts_with("areal/mcp/app/tools/")
-        && serde_json::to_vec(&params)
-            .map_err(|e| RpcError::invalid(e.to_string()))?
-            .len()
-            > areal_protocol::plugin_runtime::PAGE_BYTES + 2048
-    {
-        return Err(rejected(
-            RpcError::invalid("page-tool request exceeds byte budget"),
-            "INVALID_REQUEST",
-        ));
-    }
     let result = match method {
         "areal/plugin/userConfig/set" => engine.plugin_user_configure(parse(params)?).await,
         "areal/plugin/development/link" => engine.plugin_development_link(parse(params)?).await,
@@ -113,12 +91,6 @@ async fn dispatch_inner(
             let p: ComponentRead = parse(params)?;
             engine.plugin_component_summary(p.id).await
         }
-        "areal/mcp/app/tools/register" => {
-            engine.mcp_page_tools_register(host, parse(params)?).await
-        }
-        "areal/mcp/app/tools/revoke" => engine.mcp_page_tools_revoke(host, parse(params)?).await,
-        "areal/mcp/app/tools/claim" => engine.mcp_page_tools_claim(host, parse(params)?).await,
-        "areal/mcp/app/tools/resolve" => engine.mcp_page_tools_resolve(host, parse(params)?).await,
         "areal/mcp/tool/result" => {
             let p: ToolResult = parse(params)?;
             engine.mcp_tool_result(p.thread_id, p.call_id).await
@@ -156,52 +128,6 @@ async fn dispatch_inner(
         "areal/plugin/credentials/register" => {
             let p: CredentialsRegister = parse(params)?;
             engine.register_credentials(p.credentials)
-        }
-        "areal/mcp/apps/list" => {
-            let p: Apps = parse(params)?;
-            engine.mcp_apps_list(p.thread_id).await
-        }
-        "areal/mcp/app/openFromResult" => {
-            let p: OpenFromResult = parse(params)?;
-            engine
-                .mcp_app_open_from_result(identity.into(), Some(host), p)
-                .await
-        }
-        "areal/mcp/app/open" => {
-            let p: Open = parse(params)?;
-            engine
-                .mcp_app_open(
-                    identity.into(),
-                    Some(host),
-                    p.thread_id,
-                    p.server_id,
-                    p.expected_generation,
-                    p.tool_name,
-                    p.arguments,
-                    p.request_id,
-                    p.file_resource,
-                    p.deep_link,
-                )
-                .await
-        }
-        "areal/mcp/app/request" => {
-            let p: AppRequest = parse(params)?;
-            engine
-                .mcp_app_request(
-                    identity.into(),
-                    p.thread_id,
-                    p.instance_id,
-                    p.generation,
-                    p.request,
-                    p.request_id,
-                )
-                .await
-        }
-        "areal/mcp/app/close" => {
-            let p: Close = parse(params)?;
-            engine
-                .mcp_app_close(identity.into(), p.thread_id, p.instance_id, p.generation)
-                .await
         }
         "areal/mcp/extension/call" => {
             let p: areal_protocol::plugin_runtime::Extension = parse(params)?;

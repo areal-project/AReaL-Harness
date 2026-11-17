@@ -469,7 +469,7 @@ Installation retains blocked packages for inspection and `enabled` remains confi
 
 Hook reports reuse runtime declaration selection and typed document parsing. `mcp_tool` is the recognized MCP handler type. Invalid declarations retain partial rows, alongside any default document selected by the existing fallback rules. The Hook `supportedSchema` covers document and handler field shapes, not matcher behavior, platform commands, trust, or execution results. Apps reports first load manifest path arrays through the component loader, then recognize a single object with a string `id`, id-keyed maps, and declaration arrays inside documents. A static connector declaration does not establish mapping, authentication, or connection.
 
-## Plugin sources, MCP and desktop Apps
+## Plugin sources and MCP
 
 New routes retain unrestricted `manage` authorization; generated schemas own parameter types. Source resolution and marketplace mutations go through Host `plugins.command` with catalog CAS.
 
@@ -477,44 +477,11 @@ New routes retain unrestricted `manage` authorization; generated schemas own par
 
 `areal/plugin/auth/configure {id,server,expectedDigest,configuration,requestId}` persists host credential references only, requires disconnected current digest, and shares the durable management receipt. configuration supports clientSecretRef/privateKeyRef/privateKeyId/clientMetadataUrl/apiKeyRef/callbackUrl; secret values enter only trusted launch inputs. Configuration revisions isolate replaced or cancelled flows.
 
-`areal/mcp/apps/list {threadId?}` returns complete tool metadata. App `open/request/close` routes bind thread/server/instance/generation; tool requests also bind requestId. Extension-call kinds are settingsRead/settingsUpdate/settingsAction/mentionsSearch. Forms list/respond/preview validate complete pending requests and originating servers. `areal/mcp/tool/result {threadId,callId}` reads persisted raw MCP results; models receive recursively stripped projections.
-
-`areal/mcp/app/openFromResult {threadId,turnId,itemId,requestId}` accepts exact Core record identity and requires unrestricted manage authorization. The `requestEpoch` from `areal/mcp/apps/list` forms `result-v1.<requestEpoch>.<UUID>`. Replies are `{status:"open",instance}`, `{status:"closed"}`, or `{status:"unavailable",reason}`; Main maps open to an opaque `app` page descriptor. Renderer supplies no HTML, resource URI, arguments, or source proof.
-
-Core resolves turnId then itemId, requires a successfully completed MCP record, verifies raw snapshot length and SHA, and uses saved effective arguments and the raw MCP result. The original MCP call captures plugin digest, connection generation, Thread, cwd, and Apps process epoch. Publication rechecks the enabled source and original connection. Preparing a page only reads its declared resource: it neither repeats the business tool nor creates a tool Turn. Follow-up page calls retain existing App visibility and authorization checks.
-
-Result receipts and instances share a versioned `mcp-apps.json` and one atomic commit. Limits are 1024 receipts per process epoch, 1 KiB per receipt, and 8 MiB per file, without eviction. Existing retries, close, and revocation remain available at capacity. A request with different source arguments conflicts; concurrent requests for one source share an instance. Close atomically terminates every alias, so old requests return closed. A new UUID expresses explicit reopening. Old epochs always expire. UNKNOWN retains the original request; an uncertain close immediately revokes the page token and preserves the original close intent until reconciliation.
-
-Only trusted Main grants host files. Authenticated non-desktop-owner principals cannot supply fileResource or private ui/host-file, which the App bridge does not expose. File-write receipts use areal/mcp/app/file/write and existing areal/request/read without threadId. New notifications preserve instance/generation through the shared desktop service: areal/mcp/app/notification, areal/mcp/tool/result and areal/mcp/form/requested.
+`areal/mcp/extension/call` supports settingsRead/settingsUpdate/settingsAction/mentionsSearch. Forms list/respond/preview validate complete pending requests and their originating servers. `areal/mcp/tool/result {threadId,callId}` reads persisted raw MCP results; models receive recursively stripped projections. MCP form and tool-result notifications retain the original Thread and connection generation.
 
 Native Main uses areal/mcp/form/resource/prepare {threadId,requestId,fieldName}, stage {selectionToken,requestId,paths} and release {threadId,requestId,fieldName,uri}. Prepare/stage require authenticated desktop-owner and are denied through generic Renderer commands. Stage is UUID/payload-bound in the existing management ledger; UNKNOWN only reads its original receipt. Paths/tokens stay in Main/Core; Renderer receives opaque URIs. Modern discovery negotiates MRTR; requests preserve original arguments and keep requestState private.
 
 Pinned Codex0.162.1 plugin/list/installed/read/install/uninstall/reconcile/search and marketplace/add/remove/upgrade share the package owner. Only search requires experimentalApi opt-in. Unconfigured hosted share/catalog services return -32004 capability errors, never fake empty success. marketplace/add accepts source/refName?/sparsePaths? with persisted sparse cone paths. Full hooks and other limits remain in the [acceptance matrix](../development/codex-plugins-p1-p3-acceptance.en.md).
-
-### Finite page tools
-
-`areal/mcp/app/tools/register`, `revoke`, `claim`, and `resolve` require unrestricted `manage` and `tools` authorization. `core/protocol` types generate request and response schemas. Page tools cannot reach these routes through generic Renderer management forwarding.
-
-Registration attests that the original page completed SDK initialization in trusted Main. The declaration contains only `version:1`, `documentId`, and unique `getSelection` or `applyPatch` kinds. It accepts no custom names, schemas, descriptions, or executable code. Core generates names under the registration namespace and a schemaDigest, then freezes them at ordinary Turn admission. Tools enter only their original Thread's effective inventory and use ordinary approval, hooks, result budgets, and ToolCall history. Read-only Side, research tasks, and unauthorized restricted workers do not inherit them. A readOnly declaration grants no permission.
-
-| Operation | Input identity | Result |
-| --- | --- | --- |
-| `register` | `threadId,instanceId,generation,ownerId,declaration` | `registrationId,documentId,tools`, each with kind, name, and schemaDigest |
-| `revoke` | `threadId,instanceId,generation,registrationId,ownerId` | `revoked:true`; removes publication and new claims before draining calls |
-| `claim` | `threadId,turnId,callId,registrationId,ownerId,schemaDigest` | `granted` with claimId, kind, documentId, and effective arguments, or `notGranted` with reason |
-| `resolve` | The same call identity, optional claimId, and reply | `accepted` after durable commit |
-
-A reply is `completed` with the fixed result, `noEffect` with a `cancelled`, `closed`, or `unavailable` reason, or `unknown`. `getSelection` returns document revision, anchor, head, bounded selectedText, truncated, and dirty. `applyPatch` accepts `expectedDocumentRevision` and `{from,to,insert}`. Applied evidence includes both revisions, the original range, inserted length, and dirty. Conflict and rejection explicitly report no edit. Offsets and lengths use UTF-16 units, with one unit per LF. CR insertion and offsets that split surrogate pairs are rejected.
-
-Core binds the original actual ToolHost, App epoch, Thread, instance, MCP generation, plugin digest, registration, and schema. Desktop binds the opening Main socket before returning the open response. ownerId is only a service-generated handle. A matching principal or known IDs cannot transfer ownership. Main also checks the original window, token, epoch, and initialized mount. Directed `pending` and `cancelled` notices contain correlation identity only and grant no execution permission.
-
-Core saves ordinary intent and runs approval and hooks before publishing the pending call. Claim persistence precedes the single execution grant. One invocation serializes claim and settlement; endpoints do not independently write history. Repeating identical terminal data reads its receipt. Different terminal data conflicts. Later hook errors, feedback, or generic finalization cannot replace accepted terminal evidence or its result snapshot.
-
-Cancellation before claim proves no execution. After claim, only validated completion or authenticated `noEffect` evidence settles definitively. Timeout, abort, or connection loss does not prove that no edit occurred. Without evidence after the one-second drain, Core saves UNKNOWN. Restart and reopening never replay. Replacing either original connection revokes execution while retaining the unsaved page. An installed package digest change also removes old page-tool publication and new claim authority. The old instance cannot register again; retaining its page does not restore execution authority. Only an explicitly opened new instance can register again. Valid hidden pages remain callable.
-
-Desktop retains revoked ownership for 32 seconds so claimed calls can settle. Confirmed revocation or close releases the record. Unconfirmed retirement retains only an identity marker without connection references. Ownership records are capped at 128; reaching the cap rejects new bindings. Registration cannot exceed the existing 128-tool effective Thread inventory limit. Terminal resolve, revoke, and close use reserved control capacity.
-
-v1 permits one registration per instance, eight per Main, 32 per Core Host, and 128 per runtime. Limits are two active calls per page, sixteen per Host, and 128 KiB combined arguments per Host. Declarations are at most 1 KiB, documentId at most 64 bytes, and each input and output at most 32 KiB. Documents contain at most 65,536 UTF-16 units. Replacement and returned selection text contain at most 4,096 units, with explicit truncation. Claim timeout is ten seconds, execution timeout thirty seconds, and cancellation drain one second. Existing page request budgets and the 2 MiB resource limit remain. This capability adds no sampling, cross-device editing, or arbitrary page execution platform.
 
 ## Plugin hooks
 

@@ -331,7 +331,6 @@ pub const SERVER_REQUESTS: &[&str] = &[
 
 pub const NOTIFICATIONS: &[&str] = &[
     "areal/model/catalogChanged",
-    "areal/mcp/app/notification",
     "areal/mcp/tool/result",
     "areal/mcp/form/requested",
     "areal/goal/updated",

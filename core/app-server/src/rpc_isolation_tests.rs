@@ -139,19 +139,17 @@ async fn slow_derivation_does_not_starve_same_connection_control() {
         .await
         .unwrap();
     for (id, method, params) in [
-        (202, "areal/mcp/app/tools/resolve", json!({})),
+        (202, "areal/mcp/forms/list", json!({"threadId":source.id})),
         (
             203,
-            "areal/mcp/app/tools/revoke",
-            json!({"threadId":source.id,"instanceId":"missing","generation":1,"registrationId":"missing","ownerId":"missing"}),
+            "areal/mcp/form/respond",
+            json!({"threadId":source.id,"requestId":"missing","response":{"action":"cancel"}}),
         ),
         (
             204,
-            "areal/mcp/app/close",
-            json!({"threadId":source.id,"instanceId":"missing","generation":1}),
+            "areal/mcp/form/resource/release",
+            json!({"threadId":source.id,"requestId":"missing","fieldName":"missing","uri":"missing"}),
         ),
-        (205, "areal/mcp/app/tools/register", json!({})),
-        (206, "areal/mcp/app/tools/claim", json!({})),
     ] {
         socket
             .send(Wire::Text(
@@ -164,11 +162,11 @@ async fn slow_derivation_does_not_starve_same_connection_control() {
     }
     let replies = tokio::time::timeout(std::time::Duration::from_secs(2), async {
         let mut replies = std::collections::BTreeMap::new();
-        while replies.len() < 7 {
+        while replies.len() < 5 {
             let frame = socket.next().await.unwrap().unwrap();
             if frame.is_text() {
                 let value: Value = serde_json::from_str(frame.to_text().unwrap()).unwrap();
-                if let Some(id @ 200..=206) = value["id"].as_u64() {
+                if let Some(id @ 200..=204) = value["id"].as_u64() {
                     replies.insert(id, value);
                 }
             }
@@ -190,19 +188,11 @@ async fn slow_derivation_does_not_starve_same_connection_control() {
                     .as_str()
                     .unwrap_or_default()
                     .contains("in-flight"),
-            "page terminal control was rejected by ordinary saturation: {}",
+            "MCP form control was rejected by ordinary saturation: {}",
             replies[&id]
         );
     }
-    assert_eq!(replies[&203]["result"], json!({"revoked":true}));
-    for id in 205..=206 {
-        assert!(
-            replies[&id]["error"]["message"]
-                .as_str()
-                .unwrap()
-                .contains("control slots are reserved")
-        );
-    }
+    assert!(replies[&202].get("result").is_some(), "{}", replies[&202]);
     *BARRIER.write().unwrap() = None;
     socket.close(None).await.unwrap();
     stop.cancel();

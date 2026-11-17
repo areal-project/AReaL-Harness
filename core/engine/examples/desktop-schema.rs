@@ -32,22 +32,6 @@ fn desktop_schema() -> Value {
     add!("areal/capabilities", CapabilitiesRequest);
     add!("areal/thread/prediction", PromptPredictionRequest);
     add!(
-        "areal/mcp/app/tools/register",
-        areal_protocol::plugin_runtime::PageRegister
-    );
-    add!(
-        "areal/mcp/app/tools/revoke",
-        areal_protocol::plugin_runtime::PageRevoke
-    );
-    add!(
-        "areal/mcp/app/tools/claim",
-        areal_protocol::plugin_runtime::PageCoordinates
-    );
-    add!(
-        "areal/mcp/app/tools/resolve",
-        areal_protocol::plugin_runtime::PageResolve
-    );
-    add!(
         "areal/server/modelConfiguration/read",
         ModelConfigurationRead
     );
@@ -116,17 +100,6 @@ fn desktop_schema() -> Value {
         "areal/mcp/tool/result",
         areal_protocol::plugin_runtime::ToolResult
     );
-    add!("areal/mcp/apps/list", areal_protocol::plugin_runtime::Apps);
-    add!("areal/mcp/app/open", areal_protocol::plugin_runtime::Open);
-    add!(
-        "areal/mcp/app/openFromResult",
-        areal_protocol::plugin_runtime::OpenFromResult
-    );
-    add!(
-        "areal/mcp/app/request",
-        areal_protocol::plugin_runtime::AppRequest
-    );
-    add!("areal/mcp/app/close", areal_protocol::plugin_runtime::Close);
     add!(
         "areal/mcp/extension/call",
         areal_protocol::plugin_runtime::Extension
