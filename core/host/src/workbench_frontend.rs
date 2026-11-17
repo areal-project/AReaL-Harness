@@ -379,6 +379,10 @@ impl Connections {
         let input = &params["params"];
         match call {
             "browser.scope" => exact(input, &["projectId", "threadId"])?,
+            "resources.command" => {
+                let _: areal_protocol::host::LocalDesktopResourceParams =
+                    serde_json::from_value(input.clone()).context("INVALID_PARAMS")?;
+            }
             "projectless.command" => {
                 exact(input, &["operation", "requestId", "directory", "path"])?
             }
@@ -465,6 +469,14 @@ impl Connections {
             input.get("sourceId").is_none_or(|id| id == &source),
             "FORBIDDEN"
         );
+        if call == "resources.command" {
+            return host
+                .gateway
+                .workbench
+                .resources
+                .command(host, &source, input)
+                .await;
+        }
         if call == "projectless.command" {
             return host
                 .gateway

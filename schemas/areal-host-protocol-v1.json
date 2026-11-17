@@ -58560,6 +58560,27 @@
             "params"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "attachmentId": {
+              "type": "string"
+            },
+            "call": {
+              "type": "string",
+              "const": "resources.command"
+            },
+            "params": {
+              "$ref": "#/$defs/LocalDesktopResourceParams"
+            }
+          },
+          "required": [
+            "attachmentId",
+            "call",
+            "params"
+          ],
+          "additionalProperties": false
         }
       ]
     },
@@ -58600,6 +58621,9 @@
         },
         {
           "$ref": "#/$defs/LocalDesktopProjectlessResult"
+        },
+        {
+          "$ref": "#/$defs/LocalDesktopResourceResult"
         }
       ],
       "examples": [
@@ -63198,6 +63222,652 @@
         "reasoningEffortOptions"
       ],
       "additionalProperties": false
+    },
+    "LocalDesktopResourceHook": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "event": {
+          "type": "string",
+          "enum": [
+            "PreToolUse",
+            "PostToolUse",
+            "PostToolUseFailure"
+          ]
+        },
+        "matcher": {
+          "type": "string"
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "name",
+        "event",
+        "matcher",
+        "argv",
+        "timeoutMs"
+      ],
+      "additionalProperties": false
+    },
+    "LocalDesktopResourceParams": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "hooks"
+            }
+          },
+          "required": [
+            "operation"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "hooksSave"
+            },
+            "expectedRevision": {
+              "type": "string"
+            },
+            "hooks": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/LocalDesktopResourceHook"
+              },
+              "maxItems": 64
+            }
+          },
+          "required": [
+            "operation",
+            "expectedRevision",
+            "hooks"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "builtinSkill"
+            },
+            "id": {
+              "type": "string",
+              "const": "openai-skill-creator"
+            }
+          },
+          "required": [
+            "operation",
+            "id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "skills"
+            },
+            "scope": {
+              "type": "string",
+              "const": "user"
+            },
+            "projectId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "operation",
+            "scope"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "skillRead"
+            },
+            "scope": {
+              "type": "string",
+              "const": "user"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "operation",
+            "scope",
+            "id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "skillToggle"
+            },
+            "scope": {
+              "type": "string",
+              "const": "user"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "expectedRevision": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "operation",
+            "scope",
+            "id",
+            "expectedRevision",
+            "enabled"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "skillSave"
+            },
+            "scope": {
+              "type": "string",
+              "const": "user"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "expectedRevision": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "content": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "operation",
+            "scope",
+            "id",
+            "expectedRevision",
+            "content"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "skills"
+            },
+            "scope": {
+              "type": "string",
+              "const": "project"
+            },
+            "projectId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "operation",
+            "scope",
+            "projectId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "skillRead"
+            },
+            "scope": {
+              "type": "string",
+              "const": "project"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "operation",
+            "scope",
+            "projectId",
+            "id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "skillToggle"
+            },
+            "scope": {
+              "type": "string",
+              "const": "project"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "expectedRevision": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "operation",
+            "scope",
+            "projectId",
+            "id",
+            "expectedRevision",
+            "enabled"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "skillSave"
+            },
+            "scope": {
+              "type": "string",
+              "const": "project"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "expectedRevision": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "content": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "operation",
+            "scope",
+            "projectId",
+            "id",
+            "expectedRevision",
+            "content"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "LocalDesktopResourceResult": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "revision": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "scope": {
+                        "type": "string",
+                        "enum": [
+                          "user",
+                          "project"
+                        ]
+                      },
+                      "managed": {
+                        "type": "boolean"
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "root": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "revision": {
+                        "type": "string"
+                      },
+                      "overridden": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "scope",
+                      "managed",
+                      "enabled",
+                      "root",
+                      "name",
+                      "description",
+                      "revision",
+                      "overridden"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "scope": {
+                        "type": "string",
+                        "enum": [
+                          "user",
+                          "project"
+                        ]
+                      },
+                      "managed": {
+                        "type": "boolean"
+                      },
+                      "enabled": {
+                        "type": "boolean",
+                        "const": false
+                      },
+                      "root": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "overridden": {
+                        "type": "boolean"
+                      },
+                      "error": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "scope",
+                      "managed",
+                      "enabled",
+                      "name",
+                      "error",
+                      "overridden"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "customDeployment": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "revision",
+            "data",
+            "customDeployment"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "string"
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "content",
+            "truncated"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "revision": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "warning": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "revision",
+            "warning"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "skill": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "revision": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "revision",
+                "name",
+                "description"
+              ],
+              "additionalProperties": false
+            },
+            "provenance": {
+              "type": "object",
+              "properties": {
+                "upstream": {
+                  "type": "string"
+                },
+                "revision": {
+                  "type": "string"
+                },
+                "contentDigest": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "upstream",
+                "revision",
+                "contentDigest"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "skill",
+            "provenance"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "external": {
+              "type": "boolean"
+            },
+            "revision": {
+              "type": "string"
+            },
+            "hooks": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/LocalDesktopResourceHook"
+              }
+            },
+            "projects": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "projectId": {
+                    "type": "string"
+                  },
+                  "root": {
+                    "type": "string"
+                  },
+                  "connected": {
+                    "type": "boolean"
+                  },
+                  "applied": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "projectId",
+                  "root",
+                  "connected",
+                  "applied"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "path",
+            "external",
+            "revision",
+            "hooks",
+            "projects"
+          ],
+          "additionalProperties": false
+        }
+      ]
     }
   },
   "x-current": {

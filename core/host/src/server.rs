@@ -44,6 +44,8 @@ mod provider_catalog;
 mod provider_config;
 #[path = "provider_probe.rs"]
 mod provider_probe;
+#[path = "resources.rs"]
+mod resources;
 #[path = "schedule_connection.rs"]
 mod schedule_connection;
 #[path = "schedules.rs"]

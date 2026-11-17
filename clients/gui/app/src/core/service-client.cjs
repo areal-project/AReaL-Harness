@@ -979,11 +979,14 @@ class SharedCoreBackend {
       });
     }
     this.assertLifecycleScope(name, request);
-    if (name === "projectless") {
+    if (name === "projectless" || name === "resources") {
       const epoch = this.nativeBrowserEpoch;
-      const value = await this.nativeBrowserCall("projectless.command", request);
+      const value = await this.nativeBrowserCall(
+        name === "resources" ? "resources.command" : "projectless.command",
+        request,
+      );
       if (!epoch || this.nativeBrowserEpoch !== epoch || this.disposed)
-        throw Object.assign(new Error("Original projectless source changed"), {
+        throw Object.assign(new Error("Original native source changed"), {
           code: "RESYNC_REQUIRED",
         });
       return value;

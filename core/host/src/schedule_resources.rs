@@ -50,17 +50,15 @@ struct Skill {
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
-struct Metadata {
-    name: String,
-    description: String,
+pub(crate) struct Metadata {
+    pub(crate) name: String,
+    pub(crate) description: String,
 }
 
 #[derive(Default, Deserialize)]
-struct ResourceState {
-    revision: u64,
-    skills: BTreeMap<String, BTreeMap<String, bool>>,
-    #[serde(rename = "mcp")]
-    _mcp: Vec<Value>,
+pub(crate) struct ResourceState {
+    pub(crate) revision: u64,
+    pub(crate) skills: BTreeMap<String, BTreeMap<String, bool>>,
 }
 
 pub fn materialize(
@@ -228,6 +226,37 @@ fn scan(
     project: bool,
     state: &ResourceState,
 ) -> Result<BTreeMap<String, Option<Skill>>> {
+    scan_rows(base, managed, scope, project, state)?
+        .into_iter()
+        .map(|(id, row)| {
+            let skill = if row["enabled"] == true && row.get("error").is_none() {
+                Some(Skill {
+                    id: id.clone(),
+                    revision: row["revision"]
+                        .as_str()
+                        .context("invalid skill revision")?
+                        .into(),
+                    root: PathBuf::from(row["root"].as_str().context("invalid skill root")?),
+                    metadata: Metadata {
+                        name: row["name"].as_str().unwrap().into(),
+                        description: row["description"].as_str().unwrap().into(),
+                    },
+                })
+            } else {
+                None
+            };
+            Ok((id, skill))
+        })
+        .collect()
+}
+
+pub(crate) fn scan_rows(
+    base: &Path,
+    managed: &Path,
+    scope: &str,
+    project: bool,
+    state: &ResourceState,
+) -> Result<BTreeMap<String, Value>> {
     let base = base.canonicalize()?;
     let mut roots = Vec::new();
     for relative in [".agents/skills", ".claude/skills"] {
@@ -288,17 +317,30 @@ fn scan(
                     root: directory,
                     metadata,
                 })
-            })()
-            .ok();
+            })();
             let enabled = state.skills.get(scope).and_then(|scope| scope.get(&id)) != Some(&false);
             // 无效或关闭的项目技能仍覆盖同名用户技能。
-            selected.insert(id, skill.filter(|_| enabled));
+            let mut row = json!({"id":id,"scope":if project {"project"}else{"user"},"managed":managed.canonicalize().ok().as_ref()==Some(root),"enabled":enabled});
+            match skill {
+                Ok(skill) => {
+                    row["root"] = json!(skill.root);
+                    row["name"] = json!(skill.metadata.name);
+                    row["description"] = json!(skill.metadata.description);
+                    row["revision"] = json!(skill.revision);
+                }
+                Err(error) => {
+                    row["name"] = json!(id);
+                    row["enabled"] = json!(false);
+                    row["error"] = json!(error.to_string());
+                }
+            }
+            selected.insert(id, row);
         }
     }
     Ok(selected)
 }
 
-fn valid_id(id: &str) -> bool {
+pub(crate) fn valid_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 128
         && !id.starts_with('.')
@@ -308,7 +350,7 @@ fn valid_id(id: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || b"_.-".contains(&byte))
 }
 
-fn bounded(path: &Path, bytes: u64) -> Result<String> {
+pub(crate) fn bounded(path: &Path, bytes: u64) -> Result<String> {
     let file = OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
@@ -362,7 +404,7 @@ fn reject_yaml_aliases(header: &str) -> Result<()> {
     }
 }
 
-fn metadata(text: &str, id: &str) -> Result<Metadata> {
+pub(crate) fn metadata(text: &str, id: &str) -> Result<Metadata> {
     let lines: Vec<_> = text
         .split('\n')
         .map(|line| line.strip_suffix('\r').unwrap_or(line))
@@ -418,6 +460,19 @@ mod tests {
         home: PathBuf,
         registration: ProjectRegistration,
         inputs: LaunchInputs,
+    }
+    #[test]
+    fn minimal_gui_resource_state_is_valid_for_materialization() {
+        let fixture = Fixture::new();
+        let Some(SchedulePreparation::Managed {
+            resource_state_path,
+            ..
+        }) = &fixture.inputs.schedule_preparation
+        else {
+            unreachable!()
+        };
+        std::fs::write(resource_state_path, br#"{"revision":1,"skills":{}}"#).unwrap();
+        assert!(materialize(&fixture.home, &fixture.registration, &fixture.inputs).is_ok());
     }
     impl Fixture {
         fn new() -> Self {

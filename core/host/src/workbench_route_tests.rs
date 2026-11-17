@@ -1851,3 +1851,44 @@ async fn projectless_native_catalog_and_scratch_share_source_authority() {
         assert!(!host.gateway.workbench.has_running_backend());
     }).await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn native_resource_settings_own_skills_hooks_and_revisions_without_node() {
+    tokio::task::LocalSet::new().run_until(async {
+        let temp=tempfile::tempdir().unwrap();let root=temp.path().canonicalize().unwrap();
+        let (host,input,source)=resumable_host(&root);
+        storage::private_dir(&host.home.join("host/projects")).unwrap();
+        std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+        let options=frontend_options(&host,&source,input.options,None).unwrap();
+        let (subscription,_)=host.schedules.connections.frontend_subscribe(&host,"resources",&source,options,None).unwrap();
+        let workspace=root.join("project");storage::private_dir(&workspace).unwrap();
+        let project=super::super::worktree_catalog::add_project(&host,&source,json!({"root":workspace})).await.unwrap()["projectId"].as_str().unwrap().to_owned();
+        let command=|request:Value|{let host=host.clone();let source=source.clone();async move {
+            desktop_command(&host,"local","resources",&json!({"params":{"sourceId":source,"command":"resources","request":request}})).await
+        }};
+        let initial=host.schedules.connections.frontend_call(&host,&json!({"attachmentId":subscription["attachmentId"],"call":"resources.command","params":{"operation":"skills","scope":"user"}})).await.unwrap();
+        assert_eq!(initial["revision"],0);
+        assert!(host.schedules.connections.frontend_call(&host,&json!({"attachmentId":subscription["attachmentId"],"call":"resources.command","params":{"operation":"skills","scope":"user","root":"/untrusted"}})).await.is_err());
+        let saved=command(json!({"operation":"skillSave","scope":"user","id":"shared","name":"User skill","description":"fixture","content":"Read the current task.","expectedRevision":0})).await.unwrap();
+        assert_eq!(saved,json!({"revision":1,"warning":null}));
+        let user=command(json!({"operation":"skills","scope":"user"})).await.unwrap();
+        assert_eq!(user["data"][0]["name"],"User skill");assert_eq!(user["data"][0]["managed"],true);
+        let old=std::fs::read(root.join("data/resources.json")).unwrap();
+        assert!(command(json!({"operation":"skillToggle","scope":"user","id":"shared","enabled":false,"expectedRevision":0})).await.is_err());
+        assert_eq!(std::fs::read(root.join("data/resources.json")).unwrap(),old);
+        command(json!({"operation":"skillSave","scope":"project","projectId":project,"id":"shared","name":"Project skill","content":"Local task.","expectedRevision":1})).await.unwrap();
+        let user=command(json!({"operation":"skills","scope":"user","projectId":project})).await.unwrap();assert_eq!(user["data"][0]["overridden"],true);
+        let read=command(json!({"operation":"skillRead","scope":"project","projectId":project,"id":"shared"})).await.unwrap();assert!(read["content"].as_str().unwrap().contains("Local task."));
+        command(json!({"operation":"skillToggle","scope":"project","projectId":project,"id":"shared","enabled":false,"expectedRevision":2})).await.unwrap();
+        assert_eq!(command(json!({"operation":"skills","scope":"project","projectId":project})).await.unwrap()["data"][0]["enabled"],false);
+        let registration=super::super::worktree_catalog::project(&host,&source,&project).unwrap();
+        let inputs:crate::LaunchInputs=storage::read(&host.home.join("host/launch").join(storage::digest(registration.project_id.as_bytes())).join("inputs.json")).unwrap();
+        crate::schedule_resources::materialize(&host.home,&registration,&inputs).expect("GUI resource state without a retired mcp field must remain usable by native preparation");
+        let hooks=command(json!({"operation":"hooks"})).await.unwrap();
+        let next=command(json!({"operation":"hooksSave","expectedRevision":hooks["revision"],"hooks":[{"name":"audit","event":"PostToolUse","matcher":"*","argv":["echo","fixture"],"timeoutMs":1000}]})).await.unwrap();
+        assert_ne!(next["revision"],hooks["revision"]);assert_eq!(next["hooks"][0]["name"],"audit");assert_eq!(next["projects"][0]["connected"],false);assert_eq!(next["projects"][0]["applied"],false);
+        assert!(command(json!({"operation":"hooksSave","expectedRevision":hooks["revision"],"hooks":[]})).await.is_err());
+        let builtin=command(json!({"operation":"builtinSkill","id":"openai-skill-creator"})).await.unwrap();assert_eq!(builtin["skill"]["id"],"openai-skill-creator");assert_eq!(builtin["provenance"]["upstream"],"https://github.com/openai/skills");
+        assert!(!host.gateway.workbench.has_running_backend());
+    }).await;
+}

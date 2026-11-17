@@ -69,7 +69,7 @@ pub(super) fn options(host: &Host, source: &str) -> Result<Value> {
         .unwrap_or_else(|| host.gateway.workbench.utility_options(source))
 }
 
-fn managed(host: &Host, options: &Value) -> Result<bool> {
+pub(super) fn managed(host: &Host, options: &Value) -> Result<bool> {
     let Some(path) = options["desktopConfig"].as_str() else {
         return Ok(true);
     };
@@ -186,7 +186,10 @@ async fn prepare(
             json!({})
         }
     };
-    let extensions = directory.join("desktop-tool-extensions.json");
+    let extensions = directory.join(format!(
+        "tool-extensions-{}.json",
+        storage::digest(&serde_json::to_vec(&hook_value)?)
+    ));
     storage::write(&extensions, &hook_value)?;
     environment.insert(
         "AREAL_HARNESS_TOOL_EXTENSIONS".into(),

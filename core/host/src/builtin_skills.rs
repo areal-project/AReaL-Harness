@@ -168,3 +168,10 @@ pub(crate) fn materialize(home: &Path) -> Result<Skill> {
         metadata: serde_yaml_ng::from_str(header)?,
     })
 }
+
+pub(crate) fn descriptor(home: &Path) -> Result<serde_json::Value> {
+    let skill = materialize(home)?;
+    Ok(
+        serde_json::json!({"skill":{"id":ID,"revision":skill.revision,"name":skill.metadata.name,"description":skill.metadata.description},"provenance":{"upstream":"https://github.com/openai/skills","revision":REVISION,"contentDigest":DIGEST}}),
+    )
+}

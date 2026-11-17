@@ -89,6 +89,7 @@ pub(super) struct Supervisor {
     pub(super) side_owners: super::side_owners::SideWindowOwners,
     workspace_ops: super::workspace_ops::WorkspaceOps,
     manage_service: super::manage_service::ManageService,
+    pub(super) resources: super::resources::Resources,
     pub(super) projectless: super::projectless::Projectless,
     /// 桌面后台：界面 Main 原来在进程内启动的 CoreBackend + DesktopService，改由 Host 监督。
     backend: Backend,
@@ -1059,6 +1060,7 @@ pub(super) async fn desktop_command(
         Cmd::Value22 => Some("queue"),
         Cmd::Value23 => Some("queueEdit"),
         Cmd::Value24 => Some("reconcile"),
+        Cmd::Value26 => Some("resources"),
         Cmd::Value27 => Some("side"),
         Cmd::Value30 => Some("workspace"),
         _ => None,
@@ -1076,6 +1078,13 @@ pub(super) async fn desktop_command(
             "FORBIDDEN"
         );
         return match command {
+            "resources" => {
+                host.gateway
+                    .workbench
+                    .resources
+                    .command(host, &source, &params.request)
+                    .await
+            }
             "projectless" => {
                 host.gateway
                     .workbench
