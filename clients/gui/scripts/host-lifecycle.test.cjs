@@ -1137,6 +1137,10 @@ test("production Main installs native callback ownership before a late subscript
 
 test("preview resolves the original native Thread scope before any browser callback", async (t) => {
   const f = await fixture(t);
+  f.backend.status.browserCore = { logical: "retired-core" };
+  const claim = { projectId: "logical", threadId: "thread", coreInstanceId: "core" };
+  assert.equal(f.backend.browserCoreIdentity("logical", "thread"), null);
+  await assert.rejects(f.backend.browserClaim(claim), /后台尚未连接/);
   const scope = {
     sourceId: "source",
     projectId: "execution",
@@ -1168,6 +1172,11 @@ test("preview resolves the original native Thread scope before any browser callb
     throw new Error("legacy Node path used");
   };
   await f.backend.ensureBrowserThread("logical", "thread");
+  assert.deepEqual(await f.backend.browserClaim(claim), { claimed: true });
+  await assert.rejects(
+    f.backend.browserClaim({ ...claim, coreInstanceId: "retired-core" }),
+    /Browser Core changed/,
+  );
   assert.equal(f.backend.ownsThread("logical", "thread"), true);
   assert.equal(f.backend.browserCoreIdentity("logical", "thread"), "core");
   assert.equal(

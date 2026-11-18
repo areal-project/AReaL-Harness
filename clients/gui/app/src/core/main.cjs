@@ -607,13 +607,10 @@ function startDesktop() {
             backend.nativeBrowser?.closed === false,
           () => preview,
         ),
-        (projectId, threadId) => backend.retainsThreadResources(projectId, threadId),
+        undefined,
         (projectId, threadId) =>
           fileWorkspace(backend, { projectId, threadId, operation: "openDocument" }),
       );
-      preview.onRevoke = (identity) => {
-        void backend.browserRevoke(identity).catch(() => {});
-      };
       createdWindow.on("unresponsive", () => {
         diagnostics.record({ type: "renderer-unresponsive" });
       });
@@ -867,19 +864,7 @@ function startDesktop() {
               );
             }
             if (request?.operation === "takeover") {
-              const value = activePreview.takeover(
-                request.projectId,
-                request.threadId,
-                request.pageId,
-              );
-              void serviceBackend
-                .browserRevoke({
-                  projectId: request.projectId,
-                  threadId: request.threadId,
-                  pageId: request.pageId,
-                })
-                .catch(() => {});
-              return value;
+              return activePreview.takeover(request.projectId, request.threadId, request.pageId);
             }
             try {
               return await activePreview.command(request);

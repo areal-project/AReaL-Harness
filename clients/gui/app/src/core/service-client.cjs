@@ -20,11 +20,7 @@ const {
   createNativeShellTransport,
 } = require("./generated/native-host-transport.cjs");
 const { ServiceConnection } = require("./service-connection.cjs");
-const {
-  readServicePacket,
-  ownsThread,
-  retainsThreadResources,
-} = require("@areal/workbench-service/desktop/core/service-state.cjs");
+const { readServicePacket } = require("@areal/workbench-service/desktop/core/service-state.cjs");
 const {
   readGuiProcesses,
   readGuiThreadIdentity,
@@ -252,13 +248,7 @@ class SharedCoreBackend {
   }
   /** @param {string} projectId @param {string} threadId */
   browserCoreIdentity(projectId, threadId) {
-    return (
-      this.nativeBrowserScope(projectId, threadId)?.coreInstanceId ??
-      this.value.projects.find((project) => project.id === projectId)?.state?.threads?.[threadId]
-        ?.executionCore?.instanceId ??
-      this.status.browserCore?.[projectId] ??
-      null
-    );
+    return this.nativeBrowserScope(projectId, threadId)?.coreInstanceId ?? null;
   }
   /** @param {Record<string,unknown>} request */
   nativeBrowserWorkspace(request) {
@@ -380,12 +370,9 @@ class SharedCoreBackend {
   }
   /** @param {string} projectId @param {string} threadId */
   ownsThread(projectId, threadId) {
-    if (this.value.library.projects[projectId]?.hidden) return false;
-    const thread = this.value.projects.find((project) => project.id === projectId)?.state
-      ?.threads?.[threadId];
-    if (thread?.desktop?.archived) return false;
     return (
-      ownsThread(this.value, projectId, threadId) || !!this.nativeBrowserScope(projectId, threadId)
+      !this.value.library.projects[projectId]?.hidden &&
+      !!this.nativeBrowserScope(projectId, threadId)
     );
   }
   /** @param {string} projectId @param {string} threadId */
@@ -415,10 +402,6 @@ class SharedCoreBackend {
       /** @type {import('./native-host-transport').DesktopThreadScope} */ (scope),
     );
     this.onChange();
-  }
-  /** @param {string} projectId @param {string} threadId */
-  retainsThreadResources(projectId, threadId) {
-    return retainsThreadResources(this.value, projectId, threadId);
   }
   /** @param {import('@areal/client').ShellView} shell @param {string} sourceId @param {object} epoch */
   acceptNativeShell(shell, sourceId, epoch) {
@@ -1032,20 +1015,7 @@ class SharedCoreBackend {
         return { claimed: true };
       }
     }
-    if (!this.status.connected || !this.connection) throw new Error("后台尚未连接");
-    return this.requireConnection().request("browserClaim", identity, true);
-  }
-  /** @param {Record<string,unknown>} identity */
-  async browserRevoke(identity) {
-    if (
-      typeof identity.projectId === "string" &&
-      typeof identity.threadId === "string" &&
-      this.nativeBrowserScope(identity.projectId, identity.threadId)
-    )
-      return;
-    if (this.foreignOwner) return;
-    if (!this.status.connected || !this.connection) return;
-    return this.requireConnection().request("browserRevoke", identity, true);
+    throw new Error("后台尚未连接");
   }
   /** @param {Record<string,unknown>} request */
   async nativeGuiTerminalCommand(request) {
