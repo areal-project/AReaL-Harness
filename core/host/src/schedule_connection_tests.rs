@@ -65,6 +65,77 @@ fn service(host: &Host, endpoint: String) -> Service {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn status_deadline_does_not_revoke_current_core_connection() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let host = Rc::new(super::super::schedules::tests::fixture(root.path()));
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let service = service(&host, format!("ws://{}/", listener.local_addr().unwrap()));
+            let registration = host.slots.borrow()["project"].registration.clone();
+            let directory =
+                storage::registry(&host.home, &Host::service_id(&registration)).unwrap();
+            storage::private_dir(&directory).unwrap();
+            let startup = storage::open_private(&directory.join("start.lock"), true).unwrap();
+            fs2::FileExt::try_lock_exclusive(&startup).unwrap();
+            let (writer, lifetime) = areal_local_service::OwnerLifetime::pair().unwrap();
+            {
+                let mut slots = host.slots.borrow_mut();
+                let slot = slots.get_mut("project").unwrap();
+                slot.writer = Some(writer);
+                slot.lifetime = Some(Rc::new(lifetime));
+            }
+            let (finished, finish) = oneshot::channel();
+            let server = tokio::task::spawn_local(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut socket = tokio_tungstenite::accept_hdr_async(stream, ScheduleHeaders)
+                    .await
+                    .unwrap();
+                let initialize = receive(&mut socket).await;
+                send(&mut socket, json!({"id":initialize["id"],"result":{}})).await;
+                let page = receive(&mut socket).await;
+                assert_eq!(page["method"], "areal/conversation/history");
+                send(
+                    &mut socket,
+                    json!({"id":page["id"],"result":{"complete":true}}),
+                )
+                .await;
+                let _ = finish.await;
+            });
+            let connections = &host.schedules.connections;
+            let close = connections
+                .connect_test_core(host.clone(), "project", service)
+                .await
+                .unwrap();
+            let original = connections.shared_identity(&host, "project").unwrap();
+            let status = host.project_status("project").await;
+            assert_eq!(status.state, "ready");
+            assert_eq!(
+                connections.shared_identity(&host, "project").unwrap(),
+                original
+            );
+            assert_eq!(
+                connections
+                    .remote_request(
+                        &host,
+                        "project",
+                        (&original.0, &original.1, &original.2),
+                        "areal/conversation/history",
+                        json!({})
+                    )
+                    .await
+                    .unwrap()["complete"],
+                true
+            );
+            close();
+            assert_eq!(host.project_status("project").await.state, "unavailable");
+            finished.send(()).unwrap();
+            server.await.unwrap();
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn turn_completed_wakes_original_lifecycle_receipt_without_redispatch() {
     lifecycle_completion(false, false).await;
 }

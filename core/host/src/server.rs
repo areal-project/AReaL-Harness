@@ -1232,12 +1232,12 @@ impl Host {
         };
         if let Ok(_guard) = tokio::time::timeout(Duration::from_millis(500), gate.read()).await {
             let instance = Self::service_id(&registration);
-            if let Ok(Ok(service)) = tokio::time::timeout(
+            let observation = tokio::time::timeout(
                 Duration::from_millis(500),
                 areal_local_service::status(&self.home, &instance),
             )
-            .await
-            {
+            .await;
+            if let Ok(Ok(service)) = observation {
                 let mut slots = self.slots.borrow_mut();
                 let slot = slots.get_mut(id).unwrap();
                 slot.state = match service.state {
@@ -1256,9 +1256,17 @@ impl Host {
                 .into();
                 slot.service = Some(service);
             } else {
+                // 后台探测超时并不证明已认证的同代连接失效；明确的探测失败仍撤销就绪状态。
+                let connected = observation.is_err()
+                    && self.schedules.connections.shared_identity(self, id).is_ok();
                 let mut slots = self.slots.borrow_mut();
                 let slot = slots.get_mut(id).unwrap();
-                if slot.service.is_some() || slot.writer.is_some() {
+                let supervised = slot.writer.is_some()
+                    && slot
+                        .service
+                        .as_ref()
+                        .is_some_and(|service| service.owner.as_ref() == Some(&self.owner()));
+                if !(connected && supervised) && (slot.service.is_some() || slot.writer.is_some()) {
                     slot.state = "unavailable".into();
                 }
             }
