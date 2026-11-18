@@ -14,6 +14,7 @@ import {
   isolatedElectronBootstrapPrefix,
   prepareIsolatedElectron,
 } from "./isolated-electron-identity.mjs";
+import { connectNativeRemote } from "./remote-native-host-fixture.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
@@ -707,7 +708,6 @@ check("after-load");
     legacyPhone,
     legacySendCore,
     nativeRemote,
-    nativeSource,
     nativePhone;
   let legacySends;
   let remoteResponseSequence = 0;
@@ -1659,21 +1659,16 @@ check("after-load");
         }),
     });
     await recoverySendCore.connect();
-    const {
-      GuiHostProjects,
-    } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
-    const { NativeRemote } = require("@areal/workbench-service/desktop/core/native-remote.cjs");
-    nativeSource = new GuiHostProjects({ binary, home: hostHome, source, singletonHeld: true });
-    await nativeSource.init();
-    nativeRemote = new NativeRemote({
-      backend: {
-        host: nativeSource,
-        home: coreHome,
-        save: (name, value) => save(join(coreHome, name), value),
-      },
-      schedule() {},
+    const nativeSource = await recoveryHost.sourceState(source);
+    assert.equal(nativeSource.migrationId, result.migrationId);
+    const importedRemote = await recoveryHost.request("remote.read", {});
+    assert.equal(importedRemote.sourceId, nativeSource.sourceId);
+    assert.equal(typeof importedRemote.config?.identity, "string");
+    nativeRemote = await connectNativeRemote({
+      home: hostHome,
+      sourceId: nativeSource.sourceId,
+      owner: recoveryHost,
     });
-    await nativeRemote.init();
     const nativeDirect = await until(async () => {
       const state = await nativeRemote.refresh();
       return state.directEnabled && state.directUrl ? state : null;
@@ -1869,7 +1864,6 @@ check("after-load");
     } catch (error) {
       cleanup.errors.push({ operation: "native Remote close", message: error.message });
     }
-    nativeSource?.close();
     legacyConnection.close();
     recoveryCore?.close();
     recoverySendCore?.close();

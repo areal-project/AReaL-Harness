@@ -117,10 +117,8 @@
   "services/workbench/src/desktop/core/gui-host-projects.cjs": 5,
   "services/workbench/src/desktop/core/lifecycle.cjs": 3,
   "services/workbench/src/desktop/core/model-config.cjs": 4,
-  "services/workbench/src/desktop/core/native-remote.cjs": 2,
   "services/workbench/src/desktop/core/native-subscription.cjs": 3,
   "services/workbench/src/desktop/core/providers.cjs": 4,
-  "services/workbench/src/desktop/core/remote-config.cjs": 7,
   "services/workbench/src/desktop/core/submission-recovery.cjs": 1,
   "services/workbench/src/desktop/core/task-draft-target.cjs": 2
 }
