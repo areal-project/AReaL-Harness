@@ -124,7 +124,6 @@ export default defineConfig(({ mode }): UserConfig => ({
       "@areal/workbench/desktop-contract/conversation",
       "@areal/workbench/desktop-contract/management",
       "@areal/workbench/desktop-contract/management-context",
-      "@areal/workbench/desktop-contract/mcp-page",
       "@areal/workbench/desktop-contract/plugin-store",
       "@areal/workbench/desktop-contract/provider",
       "@areal/workbench/desktop-contract/resource",

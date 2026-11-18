@@ -1,19 +1,11 @@
-import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite-plus";
-import { CoreTaskModel } from "../packages/workbench/client/core-model.js";
-
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const require = createRequire(import.meta.url);
-const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
-const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
-const {
-  validateCommand,
-  validateCommandResponse,
-} = require("../packages/workbench/client/desktop-contract.cjs");
+const projectId = "reading-project";
+const threadId = "reading-thread";
+const generation = "reading-core";
 const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: gui, encoding: "utf8" }).trim();
 const paragraph = (n) =>
   Array.from(
@@ -114,102 +106,155 @@ export async function createReadingFixture({ deferredTools = false } = {}) {
       };
     });
   }
-  const model = new CoreTaskModel();
-  const project = { id: "reading-project", model, connectionGeneration: 1 };
-  const backend = Object.assign(Object.create(CoreBackend.prototype), {
-    projects: new Map([[project.id, project]]),
-    providers: { redact: (value) => value },
-    library: { recordThreadActivity: async () => {} },
-    onChange() {},
-  });
   const calls = [];
   const clients = new Map();
-  const historyService = {
-    backend: { command: (_name, request) => backend.historyCommand(project, request) },
-  };
+  let observation = structuredClone(initial);
+  let observationRevision = 0;
   let failNext = false;
-  let pending = 0;
+  let failures = 0;
   let hold = false;
   const held = [];
-  project.client = {
-    ready: true,
-    closed: false,
-    capabilities: { features: { boundedObservation: true, boundedHistory: true } },
-    request: async (method, params) => {
-      calls.push({ method, params });
-      if (method !== "areal/conversation/history") throw Error(`Unexpected RPC ${method}`);
-      if (failNext) {
-        failNext = false;
-        throw Error("Injected history unavailability");
-      }
-      if (hold) {
-        hold = false;
-        pending++;
-        await new Promise((resolve) => held.push({ resolve, cursor: params.cursor }));
-        pending--;
-      }
-      const detail = detailItems.get(params.cursor);
-      if (detail)
-        return {
-          snapshotId: "reading-snapshot",
-          complete: true,
-          nextCursor: null,
-          data: [
-            {
-              ...detail.entry,
-              item: undefined,
-              fragment: {
-                offsetUtf8: 0,
-                nextOffsetUtf8: Buffer.byteLength(detail.raw),
-                totalBytes: Buffer.byteLength(detail.raw),
-                text: detail.raw,
-                version: "fixture-v1",
-              },
-            },
-          ],
-        };
-      const n = Number(params.cursor.split(":")[1]);
-      const value = turn(n);
-      return {
-        snapshotId: "reading-snapshot",
-        data: value.items.map((item) => ({
-          sourceThreadId: "reading-thread",
-          sourceTurnId: value.id,
-          sourceItemId: item.id,
-          sourceTurnStatus: value.status,
-          turn: { id: value.id, status: value.status, durationMs: value.durationMs },
-          item,
-        })),
-        nextCursor: n < 11 ? `page:${n + 1}` : null,
-        complete: n === 11,
-      };
-    },
-  };
-  backend.installObservation(project, initial);
-  model.connection(true);
   const snapshot = () => ({
-    thread: model.state.threads["reading-thread"],
     calls: calls.length,
     detailCalls: calls.filter(({ params }) => detailItems.has(params.cursor)),
-    pending,
+    failures,
+    pending: held.length,
     held: held.map(({ cursor }) => ({ cursor })),
-    views: [...(backend.historyWindow(project, "reading-thread")?.views ?? [])],
     revision,
-    scope: "production Messages and Desktop history; deterministic Core RPC fixture",
+    scope: "production Messages and Host read services; deterministic Host RPC fixture",
   });
-  const unsubscribe = model.subscribe(() => {
+  const publish = () => {
     for (const { response } of clients.values())
-      response.write(`data: ${JSON.stringify(snapshot())}\n\n`);
-  });
-  const workbench = JSON.parse(
-    await readFile(join(gui, "packages/workbench/package.json"), "utf8"),
-  );
+      response.write(`event: fixture\ndata: ${JSON.stringify(snapshot())}\n\n`);
+  };
+  const publishObservation = () => {
+    for (const client of clients.values()) {
+      if (!client.session) continue;
+      client.sequence++;
+      client.response.write(
+        `data: ${JSON.stringify({
+          ...client.session,
+          sequence: client.sequence,
+          event: "session.updated",
+          patch: { head: observation, turns: [] },
+        })}\n\n`,
+      );
+    }
+  };
+  const history = async (params) => {
+    calls.push({ method: "session.history", params });
+    const { snapshotId } = observation.history;
+    if (failNext) {
+      failNext = false;
+      failures++;
+      publish();
+      throw Error("Injected history unavailability");
+    }
+    if (hold) {
+      hold = false;
+      await new Promise((resolve) => {
+        held.push({ resolve, cursor: params.cursor });
+        publish();
+      });
+    }
+    publish();
+    const detail = detailItems.get(params.cursor);
+    if (detail)
+      return {
+        snapshotId,
+        complete: true,
+        nextCursor: null,
+        data: [
+          {
+            ...detail.entry,
+            item: undefined,
+            fragment: {
+              offsetUtf8: 0,
+              nextOffsetUtf8: Buffer.byteLength(detail.raw),
+              totalBytes: Buffer.byteLength(detail.raw),
+              text: detail.raw,
+              version: "fixture-v1",
+            },
+          },
+        ],
+      };
+    const n = Number(params.cursor.split(":")[1]);
+    const value = turn(n);
+    return {
+      snapshotId,
+      data: value.items.map((item) => ({
+        sourceThreadId: threadId,
+        sourceTurnId: value.id,
+        sourceItemId: item.id,
+        sourceTurnStatus: value.status,
+        turn: { id: value.id, status: value.status, durationMs: value.durationMs },
+        item,
+      })),
+      nextCursor: n < 11 ? `page:${n + 1}` : null,
+      complete: n === 11,
+    };
+  };
+  const rpc = async (client, { method, params }) => {
+    if (method === "shell.subscribe")
+      return {
+        ...client.identity,
+        sequence: 0,
+        subscriptionId: "reading-shell",
+        snapshot: {
+          projects: [
+            {
+              projectId,
+              projectless: false,
+              workspace: "/isolated/reading",
+              state: "ready",
+              serviceGeneration: generation,
+              summaries: {
+                state: "fresh",
+                items: [{ id: threadId, name: "Reading fixture", desktop: { archived: false } }],
+              },
+              attention: { state: "unknown" },
+            },
+          ],
+          navigation: [],
+        },
+      };
+    if (method === "session.open" && params.threadId === threadId) {
+      client.session = {
+        ...client.identity,
+        projectId,
+        serviceGeneration: generation,
+        subscriptionId: crypto.randomUUID(),
+        threadId,
+        view: "conversation",
+      };
+      client.sequence = 0;
+      return { ...client.session, sequence: client.sequence, snapshot: observation };
+    }
+    if (
+      method === "session.history" &&
+      client.session?.subscriptionId === params.subscriptionId &&
+      params.threadId === threadId &&
+      params.view === "own"
+    ) {
+      const owner = { ...client.session, sequence: client.sequence };
+      return { ...owner, page: await history(params) };
+    }
+    if (
+      method === "subscription.close" &&
+      client.session?.subscriptionId === params.subscriptionId
+    ) {
+      client.session = undefined;
+      return { closed: true };
+    }
+    throw Error(`Unexpected fixture request ${method}`);
+  };
   const vite = await createServer({
     root: join(gui, "renderer"),
     configFile: join(gui, "renderer/vite.config.ts"),
     mode: "design-system",
     optimizeDeps: {
-      include: Object.keys(workbench.exports).map((path) => `@areal/workbench${path.slice(1)}`),
+      entries: ["test-fixtures/conversation-reading.tsx"],
+      include: ["@areal/workbench/history-projection"],
     },
     server: { host: "127.0.0.1", port: 0 },
     plugins: [
@@ -241,14 +286,12 @@ export async function createReadingFixture({ deferredTools = false } = {}) {
                 "Content-Type": "text/event-stream",
                 "Cache-Control": "no-cache",
               });
-              const socket = { readyState: 1, historyViews: new Map() };
-              clients.set(clientId, { response, socket });
-              response.write(`data: ${JSON.stringify(snapshot())}\n\n`);
-              request.on("close", () => {
-                socket.readyState = 3;
-                clients.delete(clientId);
-                DesktopService.prototype.releaseHistoryViews.call(historyService, socket);
+              clients.set(clientId, {
+                response,
+                identity: { connectionId: clientId, gatewayGeneration: "reading-gateway" },
               });
+              publish();
+              request.on("close", () => clients.delete(clientId));
               return;
             }
             if (!path.startsWith("/__reading/")) return next();
@@ -261,28 +304,21 @@ export async function createReadingFixture({ deferredTools = false } = {}) {
               let body = "";
               for await (const chunk of request) body += chunk;
               const input = JSON.parse(body || "{}");
-              if (path === "/__reading/history") {
-                validateCommand("history", { ...input, projectId: project.id });
+              if (path === "/__reading/host") {
                 const client = clients.get(request.headers["x-reading-client"]);
                 if (!client) throw Error("Reading client is disconnected");
-                const result = await DesktopService.prototype.historyCommand.call(
-                  historyService,
-                  client.socket,
-                  input,
-                );
-                validateCommandResponse("history", input, result);
-                response.end(JSON.stringify(result));
+                response.end(JSON.stringify(await rpc(client, input)));
                 return;
               }
-              if (input.operation === "reobserve") backend.installObservation(project, initial);
-              else if (input.operation === "delta")
-                model.event("item/agentMessage/delta", {
-                  threadId: "reading-thread",
-                  turnId: "live",
-                  itemId: "live-answer",
-                  delta: " More live output.",
-                });
-              else if (input.operation === "hold") hold = true;
+              if (input.operation === "reobserve") {
+                const next = structuredClone(initial.history);
+                next.snapshotId = `reading-snapshot-${++observationRevision}`;
+                observation = { ...observation, history: next };
+                publishObservation();
+              } else if (input.operation === "delta") {
+                observation.thread.turns.at(-1).items.at(-1).text += " More live output.";
+                publishObservation();
+              } else if (input.operation === "hold") hold = true;
               else if (input.operation === "release") {
                 hold = false;
                 for (const entry of held.splice(0)) entry.resolve();
@@ -303,7 +339,6 @@ export async function createReadingFixture({ deferredTools = false } = {}) {
     url: `http://127.0.0.1:${vite.httpServer.address().port}/__reading.html`,
     close: async () => {
       for (const entry of held.splice(0)) entry.resolve();
-      unsubscribe();
       for (const { response } of clients.values()) response.end();
       await vite.close();
     },
