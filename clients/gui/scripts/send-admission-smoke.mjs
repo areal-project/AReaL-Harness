@@ -4,14 +4,21 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { applicationFixture } from "./application-fixture.mjs";
-import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
-import { randomUUID } from "node:crypto";
+import {
+  assertApplicationStopped,
+  closeSmokeApplication,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
+  stopFixtureHost,
+} from "./application-cleanup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
+import { withSmokeDeadline } from "./smoke-deadline.mjs";
 import { captureSmokeFailure } from "./smoke-navigation.mjs";
+import { openProjectInDesktop, sendReady } from "./support/journey-fixture.mjs";
+import { readCoreThread, withCore } from "./support/core-observation.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
@@ -19,16 +26,16 @@ const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
 const binary = process.env.AREAL_CORE_BIN;
 const failList = process.env.AREAL_SEND_LIST_FAILURE === "1";
-const beforeCreate = process.env.AREAL_SEND_LIST_BEFORE_CREATE === "1";
 assert.ok(binary && isAbsolute(binary), "Set AREAL_CORE_BIN to an absolute fixed Core binary");
 const scratch = await makeTempDir("send-admission-");
-const workspace = join(scratch, "workspace");
-await mkdir(workspace);
+const workspace = join(scratch, "demo");
+await Promise.all([mkdir(workspace), mkdir(join(scratch, "user"))]);
 execFileSync("git", ["init", "-b", "main"], { cwd: workspace, stdio: "ignore" });
 const env = { ...process.env };
 for (const key of Object.keys(env))
   if (/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) || key === "ELECTRON_RUN_AS_NODE") delete env[key];
 Object.assign(env, {
+  HOME: join(scratch, "user"),
   AREAL_CORE_BIN: binary,
   AREAL_CORE_CONFIG: join(scratch, "config.toml"),
   AREAL_CORE_HOME: join(scratch, "core"),
@@ -59,74 +66,82 @@ const server = createServer(async (request, response) => {
     response.destroy();
   }
 });
-const tracePath = join(scratch, "boundary-trace.jsonl");
-const listGate = join(scratch, "conversation-list.gate");
-const submissionGate = join(scratch, "submission.gate");
-const submissionEntered = join(scratch, "submission-entered.json");
-const bootstrap = `
-const { CoreBackend } = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
-const { appendFileSync, existsSync, readFileSync, writeFileSync } = require('node:fs');
-let sequence = 0;
-const record = value => appendFileSync(${JSON.stringify(tracePath)}, JSON.stringify({ sequence: ++sequence, at: Date.now(), ...value }) + '\\n');
-const execute = CoreBackend.prototype.dispatchCommand;
-CoreBackend.prototype.dispatchCommand = async function(invocation, ...args) {
-  const { name, request: params } = invocation;
-  const gate = existsSync(${JSON.stringify(submissionGate)}) ? JSON.parse(readFileSync(${JSON.stringify(submissionGate)}, 'utf8')) : null;
-  if (gate?.name === name) {
-    writeFileSync(${JSON.stringify(submissionEntered)}, JSON.stringify({ name }));
-    const deadline = Date.now() + 30000;
-    while (existsSync(${JSON.stringify(submissionGate)})) {
-      if (Date.now() > deadline) throw new Error('Fixture submission gate was not released');
-      await new Promise(resolve => setTimeout(resolve, 10));
+const trace = [];
+const commands = [];
+const errorReply = (id, code, message) =>
+  JSON.stringify({ version: 1, id, error: { code, message } });
+let holdDirectory = false;
+let directory;
+let gate;
+
+// 只拦截本次明确选择的 Host 帧，不记录握手票据，也不在清理时释放未派发的写入。
+function proxyHostSocket(socket) {
+  const remote = socket.connectToServer();
+  const replies = new Map();
+  const disconnect = () => void Promise.allSettled([socket.close(), remote.close()]);
+  socket.onMessage((message) => {
+    const frame = JSON.parse(message.toString());
+    const { id, method, commandId, params, context } = frame;
+    if (method === "shell.subscribe" && holdDirectory && !directory) {
+      const held = { id };
+      directory = held;
+      replies.set(id, (reply, bytes) => {
+        held.received = !reply.error;
+        trace.push({ method, id, phase: "held", result: held.received ? "ready" : "error" });
+        held.release = () => {
+          held.released = true;
+          socket.send(
+            failList ? errorReply(id, "CORE_UNAVAILABLE", "Fixture directory read failed") : bytes,
+          );
+        };
+      });
     }
-    if (gate.mode === 'reject') throw new Error('Fixture rejected message before dispatch');
-    if (gate.mode === 'unknown') throw Object.assign(new Error('Fixture submission result unknown'), {
-      submissionUnknown: true, requestId: gate.requestId, code: 'UNKNOWN',
+    if (method !== "session.create" && method !== "session.send") {
+      remote.send(message);
+      return;
+    }
+    const command = { id, method, commandId, params, context };
+    commands.push(command);
+    const selected = gate?.method === method && !gate.command ? gate : undefined;
+    replies.set(id, (reply, bytes) => {
+      command.result = reply.result;
+      command.error = reply.error;
+      if (selected && method === "session.create" && reply.result?.admissionState === "accepted")
+        holdDirectory = true;
+      if (
+        selected?.mode === "lost-after-acceptance" &&
+        reply.result?.admissionState === "accepted"
+      ) {
+        selected.dropped = true;
+        disconnect();
+      } else socket.send(bytes);
     });
-  }
-  const project = this.projects.get(params?.projectId);
-  if (name === 'create' && project?.client && !project.client.__sendAdmissionTrace) {
-    record({ boundary: 'createCommand', mode: params.worktree?.mode ?? 'source', requestId: params.requestId });
-    const client = project.client;
-    client.__sendAdmissionTrace = true;
-    const request = client.request.bind(client);
-    let admitted = false, held = false;
-    client.request = async function(method, ...args) {
-      const id = ++sequence;
-      record({ boundary: 'rpc', phase: 'start', id, method });
-      try {
-        const value = await request(method, ...args);
-        if (!held && method === 'areal/conversation/list' && (${JSON.stringify(beforeCreate)} || admitted)) {
-          held = true;
-          record({ boundary: 'listGate', phase: 'held', method, admitted, responseReady: true });
-          const deadline = Date.now() + 60000;
-          while (existsSync(${JSON.stringify(listGate)})) {
-            if (Date.now() > deadline) throw new Error('Fixture conversation-list gate was not released');
-            await new Promise(resolve => setTimeout(resolve, 10));
-          }
-          record({ boundary: 'listGate', phase: 'released', method });
-          if (${JSON.stringify(failList)}) throw new Error('Fixture conversation-list failure');
-        }
-        if (method === 'areal/thread/start') {
-          admitted = true;
-          record({ boundary: 'threadAdmission', phase: 'accepted', method, requestId: args[0]?.requestId });
-        }
-        record({ boundary: 'rpc', phase: 'finish', id, method, ok: true });
-        return value;
-      } catch (error) {
-        record({ boundary: 'rpc', phase: 'finish', id, method, ok: false, code: error.code });
-        throw error;
-      }
+    if (!selected) {
+      remote.send(message);
+      return;
+    }
+    selected.command = command;
+    selected.release = () => {
+      if (selected.mode === "reject") {
+        selected.rejected = true;
+        socket.send(errorReply(id, "FORBIDDEN", "Fixture rejected send before dispatch"));
+      } else if (selected.mode === "unknown") {
+        selected.dropped = true;
+        disconnect();
+      } else remote.send(message);
     };
-  }
-  const result = await execute.call(this, invocation, ...args);
-  if (gate?.mode === 'lost-after-acceptance' && gate.name === name) {
-    record({ boundary: 'lostAfterAcceptance', phase: 'accepted', requestId: params.requestId, result });
-    throw Object.assign(new Error('Fixture lost accepted receipt'), { submissionUnknown: true, requestId: params.requestId, code: 'UNKNOWN' });
-  }
-  return result;
-};
-`;
+  });
+  remote.onMessage((bytes) => {
+    const reply = JSON.parse(bytes.toString());
+    const handle = replies.get(reply.id);
+    if (!handle) socket.send(bytes);
+    else {
+      replies.delete(reply.id);
+      handle(reply, bytes);
+    }
+  });
+}
+
 const hash = async () =>
   createHash("sha256")
     .update(await readFile(binary))
@@ -136,497 +151,336 @@ const source = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding:
 const guiDiffHash = createHash("sha256")
   .update(execFileSync("git", ["diff", "HEAD", "--", "clients/gui"], { cwd: root }))
   .digest("hex");
-let application,
-  app,
-  page,
-  metadata,
-  passed = false,
-  failure,
-  cleanup,
-  heldObservation,
-  createPreviewFailure;
-const snapshot = () => page.evaluate(() => window.arealDesktop.snapshot());
-const project = (value) => value.projects.find((item) => item.root === workspace);
-const trace = async () =>
-  (
-    await readFile(tracePath, "utf8").catch((error) => {
-      if (error.code === "ENOENT") return "";
-      throw error;
-    })
-  )
-    .split("\n")
-    .filter(Boolean)
-    .map(JSON.parse);
-const until = async (read, label, timeout = 45000) => {
+let app, page, originalHost, electronPid, stopReceipt, failure;
+let passed = false;
+async function until(read, label, timeout = 25000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     const value = await read();
     if (value) return value;
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 40));
   }
-  throw Error(`Timeout: ${label}`);
-};
-const editorText = () => page.getByTestId("chat-input").innerText();
-const capture = async (name) => {
-  await page.screenshot({ path: join(scratch, `${name}.png`) });
-  await writeFile(
-    join(scratch, `${name}.json`),
-    JSON.stringify(
-      {
-        snapshot: await snapshot(),
-        editorText: await editorText(),
-        modelRequests: requests.length,
-        trace: await trace(),
-      },
-      null,
-      2,
-    ),
+  throw new Error(`Timeout: ${label}`);
+}
+
+const editorText = async () =>
+  (await page.getByTestId("chat-input").innerText()).replaceAll("\u200b", "").trim();
+const capture = (name) => page.screenshot({ path: join(scratch, `${name}.png`) });
+async function readJournal(projectId) {
+  const { HostClient } = require("@areal/client/node");
+  const client = new HostClient();
+  try {
+    await client.connect(env.AREAL_HARNESS_SERVICE_HOME);
+    assert.equal(client.hostId, originalHost.hostId);
+    assert.equal(client.generation, originalHost.generation);
+    return (await client.journal(projectId).read()).snapshot;
+  } finally {
+    client.close();
+  }
+}
+async function accepted(command) {
+  const result = await until(
+    () => command.result || command.error,
+    `${command.method} original reply`,
   );
-};
+  assert.equal(result.admissionState, "accepted");
+  assert.equal(result.commandId, command.commandId);
+  assert.ok(result.operationId);
+  if (command.method === "session.send") {
+    const journal = await readJournal(command.context.projectId);
+    const durable = journal.outcomes[result.operationId];
+    assert.equal(durable?.remote?.commandId, command.commandId);
+    assert.equal(durable.admissionState, "accepted");
+  }
+  return result;
+}
+
 console.log("Send admission evidence:", scratch);
 try {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   await writeFile(
     env.AREAL_CORE_CONFIG,
-    `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\n`,
+    `schema_version=1\n[model]\ncatalog_version=1\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\nmodels=[{id="fixture",enabled=true}]\n`,
   );
-  await writeFile(listGate, "held");
-  application = await applicationFixture(gui, join(scratch, "app"), bootstrap);
   app = await electron.launch({
     executablePath: require("electron"),
-    args: [application.path],
+    args: [
+      ...(process.getuid?.() === 0 ? ["--no-sandbox"] : []),
+      join(gui, "app"),
+      ...(process.platform === "darwin" ? ["-ApplePersistenceIgnoreState", "YES"] : []),
+    ],
     env,
     timeout: 120000,
   });
-  app.process().stderr.on("data", (chunk) => {
-    void writeFile(join(scratch, "electron.log"), chunk, { flag: "a" });
-  });
+  electronPid = app.process().pid;
   page = await app.firstWindow();
   page.setDefaultTimeout(20000);
   page.on("pageerror", (error) => errors.push(error.stack));
-  await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
-  await until(async () => (await snapshot()).connection?.state === "ready", "Desktop ready");
-  metadata = await readFile(join(env.AREAL_CORE_HOME, "service.json"), "utf8")
-    .then(JSON.parse)
-    .catch((error) => {
-      if (error.code === "ENOENT") return null;
-      throw error;
-    });
-  await app.evaluate(({ dialog }, path) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
-  }, workspace);
-  await page.getByRole("button", { name: "不在项目中工作", exact: true }).click();
-  await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
-  await until(
-    async () =>
-      project(await snapshot())?.state?.connected && project(await snapshot())?.summariesLoaded,
-    "Project and navigation summaries ready",
-  );
+  const ready = page.locator('[data-testid="areal-workbench"][data-startup-ready="true"]');
+  await ready.waitFor({ timeout: 120000 });
+  originalHost = await until(async () => {
+    const descriptor = await readFixtureHost(env);
+    return descriptor?.pid > 1 ? descriptor : false;
+  }, "Isolated Host identity published");
+  await page.routeWebSocket(/\/host\/socket$/, proxyHostSocket);
   await page.evaluate(() =>
     localStorage.setItem(
       "areal-gui:application-preferences",
-      JSON.stringify({ nextPromptSuggestions: false }),
+      JSON.stringify({
+        locale: "zh-CN",
+        nextPromptSuggestions: false,
+      }),
     ),
   );
-  await page.reload();
-  await until(
-    async () =>
-      (await snapshot()).connection?.state === "ready" &&
-      project(await snapshot())?.state?.connected,
-    "Reloaded isolated preferences",
-  );
-  await writeFile(submissionGate, JSON.stringify({ name: "create" }));
-  await page.getByTestId("chat-input").fill(originalText);
-  await page.getByTestId("chat-send-button").click();
-  await until(() => readFile(submissionEntered, "utf8").catch(() => false), "Create dispatch held");
-  await page.getByTestId("pending-message").waitFor();
-  assert.equal((await editorText()).trim(), "", "Composer clears before thread creation returns");
-  try {
-    assert.equal(
-      await page.getByTestId("pending-message").locator(".user-bubble").innerText(),
-      originalText,
-    );
-  } catch (error) {
-    createPreviewFailure = error.stack;
-    await capture("create-preview-failure");
-  }
-  assert.match(
-    await page.getByTestId("pending-message").getByRole("status").innerText(),
-    /正在启动聊天|Starting your chat/,
-  );
-  assert.equal(requests.length, 0, "Local preview never claims model admission");
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await ready.waitFor();
+  await openProjectInDesktop(app, page, workspace);
+  await page.getByRole("button", { name: "选择模型", exact: true }).click();
+  await page.getByRole("radio", { name: "fixture", exact: true }).click();
+  const workbench = page.getByTestId("areal-workbench");
+  const input = page.getByTestId("chat-input");
+  const send = page.getByTestId("chat-send-button");
+  const preview = page.getByTestId("pending-message");
+  const userBubble = (text) => page.locator(".user-message-body").filter({ hasText: text });
+  gate = { method: "session.create" };
+  await input.fill(originalText);
+  await sendReady(page);
+  await send.click();
+  const create = await until(() => gate.command, "Original session.create intercepted");
+  await preview.waitFor();
+  assert.equal(await editorText(), "");
+  assert.equal(await preview.locator(".user-bubble").innerText(), originalText);
+  assert.match(await preview.getByRole("status").innerText(), /正在启动聊天|Starting your chat/);
+  assert.equal(requests.length, 0);
   await capture("create-pending");
-  if (!createPreviewFailure) {
-    checks.push(
-      "New-chat content moves to the transcript before real create dispatch; starting status is visible",
-    );
-  }
-  await rm(submissionGate);
-  await until(
-    async () =>
-      (await trace()).some((item) => item.boundary === "listGate" && item.phase === "held"),
-    "Conversation-list response held",
-  );
-  try {
-    await until(
-      async () => {
-        const current = project(await snapshot());
-        const user = Object.values(current?.state?.threads ?? {})
-          .flatMap((thread) => thread.turns ?? [])
-          .flatMap((turn) => turn.items ?? [])
-          .find(
-            (item) =>
-              item.type === "userMessage" &&
-              item.content?.some((part) => part.text === originalText),
-          );
-        const visible = await page.locator(".user-message-body").allTextContents();
-        return (
-          requests.length === 1 &&
-          (await editorText()).trim() === "" &&
-          user &&
-          visible.includes(originalText)
-        );
-      },
-      "First message admitted, visible and Composer cleared while list response is held",
-      10000,
-    );
-  } catch (error) {
-    failure = error.stack;
-  }
-  heldObservation = {
-    modelRequests: requests.length,
-    editorText: await editorText(),
-    admittedBeforeRelease: !failure,
-    trace: await trace(),
-  };
-  await capture("list-held");
-  console.log(
-    heldObservation.admittedBeforeRelease
-      ? "PASS: first message is visible and Composer clears while the conversation-list response is held"
-      : "FAIL: conversation-list response blocks the first message while its text remains in Composer",
-  );
-  await rm(listGate);
-  await until(async () => requests.length > 0, "Original message reaches model after list release");
-  await until(
-    async () => (await editorText()).trim() === "",
-    "Composer clears after send admission",
-  );
-  await until(
-    async () =>
-      Object.values(project(await snapshot())?.state?.threads ?? {}).some((thread) =>
-        thread.turns.some((turn) =>
-          turn.items.some(
-            (item) =>
-              item.type === "agentMessage" && item.text?.includes("SEND_ADMISSION_COMPLETE"),
-          ),
-        ),
-      ),
-    "Reply completes",
-  );
-  await capture("after-release");
-  if (failList) {
-    await until(
+  gate.release();
+  const creation = await accepted(create);
+  const threadId = creation.threadId;
+  const readThread = () => readCoreThread({ binary, env, gui, workspace, threadId });
+  async function completedTurn(result, text) {
+    assert.equal(result.threadId, threadId);
+    assert.ok(result.turnId);
+    const turn = await until(
       async () =>
-        Object.values(project(await snapshot())?.refreshErrors ?? {}).some(
-          (error) =>
-            error.scope === "threadList" &&
-            error.operation?.method === "areal/thread/start" &&
-            error.message.includes("Fixture conversation-list failure"),
+        (await readThread()).turns.find(
+          (value) =>
+            value.id === result.turnId &&
+            value.status === "completed" &&
+            value.items.some(
+              (item) =>
+                item.type === "userMessage" && item.content.some((part) => part.text === text),
+            ),
         ),
-      "Background list failure remains visible",
+      "Original Core Turn is completed",
     );
-    checks.push("Background list failure remains attached to the accepted create operation");
+    assert.ok(
+      turn.items.some(
+        (item) => item.type === "agentMessage" && item.text.includes("SEND_ADMISSION_COMPLETE"),
+      ),
+    );
+    await userBubble(text).waitFor();
+    assert.equal(await userBubble(text).count(), 1);
   }
-  assert.equal(requests.length, 1, "One UI submission reaches the model exactly once");
-  const messageText = (message) =>
-    typeof message.content === "string"
-      ? message.content
-      : (message.content ?? []).map((part) => part.text ?? "").join("\n");
-  const userMessages = requests[0].messages.filter(
-    (message) =>
-      message.role === "user" &&
-      !messageText(message).startsWith("AReaL runtime context (not a user request):"),
+  const projectId = create.context.projectId;
+  assert.equal(create.params.worktree?.mode ?? "source", "source");
+  assert.equal(creation.receipt.result.executionProjectId, projectId);
+  assert.equal(creation.nativeRequestId, create.commandId);
+  await withCore({ binary, env, gui, workspace, threadId }, async (client) => {
+    const { data } = await client.request("areal/request/read", { requestId: create.commandId });
+    assert.equal(data.length, 1);
+    assert.equal(data[0].requestId, create.commandId);
+    assert.equal(data[0].method, "areal/thread/start");
+    assert.equal(data[0].threadId, threadId);
+    assert.equal(data[0].status, "completed");
+    assert.equal(data[0].operation.target.threadId, threadId);
+  });
+  await until(() => directory?.received, "Post-create shell response is held");
+  const first = await until(
+    () => commands.find((item) => item.method === "session.send"),
+    "First send while the directory response is still held",
   );
-  assert.equal(userMessages.length, 1, "The fixture receives one user message");
-  assert.equal(
-    messageText(userMessages[0]),
-    originalText,
-    "The exact original text reaches the model",
-  );
-  assert.equal(
-    (await trace()).filter((item) => item.boundary === "threadAdmission").length,
-    1,
-    "Delayed observation never replays thread creation",
-  );
-  const create = (await trace()).filter((item) => item.boundary === "createCommand");
-  assert.equal(create.length, 1, "One Send issues one create command");
-  assert.equal(
-    create[0].mode,
-    "source",
-    "Fresh drafts use the source directory unless the user opts into a worktree",
-  );
-  assert.equal(
-    (await trace()).find((item) => item.boundary === "threadAdmission")?.requestId,
-    create[0].requestId,
-    "Core accepts the original creation request UUID once",
-  );
-  const finalProject = project(await snapshot());
-  const binding = finalProject.worktreeOperations?.find(
-    (item) => item.requestId === create[0].requestId,
-  );
-  assert.equal(binding?.usesSource, true, "Source-mode send retains its source-directory binding");
-  assert.equal(
-    binding?.state,
-    "ready",
-    "Source-mode send completes its existing creation lifecycle",
-  );
-  assert.deepEqual(errors, [], "No renderer or fixture errors");
-  checks.push("Releasing the list delivers the exact original text once and completes a reply");
-  assert.equal(
-    heldObservation.admittedBeforeRelease,
-    true,
-    "Conversation-list responses must not block fresh source-mode message admission",
-  );
+  assert.equal(first.params.text, originalText);
+  assert.equal(first.context.projectId, projectId);
+  await completedTurn(await accepted(first), originalText);
+  assert.equal(directory.released, undefined);
+  assert.equal(await editorText(), "");
+  assert.equal(await workbench.getAttribute("data-thread-id"), threadId);
+  assert.equal(requests.length, 1);
+  assert.equal(commands.filter((item) => item.method === "session.create").length, 1);
+  const userMessages = requests[0].messages
+    .filter((message) => message.role === "user")
+    .map(({ content }) =>
+      typeof content === "string" ? content : content.map((part) => part.text).join("\n"),
+    )
+    .filter((text) => !text.startsWith("AReaL runtime context (not a user request):"));
+  assert.deepEqual(userMessages, [originalText]);
+  await capture("directory-held");
+  directory.release();
+  holdDirectory = false;
   checks.push(
-    "An accepted create permits the first message and clears Composer while the list refresh is held",
+    "Original source creation and first send settle once in Host and Core while the post-create shell response is held",
   );
-  const threadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
-  const draftKey = `areal-gui:draft:${finalProject.id}:${threadId}`;
-  const requestId = "5594d99b-13a1-4ad8-8685-ef43a6580684";
+
+  const draftKey = `areal-gui:draft:${await workbench.getAttribute("data-project-id")}:${threadId}`;
+  const draft = (suffix = "") =>
+    page.evaluate((key) => localStorage.getItem(key), draftKey + suffix);
   for (const mode of ["lost-after-acceptance", "pass", "reject", "unknown"]) {
     const text = `Submission feedback ${mode}`;
     const count = requests.length;
-    await rm(submissionEntered, { force: true });
-    await writeFile(submissionGate, JSON.stringify({ name: "send", mode, requestId }));
-    await page.getByTestId("chat-input").fill(text);
+    gate = { method: "session.send", mode };
+    await input.fill(text);
     await page.locator("input[type=file]").setInputFiles({
       name: "message.txt",
       mimeType: "text/plain",
       buffer: Buffer.from("retained attachment"),
     });
-    await page.getByTestId("chat-send-button").click();
-    await until(() => readFile(submissionEntered, "utf8").catch(() => false), "Send dispatch held");
-    const preview = page.getByTestId("pending-message");
+    await send.click();
+    const command = await until(() => gate.command, `Original send held: ${mode}`);
+    assert.equal(command.params.text, text);
+    assert.equal(command.params.threadId, threadId);
+    assert.ok(command.params.attachments?.length);
     await preview.waitFor();
-    assert.equal((await editorText()).trim(), "", "In-flight Composer is empty before acceptance");
-    assert.equal(await preview.locator(".user-bubble").innerText(), text);
+    assert.equal(await editorText(), "");
     assert.match(await preview.innerText(), /message.txt/);
-    assert.equal(
-      await page.getByTestId("composer-attachments").isVisible(),
-      false,
-      "Attachments move out of Composer during submission",
-    );
-    assert.equal(
-      await page.evaluate((key) => localStorage.getItem(key), draftKey),
-      text,
-      "Recovery draft survives local presentation",
-    );
-    assert.equal(requests.length, count, "Held command cannot reach the model");
-    await page.getByTestId("chat-input").press("Enter");
+    assert.match(await preview.locator(".user-bubble").innerText(), new RegExp(text));
+    assert.equal(await page.getByTestId("composer-attachments").isVisible(), false);
+    assert.equal(await draft(), text);
+    assert.equal(requests.length, count);
+    await input.press("Enter");
     await capture(`send-pending-${mode}`);
-    await rm(submissionGate);
+    gate.release();
     await preview.waitFor({ state: "detached" });
-    if (mode === "pass") {
-      await until(
-        async () =>
-          requests.length === count + 1 &&
-          project(await snapshot()).state.threads[threadId].turns.at(-1)?.status === "completed",
-        "Delayed send completes exactly once",
-      );
-      assert.equal((await editorText()).trim(), "");
-      assert.equal(
-        await page.locator(".user-message-body").filter({ hasText: text }).count(),
-        1,
-        "Core history replaces the local preview without duplication",
-      );
-      await page.getByTestId("chat-input").focus();
-      await app.evaluate(async ({ BrowserWindow }) => {
-        const debug = BrowserWindow.getAllWindows()[0].webContents.debugger;
-        debug.attach("1.3");
-        await debug.sendCommand("Input.imeSetComposition", {
-          text: "你好",
-          selectionStart: 2,
-          selectionEnd: 2,
-        });
-      });
-      try {
-        await page.waitForFunction(
-          () =>
-            document
-              .querySelector('[data-testid="chat-input"]')
-              .textContent.replaceAll("\u200b", "") === "你好",
-        );
-        assert.equal(
-          await page.evaluate((key) => localStorage.getItem(key), draftKey),
-          null,
-          "Uncommitted input after send stays out of recovery storage",
-        );
-        await app.evaluate(async ({ BrowserWindow }) =>
-          BrowserWindow.getAllWindows()[0].webContents.debugger.sendCommand("Input.insertText", {
-            text: "你好",
-          }),
-        );
-        await page.waitForFunction((key) => localStorage.getItem(key) === "你好", draftKey);
-        assert.equal(
-          requests.length,
-          count + 1,
-          "Committing an input-method candidate never sends it",
-        );
-        checks.push(
-          "After send, native Chromium composition remains local until commitment and never triggers submission",
-        );
-      } finally {
-        await app.evaluate(({ BrowserWindow }) =>
-          BrowserWindow.getAllWindows()[0].webContents.debugger.detach(),
-        );
-      }
-    } else if (mode === "lost-after-acceptance") {
-      await until(
-        async () => requests.length === count + 1,
-        "Accepted message reaches provider exactly once",
-      );
-      await until(
-        async () =>
-          (await trace()).some(
-            (event) => event.boundary === "lostAfterAcceptance" && event.phase === "accepted",
-          ),
-        "Accepted result recorded before loss",
-      );
-      const accepted = (await trace()).findLast(
-        (event) => event.boundary === "lostAfterAcceptance" && event.phase === "accepted",
-      );
-      assert.ok(accepted.requestId, "Accepted request ID is recorded before receipt loss");
-      await until(
-        async () =>
-          project(await snapshot()).state.threads[threadId].turns.some(
-            (turn) =>
-              turn.status === "completed" &&
-              turn.items.some(
-                (item) =>
-                  item.type === "userMessage" && item.content.some((part) => part.text === text),
-              ),
-          ),
-        "Accepted turn appears in authoritative snapshot",
-      );
-      await writeFile(
-        join(scratch, "lost-after-acceptance-snapshot.json"),
-        JSON.stringify(await snapshot(), null, 2),
-      );
-      await capture("send-lost-after-acceptance");
-      await page.reload();
-      await page.getByTestId("chat-input").waitFor();
-      await until(async () => {
-        const visible = await page.locator(".user-message-body").filter({ hasText: text }).count();
-        const draft = (await editorText()).trim();
-        const sendDisabled = await page.getByTestId("chat-send-button").isDisabled();
-        return visible === 1 && (draft !== text || sendDisabled);
-      }, "Accepted history is visible and the recovered draft cannot be submitted again");
-      assert.equal(requests.length, count + 1, "Reload does not duplicate accepted request");
-      assert.equal(
-        await page.locator(".user-message-body").filter({ hasText: text }).count(),
-        1,
-        "Accepted history contains one user message",
-      );
-    } else {
-      await until(
-        async () => (await editorText()).trim() === text,
-        "Rejected or unknown content restored",
-      );
-      assert.equal(
-        await page.getByTestId("composer-attachments").isVisible(),
-        true,
-        "Unaccepted attachments are restored",
-      );
-      assert.equal(requests.length, count, "Failure never resends automatically");
-      await capture(`send-restored-${mode}`);
-      if (mode === "unknown") {
-        assert.equal(
-          await page.evaluate((key) => localStorage.getItem(`${key}:pending`), draftKey),
-          requestId,
-          "Original unknown request is retained for reconciliation",
-        );
+
+    if (mode === "pass" || mode === "lost-after-acceptance") {
+      await completedTurn(await accepted(command), text);
+      assert.equal(requests.length, count + 1);
+      if (mode === "lost-after-acceptance") {
+        assert.equal(gate.dropped, true);
         await page.reload();
-        await page.getByTestId("chat-input").waitFor();
+        await input.waitFor();
+        await userBubble(text).waitFor();
         await until(
-          async () => (await editorText()).trim() === text,
-          "Unknown draft survives renderer reload",
+          async () => (await editorText()) !== text || (await send.isDisabled()),
+          "Accepted text cannot be resubmitted after reload",
         );
-        assert.equal(requests.length, count, "Reload does not replay the unknown request");
-        assert.equal(
-          await page.getByTestId("chat-send-button").isDisabled(),
-          true,
-          "Unknown receipt blocks duplicate submission",
-        );
+        assert.equal(await userBubble(text).count(), 1);
+      } else {
+        assert.equal(await editorText(), "");
+        await page.getByTestId("chat-input").focus();
+        await app.evaluate(async ({ BrowserWindow }) => {
+          const debug = BrowserWindow.getAllWindows()[0].webContents.debugger;
+          debug.attach("1.3");
+          await debug.sendCommand("Input.imeSetComposition", {
+            text: "你好",
+            selectionStart: 2,
+            selectionEnd: 2,
+          });
+        });
+        try {
+          await page.waitForFunction(
+            () =>
+              document
+                .querySelector('[data-testid="chat-input"]')
+                .textContent.replaceAll("\u200b", "") === "你好",
+          );
+          assert.equal(
+            await page.evaluate((key) => localStorage.getItem(key), draftKey),
+            null,
+            "Uncommitted input after send stays out of recovery storage",
+          );
+          await app.evaluate(async ({ BrowserWindow }) =>
+            BrowserWindow.getAllWindows()[0].webContents.debugger.sendCommand("Input.insertText", {
+              text: "你好",
+            }),
+          );
+          await page.waitForFunction((key) => localStorage.getItem(key) === "你好", draftKey);
+          assert.equal(
+            requests.length,
+            count + 1,
+            "Committing an input-method candidate never sends it",
+          );
+          checks.push(
+            "After send, native Chromium composition remains local until commitment and never triggers submission",
+          );
+        } finally {
+          await app.evaluate(({ BrowserWindow }) =>
+            BrowserWindow.getAllWindows()[0].webContents.debugger.detach(),
+          );
+        }
+      }
+    } else {
+      assert.equal(mode === "reject" ? gate.rejected : gate.dropped, true);
+      await until(async () => (await editorText()) === text, "Original unaccepted draft restored");
+      assert.equal(await page.getByTestId("composer-attachments").isVisible(), true);
+      const journal = await readJournal(projectId);
+      assert.ok(
+        ![...journal.pending, ...Object.values(journal.outcomes)].some(
+          (row) => row.remote?.commandId === command.commandId,
+        ),
+      );
+      if (mode === "unknown") {
+        assert.equal(await draft(":pending"), command.commandId);
+        await page.reload();
+        await input.waitFor();
+        await until(async () => (await editorText()) === text, "UNKNOWN draft survives reload");
+        assert.equal(await draft(":pending"), command.commandId);
+        assert.equal(await send.isDisabled(), true);
       }
     }
+    assert.equal(
+      commands.filter((item) => item.method === "session.send" && item.params.text === text).length,
+      1,
+    );
+    assert.equal(
+      requests.length,
+      count + (["pass", "lost-after-acceptance"].includes(mode) ? 1 : 0),
+    );
     checks.push(
-      `Delayed existing-chat ${mode}: text and attachment preview, empty Composer, no duplicate dispatch, ${mode === "pass" ? "Core handoff" : mode === "lost-after-acceptance" ? "accepted history survives reload without resubmission" : "draft restoration"}`,
+      `${mode}: original Host command identity, pending transcript, draft attachments and no replay`,
     );
   }
-  assert.deepEqual(errors, [], "No renderer or fixture errors after submission feedback checks");
-  if (createPreviewFailure) throw new Error(`First-message preview: ${createPreviewFailure}`);
+  assert.deepEqual(errors, []);
   passed = true;
 } catch (error) {
-  failure ??= error.stack;
-  console.error(error.message);
-  if (page) await captureSmokeFailure(page, scratch, error);
+  failure = error.stack;
+  console.error(failure);
+  if (page) await captureSmokeFailure(page, scratch, error).catch(() => {});
 } finally {
-  await rm(listGate, { force: true });
-  const descriptor = await readFile(
-    join(env.AREAL_HARNESS_SERVICE_HOME, "host", "host.json"),
-    "utf8",
-  )
-    .then(JSON.parse)
-    .catch((error) => {
-      if (error.code === "ENOENT") return null;
-      throw error;
-    });
-  if (descriptor) {
-    const { HostClient } = require("@areal/client/node");
-    const host = new HostClient();
+  // 显式结算本次 fixture 的 Host，不把空闲释放意图当成停止回执。
+  if (originalHost) {
     try {
-      await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
-      assert.equal(host.hostId, descriptor.hostId);
-      assert.equal(host.generation, descriptor.generation);
-      const receipt = await host.stop(randomUUID(), descriptor.generation, "cancel");
-      await writeFile(join(scratch, "host-stop.json"), JSON.stringify(receipt, null, 2));
-      assert.equal(receipt.state, "completed");
+      const descriptor = await readFixtureHost(env);
+      assert.equal(descriptor?.hostId, originalHost.hostId);
+      assert.equal(descriptor.generation, originalHost.generation);
+      stopReceipt = await stopFixtureHost(binary, env.AREAL_HARNESS_SERVICE_HOME, scratch);
+      assert.equal(stopReceipt?.state, "completed");
     } catch (error) {
-      failure ??= `Host stop: ${error.stack}`;
-      passed = false;
-    } finally {
-      host.close();
+      errors.push(`Host stop: ${error.message}`);
     }
   }
   if (app) {
-    await app
-      .evaluate(({ dialog }) => {
-        dialog.showMessageBox = async (...args) => ({
-          response: ["确认取消后台任务？", "退出 AReaL Harness？"].includes(args.at(-1).message)
-            ? 1
-            : (args.at(-1).cancelId ?? 0),
-        });
-      })
-      .catch(() => {});
-    await app.evaluate(({ app }) => app.quit()).catch(() => {});
+    await withSmokeDeadline("Electron quit preparation", () =>
+      app.evaluate(({ dialog }) => {
+        dialog.showMessageBox = async () => ({ response: 0 });
+      }),
+    ).catch((error) => errors.push(error.message));
     try {
-      await closeSmokeApplication(app);
+      await closeSmokeApplication(app, 60000);
     } catch (error) {
-      failure ??= error.stack;
-      passed = false;
+      errors.push(`Electron cleanup: ${error.message}`);
     }
   }
-  await application?.close();
   try {
-    await assertApplicationStopped(binary, env, metadata);
-    cleanup = "passed";
+    if (originalHost)
+      await assertApplicationStopped(binary, env, { pid: electronPid, hostPid: originalHost.pid });
+    else stopReceipt = await settleFixtureHostAfterQuit(binary, env, scratch, { pid: electronPid });
   } catch (error) {
-    cleanup = error.stack;
-    passed = false;
+    errors.push(`Host cleanup: ${error.message}`);
   }
   server.closeAllConnections();
   if (server.listening) await new Promise((resolve) => server.close(resolve));
   assert.equal(await hash(), coreHash, "Core binary stays unchanged");
+  passed &&= errors.length === 0;
   await writeFile(
     join(scratch, "manifest.json"),
     JSON.stringify(
@@ -636,17 +490,16 @@ try {
         guiDiffHash,
         binary,
         coreHash,
-        originalText,
         failList,
-        beforeCreate,
+        electronPid,
+        hostPid: originalHost?.pid,
+        stopRequestId: stopReceipt?.requestId,
         checks,
-        heldObservation,
-        createPreviewFailure,
+        trace,
+        commands,
+        modelRequests: requests.length,
         failure,
-        cleanup,
         errors,
-        boundaries:
-          "Source Electron and real Core. Deterministic loopback model. Filesystem barriers hold create/send dispatch and a real conversation-list response. Rejection and UNKNOWN are injected before send dispatch; lost-after-acceptance calls actual dispatch then discards its result; accepted sends use real Core/model requests. Native folder picker stubbed. Deadline controls fixture completion, not a latency benchmark. No packaged app or physical input.",
       },
       null,
       2,
