@@ -18,7 +18,12 @@ async function fixture() {
   });
   const guest = await identities.guest();
   await identities.remember(await identities.prepareRemember(guest), "host");
-  const ready = { hostId: "host", gatewayGeneration: "gateway", grantRevision: 1 };
+  const ready = {
+    hostId: "host",
+    gatewayGeneration: "gateway",
+    grantRevision: 1,
+    capabilities: ["submit"],
+  };
   const snapshot = {
     threadId: "thread",
     ownership: { kind: "ordinary" },
@@ -29,18 +34,31 @@ async function fixture() {
   };
   const requests = [],
     receipts = new Map();
+  const workspaceListeners = new Set();
+  const clientListeners = new Set();
+  let connectionState = { kind: "connected", ready };
   const workspace = {
     state: {
       page: { kind: "new", projectId: "project" },
       catalog: { serviceGeneration: "service" },
       detail: null,
     },
+    subscribe(listener) {
+      workspaceListeners.add(listener);
+      return () => workspaceListeners.delete(listener);
+    },
+    update(values) {
+      Object.assign(this.state, values);
+      for (const listener of workspaceListeners) listener();
+    },
     async activate() {
       return "service";
     },
     async navigate(page) {
-      this.state.page = page;
-      this.state.detail = { projectId: "project", serviceGeneration: "service", snapshot };
+      this.update({
+        page,
+        detail: { projectId: "project", serviceGeneration: "service", snapshot },
+      });
       requests.push({ method: "session.open" });
     },
     async refresh() {
@@ -50,8 +68,15 @@ async function fixture() {
   const client = {
     identities,
     connection: {},
-    subscribe: () => () => {},
-    snapshot: () => ({ kind: "connected", ready }),
+    subscribe(listener) {
+      clientListeners.add(listener);
+      return () => clientListeners.delete(listener);
+    },
+    snapshot: () => connectionState,
+    update(state) {
+      connectionState = state;
+      for (const listener of clientListeners) listener();
+    },
     remember: async () => identities.current(),
     async request(request) {
       requests.push(request);
@@ -66,8 +91,94 @@ async function fixture() {
     },
   };
   const commands = new MobileCommands(client, workspace);
-  return { client, workspace, commands, requests, receipts, snapshot, record: () => record };
+  return { client, workspace, commands, requests, receipts, snapshot, ready, record: () => record };
 }
+const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+for (const resume of ["same conversation", "another grant", "another conversation"]) {
+  test(`connection changes before dispatch: ${resume}`, async () => {
+    const f = await fixture();
+    await f.workspace.navigate({ kind: "session", projectId: "project", threadId: "thread" });
+    const saved = Promise.withResolvers();
+    const finishSave = Promise.withResolvers();
+    const persist = f.client.identities.persistLocator.bind(f.client.identities);
+    f.client.identities.persistLocator = async (...args) => {
+      await persist(...args);
+      saved.resolve();
+      await finishSave.promise;
+    };
+    f.commands.setDraft("project", "thread", "send after recovery");
+    const sending = f.commands.send();
+    await saved.promise;
+    f.workspace.update({ stale: true });
+    f.client.connection = null;
+    f.client.update({ kind: "offline", hostId: "host" });
+    await f.client.identities.restore();
+    f.client.connection = {};
+    f.client.update({
+      kind: "connected",
+      ready: {
+        ...f.ready,
+        gatewayGeneration: "new-gateway",
+        grantRevision: resume === "another grant" ? 2 : 1,
+      },
+    });
+    finishSave.resolve();
+    await sending;
+    await flush();
+    assert.equal(f.requests.filter((r) => r.method === "session.send").length, 0);
+    if (resume === "another conversation") {
+      f.workspace.update({ page: { kind: "session", projectId: "project", threadId: "other" } });
+    }
+    f.snapshot.configRevision = 5;
+    f.workspace.update({
+      stale: false,
+      detail: { ...f.workspace.state.detail, serviceGeneration: "new-service" },
+    });
+    await flush();
+    const sends = f.requests.filter((r) => r.method === "session.send");
+    assert.equal(sends.length, resume === "same conversation" ? 1 : 0);
+    assert.equal(f.requests.filter((r) => r.method === "command.read").length, 0);
+    if (resume === "same conversation") {
+      assert.equal(sends[0].params.text, "send after recovery");
+      assert.equal(sends[0].params.expectedConfigRevision, 5);
+      assert.equal(sends[0].context.serviceGeneration, "new-service");
+      assert.equal(sends[0].context.gatewayGeneration, "new-gateway");
+    } else assert.equal(f.commands.draft("project", "thread"), "send after recovery");
+    assert.deepEqual(f.record().locators, []);
+  });
+}
+
+test("connection lost after dispatch checks the original command before accepting, without resending", async () => {
+  const f = await fixture();
+  await f.workspace.navigate({ kind: "session", projectId: "project", threadId: "thread" });
+  const request = f.client.request;
+  f.client.request = async (envelope) => {
+    const result = await request(envelope);
+    if (envelope.method === "session.send") {
+      f.workspace.update({ stale: true });
+      f.client.connection = null;
+      f.client.update({ kind: "offline", hostId: "host" });
+      throw new Error("lost response");
+    }
+    return result;
+  };
+  f.commands.setDraft("project", "thread", "never replay");
+  await f.commands.send();
+  assert.equal(f.record().locators.length, 1);
+  await f.client.identities.restore();
+  f.client.connection = {};
+  f.client.update({ kind: "connected", ready: f.ready });
+  f.workspace.update({ stale: false });
+  await flush();
+  const [, sent, checked, ...more] = f.requests;
+  assert.equal(sent.method, "session.send");
+  assert.equal(checked.method, "command.read");
+  assert.equal(checked.params.commandId, sent.commandId);
+  assert.deepEqual(more, []);
+  assert.deepEqual(f.record().locators, []);
+  assert.equal(f.commands.draft("project", "thread"), "");
+});
 test("keeps the draft while the conversation is stale and sends only after a fresh read", async () => {
   const f = await fixture();
   await f.workspace.navigate({ kind: "session", projectId: "project", threadId: "thread" });

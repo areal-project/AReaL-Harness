@@ -306,6 +306,10 @@ export const mobileMessages = {
     en: "Checking request status…",
   },
   "mobile.thinking": { "zh-CN": "思考中…", en: "Thinking…" },
+  "mobile.sendReconnecting": {
+    "zh-CN": "正在恢复连接，恢复后继续发送…",
+    en: "Reconnecting to finish sending…",
+  },
   "mobile.queryCommand": { "zh-CN": "核对原请求", en: "Check original request" },
   "mobile.effort.none": { "zh-CN": "无", en: "None" },
   "mobile.effort.minimal": { "zh-CN": "最少", en: "Minimal" },

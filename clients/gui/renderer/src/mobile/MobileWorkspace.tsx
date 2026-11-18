@@ -399,7 +399,13 @@ export function MobileWorkspaceView({
                 outgoing && (
                   <PendingMessageView
                     message={{ text: outgoing.text, files: [], previousUserIds: [] }}
-                    status={outgoing.turnId ? "mobile.thinking" : undefined}
+                    status={
+                      outgoing.turnId
+                        ? "mobile.thinking"
+                        : outgoing.reconnecting
+                          ? "mobile.sendReconnecting"
+                          : undefined
+                    }
                     theme={matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"}
                   />
                 )

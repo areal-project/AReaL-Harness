@@ -9,10 +9,12 @@ export class MobileCommands {
     this.commands = new CommandState();
     this.configuration = new Map();
     this.outgoing = null;
+    this.unsent = null;
     this.listeners = new Set();
     /** @type {{revision:number,busy:boolean,recovering:boolean,error:string|null}} */
     this.state = { revision: 0, busy: false, recovering: false, error: null };
     this.unsubscribe = client.subscribe(() => this.connectionChanged());
+    this.unsubscribeWorkspace = workspace.subscribe?.(() => this.resumeUnsent());
   }
   snapshot = () => this.state;
   subscribe = (listener) => {
@@ -45,6 +47,7 @@ export class MobileCommands {
   setDraft(projectId, threadId, text) {
     this.commands.drafts.set(this.key(projectId, threadId), text);
     this.publish();
+    this.resumeUnsent();
   }
   outgoingFor(projectId, threadId, turns = []) {
     const outgoing = this.outgoing;
@@ -94,6 +97,7 @@ export class MobileCommands {
       this.commands.drafts.clear();
       this.configuration.clear();
       this.outgoing = null;
+      this.unsent = null;
       this.connection = null;
       this.publish({ busy: false, recovering: false, error: null });
       return;
@@ -108,16 +112,87 @@ export class MobileCommands {
             failure(command.dispatched ? "SUBMISSION_UNKNOWN" : "LOCAL_NOT_SENT"),
           );
       this.publish();
+      this.resumeUnsent();
       return;
     }
     if (this.connection === this.client.connection) return;
     this.connection = this.client.connection;
     this.hostId = state.ready.hostId;
-    void this.recover();
+    this.recoverConnection();
+  }
+  recoverConnection() {
+    if (
+      this.client.snapshot().kind !== "connected" ||
+      this.connection !== this.client.connection ||
+      this.state.busy ||
+      this.state.recovering
+    )
+      return;
+    if (this.recoveredConnection !== this.client.connection) {
+      this.recoveredConnection = this.client.connection;
+      void this.recover();
+    } else this.resumeUnsent();
+  }
+  resumeUnsent() {
+    const attempt = this.unsent;
+    if (!attempt) return;
+    const state = this.client.snapshot();
+    const view = this.workspace.state;
+    const ready = state.ready;
+    const token = this.client.identities.current();
+    if (
+      view.page !== attempt.page ||
+      state.grantChanged ||
+      (ready &&
+        (ready.hostId !== attempt.hostId ||
+          ready.grantRevision !== attempt.grantRevision ||
+          !ready.capabilities?.includes("submit") ||
+          token?.instance !== attempt.instance)) ||
+      this.draft(attempt.page.projectId, attempt.page.threadId) !== attempt.text
+    ) {
+      this.unsent = null;
+      this.outgoing = null;
+      this.publish();
+      return;
+    }
+    if (
+      state.kind !== "connected" ||
+      this.state.busy ||
+      this.state.recovering ||
+      this.recoveredConnection !== this.client.connection ||
+      view.loading
+    )
+      return;
+    if (view.error) {
+      this.unsent = null;
+      this.outgoing = null;
+      this.publish({ error: "LOCAL_NOT_SENT" });
+      return;
+    }
+    if (
+      view.stale ||
+      view.detail?.projectId !== attempt.page.projectId ||
+      view.detail?.snapshot?.threadId !== attempt.page.threadId
+    )
+      return;
+    this.unsent = null;
+    if (this.blocksSend(attempt.page.projectId, attempt.page.threadId)) {
+      this.outgoing = null;
+      this.publish();
+      return;
+    }
+    void this.send();
+  }
+  finish() {
+    this.publish({ busy: false });
+    this.recoverConnection();
   }
   async recover() {
     const token = this.client.identities.current();
-    if (token?.mode !== "remembered") return;
+    if (token?.mode !== "remembered") {
+      this.resumeUnsent();
+      return;
+    }
     this.publish({ recovering: true });
     try {
       const locators = await this.client.identities.locators(token);
@@ -140,6 +215,7 @@ export class MobileCommands {
       this.publish({ error: "RECOVERY_FAILED" });
     } finally {
       this.publish({ recovering: false });
+      this.recoverConnection();
     }
   }
   async receive(key, command, value, token) {
@@ -187,7 +263,11 @@ export class MobileCommands {
   async issue(method, projectId, params, serviceGeneration) {
     const page = this.workspace.state.page,
       connection = this.client.connection;
-    const token = await this.client.remember();
+    const token = await this.client.remember().catch((error) => {
+      if (this.client.connection !== connection || this.workspace.state.page !== page)
+        throw failure("LOCAL_NOT_SENT");
+      throw error;
+    });
     if (this.workspace.state.page !== page || this.client.connection !== connection)
       throw failure("LOCAL_NOT_SENT");
     const ready = this.client.snapshot().ready;
@@ -203,7 +283,10 @@ export class MobileCommands {
       if (
         this.client.identities.current() !== token ||
         this.client.connection !== connection ||
-        this.workspace.state.page !== page
+        this.workspace.state.page !== page ||
+        this.workspace.state.stale ||
+        (method === "session.send" &&
+          this.workspace.state.detail?.serviceGeneration !== serviceGeneration)
       )
         throw failure("LOCAL_NOT_SENT");
       command.dispatched = true;
@@ -229,6 +312,15 @@ export class MobileCommands {
         return undefined;
       }
       const rejected = command.dispatched ? error : failure("LOCAL_NOT_SENT");
+      if (!command.dispatched) {
+        // 即使旧令牌无法清除本机定位信息，也能确定传输层从未收到这条命令。
+        this.commands.failed(key, command, rejected);
+        if (persisted)
+          await this.client.identities
+            .settleLocator(token, command.commandId, "rejected")
+            .catch(() => {});
+        throw rejected;
+      }
       if (persisted && !this.commands.failureIsUnknown(rejected)) {
         try {
           await this.client.identities.settleLocator(token, command.commandId, "rejected");
@@ -350,6 +442,9 @@ export class MobileCommands {
     const page = this.workspace.state.page;
     if (!["new", "session"].includes(page.kind)) return;
     const connection = this.client.connection;
+    const ready = this.client.snapshot().ready;
+    const instance = this.client.identities.current()?.instance;
+    const generation = this.workspace.state.detail?.serviceGeneration;
     let threadId = page.kind === "session" ? page.threadId : "";
     const projectId = page.projectId;
     const text = this.draft(projectId, threadId);
@@ -414,14 +509,34 @@ export class MobileCommands {
       if (receipt?.admissionState === "accepted" && receipt.turnId)
         outgoing.turnId = receipt.turnId;
     } catch (error) {
-      this.publish({ error: error.code ?? "COMMAND_FAILED" });
+      const current = this.workspace.state.page;
+      if (
+        error.code === "LOCAL_NOT_SENT" &&
+        current.kind === "session" &&
+        current.projectId === projectId &&
+        current.threadId === threadId &&
+        (page.kind === "new" || current === page) &&
+        (connection !== this.client.connection ||
+          this.workspace.state.stale ||
+          (generation && generation !== this.workspace.state.detail?.serviceGeneration))
+      ) {
+        this.unsent = {
+          page: current,
+          text,
+          hostId: ready.hostId,
+          grantRevision: ready.grantRevision,
+          instance,
+        };
+        outgoing.reconnecting = true;
+      } else this.publish({ error: error.code ?? "COMMAND_FAILED" });
     } finally {
       if (
         this.outgoing === outgoing &&
-        (!outgoing.turnId || !this.outgoingFor(projectId, threadId, this.workspace.state.turns))
+        (!outgoing.turnId || !this.outgoingFor(projectId, threadId, this.workspace.state.turns)) &&
+        !this.unsent
       )
         this.outgoing = null;
-      this.publish({ busy: false });
+      this.finish();
     }
   }
   async configure(projectId, threadId, intent) {
@@ -440,7 +555,7 @@ export class MobileCommands {
       this.publish({ error: error.code ?? "COMMAND_FAILED" });
       return false;
     } finally {
-      this.publish({ busy: false });
+      this.finish();
     }
   }
   async stop() {
@@ -468,10 +583,11 @@ export class MobileCommands {
     } catch (error) {
       this.publish({ error: error.code ?? "COMMAND_FAILED" });
     } finally {
-      this.publish({ busy: false });
+      this.finish();
     }
   }
   dispose() {
     this.unsubscribe();
+    this.unsubscribeWorkspace?.();
   }
 }
