@@ -60,6 +60,7 @@ import {
   COMMAND_PRIORITY_HIGH,
   KEY_ENTER_COMMAND,
   KEY_TAB_COMMAND,
+  SKIP_DOM_SELECTION_TAG,
   type EditorState,
   type LexicalEditor,
 } from "lexical";
@@ -87,6 +88,7 @@ export interface ChatComposerPasteEvent {
 }
 
 export interface LexicalChatInputHandle {
+  blur: () => void;
   clear: () => void;
   focus: () => void;
   getEditorState: () => EditorState;
@@ -136,14 +138,18 @@ function replaceEditorText(editor: LexicalEditor, text: string) {
   editor.update(() => replacePlainTextRoot(text), { tag: PROGRAMMATIC_UPDATE_TAG });
 }
 
-function replaceEditorTextWithMentions(editor: LexicalEditor, text: string) {
+function replaceEditorTextWithMentions(editor: LexicalEditor, text: string, preserveFocus = false) {
   editor.update(
     () => {
       const paragraph = $createPromptParagraph(text);
       $getRoot().clear().append(paragraph);
       paragraph.selectEnd();
     },
-    { tag: PROGRAMMATIC_UPDATE_TAG },
+    {
+      tag: preserveFocus
+        ? [PROGRAMMATIC_UPDATE_TAG, SKIP_DOM_SELECTION_TAG]
+        : PROGRAMMATIC_UPDATE_TAG,
+    },
   );
 }
 
@@ -1151,8 +1157,10 @@ function insertEditorMention(
 
 function EditorApiPlugin({
   editorApiRef,
+  touchInput,
 }: {
   editorApiRef?: React.MutableRefObject<LexicalChatInputHandle | null>;
+  touchInput: boolean;
 }) {
   const [editor] = useLexicalComposerContext();
 
@@ -1162,6 +1170,9 @@ function EditorApiPlugin({
     }
 
     editorApiRef.current = {
+      blur: () => {
+        if (editor.getRootElement() === document.activeElement) editor.blur();
+      },
       clear: () => resetEditor(editor),
       focus: () => editor.focus(),
       getEditorState: () => editor.getEditorState(),
@@ -1180,7 +1191,7 @@ function EditorApiPlugin({
       prependMentionIfMissing: (mention) => prependEditorMentionIfMissing(editor, mention),
       setMention: (mention, trailingText) =>
         replaceEditorWithMention(editor, mention, trailingText),
-      setText: (text: string) => replaceEditorTextWithMentions(editor, text),
+      setText: (text: string) => replaceEditorTextWithMentions(editor, text, touchInput),
       setTextWithPluginMentions: (text: string) => replaceEditorTextWithMentions(editor, text),
       setEditorStateJson: (editorStateJson: string) =>
         replaceEditorStateJson(editor, editorStateJson),
@@ -1196,7 +1207,7 @@ function EditorApiPlugin({
     return () => {
       editorApiRef.current = null;
     };
-  }, [editor, editorApiRef]);
+  }, [editor, editorApiRef, touchInput]);
 
   return null;
 }
@@ -1350,12 +1361,12 @@ export function LexicalChatInput({
   const handleSubmit = useCallback(
     (text: string) => {
       const submitResult = onSubmit(text);
-      requestAnimationFrame(() => {
-        editorApiRef?.current?.focus();
-      });
+      if (!touchInput) {
+        requestAnimationFrame(() => editorApiRef?.current?.focus());
+      }
       return submitResult;
     },
-    [editorApiRef, onSubmit],
+    [editorApiRef, onSubmit, touchInput],
   );
   // Lexical 的 ContentEditable props 是一个互斥联合类型，
   // aria-placeholder 一旦出现就要求 placeholder 同时存在。
@@ -1426,7 +1437,7 @@ export function LexicalChatInput({
           <PromptHistoryPlugin entries={promptHistory} disabled={disabled} />
           <EditablePlugin editable={!disabled} />
           <E2ELexicalInputBridgePlugin inputTestId={inputTestId} />
-          <EditorApiPlugin editorApiRef={editorApiRef} />
+          <EditorApiPlugin editorApiRef={editorApiRef} touchInput={touchInput} />
           <LeadingChineseSlashAliasPlugin disabled={disabled} />
           <PasteCapturePlugin disabled={disabled} onPaste={onPaste} />
         </div>

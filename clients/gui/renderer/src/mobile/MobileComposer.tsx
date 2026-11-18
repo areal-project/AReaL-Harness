@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Button } from "@areal/ui";
+import { Button, DelayedVisible } from "@areal/ui";
 import { Dialog, DialogContent, DialogTitle } from "@areal/ui";
 import { ConversationComposer } from "../ConversationComposer.js";
 import { RadioGroup } from "@base-ui/react/radio-group";
@@ -59,6 +59,7 @@ export function MobileComposer({
   const command = useSyncExternalStore(commands.subscribe, commands.snapshot);
   const connection = useSyncExternalStore(client.subscribe, client.snapshot);
   const input = useRef<LexicalChatInputHandle | null>(null);
+  const sheetTrigger = useRef<HTMLButtonElement | null>(null);
   const [sheet, setSheet] = useState<Data | null>(null);
   const [panel, setPanel] = useState<"model" | "permissions">("model");
   const [modelView, setModelView] = useState<"quick" | "advanced" | "models" | "effort">("quick");
@@ -86,6 +87,7 @@ export function MobileComposer({
   );
   const intent = commands.intent(projectId, threadId);
   const pending = commands.unresolved(projectId, threadId);
+  const checking = command.busy || command.recovering;
   const running = !!snapshot?.activeTurnId;
   const connected = connection.kind === "connected";
   const canSubmit = connected && connection.ready.capabilities.includes("submit");
@@ -119,7 +121,9 @@ export function MobileComposer({
   const queueAction = (async () => {
     throw new Error(t("mobile.queueDesktop"));
   }) as Action;
-  const choose = (next: "model" | "permissions") => {
+  const choose = (next: "model" | "permissions", trigger: HTMLButtonElement) => {
+    input.current?.blur();
+    sheetTrigger.current = trigger;
     setPanel(next);
     setModelView("quick");
     setSheet(structuredClone(intent ?? {}));
@@ -161,42 +165,47 @@ export function MobileComposer({
     (value) =>
       value.method === "turn.stop" && value.params.expectedTurnId === snapshot?.activeTurnId,
   );
+  const send = () => {
+    input.current?.blur();
+    void commands.send();
+    return false;
+  };
   return (
     <>
       <div
-        className="mobile-composer p-0! max-w-none! w-full [&_.composer-primary-action]:min-w-[var(--size-touch-target)] [&_.composer-primary-action]:min-h-[var(--size-touch-target)] [&_.composer-queue_button]:min-w-[var(--size-touch-target)] [&_.composer-queue_button]:min-h-[var(--size-touch-target)] [&_[data-composer-leading-actions]]:flex-[0_1_auto]! [&_[data-composer-leading-actions]]:max-w-[45%] [&_[data-composer-trailing-actions]]:flex-1! [&_[data-composer-trailing-actions]]:min-w-0 flex-[0_0_auto] min-w-0 composer-dock"
+        className="mobile-composer mt-auto! p-0! max-w-none! w-full [&_.composer-primary-action]:min-w-[var(--size-touch-target)] [&_.composer-primary-action]:min-h-[var(--size-touch-target)] [&_.composer-queue_button]:min-w-[var(--size-touch-target)] [&_.composer-queue_button]:min-h-[var(--size-touch-target)] [&_[data-composer-leading-actions]]:flex-[0_1_auto]! [&_[data-composer-leading-actions]]:max-w-[45%] [&_[data-composer-trailing-actions]]:flex-1! [&_[data-composer-trailing-actions]]:min-w-0 flex-[0_0_auto] min-w-0 composer-dock"
         data-field="composer"
         data-config-revision={snapshot?.configRevision}
         data-active-turn={snapshot?.activeTurnId ?? ""}
       >
-        {command.error && <p role="alert">{t(errors[command.error] ?? "mobile.commandFailed")}</p>}
-        {pending.map((value) => (
-          <div
-            className="mobile-command-notice flex items-center gap-inline"
-            key={value.commandId}
-            data-command-state={value.admissionState}
-            data-command-id={value.commandId}
-          >
-            <p role="status">
-              {t(
-                value.admissionState === "pending"
-                  ? "mobile.commandPending"
-                  : "mobile.commandUnknown",
-              )}
-            </p>
-            {value.admissionState !== "pending" && (
+        {command.error && !pending.length && (
+          <p role="alert">{t(errors[command.error] ?? "mobile.commandFailed")}</p>
+        )}
+        <DelayedVisible active={checking && pending.length > 0}>
+          <p role="status" className="text-fixed-caption text-foreground-subtle">
+            {t("mobile.commandPending")}
+          </p>
+        </DelayedVisible>
+        {!checking &&
+          pending.map((value) => (
+            <div
+              className="mobile-command-notice flex items-center gap-inline"
+              key={value.commandId}
+              data-command-state={value.admissionState}
+              data-command-id={value.commandId}
+            >
+              <p role="status">{t("mobile.commandUnknown")}</p>
               <Button
                 className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
                 variant="outline"
                 data-action="query-command"
-                disabled={!connected || command.recovering}
+                disabled={!connected}
                 onClick={() => void commands.query(value)}
               >
                 {t("mobile.queryCommand")}
               </Button>
-            )}
-          </div>
-        ))}
+            </div>
+          ))}
         {!isNew && snapshot?.queue && (
           <ComposerQueue
             project={project}
@@ -217,7 +226,7 @@ export function MobileComposer({
               className="mobile-composer-chip h-auto min-h-[var(--size-touch-target)] min-w-0 max-w-full py-[calc(var(--spacing-inline)/2)] px-inline gap-[calc(var(--spacing-inline)/2)] shrink [&_span]:min-w-0 [&_span]:truncate [&_svg]:size-[var(--activity-chevron-size)]! text-fixed-caption text-foreground-subtle"
               data-action="model-sheet"
               disabled={disabled || command.busy || blocked}
-              onClick={() => choose("model")}
+              onClick={(event) => choose("model", event.currentTarget)}
             >
               <span>
                 {modelName}
@@ -235,7 +244,7 @@ export function MobileComposer({
               data-action="permission-sheet"
               aria-label={t("mobile.permissions")}
               disabled={disabled || command.busy || blocked}
-              onClick={() => choose("permissions")}
+              onClick={(event) => choose("permissions", event.currentTarget)}
             >
               {currentPermission === "ask" ? <AskPermissionIcon /> : <AutoPermissionIcon />}
               <span>{permissionLabel(currentPermission)}</span>
@@ -264,10 +273,7 @@ export function MobileComposer({
           enableWorkspaceFileDrop={false}
           enableExternalFileDrop={false}
           onChange={(text) => commands.setDraft(projectId, threadId, text)}
-          onSubmit={() => {
-            void commands.send();
-            return false;
-          }}
+          onSubmit={send}
           onCancel={running && canInterrupt ? () => void commands.stop() : undefined}
           submitControl={
             running && !draft.trim() ? (
@@ -290,7 +296,7 @@ export function MobileComposer({
                 data-testid="mobile-chat-send"
                 data-action="send"
                 disabled={disabled || blocked || command.busy || !draft.trim()}
-                onClick={() => void commands.send()}
+                onClick={send}
               >
                 <SendMessageIcon />
               </Button>
@@ -305,27 +311,33 @@ export function MobileComposer({
         }}
       >
         <DialogContent
-          className="mobile-model-sheet [&_h2]:[line-height:1.3] [&_h2]:font-semibold [&_h3]:[line-height:1.3] [&_h3]:font-semibold border-0 [border-radius:var(--radius-overlay)_var(--radius-overlay)_0_0] shadow-none [transition:translate_var(--motion-normal)_var(--ease-standard)]"
+          placement="bottom"
+          finalFocus={sheetTrigger}
+          className="mobile-model-sheet [&_h2]:[line-height:1.3] [&_h2]:font-semibold [&_h3]:[line-height:1.3] [&_h3]:font-semibold border-0 shadow-none"
           data-panel={panel}
           data-view={modelView}
           overlayClassName="mobile-sheet-overlay bg-dialog-backdrop supports-backdrop-filter:backdrop-blur-none"
           closeLabel={t("mobile.cancel")}
           showCloseButton={false}
         >
-          <div
-            className="mobile-sheet-handle shrink-0 self-center my-inline w-[calc(var(--spacing-section)+var(--spacing-inline))] h-[calc(var(--spacing-inline)/2)] bg-border [border-radius:var(--radius-pill)]"
-            aria-hidden="true"
-          />
-          <div className="mobile-sheet-header flex items-center justify-between gap-inline min-h-[var(--size-touch-target)] shrink-0 mb-field [&_h2]:flex-1 [&_h2]:text-fixed-emphasis [&_h2]:text-center">
-            {panel === "model" && modelView !== "quick" && (
+          <div className="mobile-sheet-header grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] items-center gap-inline min-h-[var(--size-touch-target)] shrink-0 mb-field [&_h2]:text-fixed-emphasis [&_h2]:text-center">
+            {panel === "model" && modelView !== "quick" ? (
               <Button
                 variant="ghost"
                 size="icon"
-                className="mobile-sheet-back min-w-[var(--size-touch-target)] min-h-[var(--size-touch-target)]"
+                className="justify-self-start min-w-[var(--size-touch-target)] min-h-[var(--size-touch-target)]"
                 aria-label={t("mobile.back")}
                 onClick={() => setModelView(modelView === "advanced" ? "quick" : "advanced")}
               >
                 <ChevronLeft />
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                className="justify-self-start min-h-[var(--size-touch-target)] text-fixed-control"
+                onClick={() => setSheet(null)}
+              >
+                {t("mobile.cancel")}
               </Button>
             )}
             <DialogTitle>
@@ -341,7 +353,7 @@ export function MobileComposer({
             </DialogTitle>
             <Button
               variant="ghost"
-              className="mobile-sheet-done h-[var(--size-touch-target)] min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] p-0 text-fixed-body font-semibold"
+              className="mobile-sheet-done justify-self-end h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] text-fixed-body font-semibold"
               data-action="model-done"
               disabled={command.busy || (running && !!Object.keys(sheet ?? {}).length)}
               onClick={() => void save()}

@@ -179,6 +179,7 @@ export const mobileMessages = {
     en: "{running} running \u00b7 {attention} need attention",
   },
   "mobile.recent": { "zh-CN": "最近会话", en: "Recent conversations" },
+  "mobile.sessions": { "zh-CN": "会话", en: "Chats" },
   "mobile.noSessions": { "zh-CN": "这里还没有会话。", en: "No conversations yet." },
   "mobile.untitled": { "zh-CN": "未命名会话", en: "Untitled conversation" },
   "mobile.olderSessions": { "zh-CN": "加载更多", en: "Load more" },
@@ -285,8 +286,8 @@ export const mobileMessages = {
     en: "This conversation belongs to a Task. Pause it from Task details.",
   },
   "mobile.commandUnknown": {
-    "zh-CN": "请求结果待核对。请查询原请求，避免重复操作。",
-    en: "The result needs checking. Query the original request to avoid repeating it.",
+    "zh-CN": "暂未确认结果。",
+    en: "Result unconfirmed.",
   },
   "mobile.commandRecoveryFailed": {
     "zh-CN": "未能读取待核对请求，请重新连接后核对。",
@@ -297,8 +298,8 @@ export const mobileMessages = {
     en: "The operation did not complete. Your draft is retained.",
   },
   "mobile.commandPending": {
-    "zh-CN": "正在等待电脑确认…",
-    en: "Waiting for your computer to confirm\u2026",
+    "zh-CN": "正在确认请求状态…",
+    en: "Checking request status…",
   },
   "mobile.queryCommand": { "zh-CN": "核对原请求", en: "Check original request" },
   "mobile.effort.none": { "zh-CN": "无", en: "None" },

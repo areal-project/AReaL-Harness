@@ -139,6 +139,33 @@ export class MobileCommands {
     this.publish();
     return value;
   }
+  async readReceipt(command, token) {
+    const value = await this.client.request({
+      method: "command.read",
+      context: { projectId: command.projectId },
+      params: { commandId: command.commandId },
+    });
+    return this.receive(this.commandKey(command), command, value, token);
+  }
+  async confirmReceipt(command, connection, token) {
+    for (const delay of [0, 400, 900]) {
+      if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+      if (
+        this.client.connection !== connection ||
+        this.client.identities.current() !== token ||
+        this.client.snapshot().kind !== "connected" ||
+        !this.commands.unresolved(command)
+      )
+        return;
+      try {
+        const receipt = await this.readReceipt(command, token);
+        if (!receipt || !this.commands.unresolved(receipt)) return receipt;
+      } catch {
+        // 连不上时保留原命令，等重连或用户核对；这里从不重发。
+        return;
+      }
+    }
+  }
   async issue(method, projectId, params, serviceGeneration) {
     const page = this.workspace.state.page,
       connection = this.client.connection;
@@ -173,7 +200,10 @@ export class MobileCommands {
         },
         params,
       });
-      return await this.receive(key, command, value, token);
+      const receipt = await this.receive(key, command, value, token);
+      if (receipt && this.commands.unresolved(receipt))
+        return (await this.confirmReceipt(command, connection, token)) ?? receipt;
+      return receipt;
     } catch (error) {
       if (error.code === "BROWSER_COMMAND_PENDING" && error.locator) {
         this.commands.commands.set(key, error.locator);
@@ -192,6 +222,10 @@ export class MobileCommands {
       }
       this.commands.failed(key, command, rejected);
       this.publish();
+      if (command.dispatched && method === "session.send" && this.commands.unresolved(command)) {
+        const receipt = await this.confirmReceipt(command, connection, token);
+        if (receipt) return receipt;
+      }
       throw rejected;
     }
   }
@@ -217,13 +251,9 @@ export class MobileCommands {
     const token = this.client.identities.current(),
       key = this.commandKey(command);
     try {
-      const value = await this.client.request({
-        method: "command.read",
-        context: { projectId: command.projectId },
-        params: { commandId: command.commandId },
-      });
-      const received = await this.receive(key, command, value, token);
+      const received = await this.readReceipt(command, token);
       if (received?.admissionState !== "accepted") return;
+      this.publish({ error: null });
       if (command.method === "session.create") {
         this.migrateDraft(command.projectId, received.threadId);
         if (

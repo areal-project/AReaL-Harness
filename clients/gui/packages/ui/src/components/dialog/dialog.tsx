@@ -45,6 +45,7 @@ function DialogOverlay({
 function DialogContent({
   className,
   children,
+  placement = "center",
   showCloseButton = true,
   showOverlay = true,
   overlayClassName,
@@ -52,6 +53,7 @@ function DialogContent({
   ...props
 }: Omit<React.ComponentProps<typeof DialogPrimitive.Popup>, "className"> & {
   className?: string;
+  placement?: "center" | "bottom";
   showCloseButton?: boolean;
   showOverlay?: boolean;
   overlayClassName?: string;
@@ -65,7 +67,10 @@ function DialogContent({
         className={cn(
           // Electron 自绘标题栏下，弹窗可能会落进窗口顶部的 drag 区域。
           // 如果不把弹窗内容整体标成 no-drag，右上角关闭按钮这类交互会被窗口拖拽命中吞掉。
-          "fixed top-1/2 left-1/2 z-(--layer-dialog) grid w-full max-w-[calc(100%-var(--spacing-field)*2)] -translate-x-1/2 -translate-y-1/2 gap-field rounded-dialog border border-border bg-popover p-panel text-ui-base/relaxed text-foreground shadow-dialog duration-(--motion-normal) outline-none ui-popup [app-region:no-drag]",
+          "fixed z-(--layer-dialog) grid w-full gap-field rounded-dialog border border-border bg-popover p-panel text-ui-base/relaxed text-foreground shadow-dialog duration-(--motion-normal) outline-none ui-popup [app-region:no-drag]",
+          placement === "bottom"
+            ? "inset-x-0 bottom-0"
+            : "top-1/2 left-1/2 max-w-[calc(100%-var(--spacing-field)*2)] -translate-x-1/2 -translate-y-1/2",
           className,
         )}
         {...props}

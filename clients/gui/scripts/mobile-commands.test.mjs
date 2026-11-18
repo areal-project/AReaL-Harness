@@ -130,21 +130,65 @@ test("relaunch restores only original locator and queries its receipt without pa
   const f = await fixture();
   await f.workspace.navigate({ kind: "session", projectId: "project", threadId: "thread" });
   const request = f.client.request;
+  let canReadReceipt = false;
   f.client.request = async (r) => {
     const v = await request(r);
     if (r.method === "session.send")
       throw Object.assign(new Error("lost"), { submissionUnknown: true });
+    if (r.method === "command.read" && !canReadReceipt) throw new Error("disconnected");
     return v;
   };
   f.commands.setDraft("project", "thread", "private draft");
   await f.commands.send();
   assert.equal(JSON.stringify(f.record()).includes("private draft"), false);
+  canReadReceipt = true;
   const restored = new MobileCommands(f.client, f.workspace);
   await restored.recover();
   assert.equal(f.requests.filter((r) => r.method === "session.send").length, 1);
-  assert.equal(f.requests.filter((r) => r.method === "command.read").length, 1);
+  assert.equal(f.requests.filter((r) => r.method === "command.read").length, 2);
   assert.equal(f.record().locators.length, 0);
   assert.equal(restored.draft("project", "thread"), "");
+});
+test("pending send reads the original receipt and clears the draft after acceptance", async () => {
+  const f = await fixture();
+  await f.workspace.navigate({ kind: "session", projectId: "project", threadId: "thread" });
+  const request = f.client.request;
+  f.client.request = async (envelope) => {
+    const receipt = await request(envelope);
+    return envelope.method === "session.send" ? { ...receipt, admissionState: "pending" } : receipt;
+  };
+  f.commands.setDraft("project", "thread", "send once");
+  await f.commands.send();
+  const requests = f.requests.slice(1);
+  assert.deepEqual(
+    requests.map((request) => request.method),
+    ["session.send", "command.read"],
+  );
+  assert.equal(requests[1].params.commandId, requests[0].commandId);
+  assert.equal(f.commands.draft("project", "thread"), "");
+  assert.deepEqual(f.record().locators, []);
+});
+test("an unresolved send stops checking and retains the original draft and locator", async () => {
+  const f = await fixture();
+  await f.workspace.navigate({ kind: "session", projectId: "project", threadId: "thread" });
+  const request = f.client.request;
+  f.client.request = async (envelope) => ({
+    ...(await request(envelope)),
+    admissionState: "pending",
+  });
+  f.commands.setDraft("project", "thread", "keep until accepted");
+  await f.commands.send();
+  const [, sent, ...checks] = f.requests;
+  assert.equal(sent.method, "session.send");
+  assert.equal(checks.length, 3);
+  assert.ok(
+    checks.every(
+      (check) => check.method === "command.read" && check.params.commandId === sent.commandId,
+    ),
+  );
+  assert.equal(f.commands.state.busy, false);
+  assert.equal(f.commands.draft("project", "thread"), "keep until accepted");
+  assert.equal(f.record().locators[0].commandId, sent.commandId);
 });
 test("unknown exact stop remains inspectable but authoritative idle allows new send", async () => {
   const f = await fixture();

@@ -171,18 +171,19 @@ export function MobileWorkspaceView({
             </p>
           </header>
         ) : (
-          <header className="flex shrink-0 items-center gap-inline">
+          <header className="grid shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] items-center gap-inline">
             <Button
               variant="ghost"
-              size="icon"
-              className="mobile-touch size-[var(--size-touch-target)]"
+              className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] max-w-full justify-self-start gap-0 px-0 text-fixed-control"
               data-action="workspace-back"
-              aria-label={t("mobile.back")}
               onClick={() => workspace.back()}
             >
-              <ChevronLeft />
+              <ChevronLeft aria-hidden="true" />
+              <span className="truncate">
+                {t(page.kind === "work" ? "mobile.projects" : "mobile.sessions")}
+              </span>
             </Button>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 text-center">
               <h2 className="truncate text-fixed-emphasis">
                 {page.kind === "new" ? t("mobile.newConversation") : title}
               </h2>
@@ -194,7 +195,7 @@ export function MobileWorkspaceView({
             </div>
             {page.kind === "work" && (
               <Button
-                className="mobile-touch min-h-[var(--size-touch-target)] gap-inline"
+                className="mobile-touch min-h-[var(--size-touch-target)] justify-self-end gap-inline"
                 data-action="new-session"
                 disabled={
                   connection.kind !== "connected" ||
@@ -266,7 +267,7 @@ export function MobileWorkspaceView({
               {(group?.data ?? []).map((row: Data) => (
                 <Button
                   variant="ghost"
-                  className="mobile-work-row w-full gap-inline shadow-none [border-radius:var(--radius-navigation)]! [&:hover]:bg-navigation-selected [&:focus-visible]:bg-navigation-selected h-auto whitespace-normal text-start justify-start p-inline mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
+                  className="mobile-work-row w-full gap-inline shadow-none [border-radius:var(--radius-navigation)]! hover:bg-navigation-selected focus-visible:bg-navigation-selected active:bg-navigation-selected h-auto whitespace-normal text-start justify-start p-inline mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
                   key={row.kind === "taskRun" ? `${row.taskId}/${row.runId}` : row.threadId}
                   data-thread-id={row.threadId}
                   data-task-id={row.taskId}

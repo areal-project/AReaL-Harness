@@ -56,6 +56,7 @@ export function MobileProjectCacheSheet({
   const hasAnySessions = Object.values(stats).some((entry) => entry.count > 0);
   return (
     <SettingsDialog
+      placement="bottom"
       className="mobile-model-sheet mobile-cache-sheet"
       title={t("mobile.cache.title")}
       description={t("mobile.cache.description")}
