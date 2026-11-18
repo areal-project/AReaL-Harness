@@ -21,6 +21,7 @@ import { expectFeedback, inspectPage, recordToasts } from "./ux-checks.mjs";
 import {
   cleanupSyntheticHostKeychain,
   closeSmokeApplication,
+  makeFixtureDirectoriesWritable,
   stopAndAssertFixtureHost,
 } from "./application-cleanup.mjs";
 
@@ -369,6 +370,7 @@ try {
         join(shots, "cleanup.json"),
         JSON.stringify({ electronPid: pid, stopped: true }),
       );
+      await makeFixtureDirectoriesWritable(scene.scratch);
       await rm(scene.scratch, { recursive: true, force: true, maxRetries: 5 });
     } else {
       await scene.dispose();

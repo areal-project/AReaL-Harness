@@ -3,12 +3,19 @@ import { once } from "node:events";
 import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { execFile, spawnSync } from "node:child_process";
-import { readFile, readdir, realpath, writeFile } from "node:fs/promises";
+import { chmod, readFile, readdir, realpath, writeFile } from "node:fs/promises";
 import { join, relative, isAbsolute } from "node:path";
 import { promisify } from "node:util";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
 const executeFile = promisify(execFile);
 const require = createRequire(new URL("../app/package.json", import.meta.url));
+
+export async function makeFixtureDirectoriesWritable(directory) {
+  await chmod(directory, 0o700);
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (entry.isDirectory()) await makeFixtureDirectoriesWritable(join(directory, entry.name));
+  }
+}
 
 export async function stopFixtureHost(binary, home, evidence) {
   const descriptor = await readFile(join(home, "host", "host.json"), "utf8")
