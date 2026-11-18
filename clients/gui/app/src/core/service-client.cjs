@@ -1,10 +1,5 @@
 // @ts-check
 "use strict";
-const { requiresCurrentCommands } = require("./service-command-compatibility.cjs");
-const {
-  operationCore,
-  observedOperation,
-} = require("@areal/workbench-service/desktop/core/receipt-contract.cjs");
 const { commandSemantics, desktopError } = require("@areal/workbench/desktop-contract");
 const { startupTrace } = require("@areal/workbench/node/startup-timing");
 const { createHash, randomUUID } = require("node:crypto");
@@ -37,12 +32,7 @@ const {
 } = require("./gui-resource-contract.cjs");
 const lifecycleControl = require("./service-control.cjs");
 const { desktopKind, needsOriginalCheck } = lifecycleControl;
-const {
-  PROTOCOL,
-  COMMAND_CONTRACT,
-  encodeMedia,
-  decodeMedia,
-} = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
+const { PROTOCOL } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 const { checkHostPrerequisites } = require("./host-prerequisites.cjs");
 /** @param {number} ms */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -470,7 +460,7 @@ class SharedCoreBackend {
   }
   snapshot() {
     const desktopCapabilities = {
-      currentCommands: this.status.commandContract === COMMAND_CONTRACT,
+      currentCommands: this.status.connected === true && this.nativeBrowser?.closed === false,
     };
     const connection =
       this.initializing && this.connectionState.state === "ready"
@@ -940,7 +930,7 @@ class SharedCoreBackend {
       if (this.disposed) throw new Error("GUI 连接已关闭");
       await this.connectNativeBrowser(source, prepared.options);
       await this.connectNativeShell(source);
-      this.status = { connected: true, commandContract: COMMAND_CONTRACT };
+      this.status = { connected: true };
       this.connectionState = { state: "ready" };
       this.clearReconnect();
       this.reconnectAttempts = 0;
@@ -1160,102 +1150,36 @@ class SharedCoreBackend {
         this.guiTerminalStarts.delete(pending);
       }
     }
-    if (
-      this.status.commandContract !== COMMAND_CONTRACT &&
-      requiresCurrentCommands(name, request)
-    ) {
-      throw Object.assign(
-        new Error(
-          "当前运行中的后台不支持此操作。现有任务继续运行，输入已保留；请在任务完成后安全停止后台并重新连接。",
-        ),
-        { code: "SERVICE_COMMAND_UNSUPPORTED" },
-      );
-    }
     const { guiOwned: _guiOwned, ...params } = request;
-    if (
-      !this.nativeBrowserEpoch &&
-      name === "connect" &&
-      this.status.selectedThreadObservation !== true
-    )
-      delete params.threadId;
-    // 队列业务键跨 GUI/共享服务连接保留，外层丢失响应后也能只读核对。
     const semantics = commandSemantics(name, params);
+    const epoch = this.nativeBrowserEpoch;
+    const source = this.nativeBrowserSource;
+    const transport = this.nativeBrowser;
+    if (!epoch || !transport || transport.closed)
+      throw Object.assign(new Error("Host 操作入口尚未就绪，请重新连接"), {
+        code: "CAPABILITY_UNAVAILABLE",
+        outcome: { kind: "noMutation" },
+      });
     if (semantics.requestId) params[semantics.requestId] ??= randomUUID();
-    if (this.nativeBrowserEpoch) {
-      const epoch = this.nativeBrowserEpoch;
-      const source = this.nativeBrowserSource;
-      const transport = this.nativeBrowser;
-      if (!transport || transport.closed) throw new Error("Native desktop attachment unavailable");
-      try {
-        const value = await transport.command(
-          name,
-          name === "media" ? encodeMedia(params) : params,
-        );
-        if (
-          this.disposed ||
-          this.nativeBrowserEpoch !== epoch ||
-          this.nativeBrowserSource !== source
-        )
-          throw Object.assign(new Error("Original native source changed"), {
-            code: "RESYNC_REQUIRED",
-            submissionUnknown: semantics.effect === "mutation",
-          });
-        return name === "media" ? decodeMedia(value) : value;
-      } catch (error) {
-        if (semantics.effect === "mutation" && record(error)) {
-          if (semantics.requestId) error.requestId ??= params[semantics.requestId];
-          // 无Host拒绝证据的传输错误保留原提交，不能重新发送。
-          if (
-            !error.outcome &&
-            !["COMMAND_FAILED", "INVALID_PARAMS", "FORBIDDEN", "CORE_INCOMPATIBLE"].includes(
-              String(error.code ?? ""),
-            )
-          )
-            error.submissionUnknown = true;
-        }
-        throw error;
-      }
-    }
-    const originalCore = operationCore(
-      this.value.projects.find((project) => project.id === params.projectId),
-      params,
-    );
-    const connection = this.requireConnection();
-    const pending = connection
-      .request(
-        "command",
-        { name, request: name === "media" ? encodeMedia(params) : params },
-        semantics.effect === "mutation",
-      )
-      .then((value) => (name === "media" ? decodeMedia(value) : value));
     try {
-      return await pending;
+      const value = await transport.command(name, params);
+      if (this.disposed || this.nativeBrowserEpoch !== epoch || this.nativeBrowserSource !== source)
+        throw Object.assign(new Error("Original native source changed"), {
+          code: "RESYNC_REQUIRED",
+          submissionUnknown: semantics.effect === "mutation",
+        });
+      return value;
     } catch (error) {
-      const details = desktopError(error);
-      if (semantics.requestId && record(error)) {
-        error.requestId ??= params[semantics.requestId];
+      if (semantics.effect === "mutation" && record(error)) {
+        if (semantics.requestId) error.requestId ??= params[semantics.requestId];
+        // 无Host拒绝证据的传输错误保留原提交，不能重新发送。
         if (
-          details.submissionUnknown &&
-          !details.outcome &&
-          typeof error.requestId === "string" &&
-          error.requestId === params[semantics.requestId]
-        ) {
-          if (connection === this.connection && this.status.connected) {
-            await connection
-              .request("snapshot")
-              .then((packet) => {
-                if (connection === this.connection && this.status.connected) this.accept(packet);
-              })
-              .catch(() => {});
-          }
-          const operation = observedOperation(
-            this.value.projects.find((project) => project.id === params.projectId),
-            originalCore,
-            params,
-            error.requestId,
-          );
-          if (operation) error.outcome = { kind: "unconfirmed", operation };
-        }
+          !error.outcome &&
+          !["COMMAND_FAILED", "INVALID_PARAMS", "FORBIDDEN", "CORE_INCOMPATIBLE"].includes(
+            String(error.code ?? ""),
+          )
+        )
+          error.submissionUnknown = true;
       }
       throw error;
     }

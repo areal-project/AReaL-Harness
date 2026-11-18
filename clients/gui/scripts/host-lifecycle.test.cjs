@@ -1246,8 +1246,6 @@ test("a selected plugin archive imports on the persistent native source without 
   await f.backend.connectNativeBrowser({ home: f.hostHome, sourceId: "source" }, {});
   t.after(() => f.backend.closeNativeBrowser());
   f.backend.status.connected = true;
-  f.backend.status.commandContract =
-    require("@areal/workbench-service/desktop/core/service-protocol.cjs").COMMAND_CONTRACT;
   f.backend.value.projects = [{ id: "project", root: f.root }];
   const archives = new PluginArchives({
     backend: f.backend,
@@ -1275,6 +1273,19 @@ test("a selected plugin archive imports on the persistent native source without 
   assert.equal(business.length, 1);
 });
 
+test("a legacy connection does not admit Main business commands without native Host", async (t) => {
+  const f = await fixture(t);
+  f.backend.status.connected = true;
+  f.backend.connection = {
+    request: () => assert.fail("retired business transport must remain unused"),
+  };
+  await assert.rejects(f.backend.command("manage", { operation: "pluginArchiveImport" }), {
+    code: "CAPABILITY_UNAVAILABLE",
+    outcome: { kind: "noMutation" },
+  });
+  assert.equal(f.backend.snapshot().desktopCapabilities.currentCommands, false);
+});
+
 test("native command late replies cannot settle a replacement source or replay a mutation", async (t) => {
   const f = await fixture(t);
   let release;
@@ -1295,8 +1306,6 @@ test("native command late replies cannot settle a replacement source or replay a
   await f.backend.connectNativeBrowser({ home: f.hostHome, sourceId: "source" }, {});
   t.after(() => f.backend.closeNativeBrowser());
   f.backend.status.connected = true;
-  f.backend.status.commandContract =
-    require("@areal/workbench-service/desktop/core/service-protocol.cjs").COMMAND_CONTRACT;
   const requestId = randomUUID();
   const pending = f.backend.command("manage", {
     operation: "pluginArchiveImport",
