@@ -417,7 +417,7 @@ async fn original_receipt(
         thread,
     );
     if receipt.is_none() && method == "areal/queue/steer" {
-        return Ok(rejected_queue_steer(&expected, &response["result"]));
+        return Ok(failed_queue_steer(&expected, &response["result"]));
     }
     if matches!(
         method,
@@ -474,8 +474,8 @@ async fn original_receipt(
     Ok(receipt)
 }
 
-// 拒绝的引导没有线程变更；只接受持久管理日志中与原始参数完全匹配的拒绝。
-fn rejected_queue_steer(expected: &ExpectedSubmission, result: &Value) -> Option<Value> {
+// 旧管理日志按不含 requestId 的参数计算摘要。仅结算与原请求完全匹配的终态错误。
+fn failed_queue_steer(expected: &ExpectedSubmission, result: &Value) -> Option<Value> {
     let mut params = wire_params(&expected.method, &expected.params);
     let original = digest::<areal_protocol::desktop::QueueSteer>(&params)?;
     if expected.digest.as_ref() != Some(&original) || expected.identity.is_none() {
@@ -491,10 +491,18 @@ fn rejected_queue_steer(expected: &ExpectedSubmission, result: &Value) -> Option
     };
     let mut receipt =
         areal_protocol::submissions::reconcile(&management, result, &Value::Null, None)?;
-    if receipt["status"] != "failed" || receipt["error"]["data"]["outcome"]["kind"] != "rejected" {
+    if receipt["status"] != "failed" || !receipt["error"].is_object() {
         return None;
     }
-    receipt["accepted"] = json!(false);
+    receipt["accepted"] = match receipt["error"]["data"]["outcome"]["kind"].as_str() {
+        Some("rejected") => json!(false),
+        Some("admitted")
+            if receipt["error"]["data"]["outcome"]["operation"] == expected.operation() =>
+        {
+            json!(true)
+        }
+        _ => return None,
+    };
     Some(receipt)
 }
 
@@ -765,17 +773,22 @@ mod tests {
             "digest":areal_local_service::storage::digest(&serde_json::to_vec(&raw).unwrap()),
             "error":{"data":{"outcome":{"kind":"rejected"}}}}]});
         assert_eq!(
-            rejected_queue_steer(&expected, &rows).unwrap()["accepted"],
+            failed_queue_steer(&expected, &rows).unwrap()["accepted"],
             false
         );
         rows["data"][0]["identity"] = json!("other");
-        assert!(rejected_queue_steer(&expected, &rows).is_none());
+        assert!(failed_queue_steer(&expected, &rows).is_none());
         rows["data"][0]["identity"] = json!("owner");
         rows["data"][0]["error"]["data"]["outcome"]["kind"] = json!("admitted");
-        assert!(rejected_queue_steer(&expected, &rows).is_none());
+        assert!(failed_queue_steer(&expected, &rows).is_none());
+        rows["data"][0]["error"]["data"]["outcome"]["operation"] = expected.operation();
+        assert_eq!(
+            failed_queue_steer(&expected, &rows).unwrap()["accepted"],
+            true
+        );
         rows["data"][0]["error"]["data"]["outcome"]["kind"] = json!("rejected");
         rows["data"][0]["digest"] = json!("different");
-        assert!(rejected_queue_steer(&expected, &rows).is_none());
+        assert!(failed_queue_steer(&expected, &rows).is_none());
     }
 
     #[test]

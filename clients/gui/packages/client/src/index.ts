@@ -351,15 +351,23 @@ export class HostClient {
       return a?.serviceGeneration !== b?.serviceGeneration || a?.state !== b?.state;
     });
     // 持久化快照在执行启动中仍可读；等 Core 就绪再切换，不能重开已经被执行占用的 Store。
-    if (this.#target?.persisted && after?.state !== "ready") return;
+    if (
+      this.#target &&
+      after &&
+      before &&
+      after.state !== "ready" &&
+      before.serviceGeneration === after.serviceGeneration &&
+      previous(this.#reads.session)?.access?.kind === "persisted"
+    )
+      return;
     if (
       !this.#target ||
       (before?.serviceGeneration === after?.serviceGeneration &&
         before?.state === after?.state &&
-        !(this.#target.persisted && after?.state === "ready"))
+        !(previous(this.#reads.session)?.access?.kind === "persisted" && after?.state === "ready"))
     )
       return;
-    if (this.#target.persisted && after?.state === "ready") this.#target.persisted = false;
+    if (after && after.state !== "ready") this.#target = { ...this.#target, persisted: true };
     this.#publishReads({
       ...this.#reads,
       session:
@@ -494,7 +502,6 @@ export class HostClient {
     const project = previous(this.#reads.shell)?.snapshot.projects.find(
       (value) => value.projectId === target?.projectId,
     );
-    if (target?.persisted && project?.state === "ready") target = { ...target, persisted: false };
     const timing = target ? sessionLoadTiming(target.threadId) : undefined;
     if (
       target &&
@@ -542,8 +549,8 @@ export class HostClient {
         : undefined,
       session: cached ? { state: "stale", value: cached } : { state: "loading" },
     });
-    if (target && !cached && !target.persisted && this.options.cache?.loadSession) {
-      const loadSelection = this.#selection;
+    if (target && !cached && this.options.cache?.loadSession) {
+      const loadTarget = target;
       void Promise.resolve(
         this.options.cache.loadSession({
           projectId: target.projectId,
@@ -553,8 +560,10 @@ export class HostClient {
         .then((persistedSession) => {
           if (
             this.#closed ||
-            loadSelection !== this.#selection ||
+            this.#target !== loadTarget ||
             !persistedSession ||
+            persistedSession.projectId !== loadTarget.projectId ||
+            persistedSession.threadId !== loadTarget.threadId ||
             this.#reads.session.state === "fresh"
           )
             return;
@@ -592,9 +601,9 @@ export class HostClient {
     const timing = sessionLoadTiming(target.threadId);
     const shell = previous(this.#reads.shell);
     const project = shell?.snapshot.projects.find((p) => p.projectId === target.projectId);
-    if (target.persisted && project?.state === "ready") target.persisted = false;
     const persisted =
       target.persisted === true &&
+      project?.state !== "ready" &&
       this.#state.connection === "ready" &&
       this.#state.identity.persistedHistory === true;
     const previousSession = previous(this.#reads.session);
@@ -606,7 +615,7 @@ export class HostClient {
     if (!project || (!persisted && (!project.serviceGeneration || project.state !== "ready"))) {
       this.#publishReads({
         ...this.#reads,
-        session: { state: "unavailable", error: "Project Core unavailable" },
+        session: stale(this.#reads.session, "Project Core unavailable"),
       });
       throw new Error("Project Core unavailable");
     }

@@ -763,10 +763,14 @@ fn check_admission(snapshot: &Value, entry: &Value, block_target: bool) -> Resul
                 if settled || areal_protocol::submissions::remote_control(row) {
                     return false;
                 }
-                // 新轮次只能在 Core 空闲且没有待执行队列项时启动。旧 steer 绑定原活动轮次，
-                // 即使仍缺回执，也不能向这次新建的轮次写入；保留原记录供单独核对。
-                if entry["method"] == "areal/turn/start"
-                    && params["admissionGuard"]["ordinarySession"] == true
+                // Core 在 Thread 锁内保证这两种写入只在空闲时发生；steer 只能作用于
+                // 原活动轮次。保留它的未决回执，同时允许空闲态的工具准备和新轮次。
+                let requires_idle = match entry["method"].as_str() {
+                    Some("areal/thread/tools/attach") => true,
+                    Some("areal/turn/start") => params["admissionGuard"]["ordinarySession"] == true,
+                    _ => false,
+                };
+                if requires_idle
                     && row["method"] == "areal/queue/steer"
                     && row["params"]["expectedTurnId"]
                         .as_str()
@@ -946,6 +950,25 @@ mod tests {
         let kept: Vec<_> = snapshot["outcomes"].as_object().unwrap().keys().collect();
         assert_eq!(kept, ["legacy-goal", "local", "native-send"]);
     }
+    #[test]
+    fn unresolved_steer_preserves_idle_tool_preparation_but_still_guards_queue_edits() {
+        let queued = json!({"method":"areal/queue/steer","params":{
+            "requestId":"old","threadId":"thread","queueItemId":"item","expectedTurnId":"turn"
+        }});
+        let mut snapshot = json!({"pending":[queued],"outcomes":{}});
+        let attach = json!({"method":"areal/thread/tools/attach","params":{
+            "requestId":"attach","threadId":"thread","expectedToolsetRevision":1,
+            "bundleId":"areal.browser.v1"
+        }});
+        assert!(check_admission(&snapshot, &attach, true).is_ok());
+        let edit = json!({"method":"areal/queue/update","params":{
+            "requestId":"edit","threadId":"thread","queueItemId":"item"
+        }});
+        assert!(check_admission(&snapshot, &edit, true).is_err());
+        snapshot["pending"][0]["method"] = json!("areal/turn/start");
+        assert!(check_admission(&snapshot, &attach, true).is_err());
+    }
+
     #[test]
     fn native_admission_is_cas_bound_and_settlement_keeps_original_outcome() {
         let root = tempfile::tempdir().unwrap();
