@@ -361,7 +361,9 @@ function startDesktop() {
           profile: app.getPath("userData"),
         });
       recordQuitStage(attempt, "finalizing");
-      await backend.completeApplicationQuit({ keepBackground: intent !== "install" });
+      // 已确认停止的 Host 不再接受后台保留策略，退出时也不能把它交给后继代际。
+      if (intent === "install" || !stopped)
+        await backend.completeApplicationQuit({ keepBackground: intent !== "install" });
       recordQuitStage(attempt, "disconnect");
       await backend.shutdown();
       await preview?.dispose();
