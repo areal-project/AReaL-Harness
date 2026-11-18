@@ -54,34 +54,13 @@ function validateCommand(name, params) {
 // One writer for provider secrets, recovery journals and projections. Core remains
 // authoritative for execution. No generic RPC passthrough; credential reveal is an explicit local request.
 class DesktopService {
-  /** @type {Map<number,{socket:ServiceSocket,timer:NodeJS.Timeout,resolve:(value:string)=>void,reject:(error:Error)=>void}>} */
-  encryptionPending = new Map();
-  encryptionSequence = 0;
-  /** 只向当前原生外壳取安全存储能力；断开后不重放。 @param {'encrypt'|'decrypt'} operation @param {string} value */
-  encryptionRequest(operation, value) {
-    const socket = this.browserSocket;
-    if (this.closed || !connected(socket) || this.encryptionPending.size >= 16)
-      return Promise.reject(new Error("系统安全存储外壳不可用"));
-    const requestId = ++this.encryptionSequence;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.encryptionPending.delete(requestId);
-        reject(new Error("系统安全存储请求超时"));
-      }, 15000);
-      this.encryptionPending.set(requestId, { socket, timer, resolve, reject });
-      this.send(socket, { method: "encryptionRequest", params: { requestId, operation, value } });
-    });
-  }
   /** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend @param {string} identity
-   * @param {()=>void} [onStop] @param {InstanceType<typeof import('./notifications.cjs').BackgroundNotifications>} [backgroundNotifications] */
-  constructor(backend, identity, onStop = () => {}, backgroundNotifications) {
+   * @param {()=>void} [onStop] */
+  constructor(backend, identity, onStop = () => {}) {
     this.backend = backend;
     this.identity = identity;
     this.onStop = onStop;
     this.lifecycle = backend.lifecycleOperations?.attach(this);
-    this.backgroundNotifications = backgroundNotifications;
-    /** @type {unknown} */
-    this.pendingNotificationTarget = null;
     this.token = randomBytes(32).toString("hex");
     /** @type {Set<ServiceSocket>} */ this.clients = new Set();
     /** @type {Map<string,BrowserClaim>} */ this.browserClaims = new Map();
@@ -306,40 +285,9 @@ class DesktopService {
     clients.sort((a, b) => (b.lastFocused ?? 0) - (a.lastFocused ?? 0));
     const delivery = { ...notice, silent: settings.notificationSound === "silent" };
     if (clients.length) this.send(clients[0], { method: "notification", params: delivery });
-    else
-      this.backgroundNotifications?.show(
-        delivery,
-        /** @param {unknown} target */ (target) => this.openNotification(target),
-      );
-  }
-  /** @param {unknown} target */
-  openNotification(target) {
-    const clients = [...this.clients]
-      .filter((s) => s.notifications && connected(s))
-      .sort((a, b) => (b.lastFocused ?? 0) - (a.lastFocused ?? 0));
-    if (clients.length) {
-      this.send(clients[0], { method: "notificationOpen", params: target });
-      return;
-    }
-    // This is a user click, not a new execution request. Pass only navigation
-    // identity over the authenticated connection when the GUI attaches.
-    this.pendingNotificationTarget = target;
-    try {
-      this.backgroundNotifications?.launch();
-    } catch (error) {
-      console.warn(
-        this.backend.providers.redact(`通知打开界面失败：${desktopError(error).message}`),
-      );
-    }
   }
   /** @param {ServiceSocket} socket */
   disconnectClient(socket) {
-    for (const [requestId, pending] of this.encryptionPending ?? [])
-      if (pending.socket === socket) {
-        clearTimeout(pending.timer);
-        this.encryptionPending.delete(requestId);
-        pending.reject(new Error("系统安全存储连接已断开"));
-      }
     this.stopSending(socket);
     this.releaseHistoryViews(socket);
     if (this.browserSocket === socket) {
@@ -502,10 +450,6 @@ class DesktopService {
         this.idleSince = null;
         const packet = { ...this.packet(), browserHostOwned: this.browserSocket === socket };
         response = packet;
-        if (socket.notifications && this.pendingNotificationTarget) {
-          this.send(socket, { method: "notificationOpen", params: this.pendingNotificationTarget });
-          this.pendingNotificationTarget = null;
-        }
         this.schedule();
         return response;
       }
@@ -533,18 +477,6 @@ class DesktopService {
         return response;
       }
       if (!this.clients.has(socket)) throw new Error("请先完成后台服务握手");
-      if (method === "encryptionResult") {
-        const pending =
-          typeof params.requestId === "number"
-            ? this.encryptionPending?.get(params.requestId)
-            : undefined;
-        if (!pending || pending.socket !== socket) throw new Error("无效的安全存储回复");
-        this.encryptionPending.delete(/** @type {number} */ (params.requestId));
-        clearTimeout(pending.timer);
-        if (typeof params.result === "string") pending.resolve(params.result);
-        else pending.reject(new Error("系统安全存储不可用"));
-        return null;
-      }
       if (["lifecycleRequest", "lifecycleRead", "lifecycleReconcile"].includes(method)) {
         if (!this.lifecycle)
           throw Object.assign(new Error("后台未声明持久生命周期能力"), {
@@ -797,11 +729,6 @@ class DesktopService {
   }
   close() {
     this.closed = true;
-    for (const pending of this.encryptionPending?.values() ?? []) {
-      clearTimeout(pending.timer);
-      pending.reject(new Error("系统安全存储连接已关闭"));
-    }
-    this.encryptionPending?.clear();
     for (const attempt of this.browserClaimAttempts.values()) attempt.cancelled = true;
     this.browserClaimAttempts.clear();
     for (const pending of this.browserPending.values()) {
@@ -814,8 +741,6 @@ class DesktopService {
     this.browserClaims.clear();
     this.browserEntrypoints.clear();
     this.browserDiscoveryPlans.clear();
-    this.backgroundNotifications?.close();
-    this.pendingNotificationTarget = null;
     clearTimeout(this.timer ?? undefined);
     clearInterval(this.activityTimer);
     for (const socket of this.server?.clients ?? []) {

@@ -1,10 +1,7 @@
 // @ts-check
 "use strict";
 const { modelRecord } = require("@areal/workbench/core-model-contract");
-const {
-  showCoreNotification,
-  isNotificationContent,
-} = require("@areal/workbench/node/native-notifications");
+const { isNotificationContent } = require("@areal/workbench/node/native-notifications");
 /** @typedef {{kind:'completion'|'approval'|'question',projectId:string,threadId?:string,taskId?:string,runId?:string|null,questionId?:string,body:string,silent?:boolean}} NotificationContent */
 /** @typedef {NotificationContent & {id:string}} Notice */
 // 通知来自 Core 活动事件或定时投影的变化；去重提示不替代执行状态。
@@ -188,31 +185,6 @@ class TaskNotificationMonitor {
   }
 }
 
-class BackgroundNotifications {
-  /** @param {typeof import('electron').Notification} Notification @param {()=>unknown} launch */
-  constructor(Notification, launch) {
-    this.Notification = Notification;
-    this.launch = launch;
-    this.entries = new Set();
-  }
-  get active() {
-    return this.entries.size > 0;
-  }
-  /** @param {unknown} notice @param {(target:import('@areal/workbench/desktop-contract').NotificationTarget)=>void} open */
-  show(notice, open) {
-    const notification = showCoreNotification(this.Notification, null, notice, open);
-    if (!notification) return;
-    this.entries.add(notification);
-    const release = () => this.entries.delete(notification);
-    notification.once("click", release);
-    notification.once("close", release);
-    notification.once("failed", release);
-  }
-  close() {
-    for (const notification of this.entries) notification.close();
-    this.entries.clear();
-  }
-}
 /** @param {unknown} value @returns {value is Notice} */
 function isNotice(value) {
   return isNotificationContent(value) && "id" in value && typeof value.id === "string";
@@ -220,5 +192,4 @@ function isNotice(value) {
 module.exports = {
   CoreNotifications,
   TaskNotificationMonitor,
-  BackgroundNotifications,
 };

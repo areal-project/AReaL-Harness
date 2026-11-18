@@ -133,40 +133,6 @@ class ServiceConnection {
         this.onBrowserCancel?.(message.params);
         return;
       }
-      if (message.method === "encryptionRequest") {
-        const request = message.params;
-        if (
-          !browserRequest(request) ||
-          typeof request.value !== "string" ||
-          request.value.length > 131072 ||
-          !["encrypt", "decrypt"].includes(String(request.operation))
-        ) {
-          socket.terminate();
-          return;
-        }
-        // 只在拥有本次后台连接的 Main 内调用原生安全存储，明文不写日志或投影。
-        try {
-          const storage = require("electron").safeStorage;
-          if (
-            !storage.isEncryptionAvailable() ||
-            storage.getSelectedStorageBackend?.() === "basic_text"
-          )
-            throw new Error("系统安全存储不可用");
-          const result =
-            request.operation === "encrypt"
-              ? storage.encryptString(request.value).toString("base64")
-              : storage.decryptString(Buffer.from(request.value, "base64"));
-          void this.request("encryptionResult", { requestId: request.requestId, result }).catch(
-            () => {},
-          );
-        } catch {
-          void this.request("encryptionResult", {
-            requestId: request.requestId,
-            error: true,
-          }).catch(() => {});
-        }
-        return;
-      }
       if (message.method === "browserRequest") {
         const request = message.params,
           onBrowserRequest = this.onBrowserRequest;
