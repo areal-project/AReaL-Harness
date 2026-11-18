@@ -93,10 +93,8 @@ export const DESKTOP_COMMANDS = new Set([
   "editMessage",
   "fork",
   "history",
-  "list",
   "manage",
   "media",
-  "open",
   "prediction",
   "prepareCreator",
   "projectless",
@@ -669,7 +667,18 @@ export function routeDesktopCommand(
   return async (name, params) => {
     if (desktopKeepsCommand(name, params)) return native(name, params);
     // 这些域只接受各自的 Host 方法，桌面 IPC 不再承接旧别名。
-    if (["library", "trajectory", "feedback", "analytics", "tasks", "providers"].includes(name))
+    if (
+      [
+        "library",
+        "trajectory",
+        "feedback",
+        "analytics",
+        "tasks",
+        "providers",
+        "open",
+        "list",
+      ].includes(name)
+    )
       throw backendUnavailable("Host 操作入口尚未就绪，请重新连接");
     if (!DESKTOP_COMMANDS.has(name)) return native(name, params);
     if (HOST_ONLY_DESKTOP_COMMANDS.has(name)) {

@@ -26,6 +26,7 @@ import { insertSideAnswer, makeBringBackPreview, sideSourceAdvanced } from "./si
 import { composerDraftStorage } from "./composerDraftStorage.js";
 import { sideStartConfiguration } from "./side-model-intent.js";
 import { createSideRestore, type SideRestoreState } from "./side-restore.js";
+import { usePlatformReads } from "./PlatformReadContext.js";
 import type { Action, Data } from "./services.js";
 import {
   attachedReviewComments,
@@ -202,6 +203,10 @@ function SideChatEditor({
   const previewKey = `${owner}:selection-preview`;
   const workspaceAccessKey = `${owner}:workspace-access`;
   const sideId = selected.kind === "side" ? selected.id : "";
+  const platformReads = usePlatformReads();
+  useEffect(() => {
+    if (sideId) return platformReads?.watch?.({ projectId: project.id, threadId: sideId });
+  }, [platformReads, project.id, sideId]);
   const reviewKey = reviewCommentKey(project.id, sideId || "new");
   const reviewDraft = useReviewComments(reviewKey);
   const reviewComments = attachedReviewComments(reviewDraft.draft);

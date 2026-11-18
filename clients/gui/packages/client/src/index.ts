@@ -159,6 +159,9 @@ export class HostClient {
   watchSession(target: { projectId: string; threadId: string }) {
     return this.#watched.watch(target);
   }
+  captureWatchedSession<T>(target: { projectId: string; threadId: string }, snapshot: () => T) {
+    return this.#watched.capture(target, snapshot);
+  }
   #pruneSessionCache() {
     clearTimeout(this.#cacheTimer);
     for (const [key, entry] of this.#sessionCache)

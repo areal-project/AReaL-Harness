@@ -1664,7 +1664,7 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
                 "FORBIDDEN"
             );
             // 桌面命令通道只给本机已批准写入的网页；手机和远程即使有 gui-write 也拒绝。
-            let desktop = json!({"id":"desktop","method":"desktop.command","params":{"sourceId":"source","command":"list","request":{}}});
+            let desktop = json!({"id":"desktop","method":"desktop.command","params":{"sourceId":"source","command":"history","request":{}}});
             assert_eq!(session.request(&desktop).await.unwrap_err().to_string(), "FORBIDDEN");
             let mut local = f.session("a");
             local.local = true;
@@ -1676,13 +1676,10 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
                 error.downcast_ref::<crate::wire::Error>().map(|error| error.code),
                 Some("CAPABILITY_UNAVAILABLE")
             );
-            // 来源可省略（新装桌面登记来源前），由 Host 按当前后台认定，同样先要求后台在运行。
-            let unsourced = json!({"id":"desktop","method":"desktop.command","params":{"command":"list","request":{}}});
-            let error = local.request(&unsourced).await.unwrap_err();
-            assert_eq!(
-                error.downcast_ref::<crate::wire::Error>().map(|error| error.code),
-                Some("CAPABILITY_UNAVAILABLE")
-            );
+            // 已移除的命令在本机写会话中也不能再次派发。
+            let retired = json!({"id":"desktop","method":"desktop.command","params":{"command":"list","request":{"projectId":"project"}}});
+            assert_eq!(local.request(&retired).await.unwrap_err().to_string(), "INVALID_PARAMS");
+            // 省略来源时，Host 仍要求存在已登记的当前来源。
             let unsourced = json!({"id":"providers","method":"providers.read","params":{"operation":"list"}});
             assert_eq!(local.request(&unsourced).await.unwrap_err().to_string(), "CAPABILITY_UNAVAILABLE");
             f.grant("a", |grant| grant["projectIds"] = json!([]));

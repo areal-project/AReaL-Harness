@@ -51,7 +51,7 @@ Host 发布包内与 Electron 相同的 Renderer。`areal web` 打开公开 orig
 
 工作台各域的读写（`library`、`worktree`、`tasks`、`trajectory`、`feedback`、`manage`、`providers`）与 `desktop.command` 都不需要客户端指定 `sourceId`：省略时 Host 用当前工作台后台的来源，后台未运行时返回 `CAPABILITY_UNAVAILABLE`；显式传入且不一致时返回 `FORBIDDEN`。
 
-资料库非原生操作（含非导航偏好）统一使用 `library.command` 和原 `commandId` 回执。用量、任务目录、供应商、反馈和轨迹使用各自的 Host 方法。添加项目使用原生项目登记入口。
+资料库非原生操作（含非导航偏好）统一使用 `library.command` 和原 `commandId` 回执。用量、任务目录、供应商、反馈和轨迹使用各自的 Host 方法。添加项目使用原生项目登记入口。 会话列表读取共享 Shell 目录。读取附加会话使用 `session.watch`，不改变主会话选择。
 
 ## 消息封装与公共类型
 

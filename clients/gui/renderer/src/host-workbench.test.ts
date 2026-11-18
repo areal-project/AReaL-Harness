@@ -730,12 +730,15 @@ describe("local web desktop commands", () => {
       },
     } as unknown as HostClient;
     const command = hostDesktopCommand(client, hostCommandError);
-    expect(await command("list", { projectId: "p" })).toEqual({ ok: true, value: { done: true } });
+    expect(await command("connect", { projectId: "p" })).toEqual({
+      ok: true,
+      value: { done: true },
+    });
     expect(await command("recovery", { operation: "inspect" })).toEqual({
       ok: true,
       value: { done: true },
     });
-    expect(await command("list", { fail: true } as never)).toEqual({
+    expect(await command("connect", { fail: true } as never)).toEqual({
       ok: false,
       error: { code: "x", message: "Core refused" },
     });
@@ -743,7 +746,10 @@ describe("local web desktop commands", () => {
       ok: true,
       value: { bytes: new Uint8Array([137, 80]), mime: "image/png" },
     });
-    expect(calls[0]).toEqual(["desktop.command", { command: "list", request: { projectId: "p" } }]);
+    expect(calls[0]).toEqual([
+      "desktop.command",
+      { command: "connect", request: { projectId: "p" } },
+    ]);
     expect(calls[1]).toEqual([
       "desktop.command",
       { command: "recovery", request: { operation: "inspect" } },

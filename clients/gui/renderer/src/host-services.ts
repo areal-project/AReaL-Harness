@@ -583,6 +583,39 @@ export function createHostReadServices(
   }
   const writes: NonNullable<PlatformServices["writes"]> = {
     async route(name, params) {
+      if (name === "open") {
+        const target = hostTarget(params);
+        if (!target) throw new Error("Conversation unavailable");
+        const selected = client.readsSnapshot().session;
+        if (
+          selected.state === "fresh" &&
+          selected.value.projectId === target.hostProjectId &&
+          selected.value.threadId === target.threadId &&
+          target.project.state.threads[target.threadId]
+        )
+          return { routed: true, snapshot };
+        const value = await client.captureWatchedSession(
+          { projectId: target.hostProjectId, threadId: target.threadId },
+          () => {
+            const current = hostTarget(params);
+            if (
+              current?.hostProjectId !== target.hostProjectId ||
+              !current.project.state.threads[target.threadId]
+            )
+              throw new Error("Conversation owner changed");
+            return snapshot;
+          },
+        );
+        return { routed: true, snapshot: value };
+      }
+      if (name === "list") {
+        const original = client.snapshot();
+        if (original.connection !== "ready") throw new Error("Project list unavailable");
+        await client.refreshShell();
+        if (client.snapshot() !== original || client.readsSnapshot().shell.state !== "fresh")
+          throw new Error("Project list unavailable");
+        return { routed: true, snapshot };
+      }
       if (client.snapshot().connection !== "ready") return undefined;
       const project = snapshot.projects.find((value) => value.id === params.projectId) as
         | ReadProject

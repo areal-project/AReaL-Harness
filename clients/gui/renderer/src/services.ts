@@ -203,7 +203,9 @@ export interface PlatformServices {
     route(
       name: string,
       params: Record<string, unknown>,
-    ): Promise<{ routed: true; value?: unknown } | undefined>;
+    ): Promise<
+      { routed: true; value?: unknown } | { routed: true; snapshot: Snapshot } | undefined
+    >;
   };
   /** 按领域切到 Host 工作台服务的命令；返回 undefined 表示仍走桌面原路径。 */
   workbench?: {
@@ -335,6 +337,7 @@ async function executeCall<N extends CommandName, P extends CommandParams<N>>(
   }
   const written = await services.writes?.route(name, params as Record<string, unknown>);
   if (written) {
+    if ("snapshot" in written) return written.snapshot as CommandResponse<N, P>;
     const value =
       "value" in written
         ? written.value

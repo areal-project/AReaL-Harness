@@ -1532,6 +1532,12 @@ describe("Host renderer read authority", () => {
     const services = createHostReadServices(undefined, options(factory));
     await until(services);
     await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
+    const opened = await call(services, "open", { projectId: "alias", threadId: "child" });
+    expect(opened.projects[0].state?.threads.child.id).toBe("child");
+    expect(opened.projects[0].state?.threads.thread.id).toBe("thread");
+    expect((await services.snapshot()).projects[0].state.threads.child).toBeUndefined();
+    const listed = await call(services, "list", { projectId: "alias" });
+    expect(listed.projects[0].state?.threads.thread.id).toBe("thread");
     const release = services.reads!.watch!({ projectId: "alias", threadId: "child" });
     try {
       await vi.waitFor(async () =>

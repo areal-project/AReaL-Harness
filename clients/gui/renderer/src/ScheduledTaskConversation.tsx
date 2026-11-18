@@ -15,6 +15,7 @@ import {
 import type { TaskConversationRenderer } from "./TaskDraft.js";
 import { TaskRunConversations } from "./TaskRunConversations.js";
 import type { Action, Data } from "./services.js";
+import { usePlatformReads } from "./PlatformReadContext.js";
 
 export function ScheduledTaskConversation({
   task,
@@ -38,6 +39,7 @@ export function ScheduledTaskConversation({
   renderResources: (project: Data, thread: Data) => ReactNode;
 }) {
   const { t } = useI18n();
+  const platformReads = usePlatformReads();
   const [read, setRead] = useState<{ status: "pending" | "ready" | "error"; error?: string }>({
     status: "pending",
   });
@@ -49,6 +51,7 @@ export function ScheduledTaskConversation({
   useEffect(() => {
     if (!project.state?.connected || !target) return;
     let live = true;
+    const release = platformReads?.watch?.({ projectId: project.id, threadId: target });
     setRead({ status: "pending" });
     void action("open", { projectId: project.id, threadId: target })
       .then(() => {
@@ -59,9 +62,11 @@ export function ScheduledTaskConversation({
       });
     return () => {
       live = false;
+      release?.();
     };
   }, [
     action,
+    platformReads,
     project.id,
     project.state?.connected,
     project.core?.connectionGeneration,

@@ -9,6 +9,7 @@ import { AskUserQuestion } from "./AskUserQuestion.js";
 import { Button } from "./components/ui/button.js";
 import type { Action, Data } from "./services.js";
 import type { TaskConversationRenderer } from "./TaskDraft.js";
+import { usePlatformReads } from "./PlatformReadContext.js";
 
 export const scheduleZone = (task: Data) =>
   task.scheduleV2?.rule?.timeZone ?? task.schedule?.timeZone;
@@ -39,7 +40,7 @@ const runReasons: Record<string, string> = {
   goalMissingOrReplaced: "执行目标已丢失，已记为失败",
   stopRequested: "已请求停止",
 };
-type ReadState = { status: "loading" | "ready" | "error"; error?: string };
+type ReadState = { status: "loading" | "ready" | "error"; error?: string; thread?: Data };
 
 export function TaskRunConversations({
   project,
@@ -55,6 +56,7 @@ export function TaskRunConversations({
   renderConversation: TaskConversationRenderer;
 }) {
   const { t } = useI18n();
+  const platformReads = usePlatformReads();
   // Core 的 runs 已按运行顺序排列；只去重，不重排或修改来源历史。
   const runs = [
     ...new Map<string, Data>((task.runs ?? []).map((run: Data) => [run.id, run])).values(),
@@ -63,6 +65,16 @@ export function TaskRunConversations({
     ...new Set<string>(runs.flatMap((run) => (run.threadId ? [run.threadId] : []))),
   ];
   const connected = !!project.state?.connected;
+  // 历史 Run 保留单次快照，避免长任务占满附加会话的订阅名额。
+  const liveThreadId = runs.findLast(
+    (run) =>
+      run.threadId &&
+      ["running", "waitingForInput", "waitingForAgents", "paused"].includes(run.status),
+  )?.threadId;
+  useEffect(() => {
+    if (connected && liveThreadId)
+      return platformReads?.watch?.({ projectId: project.id, threadId: liveThreadId });
+  }, [connected, liveThreadId, platformReads, project.id]);
   const connection = useRef({ connected, epoch: 0 });
   if (connection.current.connected !== connected)
     connection.current = { connected, epoch: connection.current.epoch + 1 };
@@ -97,8 +109,10 @@ export function TaskRunConversations({
           setReads((previous) => ({ ...previous, [id]: { status: "loading" } }));
           try {
             // open 只观察执行会话，不导航，也不恢复执行；已有 taskWatch 保持不变。
-            await action("open", { projectId: project.id, threadId });
-            if (live) setReads((previous) => ({ ...previous, [id]: { status: "ready" } }));
+            const observed = await action("open", { projectId: project.id, threadId });
+            const thread = observed.projects?.find((owner) => owner.id === project.id)?.state
+              ?.threads?.[threadId];
+            if (live) setReads((previous) => ({ ...previous, [id]: { status: "ready", thread } }));
           } catch (cause) {
             if (live)
               setReads((previous) => ({
@@ -130,11 +144,16 @@ export function TaskRunConversations({
       <h3>执行记录</h3>
       {!runs.length && <p role="status">尚未运行</p>}
       {runs.map((run) => {
-        const thread = project.state?.threads?.[run.threadId];
+        const liveThread = project.state?.threads?.[run.threadId];
         const read = run.threadId ? reads[key(run.threadId)] : undefined;
+        const thread = liveThread ?? read?.thread;
         const interactions = project.state?.interactions?.[run.threadId];
         const readOnly =
-          disabled || !connected || read?.status !== "ready" || !!thread?.desktop?.archived;
+          disabled ||
+          !connected ||
+          !liveThread ||
+          read?.status !== "ready" ||
+          !!thread?.desktop?.archived;
         const pending = (interactions?.data ?? []).filter(
           (item: Data) => item.status === "pending" && item.threadId === run.threadId,
         );

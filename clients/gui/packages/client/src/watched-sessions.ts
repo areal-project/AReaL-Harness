@@ -14,7 +14,13 @@ import type { ReadConnectionIdentity, ReadTransport } from "./index.js";
 /** 选中会话之外的附加观察，例如侧边讨论；键为 `${projectId}:${threadId}`。 */
 export type WatchedSessions = ReadonlyMap<string, Fresh<SessionRead>>;
 type Target = { projectId: string; threadId: string };
-type Watched = { target: Target; refs: number; read: Fresh<SessionRead>; generation: number };
+type Watched = {
+  target: Target;
+  refs: number;
+  read: Fresh<SessionRead>;
+  generation: number;
+  opening?: Promise<void>;
+};
 type Owner = {
   transport(): ReadTransport | undefined;
   connection(): ReadConnectionIdentity | undefined;
@@ -35,7 +41,7 @@ export class WatchedSessionSet {
     else {
       this.#entries.set(key, { target, refs: 1, read: { state: "loading" }, generation: 0 });
       this.#publish();
-      void this.#open(key).catch(() => {});
+      this.#begin(key);
     }
     let released = false;
     return () => {
@@ -59,6 +65,36 @@ export class WatchedSessionSet {
     };
   }
 
+  async capture<T>(target: Target, snapshot: () => T): Promise<T> {
+    const transport = this.owner.transport();
+    const connection = this.owner.connection();
+    const project = this.owner.project(target.projectId);
+    if (!transport || !connection || project?.state !== "ready" || !project.serviceGeneration)
+      throw new Error("Project Core unavailable");
+    const key = `${target.projectId}:${target.threadId}`;
+    const release = this.watch(target);
+    try {
+      const entry = this.#entries.get(key);
+      if (!entry) throw new Error("Conversation unavailable");
+      if (entry.read.state !== "fresh") await (entry.opening ?? this.#begin(key));
+      const read = entry.read;
+      if (
+        read.state !== "fresh" ||
+        read.value.connectionId !== connection.connectionId ||
+        read.value.gatewayGeneration !== connection.gatewayGeneration ||
+        read.value.serviceGeneration !== project.serviceGeneration ||
+        this.#entries.get(key) !== entry ||
+        this.owner.transport() !== transport ||
+        this.owner.connection() !== connection ||
+        this.owner.project(target.projectId)?.serviceGeneration !== project.serviceGeneration
+      )
+        throw new Error("Conversation unavailable");
+      return snapshot();
+    } finally {
+      release();
+    }
+  }
+
   markStale() {
     if (!this.#entries.size) return;
     for (const entry of this.#entries.values()) entry.read = stale(entry.read);
@@ -70,7 +106,7 @@ export class WatchedSessionSet {
     for (const [key, entry] of this.#entries) {
       if (changed && !changed(entry.target.projectId)) continue;
       if (entry.read.state === "fresh") entry.read = stale(entry.read);
-      void this.#open(key).catch(() => {});
+      this.#begin(key);
     }
     this.#publish();
   }
@@ -129,12 +165,21 @@ export class WatchedSessionSet {
   }
   #reload(key: string, entry: Watched) {
     this.#set(key, entry, stale(entry.read));
-    void this.#open(key).catch(() => {});
+    this.#begin(key);
   }
 
-  async #open(key: string): Promise<void> {
+  #begin(key: string) {
     const entry = this.#entries.get(key);
     if (!entry) return;
+    const opening = this.#open(key, entry).finally(() => {
+      if (entry.opening === opening) entry.opening = undefined;
+    });
+    entry.opening = opening;
+    void opening.catch(() => {});
+    return opening;
+  }
+
+  async #open(key: string, entry: Watched): Promise<void> {
     const generation = ++entry.generation;
     const transport = this.owner.transport();
     const connection = this.owner.connection();
