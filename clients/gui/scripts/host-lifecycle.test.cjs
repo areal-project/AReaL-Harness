@@ -2119,3 +2119,96 @@ test("native shutdown revokes its attachment without requesting Node activity", 
   assert.equal(closed, 1);
   assert.equal(f.backend.nativeBrowserEpoch, undefined);
 });
+
+test("Host startup failure never falls back to a Main writer", async (t) => {
+  const f = await fixture(t);
+  const failure = new Error("fixture Host owner unavailable");
+  f.backend.initializeHostBackend = async () => {
+    throw failure;
+  };
+  f.backend.prerequisiteCheck = async () => assert.fail("must not initialize Main backend");
+  await assert.rejects(f.backend.initialize(), (error) => error === failure);
+});
+
+for (const fails of [false, true]) {
+  test(`concurrent initialization shares control read and ${fails ? "failure" : "connection"}`, async (t) => {
+    const f = await fixture(t);
+    let release,
+      reads = 0,
+      starts = 0;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    f.backend.readControl = async () => {
+      reads++;
+      await gate;
+      return null;
+    };
+    const failure = new Error("fixture initialization failure");
+    f.backend.initialize = async () => {
+      starts++;
+
+      if (fails) throw failure;
+    };
+    const pending = Promise.allSettled(Array.from({ length: 8 }, () => f.backend.init()));
+    release();
+    const results = await pending;
+    assert.equal(reads, 1, "the shared attempt must cover asynchronous control-file reads");
+    assert.equal(starts, 1, "concurrent callers must not replace each other's connection");
+    assert.equal(f.backend.connecting, null);
+    assert.equal(f.backend.initializing, false);
+    assert.ok(
+      results.every((result) =>
+        fails
+          ? result.status === "rejected" && result.reason === failure
+          : result.status === "fulfilled",
+      ),
+    );
+    if (fails) {
+      f.backend.initialize = async () => {
+        starts++;
+      };
+      await f.backend.init();
+      assert.equal(starts, 2, "a later explicit retry is allowed after shared failure");
+    }
+  });
+}
+
+test("disposal during control read prevents initialization", async (t) => {
+  const f = await fixture(t);
+  let release,
+    starts = 0;
+  f.backend.readControl = () =>
+    new Promise((resolve) => {
+      release = resolve;
+    });
+  f.backend.initialize = async () => {
+    starts++;
+  };
+  const pending = assert.rejects(f.backend.init(), /GUI 连接已关闭/);
+  f.backend.disposed = true;
+  release(null);
+  await pending;
+  assert.equal(starts, 0);
+  assert.equal(f.backend.connecting, null);
+});
+
+test("default desktop profile identity follows the bundled deployment", (t) => {
+  const { serviceOptions } = require("../app/src/core/service-config.cjs");
+  const profile = require("node:module").createRequire(require.resolve("../app/package.json"))(
+    "@areal/workbench/desktop-profile",
+  ).profiles[0];
+  const previous = process.env.AREAL_CORE_DESKTOP_CONFIG;
+  t.after(() => {
+    if (previous === undefined) delete process.env.AREAL_CORE_DESKTOP_CONFIG;
+    else process.env.AREAL_CORE_DESKTOP_CONFIG = previous;
+  });
+  delete process.env.AREAL_CORE_DESKTOP_CONFIG;
+  const app = { isPackaged: false, getPath: () => "/tmp/areal-profile-test" };
+  assert.deepEqual(serviceOptions(app).defaultProfile, {
+    id: profile.id,
+    revision: profile.revision,
+  });
+  process.env.AREAL_CORE_DESKTOP_CONFIG = "/tmp/custom-deployment.json";
+  assert.equal(serviceOptions(app).defaultProfile, undefined);
+});

@@ -15,6 +15,7 @@ const forbidden = new Set([
   "@deepseek-ai/dsh-credentials",
   "@areal/harness-runtime-host",
   "@areal/dsh-game-bundle",
+  "@areal/workbench-service",
 ]);
 function manifestAt(name, parent) {
   const req = createRequire(join(parent, "package.json"));
@@ -172,12 +173,6 @@ export async function verifyCoreApp(appRoot) {
     }
   }
   await visit(join(appRoot, "package.json"));
-  assert.ok(
-    existsSync(
-      join(appRoot, "node_modules/@areal/workbench-service/src/desktop/bridge/filetree.js"),
-    ),
-    "Missing workspace file listing",
-  );
   assert.ok(
     existsSync(join(appRoot, "node_modules/@areal/chatgpt-provider/oauth-worker.js")),
     "Missing OAuth worker",

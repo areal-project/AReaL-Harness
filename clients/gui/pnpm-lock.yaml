@@ -169,9 +169,6 @@ importers:
       '@areal/workbench':
         specifier: workspace:*
         version: link:../packages/workbench
-      '@areal/workbench-service':
-        specifier: workspace:*
-        version: link:../../../services/workbench
       '@areal/workspace-git':
         specifier: workspace:*
         version: link:../packages/workspace-git

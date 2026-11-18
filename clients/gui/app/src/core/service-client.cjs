@@ -19,8 +19,6 @@ const {
   createNativeHostTransport,
   createNativeShellTransport,
 } = require("./generated/native-host-transport.cjs");
-const { ServiceConnection } = require("./service-connection.cjs");
-const { readServicePacket } = require("@areal/workbench-service/desktop/core/service-state.cjs");
 const {
   readGuiProcesses,
   readGuiThreadIdentity,
@@ -99,11 +97,11 @@ class SharedCoreBackend {
     prerequisiteCheck = checkHostPrerequisites,
     ...options
   }) {
-    /** @type {InstanceType<typeof ServiceConnection>|null|undefined} */
+    /** @type {InstanceType<typeof import("./service-connection.cjs").ServiceConnection>|null|undefined} */
     this.connection = undefined;
     /** @type {Metadata|undefined} */
     this.metadata = undefined;
-    /** @type {InstanceType<typeof ServiceConnection>|null|undefined} */
+    /** @type {InstanceType<typeof import("./service-connection.cjs").ServiceConnection>|null|undefined} */
     this.stoppedConnection = undefined;
     /** @type {Metadata|import("./service-control.cjs").DesktopIdentity|null|undefined} */
     this.exitConfirmation = undefined;
@@ -157,7 +155,7 @@ class SharedCoreBackend {
     this.options = options;
     this.home = options.home;
     this.onChange = onChange;
-    /** @type {import("@areal/workbench-service/desktop/core/service-state.cjs").ServiceSnapshot} */
+    /** @type {import("@areal/workbench/desktop-contract/shared").DesktopSnapshot} */
     this.value = {
       library: {
         projects: {},
@@ -172,7 +170,6 @@ class SharedCoreBackend {
     };
     /** @type {Partial<import('@areal/workbench/desktop-contract/desktop-control-resources').RecoveryService>} */
     this.status = { connected: false };
-    this.sequence = -1;
     /** @type {{state:string,message?:string,recovery?:string,prerequisite?:unknown}} */
     this.connectionState = { state: "connecting" };
     this.revision = 0;
@@ -442,24 +439,6 @@ class SharedCoreBackend {
       connection,
     };
   }
-  /** @param {unknown} packet @param {unknown} [metadata] */
-  accept(packet, metadata = this.metadata) {
-    if (this.disposed) return;
-    const checked = readServicePacket(packet, metadata);
-    if (checked.sequence <= this.sequence) return;
-    this.clearReconnect();
-    this.reconnectAttempts = 0;
-    this.sequence = checked.sequence;
-    this.value = checked.snapshot;
-    this.status = {
-      ...require("@areal/workbench/desktop-contract/desktop-control-resources").readRecoveryService(
-        checked.service,
-      ),
-      ...checked.service,
-    };
-    this.connectionState = { state: "ready" };
-    this.onChange();
-  }
   disconnected() {
     this.closeNativeBrowser();
     this.terminalConnections.close();
@@ -535,33 +514,6 @@ class SharedCoreBackend {
         .finally(() => this.scheduleReconnect());
     }, delay);
     this.reconnectTimer.unref?.();
-  }
-  /** @param {unknown} [candidate] */
-  createConnection(candidate) {
-    this.terminalConnections.close();
-    this.terminalConnections = NativeTerminalOwners.forOwner(this);
-    const connection = new ServiceConnection(
-      (packet) => {
-        if (this.connection !== connection) return;
-        try {
-          this.accept(packet, candidate ?? this.metadata);
-        } catch {
-          this.connection = null;
-          connection.close();
-          this.disconnected();
-        }
-      },
-      () => {
-        if (this.connection === connection) this.disconnected();
-      },
-      (notice) => {
-        if (this.connection === connection) this.onNotification?.(notice);
-      },
-      (target) => {
-        if (this.connection === connection) this.onNotificationOpen?.(target);
-      },
-    );
-    return connection;
   }
   get controlPath() {
     return join(this.app.getPath("userData"), "service-control.json");
@@ -1542,21 +1494,6 @@ class SharedCoreBackend {
   }
   async waitForApplicationReady() {
     if (this.connecting) await this.connecting.catch(() => {});
-    // 原生业务受理由Host结算；Main仅等待自己的启动和终端附件。
-    if (this.nativeBrowserEpoch) return;
-    const deadline = Date.now() + 20000;
-    while (this.status.connected) {
-      const { service } = readServicePacket(
-        await this.requireConnection().request("snapshot"),
-        this.metadata,
-      );
-      if (!service.starting && !service.activeCommands) return;
-      if (Date.now() >= deadline)
-        throw Object.assign(new Error("项目启动或已受理操作仍在完成，请稍后退出"), {
-          code: "LIFECYCLE_BLOCKED",
-        });
-      await sleep(100);
-    }
   }
   async prepareQuit() {
     await this.settleGuiTerminals();
@@ -1583,7 +1520,9 @@ function record(value) {
 
 module.exports = {
   SharedCoreBackend,
-  ServiceConnection,
+  get ServiceConnection() {
+    return require("./service-connection.cjs").ServiceConnection;
+  },
   waitForServiceExit,
   waitForServiceProcessExit,
   waitForProcessExit,

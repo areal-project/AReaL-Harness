@@ -105,11 +105,10 @@ const { lstat, mkdir, open, rename, rm } = require("node:fs/promises");
 const { constants } = require("node:fs");
 const { join } = require("node:path");
 const { randomUUID } = require("node:crypto");
-const { PROTOCOL } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 /** @typedef {import('./lifecycle.cjs').RecoveryObservation} Observation */
 const { HostClient } = require("@areal/client/node");
 const { hostUpdateReceipt } = require("@areal/workbench/desktop-contract/desktop-control");
-const { desktopError } = require("@areal/workbench/desktop-contract");
+const { commandSemantics, desktopError } = require("@areal/workbench/desktop-contract");
 const { projectHostReceipt } = require("./host-lifecycle.cjs");
 /** @typedef {InstanceType<typeof import('./service-client.cjs').SharedCoreBackend>} Backend */
 /** @typedef {import('./service-control.cjs').LifecycleReference} Reference */
@@ -347,37 +346,8 @@ async function readLifecycle(reference, reconcile = true) {
       throw Object.assign(new Error("Original lifecycle source changed"), {
         code: "RESYNC_REQUIRED",
       });
-  } else if (this.status.connected && this.status.lifecycle?.version === 2) {
-    try {
-      receipt = await this.requireConnection().request(
-        reconcile ? "lifecycleReconcile" : "lifecycleRead",
-        { protocol: PROTOCOL, requestId: reference.requestId },
-      );
-    } catch (error) {
-      if (
-        desktopError(error).code !== "DISCONNECTED" &&
-        desktopError(error).code !== "LIFECYCLE_UNSUPPORTED"
-      )
-        throw error;
-    }
-  }
-  if (!receipt && !native && (!profile || !this.options.hostHome)) {
-    const {
-      readLifecycleReceipt,
-      reconcileLifecycleReceipt,
-    } = require("@areal/workbench-service/desktop/core/lifecycle-operations.cjs");
-    const identity = {
-      requestId: reference.requestId,
-      desktopGeneration: reference.desktopGeneration,
-    };
-    receipt =
-      this.options.binary && this.options.harnessHome
-        ? await reconcileLifecycleReceipt(this.home, {
-            ...identity,
-            binary: this.options.binary,
-            harnessHome: this.options.harnessHome,
-          })
-        : await readLifecycleReceipt(this.home, identity);
+  } else {
+    receipt = await readOfflineDesktopReceipt(this.home, reference);
   }
   if (!receipt)
     receipt = {
@@ -474,7 +444,8 @@ async function acceptLifecycleReceipt(reference, value) {
 function assertLifecycleScope(name, request = {}) {
   if (
     ["list", "open", "reconcile", "queue"].includes(name) ||
-    require("./lifecycle.cjs").isRecoveryCommand(name, request)
+    (name === "manage" && request.operation === "toolAcknowledge") ||
+    (name !== "browserClaim" && commandSemantics(name, request).effect === "read")
   )
     return;
   if (this.unidentifiedStop || (this.status.stopReport && this.status.lifecycle?.version !== 2))
@@ -506,6 +477,7 @@ function assertLifecycleScope(name, request = {}) {
 
 /** @this {Backend}  @param {LifecycleOptions} options @returns {Promise<LifecycleResult>} */
 async function requestLifecycle(options) {
+  const { PROTOCOL } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
   const {
     kind,
     mode = "ifIdle",
