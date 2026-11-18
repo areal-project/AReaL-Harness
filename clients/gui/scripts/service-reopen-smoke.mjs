@@ -18,13 +18,21 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { connect } from "../../../examples/desktop-api/client.mjs";
+import {
+  assertApplicationStopped,
+  closeSmokeApplication,
+  stopAndAssertFixtureHost,
+} from "./application-cleanup.mjs";
 import { applicationFixture } from "./application-fixture.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), ".."),
   root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
+const { HostClient } = require("@areal/client/node");
+const { readOfflineHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
 const { _electron: electron, chromium } = require("playwright-core");
 const binary = process.env.AREAL_CORE_BIN;
 assert.ok(binary?.startsWith(join(root, ".local/dev-bin/")), "Use a private fixed Core slot");
@@ -114,17 +122,19 @@ const model = createServer(async (request, response) => {
 await new Promise((resolve) => model.listen(0, "127.0.0.1", resolve));
 await writeFile(
   config,
-  `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\n`,
+  `schema_version=1\n[model]\ncatalog_version=1\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\nmodels=[{id="fixture",enabled=true}]\n`,
 );
 const env = { ...process.env };
 for (const key of Object.keys(env))
   if (/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) || key === "ELECTRON_RUN_AS_NODE") delete env[key];
 Object.assign(env, {
+  HOME: join(scratch, "user"),
   AREAL_CORE_BIN: binary,
   AREAL_CORE_CONFIG: config,
   AREAL_GUI_USER_DATA: join(scratch, "electron"),
   AREAL_CORE_HOME: join(scratch, "core"),
   AREAL_CORE_USER_HOME: join(scratch, "user"),
+  AREAL_HARNESS_HOME: join(scratch, "harness"),
   AREAL_HARNESS_SERVICE_HOME: join(scratch, "registry"),
 });
 const application = await applicationFixture(gui, join(scratch, "app"));
@@ -196,15 +206,37 @@ const records = async () => {
     )
   ).filter(Boolean);
 };
-const desktopPids = new Set();
+const hostPids = new Set();
+const hostStops = [];
+const stoppingGenerations = new Set();
+const readMetadata = () =>
+  readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/host.json"), "utf8")
+    .then(JSON.parse)
+    .catch((error) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
 const metadata = async () => {
-  const value = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-  assert.ok(Number.isSafeInteger(value.pid), "Desktop metadata identifies its process");
-  desktopPids.add(value.pid);
-  return value;
+  const value = await readMetadata();
+  assert.ok(value, "fixture Host is running");
+  const { pid, hostId, generation } = value;
+  assert.ok(Number.isSafeInteger(pid) && pid > 1);
+  hostPids.add(pid);
+  const host = new HostClient();
+  try {
+    await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+    assert.equal(host.hostId, hostId);
+    assert.equal(host.generation, generation);
+    const backend = await host.request("backend.status", {});
+    assert.equal(backend.owned, false);
+    assert.equal(backend.service, null);
+    return { pid, hostId, generation };
+  } finally {
+    host.close();
+  }
 };
 const identity = async () => {
-  const desktop = await metadata(),
+  const host = await metadata(),
     services = await records();
   const processes = execFileSync("ps", ["-axo", "pid=,ppid=,comm="], { encoding: "utf8" })
     .trim()
@@ -232,16 +264,14 @@ const identity = async () => {
     .sort((a, b) => a - b);
   for (const pid of [
     processHandle.pid,
-    desktop.pid,
+    host.pid,
     ...services.flatMap((service) => [service.hostPid, service.corePid]),
     ...runtimePids,
   ])
     assert.ok(alive(pid), `owned process ${pid} is alive`);
   return {
     mainPid: processHandle.pid,
-    desktopPid: desktop.pid,
-    desktopGeneration: desktop.desktopGeneration,
-    applicationOwner: desktop.applicationOwner,
+    host,
     services,
     runtimePids,
   };
@@ -250,13 +280,33 @@ let app,
   page,
   rendererConnection,
   processHandle,
+  observer,
   originalMetadata,
   projectId,
   threadId,
   passed = false;
 const state = () => page.evaluate(() => window.arealDesktop.snapshot());
-const thread = (snapshot) =>
-  snapshot.projects.find((project) => project.id === projectId)?.state?.threads[threadId];
+const workbench = () => page.getByTestId("areal-workbench");
+const observeCore = async ({ activate = false } = {}) => {
+  const host = new HostClient();
+  try {
+    await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+    const match = (await host.status()).projects.find(
+      ({ registration }) => registration.workspace === workspace,
+    );
+    if (!match) return false;
+    const service =
+      match.service ??
+      (activate && (await host.ensureProject(randomUUID(), match.registration.projectId)).service);
+    if (!service) return false;
+    observer = await connect(service.endpoint, service.authFile);
+    return true;
+  } finally {
+    host.close();
+  }
+};
+const readThread = async () =>
+  (await observer.call("thread/read", { threadId, includeTurns: true })).thread;
 const launch = async () => {
   app = await electron.launch({
     executablePath: require("electron"),
@@ -268,24 +318,82 @@ const launch = async () => {
   page = await app.firstWindow();
   page.setDefaultTimeout(20000);
   page.on("pageerror", (error) => errors.push(error.stack));
-  await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
+  await page.locator('[data-testid="areal-workbench"][data-startup-ready="true"]').waitFor({
+    timeout: 120000,
+  });
   await until(async () => (await state()).connection?.state === "ready", "application ready");
   await app.evaluate(({ dialog }) => {
     dialog.showMessageBox = async (...args) => ({
-      response: ["确认取消后台任务？", "退出 AReaL Harness？"].includes(args.at(-1).message)
+      response: args
+        .at(-1)
+        .buttons?.some((button) => ["取消任务并停止", "停止任务并退出"].includes(button))
         ? 1
         : (args.at(-1).cancelId ?? 0),
     });
   });
 };
-const stop = async () => {
+const quit = async () => {
   if (!app) return;
   await app.evaluate(({ app }) => app.quit());
-  await until(
-    () => processHandle.exitCode !== null || processHandle.signalCode !== null,
-    "application exit",
-  );
+  await closeSmokeApplication(app);
   app = null;
+};
+const originalStopReference = async ({ hostId, generation }) => {
+  const control = await readFile(join(env.AREAL_GUI_USER_DATA, "service-control.json"), "utf8")
+    .then(JSON.parse)
+    .catch((error) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+  return control?.references.find(
+    (entry) =>
+      entry.kind === "stopHost" && entry.hostId === hostId && entry.generation === generation,
+  );
+};
+const confirmGuiStop = async (host) => {
+  const reference = await originalStopReference(host);
+  assert.ok(reference, "GUI persisted the original Host stop request");
+  stoppingGenerations.add(host.generation);
+  const receipt = await readOfflineHostReceipt(binary, reference);
+  assert.equal(receipt?.state, "completed", "the original GUI stop must be confirmed");
+  hostStops.push(receipt);
+  await assertApplicationStopped(binary, env, { pid: processHandle.pid, hostPid: host.pid });
+};
+const quitAndObserveIdleRelease = async () => {
+  const host = await metadata();
+  observer?.socket.close();
+  observer = null;
+  await quit();
+  // 空闲退出交给 Host 自己回收。只核对它登记的原停止号，避免与回收竞跑。
+  const policy = JSON.parse(
+    await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/release.json"), "utf8"),
+  );
+  assert.equal(policy.generation, host.generation);
+  stoppingGenerations.add(host.generation);
+  const reference = {
+    kind: "stopHost",
+    requestId: policy.stopRequestId,
+    hostId: host.hostId,
+    generation: host.generation,
+    home: env.AREAL_HARNESS_SERVICE_HOME,
+    strategy: "ifIdle",
+  };
+  await assertApplicationStopped(binary, env, { pid: processHandle.pid, hostPid: host.pid });
+  const receipt = await readOfflineHostReceipt(binary, reference);
+  assert.equal(receipt?.state, "completed", "Host confirms its original idle release stop");
+  hostStops.push(receipt);
+};
+const finishFixtureHost = async () => {
+  observer?.socket.close();
+  observer = null;
+  const host = await readMetadata();
+  if (!host || stoppingGenerations.has(host.generation)) return;
+  hostPids.add(host.pid);
+  if (await originalStopReference(host)) return confirmGuiStop(host);
+  stoppingGenerations.add(host.generation);
+  const evidence = join(scratch, host.generation);
+  await mkdir(evidence, { recursive: true });
+  hostStops.push(await stopAndAssertFixtureHost(binary, env, evidence, { pid: processHandle.pid }));
 };
 const quiescent = async () => {
   await until(
@@ -294,8 +402,8 @@ const quiescent = async () => {
     "old engine processes exit",
   );
   await until(
-    () => [...desktopPids].every((pid) => !alive(pid)),
-    "all observed Desktop generations exit",
+    () => [...hostPids].every((pid) => !alive(pid)),
+    "all observed Host generations exit",
   );
 };
 const sourceCommit = execFileSync("git", ["rev-parse", "HEAD"], {
@@ -310,7 +418,8 @@ const sourcePaths = [
   "app/src/core/main.cjs",
   "app/src/core/native-host-transport.ts",
   "app/src/core/service-client.cjs",
-  "../../services/workbench/src/desktop/core/backend.cjs",
+  "../../core/host/src/workbench_frontend.rs",
+  "../../core/host/src/workbench_submissions.rs",
   "renderer/src/Messages.tsx",
   "scripts/service-reopen-smoke.mjs",
   "scripts/model-fixture.mjs",
@@ -333,52 +442,57 @@ const sourceHash = createHash("sha256")
 console.log("Service reopen evidence:", scratch);
 try {
   await launch();
-  if (readingSlice) {
-    await page.getByRole("button", { name: "设置", exact: true }).click();
-    await page.getByRole("button", { name: "常规", exact: true }).click();
-    await page.getByRole("switch", { name: "预测下一条提示词", exact: true }).uncheck();
-    await page.getByRole("button", { name: "返回应用", exact: true }).click();
-  }
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: "常规", exact: true }).click();
+  await page.getByRole("switch", { name: "预测下一条提示词", exact: true }).uncheck();
+  await page.getByRole("button", { name: "返回应用", exact: true }).click();
   await app.evaluate(({ dialog }, workspace) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [workspace] });
   }, workspace);
   await page.locator(".composer-project").click();
   await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
-  projectId = (
-    await until(
-      async () =>
-        (await state()).projects.find(
-          (project) => project.root === workspace && project.state?.connected,
-        ),
-      "project ready",
-    )
-  ).id;
+  const project = await until(
+    async () => (await state()).projects.find((candidate) => candidate.root === workspace),
+    "workspace registered",
+  );
+  projectId = project.id;
+  await until(
+    async () => (await workbench().getAttribute("data-project-id")) === projectId,
+    "new workspace selected",
+  );
+  await page.getByRole("button", { name: "选择模型", exact: true }).click();
+  await page.getByRole("tab", { name: "fixture", exact: true }).click();
+  await page.locator('[data-model-value="fixture/fixture"]').getByRole("radio").click();
+  await page.keyboard.press("Escape");
   await page.getByTestId("chat-input").fill("complete history");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   threadId = await until(
     () => page.getByTestId("areal-workbench").getAttribute("data-thread-id"),
     "thread created",
   );
+  await until(observeCore, "canonical Core project running");
   await until(
-    async () => thread(await state())?.turns.at(-1)?.status === "completed",
+    async () => (await readThread()).turns.at(-1)?.status === "completed",
     "first turn completes",
   );
   await page.getByTestId("chat-input").fill("hold reopen");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await until(() => held.size === 1, "held second turn");
   await until(
-    async () => thread(await state())?.turns.at(-1)?.status === "inProgress",
+    async () => (await readThread())?.turns.at(-1)?.status === "inProgress",
     "second turn running",
   );
   originalMetadata = await metadata();
-  const attachedThread = structuredClone(thread(await state())),
+  const attachedThread = structuredClone(await readThread()),
     attachedTurnId = attachedThread.turns.at(-1).id;
-  const heldResponse = [...held][0],
-    connection = {
-      workRequest: 2,
-      localPort: heldResponse.socket.localPort,
-      remotePort: heldResponse.socket.remotePort,
-    };
+  assert.equal(requests.length, 2);
+  const heldResponse = [...held][0];
+  assert.ok(heldResponse?.socket, "the second work request is still streaming");
+  const connection = {
+    workRequest: 2,
+    localPort: heldResponse.socket.localPort,
+    remotePort: heldResponse.socket.remotePort,
+  };
   const originalIdentity = await identity();
   const draft = "PRESERVED_REOPEN_DRAFT";
   await page.getByTestId("chat-input").fill(draft);
@@ -413,7 +527,7 @@ try {
     assert.equal(await page.getByTestId("chat-input").innerText(), draft);
     assert.equal(await page.locator(".message-column [data-turn-id]").count(), 2);
     assert.equal(await page.locator(".message-column .user-message").count(), 2);
-    const snapshotThread = thread(await state());
+    const snapshotThread = await readThread();
     assert.deepEqual(
       snapshotThread.turns.map((turn) => turn.id),
       attachedThread.turns.map((turn) => turn.id),
@@ -691,7 +805,7 @@ try {
   );
   await until(
     async () =>
-      thread(await state())?.turns.find((turn) => turn.id === attachedTurnId)?.status ===
+      (await readThread())?.turns.find((turn) => turn.id === attachedTurnId)?.status ===
       "completed",
     "original attached turn completes",
   );
@@ -707,11 +821,11 @@ try {
   assert.equal(await completed.locator(".assistant-message-final").count(), 1);
   assert.equal(await completed.getByTestId("turn-activity").count(), 0);
   assert.deepEqual(
-    thread(await state()).turns.map((turn) => turn.id),
+    (await readThread()).turns.map((turn) => turn.id),
     attachedThread.turns.map((turn) => turn.id),
   );
   assert.equal(
-    thread(await state()).turns.filter(
+    (await readThread()).turns.filter(
       (turn) => turn.id === attachedTurnId && turn.status === "completed",
     ).length,
     1,
@@ -777,22 +891,19 @@ try {
       console.log("Manual ready: " + join(scratch, "manual-ready.json"));
       await closed;
     }
-    await stop();
+    await quitAndObserveIdleRelease();
     await quiescent();
     passed = true;
   } else {
     await page.getByTestId("chat-input").fill("hold application restart");
     await page.getByRole("button", { name: "发送", exact: true }).click();
     await until(
-      async () =>
-        held.size === 1 &&
-        thread(await state())?.turns.length === 3 &&
-        thread(await state()).turns.at(-1).status === "inProgress",
+      async () => held.size === 1 && (await readThread()).turns.at(2)?.status === "inProgress",
       "independent third turn held for application restart",
     );
     assert.equal(requests.length, 3);
     assert.equal(held.size, 1);
-    const originalThread = structuredClone(thread(await state()));
+    const originalThread = await readThread();
     const original = await records();
     generations.push(original);
     await page.getByTestId("chat-input").fill(draft);
@@ -804,19 +915,20 @@ try {
     } else await utimes(binary, originalStat.atime, new Date(originalStat.mtimeMs + 10000));
     for (let index = 0; index < 2; index++) {
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
-      assert.equal(
-        await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()),
-        false,
+      await until(
+        async () =>
+          !(await app.evaluate(({ BrowserWindow }) =>
+            BrowserWindow.getAllWindows()[0].isVisible(),
+          )),
+        "window hidden after Renderer acknowledges close",
+        30000,
       );
       await app.evaluate(({ app }) => app.emit("activate"));
       await until(
         () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()),
         "window shown",
       );
-      assert.equal(
-        (await metadata()).applicationOwner.appRunId,
-        originalMetadata.applicationOwner.appRunId,
-      );
+      assert.deepEqual(await metadata(), originalMetadata);
       assert.deepEqual(
         (await records()).map((service) => service.generation),
         original.map((service) => service.generation),
@@ -824,7 +936,7 @@ try {
       assert.equal(await page.getByTestId("chat-input").innerText(), draft);
       assert.equal(requests.length, 3);
       assert.equal(held.size, 1);
-      assert.equal(thread(await state()).turns.at(-1).id, originalThread.turns.at(-1).id);
+      assert.equal((await readThread()).turns.at(-1).id, originalThread.turns.at(-1).id);
     }
     await restoreBinary();
     checks.push(
@@ -839,62 +951,79 @@ try {
       processHandle.kill("SIGKILL");
       await until(() => !alive(processHandle.pid), "forced Main exit");
       app = null;
-    } else await stop();
-    await quiescent();
-    assert.equal(held.size, 0);
-    checks.push(
-      `${force ? "forced" : "normal"} application exit ends the owned model connection and releases engines`,
-    );
+      assert.deepEqual(await metadata(), originalMetadata);
+      assert.ok(held.size === 1);
+    } else {
+      observer.socket.close();
+      observer = null;
+      await quit();
+      await confirmGuiStop(originalMetadata);
+      await quiescent();
+      assert.equal(held.size, 0);
+    }
+
     await launch();
-    await until(
-      async () =>
-        (await state()).projects.find((project) => project.id === projectId)?.state?.connected,
-      "original workspace restored",
+    assert.equal(
+      (await metadata()).generation === originalMetadata.generation,
+      force,
+      "the original Host generation survives only when Main exits without requesting a stop",
     );
-    const restored = await page.evaluate(
-      ({ projectId, threadId }) => window.arealDesktop.command("open", { projectId, threadId }),
-      { projectId, threadId },
-    );
-    assert.equal(restored.ok, true, JSON.stringify(restored));
     await until(
-      async () => thread(await state())?.turns.length === originalThread.turns.length,
+      async () => (await workbench().getAttribute("data-thread-id")) === threadId,
+      "original thread selected after reopening",
+    );
+    assert.equal(await workbench().getAttribute("data-project-id"), projectId);
+    const history = page.locator(`[data-turn-id="${attachedTurnId}"] .assistant-message-final`);
+    await history.getByText("REOPEN_HELD", { exact: false }).waitFor();
+    assert.equal(await page.getByTestId("chat-input").innerText(), draft);
+    assert.equal(requests.length, 3);
+    if (!force) {
+      // 重开先恢复已有历史。只为核对后继 Core 的代际，显式激活一次原项目。
+      assert.ok(
+        await observeCore({ activate: true }),
+        "explicit activation opens the original project",
+      );
+    }
+    await until(
+      async () => (await readThread()).turns.length === originalThread.turns.length,
       "history restored",
     );
     const current = await records();
     generations.push(current);
-    assert.notEqual(
-      (await metadata()).applicationOwner.appRunId,
-      originalMetadata.applicationOwner.appRunId,
-    );
     for (const after of current.filter((service) => service.state === "ready")) {
       const before = original.find((service) => service.serviceId === after.serviceId);
-      assert.notEqual(after.generation, before?.generation);
-      assert.equal(after.owner.appRunId, (await metadata()).applicationOwner.appRunId);
+      assert.ok(before, "the original project retains its service identity");
+      assert.equal(after.generation === before.generation, force);
     }
     assert.ok(
       current.some((service) => service.workspace === workspace && service.state === "ready"),
     );
-    assert.ok(
-      current
-        .filter((service) => service.state === "stopped")
-        .every((service) => !alive(service.hostPid) && !alive(service.corePid)),
-    );
+    const reopened = await readThread();
     assert.deepEqual(
-      thread(await state()).turns.map((turn) => turn.id),
+      reopened.turns.map((turn) => turn.id),
       originalThread.turns.map((turn) => turn.id),
     );
-    assert.equal(thread(await state()).turns[0].status, "completed");
-    assert.equal(
-      thread(await state()).turns.find((turn) => turn.id === attachedTurnId).status,
-      "completed",
-    );
-    assert.notEqual(thread(await state()).turns.at(-1).status, "inProgress");
+    assert.equal(reopened.turns[0].status, "completed");
+    assert.equal(reopened.turns.find((turn) => turn.id === attachedTurnId).status, "completed");
+    if (force) {
+      assert.equal(reopened.turns.at(-1).status, "inProgress");
+      const originalResponse = [...held][0];
+      originalResponse.end(
+        `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+      );
+      await until(
+        async () => (await readThread()).turns.at(-1).status === "completed",
+        "the original live Turn completes after Main recovery",
+      );
+    } else assert.notEqual(reopened.turns.at(-1).status, "inProgress");
     assert.equal(await page.getByTestId("chat-input").innerText(), draft);
     assert.equal(requests.length, 3);
     checks.push(
-      "application restart creates a new owner and engine generation, retains history and unsent draft, and never replays interrupted input",
+      force
+        ? "Main loss preserves the active Host/Core and original model request; the reopened GUI retains history and draft"
+        : "confirmed stop releases the active Host/Core; GUI reopen restores original history and draft without replay",
     );
-    await stop();
+    await quitAndObserveIdleRelease();
     await quiescent();
     passed = true;
   }
@@ -909,6 +1038,7 @@ try {
   await restoreBinary().catch((error) => errors.push(`binary restore: ${error.stack}`));
   await rm(staged, { force: true });
   if (backup) await rm(backup, { force: true });
+  await finishFixtureHost().catch((error) => errors.push(`cleanup: ${error.stack}`));
   await quiescent().catch((error) => errors.push(`cleanup: ${error.stack}`));
   for (const response of held) response.destroy();
   model.closeAllConnections();
@@ -921,7 +1051,7 @@ try {
     )
       errors.push(`source changed during test: ${path}`);
   passed = passed && errors.length === 0;
-  const desktopCleanup = [...desktopPids].map((pid) => ({ pid, exited: !alive(pid) }));
+  const hostCleanup = [...hostPids].map((pid) => ({ pid, exited: !alive(pid) }));
   await writeFile(
     join(scratch, "manifest.json"),
     JSON.stringify(
@@ -936,7 +1066,8 @@ try {
         readingEvidence,
         generations,
         attachments,
-        desktopCleanup,
+        hostCleanup,
+        hostStops,
         sourceHash,
         sourceHashes,
         binary,
@@ -946,7 +1077,7 @@ try {
         namingRequests: modelRequests.filter((request) => request.kind === "naming").length,
         modelRequests,
         scope:
-          "isolated source Electron/Main/Desktop/Core; Runtime PID presence recorded without requiring tool execution; local model; native dialog/picker responses injected; no installed package",
+          "isolated source Electron/Main/Host/Core; Runtime PID presence recorded without requiring tool execution; local model; native dialog/picker responses injected; no installed package",
       },
       null,
       2,
