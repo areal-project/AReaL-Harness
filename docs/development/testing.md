@@ -528,7 +528,7 @@ macOS 实际崩溃预算使用 `AREAL_HOST_SERVICE_ROOT=/absolute/authorized/roo
 
 `node clients/gui/scripts/gui-terminal-connection-smoke.mjs` 使用同一固定产物，在独立 Node 客户端中运行生产 Main 终端连接适配器。场景覆盖显式 Profile 权限、真实 PTY 输入/输出/resize、强杀客户端后的定向 Runtime 清理、原请求恢复及普通 thread 资源继续。它不启动 Electron，不验证 Desktop 提交 journal 桥接或退出界面。
 
-`node clients/gui/scripts/gui-toolhost-connection-smoke.mjs` 使用真实 Host/Core、DesktopService 与 ProjectConnections。Main socket 断开后 Desktop 保持运行，原 Turn 继续，动态工具报告不可用；后继 Main 只能观察活动 Turn，空闲后显式动作才重绑。另覆盖普通观察客户端断开不撤销 Main 工具。模型由本地 HTTP/SSE fixture 提供，不启动 Electron 或真实浏览器，也不证明供应商和安装包可用。
+`node clients/gui/scripts/gui-toolhost-connection-smoke.mjs` 使用固定 Core 产物、已构建的 GUI 适配器、生产 Main 附件与认证 Host loopback。验证普通观察者断开保留浏览器租约，Main 断开保留原轮次，继任 Main 只在空闲后显式发送时接管。合成本地模型核对工具不可用结果和回调未重放。此测试不启动 Electron，也不使用真实浏览器或模型供应商。
 
 `pnpm --dir clients/gui run test:host-handoff` 使用隔离 Electron、真实 TUI PTY 和固定 `.local/shared-host-bin` 产物。GUI 提交停在审批后强退 Main，TUI 连接原 Core 完成原 Turn，Runtime 文件副作用恰好一次。GUI 重开后核对原 Turn、同项目 TUI 新会话和独立 CLI 项目的历史。脚本检查源码、构建与产物身份，并将截图、终端输出、注册记录和清理结果保存在 `.scratch/shared-host/h2-gui-tui-handoff/`。模型仅使用本地确定性 fixture，目录选择器由测试注入；该场景不覆盖凭据迁移、真实供应商或安装包。
 
