@@ -14,6 +14,12 @@ import "./MobileSettings.css";
 import type { Action, CommandParams, Data } from "../services.js";
 
 type Tone = "good" | "warning" | "idle";
+const credentialErrors = new Set([
+  "remoteCredentialUnreadable",
+  "storageAuthorizationRequired",
+  "storageLocked",
+  "storageMissing",
+]);
 
 /**
  * 手机连接页：一张状态卡回答“手机现在能不能连”，下面是设备列表；
@@ -25,6 +31,7 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
   const [error, setError] = useState<string | UiMessage>(""),
     [busy, setBusy] = useState(false);
   const [statusError, setStatusError] = useState<string | UiMessage>("");
+  const [credentialError, setCredentialError] = useState("");
   const [invite, setInvite] = useState<Data | null>(null);
   const [inviteExpired, setInviteExpired] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -37,6 +44,7 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
     try {
       const result = await action("remoteControl", request);
       setStatusError("");
+      setCredentialError("");
       if (request.operation === "pair") {
         setInvite(result);
         setInviteExpired(false);
@@ -52,6 +60,10 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
       return result ?? {};
     } catch (error) {
       const failure = error as Error & { code?: string };
+      if (credentialErrors.has(failure.code ?? "")) {
+        setCredentialError(currentErrorText(failure));
+        return undefined;
+      }
       setError(
         request.operation.startsWith("network") && typeof failure.code === "string"
           ? {
@@ -79,7 +91,7 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
         .catch((error) => {
           if (live)
             setStatusError(
-              errorCode(error) === "storageAuthorizationRequired"
+              credentialErrors.has(errorCode(error) ?? "")
                 ? currentErrorText(error)
                 : {
                     id: "settings.mobileSettings.theHostIsOfflineOrTheBackground",
@@ -106,6 +118,7 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
   }, [action]);
 
   const transport = state.enabled ? "relay" : "direct";
+  const credentialHint = credentialError || state.migrationError;
   const reconnectUrl =
     transport === "relay"
       ? state.relayUrl
@@ -236,13 +249,15 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
             {t("settings.relayService.startLocal")}
           </Button>
         )}
+        {!adding && credentialHint && (
+          <p className="remote-error" role="alert">
+            {credentialHint}
+          </p>
+        )}
       </SettingsGroupCard>
-      {!adding && (error || state.migrationError || state.directError || statusError) && (
+      {!adding && !credentialHint && (error || state.directError || statusError) && (
         <p className="remote-error" role="alert">
-          {formatUiMessage(t, error) ||
-            state.migrationError ||
-            state.directError ||
-            formatUiMessage(t, statusError)}
+          {formatUiMessage(t, error) || state.directError || formatUiMessage(t, statusError)}
         </p>
       )}
       <RelayServicePanel state={state} busy={busy} run={run} />
@@ -252,7 +267,7 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
         busy={busy}
         run={run}
         reconnectUrl={reconnectUrl ?? ""}
-        error={formatUiMessage(t, error)}
+        error={credentialHint || formatUiMessage(t, error)}
       />
       <MobileAdvancedNetwork
         state={state}

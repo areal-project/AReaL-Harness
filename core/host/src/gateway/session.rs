@@ -200,6 +200,7 @@ pub(crate) fn error_code(message: &str) -> &str {
         | "MIGRATION_PENDING"
         | "migrationBlocked"
         | "storageAuthorizationRequired"
+        | "remoteCredentialUnreadable"
         | "RECONNECTING"
         | "SUBMISSION_UNKNOWN" => message,
         _ => "CORE_UNAVAILABLE",

@@ -58,6 +58,7 @@ export const ERROR_CODES = {
   storageAuthorizationRequired: { action: "none", retryable: false },
   storageMissing: { action: "none", retryable: false },
   storageLocked: { action: "retry", retryable: true },
+  remoteCredentialUnreadable: { action: "none", retryable: false },
   remoteStateUnavailable: { action: "retry", retryable: true },
   localRelayUnavailable: { action: "none", retryable: false },
   // 只用于诊断的码：用户看到通用说明，原码进详情。

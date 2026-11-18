@@ -102,6 +102,8 @@ class NativeRemote {
         storageMissing:
           "找不到读取手机连接加密凭据所需的钥匙串主密钥，需先恢复原有凭据或重置手机连接配置。",
         storageLocked: "本地凭据库当前已锁定，请解锁系统钥匙串后重试。",
+        remoteCredentialUnreadable:
+          "无法解密原有的手机连接凭据。请从同一份备份恢复钥匙串主密钥和手机连接配置后重试。没有可用备份时，需要重新配置手机连接并重新配对。新增 Provider API Key 无法恢复手机连接。",
       };
       const message = storageErrors[code];
       if (typeof message !== "string") throw error;

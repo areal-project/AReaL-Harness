@@ -61,7 +61,12 @@ class HostRemote {
       if (
         error instanceof Error &&
         "code" in error &&
-        ["storageAuthorizationRequired", "storageLocked", "storageBusy"].includes(String(error.code))
+        [
+          "storageAuthorizationRequired",
+          "storageLocked",
+          "storageBusy",
+          "remoteCredentialUnreadable",
+        ].includes(String(error.code))
       )
         Object.assign(error, { remoteReadFailed: true });
       throw error;

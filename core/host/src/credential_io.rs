@@ -170,6 +170,18 @@ pub(crate) fn execute(
 pub(crate) const MASTER_KEY_BYTES: usize = 32;
 const SEAL_TAG_BYTES: usize = 16;
 const SEAL_NONCE_BYTES: usize = 12;
+const ENVELOPE_INVALID: i32 = -2;
+
+#[derive(Debug)]
+pub(crate) struct EnvelopeInvalid(&'static str);
+
+impl std::fmt::Display for EnvelopeInvalid {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.0)
+    }
+}
+
+impl std::error::Error for EnvelopeInvalid {}
 
 fn seal(key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>> {
     let unbound = ring::aead::UnboundKey::new(&ring::aead::AES_256_GCM, key)
@@ -194,7 +206,7 @@ fn seal(key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>> {
 fn unseal(key: &[u8], sealed: &[u8]) -> Result<Vec<u8>> {
     ensure!(
         sealed.len() > SEAL_NONCE_BYTES + SEAL_TAG_BYTES,
-        error("storageLocked", "credential envelope is truncated")
+        EnvelopeInvalid("credential envelope is truncated")
     );
     let (nonce, body) = sealed.split_at(SEAL_NONCE_BYTES);
     let mut nonce_bytes = [0u8; SEAL_NONCE_BYTES];
@@ -208,7 +220,7 @@ fn unseal(key: &[u8], sealed: &[u8]) -> Result<Vec<u8>> {
             ring::aead::Aad::empty(),
             &mut body,
         )
-        .map_err(|_| error("storageLocked", "credential envelope failed authentication"))?;
+        .map_err(|_| EnvelopeInvalid("credential envelope failed authentication"))?;
     Ok(plaintext.to_vec())
 }
 
@@ -219,6 +231,13 @@ fn reply_value(response: Reply) -> Result<Option<Value>> {
             "storageAuthorizationRequired",
             "Keychain authorization does not permit this application identity; authorize access or re-enter the credential",
         )),
+        ENVELOPE_INVALID => Err(error(
+            "storageLocked",
+            response
+                .diagnostic
+                .unwrap_or_else(|| "credential envelope could not be verified".into()),
+        )
+        .context(EnvelopeInvalid("credential envelope could not be verified"))),
         -1 => Err(error(
             "storageLocked",
             response
@@ -240,6 +259,13 @@ fn credential_reply(result: Result<Option<Value>>) -> Reply {
             diagnostic: None,
         },
         Err(cause) => {
+            if let Some(invalid) = cause.downcast_ref::<EnvelopeInvalid>() {
+                return Reply {
+                    status: ENVELOPE_INVALID,
+                    value: None,
+                    diagnostic: Some(invalid.to_string()),
+                };
+            }
             // 仅凭据模块主动生成的说明可跨进程；文件系统错误可能带本机路径。
             let known = cause.downcast_ref::<crate::wire::Error>();
             Reply {
@@ -926,7 +952,19 @@ fn sealed_credentials_round_trip_and_bind_to_the_master_key() {
     // 换一把主密钥必须认证失败，而不是返回错误明文。
     let mut other = key;
     other[0] ^= 0xff;
-    assert!(unseal(&other, &sealed).is_err());
+    let failure = unseal(&other, &sealed).unwrap_err();
+    assert!(failure.is::<EnvelopeInvalid>());
+    let failure = reply_value(credential_reply(Err(failure))).unwrap_err();
+    assert!(failure.is::<EnvelopeInvalid>());
+    assert_eq!(
+        failure.downcast_ref::<crate::wire::Error>().unwrap().code,
+        "storageLocked"
+    );
+    let mobile = crate::remote_state::remote_credential_error(failure);
+    assert_eq!(
+        mobile.downcast_ref::<crate::wire::Error>().unwrap().code,
+        "remoteCredentialUnreadable"
+    );
     // 篡改任一字节都必须被拒绝。
     let mut tampered = sealed.clone();
     let last = tampered.len() - 1;

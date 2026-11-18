@@ -212,8 +212,8 @@ test("relay enrollment retains failed input and invitations render QR images in 
               window.failedPhoneStatus = true;
               throw new Error('Status unavailable');
             }
-            if (request.operation === 'relayServiceStartLocal' && window.denyRelayKeychain)
-              throw Object.assign(new Error('Private Keychain diagnostic'), { code: 'storageAuthorizationRequired' });
+            if (request.operation === 'relayServiceStartLocal' && window.relayFailureCode)
+              throw Object.assign(new Error('Private Keychain diagnostic'), { code: window.relayFailureCode });
             if (request.operation === 'enable') {
               await new Promise(resolve => { window.finishEnrollment = resolve; });
               if (!window.enrollmentSucceeds) throw new Error('Enrollment rejected');
@@ -303,7 +303,7 @@ test("relay enrollment retains failed input and invitations render QR images in 
     );
     await page.getByRole("button", { name: "关闭弹窗" }).click();
     await page.evaluate(() => {
-      window.denyRelayKeychain = true;
+      window.relayFailureCode = "storageAuthorizationRequired";
     });
     await page.getByRole("button", { name: "开启内网连接", exact: true }).click();
     const keychainError = page.getByRole("alert").filter({ hasText: "请在钥匙串访问中授权后重试" });
@@ -318,10 +318,28 @@ test("relay enrollment retains failed input and invitations render QR images in 
     assert.match(await keychainError.textContent({ timeout: 1000 }), /macOS 钥匙串未授权/);
     await page.evaluate(() => {
       window.failPhoneStatus = false;
-      window.denyRelayKeychain = false;
+      window.relayFailureCode = "remoteCredentialUnreadable";
     });
-    await page.getByRole("button", { name: "开启内网连接", exact: true }).click();
+    const startLocal = page.getByRole("button", { name: "开启内网连接", exact: true });
+    await startLocal.click();
+    const recovery = page.getByRole("alert").filter({ hasText: "无法解密原有的手机连接凭据" });
+    await recovery.waitFor();
+    assert.match(await recovery.innerText(), /从备份恢复|重新配对/);
+    assert.match(await recovery.innerText(), /API Key 无法恢复/);
+    await page.evaluate(() => {
+      window.relayFailureCode = "COMMAND_FAILED";
+    });
+    await startLocal.click();
+    await page.evaluate(
+      () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+    );
+    assert.match(await recovery.textContent({ timeout: 1000 }), /无法解密原有的手机连接凭据/);
+    await page.evaluate(() => {
+      window.relayFailureCode = "";
+    });
+    await startLocal.click();
     await page.getByRole("status").filter({ hasText: "本机服务运行中" }).waitFor();
+    assert.equal(await recovery.count(), 0);
     await page.getByRole("button", { name: "添加设备", exact: true }).click();
     await image.waitFor();
     assert.match(await page.getByRole("dialog").innerText(), /AReaL Remote App/);

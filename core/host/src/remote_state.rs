@@ -38,6 +38,18 @@ struct Acquire {
     source_id: String,
 }
 type Seed = Option<(String, String, Vec<String>)>;
+
+pub(crate) fn remote_credential_error(cause: anyhow::Error) -> anyhow::Error {
+    #[cfg(target_os = "macos")]
+    if cause.is::<crate::credential_io::EnvelopeInvalid>() {
+        return error(
+            "remoteCredentialUnreadable",
+            "Saved mobile connection credentials could not be decrypted",
+        );
+    }
+    cause
+}
+
 pub(crate) trait Credentials {
     fn vault(&self) -> &crate::vault::Vault;
     fn remote_seed(&self) -> Result<Seed>;
@@ -97,6 +109,7 @@ impl RemoteState {
                 move |vault| work(remote, CredentialSnapshot { vault, seed }),
             )
             .await
+            .map_err(remote_credential_error)
     }
     pub(crate) async fn dispatch_async(
         &self,

@@ -41,6 +41,8 @@ async function fixture(t, retired, projectionFixture = false) {
       }), controlRemote: async (request) => {
         if (request.operation === 'relayServiceStartLocal' && ++relayStarts === 2)
           throw Object.assign(Error('private Keychain diagnostic'), { code: 'storageAuthorizationRequired' });
+        if (request.operation === 'relayServiceStartLocal' && relayStarts === 3)
+          throw Object.assign(Error('private credential diagnostic'), { code: 'remoteCredentialUnreadable' });
         return { phoneAction: request.operation };
       },
       executeRemote: async (name, params) => {
@@ -191,6 +193,13 @@ test("本机网页的桌面命令只放行命令表内、合同通过的请求�
       request: { operation: "relayServiceStartLocal" },
     })).error,
     { code: "storageAuthorizationRequired" },
+  );
+  assert.deepEqual(
+    (await call("relay-unreadable", {
+      command: "remoteControl",
+      request: { operation: "relayServiceStartLocal" },
+    })).error,
+    { code: "remoteCredentialUnreadable" },
   );
   for (const [id, params, message] of [
     ["unknown", { command: "quit", request: {} }, "Invalid desktop command"],
