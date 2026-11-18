@@ -59,7 +59,7 @@ function locator(command) {
     commandId: command.commandId,
     method: command.method,
     params,
-    ...(command.method === "session.create" && command.detached === true ? { detached: true } : {}),
+    ...(command.detached === true ? { detached: true } : {}),
     admissionState: "unknown",
     submissionUnknown: true,
   };
@@ -70,9 +70,7 @@ function locatorScope(command) {
     command.hostId,
     command.projectId,
     command.method,
-    ...(command.detached === true && command.method === "session.create"
-      ? [command.commandId]
-      : []),
+    ...(command.detached === true ? [command.commandId] : []),
     ...TARGET_FIELDS[command.method].map((key) => command.params?.[key]),
   ]);
 }
@@ -243,19 +241,22 @@ export class ClientState {
     });
     this.assertCurrent(token);
   }
-  async detachCreationLocator(token, command) {
+  async detachLocator(token, command) {
     this.assertCurrent(token);
     const original = locator(command);
-    if (token.mode !== "remembered" || original.method !== "session.create")
-      throw new Error("无法保留原创建请求");
+    if (token.mode !== "remembered") throw new Error("无法保留原请求");
     await this.transaction(true, (record) => {
       this.matching(record, token);
       const entry = record.locators.find((item) => item.commandId === original.commandId);
       if (!entry || JSON.stringify(locator(entry)) !== JSON.stringify(original))
-        throw new Error("原创建请求已变化");
+        throw new Error("原请求已变化");
       entry.detached = true;
     });
     this.assertCurrent(token);
+  }
+  async detachCreationLocator(token, command) {
+    if (command?.method !== "session.create") throw new Error("无法保留原创建请求");
+    return this.detachLocator(token, command);
   }
   async settleLocator(token, commandId, admissionState) {
     this.assertCurrent(token);

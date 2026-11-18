@@ -218,7 +218,9 @@ export function MobileComposer({
               <p role="status">
                 {t(
                   value.detached
-                    ? "mobile.separateConversationReady"
+                    ? value.method === "session.create"
+                      ? "mobile.separateConversationReady"
+                      : "mobile.detachedCommandReady"
                     : value.admissionState === "notFound"
                       ? "mobile.receiptNotFound"
                       : value.method === "session.create"
@@ -235,18 +237,25 @@ export function MobileComposer({
               >
                 {t("mobile.queryCommand")}
               </Button>
-              {value.method === "session.create" &&
-                value.admissionState === "notFound" &&
-                !value.detached && (
-                  <Button
-                    className="mobile-touch min-h-[var(--size-touch-target)]"
-                    variant="ghost"
-                    disabled={!connected || value.checkingReceipt}
-                    onClick={() => void commands.startSeparateConversation(value)}
-                  >
-                    {t("mobile.startSeparateConversation")}
-                  </Button>
-                )}
+              {value.admissionState === "notFound" && !value.detached && (
+                <Button
+                  className="mobile-touch min-h-[var(--size-touch-target)]"
+                  variant="ghost"
+                  data-action="detach-command"
+                  disabled={!connected || value.checkingReceipt}
+                  onClick={() =>
+                    void (value.method === "session.create"
+                      ? commands.startSeparateConversation(value)
+                      : commands.detachNotFoundCommand(value))
+                  }
+                >
+                  {t(
+                    value.method === "session.create"
+                      ? "mobile.startSeparateConversation"
+                      : "mobile.continueCurrentConversation",
+                  )}
+                </Button>
+              )}
             </div>
           ))}
         {!isNew && snapshot?.queue && (

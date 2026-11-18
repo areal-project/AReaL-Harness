@@ -40,17 +40,17 @@ export class MobileCommands {
   }
   commandKey(command) {
     const params = command.params;
+    if (command.method === "session.create")
+      return this.key(command.projectId, command.detached ? `create:${command.commandId}` : "");
+    const base =
+      params.threadId +
+      (command.method === "turn.stop" ? `:stop:${params.expectedTurnId}` : "") +
+      (command.method === "interaction.respond"
+        ? `:decision:${JSON.stringify([params.turnId, params.interactionId])}`
+        : "");
     return this.key(
       command.projectId,
-      command.method === "session.create"
-        ? command.detached
-          ? `create:${command.commandId}`
-          : ""
-        : command.params.threadId +
-            (command.method === "turn.stop" ? `:stop:${params.expectedTurnId}` : "") +
-            (command.method === "interaction.respond"
-              ? `:decision:${JSON.stringify([params.turnId, params.interactionId])}`
-              : ""),
+      command.detached ? `${base}:detached:${command.commandId}` : base,
     );
   }
   draft(projectId, threadId = "") {
@@ -558,18 +558,22 @@ export class MobileCommands {
       this.publish();
     }
   }
-  async startSeparateConversation(command) {
+  async detachNotFoundCommand(command) {
     const page = this.workspace.state.page;
     const key = this.commandKey(command);
+    const sameTarget =
+      command?.method === "session.create"
+        ? page.kind === "new" && page.projectId === command.projectId
+        : page.kind === "session" &&
+          page.projectId === command?.projectId &&
+          page.threadId === command?.params?.threadId;
     if (
       this.state.busy ||
       this.state.recovering ||
       command.checkingReceipt ||
       command.detached ||
-      command.method !== "session.create" ||
       command.admissionState !== "notFound" ||
-      page.kind !== "new" ||
-      page.projectId !== command.projectId ||
+      !sameTarget ||
       this.commands.commands.get(key) !== command ||
       this.client.snapshot().kind !== "connected"
     )
@@ -578,7 +582,7 @@ export class MobileCommands {
     this.detachingCreation = command;
     this.publish({ busy: true, error: null });
     try {
-      await this.client.identities.detachCreationLocator(token, command);
+      await this.client.identities.detachLocator(token, command);
       if (this.commands.commands.get(key) !== command) return;
       command.detached = true;
       this.commands.commands.delete(key);
@@ -589,6 +593,10 @@ export class MobileCommands {
       this.detachingCreation = null;
       this.finish();
     }
+  }
+  async startSeparateConversation(command) {
+    if (command?.method !== "session.create") return;
+    return this.detachNotFoundCommand(command);
   }
   async configureIntent(projectId, threadId, intent) {
     const detail = this.workspace.state.detail,

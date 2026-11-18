@@ -326,6 +326,14 @@ export const mobileMessages = {
     "zh-CN": "原创建请求仍可核对。现在可以发送到新会话。",
     en: "You can still check the previous creation request. Sending now starts a new conversation.",
   },
+  "mobile.continueCurrentConversation": {
+    "zh-CN": "继续当前会话",
+    en: "Continue conversation",
+  },
+  "mobile.detachedCommandReady": {
+    "zh-CN": "原请求仍可查询状态。现在可以继续发送或操作。",
+    en: "You can still check the previous request. You can continue sending or acting now.",
+  },
   "mobile.startSeparateFailed": {
     "zh-CN": "未能保留原请求，请重试。",
     en: "Could not retain the original request. Try again.",

@@ -659,3 +659,48 @@ test("explicit service default is accepted independently of supported efforts an
   );
   assert.equal(f.requests.at(-1).method, "session.send");
 });
+
+test("detaching a notFound session.send unblocks the conversation while keeping the original receipt inspectable", async () => {
+  const f = await fixture();
+  await f.workspace.navigate({ kind: "session", projectId: "project", threadId: "thread" });
+  const request = f.client.request;
+  let oldId;
+  let oldReceipt;
+  f.client.request = async (envelope) => {
+    if (!oldId && envelope.method === "session.send") {
+      oldId = envelope.commandId;
+      f.requests.push(envelope);
+      throw Object.assign(new Error("lost send"), { submissionUnknown: true });
+    }
+    if (envelope.method === "command.read" && envelope.params.commandId === oldId)
+      return { commandId: oldId, admissionState: "notFound", ...oldReceipt };
+    return request(envelope);
+  };
+  f.commands.setDraft("project", "thread", "retain draft");
+  await f.commands.send();
+  const [original] = f.commands.unresolved("project", "thread");
+  assert.equal(original.admissionState, "notFound");
+  assert.equal(f.commands.blocksSend("project", "thread"), true);
+
+  await f.commands.detachNotFoundCommand(original);
+  assert.equal(f.record().locators[0].commandId, oldId);
+  assert.equal(f.record().locators[0].detached, true);
+  assert.equal(f.commands.blocksSend("project", "thread"), false);
+
+  const restored = new MobileCommands(f.client, f.workspace);
+  await restored.recover();
+  assert.equal(restored.blocksSend("project", "thread"), false);
+  restored.setDraft("project", "thread", "follow up message");
+  await restored.send();
+  const sends = f.requests.filter((envelope) => envelope.method === "session.send");
+  assert.equal(sends.length, 2);
+  assert.notEqual(sends[1].commandId, oldId);
+  assert.equal(sends[1].params.text, "follow up message");
+  assert.equal(f.record().locators[0].commandId, oldId);
+
+  restored.setDraft("project", "thread", "keep active draft");
+  oldReceipt = { admissionState: "accepted", turnId: "old-turn" };
+  await restored.query(restored.unresolved("project", "thread")[0]);
+  assert.equal(restored.draft("project", "thread"), "keep active draft");
+  assert.equal(f.record().locators.length, 0);
+});

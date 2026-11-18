@@ -579,3 +579,78 @@ it("does not activate execution for an observe-only desktop", async () => {
   expect(f.events).toEqual(["read"]);
   expect(f.command).not.toHaveBeenCalled();
 });
+
+it("recovers from stale open Project Core unavailable by refreshing and connecting on retry", async () => {
+  seed.snapshot = {
+    connection: { state: "ready" },
+    projects: [{ id: owner.projectId, root: "/fixture", state: { connected: true, threads: {} } }],
+  };
+  let hostReady = false;
+  const f = fixture(true, async () => {
+    hostReady = true;
+  });
+  const refreshProjects = vi.fn(async () => {
+    f.events.push("refresh");
+  });
+  Object.assign(f.services.reads!, { refreshProjects });
+  f.selectSession.mockImplementation(async () => {
+    f.events.push("read");
+    if (!hostReady) throw new Error("Project Core unavailable");
+  });
+
+  await f.navigation.selectConversation(owner.projectId, owner.threadId);
+  expect(f.events.filter((event) => event !== "library")).toEqual([
+    "read",
+    "refresh",
+    "read",
+    "connect",
+    "refresh",
+    "read",
+  ]);
+  expect(seed.restoration).toMatchObject({ pending: false, error: "" });
+});
+
+it("retryRestoration reconnects when previous load failed with Project Core unavailable", async () => {
+  seed.snapshot = {
+    connection: { state: "ready" },
+    projects: [{ id: owner.projectId, root: "/fixture", state: { connected: true, threads: {} } }],
+  };
+  let allowOpen = false;
+  const f = fixture(true, async () => {
+    allowOpen = true;
+  });
+  const refreshProjects = vi.fn(async () => {
+    f.events.push("refresh");
+  });
+  Object.assign(f.services.reads!, { refreshProjects });
+  f.selectSession.mockImplementation(async () => {
+    f.events.push("read");
+    if (!allowOpen) throw new Error("Project Core unavailable");
+  });
+
+  await f.navigation.restoreConversation(owner, "connect");
+  expect(seed.restoration?.failure?.message).toBe("Project Core unavailable");
+
+  f.events.length = 0;
+  await f.navigation.retryRestoration();
+  expect(f.events.filter((event) => event !== "library")).toEqual(["connect", "refresh", "read"]);
+  expect(seed.restoration).toMatchObject({ pending: false, error: "" });
+});
+
+it("keeps loaded persisted history when live open still reports Project Core unavailable", async () => {
+  const f = fixture(true, async () => {}, false, true);
+  Object.assign(f.services.reads!, { refreshProjects: vi.fn(async () => {}) });
+  f.selectSession.mockImplementation(async (target) => {
+    f.events.push(target?.persisted ? "persisted" : "live");
+    if (!target?.persisted) throw new Error("Project Core unavailable");
+  });
+
+  await f.navigation.selectConversation(owner.projectId, owner.threadId);
+  expect(f.events.filter((event) => event !== "library")).toEqual([
+    "persisted",
+    "connect",
+    "live",
+    "persisted",
+  ]);
+  expect(seed.restoration).toMatchObject({ pending: false, error: "" });
+});

@@ -24,7 +24,16 @@ type RestorationAttempt = RestorationOwner & {
   pending: boolean;
   promise: Promise<void>;
   prewarmDeferred?: "verification" | "successor";
+  failure?: RecoveryFailure;
 };
+
+function isProjectCoreUnavailable(failure: unknown) {
+  return (
+    typeof failure === "object" &&
+    failure !== null &&
+    (failure as { message?: unknown }).message === "Project Core unavailable" // raw-error-ok: 仅用于识别项目 Core 未就绪以触发刷新或重连
+  );
+}
 
 function readHostGeneration(reads: PlatformServices["reads"]) {
   const connection = reads?.status();
@@ -216,7 +225,11 @@ export function useSessionNavigation(
     (
       owner: RestorationOwner,
       operation: "connect" | "open",
-      options: { connectService?: boolean; resumeScheduling?: boolean } = {},
+      options: {
+        connectService?: boolean;
+        resumeScheduling?: boolean;
+        forceConnect?: boolean;
+      } = {},
     ) => {
       const previous = restorationAttempt.current;
       if (
@@ -259,8 +272,9 @@ export function useSessionNavigation(
               owner.threadId,
             );
             let persisted = false;
+            let persistedRead = false;
             let connectError: unknown;
-            if (operation === "connect" && !target?.state?.connected) {
+            if (operation === "connect" && (!target?.state?.connected || options.forceConnect)) {
               const connection = services.reads.status();
               const canReadPersisted =
                 !!owner.threadId &&
@@ -275,6 +289,7 @@ export function useSessionNavigation(
                     persisted: true,
                   });
                   persisted = true;
+                  persistedRead = true;
                 } catch (error) {
                   if (
                     !["PERSISTED_HISTORY_UNAVAILABLE", "RESOURCE_BUSY"].includes(
@@ -342,18 +357,53 @@ export function useSessionNavigation(
                 if (!current()) return;
               }
             }
+            const targetSession = owner.threadId
+              ? {
+                  projectId: owner.projectId,
+                  threadId: owner.threadId,
+                  ...(persisted ? { persisted: true } : {}),
+                }
+              : null;
             try {
-              await services.reads.selectSession(
-                owner.threadId
-                  ? {
+              await services.reads.selectSession(targetSession);
+            } catch (error) {
+              if (!connectError && owner.threadId && isProjectCoreUnavailable(error)) {
+                if (operation === "open") {
+                  await services.reads.refreshProjects?.();
+                  if (!current()) return;
+                  try {
+                    await services.reads.selectSession(targetSession);
+                  } catch (retryError) {
+                    if (
+                      !isProjectCoreUnavailable(retryError) ||
+                      services.capabilities?.mutations === false ||
+                      services.reads.canPrewarm?.() === false
+                    )
+                      throw retryError;
+                    await resourceAction("connect", {
                       projectId: owner.projectId,
                       threadId: owner.threadId,
-                      ...(persisted ? { persisted: true } : {}),
-                    }
-                  : null,
-              );
-            } catch (error) {
-              throw connectError ?? error;
+                      ...(options.resumeScheduling ? { resumeScheduling: true } : {}),
+                    });
+                    if (!current()) return;
+                    await services.reads.refreshProjects?.();
+                    if (!current()) return;
+                    await services.reads.selectSession(targetSession);
+                  }
+                } else if (persistedRead && !options.resumeScheduling) {
+                  // 实时执行仍在启动或未就绪时保留已读出的持久化历史，避免退回整页报错。
+                  persisted = true;
+                  await services.reads.selectSession({
+                    projectId: owner.projectId,
+                    threadId: owner.threadId,
+                    persisted: true,
+                  });
+                } else {
+                  throw error;
+                }
+              } else {
+                throw connectError ?? error;
+              }
             }
             if (current()) {
               markRendererStartup("restore_done", { persisted });
@@ -411,6 +461,7 @@ export function useSessionNavigation(
             }
           }
           if (current()) {
+            attempt.failure = failure;
             setRestoration({
               ...owner,
               pending: false,
@@ -490,10 +541,18 @@ export function useSessionNavigation(
   };
   const retryRestoration = async () => {
     if (!project) return;
-    await restoreConversation(restorationOwner, project.state?.connected ? "open" : "connect", {
-      connectService: snapshot.connection?.state !== "ready",
-      resumeScheduling: true,
-    });
+    const forceConnect = isProjectCoreUnavailable(
+      restoration?.failure ?? restorationAttempt.current?.failure,
+    );
+    await restoreConversation(
+      restorationOwner,
+      !project.state?.connected || forceConnect ? "connect" : "open",
+      {
+        connectService: snapshot.connection?.state !== "ready",
+        resumeScheduling: true,
+        forceConnect,
+      },
+    );
   };
   const selectConversation = async (pid: string, id: string) => {
     beginSessionLoad(id);

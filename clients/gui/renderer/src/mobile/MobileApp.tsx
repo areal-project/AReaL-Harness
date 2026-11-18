@@ -156,10 +156,29 @@ function MobileApp() {
       .then(({ name }) => setName(name))
       .catch(() => {});
     let disposed = false;
+    let backgroundTimer: ReturnType<typeof setTimeout> | undefined;
+    const clearBackgroundTimer = () => {
+      if (backgroundTimer !== undefined) {
+        clearTimeout(backgroundTimer);
+        backgroundTimer = undefined;
+      }
+    };
     const lifecycle = observeLifecycle((active) => {
-      if (!disposed) void client.setActive(active);
+      if (disposed) return;
+      if (active) {
+        const cancelledGrace = backgroundTimer !== undefined;
+        clearBackgroundTimer();
+        // 短暂切后台（系统弹窗、下拉通知栏等）在宽限期内恢复时保持原连接不断开。
+        if (!cancelledGrace && !client.active) void client.setActive(true);
+      } else if (client.active && backgroundTimer === undefined) {
+        backgroundTimer = setTimeout(() => {
+          backgroundTimer = undefined;
+          if (!disposed) void client.setActive(false);
+        }, 4000);
+      }
     });
     const close = () => {
+      clearBackgroundTimer();
       void client.setActive(false);
     };
     window.addEventListener("pagehide", close);
@@ -172,6 +191,7 @@ function MobileApp() {
     theme.addEventListener("change", update);
     return () => {
       disposed = true;
+      clearBackgroundTimer();
       window.removeEventListener("pagehide", close);
       void lifecycle.then((remove) => remove());
       theme.removeEventListener("change", update);
