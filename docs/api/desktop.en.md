@@ -130,6 +130,8 @@ requestId is a durable business key; RPC id only correlates responses. Identical
 
 ### Conversation creation admission journal and negative proof
 
+When `features.threadStartFirstInput` is true, `areal/thread/start` accepts an optional `firstInput` for ordinary sessions. Core saves the first Turn with the Thread and returns `turn`. The creation receipt includes the original `result.turnId`, so a client can recover the result after a disconnect.
+
 `features.threadCreationJournal = {version:1,binding:{identity,journalEpoch,coreInstanceId}}` covers only `areal/thread/start`. `identity` binds the authenticated principal; `journalEpoch` identifies a continuously retained Store journal; `coreInstanceId` identifies this Engine boot. These values are not inferred from Runtime epochs, service IDs, PIDs, or timestamps. Before dispatch, clients persist `creationAdmission:binding`, the original request ID, and a creation timestamp in pending, then send the binding unchanged. The creation entry checks it. A late request bound to a retired instance is explicitly rejected; clients must not rebind or automatically resend it.
 
 Core reuses `desktop/submissions.json`. Before creating a Thread, running SessionStart, or starting a Profile Workflow, it atomically replaces the admission journal and syncs the file and directory. Thread creation and its receipt retain their existing atomic snapshot boundary. The completion journal stores the original Thread ID without copying history. Receipt reads prefer the original Thread creation receipt and never complete a Workflow, Hook, or creation by executing it again. Errors and interruptions after admission remain admitted with completion unknown.

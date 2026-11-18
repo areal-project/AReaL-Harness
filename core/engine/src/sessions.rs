@@ -200,13 +200,6 @@ impl Engine {
             dynamic_tools,
             toolset_revision: 0,
         };
-        if let Some(data) = &mut thread.desktop {
-            for receipt in &mut data.receipts {
-                if receipt.method == "areal/thread/start" && receipt.result.is_null() {
-                    receipt.result = json!({"threadId":thread_id});
-                }
-            }
-        }
         let initial = match initial {
             Some((input, cancel)) => {
                 if cancel.is_cancelled() {
@@ -219,6 +212,16 @@ impl Engine {
             }
             None => None,
         };
+        if let Some(data) = &mut thread.desktop {
+            for receipt in &mut data.receipts {
+                if receipt.method == "areal/thread/start" && receipt.result.is_null() {
+                    receipt.result = json!({"threadId":thread_id});
+                    if let Some((turn, _, _)) = &initial {
+                        receipt.result["turnId"] = json!(turn.id);
+                    }
+                }
+            }
+        }
         // 注册预留容量后释放目录锁；磁盘 I/O 不串行化不同会话。
         let parent_scratch = match parent {
             Some(parent) => Some(self.raw_cell(&parent.id).await?.scratch_path.clone()),

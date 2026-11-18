@@ -320,8 +320,9 @@ impl Engine {
         &self,
         identity: &str,
         request_id: &str,
-        thread_id: &str,
+        thread: &areal_protocol::Thread,
     ) -> Result<()> {
+        let thread_id = &thread.id;
         let key = digest(&(identity, "areal/thread/start", request_id))?;
         let operation = submission_operation(
             request_id,
@@ -332,7 +333,19 @@ impl Engine {
         let record = journal.entries.get_mut(&key).unwrap();
         record.state = "completed".into();
         record.target = Some(operation.target.clone());
-        record.response = Some(json!({"result":{"threadId":thread_id}}));
+        let result = thread
+            .desktop
+            .as_ref()
+            .and_then(|data| {
+                data.receipts.iter().find(|receipt| {
+                    receipt.identity == identity
+                        && receipt.request_id == request_id
+                        && receipt.method == "areal/thread/start"
+                })
+            })
+            .map(|receipt| receipt.result.clone())
+            .unwrap_or_else(|| json!({"threadId":thread_id}));
+        record.response = Some(json!({"result":result}));
         if self
             .store
             .save_metadata("submissions", &*journal)

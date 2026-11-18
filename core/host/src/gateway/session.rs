@@ -760,7 +760,7 @@ impl Session {
                 .map(|(key, value)| (key.to_owned(), json!(value)))
                 .collect(),
         );
-        let mut value = json!({"apiVersion":"areal.remote.v2","hostId":self.host_peer,"gatewayGeneration":self.generation,"connectionId":self.connection,"grantRevision":self.grant["revision"],"capabilities":self.grant["capabilities"],"methods":METHODS,"limits":limits});
+        let mut value = json!({"apiVersion":"areal.remote.v2","hostId":self.host_peer,"gatewayGeneration":self.generation,"connectionId":self.connection,"grantRevision":self.grant["revision"],"capabilities":self.grant["capabilities"],"methods":METHODS,"limits":limits,"sessionCreateFirstMessage":true});
         if self.gui_write {
             value["writeLimits"] = write_limits();
         }

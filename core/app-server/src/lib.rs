@@ -1342,6 +1342,8 @@ impl Connection {
                         data: None,
                     });
                 }
+                let request_id = p.request_id.clone();
+                let first_input = p.first_input.is_some();
                 let thread = engine
                     .create_configured(self.principal.id.clone(), p, self.tool_host.clone())
                     .await
@@ -1351,7 +1353,28 @@ impl Connection {
                     "thread/started",
                     json!({"thread":thread}),
                 ));
-                Ok(thread_result(engine, thread))
+                let turn = first_input
+                    .then(|| {
+                        thread
+                            .desktop
+                            .as_ref()
+                            .and_then(|data| {
+                                data.receipts.iter().find(|receipt| {
+                                    receipt.identity == self.principal.id
+                                        && receipt.request_id == request_id
+                                        && receipt.method == "areal/thread/start"
+                                })
+                            })
+                            .and_then(|receipt| receipt.result["turnId"].as_str())
+                            .and_then(|turn_id| thread.turns.iter().find(|turn| turn.id == turn_id))
+                            .cloned()
+                    })
+                    .flatten();
+                let mut result = thread_result(engine, thread);
+                if let Some(turn) = turn {
+                    result["turn"] = json!(turn);
+                }
+                Ok(result)
             }
             "areal/capabilities" => {
                 use areal_protocol::desktop::{
@@ -1414,6 +1437,7 @@ impl Connection {
                 capabilities["features"]["submissionReceiptReconciliation"] = json!(true);
                 capabilities["features"]["taskDirectoryPreparation"] = json!(true);
                 capabilities["features"]["taskPrepareCreate"] = json!(true);
+                capabilities["features"]["threadStartFirstInput"] = json!(true);
                 capabilities["features"]["threadCreationJournal"] = json!({"version":1,"binding":engine.creation_admission(&self.principal.id).await});
                 capabilities["features"]["sideExecutableV2"] = json!(true);
                 capabilities["features"]["hostUpdateStatus"] = json!(true);

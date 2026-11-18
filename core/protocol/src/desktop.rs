@@ -833,6 +833,8 @@ pub struct CreationAdmission {
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ThreadStart {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_input: Option<Vec<super::Input>>,
     #[serde(default, skip_serializing_if = "task_directory_preparation_disabled")]
     pub prepare_task_directory: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -178,6 +178,7 @@
     "mobile:sync": "pnpm mobile:build && pnpm --filter @areal/mobile sync",
     "mobile:typecheck": "pnpm mobile:prepare && pnpm --filter @areal/gui-renderer exec tsc --noEmit -p tsconfig.mobile.json",
     "test:mobile-workspace-state": "node --test scripts/mobile-workspace.test.mjs",
+    "test:mobile-first-message-native": "node --test scripts/mobile-first-message-native.test.mjs",
     "test:mobile-commands": "node --test scripts/mobile-commands.test.mjs",
     "test:mobile-storage": "node --test scripts/mobile-device-store.test.mjs scripts/mobile-cache-store.test.mjs",
     "test:resize-observer": "node scripts/resize-observer-smoke.mjs",

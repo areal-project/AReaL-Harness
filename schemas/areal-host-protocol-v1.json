@@ -7609,6 +7609,10 @@
     "RemoteDescription": {
       "type": "object",
       "properties": {
+        "sessionCreateFirstMessage": {
+          "type": "boolean",
+          "const": true
+        },
         "apiVersion": {
           "type": "string",
           "const": "areal.remote.v2"
@@ -8129,7 +8133,7 @@
     },
     "RemoteSessionCreateParams": {
       "type": "object",
-      "description": "Released clients keep params {}. gui-write-v1 adds the original desktop creation request; local Host backend owns complete worktree and environment creation. fullAccess also requires manage.",
+      "description": "Optional firstMessage creates the ordinary session and admits its first turn in one Core journaled operation. Local gui-write-v1 also supports complete desktop creation options. fullAccess requires manage.",
       "properties": {
         "permissionPreset": {
           "type": "string",
@@ -8204,6 +8208,9 @@
         },
         "worktree": {
           "$ref": "#/$defs/RemoteCreationWorktree"
+        },
+        "firstMessage": {
+          "$ref": "#/$defs/RemoteSessionCreateFirstMessage"
         }
       },
       "required": [],
@@ -11903,6 +11910,10 @@
             "uploadBytes"
           ],
           "additionalProperties": false
+        },
+        "sessionCreateFirstMessage": {
+          "type": "boolean",
+          "const": true
         }
       },
       "required": [
@@ -34862,6 +34873,19 @@
         },
         "requestId": {
           "type": "string"
+        },
+        "firstInput": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/WorkbenchExecutionCoreInput"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -66031,6 +66055,71 @@
         }
       ],
       "x-sensitive": true
+    },
+    "RemoteSessionCreateFirstMessage": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 65536,
+          "x-nonWhitespace": true
+        },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkbenchExecutionCoreModelRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "reasoningEffort": {
+              "type": "string",
+              "enum": [
+                "default",
+                "none",
+                "minimal",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max",
+                "ultra"
+              ]
+            }
+          },
+          "required": [
+            "reasoningEffort"
+          ],
+          "additionalProperties": false
+        },
+        "options": {
+          "type": "object",
+          "properties": {
+            "permissionPreset": {
+              "type": "string",
+              "enum": [
+                "ask",
+                "autoReview",
+                "fullAccess"
+              ]
+            }
+          },
+          "required": [
+            "permissionPreset"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "additionalProperties": false
     }
   },
   "x-current": {

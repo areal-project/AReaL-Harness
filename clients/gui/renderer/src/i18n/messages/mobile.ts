@@ -270,6 +270,10 @@ export const mobileMessages = {
   "mobile.enqueue": { "zh-CN": "加入队列", en: "Add to queue" },
   "mobile.stop": { "zh-CN": "停止", en: "Stop" },
   "mobile.done": { "zh-CN": "完成", en: "Done" },
+  "mobile.firstMessageUpgrade": {
+    "zh-CN": "请更新电脑端后再发起新对话。草稿已保留。",
+    en: "Update the desktop app to start a new conversation. Your draft is saved.",
+  },
   "mobile.modelsUpgrade": {
     "zh-CN": "请升级电脑端以选择模型与权限。",
     en: "Update the desktop app to choose a model and permissions.",

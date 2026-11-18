@@ -939,6 +939,13 @@
     "requires": []
   },
   {
+    "script": "test:mobile-first-message-native",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["remote", "mobile"],
+    "requires": ["core-binary", "native-runtime", "node-24.22.1", "openssl"]
+  },
+  {
     "script": "test:mobile-commands",
     "layer": "contract",
     "platforms": ["darwin", "linux", "win32"],

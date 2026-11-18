@@ -23,6 +23,7 @@ import type { MobileWorkspace } from "./mobile-workspace.mjs";
 import type { MobileCommands } from "./mobile-commands.mjs";
 
 const errors: Record<string, MessageId> = {
+  FIRST_MESSAGE_UNSUPPORTED: "mobile.firstMessageUpgrade",
   DEVICE_SAVE_FAILED: "mobile.deviceSaveBeforeSend",
   LOCAL_NOT_SENT: "mobile.notSent",
   ACTIVATION_PENDING: "mobile.activationPending",

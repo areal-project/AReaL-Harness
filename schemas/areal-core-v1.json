@@ -30490,6 +30490,27 @@
           },
           "type": "object"
         },
+        "ContextPart": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "comment": {
+                  "$ref": "#/$defs/ReviewComment"
+                },
+                "type": {
+                  "const": "reviewComment",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "comment"
+              ],
+              "type": "object"
+            }
+          ]
+        },
         "CreationAdmission": {
           "additionalProperties": false,
           "description": "新建会话绑定原 Core 代际；覆盖标识只证明本日志连续保留的受理范围。",
@@ -30510,6 +30531,175 @@
             "coreInstanceId"
           ],
           "type": "object"
+        },
+        "ImageDetail": {
+          "enum": [
+            "auto",
+            "low",
+            "high",
+            "original"
+          ],
+          "type": "string"
+        },
+        "Input": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "contextParts": {
+                  "description": "Structured context parts; rendered into model text only at the model boundary.",
+                  "items": {
+                    "$ref": "#/$defs/ContextPart"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                },
+                "mcpContent": {
+                  "description": "Original MCP attachment metadata for user history; excluded from model projection."
+                },
+                "text": {
+                  "type": "string"
+                },
+                "text_elements": {
+                  "default": [],
+                  "items": true,
+                  "type": "array"
+                },
+                "type": {
+                  "const": "text",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "detail": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/ImageDetail"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null
+                },
+                "type": {
+                  "const": "image",
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "url"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "detail": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/ImageDetail"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null
+                },
+                "path": {
+                  "type": "string"
+                },
+                "type": {
+                  "const": "localImage",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "path"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "const": "audio",
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "url"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "type": {
+                  "const": "localAudio",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "path"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "mime_type": {
+                  "default": null,
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "name": {
+                  "default": null,
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "type": {
+                  "const": "file",
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "url"
+              ],
+              "type": "object"
+            }
+          ]
         },
         "InteractionMode": {
           "enum": [
@@ -30589,6 +30779,70 @@
             "fullAccess"
           ],
           "type": "string"
+        },
+        "ReviewComment": {
+          "additionalProperties": false,
+          "properties": {
+            "base": {
+              "type": "string"
+            },
+            "body": {
+              "type": "string"
+            },
+            "end": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "head": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "ref": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            },
+            "scope": {
+              "type": "string"
+            },
+            "side": {
+              "type": "string"
+            },
+            "snippet": {
+              "type": "string"
+            },
+            "start": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "token": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "path",
+            "root",
+            "scope",
+            "ref",
+            "token",
+            "head",
+            "base",
+            "side",
+            "start",
+            "end",
+            "snippet",
+            "body"
+          ],
+          "type": "object"
         },
         "ThreadStartAdmissionGuard": {
           "additionalProperties": false,
@@ -30683,6 +30937,15 @@
             "$ref": "#/$defs/ToolDefinition"
           },
           "type": "array"
+        },
+        "firstInput": {
+          "items": {
+            "$ref": "#/$defs/Input"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "model": {
           "anyOf": [

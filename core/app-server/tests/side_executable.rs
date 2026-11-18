@@ -791,3 +791,83 @@ async fn atomic_first_input_and_close_receipts_survive_restart_without_replay() 
     );
     f.close(socket).await;
 }
+
+#[tokio::test]
+async fn ordinary_first_input_survives_lost_reply_and_restart_without_replay() {
+    let dir = tempfile::tempdir().unwrap();
+    let f = Fixture::open(dir.path()).await;
+    let mut socket = f.socket().await;
+    let params = json!({"requestId":"ordinary-first-message","admissionGuard":{"ordinarySession":true},"firstInput":[{"type":"text","text":"child hold"}]});
+    let mut concurrent = f.socket().await;
+    let (created, duplicate) = tokio::join!(
+        call(&mut socket, "areal/thread/start", params.clone()),
+        call(&mut concurrent, "areal/thread/start", params.clone()),
+    );
+    assert_eq!(
+        created["result"]["thread"]["id"],
+        duplicate["result"]["thread"]["id"]
+    );
+    assert_eq!(
+        created["result"]["turn"]["id"],
+        duplicate["result"]["turn"]["id"]
+    );
+    concurrent.close(None).await.unwrap();
+    assert!(created["result"]["turn"]["id"].is_string(), "{created}");
+    let thread = created["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let turn = created["result"]["turn"]["id"].clone();
+    // 客户端丢弃首个回复并重连，只读核对原请求。
+    socket.close(None).await.unwrap();
+    let mut socket = f.socket().await;
+    let found = call(
+        &mut socket,
+        "areal/request/read",
+        json!({"requestId":"ordinary-first-message"}),
+    )
+    .await;
+    assert_eq!(
+        found["result"]["data"][0]["result"]["threadId"], thread,
+        "{found}"
+    );
+    assert_eq!(
+        found["result"]["data"][0]["result"]["turnId"], turn,
+        "{found}"
+    );
+    let repeated = call(&mut socket, "areal/thread/start", params.clone()).await;
+    assert_eq!(repeated["result"]["thread"]["id"], thread, "{repeated}");
+    assert_eq!(repeated["result"]["turn"]["id"], turn, "{repeated}");
+    let mut changed = params.clone();
+    changed["firstInput"][0]["text"] = json!("different message");
+    assert!(
+        call(&mut socket, "areal/thread/start", changed)
+            .await
+            .get("error")
+            .is_some()
+    );
+    assert_eq!(f.engine.list(None, 100, None).await.unwrap().0.len(), 1);
+    f.close(socket).await;
+
+    let f = Fixture::open(dir.path()).await;
+    let mut socket = f.socket().await;
+    let found = call(
+        &mut socket,
+        "areal/request/read",
+        json!({"requestId":"ordinary-first-message"}),
+    )
+    .await;
+    assert_eq!(
+        found["result"]["data"][0]["result"]["turnId"], turn,
+        "{found}"
+    );
+    let repeated = call(&mut socket, "areal/thread/start", params).await;
+    assert_eq!(repeated["result"]["thread"]["id"], thread, "{repeated}");
+    assert_eq!(repeated["result"]["turn"]["id"], turn, "{repeated}");
+    assert_eq!(f.engine.read(&thread, true).await.unwrap().turns.len(), 1);
+    assert!(
+        f.model.0.lock().unwrap().is_empty(),
+        "recovery must not replay the first turn"
+    );
+    f.close(socket).await;
+}
