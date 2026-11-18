@@ -894,7 +894,6 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
                         .get(&execution.project_id)
                         .and_then(|slot| slot.service.clone())
                         .context("RESOURCE_UNAVAILABLE")?;
-                    let desktop_generation = deletion_generation(host, source)?;
                     let stop_id = stable_id(&format!("{id}:stop"));
                     let mut target = json!({"projectId":execution_alias,"serviceId":service.identity.service_id,"generation":service.identity.generation,"dataDir":execution.data_dir,"requestId":stop_id,"phase":"acceptedPending"});
                     dispatched = true;
@@ -911,7 +910,7 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
                     dispatched = false;
                     ensure!(operation["projectId"] == execution.project_id, "LIFECYCLE_RECEIPT_INVALID");
                     super::workbench_lifecycle::host_receipt(&mut target, &operation, false)?;
-                    let receipt = deletion_stop_receipt(&stop_id, &desktop_generation, &host.home, target)?;
+                    let receipt = deletion_stop_receipt(&stop_id, &host.identity.generation, &host.home, target)?;
                     value["deletion"]["stopReceipt"] = receipt.clone();
                     persist_and_notify(host, source, &home, &mut value).await?;
                     ensure!(
@@ -1127,24 +1126,14 @@ fn validate_script(value: &Value) -> Result<()> {
     Ok(())
 }
 
-fn deletion_generation(host: &Host, source: &str) -> Result<String> {
-    if source == "host" {
-        return Ok(host.identity.generation.clone());
-    }
-    ensure!(
-        host.gateway.workbench.backend_has_source(source),
-        "CAPABILITY_UNAVAILABLE"
-    );
-    super::workbench_lifecycle::current_generation(source).context("CAPABILITY_UNAVAILABLE")
-}
-
 fn deletion_stop_receipt(
     request: &str,
-    generation: &str,
+    host_generation: &str,
     home: &Path,
     target: Value,
 ) -> Result<Value> {
-    let value = json!({"version":1,"requestId":request,"desktopGeneration":generation,"kind":"stopProject","mode":"ifIdle","targets":[target.clone()],"phase":target["phase"],"desktopExit":"notRequested","sharedHost":true,"harnessHome":home});
+    // 保留已落盘的回执字段，代次来自实际签发停止回执的 Host。
+    let value = json!({"version":1,"requestId":request,"desktopGeneration":host_generation,"kind":"stopProject","mode":"ifIdle","targets":[target.clone()],"phase":target["phase"],"desktopExit":"notRequested","sharedHost":true,"harnessHome":home});
     serde_json::from_value::<areal_protocol::host::WorkbenchLifecycleReceipt>(value.clone())
         .context("LIFECYCLE_RECEIPT_INVALID")?;
     Ok(value)
@@ -2187,9 +2176,11 @@ mod tests {
             let mut target = json!({"projectId":"execution-alias","requestId":request,"serviceId":"core","generation":"generation","dataDir":home.path().join("execution/state")});
             super::super::workbench_lifecycle::host_receipt(&mut target, &operation, false)
                 .unwrap();
+            let host_generation = uuid::Uuid::new_v4().to_string();
             let receipt =
-                deletion_stop_receipt(request, "desktop-owner", home.path(), target).unwrap();
+                deletion_stop_receipt(request, &host_generation, home.path(), target).unwrap();
             assert_eq!(receipt["phase"], phase);
+            assert_eq!(receipt["desktopGeneration"], host_generation);
             assert_eq!(
                 receipt["targets"][0]["dataDir"],
                 json!(home.path().join("execution/state"))
