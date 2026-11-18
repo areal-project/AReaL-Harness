@@ -55,7 +55,17 @@ class HostRemote {
     this.requireOpen();
     this.leased = !this.native;
     await this.settle();
-    return this.read();
+    try {
+      return await this.read();
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        ["storageAuthorizationRequired", "storageLocked", "storageBusy"].includes(String(error.code))
+      )
+        Object.assign(error, { remoteReadFailed: true });
+      throw error;
+    }
   }
   available() {
     return !this.closed && (this.leased || this.native) && !this.client.socket?.destroyed;

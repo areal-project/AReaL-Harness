@@ -1550,13 +1550,17 @@ class DesktopService {
     try {
       remote = await initialization;
     } catch (error) {
+      const canReload =
+        error instanceof Error &&
+        (("remoteReadFailed" in error && error.remoteReadFailed === true) ||
+          ("code" in error && error.code === "storageWriteNotApplied"));
       if (
         !isRemoteRequest(request) ||
         request.operation === "status" ||
-        !(error instanceof Error && "code" in error && error.code === "storageWriteNotApplied")
+        !canReload
       )
         throw error;
-      // 仅明确未写入的原回执允许用户发起新的初始化。并发点击共用同一次恢复。
+      // 只在读取失败或回执明确未写入时重试初始化；先核查原操作，再读取配置。
       if (this.remoteInitialization === initialization)
         this.remoteInitialization = this.initRemote();
       remote = await this.remoteInitialization;

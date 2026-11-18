@@ -60,6 +60,7 @@ struct Invocation {
 struct Reply {
     status: i32,
     value: Option<Value>,
+    diagnostic: Option<String>,
 }
 
 fn send(channel: &mut UnixStream, value: &impl Serialize) -> Result<()> {
@@ -214,15 +215,43 @@ fn unseal(key: &[u8], sealed: &[u8]) -> Result<Vec<u8>> {
 fn reply_value(response: Reply) -> Result<Option<Value>> {
     match response.status {
         0 => Ok(response.value),
-        -25300 => Ok(None),
         -25293 => Err(error(
             "storageAuthorizationRequired",
             "Keychain authorization does not permit this application identity; authorize access or re-enter the credential",
+        )),
+        -1 => Err(error(
+            "storageLocked",
+            response
+                .diagnostic
+                .unwrap_or_else(|| "Host credential access failed".into()),
         )),
         status => Err(error(
             "storageLocked",
             format!("Host Keychain access failed (OSStatus {status})"),
         )),
+    }
+}
+
+fn credential_reply(result: Result<Option<Value>>) -> Reply {
+    match result {
+        Ok(value) => Reply {
+            status: 0,
+            value,
+            diagnostic: None,
+        },
+        Err(cause) => {
+            // 仅凭据模块主动生成的说明可跨进程；文件系统错误可能带本机路径。
+            let known = cause.downcast_ref::<crate::wire::Error>();
+            Reply {
+                status: if known.is_some_and(|error| error.code == "storageAuthorizationRequired") {
+                    -25293
+                } else {
+                    -1
+                },
+                value: None,
+                diagnostic: known.map(|error| error.message.clone()),
+            }
+        }
     }
 }
 
@@ -445,36 +474,11 @@ pub fn run(channel_fd: i32, owner_fd: i32) -> Result<()> {
                     )?,
                 )
             };
-            match read_sealed(&home, &service, &entry) {
-                Ok(value) => Reply { status: 0, value },
-                Err(cause) => Reply {
-                    status: cause
-                        .downcast_ref::<crate::wire::Error>()
-                        .map_or(-25300, |error| match error.code {
-                            "storageAuthorizationRequired" => -25293,
-                            _ => -1,
-                        }),
-                    value: None,
-                },
-            }
+            credential_reply(read_sealed(&home, &service, &entry))
         }
         Request::Write { entry, value } => {
             let bytes = serde_json::to_vec(&value)?;
-            let status = write_sealed(&home, &service, &entry, &bytes).map_or_else(
-                |cause| {
-                    cause
-                        .downcast_ref::<crate::wire::Error>()
-                        .map_or(-1, |error| match error.code {
-                            "storageAuthorizationRequired" => -25293,
-                            _ => -1,
-                        })
-                },
-                |()| 0,
-            );
-            Reply {
-                status,
-                value: None,
-            }
+            credential_reply(write_sealed(&home, &service, &entry, &bytes).map(|()| None))
         }
         #[cfg(test)]
         Request::Hold => {
@@ -483,12 +487,14 @@ pub fn run(channel_fd: i32, owner_fd: i32) -> Result<()> {
                 &Reply {
                     status: 0,
                     value: None,
+                    diagnostic: None,
                 },
             )?;
             let _: Value = receive(&mut channel)?;
             Reply {
                 status: 0,
                 value: None,
+                diagnostic: None,
             }
         }
     };
@@ -866,19 +872,45 @@ fn keychain_identity_rejection_requires_authorization_not_unlocking() {
     let error = reply_value(Reply {
         status: -25293,
         value: None,
+        diagnostic: None,
     })
     .unwrap_err();
     assert_eq!(
         error.downcast_ref::<crate::wire::Error>().unwrap().code,
         "storageAuthorizationRequired"
     );
+}
+
+#[test]
+fn credential_read_error_is_not_reported_as_absent() {
+    let fixture = tempfile::tempdir().unwrap();
+    let path = sealed_path(fixture.path(), "synthetic");
+    std::fs::create_dir_all(&path).unwrap();
+    let cause = reply_value(credential_reply(read_sealed(
+        fixture.path(),
+        "synthetic",
+        "synthetic",
+    )))
+    .unwrap_err();
+    assert_eq!(
+        cause.downcast_ref::<crate::wire::Error>().unwrap().code,
+        "storageLocked"
+    );
     assert!(
-        reply_value(Reply {
-            status: -25300,
-            value: None
-        })
-        .unwrap()
-        .is_none()
+        !cause
+            .to_string()
+            .contains(&fixture.path().display().to_string())
+    );
+    assert!(reply_value(credential_reply(Ok(None))).unwrap().is_none());
+    let cause = reply_value(credential_reply(Err(error(
+        "storageLocked",
+        "credential envelope failed authentication",
+    ))))
+    .unwrap_err();
+    assert!(
+        cause
+            .to_string()
+            .ends_with("credential envelope failed authentication")
     );
 }
 

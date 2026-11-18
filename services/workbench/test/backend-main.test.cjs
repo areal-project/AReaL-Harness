@@ -492,3 +492,32 @@ test("explicit phone action can initialize after a confirmed unapplied write", a
   assert.equal(service.remoteInitialization, original);
   assert.equal(await control({ operation: "relayServiceStartLocal" }), "running");
 });
+
+test("an explicit phone action reloads configuration after a cold credential read failed", async (t) => {
+  const { DesktopService } = require("../src/desktop/core/service-protocol.cjs");
+  const { HostRemote } = require("../src/desktop/core/host-remote.cjs");
+  const failure = Object.assign(new Error("Keychain read failed"), {
+    code: "storageLocked",
+  });
+  const home = await mkdtemp(join(tmpdir(), "workbench-phone-reload-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const initialRead = HostRemote.prototype.init.call({
+    backend: { home, host: { home, sourceId: "fixture" } },
+    requireOpen() {},
+    native: true,
+    client: { async connect() {}, requireCapability() {} },
+    async settle() {},
+    async read() {
+      throw failure;
+    },
+  });
+  const service = {
+    remoteInitialization: initialRead,
+    initRemote: async () => ({ control: async () => "running" }),
+    inflight: 0,
+    schedule() {},
+  };
+  const control = DesktopService.prototype.controlRemote.bind(service);
+  await assert.rejects(control({ operation: "status" }), failure);
+  assert.equal(await control({ operation: "relayServiceStartLocal" }), "running");
+});
