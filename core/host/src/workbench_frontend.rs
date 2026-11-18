@@ -174,6 +174,18 @@ impl Connections {
         }
     }
 
+    pub(crate) fn frontend_network_settings(&self, source: &str, settings: Value) {
+        let frontends = self.frontends.borrow();
+        if let Some((attachment, frontend)) = frontends
+            .iter()
+            .find(|(_, frontend)| frontend.source == source)
+        {
+            let _ = frontend.events.try_send(json!({
+                "attachmentId":attachment,"event":{"event":"host.networkSettings","settings":settings}
+            }));
+        }
+    }
+
     async fn frontend_terminal_command(
         &self,
         host: &Rc<Host>,
@@ -350,7 +362,12 @@ impl Connections {
             },
         );
         host.changed();
-        Ok((json!({"attachmentId":id}), receiver))
+        let mut result = json!({"attachmentId":id});
+        if let Ok(library) = super::super::library_store::read_source(host, source) {
+            result["networkSettings"] =
+                super::super::library_service::desktop_network_settings(&library);
+        }
+        Ok((result, receiver))
     }
     pub(crate) fn frontend_disconnect(&self, connection: &str) {
         let ids = self
@@ -512,6 +529,31 @@ impl Connections {
         }
         Ok(json!({"received":received}))
     }
+    pub(crate) async fn frontend_desktop_command(
+        &self,
+        host: &Rc<Host>,
+        params: areal_protocol::host::LocalDesktopCommandParams,
+    ) -> Result<Value> {
+        let (source, connection) = {
+            let frontends = self.frontends.borrow();
+            let frontend = frontends.get(&params.attachment_id).context("FORBIDDEN")?;
+            (frontend.source.clone(), frontend.connection.clone())
+        };
+        let mut command = params.command;
+        ensure!(
+            command.source_id.as_ref().is_none_or(|id| id == &source),
+            "FORBIDDEN"
+        );
+        command.source_id = Some(source);
+        super::super::workbench_route::desktop_command(
+            host,
+            "local",
+            &connection,
+            &json!({"params":command}),
+        )
+        .await
+    }
+
     pub(crate) async fn frontend_call(&self, host: &Rc<Host>, params: &Value) -> Result<Value> {
         exact(params, &["attachmentId", "call", "params"])?;
         let attachment = params["attachmentId"].as_str().context("INVALID_PARAMS")?;

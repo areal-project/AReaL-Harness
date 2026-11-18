@@ -117,6 +117,7 @@
     "./node/*": "./node/*.cjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/core": "2.3.0"
+    "@modelcontextprotocol/core": "2.3.0",
+    "pkijs": "3.4.1"
   }
 }

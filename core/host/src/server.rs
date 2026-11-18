@@ -206,6 +206,10 @@ impl Drop for ConnectionGuard {
             .schedules
             .connections
             .frontend_disconnect(&self.id);
+        self.host
+            .gateway
+            .workbench
+            .disconnect_connection(&self.host, &self.id);
         self.host.migration.disconnect(&self.id);
         let _ = self.host.journal.disconnect(&self.id);
         self.host.remote.disconnect(&self.id);
@@ -1314,6 +1318,14 @@ impl Host {
                 .schedules
                 .connections
                 .frontend_call(self, &params)
+                .await;
+        }
+        if method == "desktop.command" {
+            let input = serde_json::from_value(params).context("INVALID_PARAMS")?;
+            return self
+                .schedules
+                .connections
+                .frontend_desktop_command(self, input)
                 .await;
         }
         if method == "desktop.core.callback" {

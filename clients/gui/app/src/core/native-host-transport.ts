@@ -5,6 +5,12 @@ import WebSocket from "ws";
 type Fields = Record<string, unknown>;
 const record = (value: unknown): value is Fields =>
   !!value && typeof value === "object" && !Array.isArray(value);
+const networkKeys = ["httpProxy", "httpProxyNoProxy", "httpProxyCaCertPath"] as const;
+type NetworkSettings = Record<(typeof networkKeys)[number], string>;
+const networkSettings = (value: unknown): value is NetworkSettings =>
+  record(value) &&
+  Object.keys(value).length === networkKeys.length &&
+  networkKeys.every((key) => typeof value[key] === "string" && value[key].length <= 4096);
 
 /** 原生功能与Renderer复用Host的shell基线、增量与身份校验。 */
 export async function createNativeShellTransport(options: {
@@ -113,6 +119,7 @@ export async function createNativeHostTransport(options: {
   onCallback: (frame: DesktopCallback, signal: AbortSignal) => Promise<unknown>;
   onEvent: (frame: Fields) => void;
   onNotice?: (notice: unknown) => void;
+  onNetworkSettings?: (settings: NetworkSettings) => void;
   onClosed: () => void;
 }) {
   const events = new HostClient({ desktopCore: true });
@@ -157,6 +164,11 @@ export async function createNativeHostTransport(options: {
       const frame = value.event;
       if (frame.event === "host.notice") {
         options.onNotice?.(frame.notice);
+        return;
+      }
+      if (frame.event === "host.networkSettings") {
+        if (!networkSettings(frame.settings)) return close();
+        options.onNetworkSettings?.(frame.settings);
         return;
       }
       if (frame.event === "core.event") {
@@ -241,6 +253,11 @@ export async function createNativeHostTransport(options: {
     )
       throw new Error("Invalid native desktop attachment");
     attachment = result.attachmentId;
+    if (result.networkSettings !== undefined) {
+      if (!networkSettings(result.networkSettings))
+        throw new Error("Invalid native network settings");
+      options.onNetworkSettings?.(result.networkSettings);
+    }
     for (const event of early.splice(0)) {
       if (closed) break;
       handleEvent(event);
@@ -255,7 +272,10 @@ export async function createNativeHostTransport(options: {
       },
       command: (command: string, request: unknown) => {
         if (closed) return Promise.reject(new Error("Native desktop attachment disconnected"));
-        return calls.request("desktop.command", { sourceId: options.sourceId, command, request });
+        return calls.request("desktop.command", {
+          attachmentId: attachment,
+          command: { command, request },
+        });
       },
       close,
       get closed() {

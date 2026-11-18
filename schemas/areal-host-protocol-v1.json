@@ -43819,6 +43819,9 @@
         "attachmentId": {
           "type": "string",
           "format": "uuid"
+        },
+        "networkSettings": {
+          "$ref": "#/$defs/LocalDesktopNetworkSettings"
         }
       },
       "required": [
@@ -43830,6 +43833,16 @@
           "attachmentId": "01234567-89ab-cdef-0123-456789abcdef"
         }
       ]
+    },
+    "LocalDesktopNetworkSettings": {
+      "type": "object",
+      "properties": {
+        "httpProxy": { "type": "string", "maxLength": 4096 },
+        "httpProxyNoProxy": { "type": "string", "maxLength": 4096 },
+        "httpProxyCaCertPath": { "type": "string", "maxLength": 4096 }
+      },
+      "required": ["httpProxy", "httpProxyNoProxy", "httpProxyCaCertPath"],
+      "additionalProperties": false
     },
     "LocalDesktopCoreSubscribeRequest": {
       "type": "object",
@@ -43985,6 +43998,37 @@
         "requestId"
       ],
       "additionalProperties": false
+    },
+    "LocalDesktopCommandParams": {
+      "type": "object",
+      "properties": {
+        "attachmentId": { "type": "string", "format": "uuid" },
+        "command": { "$ref": "#/$defs/DesktopCommandParams" }
+      },
+      "required": ["attachmentId", "command"],
+      "additionalProperties": false
+    },
+    "LocalDesktopCommandRequest": {
+      "type": "object",
+      "properties": {
+        "version": { "type": "integer", "const": 1 },
+        "id": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "method": { "type": "string", "const": "desktop.command" },
+        "params": { "$ref": "#/$defs/LocalDesktopCommandParams" }
+      },
+      "required": ["version", "id", "method", "params"],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "version": 1,
+          "id": "fixture",
+          "method": "desktop.command",
+          "params": {
+            "attachmentId": "01234567-89ab-cdef-0123-456789abcdef",
+            "command": { "command": "resources", "request": { "operation": "hooks" } }
+          }
+        }
+      ]
     },
     "LocalDesktopCoreCallParams": {
       "oneOf": [
@@ -44653,6 +44697,15 @@
     },
     "WorkbenchPrivateDesktopCoreEventPayload": {
       "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "event": { "type": "string", "const": "host.networkSettings" },
+            "settings": { "$ref": "#/$defs/LocalDesktopNetworkSettings" }
+          },
+          "required": ["event", "settings"],
+          "additionalProperties": false
+        },
         {
           "type": "object",
           "properties": {
@@ -50345,6 +50398,12 @@
           "source": "core/host/src/server.rs",
           "x-owner": "host"
         },
+        "desktop.command": {
+          "request": "#/$defs/LocalDesktopCommandRequest",
+          "result": "#/$defs/DesktopCommandResult",
+          "source": "core/host/src/workbench_frontend.rs",
+          "x-owner": "host"
+        },
         "desktop.core.call": {
           "request": "#/$defs/LocalDesktopCoreCallRequest",
           "result": "#/$defs/LocalDesktopCoreCallResult",
@@ -50894,6 +50953,9 @@
     },
     {
       "$ref": "#/$defs/LocalDesktopCoreSubscribeRequest"
+    },
+    {
+      "$ref": "#/$defs/LocalDesktopCommandRequest"
     },
     {
       "$ref": "#/$defs/LocalDesktopCoreCallRequest"

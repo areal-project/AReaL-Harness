@@ -117,6 +117,8 @@ Main 默认启动先准备来源和配置，再连接原生附件与 Host 外壳
 
 本机 Main 通过 `desktop.core.subscribe` 绑定来源和经核验的启动选项；可选 `environmentCredentials` 只接受已配置的环境凭据名，值仅保留在 Host 内存，不进入启动记录。`desktop.core.event` 的工具回调携带原 `sourceId/projectId/lease/coreInstanceId/coreGeneration/connectionId`，以及用于原生预览的 `guiProjectId/workspacePath`；逻辑项目与执行工作树不能互换。`desktop.core.callback` 仅回复同一附件的原请求，媒体上传仍使用原执行项目和租约。附件断开撤销专用连接，不重放回调或提交。 Main 订阅既有就绪项目或 Core 后续就绪时，Host 在该附件的项目专用租约上发布 `areal.browser.v1` 调度工具；普通原生连接与会话准备复用同一租约。旧 Node 观察连接只撤销自身工具发布，不能接管原生工具宿主。 用户首次打开预览时，Main 经 `desktop.core.call` 的 `browser.scope` 查询 Thread 归属；Host 复用工作树解析并核对 Core 中的未归档 Thread，返回逻辑项目、执行目录和同一原生租约，无需先产生工具回调或打开旧 Node 投影。
 
+原生附件的订阅结果及 `host.networkSettings` 事件向当前本机来源提供 HTTP 代理、排除列表和 CA 路径。Host 保存有效变更后发布新值，拒绝旧资料库中带用户信息的代理 URL。浏览器共享快照继续屏蔽这三个字段。Main 的本地 `desktop.command` 使用当前附件标识，Host 从附件获取来源和所属连接，再交给桌面命令的同一 Rust 分发器。
+
 Main 在已附接的窗口通过 `desktop.core.call` 调用 `lifecycle.read`。冷启动核查通过已运行 Host 的认证 Unix 连接直接调用 `lifecycle.read`，由 Host 按已登记的 GUI `profile` 找到来源，无需启动桌面工作台。两种入口均按原 `requestId`、`desktopGeneration` 查找回执。核对只推进由 Rust Host 持有的回执，旧 Node 回执及其 UNKNOWN 状态原样保留。
 
 本机 GUI 和网页通过 `attachment.read` 读取尚无消息条目标识的附件及轨迹原始结果。需要 `gui-write-v1` 与 `manage` 授权。请求携带原执行项目和 Core 代际、`threadId`、`uri` 及从零开始的 `offset`。Core 验证原会话的内容引用，Host 核验摘要并在同一连接内每次返回最多 256 KiB 原始字节，响应中的 `nextOffset` 为空表示读完。已提交消息的媒体继续使用绑定订阅及条目的 `artifact.read`。清单和释放由 Host 定位到原执行项目，释放沿用 Core 回执，归档会话保持只读。

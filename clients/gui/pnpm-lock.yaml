@@ -98,9 +98,6 @@ importers:
       '@areal/workspace-git':
         specifier: workspace:*
         version: link:../../clients/gui/packages/workspace-git
-      pkijs:
-        specifier: 3.4.1
-        version: 3.4.1
       qrcode:
         specifier: 1.5.4
         version: 1.5.4
@@ -178,9 +175,6 @@ importers:
       electron-updater:
         specifier: 6.8.9
         version: 6.8.9(patch_hash=a9461757ba817cd32de6e6c8e3e2204cef79abca0e02c0cdd6a9073752489707)
-      pkijs:
-        specifier: 3.4.1
-        version: 3.4.1
       qrcode:
         specifier: 1.5.4
         version: 1.5.4
@@ -370,6 +364,9 @@ importers:
       '@modelcontextprotocol/core':
         specifier: 2.3.0
         version: 2.3.0
+      pkijs:
+        specifier: 3.4.1
+        version: 3.4.1
 
   packages/workspace-git:
     dependencies:

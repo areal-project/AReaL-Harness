@@ -64,6 +64,41 @@ async fn summaries(host: &Host, project: &str) -> Result<Vec<Value>> {
     Ok(rows)
 }
 
+pub(super) fn desktop_network_settings(library: &Value) -> Value {
+    let settings = &library["settings"];
+    let setting = |key| settings[key].as_str().unwrap_or("");
+    // 旧资料库可能带含鉴权信息的代理 URL；窗口只接收当前准入允许的设置。
+    let proxy =
+        crate::network::validate_setting("httpProxy", setting("httpProxy")).unwrap_or_default();
+    let bypass = crate::network::validate_setting("httpProxyNoProxy", setting("httpProxyNoProxy"))
+        .unwrap_or_default();
+    let ca = setting("httpProxyCaCertPath");
+    let ca = if ca.len() <= 4096
+        && !ca.chars().any(char::is_control)
+        && std::path::Path::new(ca).is_absolute()
+    {
+        ca
+    } else {
+        ""
+    };
+    json!({"httpProxy":proxy,"httpProxyNoProxy":bypass,"httpProxyCaCertPath":ca})
+}
+
+#[cfg(test)]
+#[test]
+fn desktop_network_settings_only_publish_supported_fields() {
+    let library = json!({"settings":{
+        "httpProxy":"http://user:password@localhost:7890",
+        "httpProxyNoProxy":"localhost, 127.0.0.1",
+        "httpProxyCaCertPath":"/fixture/root.pem",
+        "unrelated":"private",
+    }});
+    assert_eq!(
+        desktop_network_settings(&library),
+        json!({"httpProxy":"","httpProxyNoProxy":"127.0.0.1,localhost","httpProxyCaCertPath":"/fixture/root.pem"})
+    );
+}
+
 pub(super) async fn command(host: &Rc<Host>, source: &str, params: Value) -> Result<Value> {
     ensure!(
         host.gateway.workbench.backend_has_source(source),
@@ -77,6 +112,14 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, params: Value) -> Res
         let value = library_store::change(host, source, |state| {
             library_commands::apply(state, &params, &ContextView::default())
         })?;
+        if matches!(
+            params["key"].as_str(),
+            Some("httpProxy" | "httpProxyNoProxy" | "httpProxyCaCertPath")
+        ) {
+            host.schedules
+                .connections
+                .frontend_network_settings(source, desktop_network_settings(&value));
+        }
         return Ok(value);
     }
     let home = library_store::source_home(host, source)?;

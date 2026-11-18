@@ -102,6 +102,8 @@ class SharedCoreBackend {
     this.nativeBrowserEpoch = undefined;
     /** @type {string|undefined} */
     this.nativeBrowserSource = undefined;
+    /** @type {Record<string,unknown>} */
+    this.nativeNetworkSettings = {};
     /** @type {Map<string,import('./native-host-transport').DesktopThreadScope>} */
     this.nativeBrowserScopes = new Map();
     /** @type {((frame:import('./native-host-transport').DesktopCallback,signal:AbortSignal)=>Promise<unknown>)|undefined} */
@@ -207,6 +209,7 @@ class SharedCoreBackend {
   closeNativeBrowser() {
     this.nativeBrowserEpoch = undefined;
     this.nativeBrowserSource = undefined;
+    this.nativeNetworkSettings = {};
     const original = this.nativeBrowser;
     this.nativeBrowser = undefined;
     this.nativeBrowserConnecting = undefined;
@@ -264,6 +267,11 @@ class SharedCoreBackend {
       onNotice: (notice) => {
         if (this.nativeBrowserEpoch === epoch && this.status.connected)
           this.onNotification?.(notice);
+      },
+      onNetworkSettings: (settings) => {
+        if (this.nativeBrowserEpoch !== epoch || this.disposed) return;
+        this.nativeNetworkSettings = settings;
+        this.onChange();
       },
       onClosed: () => {
         if (this.nativeBrowserEpoch !== epoch || this.disposed) return;
@@ -384,6 +392,10 @@ class SharedCoreBackend {
         : this.connectionState;
     return {
       ...this.value,
+      library: {
+        ...this.value.library,
+        settings: { ...this.value.library.settings, ...this.nativeNetworkSettings },
+      },
       desktopCapabilities,
       serviceSummary: {
         state: this.status.connected ? "running" : this.serviceExited ? "stopped" : "unknown",

@@ -1133,8 +1133,8 @@ test("a selected plugin archive imports on the persistent native source without 
   f.setHandler(async (frame) => {
     if (frame.method === "desktop.core.subscribe") return { attachmentId: "attachment" };
     assert.equal(frame.method, "desktop.command");
-    assert.deepEqual(frame.params, {
-      sourceId: "source",
+    assert.equal(frame.params.attachmentId, "attachment");
+    assert.deepEqual(frame.params.command, {
       command: "manage",
       request: {
         operation: "pluginArchiveImport",
