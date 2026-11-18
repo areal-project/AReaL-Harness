@@ -254,11 +254,9 @@ macOS 登录会话中的 Keychain 权限边界另用 `python3 scripts/git-keycha
 
 `pnpm --dir clients/gui test:service-connection` 区分当前应用的 Main 连接与发现的旧 Desktop。当前应用夹具经 `initialize` 和 `connectMain` 进入生产连接边界，每次连接建立独立传输，覆盖原请求身份、丢失回复、停止及重连失败后的回执核查；外来后台经真实 WebSocket `attach` 观察，并验证命令被拒绝且不会自动接管。生命周期兼容夹具提供旧 Desktop 回执，不能替代真实 Host 升级、服务注册或 GUI 验收。
 
-会话目录回归使用 `cargo test --locked -p areal-app-server --lib catalog_tests`、`cargo test --locked -p areal-engine --lib catalog::tests`、`cargo test --locked -p areal-engine --test catalog_observation` 和 `node --test clients/gui/scripts/catalog-refresh.test.cjs`（从仓库根运行）。覆盖旧元数据与持久字节兼容、过滤先于分页、完整参考对照、长过滤空洞、游标排序与授权、会话锁与注册互不阻塞、注册回滚，以及 GUI 合并刷新和连接换代。观察回归还核对模型输入、工具副作用、用量及重启历史不受目录读取影响。GUI 用例已纳入 `pnpm --dir clients/gui verify`。
+会话目录回归从仓库根运行 `cargo test --locked -p areal-app-server --lib catalog_tests`、`cargo test --locked -p areal-engine --lib catalog::tests` 和 `cargo test --locked -p areal-engine --test catalog_observation`。覆盖旧元数据与持久字节兼容、过滤与分页、游标排序与授权、注册回滚，并核对模型输入、工具副作用、用量和重启历史。
 
-显式局部性能对照使用 `cargo test --locked --release -p areal-app-server --lib catalog_performance_comparison -- --ignored --nocapture` 与 `node clients/gui/scripts/catalog-refresh-benchmark.cjs`。后者可传入旧版 `history-observation.cjs` 路径，在相同 fixture 下比较旧协调器。耗时不作为 CI 阈值；固定源码、原始样本、复现方法与测量限制见[会话目录性能报告](../benchmarks/reports/conversation-catalog.md)。
-
-稀疏过滤性能入口为同一 Rust 测试模块的 `catalog_filter_performance_comparison`，同样显式 `--ignored --nocapture` 运行。GUI 脚本设置 `AREAL_CATALOG_BENCH_CACHE=production` 后使用真实 library 序列化、写文件与 rename，并保留活动标记写入；`AREAL_CATALOG_BENCH_THREADS` 可选择 1–20,000 行。交替运行与剩余成本见[目录迭代验证](../benchmarks/reports/conversation-catalog-validation.md)。
+局部性能对照使用 `cargo test --locked --release -p areal-app-server --lib catalog_performance_comparison -- --ignored --nocapture`。稀疏过滤对照在同一命令中用 `catalog_filter_performance_comparison`。历史样本及测量限制见[会话目录性能报告](../benchmarks/reports/conversation-catalog.md)和[目录迭代验证](../benchmarks/reports/conversation-catalog-validation.md)。
 
 会话目录两种后端使用同一套 RPC 回归：分别设置 `AREAL_CATALOG_TEST_BACKEND=memory`、`sqlite` 运行 `cargo test --locked -p areal-app-server --lib catalog_tests --jobs 3 -- --test-threads=4`。该变量仅由测试读取；生产使用 `[storage].session_catalog`。`cargo test --locked -p areal-engine --lib catalog:: --jobs 3 -- --test-threads=4` 覆盖索引重用、离线更改核对、损坏保留重建、外部写锁、索引积压回退、队列溢出、读取期限、安全路径和注册结果未知后的回滚；`catalog_observation` 同时覆盖两个后端的模型输入、真实文件副作用、用量及重启不重放。配置入口使用 `cargo test --locked -p areal-config --test session_catalog`。
 

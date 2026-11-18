@@ -78,6 +78,8 @@ Turn 场景中的摘要缓存写入是 20 → 1，但活动标记仍保存 20 �
 
 ## 复现
 
+下方 GUI 命令对应已退役的 Node 目录协调器。历史脚本见独立检出的 `461c09bd7`，实测输入以报告附带的源码哈希为准。
+
 ```sh
 cargo test --locked -p areal-engine -p areal-app-server --jobs 3 -- --test-threads=4
 cargo test --locked --release -p areal-app-server --lib catalog_tests
