@@ -738,7 +738,6 @@ function startDesktop() {
               if (delivery)
                 showCoreNotification(Notification, window, delivery, openNotificationTarget);
             },
-            onNotificationOpen: openNotificationTarget,
           });
           backend = serviceBackend;
           let connectedOnce = false;

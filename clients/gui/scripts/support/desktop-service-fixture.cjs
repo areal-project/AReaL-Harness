@@ -37,19 +37,17 @@ function record(value) {
 
 class ServiceConnection {
   /** @param {(packet:unknown)=>void} [onState] @param {()=>void} [onClose]
-   * @param {(value:unknown)=>void} [onNotification] @param {(value:unknown)=>void} [onNotificationOpen]
+   * @param {(value:unknown)=>void} [onNotification]
    * @param {((value:Record<string,unknown>&{requestId:number})=>unknown)|null} [onBrowserRequest]
    * @param {((value:unknown)=>void)|null} [onBrowserCancel] */
   constructor(
     onState = () => {},
     onClose = () => {},
     onNotification = () => {},
-    onNotificationOpen = () => {},
     onBrowserRequest = null,
     onBrowserCancel = null,
   ) {
     this.onNotification = onNotification;
-    this.onNotificationOpen = onNotificationOpen;
     this.onBrowserRequest = onBrowserRequest;
     this.onBrowserCancel = onBrowserCancel;
     this.onState = onState;
@@ -119,10 +117,6 @@ class ServiceConnection {
       }
       if (message.method === "notification") {
         this.onNotification(message.params);
-        return;
-      }
-      if (message.method === "notificationOpen") {
-        this.onNotificationOpen(message.params);
         return;
       }
       if (message.method === "state") {
