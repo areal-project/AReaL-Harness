@@ -8,7 +8,8 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applicationFixture } from "./application-fixture.mjs";
-import { assertApplicationStopped } from "./application-cleanup.mjs";
+import { readFixtureHost, settleFixtureHostAfterQuit } from "./application-cleanup.mjs";
+import { readCoreThread } from "./support/core-observation.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 import { captureSmokeFailure } from "./smoke-navigation.mjs";
 
@@ -16,6 +17,7 @@ const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
+const { HostClient } = require("@areal/client/node");
 const binary = process.env.AREAL_CORE_BIN;
 assert.ok(
   binary?.startsWith(join(root, ".local/dev-bin/")),
@@ -74,14 +76,16 @@ const bootstrap = `
 const { SharedCoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/service-client.cjs"))});
 const { appendFileSync, existsSync } = require('node:fs');
 const record = value => appendFileSync(${JSON.stringify(eventsPath)}, JSON.stringify({ time: Date.now(), ...value }) + '\\n');
-globalThis.quitFixtureResponse = 0;
+globalThis.quitFixtureApprove = false;
 globalThis.quitFixtureHold = true;
 require('electron').dialog.showMessageBox = async (...args) => {
   if (args.at(-1).title === '允许本地开发站点') return { response: 1 };
-  record({ event: 'native-confirmation', message: args.at(-1).message, response: globalThis.quitFixtureResponse });
+  const { buttons, cancelId } = args.at(-1);
+  record({ event: 'native-confirmation', cancelId, buttonCount: buttons.length });
   while (globalThis.quitFixtureHold) await new Promise(resolve => setTimeout(resolve, 20));
-  record({ event: 'native-decision', response: globalThis.quitFixtureResponse });
-  return { response: globalThis.quitFixtureResponse };
+  const response = globalThis.quitFixtureApprove ? 1 : cancelId;
+  record({ event: 'native-decision', response });
+  return { response };
 };
 const stop = SharedCoreBackend.prototype.requestHostStop;
 SharedCoreBackend.prototype.requestHostStop = async function(...args) {
@@ -112,7 +116,8 @@ SharedCoreBackend.prototype.prepareQuit = async function(...args) {
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 const sourceFiles = [
   "app/src/core/main.cjs",
-  "app/src/core/startup-recovery.cjs",
+  "app/src/core/host-quit.cjs",
+  "app/src/core/service-client.cjs",
   "app/src/core/preload.cjs",
   "renderer/src/App.tsx",
   "renderer/src/services.ts",
@@ -145,7 +150,7 @@ let application,
   app,
   page,
   child,
-  metadata,
+  originalHost,
   passed = false,
   failure,
   cleanup;
@@ -171,18 +176,26 @@ const events = async () =>
 const count = async (event) => (await events()).filter((item) => item.event === event).length;
 const snapshot = () => page.evaluate(() => window.arealDesktop.snapshot());
 const project = (value) => value.projects.find((item) => item.root === workspace);
-const thread = (value) =>
-  project(value)?.state?.threads[
-    value.activeThreadId ?? Object.keys(project(value)?.state?.threads ?? {})[0]
-  ];
-const command = async (name, params) => {
-  const result = await page.evaluate(
-    ({ name, params }) => window.arealDesktop.command(name, params),
-    { name, params },
-  );
-  assert.equal(result.ok, true, JSON.stringify(result));
-  return result.value;
+const workbench = () => page.getByTestId("areal-workbench");
+const observeThread = (threadId) => readCoreThread({ binary, env, gui, workspace, threadId });
+const readHostFacts = async (read) => {
+  const host = new HostClient();
+  try {
+    await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+    assert.equal(host.hostId, originalHost.hostId);
+    assert.equal(host.generation, originalHost.generation);
+    return await read(host);
+  } finally {
+    host.close();
+  }
 };
+const assertNativeBackend = async () => {
+  const backend = await readHostFacts((host) => host.request("backend.status", {}));
+  assert.equal(backend.owned, false);
+  assert.equal(backend.service, null);
+};
+const mainReady = async () =>
+  (await page.evaluate(() => window.arealDesktop.nativeState())).connection?.state === "ready";
 const quit = () =>
   app.evaluate(({ Menu }) => {
     const item = Menu.getApplicationMenu().items[0].submenu.items.find(
@@ -239,7 +252,7 @@ try {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   await writeFile(
     env.AREAL_CORE_CONFIG,
-    `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\n`,
+    `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\n[limits]\nstream_idle_timeout_seconds=180\n`,
   );
   application = await applicationFixture(gui, join(scratch, "app"), bootstrap);
   app = await electron.launch({
@@ -257,83 +270,72 @@ try {
   page.on("pageerror", (error) => errors.push(error.stack));
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
   await until(async () => (await snapshot()).connection?.state === "ready", "Desktop ready");
-  metadata = JSON.parse(await readFile(join(env.AREAL_CORE_HOME, "service.json"), "utf8"));
-  await quit();
-  await until(
-    async () => (await count("native-confirmation")) === 1,
-    "Idle quit asks for confirmation",
-  );
-  assert.equal(
-    await progress("zh-CN").isVisible(),
-    false,
-    "Idle quit progress waits for confirmation",
-  );
-  assert.equal(await count("stop-held"), 0, "Idle quit does not stop before confirmation");
-  await quit();
-  assert.equal(
-    await count("native-confirmation"),
-    1,
-    "Repeated idle quit shares the pending confirmation",
-  );
-  await app.evaluate(() => {
-    globalThis.quitFixtureHold = false;
-  });
-  await until(
-    async () => (await count("native-decision")) === 1,
-    "Idle cancellation decision returns",
-  );
-  await until(
-    async () => (await command("providers", { operation: "list" })).data,
-    "Idle quit cancellation keeps IPC usable",
-  );
-  assert.equal(child.exitCode, null, "Canceling idle quit keeps the application alive");
-  checks.push(
-    "Idle quit asks once before progress or shutdown; cancellation keeps the application usable",
-  );
+  originalHost = await readFixtureHost(env);
+  assert.ok(originalHost, "Original native Host identity is available");
+  await assertNativeBackend();
   await app.evaluate(({ dialog }, workspace) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [workspace] });
   }, workspace);
-  await page.getByRole("button", { name: "不在项目中工作", exact: true }).click();
+  await page.locator(".composer-project").click();
   await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
-  await until(async () => project(await snapshot())?.state?.connected, "Project ready");
-  await page.getByTestId("chat-input").fill("Keep streaming until I pause.");
-  await page.getByTestId("chat-send-button").click();
+  const projectId = await until(async () => project(await snapshot())?.id, "Workspace registered");
   await until(
-    async () =>
-      thread(await snapshot())
-        ?.turns.at(-1)
-        ?.items.some(
-          (item) => item.type === "agentMessage" && item.text?.includes("QUIT_PROGRESS_STREAMING"),
-        ),
-    "Streaming reply",
+    async () => (await workbench().getAttribute("data-project-id")) === projectId,
+    "Workspace selected",
   );
+  await page.getByRole("button", { name: "选择模型", exact: true }).click();
+  await page.getByRole("tab", { name: "fixture", exact: true }).click();
+  await page.locator('[data-model-value="fixture/fixture"]').getByRole("radio").click();
+  await page.keyboard.press("Escape");
+  const input = page.getByTestId("chat-input");
+  const send = () => page.getByTestId("chat-send-button").click();
+  await input.fill("Keep streaming until I pause.");
+  await send();
+  const threadId = await until(() => workbench().getAttribute("data-thread-id"), "Thread created");
+  await page.getByText("QUIT_PROGRESS_STREAMING", { exact: true }).waitFor();
+  const streaming = (await observeThread(threadId)).turns.at(-1);
+  assert.equal(streaming.status, "inProgress");
   await page.bringToFront();
   await page.getByRole("button", { name: "暂停执行", exact: true }).click();
-  await until(
-    async () => thread(await snapshot())?.turns.at(-1)?.status === "interrupted",
-    "Core turn interrupted",
-  );
+  await until(async () => {
+    const paused = (await observeThread(threadId)).turns.at(-1);
+    return paused?.id === streaming.id && paused.status === "interrupted";
+  }, "Original Core turn interrupted");
   await until(() => held.size === 0, "Provider stream closes after pause");
-  await page.getByText("执行已暂停", { exact: true }).waitFor();
-  const projectId = project(await snapshot()).id;
-  await command("manage", {
-    projectId,
-    operation: "taskCreate",
-    mode: "scheduled",
-    objective: "QUIT_PROGRESS_FUTURE_TASK",
-    schedule: { at: Math.floor(Date.now() / 1000) + 86400, timeZone: "Asia/Shanghai" },
-  });
-  await writeFile(join(scratch, "after-pause.json"), JSON.stringify(await snapshot(), null, 2));
-  const threadId = thread(await snapshot()).id;
+  await page.getByText("你暂停了本轮执行", { exact: true }).waitFor();
+  await writeFile(
+    join(scratch, "after-pause.json"),
+    JSON.stringify({ projectId, threadId, turnId: streaming.id, status: "interrupted" }, null, 2),
+  );
+  await input.fill("Keep streaming until I approve quitting.");
+  await send();
+  await until(() => held.size === 1 && requests.length === 2, "Second model stream held");
+  const active = await until(async () => {
+    const turn = (await observeThread(threadId)).turns.at(-1);
+    return turn?.id !== streaming.id && turn.status === "inProgress" && turn;
+  }, "Second Core turn active");
+  await until(
+    async () =>
+      (await readHostFacts((host) => host.activity())).projects.some(
+        (item) => item.state === "observed" && item.activeTurns > 0,
+      ),
+    "Host observes the active turn",
+  );
+  await assertNativeBackend();
   const previewUrl = `http://127.0.0.1:${server.address().port}/quit-preview`;
-  await page.evaluate((request) => window.arealDesktop.preview(request), {
-    operation: "show",
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+t" : "Control+t");
+  await page.locator(".preview-panel").waitFor();
+  await app.evaluate(({ app, BrowserWindow }) => {
+    app.focus({ steal: true });
+    BrowserWindow.getAllWindows()[0].focus();
+  });
+  const navigation = await page.evaluate((request) => window.arealDesktop.preview(request), {
+    operation: "navigate",
     projectId,
     threadId,
     url: previewUrl,
-    visible: true,
-    bounds: { x: 700, y: 400, width: 300, height: 200 },
   });
+  assert.ok(navigation?.browser?.pageId, "Native preview returns the original page identity");
   nativeId = await until(
     async () =>
       app.evaluate(
@@ -351,9 +353,11 @@ try {
   });
   await quit();
   await until(
-    async () => (await count("native-confirmation")) === 2,
+    async () => (await count("native-confirmation")) === 1,
     "Native quit confirmation is awaiting a decision",
   );
+  await quit();
+  assert.equal(await count("native-confirmation"), 1, "Repeated quit shares the pending dialog");
   await page.screenshot({ path: join(scratch, "quit-awaiting-confirmation.png") });
   assert.equal(
     await progress("zh-CN").isVisible(),
@@ -365,13 +369,10 @@ try {
     globalThis.quitFixtureHold = false;
   });
   await until(
-    async () => (await count("native-decision")) === 2,
+    async () => (await count("native-decision")) === 1,
     "Native quit confirmation canceled",
   );
-  await until(
-    async () => (await command("providers", { operation: "list" })).data,
-    "IPC usable after native cancellation",
-  );
+  await until(mainReady, "IPC usable after native cancellation");
   assert.equal(child.exitCode, null);
   await progress("zh-CN").waitFor({ state: "hidden" });
   assert.equal(
@@ -385,6 +386,8 @@ try {
     /Editing still works after cancel/,
   );
   await page.getByTestId("chat-input").fill("");
+  assert.equal((await observeThread(threadId)).turns.at(-1)?.id, active.id);
+  assert.equal(held.size, 1, "Canceling quit keeps the original second stream active");
   checks.push(
     "UI send and pause close the real model stream; native cancellation leaves editing and Core IPC usable",
   );
@@ -393,12 +396,12 @@ try {
   await writeFile(stopGate, "held");
   await writeFile(failStop, "known failure before original stop");
   await app.evaluate(() => {
-    globalThis.quitFixtureResponse = 1;
+    globalThis.quitFixtureApprove = true;
     globalThis.quitFixtureHold = true;
   });
   await quit();
   await until(
-    async () => (await count("native-confirmation")) === 3,
+    async () => (await count("native-confirmation")) === 2,
     "Quit confirmation awaits approval",
   );
   assert.equal(
@@ -414,15 +417,27 @@ try {
     async () => (await count("stop-held")) === 1,
     "Confirmed quit reaches controlled stop boundary",
   );
+  assert.deepEqual(
+    (await events())
+      .filter((item) => item.event === "native-confirmation")
+      .map(({ cancelId, buttonCount }) => [cancelId, buttonCount]),
+    [
+      [2, 3],
+      [2, 3],
+      [0, 2],
+    ],
+    "Stop and quit requires the Host decision and its separate stop confirmation",
+  );
   await assertProgress("zh-CN", "quit-progress-zh.png");
   await rm(stopGate);
   await until(async () => (await count("stop-failed")) === 1, "Known failure released");
   await progress("zh-CN").waitFor({ state: "hidden" });
-  await until(
-    async () => (await command("providers", { operation: "list" })).data,
-    "IPC usable after known quit failure",
-  );
+  await until(mainReady, "IPC usable after known quit failure");
   assert.equal(child.exitCode, null, "Known pre-stop failure leaves the application alive");
+  const stillActive = (await observeThread(threadId)).turns.at(-1);
+  assert.equal(stillActive?.id, active.id);
+  assert.equal(stillActive.status, "inProgress");
+  assert.equal(held.size, 1, "Known pre-stop failure leaves the original stream active");
   assert.equal(
     (await nativeViews()).find((view) => view.id === nativeId)?.visible,
     true,
@@ -494,7 +509,8 @@ try {
     1,
     "Successful retry performs real Core shutdown once",
   );
-  assert.equal(requests.length, 1, "Quit never replays the paused model request");
+  await until(() => held.size === 0, "Original active model stream closes on stop");
+  assert.equal(requests.length, 2, "Quit never replays either model request");
   assert.deepEqual(errors, [], "No renderer or model fixture errors");
   checks.push(
     "English progress survives repeated quit until process exit; the released original stop cleans up real Core",
@@ -511,7 +527,7 @@ try {
   if (app) {
     await app
       .evaluate(() => {
-        globalThis.quitFixtureResponse = 1;
+        globalThis.quitFixtureApprove = true;
         globalThis.quitFixtureHold = false;
       })
       .catch(() => {});
@@ -525,7 +541,14 @@ try {
   }
   await application?.close();
   try {
-    await assertApplicationStopped(binary, env, metadata);
+    const receipt = await settleFixtureHostAfterQuit(binary, env, scratch, {
+      host: originalHost,
+      pid: child?.pid,
+    });
+    if (passed) {
+      assert.equal(receipt?.state, "completed", "Original Host stop receipt completed");
+      assert.equal(receipt.strategy, "cancel", "Quit completed the explicit cancel stop");
+    }
     cleanup = "passed";
   } catch (error) {
     cleanup = error.stack;
@@ -555,7 +578,7 @@ try {
         errors,
         gui: { pid: child?.pid, exitCode: child?.exitCode, signalCode: child?.signalCode },
         boundaries:
-          "Isolated source Electron with real fixed Core and deterministic loopback SSE model. UI send and pause; real bridge creates a future scheduled task and visible native preview. Native WebContentsView identity/visibility observed through Main. Native folder picker and quit confirmation responses injected; confirmation is held to inspect the pre-approval UI. Stop gate delays before the original Host stop request, with one known pre-stop failure. Final gate delays real prepareQuit after backend stop. Application-menu quit callback and native window close callback, no physical Command+Q. No packaged app or real provider.",
+          "Isolated source Electron with real fixed Core and deterministic loopback SSE model. UI sends two distinct turns and pauses the first; the second remains active through cancellation and known failure. The native preview is shown through the production bridge. Native WebContentsView identity/visibility observed through Main. Native folder picker and quit confirmation responses injected; confirmation is held to inspect the pre-approval UI. Stop gate delays before the original Host stop request, with one known pre-stop failure. Final gate delays real prepareQuit after backend stop. Application-menu quit callback and native window close callback, no physical Command+Q. No packaged app or real provider.",
       },
       null,
       2,
