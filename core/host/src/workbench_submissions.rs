@@ -741,6 +741,9 @@ pub(super) async fn reconcile_project(
     let mut outcomes = serde_json::Map::new();
     if let Some(map) = latest["outcomes"].as_object() {
         for (id, value) in map {
+            if filter_request_id.is_some_and(|original| original != id) {
+                continue;
+            }
             if let Some(projected) = project_outcome(value) {
                 outcomes.insert(id.clone(), projected);
             }

@@ -685,21 +685,45 @@ export function createHostReadServices(
       ) {
         const connection = client.snapshot();
         if (connection.connection !== "ready") throw new Error("Host unavailable");
+        const requestId = params.requestId;
+        const gatewayOwner = commandOwners.get(
+          JSON.stringify([connection.identity.hostId, requestId]),
+        );
         const owner =
-          commandOwners.get(JSON.stringify([connection.identity.hostId, params.requestId])) ??
+          gatewayOwner ??
           (session && threadTargets.get(`${project.id}:${session.threadId}`) === session.projectId
             ? session.projectId
             : project.hostProjectId);
-        const result = await client.commandStatus(owner, params.requestId);
+        const result = await client.commandStatus(owner, requestId);
         if (client.snapshot() !== connection) throw new Error("Host command read cancelled");
-        const outcome = hostCommandOutcome(result, params.requestId);
+        let outcome = hostCommandOutcome(result, requestId);
+        if (
+          outcome.admissionState === "notFound" &&
+          !gatewayOwner &&
+          client.writable("desktop.command")
+        ) {
+          // 配置等原生提交由 Host 工作台日志保存，按同一编号核对原回执。
+          const native = await client.workbench("desktop.command", {
+            command: "reconcile",
+            request: { projectId: project.id, requestId },
+          });
+          if (client.snapshot() !== connection) throw new Error("Host command read cancelled");
+          const original =
+            object(native) && object(native.outcomes) ? native.outcomes[requestId] : undefined;
+          if (
+            object(original) &&
+            object(original.operation) &&
+            original.operation.requestId === requestId
+          )
+            outcome = jsonObject(original);
+        }
         const key = JSON.stringify([connection.identity.hostId, owner]);
-        commandOutcomes.set(key, { ...commandOutcomes.get(key), [params.requestId]: outcome });
+        commandOutcomes.set(key, { ...commandOutcomes.get(key), [requestId]: outcome });
         publish();
         return {
           routed: true,
           value: {
-            outcomes: { [params.requestId]: outcome },
+            outcomes: { [requestId]: outcome },
           },
         };
       }

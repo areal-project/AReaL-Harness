@@ -1252,15 +1252,9 @@ async fn reconcile(host: &Rc<Host>, source: &str, request: &Value) -> Result<Val
         obj.get("executionProjectId").is_none() || filter_request.is_some(),
         "INVALID_PARAMS"
     );
-    // 诊断已指明原执行工作区，只查日志与已有连接，不能唤醒已停止的工作区。
-    let scope = resolve_project_scope(
-        host,
-        source,
-        request,
-        false,
-        obj.get("executionProjectId").is_none(),
-    )
-    .await?;
+    // 精确回执只查日志与已有连接，不能唤醒已停止的工作区。
+    let scope =
+        resolve_project_scope(host, source, request, false, filter_request.is_none()).await?;
 
     let mut merged =
         workbench_submissions::reconcile_project(host, &scope.canonical_id, filter_request).await?;

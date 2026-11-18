@@ -2072,6 +2072,59 @@ describe("Host renderer read authority", () => {
     });
   });
 
+  it("checks the exact original native configuration when the gateway has no receipt", async () => {
+    const wire = transport(observation);
+    const requestId = "44444444-4444-4444-8444-444444444444";
+    const outcome = {
+      status: "completed",
+      accepted: true,
+      threadId: "thread",
+      operation: {
+        method: "areal/thread/configure",
+        requestId,
+        target: { kind: "thread" as const, threadId: "thread" },
+      },
+    };
+    const writes: Array<{ method: string; params: Record<string, unknown> }> = [];
+    const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+      const opened = await wire.factory(lifecycle);
+      return {
+        ...opened,
+        identity: { ...opened.identity, writeMethods: ["command.read", "desktop.command"] },
+        transport: {
+          ...opened.transport,
+          async write(method, params) {
+            writes.push({ method, params });
+            if (method === "command.read")
+              return { commandId: requestId, admissionState: "notFound", submissionUnknown: true };
+            return { outcomes: { [requestId]: outcome } };
+          },
+        },
+      };
+    };
+    const services = createHostReadServices(undefined, options(factory));
+    await until(services);
+    const { call } = await import("./services.js");
+    await expect(call(services, "reconcile", { projectId: "alias", requestId })).resolves.toEqual({
+      outcomes: { [requestId]: outcome },
+    });
+    expect(writes).toEqual([
+      { method: "command.read", params: { commandId: requestId } },
+      {
+        method: "desktop.command",
+        params: { command: "reconcile", request: { projectId: "alias", requestId } },
+      },
+    ]);
+    expect(
+      recoveredOutcome(
+        (await services.snapshot()).projects[0],
+        requestId,
+        "thread",
+        outcome.operation,
+      ),
+    ).toEqual(outcome);
+  });
+
   it("routes stop and approvals through Host receipts without retrying a declined stop", async () => {
     const pending = {
       threadId: "thread",
