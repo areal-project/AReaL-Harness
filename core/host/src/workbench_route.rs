@@ -1181,7 +1181,9 @@ pub(super) fn desktop_command<'a>(
                         .desktop_command(host, principal, &source, &params.request)
                         .await
                 }
-                "media" => attachment_inventory_command(host, &source, &params.request).await,
+                "media" => {
+                    Box::pin(attachment_inventory_command(host, &source, &params.request)).await
+                }
                 "side" => {
                     host.gateway
                         .workbench
