@@ -1,6 +1,7 @@
 import { CommandState } from "@areal/remote-client";
 
 /** @typedef {{text:string,configuration?:{model?:{providerId:string,modelId:string},parameters?:Record<string,unknown>,options?:Record<string,unknown>}}} ComposeIntent */
+/** @typedef {"activate"|"create"|"open"|"configure"|"send"} SendStage */
 const failure = (code) => Object.assign(new Error(code), { code });
 export class MobileCommands {
   constructor(client, workspace) {
@@ -11,8 +12,8 @@ export class MobileCommands {
     this.outgoing = null;
     this.unsent = null;
     this.listeners = new Set();
-    /** @type {{revision:number,busy:boolean,recovering:boolean,error:string|null}} */
-    this.state = { revision: 0, busy: false, recovering: false, error: null };
+    /** @type {{revision:number,busy:boolean,recovering:boolean,error:string|null,errorStage:SendStage|null}} */
+    this.state = { revision: 0, busy: false, recovering: false, error: null, errorStage: null };
     this.unsubscribe = client.subscribe(() => this.connectionChanged());
     this.unsubscribeWorkspace = workspace.subscribe?.(() => this.resumeUnsent());
   }
@@ -22,7 +23,12 @@ export class MobileCommands {
     return () => this.listeners.delete(listener);
   };
   publish(values = {}) {
-    this.state = { ...this.state, ...values, revision: this.state.revision + 1 };
+    this.state = {
+      ...this.state,
+      ...("error" in values ? { errorStage: null } : {}),
+      ...values,
+      revision: this.state.revision + 1,
+    };
     this.listeners.forEach((listener) => listener());
   }
   key(projectId, threadId = "") {
@@ -233,7 +239,7 @@ export class MobileCommands {
     }
     this.commands.receive(key, command, value);
     if (value.admissionState === "rejected")
-      this.publish({ error: value.error?.code ?? "COMMAND_REJECTED" });
+      this.publish({ error: String(value.error?.code ?? "COMMAND_REJECTED") });
     this.publish();
     return value;
   }
@@ -325,7 +331,7 @@ export class MobileCommands {
             .catch(() => {});
         throw rejected;
       }
-      if (persisted && !this.commands.failureIsUnknown(rejected)) {
+      if (persisted && !this.commands.failureIsUnknown(rejected, command)) {
         try {
           await this.client.identities.settleLocator(token, command.commandId, "rejected");
         } catch {
@@ -616,6 +622,8 @@ export class MobileCommands {
     };
     this.outgoing = outgoing;
     this.publish({ busy: true, error: null });
+    /** @type {SendStage} */
+    let stage = "activate";
     try {
       if (!threadId) {
         const catalog = this.workspace.state.catalog;
@@ -623,15 +631,20 @@ export class MobileCommands {
         const serviceGeneration = await this.workspace.activate(projectId);
         if (this.workspace.state.page !== page || this.client.connection !== connection)
           throw failure("LOCAL_NOT_SENT");
+        stage = "create";
         // 配对设备创建后按实时配置版本提交设置；桌面创建选项在 Host 上仅限本机。
         const result = await this.issue("session.create", projectId, {}, serviceGeneration);
+        if (result?.admissionState === "rejected")
+          throw failure(String(result.error?.code ?? "COMMAND_REJECTED"));
         if (result?.admissionState !== "accepted") return;
         threadId = result.threadId;
         this.migrateDraft(projectId, threadId);
         if (this.workspace.state.page !== page || this.client.connection !== connection)
           throw failure("LOCAL_NOT_SENT");
         outgoing.key = this.key(projectId, threadId);
-        await this.workspace.navigate({ kind: "session", projectId, threadId });
+        stage = "open";
+        const readError = await this.workspace.navigate({ kind: "session", projectId, threadId });
+        if (readError && this.client.connection === connection) throw failure(readError);
       }
       const target = this.workspace.state.page;
       if (
@@ -641,8 +654,13 @@ export class MobileCommands {
         this.client.connection !== connection
       )
         throw failure("LOCAL_NOT_SENT");
+      stage = intent ? "configure" : "send";
       const configured = intent ? await this.configureIntent(projectId, threadId, intent) : null;
-      if (intent && !configured) return;
+      if (intent && !configured) {
+        if (this.state.error) this.publish({ errorStage: stage });
+        return;
+      }
+      stage = "send";
       if (this.client.connection !== connection || this.workspace.state.page !== target)
         throw failure("LOCAL_NOT_SENT");
       const detail = this.workspace.state.detail,
@@ -671,6 +689,7 @@ export class MobileCommands {
       );
       if (receipt?.admissionState === "accepted" && receipt.turnId)
         outgoing.turnId = receipt.turnId;
+      if (receipt?.admissionState === "rejected") this.publish({ errorStage: stage });
     } catch (error) {
       const current = this.workspace.state.page;
       if (
@@ -691,7 +710,7 @@ export class MobileCommands {
           instance,
         };
         outgoing.reconnecting = true;
-      } else this.publish({ error: error.code ?? "COMMAND_FAILED" });
+      } else this.publish({ error: error.code ?? "COMMAND_FAILED", errorStage: stage });
     } finally {
       if (
         this.outgoing === outgoing &&

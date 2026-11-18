@@ -76,6 +76,22 @@ enum BudgetExceeded {
     Writes,
 }
 
+#[derive(Debug)]
+struct ProjectUnavailableBeforeAdmission;
+
+impl std::fmt::Display for ProjectUnavailableBeforeAdmission {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("CORE_UNAVAILABLE")
+    }
+}
+
+impl std::error::Error for ProjectUnavailableBeforeAdmission {}
+
+fn submission_unknown(code: &str, error: &anyhow::Error) -> bool {
+    matches!(code, "CORE_UNAVAILABLE" | "SUBMISSION_UNKNOWN")
+        && !error.is::<ProjectUnavailableBeforeAdmission>()
+}
+
 impl std::fmt::Display for BudgetExceeded {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("LIMIT_EXCEEDED")
@@ -643,7 +659,7 @@ impl Session {
                         )
                     ) {
                         response["error"]["submissionUnknown"] =
-                            json!(matches!(code, "CORE_UNAVAILABLE" | "SUBMISSION_UNKNOWN"));
+                            json!(submission_unknown(code, &error));
                         if let Some(id) = request
                             .get("commandId")
                             .or_else(|| request["params"].get("commandId"))
@@ -1301,7 +1317,17 @@ impl Session {
         if method == "project.models" && self.project(&project).is_err() {
             return self.persisted_model_catalog(&project, request);
         }
-        let (_, generation) = self.project(&project)?;
+        let (_, generation) = self.project(&project).map_err(|error| {
+            if matches!(method, "session.create" | "session.send")
+                && error.to_string() == "CORE_UNAVAILABLE"
+                && let Some(command) = request["commandId"].as_str()
+                && uuid::Uuid::parse_str(command).is_ok()
+                && matches!(self.command_record(&project, command), Ok(None))
+            {
+                return ProjectUnavailableBeforeAdmission.into();
+            }
+            error
+        })?;
         match method {
             "project.models" => self.project_models(&project, &generation, request).await,
             "work.list" | "attention.list" => {
@@ -1320,8 +1346,29 @@ impl Session {
                 .await
             }
             "attention.read" => self.attention_read(&project, &generation, params).await,
-            "session.create" => self.create_session(&project, &generation, request).await,
-            "session.send" => self.send_session(&project, &generation, request).await,
+            "session.create" | "session.send" => {
+                let result = if method == "session.create" {
+                    self.create_session(&project, &generation, request).await
+                } else {
+                    self.send_session(&project, &generation, request).await
+                };
+                let Err(error) = result else { return result };
+                if error.to_string() == "RESYNC_REQUIRED"
+                    && let Some(command) = request["commandId"].as_str()
+                    && uuid::Uuid::parse_str(command).is_ok()
+                {
+                    if !matches!(self.command_record(&project, command), Ok(None)) {
+                        return Err(fail("SUBMISSION_UNKNOWN"));
+                    }
+                    return Ok(json!({
+                        "commandId": command,
+                        "admissionState": "rejected",
+                        "submissionUnknown": false,
+                        "error": {"code": "RESYNC_REQUIRED", "message": "项目状态已变化，请刷新后重试"}
+                    }));
+                }
+                Err(error)
+            }
             "interaction.respond" => self.respond(&project, &generation, request).await,
             "review.read" => self.review(&project, &generation, params).await,
             "artifact.read" => self.artifact(&project, &generation, params).await,

@@ -1315,6 +1315,42 @@ async fn conversation_open_discards_reply_after_grant_or_core_generation_changes
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn cold_project_create_reports_no_admission_for_new_command() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let f = Fixture::new().await;
+            f.host.slots.borrow_mut().get_mut("project").unwrap().state = "starting".into();
+            let command = uuid::Uuid::new_v4().to_string();
+            let request = f.request("session.create", json!({}), Some(&command));
+            let error = f.session("a").request(&request).await.unwrap_err();
+            assert_eq!(error.to_string(), "CORE_UNAVAILABLE");
+            assert!(!submission_unknown("CORE_UNAVAILABLE", &error));
+            assert!(submission_unknown(
+                "CORE_UNAVAILABLE",
+                &fail("CORE_UNAVAILABLE")
+            ));
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn outdated_generation_rejects_unadmitted_creation() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let f = Fixture::new().await;
+            let command = uuid::Uuid::new_v4().to_string();
+            let mut request = f.request("session.create", json!({}), Some(&command));
+            request["context"]["serviceGeneration"] = json!("outdated-core");
+            let rejected = f.session("a").request(&request).await.unwrap();
+            assert_eq!(rejected["commandId"], command);
+            assert_eq!(rejected["admissionState"], "rejected");
+            assert_eq!(rejected["submissionUnknown"], false);
+            assert_eq!(rejected["error"]["code"], "RESYNC_REQUIRED");
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn project_activation_requires_submit_but_not_manage_and_preserves_explicit_stop() {
     tokio::task::LocalSet::new()
         .run_until(async {

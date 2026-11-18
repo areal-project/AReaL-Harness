@@ -355,7 +355,12 @@ export class MobileCacheStore {
         return;
       }
       if (existing.grantRevision !== grantRevision) {
-        await this.backend.putMeta({ ...existing, grantRevision });
+        await this.backend.putMeta({
+          ...existing,
+          grantRevision,
+          shell: undefined,
+          shellUpdatedAt: undefined,
+        });
       }
     });
     this.notify();

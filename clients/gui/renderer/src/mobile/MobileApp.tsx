@@ -256,7 +256,21 @@ function MobileApp() {
     (sum, s) => sum + s.bytes,
     0,
   );
-  const showWorkspace = state.kind === "connected" || stale;
+  const cacheMeta = cacheView?.meta;
+  const cachedProjects =
+    !accessChanged &&
+    cacheMeta?.hostId === pairedHostId &&
+    cacheMeta?.shell &&
+    (state.kind !== "connected" || cacheMeta.grantRevision === state.ready.grantRevision)
+      ? authorizedProjects.flatMap((project) =>
+          project.alias
+            ? [{ projectId: project.alias.projectId, name: projectDisplayName(project) }]
+            : [],
+        )
+      : undefined;
+  const connectingWithCache =
+    (state.kind === "loading" || state.kind === "connecting") && cachedProjects !== undefined;
+  const showWorkspace = state.kind === "connected" || stale || connectingWithCache;
 
   function selectCachedProject(projectId: string, threadId?: string) {
     if (!pairedHostId) return;
@@ -589,9 +603,10 @@ function MobileApp() {
             />
           )}
           <MobileWorkspaceView
-            key={workspace.lastReady?.grantRevision}
+            key={workspace.lastReady?.grantRevision ?? cacheMeta?.grantRevision}
             client={client}
             workspace={workspace}
+            cachedProjects={cachedProjects}
             commands={commands}
             dismissComposerSheet={dismissComposerSheet}
             onSettings={() => setSettings(true)}

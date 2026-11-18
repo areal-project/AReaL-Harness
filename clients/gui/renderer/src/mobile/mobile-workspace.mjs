@@ -4,7 +4,7 @@ export const SESSION_PAGE_SIZE = 5;
 
 /** @typedef {import('../services.js').Data} Data */
 /** @typedef {{kind:'projects'}|{kind:'new',projectId:string}|{kind:'work',projectId:string}|{kind:'session',projectId:string,threadId:string,fromInbox?:boolean}|{kind:'task',projectId:string,taskId:string,runId:string}} MobilePage */
-/** @typedef {{page:MobilePage, projects:Data[], inbox:Data[], groups:Record<string,Data>, detail:Data|null, turns:Data[], task:Data|null, catalog:Data|null, loading:boolean, error:boolean, loadingOlder:boolean, bodyError:boolean, stale:boolean, accessChanged:boolean}} WorkspaceView */
+/** @typedef {{page:MobilePage, projects:Data[], projectsLoaded:boolean, inbox:Data[], groups:Record<string,Data>, detail:Data|null, turns:Data[], task:Data|null, catalog:Data|null, loading:boolean, error:boolean, loadingOlder:boolean, bodyError:boolean, stale:boolean, accessChanged:boolean}} WorkspaceView */
 export class MobileWorkspace {
   constructor(client, cache = {}) {
     this.client = client;
@@ -18,6 +18,7 @@ export class MobileWorkspace {
     this.state = {
       page: { kind: "projects" },
       projects: [],
+      projectsLoaded: false,
       inbox: [],
       groups: {},
       detail: null,
@@ -69,6 +70,7 @@ export class MobileWorkspace {
       this.publish({
         page: { kind: "projects" },
         projects: [],
+        projectsLoaded: false,
         inbox: [],
         groups: {},
         detail: null,
@@ -95,6 +97,7 @@ export class MobileWorkspace {
       this.publish({
         page: { kind: "projects" },
         projects: [],
+        projectsLoaded: false,
         inbox: [],
         groups: {},
         detail: null,
@@ -175,7 +178,7 @@ export class MobileWorkspace {
           projects.push(...result.projects);
           cursor = result.nextCursor;
         } while (cursor);
-        this.publish({ projects });
+        this.publish({ projects, projectsLoaded: true });
         void this.readInbox(projects, epoch);
       } else if (page.kind === "work")
         await this.work(
@@ -222,8 +225,11 @@ export class MobileWorkspace {
         )
           this.publish({ task });
       }
-    } catch {
-      if (epoch === this.epoch) this.publish({ error: true });
+    } catch (error) {
+      if (epoch === this.epoch) {
+        this.publish({ error: true });
+        return typeof error?.code === "string" ? error.code : "READ_FAILED";
+      }
     } finally {
       if (epoch === this.epoch)
         this.publish({ loading: false, ...(page.kind !== "session" ? { stale: false } : {}) });

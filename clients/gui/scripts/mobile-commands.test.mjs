@@ -347,6 +347,70 @@ test("first send uses the current generation even when the draft catalog is stal
   );
   assert.equal(f.requests[1].context.serviceGeneration, "new-service");
 });
+test("a definite create rejection retains the draft without a pending receipt", async () => {
+  const f = await fixture();
+  const request = f.client.request;
+  f.client.request = async (envelope) => {
+    if (envelope.method !== "session.create") return request(envelope);
+    f.requests.push(envelope);
+    throw Object.assign(new Error("not admitted"), {
+      code: "CORE_UNAVAILABLE",
+      submissionUnknown: false,
+      commandId: envelope.commandId,
+    });
+  };
+  f.commands.setDraft("project", "", "retain me");
+  await f.commands.send();
+  assert.deepEqual(
+    f.requests.map((request) => request.method),
+    ["session.create"],
+  );
+  assert.deepEqual(f.commands.unresolved("project"), []);
+  assert.equal(f.record().locators.length, 0);
+  assert.equal(f.commands.draft("project"), "retain me");
+  assert.equal(f.commands.snapshot().errorStage, "create");
+});
+
+test("an activation timeout retains the failed stage and never issues create", async () => {
+  const f = await fixture();
+  f.workspace.activate = async () => {
+    throw new Error("timed out");
+  };
+  f.commands.setDraft("project", "", "retain me");
+  await f.commands.send();
+  assert.deepEqual(f.requests, []);
+  assert.equal(f.commands.snapshot().errorStage, "activate");
+  assert.equal(f.commands.draft("project"), "retain me");
+});
+
+test("a missing creation receipt leaves the original command and draft intact", async () => {
+  const f = await fixture();
+  f.client.request = async (envelope) => {
+    f.requests.push(envelope);
+    if (envelope.method === "session.create")
+      throw Object.assign(new Error("lost response"), { submissionUnknown: true });
+    assert.equal(envelope.method, "command.read");
+    return {
+      commandId: envelope.params.commandId,
+      admissionState: "notFound",
+      submissionUnknown: true,
+    };
+  };
+  f.commands.setDraft("project", "", "retain me");
+  await f.commands.send();
+  const [creation] = f.commands.unresolved("project");
+  await f.commands.query(creation);
+  await f.commands.send();
+  assert.deepEqual(
+    f.requests.map((request) => request.method),
+    ["session.create", "command.read"],
+  );
+  assert.equal(f.requests[1].params.commandId, f.requests[0].commandId);
+  assert.equal(f.commands.unresolved("project")[0].admissionState, "notFound");
+  assert.equal(f.record().locators.length, 1);
+  assert.equal(f.commands.draft("project"), "retain me");
+});
+
 test("lost create is queried, never automatically followed by a send, and preserves draft", async () => {
   const f = await fixture(),
     request = f.client.request;

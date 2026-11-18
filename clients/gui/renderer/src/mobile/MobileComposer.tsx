@@ -29,6 +29,10 @@ const errors: Record<string, MessageId> = {
   PROVIDER_CREDENTIAL_REQUIRED: "mobile.providerCredentialRequired",
   RESYNC_REQUIRED: "mobile.notSent",
   CONFIGURATION_UNAVAILABLE: "mobile.configurationUnavailable",
+  CORE_UNAVAILABLE: "mobile.projectCoreUnavailable",
+  LIMIT_EXCEEDED: "mobile.requestLimited",
+  FORBIDDEN: "mobile.submitForbidden",
+  REQUEST_TIMEOUT: "mobile.requestTimedOut",
   UNSUPPORTED_PROFILE: "mobile.unsupportedProfile",
   TASK_CONTROL_REQUIRED: "mobile.taskControlRequired",
   SUBMISSION_UNKNOWN: "mobile.commandUnknown",
@@ -186,7 +190,15 @@ export function MobileComposer({
         data-active-turn={snapshot?.activeTurnId ?? ""}
       >
         {command.error && !pending.length && (
-          <p role="alert">{t(errors[command.error] ?? "mobile.commandFailed")}</p>
+          <p role="alert">
+            {command.errorStage && t(`mobile.sendStage.${command.errorStage}`)}{" "}
+            {t(errors[command.error] ?? "mobile.commandFailed")}
+            {command.errorStage && /^[A-Z][A-Z_0-9]*$|^-?[0-9]+$/.test(command.error) && (
+              <span className="ml-1 text-fixed-caption text-foreground-subtle">
+                ({command.error})
+              </span>
+            )}
+          </p>
         )}
         <DelayedVisible active={checking && pending.length > 0 && !outgoing}>
           <p role="status" className="text-fixed-caption text-foreground-subtle">
@@ -201,7 +213,15 @@ export function MobileComposer({
               data-command-state={value.admissionState}
               data-command-id={value.commandId}
             >
-              <p role="status">{t("mobile.commandUnknown")}</p>
+              <p role="status">
+                {t(
+                  value.admissionState === "notFound"
+                    ? "mobile.receiptNotFound"
+                    : value.method === "session.create"
+                      ? "mobile.createUnknown"
+                      : "mobile.commandUnknown",
+                )}
+              </p>
               <Button
                 className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
                 variant="outline"

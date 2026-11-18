@@ -98,7 +98,12 @@ export class RemoteConnection {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         if (envelope.method === "session.open") this.socket.close();
-        reject(new Error("读取超时，请刷新或核对原命令"));
+        const error = new Error("读取超时，请刷新或核对原命令");
+        reject(
+          envelope.method === "project.activate" || envelope.method === "session.open"
+            ? Object.assign(error, { code: "REQUEST_TIMEOUT" })
+            : error,
+        );
       }, 15000);
       this.pending.set(id, { resolve, reject, timer, onResult });
       try {

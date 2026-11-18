@@ -310,6 +310,44 @@ export const mobileMessages = {
     "zh-CN": "暂未确认结果。",
     en: "Result unconfirmed.",
   },
+  "mobile.createUnknown": {
+    "zh-CN": "尚未确认会话是否创建。首条消息已保留。",
+    en: "Conversation creation is unconfirmed. Your first message is still in the draft.",
+  },
+  "mobile.receiptNotFound": {
+    "zh-CN": "电脑暂未找到原回执，暂时无法确认结果。",
+    en: "The computer could not find the original receipt. The result is still unconfirmed.",
+  },
+  "mobile.sendStage.activate": {
+    "zh-CN": "连接项目失败。",
+    en: "Could not connect to the project.",
+  },
+  "mobile.sendStage.create": {
+    "zh-CN": "创建会话失败。",
+    en: "Could not create the conversation.",
+  },
+  "mobile.sendStage.open": { "zh-CN": "打开会话失败。", en: "Could not open the conversation." },
+  "mobile.sendStage.configure": {
+    "zh-CN": "应用会话设置失败。",
+    en: "Could not apply conversation settings.",
+  },
+  "mobile.sendStage.send": { "zh-CN": "发送消息失败。", en: "Could not send the message." },
+  "mobile.projectCoreUnavailable": {
+    "zh-CN": "电脑上的项目尚未就绪，请稍后重试。",
+    en: "The project on your computer is not ready. Try again shortly.",
+  },
+  "mobile.requestLimited": {
+    "zh-CN": "请求过于频繁，请稍后重试。",
+    en: "Too many requests. Try again shortly.",
+  },
+  "mobile.requestTimedOut": {
+    "zh-CN": "等待电脑响应超时，草稿已保留。",
+    en: "The computer took too long to respond. Your draft is retained.",
+  },
+  "mobile.submitForbidden": {
+    "zh-CN": "这台设备没有在该项目中提交的权限。",
+    en: "This device does not have permission to submit in this project.",
+  },
   "mobile.commandRecoveryFailed": {
     "zh-CN": "未能读取待核对请求，请重新连接后核对。",
     en: "Could not read unresolved requests. Reconnect and check them.",

@@ -88,6 +88,7 @@ export function MobileWorkspaceView({
   workspace,
   client,
   commands,
+  cachedProjects,
   dismissComposerSheet,
   onSettings,
   onSelection,
@@ -95,6 +96,7 @@ export function MobileWorkspaceView({
   workspace: MobileWorkspace;
   client: MobileClient;
   commands: MobileCommands;
+  cachedProjects?: { projectId: string; name: string }[];
   dismissComposerSheet: React.RefObject<(() => void) | null>;
   onSettings: () => void;
   onSelection: (projectId?: string, threadId?: string) => void;
@@ -107,6 +109,8 @@ export function MobileWorkspaceView({
   const scroller = useRef<HTMLElement>(null);
   const positions = useRef(new Map<string, { key?: string; offset: number; scrollTop: number }>());
   const page = view.page;
+  const projects = view.projectsLoaded ? view.projects : (cachedProjects ?? []);
+  const connecting = connection.kind === "loading" || connection.kind === "connecting";
   const listId = page.kind === "work" ? page.projectId : undefined;
   const task = view.task;
   const selectedId =
@@ -217,9 +221,15 @@ export function MobileWorkspaceView({
             <p className="flex items-center gap-inline text-fixed-caption text-foreground-subtle">
               <span
                 aria-hidden="true"
-                className="inline-block size-[var(--size-status-dot)] rounded-[var(--radius-pill)] bg-success"
+                className={`inline-block size-[var(--size-status-dot)] rounded-[var(--radius-pill)] ${connection.kind === "connected" ? "bg-success" : "bg-status-attention"}`}
               />
-              {t("mobile.hostOnline")}
+              {t(
+                connection.kind === "connected"
+                  ? "mobile.hostOnline"
+                  : connecting
+                    ? "mobile.connecting"
+                    : "mobile.offline",
+              )}
             </p>
           </header>
         ) : (
@@ -313,19 +323,17 @@ export function MobileWorkspaceView({
                 ))}
               </section>
             )}
-            {!view.projects.length && !view.loading && !view.error && (
+            {view.projectsLoaded && !projects.length && !view.loading && !view.error && (
               <p>{t("mobile.noProjects")}</p>
             )}
-            {view.projects.map((project) => {
+            {projects.map((project) => {
               return (
                 <Button
                   key={project.projectId}
                   className="mobile-project-card w-full gap-inline shadow-none h-auto whitespace-normal text-start justify-start p-field mobile-touch min-h-[var(--size-touch-target)] rounded-none! border-b border-border text-foreground"
                   variant="ghost"
                   data-project-id={project.projectId}
-                  aria-busy={
-                    project.connectionState === "online" && !view.groups[project.projectId]
-                  }
+                  disabled={!view.projectsLoaded}
                   onClick={() => workspace.navigate({ kind: "work", projectId: project.projectId })}
                 >
                   <span className="mobile-folder-icon grid place-items-center shrink-0 size-[var(--size-touch-target)] text-foreground-subtle">

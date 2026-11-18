@@ -103,6 +103,8 @@ test("MobileCacheStore caches authorized projects, respects selection toggles, a
     assert.equal(await store.loadSession(hostA, "p2", "thread-p2-2"), undefined);
 
     // 授权缩窄（p2 从电脑授权里被移出）：自动清理并保留 p1。
+    await store.syncGrantRevision(hostA, 2);
+    assert.equal(await store.loadShell(hostA), undefined);
     await store.saveShell(hostA, 2, makeShell(["p1"]));
     const view = await store.loadView(hostA);
     assert.deepEqual(
