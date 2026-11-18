@@ -35,7 +35,7 @@ const {
 /** @typedef {{kind:'packet',packet:ReturnType<InstanceType<typeof DesktopService>['packet']>,header:{method:'state'}|{id:number},bytes:number}} PacketEntry */
 /** @typedef {PacketEntry|{kind:'message',value:Fields,bytes:number}} OutboundEntry */
 /** @typedef {{queue:OutboundEntry[],bytes:number,active:boolean,state:PacketEntry|null,closed:boolean,timer?:NodeJS.Timeout}} Outbound */
-/** @typedef {import('ws') & {outbound?:Outbound,notifications?:boolean,activity?:{time:number,windowFocused:boolean,focused:boolean},lastFocused?:number,historyViews?:Map<string,Fields & {viewId:string}>}} ServiceSocket */
+/** @typedef {import('ws') & {outbound?:Outbound,notifications?:boolean,activity?:{time:number,windowFocused:boolean},lastFocused?:number,historyViews?:Map<string,Fields & {viewId:string}>}} ServiceSocket */
 /** @param {ServiceSocket|null|undefined} client @returns {client is ServiceSocket} */
 const connected = (client) => client?.readyState === 1;
 /** @typedef {{pageId:string,pageGeneration:number,controlEpoch:number}} PageClaim */
@@ -134,7 +134,6 @@ class DesktopService {
       !this.closed && connected(this.browserSocket) ? this.browserSocket : null;
     /** @type {NodeJS.Timeout|null|undefined} */ this.timer = undefined;
     /** @type {NodeJS.Timeout|undefined} */ this.activityTimer = undefined;
-    /** @type {NodeJS.Timeout|undefined} */ this.flushTimer = undefined;
     /** @type {import('ws').WebSocketServer|undefined} */ this.server = undefined;
     this.exitRequested = false;
     this.recovering = false;
@@ -416,15 +415,12 @@ class DesktopService {
         clearTimeout(pending.timer);
         pending.reject(new Error("Browser host disconnected after dispatch"));
       }
-    this.sampleActivity();
     if (this.clients.delete(socket) && !this.clients.size) this.idleSince = Date.now();
-    this.sampleActivity();
     this.schedule();
   }
   startObservers() {
     if (this.activityTimer) return;
     this.activityTimer = setInterval(() => {
-      this.sampleActivity();
       void this.backend.host
         .refreshScheduling()
         .then((changed) => {
@@ -432,9 +428,6 @@ class DesktopService {
         })
         .catch(() => {});
     }, 5000);
-    this.flushTimer = setInterval(() => {
-      void this.backend.analytics.flush();
-    }, 30000);
   }
   async listen({ initialized = false } = {}) {
     if (!initialized) {
@@ -482,14 +475,6 @@ class DesktopService {
       ...(this.lifecycle ? { desktopGeneration: this.lifecycle.generation } : {}),
       pid: process.pid,
     };
-  }
-  sampleActivity() {
-    const now = Date.now();
-    const active = [...this.clients].some(
-      (s) => s.activity && now - s.activity.time <= 15000 && s.activity.focused,
-    );
-    // Count the union of active GUI intervals, never one duration per client.
-    this.backend.analytics.sample({ time: now, focused: active });
   }
   async stop({ cancel = false } = {}) {
     if (!this.lifecycle)
@@ -880,20 +865,9 @@ class DesktopService {
         return response;
       }
       if (method === "activity") {
-        this.sampleActivity();
         const windowFocused = params?.focused === true && params?.suspended !== true;
         if (windowFocused && !socket.activity?.windowFocused) socket.lastFocused = Date.now();
-        socket.activity = {
-          time: Date.now(),
-          windowFocused,
-          focused:
-            params?.focused === true &&
-            params?.suspended !== true &&
-            typeof params.idleSeconds === "number" &&
-            Number.isFinite(params.idleSeconds) &&
-            params.idleSeconds <= 300,
-        };
-        this.sampleActivity();
+        socket.activity = { time: Date.now(), windowFocused };
         response = null;
         return response;
       }
@@ -1091,7 +1065,6 @@ class DesktopService {
     this.pendingNotificationTarget = null;
     clearTimeout(this.timer ?? undefined);
     clearInterval(this.activityTimer);
-    clearInterval(this.flushTimer);
     for (const socket of this.server?.clients ?? []) {
       this.stopSending(socket);
       this.releaseHistoryViews(socket);

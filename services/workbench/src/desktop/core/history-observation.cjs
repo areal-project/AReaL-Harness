@@ -84,7 +84,6 @@ class HistoryObservation {
       };
       this.host.onChange();
     }
-    this.host.analytics.observe(project.id, method, params);
     if (threadId && method === "areal/thread/edited" && this.supportsBoundedHistory(client)) {
       const window = this.historyWindow(project, threadId);
       if (window) {

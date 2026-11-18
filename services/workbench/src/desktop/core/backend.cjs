@@ -19,7 +19,6 @@ const { ScopedResources } = require("./scoped-resources.cjs");
 const { AppHooks } = require("./hooks.cjs");
 const { AppProviders } = require("./providers.cjs");
 const { snapshotProject } = require("./project-snapshot.cjs");
-const { UsageAnalytics } = require("./analytics.cjs");
 const { CoreLibrary } = require("./library.cjs");
 const { CoreNotifications } = require("./notifications.cjs");
 const { manage } = require("./management.cjs");
@@ -147,7 +146,6 @@ class CoreBackend {
     this.taskWorkspaceOwners = new TaskWorkspaceOwners(this);
     this.projectless = new ProjectlessWorkspaces(this);
     this.notifications = new CoreNotifications((notice) => this.onNotification?.(notice));
-    this.analytics = new UsageAnalytics(this);
     this.resources = new ScopedResources(this);
     this.hooks = new AppHooks(this);
     this.providers = new AppProviders(this);
@@ -166,9 +164,6 @@ class CoreBackend {
     if (!this._connections) {
       const backend = this;
       this._connections = new ProjectConnections({
-        get analytics() {
-          return backend.analytics;
-        },
         get hostCall() {
           return backend.hostCall;
         },
@@ -245,9 +240,6 @@ class CoreBackend {
       const backend = this;
       this._observations = new HistoryObservation({
         ownerTasks: backend.ownerTasks,
-        get analytics() {
-          return backend.analytics;
-        },
         get notifications() {
           return backend.notifications;
         },
@@ -338,8 +330,6 @@ class CoreBackend {
       await this.worktrees.init();
       trace.advance("projectless");
       await this.projectless.init();
-      trace.advance("analytics");
-      await this.analytics.init();
       trace.advance("capabilities");
       await inspectCoreCapabilities(this);
       trace.advance("providers");
@@ -1509,7 +1499,7 @@ class CoreBackend {
         throw new Error("Invalid recovery workspace");
       return { projectId: await this.addProject(catalog.workspace) };
     }
-    if (name === "analytics") return this.analytics.command(request);
+    if (name === "analytics") throw new Error("Analytics operations require Host protocol");
     // 后台只读状态不占任务或配置准入；参数仍由轨迹能力校验。
     if (name === "chatgpt") return this.providers.chatgpt(request);
     if (name === "providers") return this.providers.command(request);
@@ -2245,7 +2235,6 @@ class CoreBackend {
     await Promise.allSettled([...this.projects.values()].map((project) => project.summaryReads));
     await this.providers.close();
     await this.proxyRelay?.close();
-    await this.analytics.flush();
     this.host.close();
   }
 }

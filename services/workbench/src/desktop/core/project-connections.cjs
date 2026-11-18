@@ -12,7 +12,7 @@ const { modelRecord, isCoreTask } = require("@areal/workbench/core-model-contrac
 /** @typedef {import('./local-service.cjs').RecoveryTarget} Service */
 /** @typedef {Awaited<ReturnType<typeof import('./local-service.cjs').connectService>>} ServiceConnection */
 /** @typedef {Awaited<ReturnType<InstanceType<typeof import('./backend.cjs').CoreBackend>['prepareServiceLaunch']>>} Launch */
-/** @typedef {Pick<InstanceType<typeof import('./backend.cjs').CoreBackend>,'applicationOwner'|'worktrees'|'lifecycleOperations'|'providers'|'resources'|'scheduleAdmission'|'hooks'|'defaultProfile'|'analytics'|'saved'|'hostCall'|'hostCoreClients'|'host'> & {
+/** @typedef {Pick<InstanceType<typeof import('./backend.cjs').CoreBackend>,'applicationOwner'|'worktrees'|'lifecycleOperations'|'providers'|'resources'|'scheduleAdmission'|'hooks'|'defaultProfile'|'saved'|'hostCall'|'hostCoreClients'|'host'> & {
  * closing:boolean,providerUpdating:boolean|undefined,resourcesUpdating:boolean|undefined,
  * starting:Map<string,Promise<Project>>,projects:Map<string,Project>,
  * startProject:(id:string,options?:{resumeScheduling?:boolean})=>Promise<Project>,stopReconciliation:(project:Project)=>void,
@@ -490,7 +490,6 @@ class ProjectConnections {
       await this.host.providers.acceptModelSelection(models.lastAcceptedModel);
       project.models = models.data;
       project.profiles = profiles.data ?? profiles.profiles ?? [];
-      if (!observeOnly) void this.host.analytics.syncProject(project);
       trace.advance("task_subscriptions");
       for (const taskId of new Set(project.taskViews?.values() ?? [])) {
         await client.request(

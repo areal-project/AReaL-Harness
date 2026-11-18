@@ -863,7 +863,6 @@
     "owner": "app/src"
   },
   "$workbenchRetainedSources": [
-    "../../services/workbench/src/desktop/core/analytics.cjs",
     "../../services/workbench/src/desktop/core/backend.cjs",
     "../../services/workbench/src/desktop/core/builtin-skills.cjs",
     "../../services/workbench/src/desktop/core/catalog-observation.cjs",
