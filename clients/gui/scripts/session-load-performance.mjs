@@ -6,6 +6,7 @@ import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { attachPublishedGuiSource, ensureFixtureProject } from "./support/published-source.mjs";
 import { assertApplicationStopped, cleanupSyntheticHostKeychain } from "./application-cleanup.mjs";
 
 const root = await realpath(await trackedMkdtemp("/tmp/areal-web-partial-"));
@@ -23,8 +24,6 @@ if (expected) assert.equal(actualSha, expected, "Core identity changed");
 const require = createRequire(join(gui, "app/package.json"));
 const { HostClient } = require("@areal/client/node");
 const { GuiSourceAdapter } = require("@areal/client/gui-source");
-const { GuiHostProjects } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
-const { SharedCoreBackend } = require("../app/src/core/service-client.cjs");
 const { chromium } = require("playwright-core");
 const source = {
   profile: join(root, "profile"),
@@ -87,7 +86,7 @@ const evidence = {
 const save = () =>
   writeFile(join(root, "result.json"), JSON.stringify(evidence, null, 2), { mode: 0o600 });
 const client = new HostClient();
-let browser, web, hostPid, backend, projects, backendOwner;
+let browser, web, hostPid, attachment;
 const alive = (pid) => {
   try {
     process.kill(pid, 0);
@@ -175,31 +174,15 @@ try {
       { mode: 0o600 },
     );
   }
-  projects = new GuiHostProjects({ binary, home, source, singletonHeld: true });
-  await projects.init();
-  const options = {
-    binary,
-    home: source.coreHome,
-    guiProfile: source.profile,
-    hostHome: home,
-    harnessHome: source.legacyServiceHome,
-    userHome: user,
-    configHome: user,
-    config,
-  };
-  backend = new SharedCoreBackend({
-    ...options,
-    app: { getPath: (name) => (name === "userData" ? source.profile : user) },
-  });
-  backendOwner = await client.request("backend.ensure", { profile: source.profile, options });
-  evidence.pids.backend = backendOwner.pid;
-  assert.equal(await backend.attach({ expectedIdentity: backendOwner.identity }), true);
-  await backend.command("connect", { projectId: safeId });
-  assert.equal(backend.value.projects.find((p) => p.id === safeId)?.state.connected, true);
+  attachment = await attachPublishedGuiSource(client, { binary, home, source, user, config });
+  const activation = await ensureFixtureProject(client, safeId);
   evidence.reached.push("project");
   evidence.unreached.shift();
   const created = { threadId: fixtureId };
-  evidence.checks.push({ stage: "safe-project-workbench-connected", backendPid: backendOwner.pid });
+  evidence.checks.push({
+    stage: "safe-project-host-ready",
+    ...activation,
+  });
   const endpoint = JSON.parse(await readFile(join(home, "host/endpoint.json"), "utf8"));
   assert.equal(endpoint.hostId, client.hostId);
   assert.equal(endpoint.generation, client.generation);
@@ -492,23 +475,10 @@ try {
   } finally {
     client.close();
   }
-  if (backend) {
-    try {
-      await Promise.race([
-        backend.shutdown(),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(Error("backend shutdown timeout")), 10000),
-        ),
-      ]);
-      evidence.cleanup.backend = "stopped";
-    } catch (e) {
-      evidence.cleanup.backend = e.message;
-    }
-  }
-  projects?.close();
+  attachment?.close();
   if (evidence.cleanup.host === "completed" && evidence.cleanup.hostPidExited) {
     try {
-      await assertApplicationStopped(binary, { ...process.env, HOME: user }, backendOwner);
+      await assertApplicationStopped(binary, { ...process.env, HOME: user }, { hostPid });
       evidence.cleanup.inventory = "stopped";
       evidence.cleanup.keychain = await cleanupSyntheticHostKeychain(home, root);
     } catch (e) {
@@ -527,7 +497,6 @@ try {
   if (
     !evidence.error &&
     (evidence.cleanup.browser !== "stopped" ||
-      evidence.cleanup.backend !== "stopped" ||
       evidence.cleanup.host !== "completed" ||
       !evidence.cleanup.hostPidExited ||
       evidence.cleanup.inventory !== "stopped" ||
