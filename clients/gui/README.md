@@ -237,8 +237,6 @@ Host 持有每项目 Core 的生命期管道。强退 GUI 不结束 Host-owned C
 
 `AREAL_CORE_BIN=/absolute/fixed-slot/areal pnpm --dir clients/gui run test:desktop-exit` 在隔离 Electron/Core/Runtime 中核对窗口重开、普通退出的取消与确认、隐藏项目引擎清理、独立 CLI 和其他 GUI profile、Main/Desktop 强退及 runner 清理。目录选择和原生确认由 fixture 应答。指定 `AREAL_GUI_EXECUTABLE` 可使用私有安装包，runner 强退夹具仍限源码入口；这不替代物理快捷键或 Finder 安装验收。
 
-`AREAL_CORE_BIN=/absolute/path/to/private/.local/dev-bin/<slot>/areal node clients/gui/scripts/application-owner-smoke.mjs` 从仓库根验证真实 Host 尚未发布描述时丢失启动响应、原代际恢复、项目投影移除、同/异 profile 旧 owner 的只读边界及原回执清理。测试专用 CLI guard 仅管理隔离 registry 的原实例，runner 结束后通过公共 CLI 回收独立持久服务。
-
 设置存在未保存修改时，退出先复用“保存并继续／放弃修改并继续／继续编辑”确认。取消退出保留草稿、后台连接和正常操作；保存失败保留确认框与错误，成功保存或放弃修改后才清理 GUI 资源并退出。旧 `test:quit-draft` 和 `test:quit-progress` 的停止式退出夹具保留为迁移对照，共享 Host 退出语义以 `test:host-quit` 为准。
 
 普通会话运行时的主要停止操作显示为“暂停执行”。暂停结算后，完整草稿为空时显示播放图标和“继续执行”；文本、附件、Skill、MCP 或评论草稿存在时显示普通发送。发送将输入作为新的用户消息追加到原会话。继续使用已保存历史和当前工作区，不复活旧模型调用或进程。重开 GUI、Core 或电脑后仅恢复历史，必须手动继续。排队输入保留并按现有顺序优先执行；正常回复完成后等待下一次用户输入，不自动创建 Goal。

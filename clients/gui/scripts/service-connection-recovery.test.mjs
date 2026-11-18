@@ -103,7 +103,6 @@ async function connectAdapter(backend, adapter) {
   backend.connection = connection;
   backend.metadata = metadata;
   backend.identity = metadata.identity;
-  backend.foreignOwner = null;
   backend.sequence = -1;
   backend.exitConfirmation = null;
   try {

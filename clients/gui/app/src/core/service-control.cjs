@@ -109,7 +109,7 @@ const { projectHostReceipt } = require("./host-lifecycle.cjs");
 /** @typedef {InstanceType<typeof import('./service-client.cjs').SharedCoreBackend>} Backend */
 /** @typedef {import('./service-control.cjs').LifecycleReference} Reference */
 /** @typedef {import('./service-control.cjs').LifecycleResponse} Receipt */
-/** @typedef {{kind:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleKind,mode?:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleMode,observed?:Observation,projectId?:string,threadId?:string,turnId?:string,requestId?:string,migration?:unknown}} LifecycleOptions */
+/** @typedef {{kind:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleKind,mode?:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleMode,observed?:Observation,projectId?:string,threadId?:string,turnId?:string,requestId?:string}} LifecycleOptions */
 /** @typedef {{stopped:boolean,operation:Receipt,kind?:string}} LifecycleResult */
 /** @param {unknown} kind */
 const desktopKind = (kind) => kind === "stopDesktop" || kind === "updateDesktop";
@@ -180,15 +180,6 @@ function lifecycleProjection() {
   return {
     supported: this.status.lifecycle?.version === 2,
     operations,
-    ...(this.foreignOwner
-      ? {
-          recovery: {
-            canRecover: true,
-            projects: [],
-            message: "原后台属于旧应用会话。请检查并安全迁移。",
-          },
-        }
-      : {}),
     ...(legacy
       ? {
           recovery: this.legacyRecoveryView ?? {
@@ -441,10 +432,6 @@ async function acceptLifecycleReceipt(reference, value) {
 
 /** @this {Backend}  @param {string} name @param {Record<string,unknown>} [request] */
 function assertLifecycleScope(name, request = {}) {
-  if (this.foreignOwner)
-    throw Object.assign(new Error("原后台属于旧应用会话，请先检查并安全迁移"), {
-      code: "APPLICATION_OWNER_MISMATCH",
-    });
   if (
     ["list", "open", "reconcile", "queue"].includes(name) ||
     require("./lifecycle.cjs").isRecoveryCommand(name, request)
@@ -490,9 +477,7 @@ async function requestLifecycle(options) {
     threadId,
     turnId,
     requestId = randomUUID(),
-    migration,
   } = options;
-  this.assertApplicationWrite(migration);
   if (!this.status.connected) throw new Error("后台尚未连接，请先重新连接后台");
   const originalReference = this.lifecycleReferences.get(requestId);
   const previous = originalReference ?? this.lifecycleReceipts.get(requestId);
@@ -635,7 +620,6 @@ async function hostUpdate(request) {
       }
     }
     if (request.operation === "prepare" || request.operation === "apply") {
-      this.assertApplicationWrite();
       this.hostUpdateReference = {
         requestId: request.requestId,
         hostId: client.hostId,

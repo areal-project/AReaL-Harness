@@ -138,7 +138,6 @@ try {
       ),
     );
   assert.equal(attached, true);
-  assert.equal(backend.foreignOwner, null);
   assert.equal(backend.connectionState.state, "ready");
   assert.equal(backend.browserHostOwned, true);
   checks.push("Main attaches with Host ownership and native capability lease");

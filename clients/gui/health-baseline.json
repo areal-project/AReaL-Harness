@@ -174,7 +174,6 @@
     "app/src/core/service-connection.cjs": 432,
     "app/src/core/service-control.cjs": 676,
     "app/src/core/shared-browser-profile.cjs": 186,
-    "app/src/core/startup-recovery.cjs": 124,
     "app/src/main.cjs": 11,
     "app/src/themes/controls.css": 889,
     "app/src/themes/index.js": 499,

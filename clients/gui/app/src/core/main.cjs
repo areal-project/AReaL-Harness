@@ -336,15 +336,7 @@ function startDesktop() {
       } else {
         recordQuitStage(attempt, "reconcile");
         await backend.checkLifecycle();
-        if (backend.foreignOwner)
-          throw Object.assign(new Error(nativeText("lifecycle.foreignOwner")), {
-            code: "APPLICATION_OWNER_MISMATCH",
-          });
-        if (
-          !backend.foreignOwner &&
-          !backend.serviceExited &&
-          (backend.status.connected || backend.metadata)
-        ) {
+        if (!backend.serviceExited && (backend.status.connected || backend.metadata)) {
           recordQuitStage(attempt, "stop");
           const result = await confirmHostStop(backend, notify, () => {
             beginQuit("stopping");
@@ -371,8 +363,7 @@ function startDesktop() {
           profile: app.getPath("userData"),
         });
       recordQuitStage(attempt, "finalizing");
-      if (!backend.foreignOwner)
-        await backend.completeApplicationQuit({ keepBackground: intent !== "install" });
+      await backend.completeApplicationQuit({ keepBackground: intent !== "install" });
       recordQuitStage(attempt, "disconnect");
       await backend.shutdown();
       await preview?.dispose();

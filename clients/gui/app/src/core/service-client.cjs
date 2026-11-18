@@ -85,7 +85,7 @@ async function waitForProcessExit(pid) {
 /** @typedef {import('@areal/workbench-service/desktop/core/resource-recovery.cjs').Notify} Notify */
 /** @typedef {{projectId:string,threadId:string,id:string}} GuiTerminal */
 /** @typedef {{focused:boolean,idleSeconds:number,suspended?:boolean}} Activity */
-/** @typedef {{kind:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleKind,mode?:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleMode,observed?:Observation,projectId?:string,threadId?:string,turnId?:string,requestId?:string,migration?:unknown}} LifecycleOptions */
+/** @typedef {{kind:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleKind,mode?:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleMode,observed?:Observation,projectId?:string,threadId?:string,turnId?:string,requestId?:string}} LifecycleOptions */
 /** @typedef {{stopped:boolean,operation:Receipt,kind?:string}} LifecycleResult */
 /** @typedef {{stopped:boolean,operation:import('@areal/workbench/desktop-contract/shared').LifecycleViewOperation,receipt?:import('./host-lifecycle.cjs').HostReceipt}} HostLifecycleResult */
 // GUI-local connection/projection only. Control intent lives in GUI userData;
@@ -106,8 +106,6 @@ class SharedCoreBackend {
     this.connection = undefined;
     /** @type {Metadata|undefined} */
     this.metadata = undefined;
-    /** @type {Metadata|null|undefined} */
-    this.foreignOwner = undefined;
     /** @type {InstanceType<typeof ServiceConnection>|null|undefined} */
     this.stoppedConnection = undefined;
     /** @type {Metadata|import("./service-control.cjs").DesktopIdentity|null|undefined} */
@@ -166,7 +164,6 @@ class SharedCoreBackend {
     this.onRecoveryAttention = onRecoveryAttention;
     this.app = app;
     this.options = options;
-    this.applicationOwner = options.applicationOwner;
     this.home = options.home;
     this.onChange = onChange;
     /** @type {import("@areal/workbench-service/desktop/core/service-state.cjs").ServiceSnapshot} */
@@ -478,13 +475,7 @@ class SharedCoreBackend {
       ),
       ...checked.service,
     };
-    this.connectionState = this.foreignOwner
-      ? {
-          state: "unavailable",
-          recovery: "check",
-          message: "原后台属于旧应用会话，仅供检查。请安全迁移后继续。",
-        }
-      : { state: "ready" };
+    this.connectionState = { state: "ready" };
     this.onChange();
   }
   disconnected() {
@@ -632,7 +623,6 @@ class SharedCoreBackend {
         host.close();
       }
     }
-    this.foreignOwner = hostOwned ? null : metadata;
     const identity =
       expectedIdentity ??
       (passive ? (this.metadata?.identity ?? this.identity) : metadata.identity);
@@ -702,18 +692,6 @@ class SharedCoreBackend {
     this.metadata = metadata;
     if (hostOwned) this.identity = metadata.identity;
     this.exitConfirmation = null;
-    if (this.foreignOwner) {
-      this.backendUpdate = {
-        state: "pending",
-        message: "原后台属于旧应用会话，请检查并安全停止后迁移。",
-      };
-      this.connectionState = {
-        state: "unavailable",
-        recovery: "check",
-        message: "原后台仅供检查。请使用“检查后台资源”安全停止旧应用会话，再重新连接。",
-      };
-      this.onChange();
-    }
     return true;
   }
   get controlPath() {
@@ -1053,7 +1031,6 @@ class SharedCoreBackend {
     if (name === "connect" && !this.status.connected) await this.init();
     if (this.disposed) throw new Error("GUI 连接已关闭");
     if (!this.status.connected) throw new Error("后台尚未连接，请先处理后台连接提示");
-    if (this.foreignOwner) this.assertLifecycleScope(name, request);
     if (name === "stop") {
       if (
         !uuid(request.requestId) ||
@@ -1180,7 +1157,6 @@ class SharedCoreBackend {
   async hostInstallation(operation, stop) {
     if (!this.options.binary || !this.options.hostHome) throw new Error("Host 程序尚未配置");
     if (operation !== "status") {
-      this.assertApplicationWrite();
       if (!this.hostUpdateReference) this.loadReferences(await this.readControl());
       if (this.hostUpdateInFlight || this.hostUpdateReference)
         throw new Error("请先核查原升级请求，再更改登录自启");
@@ -1269,20 +1245,6 @@ class SharedCoreBackend {
       return true;
     }
   }
-  /** @param {boolean} [forUpdate] @param {{purpose?:string}} [options] */
-  async observeLifecycle(forUpdate = true, { purpose = "manage" } = {}) {
-    if (this.serviceExited) return { ifIdle: true, exited: true, blockers: [] };
-    if (!this.status.connected) return { ifIdle: false, blockers: ["disconnected"] };
-    const { DesktopLifecycle } = require("./lifecycle.cjs");
-    return new DesktopLifecycle({
-      connection: this.requireConnection(),
-      metadata: this.metadata,
-      home: this.home,
-      forUpdate,
-      purpose,
-    }).observe();
-  }
-
   lifecycleProjection() {
     return lifecycleControl.lifecycleProjection.call(this);
   }
@@ -1474,64 +1436,11 @@ class SharedCoreBackend {
   acceptLifecycleReceipt(reference, value) {
     return lifecycleControl.acceptLifecycleReceipt.call(this, reference, value);
   }
-  /** @param {Metadata|null} [source] */
-  assertMigrationProfile(source = this.foreignOwner) {
-    const owner = record(source?.applicationOwner) ? source.applicationOwner : undefined;
-    if (owner?.profile && owner.profile !== this.applicationOwner?.profile)
-      throw Object.assign(new Error(`原后台属于另一配置目录，请从 ${owner.profile} 退出原应用。`), {
-        code: "APPLICATION_OWNER_MISMATCH",
-      });
-  }
-  /** @param {unknown} [migration] */
-  assertApplicationWrite(migration) {
-    if (!this.foreignOwner) return;
-    this.assertMigrationProfile();
-    if (migration !== this.foreignOwner || migration !== this.metadata)
-      throw Object.assign(new Error("原后台仅供观察，请通过安全迁移入口处理原应用会话"), {
-        code: "APPLICATION_OWNER_MISMATCH",
-      });
-  }
-  /** @param {Notify} notify */
-  async recoverForeignOwner(notify) {
-    const source = this.foreignOwner;
-    this.assertMigrationProfile(source);
-    const answer = await notify({
-      type: "warning",
-      message: "安全停止旧应用会话并迁移？",
-      detail:
-        "原后台没有被本次应用接管。将核对原代际、任务和清理回执，停止成功后才启动本次应用的后台。未知操作不会重发。",
-      buttons: ["返回应用", "检查并迁移"],
-      defaultId: 0,
-      cancelId: 0,
-      noLink: true,
-    });
-    if (answer.response !== 1) return { canceled: true };
-    const result = await require("./startup-recovery.cjs").recoverConnectedService({
-      backend: this,
-      notify,
-      purpose: "stop",
-      migration: source,
-    });
-    if (!("stopped" in result) || !result.stopped) return result;
-    this.foreignOwner = null;
-    this.lifecycleReferences.clear();
-    this.lifecycleReceipts.clear();
-    await this.persistReferences();
-    this.connection?.close();
-    this.connection = null;
-    await this.initialize();
-    this.controlState = null;
-    this.reconnectBlocked = false;
-    return { recovered: true };
-  }
   /** @param {{notify:Notify}} options @returns {Promise<unknown>} */
   async recoverBackend({ notify }) {
-    this.assertMigrationProfile();
     if (this.recoveryInFlight) return this.recoveryInFlight;
     this.recoveryInFlight = (async () => {
       await this.checkLifecycle();
-      if (this.foreignOwner && this.status.lifecycle?.version === 2)
-        return this.recoverForeignOwner(notify);
       if (this.legacyControl || (this.status.stopReport && this.status.lifecycle?.version !== 2))
         return require("./legacy-desktop-recovery.cjs").recover(this, notify);
       const pending = [...this.lifecycleReferences.values()];
@@ -1617,21 +1526,16 @@ class SharedCoreBackend {
   requestLifecycle(options) {
     return lifecycleControl.requestLifecycle.call(this, options);
   }
-  /** @param {boolean} [forUpdate] @param {{kind?:import("@areal/workbench-service/desktop/core/lifecycle-operations.cjs").LifecycleKind,cancel?:boolean,observed?:Observation,migration?:unknown}} [options] */
+  /** @param {boolean} [forUpdate] @param {{kind?:import("@areal/workbench-service/desktop/core/lifecycle-operations.cjs").LifecycleKind,cancel?:boolean,observed?:Observation}} [options] */
   async stopService(forUpdate = false, options = {}) {
     return this.requestLifecycle({
       kind: options.kind ?? (forUpdate ? "updateDesktop" : "stopDesktop"),
       mode: options.cancel ? "cancel" : "ifIdle",
       observed: options.observed,
-      migration: options.migration,
     });
   }
   /** @param {{notify?:Notify}} [options] */
   async applyUpdate({ notify } = {}) {
-    if (this.foreignOwner) {
-      if (!notify) throw new Error("后台迁移需要原生确认");
-      return this.recoverForeignOwner(notify);
-    }
     try {
       const pending = [...this.lifecycleReferences.values()].find(
         (reference) =>

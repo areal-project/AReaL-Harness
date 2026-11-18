@@ -1877,7 +1877,6 @@ test("Main resource and service status reads use native Host without a Node conn
 
 test("native update readiness observes Host resources and treats missing observations as busy", async (t) => {
   const f = await fixture(t);
-  f.backend.observeLifecycle = async () => assert.fail("Node lifecycle must not be read");
   assert.equal(await f.backend.hasUpdateWork(), true);
 
   f.backend.nativeBrowserEpoch = {};
@@ -1895,21 +1894,16 @@ test("native update readiness observes Host resources and treats missing observa
 
 test("native recovery stops through the original Host receipt without Node lifecycle", async (t) => {
   const f = await fixture(t);
-  const { recoverConnectedService } = require("../app/src/core/startup-recovery.cjs");
+  const { confirmHostStop } = require("../app/src/core/host-quit.cjs");
   f.backend.nativeBrowserEpoch = {};
   f.backend.status.connected = true;
-  f.backend.observeLifecycle = async () => assert.fail("Node lifecycle must not be read");
   f.setHandler(async (q) => {
     assert.equal(q.method, "host.stop");
     const value = f.receipt(q.params.requestId);
     f.operations.set(q.params.requestId, value);
     return value;
   });
-  const result = await recoverConnectedService({
-    backend: f.backend,
-    notify: async () => ({ response: 1 }),
-    purpose: "update",
-  });
+  const result = await confirmHostStop(f.backend, async () => ({ response: 1 }));
   assert.equal(result.stopped, true);
   assert.equal(result.operation.kind, "stopHost");
   const saved = readReferences((await f.backend.readControl()).references);
@@ -1926,7 +1920,6 @@ test("native update keeps one original stop receipt and restarts only after comp
   f.backend.initialize = async () => {
     starts++;
   };
-  f.backend.observeLifecycle = async () => assert.fail("Node lifecycle must not be read");
   let stopId;
   f.setHandler(async (q) => {
     if (q.method === "host.stop") {
