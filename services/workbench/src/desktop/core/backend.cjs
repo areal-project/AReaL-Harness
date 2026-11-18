@@ -1621,7 +1621,7 @@ class CoreBackend {
       name === "manage" &&
       (request.operation === "pluginStoreSnapshot" || request.operation === "pluginStoreDoctor")
     )
-      return require("./plugin-store-reader.cjs").readPluginStore(this, request);
+      throw new Error("Plugin store observations require Host protocol");
     if (name === "manage") {
       // 插件库登记归 Host：桌面命令通道与界面走同一个 Host 方法，不再经各项目 Core。
       const store = require("@areal/workbench/desktop-contract/plugin-store");
