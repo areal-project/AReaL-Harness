@@ -35202,8 +35202,6 @@
         "command": {
           "type": "string",
           "enum": [
-            "addProject",
-            "analytics",
             "chatgpt",
             "cloud",
             "cloudSession",
@@ -35212,7 +35210,6 @@
             "continue",
             "dismissRecovery",
             "editMessage",
-            "feedback",
             "fork",
             "history",
             "list",
@@ -35222,15 +35219,12 @@
             "prediction",
             "prepareCreator",
             "projectless",
-            "providers",
             "queue",
             "queueEdit",
             "reconcile",
             "remoteControl",
             "resources",
             "side",
-            "tasks",
-            "trajectory",
             "workspace",
             "recovery"
           ],

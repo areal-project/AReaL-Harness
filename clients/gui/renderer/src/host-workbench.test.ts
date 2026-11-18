@@ -78,13 +78,15 @@ describe("workbench routes", () => {
     expect(calls.map(([method]) => method)).toEqual(["analytics.read"]);
   });
 
-  it("falls back to the desktop path when the service is unavailable", async () => {
+  it("reports an unavailable analytics sync without falling back to Node", async () => {
     const { routes } = setup((method) => {
       if (method === "analytics.sync")
         throw Object.assign(new Error("down"), { code: "CAPABILITY_UNAVAILABLE" });
       return {};
     });
-    expect(await routes.call("analytics", { operation: "sync" })).toBeUndefined();
+    await expect(routes.call("analytics", { operation: "sync" })).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+    });
   });
 });
 
@@ -847,6 +849,25 @@ describe("library Host-only routing", () => {
     expect(native).not.toHaveBeenCalled();
     expect(host).not.toHaveBeenCalled();
   });
+
+  it.each(["analytics", "tasks", "providers"])(
+    "does not send %s through a retired alias",
+    async (name) => {
+      const native = vi.fn();
+      const host = vi.fn();
+      const route = routeDesktopCommand(
+        { command: native } as Pick<PlatformServices, "command">,
+        host,
+        () => true,
+      );
+      await expect(route(name, {})).rejects.toMatchObject({
+        code: "CAPABILITY_UNAVAILABLE",
+        submissionUnknown: false,
+      });
+      expect(native).not.toHaveBeenCalled();
+      expect(host).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     { operation: "createSection", title: "Inbox" },

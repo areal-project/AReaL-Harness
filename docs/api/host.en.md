@@ -51,7 +51,7 @@ Provider lists use Host `modelsCatalog` to read configuration and credential ref
 
 Workbench domain reads and writes (`library`, `worktree`, `tasks`, `trajectory`, `feedback`, `manage`, `providers`) and `desktop.command` no longer need a client-supplied `sourceId`: when omitted, Host uses the source of the current workbench backend and returns `CAPABILITY_UNAVAILABLE` if that backend is not running; an explicit mismatching value returns `FORBIDDEN`.
 
-All non-native library operations, including non-navigation preferences, use `library.command` with the original `commandId` receipt. `desktop.command` no longer accepts `library`.
+All non-native library operations, including non-navigation preferences, use `library.command` with the original `commandId` receipt. Usage, task directory, providers, feedback, and trajectory use their dedicated Host methods. Adding a project uses native project registration.
 
 ## Envelope and common types
 

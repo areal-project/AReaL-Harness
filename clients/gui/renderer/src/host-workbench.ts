@@ -83,7 +83,6 @@ const MANAGE_WRITES = new Set([
  * 回答走 Host 写方法；窗口、系统与应用生命周期命令只在桌面窗口里有。
  */
 export const DESKTOP_COMMANDS = new Set([
-  "analytics",
   "chatgpt",
   "cloud",
   "cloudSession",
@@ -92,7 +91,6 @@ export const DESKTOP_COMMANDS = new Set([
   "continue",
   "dismissRecovery",
   "editMessage",
-  "feedback",
   "fork",
   "history",
   "list",
@@ -102,7 +100,6 @@ export const DESKTOP_COMMANDS = new Set([
   "prediction",
   "prepareCreator",
   "projectless",
-  "providers",
   "queue",
   "queueEdit",
   "recovery",
@@ -110,8 +107,6 @@ export const DESKTOP_COMMANDS = new Set([
   "remoteControl",
   "resources",
   "side",
-  "tasks",
-  "trajectory",
   "workspace",
 ]);
 // 命令通道是 JSON：后台返回的 Uint8Array 到这里成了按下标排的对象，还原后界面才能当字节用。
@@ -365,14 +360,6 @@ export function declinedCode(code: unknown) {
   return FALLBACK.has(String(code));
 }
 
-function declined(error: unknown) {
-  return (
-    error !== null &&
-    typeof error === "object" &&
-    FALLBACK.has(String((error as { code?: unknown }).code))
-  );
-}
-
 function backendUnavailable(message: string) {
   return Object.assign(new Error(message), {
     code: "CAPABILITY_UNAVAILABLE",
@@ -607,14 +594,10 @@ export function createWorkbenchRoutes(
           );
         }
       }
-      if (name !== "analytics" || !client.writable("analytics.read")) return undefined;
+      if (name !== "analytics") return undefined;
       const method = params.operation === "sync" ? "analytics.sync" : "analytics.read";
-      try {
-        return { value: await client.workbench(method) };
-      } catch (error) {
-        if (declined(error)) return undefined;
-        throw error;
-      }
+      if (!client.writable(method)) throw backendUnavailable("用量服务尚未就绪，请重新连接");
+      return { value: await client.workbench(method) };
     },
   };
 }
@@ -684,15 +667,11 @@ export function routeDesktopCommand(
   if (!desktop) return hostCommand as Run;
   const native = desktop.command as Run;
   return async (name, params) => {
-    // 非原生资料库与已迁至 Host 的域不能在失败后旁路回 Main。
-    if (
-      (name === "library" && !desktopKeepsCommand(name, params)) ||
-      name === "trajectory" ||
-      name === "feedback"
-    )
-      throw backendUnavailable("资料库操作入口尚未就绪，请重新连接");
-    if (!DESKTOP_COMMANDS.has(name) || desktopKeepsCommand(name, params))
-      return native(name, params);
+    if (desktopKeepsCommand(name, params)) return native(name, params);
+    // 这些域只接受各自的 Host 方法，桌面 IPC 不再承接旧别名。
+    if (["library", "trajectory", "feedback", "analytics", "tasks", "providers"].includes(name))
+      throw backendUnavailable("Host 操作入口尚未就绪，请重新连接");
+    if (!DESKTOP_COMMANDS.has(name)) return native(name, params);
     if (HOST_ONLY_DESKTOP_COMMANDS.has(name)) {
       if (!hostReady())
         return {
