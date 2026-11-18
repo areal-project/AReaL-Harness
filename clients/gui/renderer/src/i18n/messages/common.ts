@@ -304,10 +304,6 @@ export const commonMessages = {
     "zh-CN": "迁移暂未完成，其他项目可继续使用。",
     en: "Migration is pending. Other projects remain available.",
   },
-  "common.navigation.persistedHistory": {
-    "zh-CN": "当前显示已保存的历史，发送时恢复会话。",
-    en: "Showing saved history. Sending a message resumes the conversation.",
-  },
   "common.navigation.migrationRecovery": {
     "zh-CN": "请先停止旧版本的任务并退出旧版本，再重新打开此项目检查迁移状态。",
     en: "Confirm that tasks in the previous version have stopped, then quit it. Reopen this project to check migration progress.",

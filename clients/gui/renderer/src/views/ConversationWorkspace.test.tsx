@@ -15,6 +15,11 @@ import { IntlProvider } from "react-intl";
 import { catalogs } from "../i18n/messages.js";
 import { ConversationWorkspace } from "./ConversationWorkspace.js";
 
+vi.mock("react", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react")>()),
+  useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot(),
+}));
+
 vi.mock("../DraftComposer.js", () => ({
   DraftComposer: (props: Record<string, unknown>) =>
     createElement("div", {
@@ -36,7 +41,17 @@ vi.mock("../pendingMessage.js", () => ({
   usePendingMessage: () => undefined,
 }));
 
-it("renders draft composer immediately for a disconnected project without threadId", () => {
+vi.mock("../Messages.js", () => ({
+  Messages: () => createElement("div", null, "Saved conversation"),
+}));
+
+vi.mock("../Composer.js", () => ({
+  Composer: ({ executionBlocked }: { executionBlocked: boolean }) =>
+    createElement("button", { disabled: executionBlocked }, "Send follow-up"),
+}));
+
+it.each(["draft", "saved history"] as const)("renders a disconnected project's %s", (view) => {
+  const thread = view === "saved history" ? { id: "t1", persistedHistory: true } : undefined;
   const html = renderToStaticMarkup(
     createElement(
       IntlProvider,
@@ -49,8 +64,9 @@ it("renders draft composer immediately for a disconnected project without thread
             models: [{ providerId: "fixture", modelId: "saved-model" }],
             state: { connected: false, threads: {} },
           },
-          thread: undefined,
-          threadId: "",
+          thread,
+          threadId: thread?.id ?? "",
+          readOnly: !!thread,
           projects: [{ id: "p1", root: "/tmp/demo" }],
           library: { projects: {}, threads: {}, projectOrder: [], settings: {} },
           snapshot: { connection: { state: "ready" }, projects: [] },
@@ -64,7 +80,7 @@ it("renders draft composer immediately for a disconnected project without thread
         >[0]["services"],
         action: vi.fn(),
         dark: true,
-        empty: true,
+        empty: !thread,
         admitting: false,
         mainPane: { current: null },
         workspacePanels: {
@@ -72,7 +88,9 @@ it("renders draft composer immediately for a disconnected project without thread
           removeTerminalTab: vi.fn(),
         } as unknown as Parameters<typeof ConversationWorkspace>[0]["workspacePanels"],
         mcpWorkspace: {} as Parameters<typeof ConversationWorkspace>[0]["mcpWorkspace"],
-        side: {} as Parameters<typeof ConversationWorkspace>[0]["side"],
+        side: {
+          sideChats: { pendingCreation: vi.fn(), creationError: vi.fn() },
+        } as unknown as Parameters<typeof ConversationWorkspace>[0]["side"],
         fork: {} as Parameters<typeof ConversationWorkspace>[0]["fork"],
         preview: { onLink: vi.fn() } as unknown as Parameters<
           typeof ConversationWorkspace
@@ -117,8 +135,14 @@ it("renders draft composer immediately for a disconnected project without thread
       }),
     ),
   );
-  expect(html).toContain('data-testid="draft-composer"');
-  expect(html).toContain('data-model-ready="true"');
-  expect(html).toContain('data-has-prepare="true"');
-  expect(html).not.toContain("正在连接项目");
+  if (thread) {
+    expect(html).toContain("Saved conversation");
+    expect(html).toContain("<button>Send follow-up</button>");
+    expect(html).not.toContain("当前显示已保存的历史");
+  } else {
+    expect(html).toContain('data-testid="draft-composer"');
+    expect(html).toContain('data-model-ready="true"');
+    expect(html).toContain('data-has-prepare="true"');
+    expect(html).not.toContain("正在连接项目");
+  }
 });

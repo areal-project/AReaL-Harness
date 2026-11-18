@@ -315,9 +315,6 @@ function ActiveConversation() {
   if (!project || !thread) return null;
   return (
     <>
-      {thread && "persistedHistory" in thread && thread.persistedHistory === true && (
-        <FeedbackNotice tone="warning" message={t("common.navigation.persistedHistory")} />
-      )}
       {empty ? (
         <div className="draft-greeting">
           <ConversationDraftEmptyState

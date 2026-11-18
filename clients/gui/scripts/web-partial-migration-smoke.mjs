@@ -281,9 +281,6 @@ try {
   );
   if (persistedMode) {
     await web
-      .getByText("当前显示已保存的历史，发送时恢复会话。", { exact: true })
-      .waitFor({ timeout: 30000 });
-    await web
       .getByText("HISTORY_TERMINAL_INTERRUPTED", { exact: false })
       .waitFor({ timeout: 30000 });
     const input = web.getByTestId("chat-input");
@@ -295,6 +292,11 @@ try {
       return send instanceof HTMLButtonElement && !send.disabled;
     });
     assert.equal(await web.getByRole("button", { name: "发送", exact: true }).isEnabled(), true);
+    assert.equal(
+      await web.getByText("当前显示已保存的历史，发送时恢复会话。", { exact: true }).count(),
+      0,
+      "normal persisted history should not show a warning",
+    );
     assert.equal(
       sha(await readFile(join(source.coreHome, safeId, "state", `${fixtureId}.json`))),
       persistedDigest,
