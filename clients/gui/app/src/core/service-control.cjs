@@ -283,6 +283,7 @@ function loadReferences(control) {
 async function readLifecycle(reference, reconcile = true) {
   let receipt;
   const native = this.nativeBrowserEpoch;
+  const profile = this.options.guiProfile;
   if (native) {
     const source = this.nativeBrowserSource;
     receipt = await this.nativeBrowserCall("lifecycle.read", {
@@ -295,6 +296,26 @@ async function readLifecycle(reference, reconcile = true) {
       throw Object.assign(new Error("Original native lifecycle source changed"), {
         code: "RESYNC_REQUIRED",
       });
+  } else if (profile && this.options.hostHome) {
+    const host = new HostClient();
+    try {
+      await host.connect(this.options.hostHome);
+      receipt = await host.request("lifecycle.read", {
+        profile,
+        operation: reconcile ? "reconcile" : "read",
+        requestId: reference.requestId,
+        desktopGeneration: reference.desktopGeneration,
+      });
+      if (this.disposed || this.nativeBrowserEpoch || profile !== this.options.guiProfile)
+        throw Object.assign(new Error("Original lifecycle source changed"), {
+          code: "RESYNC_REQUIRED",
+        });
+    } catch (error) {
+      if (!["ENOENT", "ECONNREFUSED"].includes(String(desktopError(error).code))) throw error;
+      // Host 暂未运行时保留原 UNKNOWN，核查不会启动后台或重发原操作。
+    } finally {
+      host.close();
+    }
   } else if (this.status.connected && this.status.lifecycle?.version === 2) {
     try {
       receipt = await this.requireConnection().request(
@@ -309,7 +330,7 @@ async function readLifecycle(reference, reconcile = true) {
         throw error;
     }
   }
-  if (!receipt && !native) {
+  if (!receipt && !native && (!profile || !this.options.hostHome)) {
     const {
       readLifecycleReceipt,
       reconcileLifecycleReceipt,

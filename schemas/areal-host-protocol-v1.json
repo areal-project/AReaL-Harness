@@ -58454,6 +58454,69 @@
         }
       ]
     },
+    "LocalLifecycleReadParams": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "desktopGeneration": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "read",
+            "reconcile"
+          ]
+        },
+        "requestId": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "profile",
+        "operation",
+        "requestId",
+        "desktopGeneration"
+      ],
+      "additionalProperties": false
+    },
+    "LocalLifecycleReadRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "lifecycle.read"
+        },
+        "params": {
+          "$ref": "#/$defs/LocalLifecycleReadParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "LocalLifecycleReadResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/WorkbenchLifecycleReceipt"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "LocalDesktopLifecycleReadParams": {
       "type": "object",
       "properties": {
@@ -65218,6 +65281,11 @@
           "request": "#/$defs/LocalBackendEnsureRequest",
           "result": "#/$defs/LocalBackendOwnership",
           "source": "core/host/src/workbench_route.rs"
+        },
+        "lifecycle.read": {
+          "request": "#/$defs/LocalLifecycleReadRequest",
+          "result": "#/$defs/LocalLifecycleReadResult",
+          "source": "core/host/src/server.rs"
         },
         "backend.credentialNames": {
           "request": "#/$defs/LocalBackendCredentialNamesRequest",

@@ -1393,6 +1393,46 @@ test("resource settings use the native source without a Node connection", async 
   assert.equal(f.backend.connection, undefined);
 });
 
+test("cold lifecycle recovery reads the original receipt without opening a workbench connection", async (t) => {
+  const f = await fixture(t);
+  f.backend.options.guiProfile = f.profile;
+  const requestId = randomUUID(),
+    desktopGeneration = randomUUID();
+  const reference = {
+    requestId,
+    desktopGeneration,
+    kind: "stopProject",
+    mode: "cancel",
+    desktop: { pid: process.pid, identity: "original-desktop" },
+    targets: [{ projectId: "project", serviceId: "core", generation: "original" }],
+  };
+  f.backend.lifecycleReferences.set(requestId, reference);
+  const receipt = {
+    version: 1,
+    requestId,
+    desktopGeneration,
+    kind: reference.kind,
+    mode: reference.mode,
+    phase: "admissionUnconfirmed",
+    desktopExit: "notRequested",
+    targets: [{ ...reference.targets[0], phase: "admissionUnconfirmed" }],
+  };
+  f.setHandler(async (frame) => {
+    assert.equal(frame.method, "lifecycle.read");
+    assert.deepEqual(frame.params, {
+      profile: f.profile,
+      requestId,
+      desktopGeneration,
+      operation: "reconcile",
+    });
+    return receipt;
+  });
+  assert.deepEqual(await f.backend.readLifecycle(reference), receipt);
+  assert.equal(f.backend.lifecycleReferences.get(requestId), reference);
+  assert.equal(f.backend.connection, undefined);
+  assert.equal(f.calls.filter((frame) => frame.method === "lifecycle.read").length, 1);
+});
+
 test("Skill Creator preparation uses native Host without a Node connection", async (t) => {
   const f = await fixture(t);
   const request = { projectId: "project", profile: { id: "standard", revision: "v2" } };

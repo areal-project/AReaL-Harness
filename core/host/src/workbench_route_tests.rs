@@ -2307,7 +2307,6 @@ async fn native_attachment_reads_original_lifecycle_without_replaying_legacy_unk
         let root=root.path().canonicalize().unwrap();
         let (host,input,source)=resumable_host(&root);
         std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
-        let (attachment,_events)=host.schedules.connections.frontend_subscribe(&host,"native-recovery",&source,input.options,None).unwrap();
         let original=uuid::Uuid::new_v4().to_string();
         let receipt=json!({"version":1,"requestId":original,"desktopGeneration":uuid::Uuid::new_v4().to_string(),"kind":"stopProject","mode":"cancel","phase":"admissionUnconfirmed","desktopExit":"notRequested","targets":[{"projectId":"project","serviceId":"original-service","generation":"original-generation","phase":"admissionUnconfirmed"}]});
         let directory=root.join("data/lifecycle-operations");
@@ -2315,6 +2314,13 @@ async fn native_attachment_reads_original_lifecycle_without_replaying_legacy_unk
         let path=directory.join(format!("{original}.json"));
         storage::write(&path,&receipt).unwrap();
         let bytes=std::fs::read(&path).unwrap();
+        let connection = crate::server::ConnectionGuard { host:host.clone(), id:"cold-recovery".into(), socket:-1 };
+        let mut cold = json!({"profile":input.profile,"operation":"reconcile","requestId":original,"desktopGeneration":receipt["desktopGeneration"]});
+        assert_eq!(host.dispatch_connection("lifecycle.read", cold.clone(), &connection).await.unwrap(), receipt);
+        assert!(host.gateway.workbench.active_source().is_none());
+        cold["profile"] = json!(root);
+        assert_eq!(host.dispatch_connection("lifecycle.read", cold, &connection).await.unwrap_err().to_string(), "FORBIDDEN");
+        let (attachment,_events)=host.schedules.connections.frontend_subscribe(&host,"native-recovery",&source,input.options,None).unwrap();
         let mut request=json!({"attachmentId":attachment["attachmentId"],"call":"lifecycle.read","params":{"sourceId":source,"operation":"reconcile","requestId":original,"desktopGeneration":receipt["desktopGeneration"]}});
         for _ in 0..2 {
             let result=host.schedules.connections.frontend_call(&host,&request).await.unwrap();

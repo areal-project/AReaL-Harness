@@ -316,6 +316,10 @@ pub(super) async fn read_request(
             "records":records.into_iter().map(public_record).collect::<Vec<_>>()}),
         );
     }
+    if let Some(generation) = params.get("desktopGeneration") {
+        uuid::Uuid::parse_str(generation.as_str().context("LIFECYCLE_INVALID_REQUEST")?)
+            .context("LIFECYCLE_INVALID_REQUEST")?;
+    }
     let id = params["requestId"]
         .as_str()
         .context("LIFECYCLE_INVALID_REQUEST")?;

@@ -1758,7 +1758,11 @@ class SharedCoreBackend {
   async checkLifecycle() {
     this.loadReferences(await this.readControl());
     this.clearReconnect();
-    if (!this.status.connected && (this.lifecycleReferences.size || !this.hostReferences.size))
+    if (
+      !this.status.connected &&
+      (!this.options.guiProfile || !this.options.hostHome || this.legacyControl) &&
+      (this.lifecycleReferences.size || !this.hostReferences.size)
+    )
       await this.attach();
     for (const reference of Array.from(this.hostReferences.values()))
       await this.readHostStop(reference);

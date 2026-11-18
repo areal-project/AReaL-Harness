@@ -1274,6 +1274,20 @@ impl Host {
         params: Value,
         connection: &ConnectionGuard,
     ) -> Result<Value> {
+        if method == "lifecycle.read" {
+            let input: areal_protocol::host::LocalLifecycleReadParams =
+                serde_json::from_value(params.clone()).context("INVALID_PARAMS")?;
+            let profile = std::fs::canonicalize(&input.profile)?;
+            let source = self
+                .migration
+                .navigation_source_id(&profile)?
+                .context("FORBIDDEN")?;
+            let operation = params["operation"].as_str().context("INVALID_PARAMS")?;
+            return Box::pin(workbench_lifecycle::read_request(
+                self, &source, operation, &params,
+            ))
+            .await;
+        }
         if method == "desktop.core.terminals.close" {
             ensure!(
                 params.as_object().is_some_and(|params| params.len() == 1),
