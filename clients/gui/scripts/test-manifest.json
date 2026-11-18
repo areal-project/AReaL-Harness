@@ -294,13 +294,6 @@
     "requires": ["electron", "core-binary", "gui-build", "git"]
   },
   {
-    "script": "test:lifecycle:legacy",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["lifecycle"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
-  },
-  {
     "script": "test:side-chat-parity",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
