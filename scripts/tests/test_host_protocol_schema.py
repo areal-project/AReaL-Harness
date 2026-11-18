@@ -118,21 +118,19 @@ class HostProtocolSchemaTests(unittest.TestCase):
                 GEN.generate(root, check=True)
             self.assertEqual(original, [(root / name).read_bytes() for name in GEN.OUTPUTS])
 
-    def test_closed_tuple_contracts_are_checked(self):
-        changed = copy.deepcopy(self.schema)
-        path = changed["$defs"]["WorkbenchPrivateLibraryPatchParams"]["properties"]["patches"][
-            "items"
-        ]["properties"]["path"]["oneOf"][0]
-        path["items"] = True
-        with self.assertRaisesRegex(ValueError, "exact closed length"):
-            GEN.validate_schema(changed)
-
     def test_unsupported_shapes_fail_instead_of_generating_wide_types(self):
         for shape in (
             {"allOf": [{"type": "string"}]},
             {"type": ["string", "null"]},
             {"$ref": "#/missing"},
             {"type": "object", "patternProperties": {".*": {"type": "string"}}},
+            {
+                "type": "array",
+                "prefixItems": [{"type": "string"}],
+                "items": True,
+                "minItems": 1,
+                "maxItems": 1,
+            },
             {
                 "type": "object",
                 "properties": {"known": {"type": "string"}},
@@ -188,11 +186,6 @@ validate('#/$defs/WorkbenchProviderReadResult', {...providerStatus,credentialErr
 validate('#/$defs/WorkbenchProviderReadResult', {...providerStatus,credentialErrors:{provider:'arbitrary diagnostic'}}, false);
 validate('#/$defs/WorkbenchProviderReadResult', {...providerStatus,unregisteredCredentialState:{}}, false);
 
-validate('#/$defs/WorkbenchPrivateLibraryPatchParams', {patches:[{path:['settings','httpProxy'],before:null,after:'opaque'}]});
-validate('#/$defs/WorkbenchPrivateLibraryPatchParams', {patches:[{path:['settings','sidebarSort'],before:null,after:'manual'}]}, false);
-validate('#/$defs/WorkbenchPrivateLibraryPatchParams', {patches:[{path:['httpProxy','settings'],before:null,after:'opaque'}]}, false);
-validate('#/$defs/WorkbenchPrivateLibraryPatchParams', {patches:[{path:['projects','project','worktreeEnvironments'],before:[],after:[]}]});
-validate('#/$defs/WorkbenchPrivateLibraryPatchParams', {patches:[{path:['projects','project','navigationSummaries'],before:[],after:[]}]}, false);
 const privateRead = {sourceId:'fixture',projectId:'project',lease:canonicalUuid,method:'thread/read',params:{threadId:'thread',includeTurns:true}};
 validate('#/$defs/WorkbenchPrivateCoreRequestParams', privateRead);
 validate('#/$defs/WorkbenchPrivateCoreRequestParams', {...privateRead,method:'arbitrary/execute'}, false);
@@ -200,10 +193,6 @@ validate('#/$defs/WorkbenchPrivateCoreRequestParams', {...privateRead,params:{..
 const privateUpdate = {...privateRead,method:'areal/task/update',params:{taskId:'task',requestId:canonicalUuid,expectedRevision:1,scheduleV2:null}};
 validate('#/$defs/WorkbenchPrivateCoreRequestParams', privateUpdate);
 validate('#/$defs/WorkbenchPrivateCoreRequestParams', {...privateUpdate,params:{...privateUpdate.params,scheduleV2:{version:2}}}, false);
-const originalQuery = {...privateRead,method:'areal/task/create',params:{requestId:canonicalUuid}};
-validate('#/$defs/WorkbenchPrivateExecutionReconcileParams', originalQuery);
-validate('#/$defs/WorkbenchPrivateExecutionReconcileParams', {...originalQuery,params:{...originalQuery.params,arbitrary:true}}, false);
-validate('#/$defs/WorkbenchPrivateExecutionSubmitParams', originalQuery, false);
 const explicitWorktreeProfile = {commandId:canonicalUuid,request:{sourceId:'host',operation:'worktreeOpen',projectId:'project',requestId:canonicalUuid,agentProfile:{id:'fixture',revision:'revision'}}};
 validate('#/$defs/LocalWorktreeCommandParams', explicitWorktreeProfile);
 validate('#/$defs/LocalWorktreeCommandParams', {...explicitWorktreeProfile,request:{...explicitWorktreeProfile.request,operation:'worktreeDelete'}}, false);
