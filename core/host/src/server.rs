@@ -1,3 +1,5 @@
+#[path = "analytics.rs"]
+mod analytics;
 #[path = "cloud.rs"]
 mod cloud;
 #[path = "cloud_sessions.rs"]
@@ -6,22 +8,14 @@ mod cloud_sessions;
 pub(crate) mod conversation_media;
 #[path = "conversation_read.rs"]
 mod conversation_read;
-#[path = "gateway/owner.rs"]
-mod gateway_owner;
-#[path = "space/import.rs"]
-mod space_import;
-#[cfg(test)]
-#[path = "vault_liveness_tests.rs"]
-mod vault_liveness_tests;
-pub(crate) use gateway_owner::error_code;
-#[path = "analytics.rs"]
-mod analytics;
 #[path = "execution_preparation.rs"]
 mod execution_preparation;
 #[path = "feedback.rs"]
 mod feedback;
 #[path = "feedback_context.rs"]
 mod feedback_context;
+#[path = "gateway/owner.rs"]
+mod gateway_owner;
 #[path = "gui_project.rs"]
 mod gui_project;
 #[path = "idle.rs"]
@@ -64,6 +58,8 @@ mod session_commands;
 mod shell_subscription;
 #[path = "side_owners.rs"]
 mod side_owners;
+#[path = "space/import.rs"]
+mod space_import;
 #[path = "subscription/host.rs"]
 mod subscriptions;
 #[path = "task_catalog.rs"]
@@ -72,8 +68,12 @@ mod task_catalog;
 mod trajectory;
 #[path = "updates.rs"]
 pub(crate) mod updates;
+#[cfg(test)]
+#[path = "vault_liveness_tests.rs"]
+mod vault_liveness_tests;
 #[path = "workbench_lifecycle.rs"]
 mod workbench_lifecycle;
+
 #[path = "workbench_route.rs"]
 mod workbench_route;
 #[path = "workbench_submissions.rs"]
@@ -108,6 +108,8 @@ use tokio::{
     net::{UnixListener, UnixStream},
     sync::{Mutex, Notify, RwLock, watch},
 };
+
+const DESKTOP_CORE_MAX_FRAME: usize = 64 * 1024 * 1024;
 
 pub struct RunOptions {
     pub home: PathBuf,
@@ -497,7 +499,6 @@ pub(crate) async fn run_local_mode(
     };
     drop(loopback);
     host.gateway.workbench.cloud.sessions.close_all(&host);
-    host.gateway.workbench.stop_backend().await;
     host.gateway.workbench.stop().await;
     host.close_subscriptions().await;
     host.power.close().await;
@@ -560,7 +561,7 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
         .iter()
         .any(|capability| capability == "desktopCore");
     let frame_limit = if desktop_core {
-        crate::workbench::MAX_FRAME
+        DESKTOP_CORE_MAX_FRAME
     } else {
         wire::MAX_FRAME
     };
@@ -1340,20 +1341,15 @@ impl Host {
                 .workbench
                 .credential_names(self, serde_json::from_value(params)?);
         }
-        if method == "backend.ensure" {
-            serde_json::from_value::<areal_protocol::host::LocalBackendEnsureParams>(
-                params.clone(),
-            )?;
-            self.retain_for_gui()?;
-            return self
-                .gateway
-                .workbench
-                .ensure_backend(self, serde_json::from_value(params)?)
-                .await;
-        }
         if method == "backend.status" {
             serde_json::from_value::<Empty>(params)?;
-            return self.gateway.workbench.backend_status(self).await;
+            // 升级客户端用同一查询区分持有旧子进程的上一代 Host。
+            return Ok(json!({
+                "hostId": self.identity.host_id,
+                "generation": self.identity.generation,
+                "owned": false,
+                "service": null,
+            }));
         }
         if method == "web.ticket" {
             let input: areal_protocol::host::LocalWebTicketParams = serde_json::from_value(params)?;

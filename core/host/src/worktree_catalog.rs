@@ -377,15 +377,9 @@ fn persist(home: &Path, value: &mut Value) -> Result<()> {
     storage::write_bytes(&path, &serde_json::to_vec(value)?)
 }
 
-async fn persist_and_notify(
-    host: &Host,
-    source: &str,
-    home: &Path,
-    value: &mut Value,
-) -> Result<()> {
+fn persist_and_notify(host: &Host, home: &Path, value: &mut Value) -> Result<()> {
     persist(home, value)?;
     host.changed();
-    host.gateway.workbench.worktree_changed(source).await;
     Ok(())
 }
 
@@ -548,7 +542,7 @@ pub(super) async fn read(host: &Rc<Host>, source: &str, mut params: Value) -> Re
                             .unwrap()
                             .extend(fields.clone());
                     }
-                    persist_and_notify(host, source, &home, &mut value).await?;
+                    persist_and_notify(host, &home, &mut value)?;
                     host.changed();
                 }
             }
@@ -702,7 +696,7 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
                 value["environmentRevision"] = json!(environment_revision);
             }
             initial_checkout(&mut value);
-            persist_and_notify(host, source, &home, &mut value).await?;
+            persist_and_notify(host, &home, &mut value)?;
             host.changed();
             Ok(value)
         }
@@ -722,7 +716,7 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
             {
                 let target = project(host, source, &execution)?;
                 value["setup"]["terminateRequestId"] = json!(id);
-                persist_and_notify(host, source, &home, &mut value).await?;
+                persist_and_notify(host, &home, &mut value)?;
                 let _ = request(
                     host,
                     &target.project_id,
@@ -731,7 +725,7 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
                 )
                 .await;
             }
-            persist_and_notify(host, source, &home, &mut value).await?;
+            persist_and_notify(host, &home, &mut value)?;
             host.changed();
             Ok(value)
         }
@@ -759,7 +753,7 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
                 return Ok(finished);
             }
             finished["parameters"] = json!({});
-            persist_and_notify(host, source, &home, &mut finished).await?;
+            persist_and_notify(host, &home, &mut finished)?;
             Ok(
                 json!({"projectId":alias,"root":root,"threadId":result["threadId"],"requestId":creation}),
             )
@@ -782,7 +776,7 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
                 return Ok(value);
             }
             value["deletion"] = json!({"requestId":id,"status":"running","blockers":[],"stopRequestId":stable_id(&format!("{id}:stop"))});
-            persist_and_notify(host, source, &home, &mut value).await?;
+            persist_and_notify(host, &home, &mut value)?;
             let mut dispatched = false;
             let outcome = async {
                 request(host,&source_project.project_id,"areal/worktree/read",json!({"operation":"worktreeInspect","requestId":creation,"legacyOperation":value,"allowDirty":true})).await?;
@@ -912,7 +906,7 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
                     super::workbench_lifecycle::host_receipt(&mut target, &operation, false)?;
                     let receipt = deletion_stop_receipt(&stop_id, &host.identity.generation, &host.home, target)?;
                     value["deletion"]["stopReceipt"] = receipt.clone();
-                    persist_and_notify(host, source, &home, &mut value).await?;
+                    persist_and_notify(host, &home, &mut value)?;
                     ensure!(
                         receipt["phase"] == "completed",
                         "worktree Core stop remains unconfirmed"
@@ -952,7 +946,7 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
                 value["deletion"]["status"] = json!(if uncertain { "unknown" } else { "blocked" });
                 value["deletion"]["blockers"] = json!([error.to_string()]);
             }
-            persist_and_notify(host, source, &home, &mut value).await?;
+            persist_and_notify(host, &home, &mut value)?;
             host.changed();
             Ok(value)
         }
@@ -1195,7 +1189,7 @@ async fn environment_attempt(
             attempt["actionId"] = json!(action);
         }
         *attempt_slot(value, slot, id) = attempt.clone();
-        persist_and_notify(host, source, home, value).await?;
+        persist_and_notify(host, home, value)?;
         let source_project = project(host, source, required(value, "projectId")?)?;
         let argv = json!([
             "/usr/bin/env",
@@ -1222,7 +1216,7 @@ async fn environment_attempt(
                     attempt["finishedAt"]=json!(timestamp());
                     *attempt_slot(value, slot, id)=attempt.clone();
                     if slot == "setup" { event(value,"failed"); }
-                    persist_and_notify(host, source, home,value).await?;
+                    persist_and_notify(host, home,value)?;
                     host.changed();
                     return Ok(attempt);
                 }
@@ -1233,7 +1227,7 @@ async fn environment_attempt(
             },
         }
         *attempt_slot(value, slot, id) = attempt.clone();
-        persist_and_notify(host, source, home, value).await?;
+        persist_and_notify(host, home, value)?;
     }
     if attempt["processId"].as_str().is_none() {
         let receipts = request(
@@ -1299,7 +1293,7 @@ async fn environment_attempt(
                     let close = stable_id(&format!("{id}:close"));
                     attempt["closeRequestId"] = json!(close);
                     *attempt_slot(value, slot, id) = attempt.clone();
-                    persist_and_notify(host, source, home, value).await?;
+                    persist_and_notify(host, home, value)?;
                     let _ = request(
                         host,
                         &execution.project_id,
@@ -1347,7 +1341,7 @@ async fn environment_attempt(
                     },
                 );
             }
-            persist_and_notify(host, source, home, value).await?;
+            persist_and_notify(host, home, value)?;
             host.changed();
             if slot == "setup" && attempt["status"] == "succeeded" {
                 host.gateway
@@ -1366,7 +1360,7 @@ async fn environment_attempt(
                 attempt["status"] = json!("unknown");
                 attempt["message"] = json!("环境脚本超时后的清理结果尚未确认");
                 *attempt_slot(value, slot, id) = attempt.clone();
-                persist_and_notify(host, source, home, value).await?;
+                persist_and_notify(host, home, value)?;
                 break;
             }
             request(
@@ -1489,7 +1483,7 @@ async fn register_target(
     storage::write_bytes(&home.join("projects.json"), &serde_json::to_vec(&rows)?)?;
     open_record(value, saved_alias);
     freeze_prepared_core(host, source, &execution_id, value)?;
-    persist_and_notify(host, source, home, value).await?;
+    persist_and_notify(host, home, value)?;
 
     Ok(prepared_projection(
         value,
@@ -1617,29 +1611,6 @@ fn prepared_core(host: &Rc<Host>, source: &str, value: &Value) -> Result<(String
     }
     Ok(scope)
 }
-pub(super) fn validate_private_binding(
-    host: &Rc<Host>,
-    source: &str,
-    params: &Value,
-) -> Result<()> {
-    let logical = required(params, "projectId")?;
-    let id = required(params, "requestId")?;
-    let value = record(
-        &super::library_store::source_home(host, source)?,
-        id,
-        logical,
-    )?;
-    let expected = &value["preparedCore"];
-    let scope = prepared_core(host, source, &value)?;
-    ensure!(
-        params["executionProjectId"] == expected["projectId"]
-            && params["coreInstanceId"] == scope.0
-            && params["coreGeneration"] == scope.1,
-        "RESYNC_REQUIRED"
-    );
-    Ok(())
-}
-
 fn thread_signature(request: &Value) -> Value {
     let mut signature = json!({});
     for key in [
@@ -1732,7 +1703,7 @@ pub(super) async fn prepare_thread_target(
                 value["parameters"] = signature.clone();
                 value["intent"] = json!("continue");
                 value["usesSource"] = json!(false);
-                persist_and_notify(host, source, &home, &mut value).await?;
+                persist_and_notify(host, &home, &mut value)?;
                 value
             } else {
                 ensure!(
@@ -1740,7 +1711,7 @@ pub(super) async fn prepare_thread_target(
                     "environment scripts require an isolated worktree"
                 );
                 let mut value = json!({"kind":"thread","requestId":id,"projectId":logical,"parameters":signature,"state":"created","executionProjectId":logical,"usesSource":true,"intent":"continue","events":[],"createdAt":timestamp()});
-                persist_and_notify(host, source, &home, &mut value).await?;
+                persist_and_notify(host, &home, &mut value)?;
                 value
             }
         }
@@ -1768,7 +1739,7 @@ pub(super) async fn prepare_thread_target(
         )
         .await?;
         freeze_prepared_core(host, source, &registration.project_id, &mut value)?;
-        persist_and_notify(host, source, &home, &mut value).await?;
+        persist_and_notify(host, &home, &mut value)?;
         return Ok(prepared_projection(
             &value,
             json!({"projectId":registration.project_id,"alias":logical,"root":registration.workspace,"requestId":id}),
@@ -1867,7 +1838,7 @@ pub(super) async fn bind_thread_target_with_lease(
         }
         value["bindingParams"] = core_params.clone();
         event(&mut value, "binding");
-        persist_and_notify(host, source, &home, &mut value).await?;
+        persist_and_notify(host, &home, &mut value)?;
         let started = if let Some(lease) = browser_lease {
             let response = host
                 .schedules
@@ -1912,7 +1883,7 @@ pub(super) async fn bind_thread_target_with_lease(
                     value["bindingAdmissionState"] = json!("rejected");
                     value["bindingError"] = failure.0.clone();
                     event(&mut value, "failed");
-                    persist_and_notify(host, source, &home, &mut value).await?;
+                    persist_and_notify(host, &home, &mut value)?;
                     host.changed();
                     return Ok(
                         json!({"state":"failed","admissionState":"rejected","error":failure.0,"requestId":id}),
@@ -1931,15 +1902,15 @@ pub(super) async fn bind_thread_target_with_lease(
     let script = platform_script(&value["environment"]["setup"])?;
     if script.is_empty() {
         event(&mut value, "ready");
-        persist_and_notify(host, source, &home, &mut value).await?;
+        persist_and_notify(host, &home, &mut value)?;
     } else {
         if recovered && value.get("setup").is_none() {
             event(&mut value, "unknown");
-            persist_and_notify(host, source, &home, &mut value).await?;
+            persist_and_notify(host, &home, &mut value)?;
             anyhow::bail!("SUBMISSION_UNKNOWN");
         }
         event(&mut value, "settingUp");
-        persist_and_notify(host, source, &home, &mut value).await?;
+        persist_and_notify(host, &home, &mut value)?;
         let attempt = environment_attempt(
             host,
             source,

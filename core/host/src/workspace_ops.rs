@@ -2915,7 +2915,6 @@ mod tests {
                     std::fs::read_to_string(workspace.join("src/app.ts")).unwrap(),
                     "export const x = 2;\n"
                 );
-                assert!(!host.gateway.workbench.has_running_backend());
 
                 close_core();
                 server.abort();
@@ -3140,7 +3139,6 @@ mod tests {
                     git_sync(&bare, &["rev-parse", "refs/heads/main"]).trim(),
                     pushed_head
                 );
-                assert!(!host.gateway.workbench.has_running_backend());
 
                 close_core();
                 server.abort();
@@ -3340,7 +3338,6 @@ mod tests {
                         .shared_identity(&host, "project")
                         .is_err()
                 );
-                assert!(!host.gateway.workbench.has_running_backend());
             })
             .await;
     }

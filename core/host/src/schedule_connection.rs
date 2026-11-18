@@ -135,7 +135,6 @@ pub(super) struct Connections {
     sessions: RefCell<BTreeMap<String, Rc<CoreSession>>>,
     terminals: RefCell<BTreeMap<String, Rc<CoreSession>>>,
     terminal_connecting: Cell<usize>,
-    terminal_epoch: Cell<u64>,
     frontends: RefCell<BTreeMap<String, workbench_frontend::Frontend>>,
     pub changed: Notify,
 }
@@ -145,7 +144,6 @@ impl Default for Connections {
             sessions: RefCell::new(BTreeMap::new()),
             terminals: RefCell::new(BTreeMap::new()),
             terminal_connecting: Cell::new(0),
-            terminal_epoch: Cell::new(0),
             frontends: RefCell::new(BTreeMap::new()),
             changed: Notify::new(),
         }
@@ -525,28 +523,18 @@ fn task_connection_ready(host: &Rc<Host>, session: &Rc<CoreSession>) {
             }
         });
     }
-    if let Some(body) = super::task_catalog::accept_event(
+    super::task_catalog::accept_event(
         host,
         &session.project_id,
         &session.connection_id,
         &json!({"method":"host/connectionReady","params":{}}),
-    ) {
-        host.gateway
-            .workbench
-            .tasks_event(host, &session.project_id, body);
-    }
+    );
 }
 
 fn emit_workbench_event(host: &Host, project: &str, lease: &str, event: &Value) {
-    if !host
-        .schedules
+    host.schedules
         .connections
-        .frontend_event(project, lease, event)
-    {
-        host.gateway
-            .workbench
-            .backend_core_event(project, lease, event);
-    }
+        .frontend_event(project, lease, event);
 }
 
 fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
@@ -661,16 +649,12 @@ fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
             connection.observed_progress.borrow_mut().remove(thread);
         }
     }
-    if let Some(body) = super::task_catalog::accept_event(
+    super::task_catalog::accept_event(
         host,
         &connection.project_id,
         &connection.connection_id,
         &value,
-    ) {
-        host.gateway
-            .workbench
-            .tasks_event(host, &connection.project_id, body);
-    }
+    );
     host.gateway
         .workbench
         .core_event(&host.home, &connection.project_id, &value);
@@ -1263,11 +1247,7 @@ async fn callback(
         {
             return result;
         }
-        return host
-            .gateway
-            .workbench
-            .backend_core_callback(&connection.project_id, &lease, method, params, request_id)
-            .await;
+        anyhow::bail!("desktop tool host unavailable");
     }
     ensure!(method == "areal/task/prepare", unavailable());
     let registrations = host

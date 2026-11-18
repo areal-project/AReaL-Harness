@@ -314,7 +314,7 @@ impl Connections {
             }
         }
     }
-    pub(crate) fn frontend_event(&self, project: &str, lease: &str, event: &Value) -> bool {
+    pub(crate) fn frontend_event(&self, project: &str, lease: &str, event: &Value) {
         let selected = self
             .frontends
             .borrow()
@@ -328,7 +328,7 @@ impl Connections {
                 )
             });
         let Some((attachment, connection, sender)) = selected else {
-            return false;
+            return;
         };
         let mut event = event.clone();
         event["event"] = json!("core.event");
@@ -340,7 +340,6 @@ impl Connections {
         {
             self.frontend_disconnect(&connection);
         }
-        true
     }
     pub(crate) async fn frontend_callback(
         &self,
@@ -952,8 +951,6 @@ mod tests {
                 assert_eq!(scoped["projectId"],"project");assert_eq!(scoped["guiProjectId"],execution_alias);assert_eq!(scoped["workspacePath"],json!(session.service.identity.workspace));assert_eq!(scoped["threadId"],"browser-created");assert_eq!(scoped["lease"],lease);
                 assert!(host.schedules.connections.frontend_call(&host,&json!({"attachmentId":attachment,"call":"browser.scope","params":{"projectId":execution_alias,"threadId":"archived"}})).await.is_err());
 
-                host.schedules.connections.workbench_close_terminals();
-                assert!(!session.closed.get(),"backend cleanup cannot revoke an independent Main attachment");
                 assert!(!shared.closed.get());
                 let mut closed_events=session.events.subscribe();
                 event_writer.shutdown().await.unwrap();drop(events);drop(event_writer);

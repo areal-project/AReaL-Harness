@@ -30,8 +30,6 @@ pub use space::{
 mod subscription;
 mod vault;
 mod wire;
-mod workbench;
-mod workbench_owner;
 use areal_local_service::LocalArgs;
 use areal_protocol::service::Service;
 pub use client::{Client, Subscription};

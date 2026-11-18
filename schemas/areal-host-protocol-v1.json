@@ -16329,7 +16329,22 @@
         "params",
         "context"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "fixture",
+          "method": "attachment.read",
+          "params": {
+            "threadId": "thread",
+            "uri": "areal://blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "offset": 0
+          },
+          "context": {
+            "projectId": "project",
+            "serviceGeneration": "generation"
+          }
+        }
+      ]
     },
     "RemoteAttachmentReadResult": {
       "type": "object",
@@ -16393,7 +16408,20 @@
         "nextOffset",
         "base64"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "examples": [
+        {
+          "projectId": "project",
+          "serviceGeneration": "generation",
+          "threadId": "thread",
+          "uri": "areal://blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "mimeType": "text/plain",
+          "offset": 0,
+          "totalBytes": 1,
+          "nextOffset": null,
+          "base64": "YQ=="
+        }
+      ]
     },
     "RemoteAttachmentUploadParams": {
       "type": "object",
@@ -17176,50 +17204,6 @@
         }
       ]
     },
-    "LocalBackendEnsureRequest": {
-      "type": "object",
-      "properties": {
-        "version": {
-          "type": "integer",
-          "const": 1
-        },
-        "id": {
-          "type": "string",
-          "minLength": 1
-        },
-        "method": {
-          "type": "string",
-          "const": "backend.ensure"
-        },
-        "params": {
-          "$ref": "#/$defs/LocalBackendEnsureParams"
-        }
-      },
-      "required": [
-        "version",
-        "id",
-        "method",
-        "params"
-      ],
-      "additionalProperties": false,
-      "examples": [
-        {
-          "version": 1,
-          "id": "fixture",
-          "method": "backend.ensure",
-          "params": {
-            "profile": "/isolated/profile",
-            "options": {
-              "binary": "/isolated/bin/areal",
-              "home": "/isolated/data",
-              "guiProfile": "/isolated/profile",
-              "hostHome": "/isolated/host",
-              "harnessHome": "/isolated/services"
-            }
-          }
-        }
-      ]
-    },
     "LocalBackendStatusRequest": {
       "type": "object",
       "properties": {
@@ -17842,7 +17826,16 @@
         "method",
         "params"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "fixture",
+          "method": "worktree.project.add",
+          "params": {
+            "root": "/isolated/project"
+          }
+        }
+      ]
     },
     "WorkbenchWorktreeReadParams": {
       "type": "object",
@@ -57955,7 +57948,12 @@
       "required": [
         "projectId"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "examples": [
+        {
+          "projectId": "aaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
     },
     "WorkbenchPrivateWorktreeProjectAddRequest": {
       "type": "object",
@@ -58546,7 +58544,19 @@
         "method",
         "params"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "fixture",
+          "method": "lifecycle.read",
+          "params": {
+            "profile": "/isolated/profile",
+            "desktopGeneration": "01234567-89ab-cdef-0123-456789abcdef",
+            "operation": "read",
+            "requestId": "01234567-89ab-cdef-0123-456789abcdef"
+          }
+        }
+      ]
     },
     "LocalLifecycleReadResult": {
       "anyOf": [
@@ -58556,6 +58566,9 @@
         {
           "type": "null"
         }
+      ],
+      "examples": [
+        null
       ]
     },
     "LocalDesktopLifecycleReadParams": {
@@ -65318,11 +65331,6 @@
           "result": "#/$defs/LocalWebRevokeResult",
           "source": "core/host/src/server.rs"
         },
-        "backend.ensure": {
-          "request": "#/$defs/LocalBackendEnsureRequest",
-          "result": "#/$defs/LocalBackendOwnership",
-          "source": "core/host/src/workbench_route.rs"
-        },
         "lifecycle.read": {
           "request": "#/$defs/LocalLifecycleReadRequest",
           "result": "#/$defs/LocalLifecycleReadResult",
@@ -65336,7 +65344,7 @@
         "backend.status": {
           "request": "#/$defs/LocalBackendStatusRequest",
           "result": "#/$defs/LocalBackendStatusResult",
-          "source": "core/host/src/workbench_route.rs"
+          "source": "core/host/src/server.rs"
         },
         "tasks.read": {
           "request": "#/$defs/LocalTasksReadRequest",
@@ -65866,320 +65874,6 @@
         "shell.invalidated": "#/$defs/LoopbackNotification",
         "session.updated": "#/$defs/LoopbackNotification",
         "session.invalidated": "#/$defs/LoopbackNotification"
-      }
-    },
-    "workbench": {
-      "framing": {
-        "version": 1,
-        "maxFrameBytes": 67108864,
-        "transport": "supervised private pipe"
-      },
-      "methods": {
-        "core.attach": {
-          "request": "#/$defs/WorkbenchPrivateCoreAttachRequest",
-          "result": "#/$defs/WorkbenchPrivateCoreAttachResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "cloud.attach": {
-          "request": "#/$defs/WorkbenchPrivateCloudAttachRequest",
-          "result": "#/$defs/WorkbenchPrivateCloudAttachResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "workbench.utility": {
-          "request": "#/$defs/WorkbenchPrivateWorkbenchUtilityRequest",
-          "result": "#/$defs/WorkbenchPrivateWorkbenchUtilityResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "core.media": {
-          "request": "#/$defs/WorkbenchPrivateCoreMediaRequest",
-          "result": "#/$defs/WorkbenchPrivateCoreMediaResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "core.blob": {
-          "request": "#/$defs/WorkbenchPrivateCoreBlobRequest",
-          "result": "#/$defs/WorkbenchPrivateCoreBlobResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "core.detach": {
-          "request": "#/$defs/WorkbenchPrivateCoreDetachRequest",
-          "result": "#/$defs/WorkbenchPrivateCoreDetachResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "core.request": {
-          "request": "#/$defs/WorkbenchPrivateCoreRequestRequest",
-          "result": "#/$defs/WorkbenchPrivateCoreRequestResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "execution.submit": {
-          "request": "#/$defs/WorkbenchPrivateExecutionSubmitRequest",
-          "result": "#/$defs/WorkbenchPrivateExecutionSubmitResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "execution.reconcile": {
-          "request": "#/$defs/WorkbenchPrivateExecutionReconcileRequest",
-          "result": "#/$defs/WorkbenchPrivateExecutionReconcileResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "core.callback": {
-          "request": "#/$defs/WorkbenchPrivateCoreCallbackRequest",
-          "result": "#/$defs/WorkbenchPrivateCoreCallbackResult",
-          "direction": "hostToWorkbench",
-          "x-owner": "workbench",
-          "source": "services/workbench/src/backend-main.cjs"
-        },
-        "library.dependencies": {
-          "request": "#/$defs/WorkbenchPrivateLibraryDependenciesRequest",
-          "result": "#/$defs/WorkbenchPrivateLibraryDependenciesResult",
-          "direction": "hostToWorkbench",
-          "x-owner": "workbench",
-          "source": "services/workbench/src/backend-main.cjs"
-        },
-        "library.command": {
-          "request": "#/$defs/WorkbenchPrivateLibraryCommandRequest",
-          "result": "#/$defs/WorkbenchPrivateLibraryCommandResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "library.patch": {
-          "request": "#/$defs/WorkbenchPrivateLibraryPatchRequest",
-          "result": "#/$defs/WorkbenchPrivateLibraryPatchResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "lifecycle.read": {
-          "request": "#/$defs/WorkbenchPrivateLifecycleReadRequest",
-          "result": "#/$defs/WorkbenchPrivateLifecycleReadResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "lifecycle.command": {
-          "request": "#/$defs/WorkbenchPrivateLifecycleCommandRequest",
-          "result": "#/$defs/WorkbenchPrivateLifecycleCommandResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "lifecycle.dependencies": {
-          "request": "#/$defs/WorkbenchPrivateLifecycleDependenciesRequest",
-          "result": "#/$defs/WorkbenchPrivateLifecycleDependenciesResult",
-          "direction": "hostToWorkbench",
-          "x-owner": "workbench",
-          "source": "services/workbench/src/backend-main.cjs"
-        },
-        "lifecycle.flush": {
-          "request": "#/$defs/WorkbenchPrivateLifecycleFlushRequest",
-          "result": "#/$defs/WorkbenchPrivateLifecycleFlushResult",
-          "direction": "hostToWorkbench",
-          "x-owner": "workbench",
-          "source": "services/workbench/src/backend-main.cjs"
-        },
-        "tasks.read": {
-          "request": "#/$defs/WorkbenchPrivateTasksReadRequest",
-          "result": "#/$defs/WorkbenchPrivateTasksReadResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "tasks.command": {
-          "request": "#/$defs/WorkbenchPrivateTasksCommandRequest",
-          "result": "#/$defs/WorkbenchPrivateTasksCommandResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "tasks.owner.read": {
-          "request": "#/$defs/WorkbenchPrivateTasksOwnerReadRequest",
-          "result": "#/$defs/WorkbenchPrivateTasksOwnerReadResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "tasks.preview": {
-          "request": "#/$defs/WorkbenchPrivateTasksPreviewRequest",
-          "result": "#/$defs/WorkbenchPrivateTasksPreviewResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "tasks.observe": {
-          "request": "#/$defs/WorkbenchPrivateTasksObserveRequest",
-          "result": "#/$defs/WorkbenchPrivateTasksObserveResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "worktree.read": {
-          "request": "#/$defs/WorkbenchPrivateWorktreeReadRequest",
-          "result": "#/$defs/WorkbenchPrivateWorktreeReadResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "worktree.command": {
-          "request": "#/$defs/WorkbenchPrivateWorktreeCommandRequest",
-          "result": "#/$defs/WorkbenchPrivateWorktreeCommandResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "worktree.project.add": {
-          "request": "#/$defs/WorkbenchPrivateWorktreeProjectAddRequest",
-          "result": "#/$defs/WorkbenchPrivateWorktreeProjectAddResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "worktree.thread.prepare": {
-          "request": "#/$defs/WorkbenchPrivateWorktreeThreadPrepareRequest",
-          "result": "#/$defs/WorkbenchPrivateWorktreeThreadPrepareResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "worktree.thread.bind": {
-          "request": "#/$defs/WorkbenchPrivateWorktreeThreadBindRequest",
-          "result": "#/$defs/WorkbenchPrivateWorktreeThreadBindResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "execution.admit": {
-          "request": "#/$defs/WorkbenchPrivateExecutionAdmitRequest",
-          "result": "#/$defs/WorkbenchPrivateExecutionAdmitResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "execution.dismiss": {
-          "request": "#/$defs/WorkbenchPrivateExecutionDismissRequest",
-          "result": "#/$defs/WorkbenchPrivateExecutionDismissResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "desktop.command": {
-          "request": "#/$defs/WorkbenchPrivateDesktopCommandRequest",
-          "result": "#/$defs/WorkbenchPrivateDesktopCommandResult",
-          "direction": "hostToWorkbench",
-          "x-owner": "workbench",
-          "source": "services/workbench/src/backend-main.cjs"
-        },
-        "recovery.inspect": {
-          "request": "#/$defs/WorkbenchPrivateRecoveryInspectRequest",
-          "result": "#/$defs/RecoveryInspectResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "recovery.history": {
-          "request": "#/$defs/WorkbenchPrivateRecoveryHistoryRequest",
-          "result": "#/$defs/RecoveryHistoryResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "recovery.importProvider": {
-          "request": "#/$defs/WorkbenchPrivateRecoveryProviderImportRequest",
-          "result": "#/$defs/RecoveryProviderImportResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "plugins.read": {
-          "request": "#/$defs/WorkbenchPrivatePluginsReadRequest",
-          "result": "#/$defs/WorkbenchPluginsReadResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "plugins.command": {
-          "request": "#/$defs/WorkbenchPrivatePluginsCommandRequest",
-          "result": "#/$defs/WorkbenchPrivatePluginsCommandResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "projectless.command": {
-          "request": "#/$defs/WorkbenchPrivateProjectlessCommandRequest",
-          "result": "#/$defs/LocalDesktopProjectlessResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "cloud.settings": {
-          "request": "#/$defs/WorkbenchPrivateCloudSettingsRequest",
-          "result": "#/$defs/LocalDesktopCloudSettingsResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "cloud.configured.attach": {
-          "request": "#/$defs/WorkbenchPrivateCloudConfiguredAttachRequest",
-          "result": "#/$defs/WorkbenchPrivateCloudAttachResult",
-          "direction": "workbenchToHost",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "remote.control": {
-          "direction": "workbenchToHost",
-          "request": "#/$defs/WorkbenchPrivateRemoteControlRequest",
-          "result": "#/$defs/WorkbenchPrivateRemoteControlResult",
-          "source": "core/host/src/workbench_route.rs",
-          "x-owner": "host"
-        }
-      },
-      "events": {
-        "tasks.event": {
-          "schema": "#/$defs/WorkbenchPrivateTasksEvent",
-          "direction": "hostToWorkbench",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "core.event": {
-          "schema": "#/$defs/WorkbenchPrivateCoreEvent",
-          "direction": "hostToWorkbench",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "library.changed": {
-          "schema": "#/$defs/WorkbenchPrivateLibraryChangedEvent",
-          "direction": "hostToWorkbench",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "worktree.changed": {
-          "schema": "#/$defs/WorkbenchPrivateWorktreeChangedEvent",
-          "direction": "hostToWorkbench",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        },
-        "connection.disconnect": {
-          "schema": "#/$defs/WorkbenchPrivateConnectionDisconnectEvent",
-          "direction": "hostToWorkbench",
-          "x-owner": "host",
-          "source": "core/host/src/workbench_route.rs"
-        }
       }
     }
   },

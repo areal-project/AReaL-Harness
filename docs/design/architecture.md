@@ -2,13 +2,13 @@
 
 # 架构与目录
 
-共享 Host 的[目标设计与阶段](../development/shared-host-spec.md)由 [ADR 0016](../adr/0016-shared-host.md)确定，契约见 [Host API](../api/host.md)。每用户 Rust Host 持有认证控制、项目监督、凭据、提交 journal、定时激活与执行准备，以及已实现的 Remote Gateway 和 provider subscription 传输；Core 保留执行和历史权威。GUI 默认连接 Host 监督的工作台后台；Main 提供原生 Browser/Computer 适配与在线通知，不再由界面偏好决定业务后台所有权。普通 GUI 退出撤销该 Main 的连接资源，并登记按需求回收；其他客户端、在途任务、启用定时任务、远程入口或系统服务安装仍可保留 Host。空闲项目按十五分钟连续空闲窗口休眠，不改变用户调度意图。Host 按来源保存的休眠偏好保护真实运行中的工作。Host-owned 与 `legacyPending` 分别报告；旧后台仅经显式恢复路径检查和退役。Remote 方法按实际能力协商，不因入口可连接而推断所有客户端方法已受支持。
+共享 Host 的[目标设计与阶段](../development/shared-host-spec.md)由 [ADR 0016](../adr/0016-shared-host.md)确定，契约见 [Host API](../api/host.md)。每用户 Rust Host 持有认证控制、项目监督、凭据、提交 journal、定时激活与执行准备，以及已实现的 Remote Gateway 和 provider subscription 传输；Core 保留执行和历史权威。GUI 默认连接 Rust Host。Main 提供嵌入式浏览器适配和系统通知。普通 GUI 退出撤销该 Main 的连接资源，并登记按需求回收；其他客户端、在途任务、启用定时任务、远程入口或系统服务安装仍可保留 Host。空闲项目按十五分钟连续空闲窗口休眠，不改变用户调度意图。Host 按来源保存的休眠偏好保护真实运行中的工作。Host-owned 与 `legacyPending` 分别报告；旧后台仅经显式恢复路径检查和退役。Remote 方法按实际能力协商，不因入口可连接而推断所有客户端方法已受支持。
 
 AReaL-Harness 采用 **Clients → Core → Runtime** 分层。Core 是会话、Turn、模型循环与 Agent 状态的唯一所有者；Runtime 只处理执行权限、操作事实和资源生命周期。客户端不维护另一套权威历史。
 
 [ADR 0017](../adr/0017-one-protocol-one-ui.md) 定义尚未完成的统一协议目标。客户端所需业务经 Host 协议提供，Host 负责认证、授权、路由、跨项目业务、提交 journal 和凭据保管。项目服务只监督进程，不向客户端提供接口或承载业务；单项目业务以及执行和历史权威归 Core。
 
-过渡期的 Node 工作台服务由 Host 监督，承载尚未迁入 Host 或 Core 的跨项目业务。按[工作台服务设计](workbench-service.md)先整体接管现有后台，Main 经私有认证通道 attach。它不依赖 Electron，公共客户端只连 Host；解密值仅在运行内存使用，不持久化明文凭据。目标中的 Electron 外壳只提供浏览器没有的原生能力，并向 Host 登记桌面工具提供者；界面按可用能力显示可选平台入口。这些是迁移目标，不代表当前实现已满足该边界。 后台实现与依赖位于 `services/workbench`，Main 和 Host 接管入口共用服务包；Main 保留外壳与连接客户端，不保留后台实现副本。
+Electron Main 经认证附件向 Host 登记嵌入式浏览器。Host 将工具调用送到原附件和项目的专用 Core 连接。已受理的历史生命周期请求仍按原来源、请求 ID 和代际查询。
 
 供应商设置的首屏读取只投影 Host 解析的配置和凭据引用；安全存储检查与项目配置对账在后台继续，不阻塞目录展示。目录投影不替换执行快照，也不表示凭据已通过检查。 手机连接身份初始化也不阻塞工作台就绪；手机命令仍等待原初始化结果，失败保留原回执，通过现有重连路径核查恢复。
 

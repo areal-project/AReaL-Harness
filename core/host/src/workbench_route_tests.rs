@@ -1,60 +1,31 @@
 use super::*;
+use std::{os::fd::AsRawFd, time::Duration};
 
 #[tokio::test(flavor = "current_thread")]
-async fn supervised_workbench_connection_is_not_an_external_client() {
+async fn native_host_rejects_the_retired_backend_start() {
     tokio::task::LocalSet::new().run_until(async {
         let root = tempfile::tempdir().unwrap();
-        let root = root.path().canonicalize().unwrap();
-        let (host, input, _) = resumable_host(&root);
-        let socket = root.join("host-client.sock");
-        let listener = tokio::net::UnixListener::bind(&socket).unwrap();
-        let accepting = host.clone();
-        let server = tokio::task::spawn_local(async move {
-            loop {
-                let (stream, _) = listener.accept().await.unwrap();
-                let host = accepting.clone();
-                tokio::task::spawn_local(async move { let _ = crate::server::connection_loop(host, stream).await; });
+        let (host, input, _) = resumable_host(root.path().canonicalize().unwrap().as_path());
+        let (client, server) = tokio::net::UnixStream::pair().unwrap();
+        let server = tokio::task::spawn_local(crate::server::connection_loop(host.clone(), server));
+        let mut client = tokio::io::BufReader::new(client);
+        for (id, method, params, expected) in [
+            ("hello", "hello", json!({"authToken":host.token,"protocolVersions":[1],"capabilities":[]}), None),
+            ("retired", "backend.ensure", serde_json::to_value(input).unwrap(), Some("methodNotFound")),
+            ("probe", "backend.status", json!({}), None),
+        ] {
+            crate::wire::write(client.get_mut(), &json!({"version":1,"id":id,"method":method,"params":params})).await.unwrap();
+            let response = crate::wire::read(&mut client).await.unwrap().unwrap();
+            assert_eq!(response["id"], id);
+            assert_eq!(response["error"]["code"].as_str(), expected);
+            if id == "probe" {
+                assert_eq!(response["result"], json!({"hostId":host.identity.host_id,"generation":host.identity.generation,"owned":false,"service":null}));
             }
-        });
-        storage_write_fixture(&root, &host, &socket);
-        let backend = host.gateway.workbench.ensure_backend(&host, input).await.unwrap();
-        let pid = backend["pid"].as_u64().unwrap() as u32;
-        assert!(host.clients.borrow().values().any(|value| *value == Some(pid)));
-        assert!(!host.has_external_clients(), "Host-owned Node must not veto release");
-        let mut external = tokio::net::UnixStream::connect(&socket).await.unwrap();
-        crate::wire::write(&mut external, &json!({"version":1,"id":"external","method":"hello","params":{"protocolVersions":[1],"capabilities":[],"authToken":host.token}})).await.unwrap();
-        let mut external = tokio::io::BufReader::new(external);
-        crate::wire::read(&mut external).await.unwrap().unwrap();
-        assert!(host.has_external_clients(), "an authenticated external client still retains Host");
-        drop(external);
-        tokio::time::timeout(Duration::from_secs(5), async {
-            while host.has_external_clients() { tokio::task::yield_now().await; }
-        }).await.unwrap();
-        host.gateway.workbench.stop_backend().await;
-        server.abort();
+        }
+        assert!(!launch_record(&host).exists());
+        drop(client);
+        server.await.unwrap().unwrap();
     }).await;
-}
-
-fn storage_write_fixture(root: &Path, host: &Host, socket: &Path) {
-    let runner = root.join("services/workbench/src/backend-main.cjs");
-    areal_local_service::storage::write(
-        &runner.with_extension("json"),
-        &json!({"socket":socket,"token":host.token}),
-    )
-    .unwrap();
-    std::fs::write(runner, r#"
-const config = require('./backend-main.json');
-const out = frame => console.log(JSON.stringify({version:1,...frame}));
-let connection;
-require('node:readline').createInterface({input:process.stdin}).on('line', line => {
-  const frame = JSON.parse(line);
-  if (frame.method !== 'backend.start') return;
-  connection = require('node:net').createConnection(config.socket, () => {
-    connection.write(JSON.stringify({version:1,id:'owned',method:'hello',params:{protocolVersions:[1],capabilities:[],authToken:config.token}})+'\n');
-  });
-  connection.once('data', () => out({event:'ready',methods:[],service:{pid:process.pid,identity:String(process.pid)}}));
-}).on('close', () => connection?.end());
-"#).unwrap();
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -67,7 +38,6 @@ async fn task_rejection_is_recovered_for_original_workbench_command() {
         let (host, input, source) = resumable_host(&root);
         host.slots.borrow_mut().get_mut("project").unwrap().registration.source =
             crate::ProjectSource::Gui { profile: input.profile.clone(), legacy_project_id: "logical".into() };
-        host.gateway.workbench.ensure_backend(&host, input).await.unwrap();
         host.gateway.workbench.test_source(&source);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let registration = host.slots.borrow()["project"].registration.clone();
@@ -113,39 +83,18 @@ async fn task_rejection_is_recovered_for_original_workbench_command() {
         assert_eq!(unknown["submissionUnknown"], true);
         assert_eq!(backend_command(&host, "local", &lost).await.unwrap(), unknown);
         assert_eq!(count.get(), 2);
-        close(); server.abort(); host.gateway.workbench.stop_backend().await;
+        close(); server.abort();
     }).await;
 }
 
-// 只替代 Node 业务装配，恢复、来源校验、启动记录和子进程监督均走正式路径。
+// 来源校验与持久化使用隔离资料库。
 fn resumable_host(root: &Path) -> (Rc<Host>, Ensure, String) {
     let mut host = crate::server::schedules::tests::fixture(root);
     host.bin = root.join("target/debug");
-    for path in [
-        host.bin.clone(),
-        root.join("services/workbench/src"),
-        root.join("clients/gui/app"),
-        root.join("profile"),
-        root.join("data"),
-    ] {
+    for path in [host.bin.clone(), root.join("profile"), root.join("data")] {
         areal_local_service::storage::private_dir(&path).unwrap();
     }
     std::fs::write(host.bin.join("areal"), "").unwrap();
-    std::fs::write(root.join("services/workbench/package.json"), "{}").unwrap();
-    std::fs::write(root.join("services/workbench/src/backend-main.cjs"), r#"
-        const readline = require('node:readline');
-        const out = frame => console.log(JSON.stringify({version:1,...frame}));
-        readline.createInterface({input:process.stdin}).on('line', line => {
-            const frame = JSON.parse(line);
-            if (frame.method === 'backend.start') {
-                out({event:'ready',methods:['providers.read','desktop.command'],service:{pid:process.pid,identity:String(process.pid)}});
-            } else if (frame.params?.crash) {
-                process.exit(1);
-            } else if (frame.id !== undefined) {
-                out({id:frame.id,result:frame.method === 'providers.read' ? {models:[]} : {pid:process.pid}});
-            }
-        });
-    "#).unwrap();
     let source = crate::migration::Source {
         profile: root.join("profile"),
         core_home: root.join("data"),
@@ -210,101 +159,8 @@ async fn unused_subscription_reads_do_not_initialize_credentials() {
                     .is_none()
             );
             assert!(!host.home.join("host/subscription-operations").exists());
-            assert!(host.gateway.workbench.backend.running.borrow().is_none());
         })
         .await;
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn successor_host_recovers_a_crashed_backend_discovery() {
-    tokio::task::LocalSet::new().run_until(async {
-        let root = tempfile::tempdir().unwrap();
-        let root = root.path().canonicalize().unwrap();
-        let (old, input, _) = resumable_host(&root);
-        let runner = root.join("services/workbench/src/backend-main.cjs");
-        let source = r#"
-const fs = require('node:fs');
-const lines = require('node:readline').createInterface({input:process.stdin});
-lines.on('line', line => {
- const frame = JSON.parse(line);
- if (frame.method === 'backend.start') {
-  const service = {pid:process.pid,identity:'backend',desktopGeneration:String(process.pid),owner:frame.params.owner};
-  fs.writeFileSync(frame.params.options.home+'/service.json',JSON.stringify(service),{flag:'wx',mode:0o600});
-  console.log(JSON.stringify({version:1,event:'ready',methods:['crash'],service}));
- } else if (frame.method === 'crash') process.kill(process.pid,'SIGKILL');
-});
-lines.on('close',()=>process.exit(0));
-"#;
-        std::fs::write(&runner, source).unwrap();
-        old.gateway.workbench.ensure_backend(&old, input).await.unwrap();
-        let child = old.gateway.workbench.backend.running.borrow().clone().unwrap();
-        assert!(child.request("crash", json!({}), json!({})).await.is_err());
-        child.stop().await.unwrap();
-        let original = std::fs::read(root.join("data/service.json")).unwrap();
-        let host_id = old.identity.host_id.clone();
-        drop(child);
-        drop(old);
-        let (mut next, input, _) = resumable_host(&root);
-        Rc::get_mut(&mut next).unwrap().identity.host_id = host_id;
-        std::fs::write(&runner, source).unwrap();
-        let owner = next.gateway.workbench.ensure_backend(&next, input).await.unwrap();
-        assert_ne!(std::fs::read(root.join("data/service.json")).unwrap(), original);
-        assert_eq!(owner["generation"], next.identity.generation);
-        next.gateway.workbench.stop_backend().await;
-        assert!(!root.join("data/service.json").exists());
-    }).await;
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn inherited_backend_lease_blocks_another_host_after_parent_handle_closes() {
-    tokio::task::LocalSet::new()
-        .run_until(async {
-            let root = tempfile::tempdir().unwrap();
-            let root = root.path().canonicalize().unwrap();
-            let (old, input, _) = resumable_host(&root);
-            old.gateway
-                .workbench
-                .ensure_backend(&old, input)
-                .await
-                .unwrap();
-            let lease =
-                areal_local_service::storage::open_private(&root.join("data/backend.lock"), false)
-                    .unwrap();
-            assert!(
-                fs2::FileExt::try_lock_exclusive(&lease).is_err(),
-                "the child must retain the lease after Backend::start returns"
-            );
-            old.gateway.workbench.stop_backend().await;
-            fs2::FileExt::try_lock_exclusive(&lease).unwrap();
-        })
-        .await;
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn successor_host_recovers_a_claim_left_before_ready() {
-    tokio::task::LocalSet::new().run_until(async {
-        let root = tempfile::tempdir().unwrap();
-        let root = root.path().canonicalize().unwrap();
-        let (old, input, _) = resumable_host(&root);
-        let runner = root.join("services/workbench/src/backend-main.cjs");
-        std::fs::write(&runner, r#"
-const fs=require('node:fs');
-require('node:readline').createInterface({input:process.stdin}).on('line',line=>{
- const frame=JSON.parse(line);
- fs.writeFileSync(frame.params.options.home+'/service.json',JSON.stringify({state:'starting',pid:process.pid,owner:frame.params.owner}),{flag:'wx',mode:0o600});
- process.kill(process.pid,'SIGKILL');
-});
-"#).unwrap();
-        assert!(old.gateway.workbench.ensure_backend(&old, input).await.is_err());
-        assert!(root.join("data/service.json").exists());
-        let host_id = old.identity.host_id.clone();
-        drop(old);
-        let (mut next, input, _) = resumable_host(&root);
-        Rc::get_mut(&mut next).unwrap().identity.host_id = host_id;
-        next.gateway.workbench.ensure_backend(&next, input).await.unwrap();
-        assert!(!root.join("data/service.json").exists(), "the fixture successor publishes no discovery file");
-        next.gateway.workbench.stop_backend().await;
-    }).await;
 }
 
 #[test]
@@ -362,7 +218,7 @@ fn native_frontend_publishes_validated_launch_without_node_or_persisting_credent
     let root = tempfile::tempdir().unwrap();
     let root = root.path().canonicalize().unwrap();
     let (host, input, source) = resumable_host(&root);
-    std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+
     std::fs::create_dir(root.join(".areal")).unwrap();
     std::fs::write(root.join(".areal/config.toml"), "schema_version=1\n[model]\nprovider='fixture'\nname='fixture'\n[model.providers.fixture]\nendpoint='http://127.0.0.1:1/'\nprotocol='responses'\napi_key_env='FIXTURE_KEY'\n").unwrap();
     let credentials = std::collections::BTreeMap::from([(
@@ -481,32 +337,7 @@ fn native_frontend_publishes_validated_launch_without_node_or_persisting_credent
         host.gateway.workbench.active_source().as_deref(),
         Some(source.as_str())
     );
-    assert!(host.gateway.workbench.backend.running.borrow().is_none());
     assert!(!root.join("data/service.json").exists());
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn running_backend_accepts_updated_and_explicitly_cleared_environment_credentials() {
-    tokio::task::LocalSet::new().run_until(async {
-        let root = tempfile::tempdir().unwrap();
-        let root = root.path().canonicalize().unwrap();
-        let (host, input, source) = resumable_host(&root);
-        std::fs::create_dir(root.join(".areal")).unwrap();
-        std::fs::write(root.join(".areal/config.toml"), "schema_version=1\n[model]\nprovider='fixture'\nname='fixture'\n[model.providers.fixture]\nendpoint='http://127.0.0.1:1/'\nprotocol='responses'\napi_key_env='FIXTURE_KEY'\n[trajectory]\nheaders_env='FIXTURE_HEADERS'\n").unwrap();
-        host.gateway.workbench.ensure_backend(&host, input.clone()).await.unwrap();
-        let mut wire = serde_json::to_value(&input).unwrap();
-        wire["environmentCredentials"] = json!({"FIXTURE_KEY":"secret","FIXTURE_HEADERS":"Authorization=Bearer synthetic-header"});
-        host.gateway.workbench.ensure_backend(&host, serde_json::from_value(wire.clone()).unwrap()).await.unwrap();
-        assert_eq!(host.gateway.workbench.environment_credentials(&source).get("FIXTURE_KEY").map(String::as_str), Some("secret"));
-        assert_eq!(host.gateway.workbench.environment_credentials(&source).get("FIXTURE_HEADERS").map(String::as_str), Some("Authorization=Bearer synthetic-header"));
-        assert!(!std::fs::read_to_string(launch_record(&host)).unwrap().contains("synthetic-header"));
-        host.gateway.workbench.ensure_backend(&host, input.clone()).await.unwrap();
-        assert_eq!(host.gateway.workbench.environment_credentials(&source).get("FIXTURE_KEY").map(String::as_str), Some("secret"));
-        wire["environmentCredentials"] = json!({});
-        host.gateway.workbench.ensure_backend(&host, serde_json::from_value(wire).unwrap()).await.unwrap();
-        assert!(host.gateway.workbench.environment_credentials(&source).is_empty());
-        host.gateway.workbench.stop_backend().await;
-    }).await;
 }
 
 #[test]
@@ -530,92 +361,6 @@ fn inaccessible_model_configuration_is_not_hidden() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn invalid_model_configuration_does_not_prevent_backend_start() {
-    tokio::task::LocalSet::new()
-        .run_until(async {
-            let root = tempfile::tempdir().unwrap();
-            let root = root.path().canonicalize().unwrap();
-            let (host, input, _) = resumable_host(&root);
-            std::fs::create_dir(root.join(".areal")).unwrap();
-            std::fs::write(root.join(".areal/config.toml"), "invalid = [").unwrap();
-            let result = host
-                .gateway
-                .workbench
-                .credential_names(&host, input.clone())
-                .unwrap();
-            assert_eq!(result["configurationError"], true);
-            host.gateway
-                .workbench
-                .ensure_backend(&host, input)
-                .await
-                .unwrap();
-            host.gateway.workbench.stop_backend().await;
-        })
-        .await;
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn stopped_backend_retires_only_its_own_discovery_record_after_child_exit() {
-    tokio::task::LocalSet::new()
-        .run_until(async {
-            for changed in [None, Some("pid"), Some("identity"), Some("desktopGeneration")] {
-                let root = tempfile::tempdir().unwrap();
-                let root = root.path().canonicalize().unwrap();
-                let (host, input, _) = resumable_host(&root);
-                std::fs::write(
-                    root.join("services/workbench/src/backend-main.cjs"),
-                    r#"
-const fs = require('node:fs');
-const lines = require('node:readline').createInterface({input:process.stdin});
-lines.on('line', line => {
-    const frame = JSON.parse(line);
-    if (frame.method !== 'backend.start') return;
-    const service = {pid:process.pid, identity:'owned-backend', desktopGeneration:'owned-generation', owner:frame.params.owner};
-    fs.writeFileSync(frame.params.options.home + '/service.json', JSON.stringify(service), {flag:'wx',mode:0o600});
-    console.log(JSON.stringify({version:1,event:'ready',methods:[],service}));
-});
-// 真实退出，但保留发现记录，模拟关闭异常或来不及执行子进程 finally。
-lines.on('close', () => process.exit(1));
-"#,
-                )
-                .unwrap();
-                let path = root.join("data/service.json");
-                let owner = host
-                    .gateway
-                    .workbench
-                    .ensure_backend(&host, input)
-                    .await
-                    .unwrap();
-                let mut record: Value = areal_local_service::storage::read(&path).unwrap();
-                assert_eq!(record["pid"], owner["pid"]);
-                if let Some(field) = changed {
-                    record[field] = if field == "pid" {
-                        json!(std::process::id())
-                    } else {
-                        json!("another-owner")
-                    };
-                    areal_local_service::storage::write(&path, &record).unwrap();
-                }
-                host.gateway.workbench.stop_backend().await;
-                if changed.is_none() {
-                    assert!(
-                        !path.exists(),
-                        "a confirmed child exit must release its discovery record before the Host exits"
-                    );
-                } else {
-                    assert_eq!(
-                        areal_local_service::storage::read::<Value>(&path)
-                            .unwrap(),
-                        record,
-                        "stopping one backend must preserve a different discovery owner"
-                    );
-                }
-            }
-        })
-        .await;
-}
-
-#[tokio::test(flavor = "current_thread")]
 async fn native_catalog_reads_restore_saved_source_without_starting_workbench() {
     tokio::task::LocalSet::new()
         .run_until(async {
@@ -624,11 +369,7 @@ async fn native_catalog_reads_restore_saved_source_without_starting_workbench() 
             let (host, input, source) = resumable_host(&root);
             storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();
             storage::write(&launch_record(&host), &input).unwrap();
-            std::fs::write(
-                root.join("services/workbench/src/backend-main.cjs"),
-                "throw new Error('native reads must not launch Node');",
-            )
-            .unwrap();
+
             assert!(host.gateway.workbench.active_source().is_none());
             for (method, operation) in [
                 ("tasks.read", "list"),
@@ -658,7 +399,6 @@ async fn native_catalog_reads_restore_saved_source_without_starting_workbench() 
                     assert!(value.get("credentials").is_none());
                 }
                 assert_eq!(host.gateway.workbench.active_source(), Some(source.clone()));
-                assert!(host.gateway.workbench.backend.running.borrow().is_none());
                 let mut forged = request;
                 forged["params"]["sourceId"] = json!("forged");
                 assert_eq!(
@@ -682,12 +422,7 @@ async fn cold_native_provider_read_restores_the_persisted_launch() {
             let root = tempfile::tempdir().unwrap();
             let root = root.path().canonicalize().unwrap();
             let (host, input, source) = resumable_host(&root);
-            host.gateway
-                .workbench
-                .ensure_backend(&host, input)
-                .await
-                .unwrap();
-            host.gateway.workbench.stop_backend().await;
+            frontend_options(&host, &source, input.options, None).unwrap();
             assert!(launch_record(&host).is_file());
             // 重建 Host，只有磁盘记录，不保留 Supervisor 内存状态。
             let (host, _, _) = resumable_host(&root);
@@ -696,7 +431,6 @@ async fn cold_native_provider_read_restores_the_persisted_launch() {
             let result = backend_read(&host, "web:fixture", &request).await.unwrap();
             assert_eq!(result["projects"], json!([]));
             assert_eq!(result["application"]["kind"], "saved");
-            assert!(host.gateway.workbench.backend.running.borrow().is_none());
             let mut forged = request.clone();
             forged["params"]["sourceId"] = json!("forged");
             assert_eq!(
@@ -711,89 +445,6 @@ async fn cold_native_provider_read_restores_the_persisted_launch() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn backend_business_errors_preserve_only_codes_supported_by_the_host() {
-    tokio::task::LocalSet::new().run_until(async {
-        let root = tempfile::tempdir().unwrap();
-        let host = Rc::new(crate::server::schedules::tests::fixture(root.path()));
-        let app = root.path().join("app");
-        let package = app.join("node_modules/@areal/workbench-service");
-        std::fs::create_dir_all(&package).unwrap();
-        std::fs::write(app.join("package.json"), "{}").unwrap();
-        std::fs::write(package.join("package.json"), r#"{"exports":{"./desktop/core/service-main.cjs":"./main.cjs"}}"#).unwrap();
-        std::fs::write(package.join("main.cjs"), r#"
-            exports.createMainDesktop = async () => ({backend:{cloud:{}},adapter:{
-                listen:async () => ({pid:process.pid,identity:'fixture'}),
-                executeRemote:async (_, params) => { throw Object.assign(Error('private detail'), {code:params.code}); }
-            },close:async () => {}});
-        "#).unwrap();
-        let runtime = std::env::split_paths(&std::env::var_os("PATH").unwrap())
-            .map(|path| path.join("node")).find(|path| path.is_file()).unwrap();
-        let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
-        let runner_root = root.path().join("runner");
-        std::fs::create_dir_all(&runner_root).unwrap();
-        let contract = app.join("node_modules/@areal/workbench");
-        std::fs::create_dir_all(&contract).unwrap();
-        for file in ["backend-main.cjs", "channel.cjs"] {
-            std::fs::copy(repository.join("services/workbench/src").join(file), runner_root.join(file)).unwrap();
-        }
-        std::fs::write(contract.join("package.json"), r#"{"exports":{"./desktop-contract":"./contract.cjs","./desktop-contract/shared":"./shared.cjs"}}"#).unwrap();
-        for (shim, source) in [("contract.cjs", "desktop-contract.cjs"), ("shared.cjs", "desktop-contract/shared.cjs")] {
-            let path = repository.join("clients/gui/packages/workbench/client").join(source);
-            std::fs::write(contract.join(shim), format!("module.exports = require({});", serde_json::to_string(&path).unwrap())).unwrap();
-        }
-        let runner = runner_root.join("backend-main.cjs");
-        let data = root.path().join("data");
-        std::fs::create_dir(&data).unwrap();
-        let (backend, _) = Workbench::start_with(&runtime, &runner, root.path(), reverse(&host), Some(("backend.start", json!({
-            "appRoot":app,"options":{"home":data,"userHome":root.path()},
-        }))), &[]).await.unwrap();
-        for (code, expected) in [(json!("COMMAND_CONFLICT"), "COMMAND_CONFLICT"), (json!("TURN_BUSY"), "TURN_BUSY"), (json!("MIGRATION_PENDING"), "MIGRATION_PENDING"), (json!("migrationBlocked"), "migrationBlocked"), (json!("ENOENT"), "CORE_UNAVAILABLE"), (json!(-32602), "CORE_UNAVAILABLE")] {
-            assert_eq!(backend.request("manage.read", json!({"code":code}), json!({})).await.unwrap_err().to_string(), expected);
-        }
-        backend.stop().await.unwrap();
-    }).await;
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn connection_disconnect_is_forwarded_without_a_journal() {
-    tokio::task::LocalSet::new().run_until(async {
-        let root = tempfile::tempdir().unwrap();
-        let host = Rc::new(crate::server::schedules::tests::fixture(root.path()));
-        let runtime = std::env::split_paths(&std::env::var_os("PATH").unwrap())
-            .map(|path| path.join("node")).find(|path| path.is_file()).expect("Node is required");
-        let runner = root.path().join("disconnect.cjs");
-        std::fs::write(&runner, r#"
-            const out = value => console.log(JSON.stringify({version:1,...value}));
-            out({event:'ready',methods:['desktop.command']});
-            require('node:readline').createInterface({input:process.stdin}).on('line', line => {
-              const frame = JSON.parse(line);
-              if (frame.event === 'connection.disconnect') {
-                out({id:'disconnected',call:'fixture.disconnected',params:{connection:frame.connection}});
-              } else {
-                out({id:frame.id,result:{}});
-              }
-            });
-        "#).unwrap();
-        let (disconnected, mut disconnects) = tokio::sync::mpsc::unbounded_channel();
-        let reverse_call: crate::workbench::Reverse = Rc::new(move |method, params| {
-            let disconnected = disconnected.clone();
-            Box::pin(async move {
-                assert_eq!(method, "fixture.disconnected");
-                disconnected.send(params["connection"].clone()).unwrap();
-                Ok(json!({}))
-            })
-        });
-        let backend = Workbench::start(&runtime, &runner, root.path(), reverse_call).await.unwrap();
-        *host.gateway.workbench.backend.running.borrow_mut() = Some(Rc::new(backend));
-        host.gateway.workbench.disconnect_connection(&host, "first");
-        let connection = tokio::time::timeout(Duration::from_secs(2), disconnects.recv()).await.unwrap().unwrap();
-        assert_eq!(connection, "first");
-        assert!(backend_receipt(&host, "local", &uuid::Uuid::new_v4().to_string()).unwrap().is_none());
-        host.gateway.workbench.stop_backend().await;
-    }).await;
-}
-
-#[tokio::test(flavor = "current_thread")]
 async fn local_gui_source_worktree_profile_keeps_native_admission_and_identity() {
     tokio::task::LocalSet::new().run_until(async {
         let temp = tempfile::tempdir().unwrap();
@@ -801,7 +452,6 @@ async fn local_gui_source_worktree_profile_keeps_native_admission_and_identity()
         let (host, input, source) = resumable_host(&root);
         host.slots.borrow_mut().get_mut("project").unwrap().registration.source =
             crate::ProjectSource::Gui { profile:input.profile.clone(), legacy_project_id:"logical".into() };
-        host.gateway.workbench.ensure_backend(&host,input).await.unwrap();
         host.gateway.workbench.test_source(&source);
         assert_eq!(super::super::plugins::backend_project_id(&host,"logical").unwrap(),"project");
         assert_eq!(super::super::plugins::backend_project_id(&host,"other").unwrap_err().to_string(),"RESOURCE_UNAVAILABLE");
@@ -829,7 +479,6 @@ async fn local_gui_source_worktree_profile_keeps_native_admission_and_identity()
         assert_eq!(backend_command(&host,"local",&foreign).await.unwrap_err().to_string(),"FORBIDDEN");
         assert!(backend_receipt(&host,"local",foreign["commandId"].as_str().unwrap()).unwrap().is_none());
         assert_eq!(backend_command(&host,"web:fixture",&request).await.unwrap_err().to_string(),"INVALID_PARAMS");
-        host.gateway.workbench.stop_backend().await;
     }).await;
 }
 
@@ -868,44 +517,8 @@ async fn local_project_picker_registers_once_without_node_and_fences_source() {
                 local.request(&foreign).await.unwrap_err().to_string(),
                 "FORBIDDEN"
             );
-            assert!(!host.gateway.workbench.has_running_backend());
         })
         .await;
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn reverse_calls_reject_removed_analytics_ports() {
-    let root = tempfile::tempdir().unwrap();
-    let host = Rc::new(crate::server::schedules::tests::fixture(root.path()));
-    let reverse = reverse(&host);
-    for (call, params) in [
-        ("projects.list", json!({})),
-        (
-            "core.request",
-            json!({"projectId":"project","method":"thread/read","params":{}}),
-        ),
-        ("vault.read", json!({"slot":"x"})),
-    ] {
-        assert_eq!(
-            reverse(call.into(), params).await.unwrap_err().to_string(),
-            "FORBIDDEN"
-        );
-    }
-}
-
-#[test]
-fn restarts_back_off_and_stop_after_five_failures() {
-    let supervisor = Backend::default();
-    assert!(supervisor.admit().is_ok());
-    supervisor.failures.borrow_mut().push(Instant::now());
-    assert!(supervisor.admit().is_err());
-    *supervisor.failures.borrow_mut() = vec![Instant::now() - Duration::from_secs(2)];
-    assert!(supervisor.admit().is_ok());
-    *supervisor.failures.borrow_mut() = vec![Instant::now() - Duration::from_secs(120); 5];
-    assert!(supervisor.admit().is_err());
-    *supervisor.failures.borrow_mut() =
-        vec![Instant::now() - FAILURE_WINDOW - Duration::from_secs(1); 5];
-    assert!(supervisor.admit().is_ok());
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -985,7 +598,7 @@ async fn native_provider_settings_publish_credential_checks_and_invalidate_same_
         Rc::get_mut(&mut Rc::get_mut(&mut host).unwrap().migration).unwrap().vault = crate::vault::Vault::isolated_files(&host.home);
         storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();
         storage::write(&launch_record(&host), &input).unwrap();
-        std::fs::write(root.join("services/workbench/src/backend-main.cjs"), "throw new Error('provider settings must not launch Node');").unwrap();
+
         std::fs::create_dir(root.join(".areal")).unwrap();
         std::fs::write(root.join(".areal/config.toml"), "schema_version=1\n[model]\nprovider='fixture'\nname='fixture'\n[model.providers.fixture]\nendpoint='https://api.openai.com/v1/responses'\nprotocol='responses'\napi_key_env='AREAL_CREDENTIAL_fixture'\n[model.providers.raw]\nendpoint='https://example.invalid/custom/'\nprotocol='responses'\n").unwrap();
         let registration = host.slots.borrow()["project"].registration.clone();
@@ -1023,7 +636,6 @@ async fn native_provider_settings_publish_credential_checks_and_invalidate_same_
         tokio::time::timeout(Duration::from_secs(5),changes.changed()).await.unwrap().unwrap();
         let missing = backend_read(&host,"web:fixture",&request).await.unwrap();
         assert_eq!(missing["credentialStates"]["fixture"], "unavailable");
-        assert!(host.gateway.workbench.backend.running.borrow().is_none());
     }).await;
 }
 
@@ -1046,11 +658,7 @@ async fn native_provider_settings_import_legacy_configuration_once_without_node(
             let (host, input, source) = resumable_host(&root);
             storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();
             storage::write(&launch_record(&host), &input).unwrap();
-            std::fs::write(
-                root.join("services/workbench/src/backend-main.cjs"),
-                "throw new Error('provider import must not launch Node');",
-            )
-            .unwrap();
+
             let request =
                 json!({"method":"providers.read","params":{"sourceId":source,"operation":"list"}});
             let first = backend_read(&host, "web:fixture", &request).await.unwrap();
@@ -1084,7 +692,6 @@ async fn native_provider_settings_import_legacy_configuration_once_without_node(
                     .iter()
                     .any(|provider| provider["id"] == "old")
             );
-            assert!(host.gateway.workbench.backend.running.borrow().is_none());
         })
         .await;
 }
@@ -1111,7 +718,6 @@ async fn native_provider_import_preserves_conflicting_current_configuration() {
         assert!(error.to_string().contains("conflicts with current model configuration"));
         assert_eq!(std::fs::read_to_string(path).unwrap(), original);
         assert!(!root.join("data/model-config-migrations.json").exists());
-        assert!(host.gateway.workbench.backend.running.borrow().is_none());
     }).await;
 }
 
@@ -1126,7 +732,7 @@ async fn provider_configuration_writes_do_not_start_node_and_preserve_original_r
             crate::ProjectSource::Gui { profile: input.profile.clone(), legacy_project_id: "logical".into() };
         storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();
         storage::write(&launch_record(&host), &input).unwrap();
-        std::fs::write(root.join("services/workbench/src/backend-main.cjs"), "throw new Error('provider writes must not launch Node');").unwrap();
+
         std::fs::create_dir(root.join(".areal")).unwrap();
         std::fs::write(root.join(".areal/config.toml"), "schema_version=1\n[model]\nprovider='fixture'\nname='fixture'\n[model.providers.fixture]\nendpoint='https://example.invalid/custom/'\nprotocol='responses'\napi_key_env='CLI_FIXTURE_KEY'\nmodels=[{id='fixture'}]\n").unwrap();
         let list = json!({"method":"providers.read","params":{"sourceId":source,"operation":"list"}});
@@ -1216,7 +822,6 @@ async fn provider_configuration_writes_do_not_start_node_and_preserve_original_r
         let removed = backend_command(&host,"web:fixture",&remove).await.unwrap();
         assert!(removed["receipt"]["data"].as_array().unwrap().is_empty());
         assert!(removed["receipt"]["defaultModel"].is_null());
-        assert!(host.gateway.workbench.backend.running.borrow().is_none());
         assert!(host.journal.native_snapshot(&format!("workbench-{}",storage::digest(b"web:fixture"))).unwrap().1["pending"].as_array().unwrap().is_empty());
     }).await;
 }
@@ -1263,7 +868,6 @@ async fn provider_write_preserves_desired_configuration_when_core_wakes_during_v
         let desired = backend_read(&host,"web:fixture",&json!({"method":"providers.read","params":{"sourceId":source,"operation":"list"}})).await.unwrap();
         assert_eq!(desired["revision"], saved["receipt"]["revision"]);
         assert_eq!(desired["data"][0]["name"], "Changed");
-        assert!(host.gateway.workbench.backend.running.borrow().is_none());
     }).await;
 }
 
@@ -1280,7 +884,7 @@ async fn online_provider_save_commits_desired_configuration_without_waiting_for_
             crate::ProjectSource::Gui { profile: input.profile.clone(), legacy_project_id: "logical".into() };
         storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();
         storage::write(&launch_record(&host), &input).unwrap();
-        std::fs::write(root.join("services/workbench/src/backend-main.cjs"), "throw new Error('online provider save must not launch Node');").unwrap();
+
         std::fs::create_dir(root.join(".areal")).unwrap();
         std::fs::write(root.join(".areal/config.toml"),"schema_version=1\n[model]\nprovider='fixture'\nname='fixture'\n[model.providers.fixture]\nendpoint='https://example.invalid/v1/responses'\nprotocol='responses'\nmodels=[{id='fixture'}]\n").unwrap();
         host.gateway.workbench.restore_source(&host).unwrap();
@@ -1319,7 +923,6 @@ async fn online_provider_save_commits_desired_configuration_without_waiting_for_
         assert_eq!(saved["receipt"]["data"][0]["name"],"New desired");
         assert_ne!(saved["receipt"]["application"]["kind"],"applied");
         assert_eq!(tokio::time::timeout(Duration::from_secs(5),requests.recv()).await.unwrap().unwrap()["method"],"areal/server/modelConfiguration/read");
-        assert!(host.gateway.workbench.backend.running.borrow().is_none());
         close();server.abort();
     }).await;
 }
@@ -1334,7 +937,7 @@ async fn provider_discovery_uses_native_transport_without_node_or_secret_receipt
         storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();
         storage::write(&launch_record(&host), &input).unwrap();
         host.gateway.workbench.restore_source(&host).unwrap();
-        std::fs::write(root.join("services/workbench/src/backend-main.cjs"), "throw new Error('provider networking must not launch Node');").unwrap();
+
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}/v1", listener.local_addr().unwrap());
         let server = tokio::task::spawn_local(async move {
@@ -1366,7 +969,6 @@ async fn provider_discovery_uses_native_transport_without_node_or_secret_receipt
         assert_eq!(backend_command(&host,"web:fixture",&conflict).await.unwrap_err().to_string(),"COMMAND_CONFLICT");
         let journal = host.journal.native_snapshot(&format!("workbench-{}",storage::digest(b"web:fixture"))).unwrap().1;
         assert!(!journal.to_string().contains("synthetic-discovery-secret"));
-        assert!(host.gateway.workbench.backend.running.borrow().is_none());
         assert!(host.slots.borrow().values().all(|slot|slot.service.is_none()));
     }).await;
 }
@@ -1397,7 +999,7 @@ async fn provider_network_rejection_is_definitive_and_original_receipt_never_res
         assert_eq!(projected(&queried),failure);
         let journal=host.journal.native_snapshot(&format!("workbench-{}",storage::digest(b"web:fixture"))).unwrap().1;
         assert!(journal["pending"].as_array().unwrap().is_empty());assert_eq!(journal["outcomes"][command]["admissionState"],"rejected");
-        assert!(!journal.to_string().contains("private-key-echo"));assert!(host.gateway.workbench.backend.running.borrow().is_none());
+        assert!(!journal.to_string().contains("private-key-echo"));
     }).await;
 }
 
@@ -1411,7 +1013,7 @@ async fn provider_save_discovers_models_natively_before_canonical_write() {
         storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();storage::write(&launch_record(&host),&input).unwrap();
         std::fs::create_dir(root.join(".areal")).unwrap();
         std::fs::write(root.join(".areal/config.toml"),"schema_version=1\n[model]\nprovider='fixture'\nname='fixture'\n[model.providers.fixture]\nendpoint='https://example.invalid/v1/responses'\nprotocol='responses'\nmodels=[{id='fixture'}]\n").unwrap();
-        std::fs::write(root.join("services/workbench/src/backend-main.cjs"),"throw new Error('auto discovery must not start Node');").unwrap();
+
         let initial=backend_read(&host,"web:fixture",&json!({"method":"providers.read","params":{"sourceId":source,"operation":"list"}})).await.unwrap();
         let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();let url=format!("http://{}/v1",listener.local_addr().unwrap());
         let server=tokio::task::spawn_local(async move {
@@ -1441,7 +1043,6 @@ async fn provider_save_discovers_models_natively_before_canonical_write() {
         assert_eq!(backend_command(&host,"web:fixture",&discover).await.unwrap(),discovered);
         let mut stale=discover;stale["commandId"]=json!(uuid::Uuid::new_v4().to_string());stale["params"]["connection"]["credential"]["expectedRevision"]=initial["revision"].clone();
         assert_eq!(backend_command(&host,"web:fixture",&stale).await.unwrap_err().to_string(),"TARGET_CHANGED");
-        assert!(host.gateway.workbench.backend.running.borrow().is_none());
     }).await;
 }
 
@@ -1473,7 +1074,6 @@ async fn provider_network_deadline_closes_original_request_and_does_not_replay()
         tokio::time::timeout(Duration::from_secs(5),server).await.unwrap().unwrap();
         assert_eq!(backend_command(&host,"web:fixture",&request).await.unwrap_err().to_string(),failure.to_string());
         assert_eq!(backend_receipt(&host,"web:fixture",&command).unwrap_err().to_string(),failure.to_string());
-        assert!(host.gateway.workbench.backend.running.borrow().is_none());
     }).await;
 }
 
@@ -1529,7 +1129,6 @@ async fn blocked_provider_credential_is_a_definitive_original_rejection() {
         assert_eq!(journal["outcomes"][&command]["admissionState"],"rejected");
         assert_eq!(storage::read::<Value>(&receipt_path).unwrap(),receipt);
         assert_eq!(backend_read(&host,"web:fixture",&list).await.unwrap()["revision"],initial["revision"]);
-        assert!(host.gateway.workbench.backend.running.borrow().is_none());
         assert!(host.slots.borrow().values().all(|slot|slot.service.is_none()));
     }).await;
 }
@@ -1649,7 +1248,6 @@ async fn feedback_receiver_uses_source_credentials_without_cli_node_or_core() {
         assert_eq!(super::super::workbench_utility::feedback(&host,&source,None).await.unwrap_err().to_string(),"feedback_credential_unavailable");
         std::fs::write(&config_path,missing.replace("enabled=true","enabled=false")).unwrap();
         assert_eq!(super::super::workbench_utility::feedback(&host,&source,None).await.unwrap(),json!({"enabled":false,"connected":false}));
-        assert!(host.gateway.workbench.backend.running.borrow().is_none());
         assert!(host.slots.borrow().values().all(|slot|slot.service.is_none()));
     }).await;
 }
@@ -1734,7 +1332,6 @@ async fn feedback_refinement_recovers_the_original_core_receipt_and_closes_witho
         let followup=backend_command(&host,"local",&request("refine",json!({"text":"follow-up opinion"}))).await.unwrap();assert_eq!(followup["submissionUnknown"],false);
         let closed=backend_command(&host,"local",&request("close",json!({}))).await.unwrap();assert_eq!(closed["receipt"]["closed"],true);
         assert_eq!((starts.get(),sends.get(),stops.get()),(1,1,1));
-        assert_eq!(host.gateway.workbench.backend_status(&host).await.unwrap()["owned"],false);
         close();accepting.abort();for handle in spawned.borrow().iter(){handle.abort();}
     }).await;
 }
@@ -1745,7 +1342,7 @@ async fn fresh_gui_registration_prepares_launch_without_node_or_core() {
         let root=tempfile::tempdir().unwrap();let root=root.path().canonicalize().unwrap();
         let (host,mut input,source)=resumable_host(&root);
         storage::private_dir(&host.home.join("host/projects")).unwrap();
-        std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+
         let config_home=root.join("configuration");storage::private_dir(&config_home).unwrap();
         storage::write_bytes(&config_home.join("config.toml"),b"schema_version=1\n[model]\nprovider='fixture'\nname='fixture'\n[model.providers.fixture]\nendpoint='http://127.0.0.1:1/'\nprotocol='responses'\napi_key_env='FIXTURE_KEY'\n").unwrap();
         input.options["configHome"]=json!(config_home);input.options["desktopProcesses"]=json!(true);
@@ -1803,7 +1400,6 @@ async fn fresh_gui_registration_prepares_launch_without_node_or_core() {
         assert_ne!(candidate.environment["AREAL_HARNESS_TOOL_EXTENSIONS"],hook_path);
         let current:Value=storage::read(candidate.deployment_path.as_ref().unwrap()).unwrap();
         assert!(current["skills"].as_array().unwrap().iter().any(|row|row["id"]=="new-skill"));
-        assert!(!host.gateway.workbench.has_running_backend());
         assert!(host.slots.borrow()[&registration.project_id].service.is_none());
     }).await;
 }
@@ -1814,7 +1410,7 @@ async fn projectless_allocations_keep_original_roots_without_node() {
         let temp=tempfile::tempdir().unwrap();let root=temp.path().canonicalize().unwrap();
         let (host,input,source)=resumable_host(&root);
         storage::private_dir(&host.home.join("host/projects")).unwrap();
-        std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+
         let options=frontend_options(&host,&source,input.options,None).unwrap();
         host.schedules.connections.frontend_subscribe(&host,"projectless",&source,options,None).unwrap();
         let base=root.join("tasks");storage::private_dir(&base).unwrap();
@@ -1837,7 +1433,6 @@ async fn projectless_allocations_keep_original_roots_without_node() {
         let normal=root.join("normal");storage::private_dir(&normal).unwrap();
         super::super::worktree_catalog::add_project(&host,&source,json!({"root":normal})).await.unwrap();
         assert!(call(json!({"operation":"prepare","requestId":uuid::Uuid::new_v4().to_string(),"directory":normal})).await.is_err());
-        assert!(!host.gateway.workbench.has_running_backend());
     }).await;
 }
 
@@ -1847,7 +1442,7 @@ async fn projectless_native_catalog_and_scratch_share_source_authority() {
         let temp=tempfile::tempdir().unwrap();let root=temp.path().canonicalize().unwrap();
         let (host,mut input,source)=resumable_host(&root);
         storage::private_dir(&host.home.join("host/projects")).unwrap();
-        std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+
         let config=root.join("config");storage::private_dir(&config).unwrap();
         storage::write_bytes(&config.join("config.toml"),b"schema_version=1\n[model]\nprovider='fixture'\nname='example'\n[model.providers.fixture]\nprotocol='responses'\nendpoint='http://127.0.0.1:9/private-endpoint'\napi_key_env='PROJECTLESS_FIXTURE_KEY'\n").unwrap();
         input.options["configHome"]=json!(config);
@@ -1863,7 +1458,6 @@ async fn projectless_native_catalog_and_scratch_share_source_authority() {
         assert_eq!(scratch["cwd"],json!(config.join("scratch")));
         assert_eq!(scratch,call(json!({"operation":"scratch"})).await.unwrap());
         assert!(call(json!({"operation":"prepare","requestId":uuid::Uuid::new_v4().to_string(),"directory":root.join("../escape")})).await.is_err());
-        assert!(!host.gateway.workbench.has_running_backend());
     }).await;
 }
 
@@ -1873,7 +1467,7 @@ async fn native_resource_settings_own_skills_hooks_and_revisions_without_node() 
         let temp=tempfile::tempdir().unwrap();let root=temp.path().canonicalize().unwrap();
         let (host,input,source)=resumable_host(&root);
         storage::private_dir(&host.home.join("host/projects")).unwrap();
-        std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+
         let options=frontend_options(&host,&source,input.options,None).unwrap();
         let (subscription,_)=host.schedules.connections.frontend_subscribe(&host,"resources",&source,options,None).unwrap();
         let workspace=root.join("project");storage::private_dir(&workspace).unwrap();
@@ -1904,7 +1498,6 @@ async fn native_resource_settings_own_skills_hooks_and_revisions_without_node() 
         assert_ne!(next["revision"],hooks["revision"]);assert_eq!(next["hooks"][0]["name"],"audit");assert_eq!(next["projects"][0]["connected"],false);assert_eq!(next["projects"][0]["applied"],false);
         assert!(command(json!({"operation":"hooksSave","expectedRevision":hooks["revision"],"hooks":[]})).await.is_err());
         let builtin=command(json!({"operation":"builtinSkill","id":"openai-skill-creator"})).await.unwrap();assert_eq!(builtin["skill"]["id"],"openai-skill-creator");assert_eq!(builtin["provenance"]["upstream"],"https://github.com/openai/skills");
-        assert!(!host.gateway.workbench.has_running_backend());
     }).await;
 }
 
@@ -1914,7 +1507,7 @@ async fn native_cloud_settings_bind_tokens_to_the_saved_service_without_node() {
         let temp=tempfile::tempdir().unwrap();let root=temp.path().canonicalize().unwrap();
         let (mut host,input,source)=resumable_host(&root);
         Rc::get_mut(&mut Rc::get_mut(&mut host).unwrap().migration).unwrap().vault=crate::vault::Vault::isolated_files(&host.home);
-        std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+
         let options=frontend_options(&host,&source,input.options,None).unwrap();
         let (subscribed,_)=host.schedules.connections.frontend_subscribe(&host,"cloud-settings",&source,options,None).unwrap();
         let command=|request:Value|{let host=host.clone();let source=source.clone();async move {
@@ -1944,7 +1537,6 @@ async fn native_cloud_settings_bind_tokens_to_the_saved_service_without_node() {
             assert!(command(json!({"operation":"save","baseURL":base,"token":"synthetic-cloud-secret"})).await.is_err());
         }
         assert!(!serde_json::to_string(&command(json!({"operation":"status"})).await.unwrap()).unwrap().contains("synthetic-cloud-secret"));
-        assert!(!host.gateway.workbench.has_running_backend());
     }).await;
 }
 
@@ -2058,7 +1650,6 @@ async fn configured_cloud_handshake_cannot_publish_after_token_revision_changes(
                     .contains("TARGET_CHANGED")
             );
             server.await.unwrap();
-            assert!(!host.gateway.workbench.has_running_backend());
         })
         .await;
 }
@@ -2075,7 +1666,7 @@ async fn native_cloud_sessions_create_and_submit_without_node_or_local_core() {
         let (mut host,input,source)=resumable_host(&root);
         Rc::get_mut(&mut Rc::get_mut(&mut host).unwrap().migration).unwrap().vault=crate::vault::Vault::isolated_files(&host.home);
         storage::private_dir(&host.home.join("host/projects")).unwrap();
-        std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+
         let options=frontend_options(&host,&source,input.options,None).unwrap();
         host.schedules.connections.frontend_subscribe(&host,"cloud-sessions",&source,options,None).unwrap();
         let workspace=root.join("workspace");storage::private_dir(&workspace).unwrap();
@@ -2161,10 +1752,9 @@ async fn native_cloud_sessions_create_and_submit_without_node_or_local_core() {
         assert_eq!(models["models"][0]["modelId"],"remote-model");
         let uploaded=gateway.request(&json!({"id":"cloud-upload","method":"attachment.upload","context":{"projectId":virtual_id,"gatewayGeneration":host.identity.generation,"grantRevision":0,"serviceGeneration":remote["serviceGeneration"]},"params":{"threadId":"native-cloud-thread","uploadId":uuid::Uuid::new_v4().to_string(),"mimeType":"text/plain","sizeBytes":5,"offset":0,"base64":"aGVsbG8="}})).await.unwrap();
         assert_eq!(uploaded["attachment"]["uri"],format!("areal://blob/{}",storage::digest(b"hello")));
-        host.schedules.connections.workbench_close_terminals();
         assert!(host.gateway.workbench.cloud.sessions.scope(&host,virtual_id).is_ok());
         let calls=calls.borrow();assert_eq!(calls.iter().filter(|call|call["method"]=="areal/thread/start").count(),1);assert_eq!(calls.iter().filter(|call|call["method"]=="areal/turn/start").count(),1);drop(calls);
-        assert!(host.slots.borrow()[&registration.project_id].service.is_none());assert!(!host.gateway.workbench.has_running_backend());
+        assert!(host.slots.borrow()[&registration.project_id].service.is_none());
         let unknown_id=uuid::Uuid::new_v4().to_string();
         let home=super::super::library_store::source_home(&host,&source).unwrap();
         let path=home.join("cloud-sessions.json");
@@ -2205,7 +1795,7 @@ async fn native_gui_terminal_uses_its_attachment_and_original_process_receipt() 
         {let mut slots=host.slots.borrow_mut();let slot=slots.get_mut(&registration.project_id).unwrap();slot.state="ready".into();slot.service=Some(service);let(writer,lifetime)=areal_local_service::OwnerLifetime::pair().unwrap();slot.writer=Some(writer);slot.lifetime=Some(Rc::new(lifetime));}
         let home=super::super::library_store::source_home(&host,&source).unwrap();
         storage::private_dir(&home.join("thread-owners")).unwrap();storage::write(&home.join("thread-owners").join(format!("{alias}.json")),&json!(["terminal-thread"])).unwrap();
-        std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+
         let calls=Rc::new(RefCell::new(Vec::<Value>::new()));let recorded=calls.clone();let remote_cwd=workspace.clone();
         let core=tokio::task::spawn_local(async move {
             let(stream,_)=listener.accept().await.unwrap();let mut socket=tokio_tungstenite::accept_async(stream).await.unwrap();let mut process_receipt=Value::Null;
@@ -2239,10 +1829,8 @@ async fn native_gui_terminal_uses_its_attachment_and_original_process_receipt() 
         assert_eq!(command(request).await.unwrap()["id"],"native-process");
         let original=command(json!({"operation":"processSubmission","projectId":alias,"threadId":"terminal-thread","requestId":request_id,"guiOwned":true})).await.unwrap();
         assert_eq!(original["confirmed"],true);assert_eq!(original["result"]["id"],"native-process");
-        host.schedules.connections.workbench_close_terminals();
         assert_eq!(command(json!({"operation":"process","projectId":alias,"threadId":"terminal-thread","id":"native-process","guiOwned":true})).await.unwrap()["id"],"native-process");
         assert_eq!(calls.borrow().iter().filter(|call|call["method"]=="areal/process/start").count(),1);
-        assert!(!host.gateway.workbench.has_running_backend());
         host.schedules.connections.frontend_disconnect("terminal-main");
         assert!(command(json!({"operation":"process","projectId":alias,"threadId":"terminal-thread","id":"native-process","guiOwned":true})).await.is_err());
         core.await.unwrap();
@@ -2256,7 +1844,7 @@ async fn native_remote_status_and_control_do_not_start_node() {
         let (mut host,input,source)=resumable_host(&root);
         Rc::get_mut(&mut Rc::get_mut(&mut host).unwrap().migration).unwrap().vault=crate::vault::Vault::isolated_files(&host.home);
         frontend_options(&host,&source,input.options,None).unwrap();
-        std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+
         let call=|request:Value| {let host=host.clone();let source=source.clone();async move {desktop_command(&host,"local","remote-fixture",&json!({"params":{"command":"remoteControl","sourceId":source,"request":request}})).await}};
         let status=call(json!({"operation":"status"})).await.unwrap();
         assert_eq!(status["enabled"],false);assert_eq!(status["directEnabled"],false);
@@ -2270,8 +1858,6 @@ async fn native_remote_status_and_control_do_not_start_node() {
         let before=host.remote.snapshot(&host.migration).unwrap();
         assert_eq!(call(json!({"operation":"disable","requestId":id})).await.unwrap()["enabled"],false);
         assert_eq!(host.remote.snapshot(&host.migration).unwrap()["revision"],before["revision"]);
-        let adapted=reverse(&host)("remote.control".into(),json!({"sourceId":source,"request":{"operation":"status"}})).await.unwrap();
-        assert_eq!(adapted["enabled"],false);
         let pending=super::super::library_store::source_home(&host,&source).unwrap().join("host-remote-gateway-operation.json");
         let reference=json!({"version":1,"pending":{"requestId":uuid::Uuid::new_v4().to_string(),"sourceId":source,"hostId":host.identity.host_id,"generation":host.identity.generation,"method":"remote.gateway.control","expectedRevision":before["revision"],"controlDigest":"a".repeat(64)}});
         storage::write(&pending,&reference).unwrap();let original=std::fs::read(&pending).unwrap();
@@ -2279,7 +1865,6 @@ async fn native_remote_status_and_control_do_not_start_node() {
         assert!(call(json!({"operation":"disable"})).await.unwrap_err().to_string().contains("SUBMISSION_UNKNOWN"));
         assert_eq!(std::fs::read(&pending).unwrap(),original);
         assert_eq!(host.remote.snapshot(&host.migration).unwrap()["revision"],before["revision"]);
-        assert!(!host.gateway.workbench.has_running_backend());
     }).await;
 }
 
@@ -2290,7 +1875,7 @@ async fn first_gui_activation_waits_for_its_native_launch_configuration() {
             let root = tempfile::tempdir().unwrap();
             let root = root.path().canonicalize().unwrap();
             let (host, mut input, source) = resumable_host(&root);
-            std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+
             let profile = root.join("profile");
             let alias = "0123456789abcdef01234567";
             let registration = {
@@ -2332,7 +1917,6 @@ async fn first_gui_activation_waits_for_its_native_launch_configuration() {
                 .unwrap();
             assert_eq!(inputs.workspace, registration.workspace);
             assert_eq!(inputs.config_home, configuration);
-            assert!(!host.gateway.workbench.has_running_backend());
             host.schedules
                 .connections
                 .frontend_disconnect("native-initial-source");
@@ -2346,7 +1930,7 @@ async fn native_attachment_reads_original_lifecycle_without_replaying_legacy_unk
         let root=tempfile::tempdir().unwrap();
         let root=root.path().canonicalize().unwrap();
         let (host,input,source)=resumable_host(&root);
-        std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+
         let original=uuid::Uuid::new_v4().to_string();
         let receipt=json!({"version":1,"requestId":original,"desktopGeneration":uuid::Uuid::new_v4().to_string(),"kind":"stopProject","mode":"cancel","phase":"admissionUnconfirmed","desktopExit":"notRequested","targets":[{"projectId":"project","serviceId":"original-service","generation":"original-generation","phase":"admissionUnconfirmed"}]});
         let directory=root.join("data/lifecycle-operations");
@@ -2372,7 +1956,6 @@ async fn native_attachment_reads_original_lifecycle_without_replaying_legacy_unk
         assert!(host.schedules.connections.frontend_call(&host,&stale).await.is_err());
         request["params"]["sourceId"]=json!("another-source");
         assert!(host.schedules.connections.frontend_call(&host,&request).await.is_err());
-        assert!(!host.gateway.workbench.has_running_backend());
         assert!(storage::json_records(&host.home.join("host/operations"),false).unwrap().is_empty());
         host.schedules.connections.frontend_disconnect("native-recovery");
     }).await;

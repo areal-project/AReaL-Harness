@@ -18,11 +18,7 @@ struct ReleasePolicy {
 
 impl Host {
     pub(super) fn has_external_clients(&self) -> bool {
-        // 工作台是 Host 自己的子进程；只认启动时登记的 PID，不信任客户端声明的角色。
-        self.clients
-            .borrow()
-            .values()
-            .any(|pid| pid.is_none_or(|pid| !self.gateway.workbench.owns_client_process(pid)))
+        !self.clients.borrow().is_empty()
     }
     pub(super) fn retain_for_gui(&self) -> Result<()> {
         let path = self.home.join("host/release.json");
@@ -65,9 +61,7 @@ pub(super) async fn release_unused(host: Rc<Host>) {
                 format!("error: {error}")
             }
             Ok(reason) => {
-                if matches!(reason, "workbenchClientsOrWrites" | "activityUnknownOrBusy")
-                    && transient_retries < 8
-                {
+                if reason == "activityUnknownOrBusy" && transient_retries < 8 {
                     transient_retries += 1;
                 } else {
                     transient_retries = 0;
@@ -131,19 +125,6 @@ async fn try_release(host: &Rc<Host>) -> Result<&'static str> {
         }
     }
     host.migration.vault.idle()?;
-    let backend = host.gateway.workbench.backend_status(host).await?;
-    if backend["owned"] == true {
-        let dependencies = host
-            .gateway
-            .workbench
-            .backend_private("lifecycle.dependencies", json!({}))
-            .await?;
-        if dependencies["clients"].as_u64() != Some(0)
-            || dependencies["inflight"].as_u64() != Some(0)
-        {
-            return Ok("workbenchClientsOrWrites");
-        }
-    }
     let activity = host.activity().await;
     if !activity.complete
         || !activity.projects.iter().all(|project| {
@@ -230,7 +211,6 @@ pub(super) async fn run(host: Rc<Host>) {
         if host.admission().is_err() {
             continue;
         }
-        let release = release && workbench_idle(&host).await;
         // 未确认的停止只核查原请求，不为下一次巡检换 ID。
         for (project, request) in pending.clone() {
             match host.reconcile(&request).await {
@@ -334,25 +314,6 @@ pub(super) async fn run(host: Rc<Host>) {
             }
         }
     }
-}
-
-async fn workbench_idle(host: &Rc<Host>) -> bool {
-    let Ok(backend) = host.gateway.workbench.backend_status(host).await else {
-        return false;
-    };
-    if backend["owned"] != true {
-        return true;
-    }
-    host.gateway
-        .workbench
-        .backend_private("lifecycle.dependencies", json!({}))
-        .await
-        .is_ok_and(|value| {
-            value["clients"].as_u64() == Some(0)
-                && value["inflight"].as_u64() == Some(0)
-                && value["providerUpdating"] == false
-                && value["starting"].as_u64() == Some(0)
-        })
 }
 
 #[cfg(test)]

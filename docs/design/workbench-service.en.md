@@ -1,6 +1,8 @@
 [中文](workbench-service.md) | **English**
 
-# Workbench service
+# Workbench service migration history
+
+This document records the retired Node workbench supervisor and its private pipe. The current Host executes business operations directly and provides desktop browser callbacks through its native attachment. See the [current architecture](architecture.en.md).
 
 A3 puts the existing desktop backend under Host supervision. Main connects as a client and continues to provide windows, system encryption, browser views and computer control. See [ADR 0017](../adr/0017-one-protocol-one-ui.md) and the [one-protocol spec](../development/one-protocol-spec.en.md). Domain routing and native capability wiring remain incomplete; this design is not evidence of A3 acceptance.
 

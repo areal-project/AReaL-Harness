@@ -51,9 +51,6 @@ class HostProtocolSchemaTests(unittest.TestCase):
                 target = root / "core/host/src" / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT / "core/host/src" / name, target)
-            backend = root / "services/workbench/src/backend-main.cjs"
-            backend.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(ROOT / "services/workbench/src/backend-main.cjs", backend)
             source = root / "core/host/src/gateway/session.rs"
             source.write_text(
                 source.read_text().replace(
@@ -86,21 +83,6 @@ class HostProtocolSchemaTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "loopback.added"):
                 GEN.check_inventory(self.schema, root)
             shutil.copyfile(ROOT / "core/host/src/loopback.rs", source)
-            backend.write_text(
-                backend.read_text().replace(
-                    '"core.callback"', '"private.added", "core.callback"', 1
-                )
-            )
-            with self.assertRaisesRegex(ValueError, "private.added"):
-                GEN.check_inventory(self.schema, root)
-            shutil.copyfile(ROOT / "services/workbench/src/backend-main.cjs", backend)
-            backend.write_text(
-                backend.read_text().replace(
-                    'request.event === "core.event"', 'request.event === "future.event"', 1
-                )
-            )
-            with self.assertRaisesRegex(ValueError, "future.event"):
-                GEN.check_inventory(self.schema, root)
 
     def test_generator_is_deterministic_and_check_never_repairs_stale_files(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -119,9 +101,6 @@ class HostProtocolSchemaTests(unittest.TestCase):
                 target = root / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT / name, target)
-            backend = root / "services/workbench/src/backend-main.cjs"
-            backend.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(ROOT / "services/workbench/src/backend-main.cjs", backend)
             shutil.copyfile(
                 ROOT / "schemas/areal-core-v1.json", root / "schemas/areal-core-v1.json"
             )
@@ -139,15 +118,7 @@ class HostProtocolSchemaTests(unittest.TestCase):
                 GEN.generate(root, check=True)
             self.assertEqual(original, [(root / name).read_bytes() for name in GEN.OUTPUTS])
 
-    def test_private_owner_direction_and_closed_tuple_contracts_are_checked(self):
-        changed = copy.deepcopy(self.schema)
-        changed["x-current"]["workbench"]["methods"]["core.attach"]["x-owner"] = "workbench"
-        with self.assertRaisesRegex(ValueError, "invalid private owner"):
-            GEN.validate_schema(changed)
-        changed = copy.deepcopy(self.schema)
-        changed["x-current"]["workbench"]["events"]["tasks.event"]["x-owner"] = "workbench"
-        with self.assertRaisesRegex(ValueError, "invalid event owner"):
-            GEN.validate_schema(changed)
+    def test_closed_tuple_contracts_are_checked(self):
         changed = copy.deepcopy(self.schema)
         path = changed["$defs"]["WorkbenchPrivateLibraryPatchParams"]["properties"]["patches"][
             "items"

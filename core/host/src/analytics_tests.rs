@@ -105,7 +105,6 @@ async fn native_sync_pages_the_shared_core_and_retains_live_dates_without_node()
             assert_eq!(summary["tokens"],9);assert_eq!(summary["undatedTokens"],5);
             assert_eq!(summary["skillCalls"],2);assert_eq!(summary["skills"],json!([{"name":"review","calls":2}]));
             assert_eq!(summary["syncing"],false);assert!(summary["error"].is_null());
-            assert!(host.gateway.workbench.backend_status(&host).await.unwrap()["owned"]==false);
             assert!(root.path().join("home/workbench/analytics.json").is_file());
             close();peer.abort();
         }).await;

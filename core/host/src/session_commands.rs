@@ -2171,8 +2171,6 @@ mod tests {
                     None
                 );
 
-                // 确保未拉起任何 Node Workbench 进程。
-                assert!(!host.gateway.workbench.has_running_backend());
                 assert!(recorded_methods.borrow().iter().any(|m| m == "areal/thread/fork"));
 
                 close_core();

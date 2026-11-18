@@ -36,10 +36,6 @@ class GuiHostProjects extends GuiSourceSession {
     /** @type {Promise<void>|undefined} */
     this.migrating = undefined;
   }
-  /** @param {Record<string,unknown> & {guiProfile?:string}} options @param {NodeJS.ProcessEnv} environment */
-  async ensureBackend(options, environment) {
-    return this.client.request("backend.ensure", await this.prepareNative(options, environment));
-  }
   /** @param {{deferCredentials?:boolean}} [options] */
   async init({ deferCredentials = false } = {}) {
     await this.publish({ deferCredentials });

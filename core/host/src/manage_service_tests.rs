@@ -459,7 +459,6 @@ async fn manage_reads_and_capabilities_run_without_node_backend() {
             assert_eq!(doctor["runtimeObserved"], false);
             assert!(doctor["data"].is_array());
 
-            assert!(!host.gateway.workbench.has_running_backend());
             close_core();
             server.abort();
         })
@@ -786,7 +785,6 @@ async fn manage_mutations_artifacts_and_plugin_credentials_run_without_node_back
                 "COMMAND_FAILED"
             );
 
-            assert!(!host.gateway.workbench.has_running_backend());
             close_core();
             server.abort();
         })
@@ -817,10 +815,8 @@ async fn native_resource_inspection_uses_current_core_and_redacts_process_argume
         assert!(!value.to_string().contains("synthetic-pending-secret"));
         assert_eq!(value[0]["pendingRequests"][0]["threadId"],"thread");
         assert_eq!(host.journal.native_snapshot("project").unwrap().1["pending"],journal["pending"]);
-        assert!(!host.gateway.workbench.has_running_backend());
         close();server.await.unwrap();
         let stopped=host.gateway.workbench.resources.command(&host,&source,&json!({"operation":"inspect"})).await.unwrap();
         assert_eq!(stopped[0]["observation"],"unavailable");
-        assert!(!host.gateway.workbench.has_running_backend());
     }).await;
 }

@@ -939,7 +939,6 @@ async fn pending_workbench_requests_do_not_block_queries() {
                     server.abort();
                 }
                 drop(mock_service_lock);
-                fixture.host.gateway.workbench.stop_backend().await;
                 assert!(
                     progress.is_ok(),
                     "a pending workbench request blocked the read/event loop"

@@ -850,7 +850,6 @@ mod tests {
                 })
                 .await
                 .unwrap();
-                assert!(!host.gateway.workbench.has_running_backend());
 
                 close_core();
                 server.abort();

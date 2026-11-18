@@ -321,23 +321,6 @@ impl Connections {
         }
     }
 
-    pub(crate) fn workbench_close_terminals(&self) {
-        self.terminal_epoch
-            .set(self.terminal_epoch.get().wrapping_add(1));
-        let leases = self
-            .terminals
-            .borrow()
-            .iter()
-            .filter(|(lease, session)| !self.frontend_owns(lease) && !session.host_owned.get())
-            .map(|(lease, _)| lease.clone())
-            .collect::<Vec<_>>();
-        for lease in leases {
-            if let Some(session) = self.terminals.borrow_mut().remove(&lease) {
-                session.close();
-            }
-        }
-    }
-
     pub(crate) async fn workbench_attach(
         &self,
         host: &Rc<Host>,
@@ -364,7 +347,6 @@ impl Connections {
             scope.is_none() || matches!(scope, Some("terminal" | "observer")),
             "INVALID_PARAMS"
         );
-        let terminal_epoch = self.terminal_epoch.get();
         let _permit = if scope.is_some() || desktop {
             self.terminals
                 .borrow_mut()
@@ -437,7 +419,6 @@ impl Connections {
             })?;
         ensure!(session.shared_current(host), unavailable());
         if scope.is_some() || desktop {
-            ensure!(self.terminal_epoch.get() == terminal_epoch, unavailable());
             if scope == Some("terminal") {
                 ensure!(
                     capabilities["features"]["connectionProcesses"] == true,
@@ -883,7 +864,6 @@ impl Connections {
         self.terminal_connecting
             .set(self.terminal_connecting.get() + 1);
         let _permit = TerminalPermit(&self.terminal_connecting);
-        let epoch = self.terminal_epoch.get();
         let lease = uuid::Uuid::new_v4().to_string();
         let project = owner
             .map(str::to_owned)
@@ -920,9 +900,7 @@ impl Connections {
             .request("areal/capabilities", json!({"apiVersion":"areal.core.v1"}))
             .await?;
         ensure!(
-            self.terminal_epoch.get() == epoch
-                && capabilities["apiVersion"] == "areal.core.v1"
-                && capabilities["methods"].is_array(),
+            capabilities["apiVersion"] == "areal.core.v1" && capabilities["methods"].is_array(),
             "CORE_INCOMPATIBLE"
         );
         *session.workbench_lease.borrow_mut() = Some(lease.clone());

@@ -1883,7 +1883,6 @@ async fn local_send_and_steer_dispatch_without_node_and_retain_original_receipts
         let (_, created) = creating.await.unwrap();
         assert_eq!(created.unwrap()["admissionState"], "accepted");
         drop(SessionSlot {host:f.host.clone(),peer:None,pending:false,connection:Some(remote_connection.clone())});
-        assert!(!f.host.gateway.workbench.has_running_backend());
         steer["commandId"] = json!(uuid::Uuid::new_v4().to_string());
         let independent = Fixture::dispatch(session, steer);
         f.call("areal/capabilities").await.reply(caps);
@@ -2000,7 +1999,6 @@ async fn attachment_read_chunks_are_bound_to_the_original_thread_and_connection(
             assert_eq!(result["nextOffset"], json!((end < bytes.len()).then_some(end)));
             assert_eq!(base64::engine::general_purpose::STANDARD.decode(result["base64"].as_str().unwrap()).unwrap(), bytes[offset..end]);
         }
-        assert!(!f.host.gateway.workbench.has_running_backend());
     }).await;
 }
 

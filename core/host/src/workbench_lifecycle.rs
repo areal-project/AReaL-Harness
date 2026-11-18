@@ -1,12 +1,12 @@
 //! 桌面生命周期聚合只在 Host 写回执；单项目停止继续复用原 Host 受理与清理证明。
 use super::*;
-use serde::Deserialize;
 use std::{cell::RefCell, path::Path};
 
 thread_local! {
     static GATES: RefCell<BTreeMap<PathBuf, Rc<Mutex<()>>>> = RefCell::default();
     static OWNERS: RefCell<BTreeMap<String, (String,String)>> = RefCell::default();
 }
+#[cfg(test)]
 const KINDS: &[&str] = &[
     "stopDesktop",
     "updateDesktop",
@@ -20,6 +20,7 @@ const UNRESOLVED: &[&str] = &[
     "settlementIncomplete",
 ];
 
+#[cfg(test)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Request {
@@ -31,6 +32,7 @@ struct Request {
     thread_id: Option<String>,
     turn_id: Option<String>,
 }
+#[cfg(test)]
 #[derive(Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Target {
@@ -355,6 +357,7 @@ pub(super) async fn read_request(
     Ok(public_record(record))
 }
 
+#[cfg(test)]
 pub(super) async fn command(host: &Rc<Host>, source: &str, input: Value) -> Result<Value> {
     let request: Request = serde_json::from_value(input).context("LIFECYCLE_INVALID_REQUEST")?;
     uuid::Uuid::parse_str(&request.request_id).context("LIFECYCLE_INVALID_REQUEST")?;
@@ -459,23 +462,6 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, input: Value) -> Resu
                             .any(|requested| target["projectId"] == requested.project_id)
                 ),
             "LIFECYCLE_INCOMPLETE"
-        );
-    }
-    if desktop(&request.kind) {
-        let dependencies = host
-            .gateway
-            .workbench
-            .backend_private("lifecycle.dependencies", json!({}))
-            .await?;
-        ensure!(
-            dependencies["inflight"] == 0
-                && dependencies["starting"] == 0
-                && dependencies["providerUpdating"] == false
-                && (request.kind != "updateDesktop"
-                    || dependencies["clients"]
-                        .as_u64()
-                        .is_some_and(|count| count <= 1)),
-            "LIFECYCLE_BLOCKED"
         );
     }
     // 停止的观察属于原命令，不能依赖界面的线程阅读订阅；先订阅再派发，避免漏掉快速终态。
@@ -630,26 +616,6 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, input: Value) -> Resu
         let changed = tokio::time::timeout_at(deadline, changed).await;
         if !matches!(changed, Ok(true)) {
             break;
-        }
-    }
-    if desktop(&request.kind)
-        && record["targets"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|target| target["phase"] == "completed")
-    {
-        if host
-            .gateway
-            .workbench
-            .backend_private("lifecycle.flush", json!({}))
-            .await
-            .is_ok()
-        {
-            record["desktopExit"] = json!("requested");
-        } else {
-            record["desktopError"] =
-                json!({"code":"LIFECYCLE_RECEIPT_WRITE_FAILED","message":"后台写入尚未结算"});
         }
     }
     derive(&mut record);

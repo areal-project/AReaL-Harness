@@ -170,7 +170,6 @@ async fn thread_creation_preparation_and_original_receipt_need_no_node_backend()
         assert_eq!(starts[0].1["model"],params["model"]);
         assert_eq!(starts[0].1["parameters"]["temperature"],params["parameters"]["temperature"]);
         assert_eq!(starts[0].1["cwd"],json!(registration.workspace));
-        assert!(host.gateway.workbench.backend.running.borrow().is_none());
         drop(calls);
         let mut changed = params.clone();
         changed["model"]["modelId"] = json!("different-model");
@@ -186,7 +185,6 @@ async fn thread_creation_preparation_and_original_receipt_need_no_node_backend()
             assert!(result.is_object());
             assert_eq!(prepared.dispatch().await.unwrap_err().to_string(),"SUBMISSION_UNKNOWN");
         }
-        assert!(host.gateway.workbench.backend.running.borrow().is_none());
         close();server.abort();
     }).await;
 }
@@ -329,10 +327,6 @@ fn launch_validation_uses_the_gui_profile_and_host_core_without_an_app_archive()
     let root = tempfile::tempdir().unwrap();
     let (bin, profile, host_home) = layout(root.path());
     let app = root.path().join("Contents/Resources/app.asar");
-    assert_eq!(
-        backend_application_root(&bin).unwrap(),
-        app.canonicalize().unwrap()
-    );
     std::fs::remove_file(app).unwrap();
     let accepted = launch_at(
         &bin,
@@ -492,7 +486,6 @@ async fn native_skill_creator_requires_exact_available_builtin_without_node() {
         assert_eq!(result["skill"],descriptor["skill"]);assert_eq!(result["provenance"],descriptor["provenance"]);
         available.set(false);
         assert!(desktop_command(&host,"local","creator",&request).await.is_err());
-        assert!(!host.gateway.workbench.has_running_backend());
         close();server.await.unwrap();
     }).await;
 }
@@ -533,7 +526,6 @@ async fn recovery_inspection_uses_host_space_owner_without_node() {
         let request=json!({"params":{"sourceId":source,"command":"recovery","request":{"operation":"inspect"}}});
         let result=desktop_command(&host,"local","recovery-reader",&request).await.unwrap();
         assert_eq!(result,json!({"kind":"none"}));
-        assert!(!host.gateway.workbench.has_running_backend());
         let mut invalid=request;
         invalid["params"]["request"]["unexpected"]=json!(true);
         assert!(desktop_command(&host,"local","recovery-reader",&invalid).await.is_err());
@@ -553,7 +545,6 @@ async fn native_connect_keeps_explicit_stop_and_reconciles_unknown_activation() 
         let ready=desktop_command(&host,"local","native-connection",&request).await.unwrap();
         assert_eq!(ready["projectId"],"project");
         assert_eq!(ready["serviceGeneration"],"gen-1");
-        assert!(!host.gateway.workbench.has_running_backend());
         host.schedules.suppress("project",true).unwrap();
         assert!(desktop_command(&host,"local","native-connection",&request).await.is_err());
         assert!(host.schedules.suppressed("project"));
@@ -571,7 +562,6 @@ async fn native_connect_keeps_explicit_stop_and_reconciles_unknown_activation() 
         }
         assert!(host.schedules.suppressed("project"));
         assert_eq!(storage::json_records(&host.home.join("host/operations"),false).unwrap().len(),1);
-        assert!(!host.gateway.workbench.has_running_backend());
         close();server.await.unwrap();
     }).await;
 }
@@ -599,7 +589,6 @@ async fn explicit_native_resume_records_intent_and_original_failed_activation() 
         assert_eq!(record.receipt["state"],"blocked");
         assert!(!host.schedules.suppressed("project"));
         assert!(!super::super::schedules::Schedules::load(&host.home).unwrap().suppressed("project"));
-        assert!(!host.gateway.workbench.has_running_backend());
         close();server.await.unwrap();
     }).await;
 }
@@ -646,7 +635,6 @@ async fn attachment_inventory_and_release_do_not_start_node_or_repeat_original_r
         assert!(desktop_command(&host,"local","native-media",&call).await.is_err());
         assert_eq!(count.get(),1);
         assert!(crate::server::workbench_submissions::find(&host,"project",&original).unwrap().is_some());
-        assert!(!host.gateway.workbench.has_running_backend());
         close();server.abort();
     }).await;
 }

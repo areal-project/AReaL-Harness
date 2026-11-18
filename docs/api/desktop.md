@@ -331,9 +331,9 @@ Main 把全 Host 停止意图作为 `kind="stopHost"` 引用写入原 `service-c
 
 Host 断连会关闭 Desktop 的独立 Remote Gateway。显式重连等待旧 Gateway 的持久写入和本地监听资源关闭，再创建新实例。新实例先取得 Host execution lease，核查原 Remote 写入回执，再读取身份、grants 和配置。健康 Gateway 不替换；原请求未知、持久化失败或 lease 被占用时，恢复返回错误并保留原控制引用。
 
-Desktop 的动态工具连接归属已认证并声明 `computerHost:1` 的 Main socket。Main 断开时，Desktop 关闭该归属的 Core 连接，使 Core 撤销 ToolHost；共享 Core 与正在执行的 Turn 继续运行。普通观察客户端断开不撤销 Main 的工具。
+嵌入式浏览器由已认证的 Electron Main 通过 Host 附接。附接断开时，Host 撤销该附接的项目专用 Core 租约；共享 Core 和活动轮次继续运行。普通会话观察的关闭不影响浏览器归属。
 
-Desktop 自动重连只恢复观察，不恢复活动 Turn 的工具归属。没有 Main 时，新会话与定时准备不声明浏览器、Computer Use 或外部 CUA 工具。后继 Main 接入时先撤销旧观察连接，避免旧连接的工具重新可用；空闲会话通过显式发送、页面认领或应用打开重新绑定。连接丢失后的未知调用沿原 journal 核查，不向后继 Main 重发。
+后继 Main 通过自己的附接恢复观察。没有 Main 时，新会话与定时准备省略嵌入式浏览器工具；空闲会话可通过显式发送或打开预览重新绑定。连接丢失后沿原回执核对不确定的调用。
 
 这是 GUI 适配器协议，独立于 `areal.core.v1`。认证 snapshot 的 `service.lifecycle` 声明 `{version:2,desktopGeneration,capabilities:{request,read,reconcile,kinds},activeRequestId}`，支持 stopDesktop、updateDesktop、stopProject、updateProject、interruptTurn。
 

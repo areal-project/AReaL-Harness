@@ -333,9 +333,9 @@ A completed or explicitly blocked Host stop allows the user to reconnect explici
 
 Host disconnection closes Desktop's separate Remote Gateway. Explicit reconnection waits for the old Gateway's persistence work and local listeners to close before creating a replacement. The replacement acquires the Host execution lease, checks the original Remote write receipt, and then reads the identity, grants, and configuration. A healthy Gateway is retained. An unknown request, persistence failure, or occupied lease makes recovery fail and retains the original control references.
 
-Desktop dynamic-tool connections belong to the authenticated Main socket that declares `computerHost:1`. When Main disconnects, Desktop closes that owner's Core connections so Core withdraws the ToolHost. Shared Core services and active Turns continue. Disconnecting an ordinary observer does not withdraw Main's tools.
+The embedded browser belongs to the authenticated Electron Main attachment in Host. When the attachment disconnects, Host revokes its dedicated project Core leases. Shared Core services and active Turns continue. Ordinary conversation observers can close independently of browser ownership.
 
-Automatic Desktop reconnection restores observation without rebinding an active Turn's tools. Without Main, new threads and schedule preparation omit the embedded browser tool. A successor Main first retires the previous observation connections so their tools cannot become available again. An explicit send, page claim, or app open can rebind an idle thread. Unknown calls retain their original journal recovery and are not resent to the successor Main.
+A successor Main restores observation through its own attachment. Without Main, new Threads and schedule preparation omit the embedded browser tool. An explicit send or opening the browser preview can rebind an idle Thread. After losing the connection, clients inspect the original receipts for unconfirmed calls.
 
 This GUI adapter protocol is separate from `areal.core.v1`. Authenticated snapshots advertise `service.lifecycle={version:2,desktopGeneration,capabilities:{request,read,reconcile,kinds},activeRequestId}` with stopDesktop, updateDesktop, stopProject, updateProject and interruptTurn.
 

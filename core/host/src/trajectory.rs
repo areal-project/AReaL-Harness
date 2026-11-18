@@ -829,7 +829,6 @@ mod tests {
                     spool.display()
                 );
                 let (host, source, config_path) = host_with_source(&base, &body).await;
-                assert!(!host.gateway.workbench.has_running_backend());
 
                 let traj_status = crate::server::workbench_route::backend_read(
                     &host,
@@ -921,7 +920,6 @@ mod tests {
                 .await
                 .unwrap();
                 assert_eq!(chatgpt["state"], "signed_out");
-                assert!(!host.gateway.workbench.has_running_backend());
             })
             .await;
     }

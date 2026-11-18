@@ -1,6 +1,8 @@
 **中文** | [English](workbench-service.en.md)
 
-# 工作台服务
+# 工作台服务迁移记录
+
+本文记录已退役的 Node 工作台监督和私有管道。当前 Host 直接执行业务，并通过原生附件提供桌面浏览器回调。现行边界见[架构](architecture.md)。
 
 A3 将桌面后台整体交给 Host 监督。Main 以客户端身份连接，窗口、系统加密、浏览器和电脑控制仍由 Electron 外壳提供。决策见 [ADR 0017](../adr/0017-one-protocol-one-ui.md)，工作包见[一套协议规格](../development/one-protocol-spec.md)。领域协议与原生能力接线尚未全部完成，不能据此宣称 A3 已验收。
 
