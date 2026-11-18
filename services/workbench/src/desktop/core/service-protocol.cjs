@@ -108,8 +108,6 @@ class DesktopService {
     this.pendingNotificationTarget = null;
     this.token = randomBytes(32).toString("hex");
     /** @type {Set<ServiceSocket>} */ this.clients = new Set();
-    /** @type {Map<ServiceSocket,Map<string,{client:import('@areal/workbench-service/host-core-client').HostCoreClient,ready:Promise<unknown>,key:string}>>} */
-    this.hostTerminals = new Map();
     /** @type {Map<string,BrowserClaim>} */ this.browserClaims = new Map();
     /** @type {Map<string,{socket:ServiceSocket,pageId:string,cancelled:boolean}>} */ this.browserClaimAttempts =
       new Map();
@@ -117,9 +115,6 @@ class DesktopService {
     /** @type {Map<string,DiscoveryRecord>} */ this.browserDiscoveryPlans = new Map();
     /** @type {Map<number,BrowserPending>} */ this.browserPending = new Map();
     this.nextBrowserId = 0;
-    /** @type {Map<number,{socket:ServiceSocket,resolve:(value:unknown)=>void,reject:(error:Error)=>void,timer:NodeJS.Timeout}>} */
-    this.terminalPending = new Map();
-    this.nextTerminalId = 0;
     this.browserTestTrace = process.env.AREAL_BROWSER_READ_TEST_TRACE;
     backend.browserRead = (request) => this.browserRead(request);
     this.sequence = 0;
@@ -373,23 +368,11 @@ class DesktopService {
   }
   /** @param {ServiceSocket} socket */
   disconnectClient(socket) {
-    const terminals = this.hostTerminals.get(socket);
-    this.hostTerminals.delete(socket);
-    for (const entry of terminals?.values() ?? []) {
-      entry.client.close();
-      this.backend.hostCoreClients.delete(entry.key);
-    }
     for (const [requestId, pending] of this.encryptionPending ?? [])
       if (pending.socket === socket) {
         clearTimeout(pending.timer);
         this.encryptionPending.delete(requestId);
         pending.reject(new Error("系统安全存储连接已断开"));
-      }
-    for (const [requestId, pending] of this.terminalPending)
-      if (pending.socket === socket) {
-        clearTimeout(pending.timer);
-        this.terminalPending.delete(requestId);
-        pending.reject(new Error("GUI terminal owner disconnected; outcome may be unknown"));
       }
     this.stopSending(socket);
     this.releaseHistoryViews(socket);
@@ -527,11 +510,9 @@ class DesktopService {
       this.send(socket, { id: message.id, error: desktopError(error) });
     }
   }
-  /** @param {ServiceSocket} socket @param {string} wireMethod @param {Fields} params */
-  async execute(socket, wireMethod, params = {}) {
+  /** @param {ServiceSocket} socket @param {string} method @param {Fields} params */
+  async execute(socket, method, params = {}) {
     /** @type {unknown} */ let response;
-    const guiTerminalCommand = wireMethod === "guiTerminalCommand";
-    const method = guiTerminalCommand ? "command" : wireMethod;
     try {
       if (method === "hello") {
         if (params?.protocol !== PROTOCOL || params?.identity !== this.identity)
@@ -614,21 +595,6 @@ class DesktopService {
         response = result;
         if (method === "lifecycleRequest") this.requestExit(result);
         this.schedule();
-        return response;
-      }
-      if (method === "terminalResult") {
-        const pending =
-          typeof params.requestId === "number"
-            ? this.terminalPending.get(params.requestId)
-            : undefined;
-        if (!pending || pending.socket !== socket) throw new Error("Invalid GUI terminal response");
-        this.terminalPending.delete(/** @type {number} */ (params.requestId));
-        clearTimeout(pending.timer);
-        if (record(params.error) && typeof params.error.message === "string")
-          pending.reject(Object.assign(new Error(params.error.message), params.error));
-        else if (Object.hasOwn(params, "result")) pending.resolve(params.result);
-        else pending.reject(new Error("GUI terminal response is incomplete"));
-        response = null;
         return response;
       }
       if (this.recovering && !["snapshot", "activity"].includes(method))
@@ -880,23 +846,6 @@ class DesktopService {
         : {};
       if (method === "command") {
         validateCommand(name, name === "media" ? request : params.request);
-        if (
-          guiTerminalCommand &&
-          (name !== "manage" ||
-            ![
-              "processStart",
-              "processSubmission",
-              "processes",
-              "process",
-              "processOutput",
-              "processWait",
-              "processWrite",
-              "processResize",
-              "processCloseStdin",
-              "processTerminate",
-            ].includes(String(request.operation)))
-        )
-          throw new Error("Unsupported GUI terminal command");
       } else if (typeof params.path !== "string") throw new Error("无效工作区路径");
       this.inflight++;
       this.schedule();
@@ -908,23 +857,11 @@ class DesktopService {
         const entry = entryKey ? this.beginBrowserEntrypoint(socket, request) : null;
         let result;
         try {
-          const terminalClient = guiTerminalCommand
-            ? await this.hostTerminalClient(socket, request.projectId)
-            : undefined;
           result =
             method === "command" && name === "history"
               ? await this.historyCommand(socket, request)
               : method === "command"
                 ? await this.backend.command(name, request, {
-                    ...(guiTerminalCommand
-                      ? {
-                          ...(terminalClient ? { guiTerminalClient: terminalClient } : {}),
-                          guiTerminalRequest: (method, params) => {
-                            if (!terminalClient) throw new Error("Host terminal unavailable");
-                            return terminalClient.request(method, params);
-                          },
-                        }
-                      : {}),
                     onBrowserTurnStarted: (turnId) => entry?.resolve({ turnId }),
                     onBrowserTurnQueued: (queueItemId) => entry?.resolve({ queueItemId }),
                   })
@@ -963,60 +900,6 @@ class DesktopService {
     }
     return response;
   }
-  /** @param {ServiceSocket} socket @param {unknown} projectId */
-  async hostTerminalClient(socket, projectId) {
-    if (
-      !connected(socket) ||
-      !this.clients.has(socket) ||
-      this.closed ||
-      typeof projectId !== "string" ||
-      !this.backend.hostCall
-    )
-      throw new Error("GUI terminal owner is unavailable");
-    const canonical = this.backend.host.resolve(projectId).projectId;
-    let terminals = this.hostTerminals.get(socket);
-    if (!terminals) {
-      terminals = new Map();
-      this.hostTerminals.set(socket, terminals);
-    }
-    let entry = terminals.get(canonical);
-    if (entry?.client.closed) {
-      terminals.delete(canonical);
-      this.backend.hostCoreClients.delete(entry.key);
-      entry = undefined;
-    }
-    if (!entry) {
-      const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
-      const client = new HostCoreClient({
-        host: this.backend.hostCall,
-        sourceId: this.backend.host.sourceId,
-        projectId: canonical,
-        scope: "terminal",
-      });
-      const key = `terminal:${randomUUID()}`;
-      entry = { client, ready: client.connect(), key };
-      terminals.set(canonical, entry);
-      this.backend.hostCoreClients.set(key, client);
-    }
-    try {
-      await entry.ready;
-    } catch (error) {
-      entry.client.close();
-      terminals.delete(canonical);
-      this.backend.hostCoreClients.delete(entry.key);
-      throw error;
-    }
-    if (
-      !connected(socket) ||
-      this.hostTerminals.get(socket) !== terminals ||
-      terminals.get(canonical) !== entry
-    ) {
-      entry.client.close();
-      throw new Error("GUI terminal owner disconnected during attachment");
-    }
-    return entry.client;
-  }
-
   async initRemote() {
     this.backend.host.client.requireCapability("remoteGatewayV1");
     await this.remote?.close();
@@ -1043,11 +926,6 @@ class DesktopService {
       pending.reject(new Error("系统安全存储连接已关闭"));
     }
     this.encryptionPending?.clear();
-    for (const pending of this.terminalPending.values()) {
-      clearTimeout(pending.timer);
-      pending.reject(new Error("GUI terminal service closed; outcome may be unknown"));
-    }
-    this.terminalPending.clear();
     for (const attempt of this.browserClaimAttempts.values()) attempt.cancelled = true;
     this.browserClaimAttempts.clear();
     for (const pending of this.browserPending.values()) {

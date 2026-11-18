@@ -216,15 +216,14 @@ const pick = (value, keys) =>
   Object.fromEntries(
     keys.filter((key) => value[key] !== undefined).map((key) => [key, value[key]]),
   );
-/** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {import("@areal/workbench/desktop-contract/management").ManagementRequest} rawRequest @param {{guiTerminalClient?:import('@areal/workbench-service/host-core-client').HostCoreClient,guiTerminalRequest?:(method:string,params:import("./project-state.cjs").SubmissionParams)=>Promise<unknown>}} [context] @returns {Promise<unknown>} */
-async function executeManagement(backend, project, rawRequest, context = {}) {
+/** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {import("@areal/workbench/desktop-contract/management").ManagementRequest} rawRequest @returns {Promise<unknown>} */
+async function executeManagement(backend, project, rawRequest) {
   if (typeof rawRequest.operation === "string" && taskOperations.has(rawRequest.operation))
     return manageTask(backend, project, rawRequest);
   const request = readSubmissionRequest(rawRequest);
   const current = project.client;
   if (!current) throw new Error("Core 未连接");
   const { operation } = request;
-  const terminalRequest = context.guiTerminalRequest;
   if (operation === "pluginSubmission")
     return readPluginSubmission(
       backend,
@@ -394,7 +393,6 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
       project,
       request.threadId,
       request.requestId,
-      terminalRequest,
     );
     if (!result) return { confirmed: false };
     const presentation = await resolveTerminalPresentation(
@@ -455,10 +453,7 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
   }
   if (reads[operation]) {
     const [method, keys] = reads[operation];
-    const result = await (terminalRequest ?? current.request.bind(current))(
-      method,
-      pick(request, keys),
-    );
+    const result = await current.request(method, pick(request, keys));
     if (operation === "goal") project.model.setGoal(requireThread(request), readGoals(result));
     if (operation === "plan") project.model.setPlan(requireThread(request), readPlan(result));
     if (operation === "interactions")
@@ -613,12 +608,9 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
       {
         ...pick(request, fields[operation]),
         ...(terminal ? { argv: terminal.argv } : {}),
-        ...(terminalRequest && operation === "processStart" ? { lifetime: "connection" } : {}),
       },
       {
         requestId: request.requestId,
-        ...(terminalRequest ? { requestCore: terminalRequest } : {}),
-        ...(context.guiTerminalClient ? { submissionClient: context.guiTerminalClient } : {}),
       },
     );
   } catch (error) {
@@ -696,10 +688,10 @@ function readPlan(value) {
   if (!isCorePlan(value)) throw new Error("Core 计划结构无效");
   return value;
 }
-/** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {Record<string,unknown>} rawRequest @param {{guiTerminalClient?:import('@areal/workbench-service/host-core-client').HostCoreClient,guiTerminalRequest?:(method:string,params:import("./project-state.cjs").SubmissionParams)=>Promise<unknown>}} [context] */
-async function manage(backend, project, rawRequest, context = {}) {
+/** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {Record<string,unknown>} rawRequest */
+async function manage(backend, project, rawRequest) {
   const request = readManagementRequest(rawRequest);
-  const result = await executeManagement(backend, project, request, context);
+  const result = await executeManagement(backend, project, request);
   try {
     validateManagementResponse(request, result);
   } catch (cause) {

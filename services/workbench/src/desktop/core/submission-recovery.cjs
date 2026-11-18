@@ -576,13 +576,8 @@ class SubmissionRecovery {
       throw new Error("会话配置正在更新，请稍后再发送任务");
   }
 
-  /** @param {Project} project @param {string} method @param {Params} parameters @param {{requestId?:string,remote?:RemoteAssociation,dispatch?:(entry:RemotePending)=>Promise<unknown>,requestCore?:CoreRequest,submissionClient?:import('@areal/workbench-service/host-core-client').HostCoreClient,preDispatch?:()=>boolean}} [options] */
-  async submit(
-    project,
-    method,
-    parameters,
-    { requestId, remote, dispatch, requestCore, submissionClient, preDispatch } = {},
-  ) {
+  /** @param {Project} project @param {string} method @param {Params} parameters @param {{requestId?:string,remote?:RemoteAssociation,dispatch?:(entry:RemotePending)=>Promise<unknown>,preDispatch?:()=>boolean}} [options] */
+  async submit(project, method, parameters, { requestId, remote, dispatch, preDispatch } = {}) {
     const observationError = project.observationErrors?.[parameters.threadId ?? ""];
     if (
       observationError &&
@@ -616,7 +611,7 @@ class SubmissionRecovery {
     }
     this.assertConfigurationReady(project, method, parameters);
     const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
-    const client = submissionClient ?? project.client;
+    const client = project.client;
     if (!(client instanceof HostCoreClient)) throw new Error("Host Core 投影尚未就绪");
     if (
       requestId !== undefined &&

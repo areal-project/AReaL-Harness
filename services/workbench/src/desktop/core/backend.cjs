@@ -1379,7 +1379,7 @@ class CoreBackend {
   }
 
   /** @param {string} commandName @param {Record<string,unknown>} rawRequest
-   * @param {{guiTerminalClient?:import('@areal/workbench-service/host-core-client').HostCoreClient,guiTerminalRequest?:(method:string,params:import("./project-state.cjs").SubmissionParams)=>Promise<unknown>,onBrowserTurnStarted?:(turnId:string)=>void,onBrowserTurnQueued?:(queueItemId:string)=>void}} [context] */
+   * @param {{onBrowserTurnStarted?:(turnId:string)=>void,onBrowserTurnQueued?:(queueItemId:string)=>void}} [context] */
   async command(commandName, rawRequest, context = {}) {
     const semantics = commandSemantics(commandName, rawRequest);
     if (semantics.requestId && !rawRequest[semantics.requestId])
@@ -1467,7 +1467,7 @@ class CoreBackend {
           code: "CONFIRMATION_STALE",
         });
       if (name === "history") return this.historyCommand(project, request);
-      if (name === "manage") return manage(this, project, request, context);
+      if (name === "manage") return manage(this, project, request);
       if (name === "open") await this.openThread(project, request.threadId);
       if (name === "list") await this.listThreads(project);
       return this.snapshot();
@@ -1478,7 +1478,7 @@ class CoreBackend {
       if (!project?.service || !project.client?.ready)
         throw new Error("原 Core 已断开，不能确认核查目标");
       if (name === "history") return this.historyCommand(project, request);
-      return manage(this, project, request, context);
+      return manage(this, project, request);
     }
     if (this.closing) throw new Error("应用正在退出");
     if (name === "recovery") {
@@ -1724,7 +1724,7 @@ class CoreBackend {
         ) {
           throw new Error("任务管理会话不执行目标；请在会话中描述要调整的定时任务。");
         }
-        return manage(this, project, request, context);
+        return manage(this, project, request);
       case "list":
         await this.listThreads(project);
         break;
