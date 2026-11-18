@@ -336,6 +336,14 @@ impl Host {
                     matches!(transport, "relay" | "direct"),
                     error("invalidRequest", "invalid pairing transport")
                 );
+                if transport == "relay"
+                    && config["relayLocal"]["enabled"] == true
+                    && config["relay"] == config["relayLocal"]["origin"]
+                {
+                    crate::local_relay::ensure_local_address(&crate::local_relay::local_origin(
+                        &config,
+                    )?)?;
+                }
                 ensure!(
                     if transport == "relay" {
                         config["enabled"] == true && self.gateway.status()["connected"] == true

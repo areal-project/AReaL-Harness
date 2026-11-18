@@ -268,15 +268,24 @@ pub(crate) fn local_origin(config: &Value) -> Result<url::Url> {
     );
     Ok(origin)
 }
-fn is_virtual_interface(name: &str) -> bool {
-    [
-        "utun", "tun", "tap", "ppp", "ipsec", "wg", "bridge", "docker", "veth", "vmnet", "vboxnet",
-        "awdl", "llw", "anpi",
-    ]
-    .iter()
-    .any(|prefix| name.starts_with(prefix))
+fn address_rank(name: &str, address: IpAddr) -> Option<u8> {
+    if !private_address(address)
+        || [
+            "bridge", "br-", "virbr", "docker", "veth", "vmenet", "vmnet", "vboxnet", "awdl",
+            "llw", "anpi",
+        ]
+        .iter()
+        .any(|prefix| name.starts_with(prefix))
+    {
+        return None;
+    }
+    let tunnel = ["utun", "tun", "tap", "ppp", "ipsec", "wg"]
+        .iter()
+        .any(|prefix| name.starts_with(prefix));
+    Some(2 * u8::from(tunnel) + u8::from(address.is_ipv6()))
 }
-pub(crate) fn address() -> Result<IpAddr> {
+
+fn local_addresses() -> Result<Vec<(u8, IpAddr)>> {
     struct Interfaces(*mut libc::ifaddrs);
     impl Drop for Interfaces {
         fn drop(&mut self) {
@@ -290,9 +299,7 @@ pub(crate) fn address() -> Result<IpAddr> {
     );
     let interfaces = Interfaces(pointer);
     let mut current = interfaces.0;
-    let mut fallback_v4 = None;
-    let mut preferred_v6 = None;
-    let mut fallback_v6 = None;
+    let mut addresses = Vec::new();
     while !current.is_null() {
         let interface = unsafe { &*current };
         if !interface.ifa_addr.is_null()
@@ -303,7 +310,6 @@ pub(crate) fn address() -> Result<IpAddr> {
                 .then(|| unsafe { std::ffi::CStr::from_ptr(interface.ifa_name) })
                 .and_then(|name| name.to_str().ok())
                 .unwrap_or_default();
-            let virtual_if = is_virtual_interface(name);
             let family = unsafe { (*interface.ifa_addr).sa_family } as i32;
             let address = unsafe {
                 match family {
@@ -321,25 +327,48 @@ pub(crate) fn address() -> Result<IpAddr> {
                     _ => None,
                 }
             };
-            if let Some(address) = address.filter(|address| private_address(*address)) {
-                if address.is_ipv4() {
-                    if !virtual_if {
-                        return Ok(address);
-                    }
-                    fallback_v4.get_or_insert(address);
-                } else if !virtual_if {
-                    preferred_v6.get_or_insert(address);
-                } else {
-                    fallback_v6.get_or_insert(address);
-                }
+            if let Some(address) = address
+                && let Some(rank) = address_rank(name, address)
+            {
+                addresses.push((rank, address));
             }
         }
         current = interface.ifa_next;
     }
-    fallback_v4
-        .or(preferred_v6)
-        .or(fallback_v6)
-        .context("没有可用的内网地址，请连接可互通的内网或 VPN 后重试")
+    Ok(addresses)
+}
+
+fn unavailable_address() -> anyhow::Error {
+    crate::wire::error(
+        "localRelayAddressUnavailable",
+        "No usable local Relay address on a LAN or VPN interface",
+    )
+}
+
+fn select_address(addresses: impl IntoIterator<Item = (u8, IpAddr)>) -> Option<IpAddr> {
+    addresses
+        .into_iter()
+        .min_by_key(|(rank, _)| *rank)
+        .map(|(_, address)| address)
+}
+
+pub(crate) fn address() -> Result<IpAddr> {
+    select_address(local_addresses()?).ok_or_else(unavailable_address)
+}
+
+pub(crate) fn ensure_local_address(origin: &url::Url) -> Result<()> {
+    let address = match origin.host() {
+        Some(url::Host::Ipv4(address)) => IpAddr::V4(address),
+        Some(url::Host::Ipv6(address)) => IpAddr::V6(address),
+        _ => return Err(unavailable_address()),
+    };
+    ensure!(
+        local_addresses()?
+            .iter()
+            .any(|(_, candidate)| *candidate == address),
+        unavailable_address()
+    );
+    Ok(())
 }
 pub(crate) fn configure(config: &mut Value) -> Result<()> {
     configure_at(config, address()?)
@@ -442,6 +471,14 @@ impl LocalRelay {
                 "local Relay configuration changed"
             );
             return Ok(());
+        }
+        if let Err(error) = ensure_local_address(&origin) {
+            inner.phase = "failed".into();
+            inner.address.clear();
+            inner.diagnostic = "已保存的内网地址不可用，请确认设备网络后重新开启内网连接。".into();
+            self.publish(&inner);
+            // 调用方的配置可能已保存，这里的监听失败不能作为未受理回执。
+            return Err(anyhow::anyhow!("{error}"));
         }
         inner.phase = "starting".into();
         inner.address = address.clone();
@@ -877,12 +914,28 @@ mod tests {
     }
 
     #[test]
-    fn virtual_interface_classification_deprioritizes_tunnels_and_bridges() {
-        assert!(is_virtual_interface("utun4"));
-        assert!(is_virtual_interface("bridge100"));
-        assert!(is_virtual_interface("awdl0"));
-        assert!(!is_virtual_interface("en0"));
-        assert!(!is_virtual_interface("wlan0"));
+    fn local_relay_uses_wifi_ipv6_when_ipv4_is_public_and_a_vm_bridge_exists() {
+        let candidates = |interfaces: &[(&str, &str)]| {
+            select_address(interfaces.iter().filter_map(|(interface, address)| {
+                let address = address.parse().unwrap();
+                address_rank(interface, address).map(|rank| (rank, address))
+            }))
+        };
+        assert_eq!(
+            candidates(&[
+                ("bridge100", "192.168.139.3"),
+                ("en0", "30.172.96.134"),
+                ("en0", "fd00::5"),
+                ("utun4", "10.0.0.3"),
+            ]),
+            Some("fd00::5".parse().unwrap())
+        );
+        assert_eq!(candidates(&[("bridge100", "192.168.139.3")]), None);
+        assert_eq!(candidates(&[("vmenet0", "192.168.139.4")]), None);
+        assert_eq!(
+            candidates(&[("utun4", "10.0.0.3")]),
+            Some("10.0.0.3".parse().unwrap())
+        );
     }
 
     #[test]

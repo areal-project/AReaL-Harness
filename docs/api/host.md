@@ -256,6 +256,8 @@ macOS 退役预检读取原 vault entry 时禁止弹出 Keychain 交互；需要
 
 本机 Relay 控制沿用 `relayServiceStartLocal`、`relayServiceStopLocal` 及 `relayUse`（含 `origin`）。原请求回执的 `completed` 证明配置意图已保存，不能单独证明监听就绪或子进程退出；实际阶段读取 `RemoteStatus.relayService.local`。`relayUse` 只选择已登记 profile，本机 profile 必须已由 Host 运行，外部 profile 仍要求 HTTPS。包内运行时不可用时报告启动失败，不查找系统 Node。旧 Store 只从已提交的迁移来源取得，核对原导入配置及源文件隔离标记，并持有旧 Desktop 单实例锁；原本机 Store 丢失时拒绝以空 Store 替代。
 
+本机 Relay 优先使用局域网接口的私有 IPv4 或 IPv6 地址，其次使用 VPN 接口的私有地址。虚拟机和容器网桥不作为配对入口。保存的地址失效后，重新开启内网连接并生成新邀请即可，已有设备身份和授权会保留。
+
 `remote.gateway.subscribe` 需要 `remoteGatewayV1`。初始快照与订阅在同一连接中建立，后续 `remote.gateway.stateChanged` 通知使用 `{version:1,method,params:{subscriptionId,generation,sequence,state}}`，只发送实际状态变化。客户端核对原订阅 ID、Host generation 和连续递增序号后替换投影；缺口或身份变化关闭原连接并重新读取快照。断连即撤销订阅，旧投影不能接收新连接的事件。配对请求和在线状态通过该通道更新 GUI，秘密不进入通知。
 
 `assetRoot` 由可信本机 producer 提供，指向源码 Renderer 构建目录或安装包的 `areal-gui` 目录，不是手机请求字段或新增用户设置。Direct 只发布 `remote-assets.json` 描述且摘要匹配的 Remote 闭包，保留原 Host、Origin、CSP、worker 与缓存约束。来源的原 GUI 别名由 Migration 映射解析；其他 Host 项目使用稳定 Host 别名，不因另一个 profile 复用旧 ID 而扩大授权。

@@ -22,6 +22,7 @@ const notAdmitted = new Set([
   "revisionConflict",
   "sourceNotFound",
   "remoteBusy",
+  "localRelayAddressUnavailable",
   "invalid-origin",
   "invalid-code",
   "enrollment-required",

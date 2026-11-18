@@ -223,4 +223,9 @@ export const errorMessages = {
     "zh-CN": "本机 Relay 组件不完整或签名校验未通过，无法启动内网连接。",
     en: "The local Relay bundle is incomplete or failed verification and could not start.",
   },
+  "errors.localRelayAddressUnavailable": {
+    "zh-CN":
+      "没有可用的内网连接地址。请让电脑和手机接入同一可互访的 Wi‑Fi 或 VPN，再重新开启内网连接并生成新二维码。",
+    en: "There is no usable local connection address. Connect your computer and phone to the same reachable Wi‑Fi or VPN, enable the local connection again, and generate a new QR code.",
+  },
 } as const;
