@@ -905,7 +905,6 @@
     "../../services/workbench/src/desktop/core/provider-probe.cjs",
     "../../services/workbench/src/desktop/core/providers.cjs",
     "../../services/workbench/src/desktop/core/receipt-contract.cjs",
-    "../../services/workbench/src/desktop/core/relay-deployment.cjs",
     "../../services/workbench/src/desktop/core/remote-config.cjs",
     "../../services/workbench/src/desktop/core/remote-network.cjs",
     "../../services/workbench/src/desktop/core/resource-recovery.cjs",

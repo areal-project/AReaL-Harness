@@ -1,5 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const { execFileSync } = require("node:child_process");
 const { mkdtemp, readFile, writeFile, rm } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
@@ -21,6 +22,7 @@ test("portable Relay bundle runs with its own dependency and only exports Remote
   assert.match(result.version, /^[a-f0-9]{64}$/);
   assert.ok(manifest.files.some((f) => f.path === "node_modules/ws/lib/websocket.js"));
   assert.ok(manifest.files.some((f) => f.path === "deploy/managed-install.sh"));
+  execFileSync("bash", ["-n", join(bundleDir, "deploy/managed-install.sh")]);
   assert.ok(manifest.files.some((f) => f.path === "deploy/licenses/CINDY-LICENSE"));
   assert.ok(!manifest.files.some((f) => f.path === "assets/index.html"));
   const [{ serve }, { openStore }, { readConfig }] = await Promise.all(
