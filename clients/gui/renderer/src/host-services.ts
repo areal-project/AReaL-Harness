@@ -283,6 +283,7 @@ export function createHostReadServices(
       );
     },
     subscribe: client.subscribe,
+    refreshProjects: () => client.refreshShell(),
     watch: (target) => watch(target, ids, threadTargets),
     async selectSession(target) {
       if (!target) return client.selectSession(null);

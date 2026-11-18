@@ -168,6 +168,7 @@ export interface PlatformReadServices {
   status(): import("@areal/client").HostReadState;
   canPrewarm?(): boolean;
   subscribe(listener: () => void): () => void;
+  refreshProjects?(): Promise<void>;
   selectSession(
     target: { projectId: string; threadId: string; persisted?: boolean } | null,
   ): Promise<void>;

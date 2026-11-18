@@ -332,6 +332,11 @@ export function useSessionNavigation(
                 connectError = error;
                 persisted = true;
               }
+              if (owner.threadId && !persisted) {
+                // 启动回执与目录事件走不同通道；实时读取前从 Host 取得新的项目代次。
+                await services.reads.refreshProjects?.();
+                if (!current()) return;
+              }
             }
             try {
               await services.reads.selectSession(

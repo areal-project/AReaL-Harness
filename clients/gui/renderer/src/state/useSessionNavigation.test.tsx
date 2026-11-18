@@ -182,6 +182,34 @@ it("uses the live reader when persisted history is locked", async () => {
   });
 });
 
+it("refreshes the Host directory after cold activation before opening an empty conversation", async () => {
+  const f = fixture(true, async () => {}, false, true);
+  let directoryReady = false;
+  const refreshProjects = vi.fn(async () => {
+    f.events.push("refresh");
+    directoryReady = true;
+  });
+  Object.assign(f.services.reads!, { refreshProjects });
+  f.selectSession.mockImplementation(async (target) => {
+    f.events.push(target?.persisted ? "persisted" : "live");
+    if (target?.persisted)
+      throw Object.assign(new Error("No saved messages"), {
+        code: "PERSISTED_HISTORY_UNAVAILABLE",
+      });
+    if (!directoryReady) throw new Error("Project Core unavailable");
+  });
+
+  await f.navigation.selectConversation(owner.projectId, owner.threadId);
+
+  expect(f.events.filter((event) => event !== "library")).toEqual([
+    "persisted",
+    "connect",
+    "refresh",
+    "live",
+  ]);
+  expect(seed.restoration).toMatchObject({ pending: false, error: "" });
+});
+
 it("keeps persisted history read-only when execution activation is unavailable", async () => {
   const f = fixture(
     false,
