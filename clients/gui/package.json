@@ -37,7 +37,7 @@
     "test:observability": "node --test scripts/diagnostics-operation.test.cjs scripts/observability-paths.test.cjs scripts/bug-report.test.cjs",
     "test:observability-desktop": "node scripts/observability-desktop-smoke.mjs",
     "test:advanced-diagnostics": "node scripts/advanced-diagnostics-smoke.mjs",
-    "test:recovery": "node --test scripts/desktop-reconciliation.test.cjs",
+    "test:recovery": "node --test scripts/command-semantics.test.cjs",
     "test:creation-recovery": "node scripts/pending-project-smoke.mjs --recovery-notices",
     "test:service-connection": "node --test scripts/host-lifecycle.test.cjs scripts/host-quit.test.cjs scripts/host-home-permissions.test.cjs scripts/gui-source-blockers.test.cjs scripts/space-bootstrap.test.cjs",
     "test:service-feedback": "node scripts/service-feedback-smoke.mjs",
