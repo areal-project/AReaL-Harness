@@ -3,16 +3,15 @@ import { beginSessionLoad } from "@areal/client";
 import { currentErrorText } from "../errors/currentErrorText.js";
 import {
   recoveryMessage,
-  sameRecoveryOwner,
+  sameRestorationOwner,
   type RecoveryFailure,
-  type RecoveryOwner,
+  type RestorationOwner,
 } from "../recoveryPresentation.js";
 import { call, type Action, type PlatformServices, type Snapshot } from "../services.js";
 import { conversationCatalog } from "./conversationCatalog.js";
 type InitialLocation =
   | { kind: "automatic" | "projectless" }
   | { kind: "project"; projectId: string; threadId: string };
-type RestorationOwner = RecoveryOwner;
 type RestorationState = RestorationOwner & {
   pending: boolean;
   error: string;
@@ -23,7 +22,17 @@ type RestorationAttempt = RestorationOwner & {
   operation: "connect" | "open";
   pending: boolean;
   promise: Promise<void>;
+  prewarmDeferred?: "verification" | "successor";
 };
+
+function readHostGeneration(reads: PlatformServices["reads"]) {
+  const connection = reads?.status();
+  return connection?.connection === "ready" &&
+    connection.identity.hostId &&
+    connection.identity.hostGeneration
+    ? JSON.stringify([connection.identity.hostId, connection.identity.hostGeneration])
+    : undefined;
+}
 
 function conversationProject(project: Snapshot["projects"][number] | undefined, threadId: string) {
   const execution =
@@ -120,10 +129,13 @@ export function useSessionNavigation(
       (snapshot.connection?.state === "ready" ? projects.find((p) => !p.projectless) : undefined));
   const project = conversationProject(logicalProject, threadId);
   const thread = project?.state?.threads[threadId];
+  const hostGeneration = readHostGeneration(services.reads);
+  const prewarmReady = services.reads?.canPrewarm?.() !== false;
   const restorationOwner: RestorationOwner = {
     projectId: project?.id ?? "",
     threadId,
     connectionGeneration: project?.core?.connectionGeneration ?? 0,
+    hostGeneration,
   };
   const selectedRestoration = useRef(restorationOwner);
   selectedRestoration.current = restorationOwner;
@@ -207,7 +219,7 @@ export function useSessionNavigation(
     ) => {
       const previous = restorationAttempt.current;
       if (
-        sameRecoveryOwner(previous, owner) &&
+        sameRestorationOwner(previous, owner) &&
         previous?.operation === operation &&
         previous.pending
       )
@@ -220,13 +232,14 @@ export function useSessionNavigation(
       };
       restorationAttempt.current = attempt;
       setRestoration((previous) =>
-        sameRecoveryOwner(previous, owner) && previous
+        sameRestorationOwner(previous, owner) && previous
           ? { ...previous, pending: true }
           : { ...owner, pending: true, error: "" },
       );
       const current = () =>
         restorationAttempt.current === attempt &&
-        sameRecoveryOwner(selectedRestoration.current, owner);
+        sameRestorationOwner(selectedRestoration.current, owner) &&
+        readHostGeneration(services.reads) === owner.hostGeneration;
       attempt.promise = (async () => {
         try {
           if (services.recoverPersistedHistory) {
@@ -279,6 +292,10 @@ export function useSessionNavigation(
                     services.capabilities?.conversationSubmit === false
                   )
                     return;
+                  if (services.reads.canPrewarm?.() === false) {
+                    attempt.prewarmDeferred = "verification";
+                    return;
+                  }
                 }
               }
               try {
@@ -291,11 +308,24 @@ export function useSessionNavigation(
                 persisted = false;
               } catch (error) {
                 const failure = error as RecoveryFailure;
-                if (
-                  !canReadPersisted ||
+                const unresolved =
                   failure?.submissionUnknown ||
                   failure?.outcome?.kind === "admitted" ||
                   failure?.outcome?.kind === "unconfirmed" ||
+                  failure?.recovery?.kind === "queryOriginal";
+                // 已读到历史时，Host 停止只挡住后台预启动。主动恢复与未知结果仍按原路径处理。
+                if (
+                  persisted &&
+                  failure?.code === "stopInProgress" &&
+                  failure.recovery?.kind !== "needsUser" &&
+                  !unresolved
+                ) {
+                  attempt.prewarmDeferred = "successor";
+                  return;
+                }
+                if (
+                  !canReadPersisted ||
+                  unresolved ||
                   !["migrationBlocked", "MIGRATION_PENDING"].includes(String(failure?.code))
                 )
                   throw error;
@@ -425,15 +455,21 @@ export function useSessionNavigation(
       snapshot.connection?.state !== "ready"
     )
       return;
-    // Host 读取客户端会在执行就绪后升级持久化订阅；导航不能在换代中再开一条读取。
-    if (thread && "persistedHistory" in thread && thread.persistedHistory === true) return;
     const previous = restorationAttempt.current;
-    const owner = {
-      projectId: project.id,
-      threadId,
-      connectionGeneration: project.core?.connectionGeneration ?? 0,
-    };
-    if (!project.state?.connected && sameRecoveryOwner(previous, owner)) return;
+    const owner = restorationOwner;
+    const sameOwner = sameRestorationOwner(previous, owner);
+    // 只补做等候交接的预热；运行中的持久化读取仍由 Host 客户端升级。
+    if (thread && "persistedHistory" in thread && thread.persistedHistory === true) {
+      if (
+        services.reads?.canPrewarm?.() === false ||
+        !previous?.prewarmDeferred ||
+        (previous.prewarmDeferred === "successor" &&
+          previous.hostGeneration === owner.hostGeneration) ||
+        previous.projectId !== owner.projectId ||
+        previous.threadId !== owner.threadId
+      )
+        return;
+    } else if (!project.state?.connected && sameOwner) return;
     if (project.observationErrors?.[threadId]?.connectionGeneration === owner.connectionGeneration)
       return;
     void restoreConversation(owner, project.state?.connected ? "open" : "connect");
@@ -459,6 +495,7 @@ export function useSessionNavigation(
       projectId: pid,
       threadId: id,
       connectionGeneration: target?.core?.connectionGeneration ?? 0,
+      hostGeneration: readHostGeneration(services.reads),
     };
     selectedRestoration.current = owner;
     await restoreConversation(owner, target?.state?.connected ? "open" : "connect");
@@ -495,6 +532,7 @@ export function useSessionNavigation(
     workspaceHistory,
     restoration,
     restorationOwner,
+    prewarmReady,
     selectionReady,
     resourceAction,
     contextualFileOpen,

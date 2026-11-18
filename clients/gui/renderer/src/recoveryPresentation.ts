@@ -9,6 +9,7 @@ export type RecoveryOperation = Extract<
   { operation: unknown }
 >["operation"];
 export type RecoveryOwner = { projectId: string; threadId: string; connectionGeneration: number };
+export type RestorationOwner = RecoveryOwner & { hostGeneration?: string };
 export type RecoveryNotice = RecoveryOwner & {
   id: string;
   message: string;
@@ -47,6 +48,9 @@ export function sameRecoveryOwner(left: RecoveryOwner | undefined, right: Recove
     left.threadId === right.threadId &&
     left.connectionGeneration === right.connectionGeneration
   );
+}
+export function sameRestorationOwner(left: RestorationOwner | undefined, right: RestorationOwner) {
+  return sameRecoveryOwner(left, right) && left?.hostGeneration === right.hostGeneration;
 }
 export function sameRecoveryOperation(left: RecoveryOperation, right: RecoveryOperation) {
   return (
@@ -127,6 +131,7 @@ export function recoveryMessage(
     return "连接恢复尚未完成，历史和草稿已保留。请查看连接详情，确认恢复进度。";
   if (t && failure instanceof UiMessageError) return errorText(t, failure);
   const code = errorCode(failure);
+  if (t && code === "stopInProgress") return errorText(t, failure);
   if (t && context === "operation" && code && Object.hasOwn(ERROR_CODES, code))
     return errorText(t, failure);
   if (/auth|credential|api.?key|unauthorized|鉴权|凭据/i.test(reasonAndCode(failure)))

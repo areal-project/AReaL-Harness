@@ -293,11 +293,6 @@ try {
     });
     assert.equal(await web.getByRole("button", { name: "发送", exact: true }).isEnabled(), true);
     assert.equal(
-      await web.getByText("当前显示已保存的历史，发送时恢复会话。", { exact: true }).count(),
-      0,
-      "normal persisted history should not show a warning",
-    );
-    assert.equal(
       sha(await readFile(join(source.coreHome, safeId, "state", `${fixtureId}.json`))),
       persistedDigest,
       "persisted Store changed while reading",

@@ -73,6 +73,7 @@ export function createHostReadServices(
   const pages = createHostPages(client);
   const listeners = new Set<(snapshot: Snapshot) => void>();
   let shellExtras: ShellSnapshot | undefined;
+  let verifiedDesktopHost: Snapshot["verifiedDesktopHost"];
   const { watchedThreads, resolveWatched, reservedBytes, watch } = createWatchedHistory(
     client,
     readObservationResult,
@@ -273,6 +274,14 @@ export function createHostReadServices(
   }
   const reads: PlatformReadServices = {
     status: client.snapshot,
+    canPrewarm: () => {
+      const connection = client.snapshot();
+      return (
+        connection.connection === "ready" &&
+        verifiedDesktopHost?.hostId === connection.identity.hostId &&
+        verifiedDesktopHost?.generation === connection.identity.hostGeneration
+      );
+    },
     subscribe: client.subscribe,
     watch: (target) => watch(target, ids, threadTargets),
     async selectSession(target) {
@@ -512,6 +521,7 @@ export function createHostReadServices(
   if (desktop) {
     // 外壳只提供窗口、电源、菜单栏、生命周期和代理设置；项目、会话、任务与其余设置都从 Host 读。
     const accept = (value: Snapshot) => {
+      verifiedDesktopHost = value.verifiedDesktopHost;
       shellExtras = shellSnapshot(value);
       publish();
     };

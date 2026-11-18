@@ -1,4 +1,9 @@
-import { recoveryMessage, recoverySettings, sameRecoveryOwner } from "../recoveryPresentation.js";
+import {
+  recoveryMessage,
+  recoverySettings,
+  sameRestorationOwner,
+} from "../recoveryPresentation.js";
+import type { Translate } from "../i18n/uiMessage.js";
 import type { useSessionNavigation } from "./useSessionNavigation.js";
 
 export function startupReadyForPresentation(input: {
@@ -23,9 +28,10 @@ export function startupReadyForPresentation(input: {
 export function useStartupRecovery(
   session: ReturnType<typeof useSessionNavigation>,
   themeReady: boolean,
+  t: Translate,
 ) {
   const { snapshot, project, threadId, restoration, restorationOwner, selectionReady } = session;
-  const currentRestoration = sameRecoveryOwner(restoration, restorationOwner)
+  const currentRestoration = sameRestorationOwner(restoration, restorationOwner)
     ? restoration
     : undefined;
   const observationFailure = project?.observationErrors?.[threadId];
@@ -42,7 +48,7 @@ export function useStartupRecovery(
       : undefined;
   const viewFailure = currentObservationFailure ?? currentRestoration?.failure;
   const restorationError = viewFailure
-    ? recoveryMessage(viewFailure, "view")
+    ? recoveryMessage(viewFailure, "view", t)
     : currentRestoration?.error || "";
   const reconnectingView =
     snapshot.connection?.state === "connecting" &&

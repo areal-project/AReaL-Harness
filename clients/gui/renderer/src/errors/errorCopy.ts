@@ -34,6 +34,7 @@ export const ERROR_CODES = {
   RESOURCE_BUSY: { action: "retry", retryable: true },
   // 后台连接恢复期间命令直接回流，没有发出；等恢复完成再试即可。
   RECONNECTING: { action: "retry", retryable: true },
+  stopInProgress: { action: "retry", retryable: true },
   NOT_FOUND: { action: "refresh", retryable: false },
   PROJECT_NOT_FOUND: { message: "errors.NOT_FOUND", action: "refresh", retryable: false },
   TARGET_CHANGED: { action: "refresh", retryable: false },

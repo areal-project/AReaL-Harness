@@ -337,6 +337,44 @@ it("projects execution read failures onto the logical project without changing t
   }
 });
 describe("Host renderer read authority", () => {
+  it("only prewarms after Main verifies the Host serving this read connection", async () => {
+    const page = new EventTarget();
+    vi.stubGlobal("window", page);
+    let onState: ((snapshot: Snapshot) => void) | undefined;
+    const desktop: PlatformServices = {
+      snapshot: async () => ({ projects: [] }),
+      onState(listener: (snapshot: Snapshot) => void) {
+        onState = listener;
+        return () => {};
+      },
+      chooseProject: async () => null,
+      command: async () => {
+        throw new Error("Native write invoked");
+      },
+      theme: async () => ({ dark: true, id: "dark" }),
+      onTheme: () => () => {},
+      preview: async () => ({}),
+    };
+    const services = createHostReadServices(desktop, options(transport(observation).factory));
+    try {
+      await until(services);
+      expect(services.reads?.canPrewarm?.()).toBe(false);
+      onState?.({
+        projects: [],
+        verifiedDesktopHost: { hostId: connection.hostId, generation: "old" },
+      });
+      expect(services.reads?.canPrewarm?.()).toBe(false);
+      onState?.({
+        projects: [],
+        verifiedDesktopHost: { hostId: connection.hostId, generation: connection.hostGeneration },
+      });
+      expect(services.reads?.canPrewarm?.()).toBe(true);
+    } finally {
+      page.dispatchEvent(new Event("pagehide"));
+      vi.unstubAllGlobals();
+    }
+  });
+
   it.each([
     false,
     true,

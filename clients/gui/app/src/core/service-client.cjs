@@ -132,6 +132,8 @@ class SharedCoreBackend {
     this.reconnectAttempts = undefined;
     /** @type {boolean|undefined} */
     this.reconnectBlocked = undefined;
+    /** @type {{hostId:string,generation:string}|undefined} */
+    this.verifiedDesktopHost = undefined;
     /** @type {boolean|undefined} */
     this.disposed = undefined;
     /** @type {string|undefined} */
@@ -270,6 +272,7 @@ class SharedCoreBackend {
         : this.connectionState;
     return {
       ...this.value,
+      verifiedDesktopHost: this.verifiedDesktopHost,
       desktopCapabilities,
       serviceSummary: {
         state: this.status.connected ? "running" : this.serviceExited ? "stopped" : "unknown",
@@ -307,6 +310,7 @@ class SharedCoreBackend {
     this.onChange();
   }
   disconnected() {
+    this.verifiedDesktopHost = undefined;
     this.terminalConnections.close();
     this.computerHostOwned = false;
     this.onBrowserDisconnected?.();
@@ -602,6 +606,7 @@ class SharedCoreBackend {
         return;
       this.clearReconnect();
       this.initializing = true;
+      this.verifiedDesktopHost = undefined;
       this.connectionState = { state: "connecting" };
       this.onChange();
       let reconnectHost = false;
@@ -751,6 +756,14 @@ class SharedCoreBackend {
         buildIdentity,
         closed: () => this.disposed === true,
       });
+      // 读取历史不等工作台；只有同代 Host 能接收桌面的后台预热。
+      if (source.client.hostId && source.client.generation) {
+        this.verifiedDesktopHost = {
+          hostId: source.client.hostId,
+          generation: source.client.generation,
+        };
+        this.onChange();
+      }
       // 保持交接验证用的连接，直到 backend.ensure 撤销同代次的空闲回收意图。
       if (!recover) await source.init({ deferCredentials: true });
       else if (!source.client.socket || source.client.socket.destroyed) {

@@ -139,3 +139,14 @@ test("service upgrade failures explain recovery instead of suggesting model sett
     "连接详情",
   );
 });
+
+test("a Host stop blocking an explicit request explains what to wait for", () => {
+  const t: Translate = (id) => catalogs["zh-CN"][id];
+  const failure = { message: "Host stop intent prevents activation", code: "stopInProgress" };
+  for (const context of ["view", "operation"] as const) {
+    expect(recoveryMessage(failure, context, t)).toBe(catalogs["zh-CN"]["errors.stopInProgress"]);
+  }
+  expect(recoveryMessage({ ...failure, submissionUnknown: true }, "operation", t)).toBe(
+    "操作结果待确认。",
+  );
+});

@@ -24,6 +24,7 @@ const operation = z.object({
 const snapshotSchema: z.ZodType<Snapshot> = z.object({
   projects: z.array(fields),
   desktopCapabilities: z.object({ currentCommands: z.boolean() }).optional(),
+  verifiedDesktopHost: z.object({ hostId: z.string(), generation: z.string() }).optional(),
   power: z
     .object({ enabled: z.boolean(), active: z.boolean(), error: z.string().nullable() })
     .nullable()

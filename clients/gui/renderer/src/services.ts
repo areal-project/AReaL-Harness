@@ -104,6 +104,7 @@ export interface Snapshot {
   providerRevision?: string;
   subscription?: ChatGPTStatus;
   desktopCapabilities?: { currentCommands: boolean };
+  verifiedDesktopHost?: { hostId: string; generation: string };
   power?: { enabled: boolean; active: boolean; error: string | null } | null;
   menuBar?: { supported: boolean; active: boolean; error: string | null } | null;
   projectless?: { directory: string };
@@ -165,6 +166,7 @@ export interface UpdateState {
 export type { NotificationTarget, QuitProgress } from "./desktop-services.js";
 export interface PlatformReadServices {
   status(): import("@areal/client").HostReadState;
+  canPrewarm?(): boolean;
   subscribe(listener: () => void): () => void;
   selectSession(
     target: { projectId: string; threadId: string; persisted?: boolean } | null,

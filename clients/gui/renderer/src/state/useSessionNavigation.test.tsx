@@ -1,4 +1,4 @@
-import { createElement } from "react";
+import { createElement, type SetStateAction } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import type { PlatformServices, Snapshot } from "../services.js";
@@ -8,6 +8,8 @@ const seed = vi.hoisted(() => ({
   snapshot: undefined as Snapshot | undefined,
   selectedProject: undefined as string | undefined,
   stateIndex: 0,
+  restoration: undefined as ReturnType<typeof useSessionNavigation>["restoration"],
+  hostGeneration: undefined as string | undefined,
 }));
 vi.mock("react", async (original) => {
   const react = await original<typeof import("react")>();
@@ -15,18 +17,29 @@ vi.mock("react", async (original) => {
     ...react,
     useState: (initial: unknown) => {
       const selected = seed.stateIndex++ === 2 && seed.selectedProject;
-      return react.useState(
+      const [value, setValue] = react.useState(
         selected ||
           (seed.snapshot && initial && typeof initial === "object" && "projects" in initial
             ? seed.snapshot
             : initial),
       );
+      return seed.stateIndex === 2
+        ? [
+            value,
+            (next: SetStateAction<typeof seed.restoration>) => {
+              seed.restoration = typeof next === "function" ? next(seed.restoration) : next;
+              setValue(next);
+            },
+          ]
+        : [value, setValue];
     },
   };
 });
 afterEach(() => {
   seed.snapshot = undefined;
   seed.selectedProject = undefined;
+  seed.restoration = undefined;
+  seed.hostGeneration = undefined;
   vi.unstubAllGlobals();
 });
 
@@ -80,7 +93,10 @@ function fixture(
     workbench: { call: command },
     reads: {
       selectSession,
-      status: () => ({ connection: "ready", identity: { persistedHistory } }),
+      status: () => ({
+        connection: "ready",
+        identity: { persistedHistory, hostId: "host", hostGeneration: seed.hostGeneration },
+      }),
     },
   } as unknown as PlatformServices;
   const recoverPersistedHistory = vi.fn(
@@ -423,6 +439,102 @@ it("desktop restores execution after displaying persisted history without submit
     threadId: owner.threadId,
   });
   expect(f.command.mock.calls.map(([name]) => name)).not.toContain("send");
+});
+
+it("reads saved history before verification and prewarms once Main verifies the Host", async () => {
+  seed.selectedProject = owner.projectId;
+  seed.snapshot = {
+    connection: { state: "ready" },
+    projects: [
+      {
+        id: owner.projectId,
+        root: "/fixture",
+        state: {
+          connected: false,
+          threads: { [owner.threadId]: { id: owner.threadId, persistedHistory: true } },
+        },
+      },
+    ],
+  };
+  const f = fixture(true, async () => {}, false, true);
+  let verified = false;
+  f.services.reads!.canPrewarm = () => verified;
+  await f.navigation.selectConversation(owner.projectId, owner.threadId);
+  expect(f.events).toEqual(["read"]);
+  expect(seed.restoration?.pending).toBe(false);
+  expect(seed.restoration?.failure).toBeUndefined();
+  verified = true;
+  f.navigation.synchronizeRestoration();
+  await f.navigation.pendingRestoration();
+  expect(f.events).toEqual(["read", "read", "connect", "read"]);
+  f.navigation.synchronizeRestoration();
+  expect(f.command).toHaveBeenCalledTimes(1);
+});
+
+it("drops a rejection from the old Host even when the stopped project's Core generation is unchanged", async () => {
+  seed.hostGeneration = "old";
+  let reject!: (error: Error) => void;
+  const connect = vi
+    .fn<(resume: boolean) => Promise<void>>()
+    .mockImplementationOnce(
+      () =>
+        new Promise((_, fail) => {
+          reject = fail;
+        }),
+    )
+    .mockResolvedValue(undefined);
+  const f = fixture(true, connect, false, true);
+  const first = f.navigation.selectConversation(owner.projectId, owner.threadId);
+  await vi.waitFor(() => expect(connect).toHaveBeenCalledOnce());
+  seed.hostGeneration = "new";
+  reject(Object.assign(Error("old Host retired"), { code: "CORE_UNAVAILABLE" }));
+  await first;
+  expect(seed.restoration?.failure).toBeUndefined();
+
+  await f.navigation.selectConversation(owner.projectId, owner.threadId);
+  expect(f.events).toEqual(["read", "connect", "read", "connect", "read"]);
+  expect(seed.restoration).toMatchObject({
+    hostGeneration: JSON.stringify(["host", "new"]),
+    connectionGeneration: 0,
+    pending: false,
+  });
+});
+
+it.each([
+  { history: true, manual: false, expectedError: false },
+  { history: false, manual: false, expectedError: true },
+  { history: true, manual: true, expectedError: true },
+  {
+    history: true,
+    manual: false,
+    failureFields: { submissionUnknown: true },
+    expectedError: true,
+  },
+  {
+    history: true,
+    manual: false,
+    failureFields: { recovery: { kind: "needsUser" } },
+    expectedError: true,
+  },
+])("reports Host stop only when it affects the request: %o", async (scenario) => {
+  const failure = Object.assign(Error("Host stop intent prevents activation"), {
+    code: "stopInProgress",
+    ...scenario.failureFields,
+  });
+  const f = fixture(
+    true,
+    async () => {
+      throw failure;
+    },
+    false,
+    scenario.history,
+  );
+  await f.navigation.restoreConversation(owner, "connect", { resumeScheduling: scenario.manual });
+  expect(f.events).toEqual(
+    scenario.history && !scenario.manual ? ["read", "connect"] : ["connect"],
+  );
+  expect(seed.restoration?.pending).toBe(false);
+  expect(seed.restoration?.failure).toBe(scenario.expectedError ? failure : undefined);
 });
 
 it("does not activate execution for an observe-only desktop", async () => {

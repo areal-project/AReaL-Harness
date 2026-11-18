@@ -79,6 +79,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     workspaceHistory,
     restoration,
     restorationOwner,
+    prewarmReady,
     selectionReady,
     resourceAction,
     restoreConversation,
@@ -148,7 +149,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     setCollapsedProjects,
     toggleSidebarGroup,
   } = appearance;
-  const startup = useStartupRecovery(session, themeReady);
+  const startup = useStartupRecovery(session, themeReady, t);
   const {
     viewFailure,
     restorationError,
@@ -344,6 +345,8 @@ function AppContent({ services }: { services: PlatformServices }) {
     threadId,
     project?.state?.connected,
     project?.core?.connectionGeneration,
+    restorationOwner.hostGeneration,
+    prewarmReady,
     snapshot.connection?.state,
     restoreConversation,
   ]);

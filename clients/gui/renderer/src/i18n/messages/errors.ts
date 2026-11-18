@@ -125,6 +125,10 @@ export const errorMessages = {
     "zh-CN": "原连接刚断开，正在恢复。这条操作没有发出，恢复后再试一次。",
     en: "The previous connection just dropped and is recovering. Nothing was sent; try again once it's back.",
   },
+  "errors.stopInProgress": {
+    "zh-CN": "后台服务正在停止。请等连接恢复后再试。",
+    en: "The background service is stopping. Try again once the connection returns.",
+  },
   "errors.PERSISTED_HISTORY_UNAVAILABLE": {
     "zh-CN": "历史记录暂时打不开，请稍后重试。历史本身没有丢失。",
     en: "History can't be opened right now. Nothing is lost; try again in a moment.",
