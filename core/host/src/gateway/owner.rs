@@ -310,11 +310,9 @@ async fn run_relay(host: Rc<Host>) {
                 last_snapshot_error = None;
                 Ok(cached)
             } else if next_snapshot_retry.is_some_and(|until| std::time::Instant::now() < until) {
-                Err(anyhow::anyhow!(
-                    last_snapshot_error
-                        .clone()
-                        .unwrap_or_else(|| "Remote configuration is temporarily unavailable".into())
-                ))
+                Err(anyhow::anyhow!(last_snapshot_error.clone().unwrap_or_else(
+                    || "Remote configuration is temporarily unavailable".into()
+                )))
             } else {
                 match host.remote.snapshot_async(&host.migration).await {
                     Ok(loaded) => {
@@ -340,10 +338,7 @@ async fn run_relay(host: Rc<Host>) {
             last_snapshot_error = None;
             Ok(Value::Null)
         };
-        let desired = snapshot
-            .as_ref()
-            .ok()
-            .filter(|_| native_owned);
+        let desired = snapshot.as_ref().ok().filter(|_| native_owned);
         let transport =
             desired.map(|snapshot| transport_key(&snapshot["config"], TransportKind::Relay));
         if let Some(snapshot) = desired {

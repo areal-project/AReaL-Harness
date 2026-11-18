@@ -55,7 +55,17 @@ class HostRemote {
     this.requireOpen();
     this.leased = !this.native;
     await this.settle();
-    return this.read();
+    try {
+      return await this.read();
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        ["storageAuthorizationRequired", "storageLocked", "storageBusy"].includes(String(error.code))
+      )
+        Object.assign(error, { remoteReadFailed: true });
+      throw error;
+    }
   }
   available() {
     return !this.closed && (this.leased || this.native) && !this.client.socket?.destroyed;
@@ -157,7 +167,10 @@ class HostRemote {
         });
       this.pending = null;
       await this.persist();
-      if (receipt.state !== "completed") throw new Error("Remote 配置未写入，请刷新后重试");
+      if (receipt.state !== "completed")
+        throw Object.assign(new Error("Remote 配置未写入，请重试"), {
+          code: receipt.error?.code,
+        });
       const current = await this.read();
       if (this.revision !== receipt.revision) throw new Error("Remote 配置已变更，请刷新后重试");
       return current;

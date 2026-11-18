@@ -37,7 +37,8 @@ async function fixture(t, retired, projectionFixture = false) {
       }
       return { backend, adapter: { listen: async () => ({
         pid: process.pid, identity: 'fixture', desktopGeneration: 'generation', token: 'private-token'
-      }), executeRemote: async (name, params) => {
+      }), controlRemote: async (request) => ({ phoneAction: request.operation }),
+      executeRemote: async (name, params) => {
         if (params.holdMs) await new Promise((done) => setTimeout(done, params.holdMs));
         if (params.coreFailure) throw Object.assign(Error('PROFILE_NOT_SUPPORTED'), params.coreFailure);
         if (params.errorCode) throw Object.assign(Error('private'), { code: params.errorCode, submissionUnknown: params.unknown });
@@ -171,6 +172,13 @@ test("本机网页的桌面命令只放行命令表内、合同通过的请求�
   assert.equal(
     (await call("add", { command: "addProject", request: { path: f.home } })).result,
     "project:" + (await realpath(f.home)),
+  );
+  assert.deepEqual(
+    (await call("relay", {
+      command: "remoteControl",
+      request: { operation: "relayServiceStartLocal" },
+    })).result,
+    { phoneAction: "relayServiceStartLocal" },
   );
   for (const [id, params, message] of [
     ["unknown", { command: "quit", request: {} }, "Invalid desktop command"],
@@ -484,6 +492,7 @@ test("phone commands retain the original initialization failure without submitti
       },
     },
     backend: { providers: { redact: (message) => message } },
+    controlRemote: DesktopService.prototype.controlRemote,
   };
   const command = DesktopService.prototype.execute.call(service, socket, "remoteControl", {
     operation: "status",
@@ -494,4 +503,66 @@ test("phone commands retain the original initialization failure without submitti
   phone.reject(new Error("original identity write pending"));
   await rejected;
   assert.equal(calls, 0);
+});
+
+test("phone settings wait for Gateway handoff before starting Relay", async () => {
+  const { DesktopService } = require("../src/desktop/core/service-protocol.cjs");
+  const handoff = Promise.withResolvers();
+  const request = { operation: "relayServiceStartLocal" };
+  const service = { remoteInitialization: handoff.promise, inflight: 0, schedule() {} };
+  const started = DesktopService.prototype.controlRemote.call(service, request);
+  handoff.resolve({
+    control: async (input) => {
+      assert.deepEqual(input, request);
+      return "running";
+    },
+  });
+  assert.equal(await started, "running");
+});
+
+test("explicit phone action can initialize after a confirmed unapplied write", async () => {
+  const { DesktopService } = require("../src/desktop/core/service-protocol.cjs");
+  const failure = Object.assign(new Error("Remote configuration was not written"), {
+    code: "storageWriteNotApplied",
+  });
+  const original = Promise.reject(failure);
+  const service = {
+    remoteInitialization: original,
+    initRemote: async () => ({ control: async () => "running" }),
+    inflight: 0,
+    schedule() {},
+  };
+  const control = DesktopService.prototype.controlRemote.bind(service);
+  await assert.rejects(control({ operation: "status" }), failure);
+  assert.equal(service.remoteInitialization, original);
+  assert.equal(await control({ operation: "relayServiceStartLocal" }), "running");
+});
+
+test("an explicit phone action reloads configuration after a cold credential read failed", async (t) => {
+  const { DesktopService } = require("../src/desktop/core/service-protocol.cjs");
+  const { HostRemote } = require("../src/desktop/core/host-remote.cjs");
+  const failure = Object.assign(new Error("Keychain read failed"), {
+    code: "storageLocked",
+  });
+  const home = await mkdtemp(join(tmpdir(), "workbench-phone-reload-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const initialRead = HostRemote.prototype.init.call({
+    backend: { home, host: { home, sourceId: "fixture" } },
+    requireOpen() {},
+    native: true,
+    client: { async connect() {}, requireCapability() {} },
+    async settle() {},
+    async read() {
+      throw failure;
+    },
+  });
+  const service = {
+    remoteInitialization: initialRead,
+    initRemote: async () => ({ control: async () => "running" }),
+    inflight: 0,
+    schedule() {},
+  };
+  const control = DesktopService.prototype.controlRemote.bind(service);
+  await assert.rejects(control({ operation: "status" }), failure);
+  assert.equal(await control({ operation: "relayServiceStartLocal" }), "running");
 });

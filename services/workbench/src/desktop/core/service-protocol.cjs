@@ -5,6 +5,7 @@ const { isDeepStrictEqual } = require("node:util");
 const { appendFileSync } = require("node:fs");
 const { WebSocketServer } = require("ws");
 const { NativeRemote } = require("./native-remote.cjs");
+const { isRemoteRequest } = require("@areal/workbench/desktop-contract/desktop-control");
 const {
   desktopError,
   validateMcpPageDeclaration,
@@ -1272,15 +1273,7 @@ class DesktopService {
         return response;
       }
       if (method === "remoteControl") {
-        await this.remoteInitialization;
-        if (!this.remote) throw new Error("手机连接未初始化");
-        this.inflight++;
-        try {
-          response = await this.remote.control(params);
-        } finally {
-          this.inflight--;
-          this.schedule();
-        }
+        response = await this.controlRemote(params);
         return response;
       }
       if (method === "resources") {
@@ -1549,6 +1542,37 @@ class DesktopService {
       throw new Error("Desktop is closing");
     }
     return remote;
+  }
+  /** @param {unknown} request */
+  async controlRemote(request) {
+    const initialization = this.remoteInitialization;
+    let remote;
+    try {
+      remote = await initialization;
+    } catch (error) {
+      const canReload =
+        error instanceof Error &&
+        (("remoteReadFailed" in error && error.remoteReadFailed === true) ||
+          ("code" in error && error.code === "storageWriteNotApplied"));
+      if (
+        !isRemoteRequest(request) ||
+        request.operation === "status" ||
+        !canReload
+      )
+        throw error;
+      // 只在读取失败或回执明确未写入时重试初始化；先核查原操作，再读取配置。
+      if (this.remoteInitialization === initialization)
+        this.remoteInitialization = this.initRemote();
+      remote = await this.remoteInitialization;
+    }
+    if (!remote) throw new Error("手机连接未初始化");
+    this.inflight++;
+    try {
+      return await remote.control(request);
+    } finally {
+      this.inflight--;
+      this.schedule();
+    }
   }
   reconnectHost() {
     if (this.hostReconnection) return this.hostReconnection;

@@ -11,7 +11,10 @@ fn source(host: &Host, source_id: &str) -> Result<Value> {
     matching_source(host.remote.snapshot(&host.migration)?, source_id)
 }
 async fn source_async(host: &Host, source_id: &str) -> Result<Value> {
-    matching_source(host.remote.snapshot_async(&host.migration).await?, source_id)
+    matching_source(
+        host.remote.snapshot_async(&host.migration).await?,
+        source_id,
+    )
 }
 fn now() -> u64 {
     std::time::SystemTime::now()
