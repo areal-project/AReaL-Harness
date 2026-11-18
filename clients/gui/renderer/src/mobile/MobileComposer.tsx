@@ -96,6 +96,7 @@ export function MobileComposer({
   );
   const intent = commands.intent(projectId, threadId);
   const pending = commands.unresolved(projectId, threadId);
+  const currentPending = pending.some((value) => !value.detached);
   const checking = command.busy || command.recovering;
   const running = !!snapshot?.activeTurnId;
   const connected = connection.kind === "connected";
@@ -190,7 +191,7 @@ export function MobileComposer({
         data-config-revision={snapshot?.configRevision}
         data-active-turn={snapshot?.activeTurnId ?? ""}
       >
-        {command.error && (!pending.length || command.error === "START_SEPARATE_FAILED") && (
+        {command.error && (!currentPending || command.error === "START_SEPARATE_FAILED") && (
           <p role="alert">
             {command.errorStage && t(`mobile.sendStage.${command.errorStage}`)}{" "}
             {t(errors[command.error] ?? "mobile.commandFailed")}
@@ -201,7 +202,7 @@ export function MobileComposer({
             )}
           </p>
         )}
-        <DelayedVisible active={checking && pending.length > 0 && !outgoing}>
+        <DelayedVisible active={checking && currentPending && !outgoing}>
           <p role="status" className="text-fixed-caption text-foreground-subtle">
             {t("mobile.commandPending")}
           </p>
