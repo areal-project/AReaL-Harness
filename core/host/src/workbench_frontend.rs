@@ -96,6 +96,7 @@ impl Connections {
         }
         let host = host.clone();
         let project = project.to_owned();
+        self.frontend_watch_notices(&host, &project);
         tokio::task::spawn_local(async move {
             if host
                 .schedules
@@ -107,6 +108,70 @@ impl Connections {
                 eprintln!("Host native browser scheduled tools unavailable");
             }
         });
+    }
+
+    pub(crate) fn frontend_watch_notices(&self, host: &Rc<Host>, project: &str) {
+        let Some(source) = host.gateway.workbench.active_source() else {
+            return;
+        };
+        if !self
+            .frontends
+            .borrow()
+            .values()
+            .any(|frontend| frontend.source == source)
+            || super::super::workbench_route::backend_project_alias(host, &source, project).is_err()
+        {
+            return;
+        }
+        let host = host.clone();
+        let project = project.to_owned();
+        tokio::task::spawn_local(async move {
+            let _ = super::super::task_catalog::watch_owner(&host, &project).await;
+        });
+    }
+
+    pub(crate) fn frontend_notice(&self, host: &Host, project: &str, event: &Value) {
+        let notices = super::super::frontend_notices::from_event(
+            project,
+            event,
+            chrono::Local::now().timestamp(),
+        );
+        if notices.is_empty() {
+            return;
+        }
+        let Some(source) = host.gateway.workbench.active_source() else {
+            return;
+        };
+        let frontends = self.frontends.borrow();
+        let Some((attachment, frontend)) = frontends
+            .iter()
+            .find(|(_, frontend)| frontend.source == source)
+        else {
+            return;
+        };
+        let Ok(alias) =
+            super::super::workbench_route::backend_project_alias(host, &source, project)
+        else {
+            return;
+        };
+        let Ok(home) = super::super::library_store::source_home(host, &source) else {
+            return;
+        };
+        let Ok(projects) = super::super::worktree_catalog::saved_projects(&home) else {
+            return;
+        };
+        let logical = projects
+            .iter()
+            .find(|row| row["id"] == alias)
+            .and_then(|row| row["logicalProjectId"].as_str())
+            .unwrap_or(&alias);
+        for mut notice in notices {
+            notice["projectId"] = json!(logical);
+            // 通知是即时提示，队列拥塞时保留权威状态，也不影响原生工具回调。
+            let _ = frontend.events.try_send(
+                json!({"attachmentId":attachment,"event":{"event":"host.notice","notice":notice}}),
+            );
+        }
     }
 
     async fn frontend_terminal_command(

@@ -14,6 +14,8 @@ mod execution_preparation;
 mod feedback;
 #[path = "feedback_context.rs"]
 mod feedback_context;
+#[path = "frontend_notices.rs"]
+mod frontend_notices;
 #[path = "gateway/owner.rs"]
 mod gateway_owner;
 #[path = "gui_project.rs"]

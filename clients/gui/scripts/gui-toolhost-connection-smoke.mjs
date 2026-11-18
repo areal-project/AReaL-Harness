@@ -60,6 +60,7 @@ const checks = [];
 const requests = [];
 const mains = [];
 const callbacks = [];
+const notices = [];
 let release, modelError, observer, web, created, sent, failure;
 const model = createServer(async (request, response) => {
   try {
@@ -145,6 +146,7 @@ try {
         throw new Error("Unexpected native browser callback");
       },
       onEvent() {},
+      onNotice: (notice) => notices.push(notice),
       onClosed() {},
     });
     mains.push(main);
@@ -279,6 +281,11 @@ try {
   assert.match(JSON.stringify(toolResult), /unavailable|disconnect|closed/i);
   assert.deepEqual(callbacks, []);
   checks.push("successor does not take the active turn or replay its browser call");
+  const originalNotice = await until(
+    () => notices.find((notice) => notice.kind === "completion" && notice.threadId === threadId),
+    "current Main receives the original completed Turn notice",
+  );
+  assert.equal(originalNotice.projectId, projectId);
 
   const next = await web.transport.write(
     "session.send",
@@ -296,6 +303,17 @@ try {
     const turn = (await read()).turns.at(-1);
     return turn?.id === next.turnId && turn.status === "completed";
   }, "successor Turn completes");
+  await until(
+    () =>
+      notices.filter((notice) => notice.kind === "completion" && notice.threadId === threadId)
+        .length === 2,
+    "one notice per completed Turn on the current Main attachment",
+  );
+  assert.notEqual(
+    notices.filter((notice) => notice.kind === "completion").at(-1).id,
+    originalNotice.id,
+  );
+  checks.push("current Main receives one notice for each original completed Turn");
   await assert.rejects(observer.call("thread/resume", { threadId }), { code: -32009 });
   assert.deepEqual(await successor.call("browser.scope", { projectId, threadId }), successorScope);
   assert.equal((await activate()).serviceGeneration, serviceGeneration);
@@ -334,6 +352,9 @@ const result = {
   threadId: created.threadId,
   turnId: sent.turnId,
   modelRequests: requests.length,
+  completionNoticeIds: notices
+    .filter((notice) => notice.kind === "completion")
+    .map((notice) => notice.id),
 };
 await writeFile(join(root, "result.json"), JSON.stringify(result, null, 2));
 console.log(JSON.stringify(result, null, 2));

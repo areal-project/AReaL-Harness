@@ -112,6 +112,7 @@ export async function createNativeHostTransport(options: {
   environmentCredentials?: Record<string, string>;
   onCallback: (frame: DesktopCallback, signal: AbortSignal) => Promise<unknown>;
   onEvent: (frame: Fields) => void;
+  onNotice?: (notice: unknown) => void;
   onClosed: () => void;
 }) {
   const events = new HostClient({ desktopCore: true });
@@ -154,6 +155,10 @@ export async function createNativeHostTransport(options: {
       if (!record(value) || value.attachmentId !== attachment || !record(value.event))
         return close();
       const frame = value.event;
+      if (frame.event === "host.notice") {
+        options.onNotice?.(frame.notice);
+        return;
+      }
       if (frame.event === "core.event") {
         if (typeof frame.lease !== "string" || typeof frame.method !== "string") return close();
         for (const entry of pending.values())

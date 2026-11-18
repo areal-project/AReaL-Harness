@@ -67,6 +67,35 @@ function isNotificationContent(value) {
     (value.silent === undefined || typeof value.silent === "boolean")
   );
 }
+// 去重跨同一 Main 内的 Host 附件换代；静默筛选过的事件也不在之后重播。
+function nativeNotificationDelivery() {
+  /** @type {Set<string>} */
+  const seen = new Set();
+  /** @param {unknown} notice @param {Partial<import("../client/desktop-contract/library-media.cjs").LibrarySettingValues>} settings @param {boolean} focused */
+  return (notice, settings, focused) => {
+    if (
+      !isNotificationContent(notice) ||
+      !("id" in notice) ||
+      typeof notice.id !== "string" ||
+      !notice.id ||
+      seen.has(notice.id)
+    )
+      return;
+    seen.add(notice.id);
+    if (seen.size > 4096) {
+      const oldest = seen.values().next().value;
+      if (oldest !== undefined) seen.delete(oldest);
+    }
+    if (settings.taskNotifications === false) return;
+    if (notice.kind === "completion") {
+      const policy = settings.turnNotifications ?? "unfocused";
+      if (policy === "never" || (policy === "unfocused" && focused)) return;
+    }
+    if (notice.kind === "approval" && settings.permissionNotifications === false) return;
+    if (notice.kind === "question" && settings.questionNotifications === false) return;
+    return { ...notice, silent: settings.notificationSound === "silent" };
+  };
+}
 /** @param {unknown} target @returns {import('@areal/workbench/desktop-contract').NotificationTarget|null} */
 function readNotificationTarget(target) {
   if (!modelRecord(target) || typeof target.projectId !== "string") return null;
@@ -83,4 +112,9 @@ function readNotificationTarget(target) {
   if (!("threadId" in target) || typeof target.threadId !== "string") return null;
   return { projectId: target.projectId, threadId: target.threadId };
 }
-module.exports = { showCoreNotification, readNotificationTarget, isNotificationContent };
+module.exports = {
+  showCoreNotification,
+  readNotificationTarget,
+  isNotificationContent,
+  nativeNotificationDelivery,
+};

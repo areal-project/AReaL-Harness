@@ -28,6 +28,8 @@ Upgrade checks use `backend.status` to identify a prior Host that still owns the
 
 Main attaches to its original GUI source over the authenticated local connection. Embedded `browser_v1` callbacks bind the attachment, execution project, Core generation, and Thread. The Electron view owns browser automation, approval presentation, and page control. Workbench commands are scoped to the original window's browser lease.
 
+While a desktop source is attached, Host projects current Core completions, pending approvals, and pending questions into the matching Main attachment. Scheduled notifications start at the live Core subscription. Its baseline establishes the observation cursor. Main applies current notification settings and window focus, and clicking a notification opens the associated conversation or task in its logical project.
+
 A Side Chat connection owns the tabs and resources it creates. Closing or disconnecting settles resources for that connection. An unknown outcome keeps its original request ID for inspection. Auxiliary and foreground history, item details, and attachments use their respective Host observation subscriptions. Completed Runs open a one-shot preview by default. Full history opens a read-only subscription that is released on switch or close.
 
 ## Verification

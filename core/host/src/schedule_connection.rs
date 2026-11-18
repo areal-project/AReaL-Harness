@@ -604,10 +604,16 @@ fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
         }
         return;
     }
-    let current_turn = matches!(
+    let notice_event = matches!(
+        value["method"].as_str(),
+        Some("areal/owner/invalidated" | "areal/owner/resetRequired")
+    );
+    let turn_event = matches!(
         value["method"].as_str(),
         Some("turn/started" | "turn/completed")
-    ) && connection.shared_current(host)
+    );
+    let current_shared = (notice_event || turn_event)
+        && connection.shared_current(host)
         && host
             .schedules
             .connections
@@ -615,6 +621,7 @@ fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
             .borrow()
             .get(&connection.project_id)
             .is_some_and(|current| Rc::ptr_eq(current, connection));
+    let current_turn = current_shared && turn_event;
     if current_turn
         && value["method"] == "turn/started"
         && let (Some(thread), Some(turn)) = (
@@ -655,6 +662,16 @@ fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
         &connection.connection_id,
         &value,
     );
+    if current_shared && notice_event {
+        host.schedules
+            .connections
+            .frontend_notice(host, &connection.project_id, &value);
+        if value["method"] == "areal/owner/resetRequired" {
+            host.schedules
+                .connections
+                .frontend_watch_notices(host, &connection.project_id);
+        }
+    }
     host.gateway
         .workbench
         .core_event(&host.home, &connection.project_id, &value);

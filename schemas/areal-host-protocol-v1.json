@@ -44646,6 +44646,32 @@
           "properties": {
             "event": {
               "type": "string",
+              "const": "host.notice"
+            },
+            "notice": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string", "minLength": 1, "maxLength": 4096 },
+                "projectId": { "type": "string", "minLength": 1, "maxLength": 512 },
+                "kind": { "type": "string", "enum": ["completion", "approval", "question"] },
+                "body": { "type": "string", "maxLength": 200 },
+                "threadId": { "type": "string", "minLength": 1, "maxLength": 512 },
+                "taskId": { "type": "string", "minLength": 1, "maxLength": 512 },
+                "runId": { "type": "string", "minLength": 1, "maxLength": 512 },
+                "questionId": { "type": "string", "minLength": 1, "maxLength": 512 }
+              },
+              "required": ["id", "projectId", "kind", "body"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["event", "notice"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
               "const": "core.event"
             },
             "projectId": {

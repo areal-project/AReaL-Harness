@@ -34,6 +34,7 @@ const { setupUpdater } = require("../update/electron.cjs");
 const {
   showCoreNotification,
   readNotificationTarget,
+  nativeNotificationDelivery,
 } = require("@areal/workbench/node/native-notifications");
 const { MenuBar } = require("./menu-bar.cjs");
 const { fileOpen, fileWorkspace } = require("./file-open.cjs");
@@ -407,6 +408,7 @@ function startDesktop() {
   /** @type {(import("@areal/workbench/desktop-contract").NotificationTarget & {id:number})|null} */
   let notificationTarget = null;
   let notificationSequence = 0;
+  const acceptNotice = nativeNotificationDelivery();
   /** @param {unknown} target */
   function openNotificationTarget(target) {
     const parsed = readNotificationTarget(target);
@@ -730,8 +732,16 @@ function startDesktop() {
             ...cfg.serviceOptions(app),
             applicationOwner,
             onChange: publish,
-            onNotification: (notice) =>
-              showCoreNotification(Notification, window ?? null, notice, openNotificationTarget),
+            onNotification: (notice) => {
+              if (!backend || !window || window.isDestroyed() || quitting) return;
+              const delivery = acceptNotice(
+                notice,
+                backend.snapshot().library?.settings ?? {},
+                window.isFocused(),
+              );
+              if (delivery)
+                showCoreNotification(Notification, window, delivery, openNotificationTarget);
+            },
             onNotificationOpen: openNotificationTarget,
           });
           backend = serviceBackend;

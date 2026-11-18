@@ -1195,6 +1195,11 @@ impl Engine {
             "turn/completed",
             json!({"threadId": thread_id, "turn": state.thread.turns.last()}),
         );
+        if let Some(turn) = &name_turn {
+            self.task_modes
+                .directory
+                .publish_turn_completion(&state.thread, turn);
+        }
         self.goal_emit(&cell, &state.thread);
         cell.settled.send_replace(true);
         drop(state);

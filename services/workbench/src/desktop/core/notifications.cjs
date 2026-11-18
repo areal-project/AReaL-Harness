@@ -88,6 +88,7 @@ class TaskNotificationMonitor {
       client,
       (facts) => {
         for (const fact of facts) {
+          if (fact.kind === "turnCompleted") continue;
           if (fact.kind === "taskCompleted" && fact.taskId && fact.runId)
             this.completions.set(`${fact.taskId}:${fact.runId}`, fact);
           const kind =

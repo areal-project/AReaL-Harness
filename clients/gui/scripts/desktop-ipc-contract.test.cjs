@@ -427,6 +427,49 @@ test("Desktop commands map to their dispatch layer and Core catalog through actu
   ]);
 });
 
+test("native notices use current settings and never replay a suppressed event", () => {
+  const { nativeNotificationDelivery } = require("@areal/workbench/node/native-notifications");
+  const accept = nativeNotificationDelivery();
+  const completion = {
+    id: "turn-original",
+    projectId: "logical",
+    threadId: "thread",
+    kind: "completion",
+    body: "Task completed",
+  };
+  assert.equal(accept(completion, {}, true), undefined);
+  assert.equal(accept(completion, { turnNotifications: "always" }, false), undefined);
+  const scheduled = {
+    id: "run-original",
+    projectId: "logical",
+    taskId: "task",
+    runId: "run",
+    kind: "completion",
+    body: "Run completed",
+  };
+  assert.deepEqual(accept(scheduled, { notificationSound: "silent" }, false), {
+    ...scheduled,
+    silent: true,
+  });
+  assert.equal(accept(scheduled, {}, false), undefined);
+  assert.equal(
+    accept(
+      { ...completion, id: "permission", kind: "approval" },
+      { permissionNotifications: false },
+      false,
+    ),
+    undefined,
+  );
+  assert.equal(
+    accept(
+      { ...completion, id: "question", kind: "question" },
+      { taskNotifications: false },
+      false,
+    ),
+    undefined,
+  );
+});
+
 test("window close confirmation belongs to the original frame and request", async () => {
   const { EventEmitter } = require("node:events");
   const { runInNewContext } = require("node:vm");

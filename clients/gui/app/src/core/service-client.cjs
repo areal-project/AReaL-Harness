@@ -307,6 +307,10 @@ class SharedCoreBackend {
           this.onNativeBrowserRevoked?.(scope.guiProjectId, scope.threadId);
         }
       },
+      onNotice: (notice) => {
+        if (this.nativeBrowserEpoch === epoch && this.status.connected)
+          this.onNotification?.(notice);
+      },
       onClosed: () => {
         if (this.nativeBrowserEpoch !== epoch || this.disposed) return;
         this.connection?.close();

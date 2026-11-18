@@ -2952,6 +2952,12 @@
                 "string",
                 "null"
               ]
+            },
+            "turnId": {
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "required": [
@@ -2962,6 +2968,7 @@
         },
         "OwnerNoticeKind": {
           "enum": [
+            "turnCompleted",
             "taskCompleted",
             "questionPending",
             "interactionPending"

@@ -954,7 +954,7 @@ pub(super) async fn native_receipt(
     host.journal.native_replace(&scope, revision, latest)?;
     Ok(json!({"requestId":request,"submissionUnknown":false,"receipt":receipt}))
 }
-async fn watch_owner(host: &Host, project: &str) -> Result<Value> {
+pub(super) async fn watch_owner(host: &Host, project: &str) -> Result<Value> {
     let scope = host.schedules.connections.shared_identity(host, project)?;
     if let Some((connection, barrier)) = host.schedules.task_watches.borrow().get(project)
         && connection == &scope.2
