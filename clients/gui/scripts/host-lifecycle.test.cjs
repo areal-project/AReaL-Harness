@@ -1952,7 +1952,9 @@ test("Main startup prepares the source and attaches native Host without Node sta
     steps.push("upgrade-complete");
   });
   patch(upgrade, "desktopBuildIdentity", async () => "build");
-  patch(config, "serviceIdentity", async () => "service");
+  patch(config, "serviceIdentity", async () =>
+    assert.fail("Startup must use the native build identity"),
+  );
   patch(GuiSourceSession.prototype, "init", async function () {
     steps.push("source");
     this.sourceId = "source";

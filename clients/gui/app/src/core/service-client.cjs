@@ -936,19 +936,19 @@ class SharedCoreBackend {
     });
     try {
       const { ensureDesktopHost, desktopBuildIdentity } = require("@areal/client/desktop-upgrade");
-      const serviceIdentity = await require("./service-config.cjs").serviceIdentity({
-        ...options,
-        binary: options.binary,
-      });
       const buildIdentity = await desktopBuildIdentity(
-        serviceIdentity,
-        [join(__dirname, ".."), join(__dirname, "../../../renderer/dist")],
+        options.binary,
+        [
+          join(__dirname, ".."),
+          join(__dirname, "../../../renderer/dist"),
+          join(__dirname, "../../../packages/client/node"),
+          join(__dirname, "../../../packages/workbench/node"),
+        ],
         this.app.isPackaged ? join(process.resourcesPath, "desktop-build.json") : undefined,
       );
       const completeUpgrade = await ensureDesktopHost(source.client, {
         home: options.hostHome,
         binary: options.binary,
-        serviceIdentity,
         buildIdentity,
         closed: () => this.disposed === true,
       });

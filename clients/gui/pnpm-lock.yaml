@@ -286,6 +286,9 @@ importers:
       '@areal/remote-client':
         specifier: workspace:*
         version: link:../remote-client
+      '@areal/workbench':
+        specifier: workspace:*
+        version: link:../workbench
 
   packages/remote:
     dependencies:

@@ -5,7 +5,8 @@
   "license": "Apache-2.0",
   "type": "module",
   "dependencies": {
-    "@areal/remote-client": "workspace:*"
+    "@areal/remote-client": "workspace:*",
+    "@areal/workbench": "workspace:*"
   },
   "exports": {
     ".": "./src/index.ts",

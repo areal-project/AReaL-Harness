@@ -3,9 +3,10 @@
 const { createHash, randomUUID } = require("node:crypto");
 const { createReadStream, constants } = require("node:fs");
 const { open, link, unlink, realpath, readdir, readFile, rename } = require("node:fs/promises");
-const { join } = require("node:path");
+const { dirname, join } = require("node:path");
 const { setTimeout: delay } = require("node:timers/promises");
 const { executeHost } = require("./host-client.cjs");
+const { executables } = require("@areal/workbench/node/bundle");
 /** @typedef {{version:1,requestId:string,hostId:string,generation:string,pid:number,targetDigest:string,targetIdentity:string,phase:'stopping'|'starting'|'checking'}} Upgrade */
 /** @typedef {{dispatch:string,requestId:string,serviceGeneration:string,receipt?:{state:string,requestId:string,serviceGeneration:string}}} StopTarget */
 /** @typedef {{requestId:string,hostId:string,generation:string,strategy:string,state:string,projects:StopTarget[]}} Receipt */
@@ -36,6 +37,16 @@ async function digest(binary) {
   return hash.digest("hex");
 }
 
+/** @param {string} path */
+async function optionalDigest(path) {
+  try {
+    return await digest(path);
+  } catch (error) {
+    if (hasCode(error, "ENOENT") || hasCode(error, "ENOTDIR")) return undefined;
+    throw error;
+  }
+}
+
 /** @param {string} path @param {unknown} value @param {boolean} [replace] */
 async function publish(path, value, replace = false) {
   const temporary = `${path}.${randomUUID()}`;
@@ -58,9 +69,20 @@ async function publish(path, value, replace = false) {
   }
 }
 
-/** @param {string} serviceIdentity @param {string[]} roots @param {string} [manifest] */
-async function desktopBuildIdentity(serviceIdentity, roots, manifest) {
-  const hash = createHash("sha256").update(serviceIdentity);
+/** @param {string} binary @param {string[]} roots @param {string} [manifest] */
+async function desktopBuildIdentity(binary, roots, manifest) {
+  const hash = createHash("sha256").update("areal-native-desktop-v1");
+  const directory = dirname(binary);
+  for (const name of executables) {
+    hash.update(name);
+    if (name === "areal") {
+      hash.update(await digest(binary));
+      continue;
+    }
+    const packaged = join(directory, "..", "libexec", "areal", name);
+    const adjacent = join(directory, name);
+    hash.update((await optionalDigest(packaged)) ?? (await optionalDigest(adjacent)) ?? "absent");
+  }
   if (manifest) {
     // 发行资源受应用签名封印；启动只读构建清单，开发源码仍逐文件核对。
     const value = JSON.parse(await readFile(manifest, "utf8"));
@@ -110,7 +132,7 @@ function validateReceipt(record, receipt) {
 /**
  * 桌面单实例持有者在接入业务前调用；同一次交接跨应用重启复用原停止回执。
  * @param {InstanceType<typeof import("./host-client.cjs").HostClient>} client
- * @param {{home:string,binary:string,serviceIdentity:string,buildIdentity:string,closed?:()=>boolean}} options
+ * @param {{home:string,binary:string,buildIdentity:string,closed?:()=>boolean}} options
  */
 async function ensureDesktopHost(client, options) {
   const binary = await realpath(options.binary);
@@ -251,7 +273,7 @@ async function ensureDesktopHost(client, options) {
     const active = await readPrivate(activePath);
     if (
       client.hello.executableDigest === targetDigest &&
-      (!backend.owned || backend.service?.identity === options.serviceIdentity) &&
+      backend.owned === false &&
       (!active ||
         active.generation !== client.generation ||
         active.identity === options.buildIdentity)
