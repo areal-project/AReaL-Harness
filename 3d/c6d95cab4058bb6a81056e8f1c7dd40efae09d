@@ -1,0 +1,50 @@
+core/engine/src/context.rs
+  s_f12f82d708da68::t_89dcf5d903fe8c 636,638-646
+  s_f12f82d708da68::t_bd9dfbc8b32385 637
+core/engine/src/desktop/state.rs
+  s_f12f82d708da68::t_eb1a5ce8e9ab25 1297
+core/engine/src/desktop/skill_loading.rs
+  s_f12f82d708da68::t_62a38453c962e5 25-26
+  s_f12f82d708da68::t_eb1a5ce8e9ab25 23-24,28,40
+  s_f12f82d708da68::t_20b2193504ec3f 4
+  s_f12f82d708da68::t_27783abc59b267 19-22,27,29-39,41-42
+docs/guides/skills.md
+  s_f12f82d708da68::t_a61dff4d38a3bf 34-35
+docs/guides/programmatic-tools.md
+  s_f12f82d708da68::t_eebbef92944ddd 61-62
+core/engine/tests/skill_loading.rs
+  s_f12f82d708da68::t_cba20f2f34defc 729-732,735,739,746-747,749-751,762-764,770-773,777-781,783-786,788-790,792-801,803-804,814,823-852
+  s_f12f82d708da68::t_9f330282cc8610 769,791,805-813
+  s_f12f82d708da68::t_23b051c0fc81cc 855-900
+  s_f12f82d708da68::t_bd9dfbc8b32385 715,728,774-776,782,787,822,853
+  s_f12f82d708da68::t_66a6e9b8c95186 713-714,716-727,733-734,736-738,748,752-761,765-768,802,815-821,854
+  s_f12f82d708da68::t_f9a9ca30c5a768 740-745
+docs/guides/skills.en.md
+  s_f12f82d708da68::t_a61dff4d38a3bf 34-35
+docs/api/core.md
+  s_f12f82d708da68::t_a61dff4d38a3bf 596
+docs/api/core.en.md
+  s_f12f82d708da68::t_a61dff4d38a3bf 587
+docs/guides/programmatic-tools.en.md
+  s_f12f82d708da68::t_eebbef92944ddd 61-62
+core/engine/src/desktop/mcp_tools.rs
+  s_f12f82d708da68::t_ac2c6880da8fba 65,70-94
+  s_f12f82d708da68::t_3fd54bfe5f3bb6 350-397
+  s_f12f82d708da68::t_d7adbb13bf9e2a 66-69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3dc6d95cab4058bb6a81056e8f1c7dd40efae09d",
+  "prompts": {},
+  "sessions": {
+    "s_f12f82d708da68": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d39b-5e9e-71a0-b28d-b29ad3693a4b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
