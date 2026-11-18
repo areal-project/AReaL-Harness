@@ -1,15 +1,103 @@
 // @ts-check
 "use strict";
-const { checkedRecord } = require("./remote-network.cjs");
 
 /** @typedef {{platform:'apns',token:string,environment:'production'|'development'}} PushRegistration */
 /** @typedef {{devicePeerId:string,commandId:string,method:string,semanticDigest:string,registered:boolean}} PushCommand */
 /** @typedef {{push?:PushRegistration,devicePeerId:string,displayName:string,clientKind?:'web'|'ios'|'android',projectIds:string[],capabilities:string[],revision:number,status:'active'|'revoked'|'reviewRequired',pairedAt?:number,revokedAt?:number}} DeviceGrant */
 /** @typedef {{id:string,name:string,projects?:string[]}} LegacyDevice */
-/** @typedef {{kind:'tailscale',mapping?:import('./remote-network.cjs').NetworkMapping,visibility?:undefined,publicOrigin?:undefined}|{kind:'organization',publicOrigin:string,visibility:'private'|'public',mapping?:undefined}} RemoteNetwork */
+/** @typedef {{schema:1,owner:'areal-remote',id:string,state:'proposed'|'pending'|'owned'|'removed',operation:'apply'|'remove'|'scope',publicOrigin:string,target:string,httpsPort:number,scope:'private'|'public',sourceScope?:'private'|'public'}} HistoricalNetworkMapping */
+/** @typedef {{kind:'tailscale',mapping?:HistoricalNetworkMapping,visibility?:undefined,publicOrigin?:undefined}|{kind:'organization',publicOrigin:string,visibility:'private'|'public',mapping?:undefined}} RemoteNetwork */
 /** @typedef {{origin:string,kind:'local'|'ssh'|'external',room:string,capability:string}} RelayProfile */
 /** @typedef {{target:string,port:number,address:string,ownerId:string,room:string,capability:string,phase:'pending'|'ready'|'failed'|'removed',version?:string,active?:boolean,canReconfigure?:boolean}} RelayDeploymentConfig */
 /** @typedef {{schemaVersion?:number,enabled?:boolean,directEnabled?:boolean,directPort?:number,relayLocal?:{enabled:boolean,port:number,origin:string},relayDeployment?:RelayDeploymentConfig,relayProfiles?:RelayProfile[],identity?:string,relay?:string,relayProtocol?:string,room?:string,capability?:string,devices?:LegacyDevice[],deviceGrants?:DeviceGrant[],pushCommands?:PushCommand[],network?:RemoteNetwork|null,[key:string]:unknown}} RemoteConfig */
+
+/** @param {string} code */
+function failure(code) {
+  return Object.assign(new Error(`Remote network: ${code}`), { code });
+}
+
+/** @param {unknown} value @param {readonly string[]} keys @returns {value is Record<string,unknown>} */
+const keysOnly = (value, keys) =>
+  record(value) && Object.keys(value).every((key) => keys.includes(key));
+/** @param {unknown} value @returns {value is number} */
+const portNumber = (value) =>
+  typeof value === "number" && Number.isInteger(value) && value > 0 && value <= 65535;
+
+/** @param {unknown} value @returns {string} */
+function validateHttpsOrigin(value) {
+  try {
+    if (typeof value !== "string") throw failure("invalid-origin");
+    const url = new URL(value);
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.origin !== value ||
+      !url.hostname
+    )
+      throw failure("invalid-origin");
+    return value;
+  } catch {
+    throw failure("invalid-origin");
+  }
+}
+
+/** @param {unknown} value @returns {HistoricalNetworkMapping} */
+function checkedRecord(value) {
+  if (!record(value)) throw failure("invalid-record");
+  const normalized = { ...value, scope: value.scope === undefined ? "private" : value.scope };
+  assertHistoricalNetworkMapping(normalized);
+  return normalized;
+}
+/** @param {unknown} record @returns {asserts record is HistoricalNetworkMapping} */
+function assertHistoricalNetworkMapping(record) {
+  if (
+    !keysOnly(record, [
+      "schema",
+      "owner",
+      "id",
+      "state",
+      "operation",
+      "publicOrigin",
+      "target",
+      "httpsPort",
+      "scope",
+      "sourceScope",
+    ]) ||
+    record.schema !== 1 ||
+    record.owner !== "areal-remote" ||
+    typeof record.id !== "string" ||
+    !/^[a-f0-9-]{36}$/.test(record.id) ||
+    !(
+      typeof record.state === "string" &&
+      ["proposed", "pending", "owned", "removed"].includes(record.state)
+    ) ||
+    !(
+      typeof record.operation === "string" &&
+      ["apply", "remove", "scope"].includes(record.operation)
+    ) ||
+    !portNumber(record.httpsPort)
+  )
+    throw failure("invalid-record");
+  const scope = record.scope === undefined ? "private" : record.scope;
+  if (
+    !(typeof scope === "string" && ["private", "public"].includes(scope)) ||
+    (record.operation === "scope"
+      ? !(
+          typeof record.sourceScope === "string" &&
+          ["private", "public"].includes(record.sourceScope)
+        ) || record.sourceScope === scope
+      : record.sourceScope !== undefined) ||
+    (record.state === "proposed" && record.operation === "apply" && scope !== "private")
+  )
+    throw failure("invalid-record");
+  const origin = new URL(validateHttpsOrigin(record.publicOrigin));
+  if (Number(origin.port || 443) !== record.httpsPort || !/^[a-z0-9.-]+$/.test(origin.hostname))
+    throw failure("invalid-record");
+  const match =
+    typeof record.target === "string" && /^http:\/\/127\.0\.0\.1:([1-9]\d*)$/.exec(record.target);
+  if (!match || !portNumber(Number(match[1]))) throw failure("invalid-record");
+}
 
 /** @param {unknown} value @returns {RemoteConfig} */
 function parseRemoteConfig(value) {
@@ -233,7 +321,7 @@ function selectRelayProfile(config, local, origin) {
   if (!profile) throw new Error("此 Relay 尚未登记");
   if (profile.kind === "local" && (local.phase !== "running" || local.address !== origin))
     throw new Error("请先启动本机 Relay");
-  if (profile.kind !== "local") require("./remote-network.cjs").validateHttpsOrigin(origin);
+  if (profile.kind !== "local") validateHttpsOrigin(origin);
   return {
     ...withCurrentProfile(config),
     relay: profile.origin,

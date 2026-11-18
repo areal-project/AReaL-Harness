@@ -121,7 +121,7 @@
     "test:remote-static": "node --test scripts/remote-static-assets.test.mjs",
     "test:remote-gui-quit": "node scripts/remote-gui-quit-e2e.mjs",
     "test:remote-review": "node scripts/remote-raster-contract.mjs && node scripts/remote-review-dom-contract.mjs",
-    "test:remote-network": "node scripts/remote-network-smoke.mjs && node --test scripts/remote-network-settings.test.mjs",
+    "test:remote-network": "node --test scripts/remote-network-settings.test.mjs",
     "export:remote": "node scripts/export-remote-assets.mjs renderer/dist",
     "test:remote-relay": "node --test scripts/remote-relay-system-ca.test.mjs scripts/remote-relay-host.test.mjs scripts/remote-relay-export.test.mjs scripts/remote-relay-wire.test.mjs scripts/remote-client-kind-host.test.mjs scripts/remote-device-management-host.test.mjs",
     "test:remote-relay-contracts": "node --test scripts/remote-relay-host.test.mjs scripts/remote-relay-export.test.mjs scripts/remote-relay-wire.test.mjs scripts/remote-client-kind-host.test.mjs scripts/remote-device-management-host.test.mjs",

@@ -113,15 +113,7 @@ T24 在 Stop 前读取原 Turn 与工具并确认 inProgress；Core 原子 guard
 
 ## RC-11 可重复验证
 
-构建 GUI 后运行 `pnpm --dir clients/gui run test:remote-network`。它包含现有网络适配器 CLI 协议检查、真实本地 Direct 监听器的 Host 集成测试，以及生产 React 设置组件的源码渲染检查。所有可执行 CLI 都是独占临时目录内的 fixture，不调用真实 Tailscale，不改变账号、VPN、组织配置或公网。
-
-Host 测试通过现有可信 `remoteControl` 边界，覆盖脱敏方案与确认、renderer 目标/可执行文件注入拒绝、仅实际 Remote 端口可映射、陈旧方案与监听器消失、pending/final 保存失败、固定端口重启/冲突、owned/pending 日志恢复不重放、映射漂移、关闭前持久保存及关闭后等待精确所有权撤销。CLI smoke 另覆盖缺失/旧版本、登录/HTTPS 状态、未知 schema、超时/输出上限与保留外部配置。系统安全存储是 fixture 边界，不能作为真实钥匙串证据。
-
-本地 HTTPS 代理保留原 Host/Origin，验证精确同源 WSS、真实 Noise 配对与一个授权项目的读取，同时拒绝 Core/管理路径与管理方法。TLS 使用仓库 `tests/fixtures/proxy` 的公开测试证书，仅在单次 Node 请求中传入 CA；无 CA 与错误主机名均必须失败，不关闭证书校验、不安装系统信任。HTTP/WS 混合来源及伪造转发头被拒绝，来源变化取消邀请并断开连接。
-
-这些是源码与本地协议证据。React 检查只验证源码渲染，不证明真实点击、浏览器 CSP/TLS 行为或视觉可用性；本地 TLS/Noise 也不证明真实 Tailscale CLI、tailnet/组织 ACL、iOS/Android、扫码、手机切网、Electron/钥匙串、包安装或公开部署。T35 的真实手机与网络门槛保持独立，不能因 fixture 通过标为全部完成。
-
-现有 `test:remote-pairing-e2e` 还通过生产 Electron 设置页 → 私有 DesktopService → RemoteControl 执行网络检测、绑定方案、明确同意、应用和关闭移除，再恢复本机入口继续原有配对/迁移检查。只在测试 Node Host 的既有构造器中注入独占 fake CLI，验证确认前无配置变更以及精确目标/端口的应用和移除；不向生产 Main 或系统 PATH 增加可执行文件配置。同一向导还分别检查只确认范围、只确认公网均不能执行 CLI，双确认后才切换 fake Funnel 映射；恢复私人入口的方案必须重新确认，再关闭并移除。此路径不认证公网 T44。manifest 的 `networkWizard` 单独记录该层和实际执行情况。脚本存在不代表点击已验收，该 fixture 也不证明真实 Tailscale、组织 ACL、系统钥匙串或手机链路。
+运行 `pnpm --dir clients/gui run test:remote-network` 验证高级网络设置的展示、确认控件、Relay 登记失败时的输入保留及邀请码二维码。设置和邀请请求使用 fixture；命令覆盖生产 React 界面，Tailscale Serve/Funnel 的系统操作留在真实手机与网络验收。
 
 ## V1. 主测试入口
 

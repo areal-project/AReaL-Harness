@@ -878,7 +878,6 @@
     "../../services/workbench/src/desktop/core/providers.cjs",
     "../../services/workbench/src/desktop/core/receipt-contract.cjs",
     "../../services/workbench/src/desktop/core/remote-config.cjs",
-    "../../services/workbench/src/desktop/core/remote-network.cjs",
     "../../services/workbench/src/desktop/core/schedule-admission.cjs",
     "../../services/workbench/src/desktop/core/scoped-resources.cjs",
     "../../services/workbench/src/desktop/core/service-transport-contract.cjs",
