@@ -706,7 +706,10 @@ async fn resource_reader_rejects_main_aliases_and_legacy_model_tool() {
     }
 }
 
-struct Exposure;
+struct Exposure {
+    resource_direct: bool,
+    round: AtomicUsize,
+}
 #[async_trait]
 impl Model for Exposure {
     fn name(&self) -> &str {
@@ -716,33 +719,54 @@ impl Model for Exposure {
         unreachable!()
     }
     async fn chat(&self, messages: Vec<Message>, tools: Vec<Value>) -> anyhow::Result<ModelStream> {
-        for name in ["skill_load", "skill_resource_read"] {
-            assert!(
-                tools.iter().any(|t| t["function"]["name"] == name),
-                "missing direct {name}"
-            );
-        }
+        let round = self.round.fetch_add(1, Ordering::SeqCst);
+        assert!(tools.iter().any(|t| t["function"]["name"] == "skill_load"));
+        assert_eq!(
+            tools
+                .iter()
+                .any(|t| t["function"]["name"] == "skill_resource_read"),
+            self.resource_direct || round > 0,
+            "skill_resource_read exposure did not follow the compact-tool policy"
+        );
         assert!(!tools.iter().any(|t| t["function"]["name"] == "skill_read"));
         assert!(
             !messages
                 .iter()
                 .any(|m| m.text_content().contains("PRIVATE_BODY_MARKER"))
         );
+        let event = if self.resource_direct {
+            done().into_iter().next().unwrap()
+        } else if round == 0 {
+            call(
+                "tool_search",
+                json!({"query":"skill_resource_read","limit":1}),
+            )
+            .into_iter()
+            .next()
+            .unwrap()
+        } else {
+            let result: Value = serde_json::from_str(&messages.last().unwrap().text_content())?;
+            assert_eq!(result["tools"][0]["name"], "skill_resource_read");
+            done().into_iter().next().unwrap()
+        };
         Ok(Box::pin(futures_util::stream::iter(
-            done().into_iter().map(Ok),
+            [event].into_iter().map(Ok),
         )))
     }
 }
 
 #[tokio::test]
-async fn compact_tools_keep_load_and_resource_read_direct_without_preloading_bodies() {
+async fn compact_tools_keep_load_direct_and_discover_resource_read_without_preloading_bodies() {
     for compact in [false, true] {
         let state = tempfile::tempdir().unwrap();
         let root = tempfile::tempdir().unwrap();
         fs::write(root.path().join("SKILL.md"), "PRIVATE_BODY_MARKER").unwrap();
         let engine = Engine::open_with_extensions(
             state.path(),
-            Arc::new(Exposure),
+            Arc::new(Exposure {
+                resource_direct: !compact,
+                round: AtomicUsize::new(0),
+            }),
             Limits::default(),
             None,
             areal_engine::tools::ToolExtensions {
