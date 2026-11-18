@@ -3,7 +3,7 @@ import { ClientState, RemoteConnection } from "@areal/remote-client";
 import { DeviceStore, parseEndpointLink, parsePairingLink } from "./device-store.mjs";
 import { createMobileSocket, LocalRelaySocket } from "./local-socket.mjs";
 
-/** @typedef {{kind:"loading"}|{kind:"connecting"|"offline"|"background"|"revoked"|"blocked",hostId?:string}|{kind:"unpaired",cleared?:boolean,error?:"invalidLink"|"pairFailed"|"localRelayUnreachable"}|{kind:"pairing",fingerprint:string,hostId?:string}|{kind:"connected",ready:{capabilities:string[],grantRevision:number,hostId:string,gatewayGeneration:string},remembered:boolean,fingerprint:string,hostId:string}} MobileConnectionState */
+/** @typedef {{kind:"loading"}|{kind:"connecting"|"offline"|"background"|"revoked"|"blocked",hostId?:string,grantChanged?:boolean}|{kind:"unpaired",cleared?:boolean,error?:"invalidLink"|"pairFailed"|"localRelayUnreachable"}|{kind:"pairing",fingerprint:string,hostId?:string}|{kind:"connected",ready:{capabilities:string[],grantRevision:number,hostId:string,gatewayGeneration:string},remembered:boolean,fingerprint:string,hostId:string}} MobileConnectionState */
 export class MobileClient {
   /** @param {{keychain: import("./device-store.mjs").DeviceStore["keychain"], clientKind:"ios"|"android", socket?:(url:string)=>WebSocket, capabilities?:string[]}} options */
   constructor({ keychain, clientKind, socket = createMobileSocket, capabilities }) {
@@ -230,6 +230,7 @@ export class MobileClient {
     }
     this.publish({
       kind: reconnect ? "offline" : "blocked",
+      ...(code === "GRANT_CHANGED" ? { grantChanged: true } : {}),
       ...(this.pairedHostId ? { hostId: this.pairedHostId } : {}),
     });
     if (!reconnect) return;

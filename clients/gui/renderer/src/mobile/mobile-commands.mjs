@@ -340,7 +340,13 @@ export class MobileCommands {
     return { revision: snapshot.configRevision + 1, serviceGeneration: detail.serviceGeneration };
   }
   async send() {
-    if (this.state.busy || this.state.recovering) return;
+    if (
+      this.state.busy ||
+      this.state.recovering ||
+      this.workspace.state.stale ||
+      this.client.snapshot().kind !== "connected"
+    )
+      return;
     const page = this.workspace.state.page;
     if (!["new", "session"].includes(page.kind)) return;
     const connection = this.client.connection;
@@ -419,6 +425,7 @@ export class MobileCommands {
     }
   }
   async configure(projectId, threadId, intent) {
+    if (this.workspace.state.stale || this.client.snapshot().kind !== "connected") return false;
     if (this.state.busy || this.state.recovering || this.blocksSend(projectId, threadId))
       return false;
     this.setIntent(projectId, threadId, intent);
@@ -441,6 +448,8 @@ export class MobileCommands {
       snapshot = detail?.snapshot;
     if (
       !snapshot?.activeTurnId ||
+      this.workspace.state.stale ||
+      this.client.snapshot().kind !== "connected" ||
       this.state.busy ||
       this.unresolved(detail.projectId, snapshot.threadId).some(
         (command) =>

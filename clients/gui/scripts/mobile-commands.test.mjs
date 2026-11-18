@@ -68,6 +68,22 @@ async function fixture() {
   const commands = new MobileCommands(client, workspace);
   return { client, workspace, commands, requests, receipts, snapshot, record: () => record };
 }
+test("keeps the draft while the conversation is stale and sends only after a fresh read", async () => {
+  const f = await fixture();
+  await f.workspace.navigate({ kind: "session", projectId: "project", threadId: "thread" });
+  f.commands.setDraft("project", "thread", "继续修改这段草稿");
+  f.workspace.state.stale = true;
+  await f.commands.send();
+  assert.equal(f.commands.draft("project", "thread"), "继续修改这段草稿");
+  assert.deepEqual(
+    f.requests.map((request) => request.method),
+    ["session.open"],
+  );
+  f.workspace.state.stale = false;
+  await f.commands.send();
+  assert.equal(f.requests[1].params.text, "继续修改这段草稿");
+  assert.equal(f.commands.draft("project", "thread"), "");
+});
 test("first send applies an explicit model only after create and baseline, with durable locators", async () => {
   const f = await fixture();
   f.commands.setDraft("project", "", "first message");

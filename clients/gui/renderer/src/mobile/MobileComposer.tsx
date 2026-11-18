@@ -92,8 +92,10 @@ export function MobileComposer({
   const checking = command.busy || command.recovering;
   const running = !!snapshot?.activeTurnId;
   const connected = connection.kind === "connected";
-  const canSubmit = connected && connection.ready.capabilities.includes("submit");
-  const canInterrupt = connected && connection.ready.capabilities.includes("interrupt");
+  const canSubmit = connected && !view.stale && connection.ready.capabilities.includes("submit");
+  const canEdit = canSubmit || (view.stale && workspace.lastReady?.capabilities.includes("submit"));
+  const canInterrupt =
+    connected && !view.stale && connection.ready.capabilities.includes("interrupt");
   const granted = connection.kind === "connected" ? connection.ready.capabilities : [];
   const ordinary = isNew || snapshot?.ownership.kind === "ordinary";
   const blocked = commands.blocksSend(projectId, threadId);
@@ -266,7 +268,7 @@ export function MobileComposer({
                 ? "mobile.queuePlaceholder"
                 : "mobile.messagePlaceholder",
           )}
-          disabled={!canSubmit || !ordinary}
+          disabled={!canEdit || !ordinary}
           submitDisabled={disabled || blocked || command.busy || !draft.trim()}
           submitLabel={t(running ? "mobile.enqueue" : "mobile.send")}
           enterSubmits={false}

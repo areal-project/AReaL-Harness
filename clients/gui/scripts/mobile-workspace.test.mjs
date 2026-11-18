@@ -56,6 +56,72 @@ test("lists only Host-authorized projects and appends the requested session page
     Array.from({ length: 10 }, (_, rank) => `session-${rank}`),
   );
   assert.equal(workspace.snapshot().groups.p.nextCursor, null);
+  await workspace.navigate({ kind: "projects" });
+  await workspace.navigate({ kind: "work", projectId: "p" });
+  assert.equal(workspace.snapshot().groups.p.data[7].threadId, "session-7");
+  assert.equal(workspace.snapshot().groups.p.nextCursor, null);
+});
+
+test("same-device reconnection keeps the conversation visible until a fresh baseline arrives", async (t) => {
+  const ready = {
+    hostId: "host",
+    grantRevision: 1,
+    gatewayGeneration: "gateway",
+    connectionId: "first",
+  };
+  let state = { kind: "connected", ready, hostId: ready.hostId };
+  let listener;
+  const response = Promise.withResolvers();
+  const client = {
+    connection: { ready },
+    snapshot: () => state,
+    subscribe: (callback) => {
+      listener = callback;
+      return () => {};
+    },
+    async request({ method }, onResult) {
+      if (method === "project.list") return { projects: [] };
+      assert.equal(method, "session.open");
+      onResult(await response.promise);
+    },
+  };
+  const workspace = new MobileWorkspace(client);
+  t.after(() => workspace.dispose());
+  listener();
+  await Promise.resolve();
+  const page = { kind: "session", projectId: "project", threadId: "thread" };
+  const turns = [{ id: "turn", items: [] }];
+  workspace.publish({ page, turns });
+  state = { kind: "offline", hostId: ready.hostId };
+  client.connection = null;
+  listener();
+  assert.equal(workspace.snapshot().stale, true);
+  assert.equal(workspace.snapshot().page, page);
+  assert.equal(workspace.snapshot().turns, turns);
+
+  const next = { ...ready, connectionId: "second" };
+  state = { kind: "connected", ready: next, hostId: ready.hostId };
+  client.connection = { ready: next };
+  listener();
+  assert.equal(workspace.snapshot().turns, turns);
+  response.resolve({
+    ...next,
+    projectId: "project",
+    sequence: 0,
+    snapshot: { threadId: "thread", history: {}, turns: [] },
+  });
+  await new Promise(setImmediate);
+  assert.equal(workspace.snapshot().stale, false);
+  assert.equal(workspace.snapshot().detail.connectionId, "second");
+  assert.equal(workspace.snapshot().page, page);
+
+  state = { kind: "offline", hostId: ready.hostId, grantChanged: true };
+  client.connection = null;
+  listener();
+  assert.equal(workspace.snapshot().stale, false);
+  assert.equal(workspace.snapshot().accessChanged, true);
+  assert.equal(workspace.snapshot().detail, null);
+  assert.deepEqual(workspace.snapshot().turns, []);
 });
 
 test("shows a stopped project's saved session summaries without starting it", async (t) => {

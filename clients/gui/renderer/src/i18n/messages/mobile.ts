@@ -77,6 +77,10 @@ export const mobileMessages = {
     "zh-CN": "正在连接…",
     en: "Connecting…",
   },
+  "mobile.draftOffline": {
+    "zh-CN": "连接已断开。重新连接后可以发送消息。",
+    en: "Connection lost. Reconnect to send messages.",
+  },
   "mobile.connected": {
     "zh-CN": "已连接 · 可操作",
     en: "Connected · Can control",

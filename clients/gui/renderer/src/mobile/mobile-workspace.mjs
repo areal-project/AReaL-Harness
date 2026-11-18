@@ -4,7 +4,7 @@ export const SESSION_PAGE_SIZE = 5;
 
 /** @typedef {import('../services.js').Data} Data */
 /** @typedef {{kind:'projects'}|{kind:'new',projectId:string}|{kind:'work',projectId:string}|{kind:'session',projectId:string,threadId:string}|{kind:'task',projectId:string,taskId:string,runId:string}} MobilePage */
-/** @typedef {{page:MobilePage, projects:Data[], groups:Record<string,Data>, detail:Data|null, turns:Data[], task:Data|null, catalog:Data|null, loading:boolean, error:boolean, loadingOlder:boolean, bodyError:boolean}} WorkspaceView */
+/** @typedef {{page:MobilePage, projects:Data[], groups:Record<string,Data>, detail:Data|null, turns:Data[], task:Data|null, catalog:Data|null, loading:boolean, error:boolean, loadingOlder:boolean, bodyError:boolean, stale:boolean, accessChanged:boolean}} WorkspaceView */
 export class MobileWorkspace {
   constructor(client, cache = {}) {
     this.client = client;
@@ -27,6 +27,8 @@ export class MobileWorkspace {
       error: false,
       loadingOlder: false,
       bodyError: false,
+      stale: false,
+      accessChanged: false,
     };
     client.onSession = (message) => this.sessionEvent(message);
     this.unsubscribe = client.subscribe(() => this.connectionChanged());
@@ -41,23 +43,30 @@ export class MobileWorkspace {
     this.listeners.forEach((listener) => listener());
   }
   connectionChanged() {
-    if (
-      this.client.snapshot().kind === "connected" &&
-      this.observedConnection === this.client.connection
-    )
-      return;
+    const state = this.client.snapshot();
+    if (state.kind === "connected" && this.observedConnection === this.client.connection) return;
     clearInterval(this.poll);
-    if (this.client.snapshot().kind !== "connected") {
+    if (state.kind !== "connected") {
       this.observedConnection = null;
       this.shell = undefined;
       this.epoch++;
       this.bodies.clear();
+      if (
+        ["offline", "background", "connecting"].includes(state.kind) &&
+        state.hostId &&
+        state.hostId === this.lastReady?.hostId &&
+        !state.grantChanged
+      ) {
+        this.publish({ stale: true, loading: false, loadingOlder: false, error: false });
+        return;
+      }
+      const accessChanged =
+        !!state.grantChanged || (this.state.accessChanged && state.kind !== "unpaired");
+      this.lastReady = undefined;
       this.history = [];
       this.visibleTurns = [];
       this.publish({
-        ...(["unpaired", "revoked"].includes(this.client.snapshot().kind)
-          ? { page: { kind: "projects" } }
-          : {}),
+        page: { kind: "projects" },
         projects: [],
         groups: {},
         detail: null,
@@ -67,9 +76,34 @@ export class MobileWorkspace {
         loading: false,
         loadingOlder: false,
         error: false,
+        stale: false,
+        accessChanged,
       });
       return;
     }
+    if (
+      this.lastReady &&
+      (state.ready.hostId !== this.lastReady.hostId ||
+        state.ready.grantRevision !== this.lastReady.grantRevision)
+    ) {
+      this.epoch++;
+      this.history = [];
+      this.visibleTurns = [];
+      this.bodies.clear();
+      this.publish({
+        page: { kind: "projects" },
+        projects: [],
+        groups: {},
+        detail: null,
+        turns: [],
+        catalog: null,
+        task: null,
+        loading: false,
+        loadingOlder: false,
+      });
+    }
+    this.lastReady = state.ready;
+    this.publish({ accessChanged: false });
     this.observedConnection = this.client.connection;
     const connection = this.observedConnection;
     const directory = this.readDirectory().catch(() => {});
@@ -80,7 +114,7 @@ export class MobileWorkspace {
       });
     this.poll = setInterval(() => {
       const page = this.state.page;
-      if (["projects", "work"].includes(page.kind)) void this.refresh(true);
+      if (["projects", "work"].includes(page.kind)) void this.refresh();
     }, 5000);
   }
   release(detail = this.state.detail, connection = this.client.connection) {
@@ -101,7 +135,7 @@ export class MobileWorkspace {
     );
   }
   navigate(page) {
-    this.release();
+    if (!this.state.stale) this.release();
     this.epoch++;
     this.history = [];
     this.visibleTurns = [];
@@ -118,7 +152,7 @@ export class MobileWorkspace {
     });
     return this.refresh();
   }
-  async refresh(polling = false) {
+  async refresh() {
     if (this.client.snapshot().kind !== "connected" || this.state.loading) return;
     const epoch = this.epoch,
       page = this.state.page;
@@ -140,7 +174,7 @@ export class MobileWorkspace {
       } else if (page.kind === "work")
         await this.work(
           page.projectId,
-          polling && this.state.groups[page.projectId]?.expanded ? "refreshExpanded" : "replace",
+          this.state.groups[page.projectId]?.expanded ? "refreshExpanded" : "replace",
           epoch,
         );
       else if (page.kind === "session") await this.open(page, epoch);
@@ -185,7 +219,8 @@ export class MobileWorkspace {
     } catch {
       if (epoch === this.epoch) this.publish({ error: true });
     } finally {
-      if (epoch === this.epoch) this.publish({ loading: false });
+      if (epoch === this.epoch)
+        this.publish({ loading: false, ...(page.kind !== "session" ? { stale: false } : {}) });
     }
   }
   async readDirectory() {
@@ -349,11 +384,8 @@ export class MobileWorkspace {
       if (ready.capabilities.includes("submit")) await this.activate(page.projectId);
       if (epoch !== this.epoch || connection !== this.client.connection) return;
     }
-    this.release();
-    this.history = [];
-    this.visibleTurns = [];
-    this.bodies.clear();
-    this.publish({ detail: null, turns: [], loadingOlder: false });
+    if (!this.state.stale) this.release();
+    this.publish({ stale: true });
     await this.client.request(
       {
         method: "session.open",
@@ -374,14 +406,18 @@ export class MobileWorkspace {
           detail.sequence !== 0
         )
           throw new Error("STALE_SESSION");
+        this.history = [];
+        this.visibleTurns = [];
+        this.bodies.clear();
         this.cursor = detail.snapshot.history.nextCursor;
-        this.publish({ detail });
+        this.publish({ detail, stale: false });
         this.cache.saveSession?.(ready, this.cachedProject(page.projectId)?.projectId, detail);
         this.renderTurns();
       },
     );
   }
   sessionEvent(message) {
+    if (this.client.snapshot().kind !== "connected") return;
     if (message.event?.startsWith("shell.")) {
       const shell = this.shell;
       if (
@@ -487,6 +523,7 @@ export class MobileWorkspace {
     this.publish({ turns: this.bodies.decorate(turns), bodyError: !!this.bodies.error });
   }
   async older(pageId) {
+    if (this.state.stale) return;
     const detail = this.state.detail,
       epoch = this.epoch;
     const entry = pageId ? this.history.find((page) => page.id === pageId) : null;

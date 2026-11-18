@@ -1,6 +1,13 @@
 import { DelayedVisible } from "@areal/ui";
 import { TitleTooltip } from "@areal/ui";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { Button } from "@areal/ui";
 import { ChevronLeft, ChevronRight, Settings, SquarePen } from "lucide-react";
 import { TooltipProvider } from "../components/ui/tooltip.js";
@@ -96,7 +103,10 @@ export function MobileWorkspaceView({
   useSyncExternalStore(commands.subscribe, commands.snapshot);
   const connection = useSyncExternalStore(client.subscribe, client.snapshot);
   const pull = useRef<number | null>(null);
+  const scroller = useRef<HTMLElement>(null);
+  const positions = useRef(new Map<string, { key?: string; offset: number; scrollTop: number }>());
   const page = view.page;
+  const listId = page.kind === "work" ? page.projectId : undefined;
   const task = view.task;
   const selectedId =
     page.kind === "projects" ? undefined : workspace.cachedProject(page.projectId)?.projectId;
@@ -121,6 +131,23 @@ export function MobileWorkspaceView({
       ? null
       : view.projects.find((value) => value.projectId === page.projectId);
   const group = page.kind === "projects" ? null : view.groups[page.projectId];
+  const rows = group?.data;
+  useLayoutEffect(() => {
+    const element = scroller.current;
+    if (!element) return;
+    const position = listId ? positions.current.get(listId) : undefined;
+    const anchor =
+      position?.key &&
+      [...element.querySelectorAll<HTMLElement>("[data-work-row]")].find(
+        (row) => row.dataset.workRow === position.key,
+      );
+    if (anchor && position) {
+      element.scrollTop +=
+        anchor.getBoundingClientRect().top - element.getBoundingClientRect().top - position.offset;
+    } else {
+      element.scrollTop = position?.scrollTop ?? 0;
+    }
+  }, [page, listId, rows]);
   const title =
     page.kind === "session"
       ? view.detail?.snapshot.title || t("mobile.untitled")
@@ -139,10 +166,24 @@ export function MobileWorkspaceView({
   return (
     <TooltipProvider>
       <section
+        ref={scroller}
         className={`mobile-workspace relative [scrollbar-gutter:stable] [&>h3]:mt-inline [&_.messages-shell]:min-h-0 [&_.messages-shell]:flex-1 [&_.messages]:[scrollbar-gutter:auto]! [&_.messages]:[--content-font-size:var(--text-fixed-body)] [&_.message-column]:[--message-reading-inset:var(--spacing-inline)]! [&_>_h3]:text-fixed-label [&_>_h3]:text-foreground-subtle [&_>_h3]:font-normal min-h-0 flex-1 overflow-y-auto overscroll-y-contain mobile-stack flex flex-col gap-field ${["session", "new"].includes(page.kind) ? "mobile-session overflow-hidden! min-h-0" : ""}`}
         data-page={page.kind}
         aria-busy={view.loading}
         data-current-thread={page.kind === "session" ? page.threadId : undefined}
+        onScroll={(event) => {
+          if (!listId) return;
+          const element = event.currentTarget;
+          const top = element.getBoundingClientRect().top;
+          const anchor = [...element.querySelectorAll<HTMLElement>("[data-work-row]")].find(
+            (row) => row.getBoundingClientRect().bottom > top,
+          );
+          positions.current.set(listId, {
+            key: anchor?.dataset.workRow,
+            offset: anchor ? anchor.getBoundingClientRect().top - top : 0,
+            scrollTop: element.scrollTop,
+          });
+        }}
         onTouchStart={(event) => {
           if (event.currentTarget.scrollTop === 0 && page.kind !== "session")
             pull.current = event.touches[0].clientY;
@@ -281,6 +322,9 @@ export function MobileWorkspaceView({
                   key={row.kind === "taskRun" ? `${row.taskId}/${row.runId}` : row.threadId}
                   data-thread-id={row.threadId}
                   data-task-id={row.taskId}
+                  data-work-row={
+                    row.kind === "taskRun" ? `${row.taskId}/${row.runId}` : row.threadId
+                  }
                   onClick={() =>
                     workspace.navigate(
                       row.kind === "taskRun"

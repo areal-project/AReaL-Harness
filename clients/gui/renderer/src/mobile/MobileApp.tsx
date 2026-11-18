@@ -75,6 +75,11 @@ client.onCleared = async (hostId) => {
 function MobileApp() {
   const { t } = useI18n();
   const state = useSyncExternalStore(client.subscribe, client.snapshot);
+  const stale = useSyncExternalStore(workspace.subscribe, () => workspace.snapshot().stale);
+  const accessChanged = useSyncExternalStore(
+    workspace.subscribe,
+    () => workspace.snapshot().accessChanged,
+  );
   const [name, setName] = useState(t("mobile.deviceFallback"));
   const [link, setLink] = useState("");
   const [paste, setPaste] = useState(false);
@@ -92,6 +97,26 @@ function MobileApp() {
   const [cacheView, setCacheView] = useState<MobileHostCacheView | null>(null);
 
   const pairedHostId = "hostId" in state ? state.hostId : undefined;
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const style = document.documentElement.style;
+    const resize = () => {
+      if (viewport.scale !== 1) return;
+      style.setProperty("--mobile-viewport-height", `${viewport.height}px`);
+      style.setProperty("--mobile-viewport-top", `${viewport.offsetTop}px`);
+    };
+    resize();
+    viewport.addEventListener("resize", resize);
+    viewport.addEventListener("scroll", resize);
+    return () => {
+      viewport.removeEventListener("resize", resize);
+      viewport.removeEventListener("scroll", resize);
+      style.removeProperty("--mobile-viewport-height");
+      style.removeProperty("--mobile-viewport-top");
+    };
+  }, []);
 
   useEffect(() => {
     client.onReady = async (ready) => {
@@ -231,7 +256,7 @@ function MobileApp() {
     (sum, s) => sum + s.bytes,
     0,
   );
-  const showWorkspace = state.kind === "connected";
+  const showWorkspace = state.kind === "connected" || stale;
 
   function selectCachedProject(projectId: string, threadId?: string) {
     if (!pairedHostId) return;
@@ -265,8 +290,9 @@ function MobileApp() {
 
   return (
     <main
-      className="mobile-page data-[state=connected]:h-dvh data-[state=connected]:min-h-0 data-[state=connected]:overflow-hidden data-[state=connected]:[&>.mobile-stack]:flex-1 data-[state=connected]:[&>.mobile-stack]:min-h-0 [&_h1]:[line-height:1.3] [&_h1]:font-semibold [&_h2]:[line-height:1.3] [&_h2]:font-semibold [&_h3]:[line-height:1.3] [&_h3]:font-semibold [&_[data-action=new-session]]:text-fixed-control [&_[data-action=new-session]]:font-semibold [&_[data-action=new-session]]:bg-primary [&_[data-action=new-session]]:text-primary-foreground flex flex-col gap-section [padding:calc(env(safe-area-inset-top)+var(--spacing-panel))_var(--spacing-panel)_calc(env(safe-area-inset-bottom)+var(--spacing-panel))] min-h-dvh box-border bg-background text-foreground font-sans text-fixed-body"
+      className="mobile-page [&_h1]:[line-height:1.3] [&_h1]:font-semibold [&_h2]:[line-height:1.3] [&_h2]:font-semibold [&_h3]:[line-height:1.3] [&_h3]:font-semibold [&_[data-action=new-session]]:text-fixed-control [&_[data-action=new-session]]:font-semibold [&_[data-action=new-session]]:bg-primary [&_[data-action=new-session]]:text-primary-foreground flex flex-col gap-section [padding:calc(env(safe-area-inset-top)+var(--spacing-panel))_var(--spacing-panel)_calc(env(safe-area-inset-bottom)+var(--spacing-panel))] min-h-dvh box-border bg-background text-foreground font-sans text-fixed-body"
       data-state={state.kind}
+      data-workspace={showWorkspace ? "" : undefined}
       data-remembered={state.kind === "connected" ? state.remembered : undefined}
     >
       {(!showWorkspace || settings) && (
@@ -549,7 +575,21 @@ function MobileApp() {
           {state.kind === "connected" && !state.remembered && (
             <FeedbackNotice tone="warning" message={t("mobile.storageFailed")} />
           )}
+          {stale && (state.kind === "offline" || state.kind === "connecting") && (
+            <FeedbackNotice
+              tone="info"
+              message={t(state.kind === "offline" ? "mobile.draftOffline" : "mobile.connecting")}
+              actions={
+                state.kind === "offline" ? (
+                  <Button size="sm" variant="ghost" onClick={() => void client.setActive(true)}>
+                    {t("mobile.retry")}
+                  </Button>
+                ) : undefined
+              }
+            />
+          )}
           <MobileWorkspaceView
+            key={workspace.lastReady?.grantRevision}
             client={client}
             workspace={workspace}
             commands={commands}
@@ -564,7 +604,7 @@ function MobileApp() {
       )}
       {!settings && !showWorkspace && state.kind !== "unpaired" && state.kind !== "pairing" && (
         <section className="mobile-stack flex flex-col gap-field">
-          {pairedHostId && state.kind !== "revoked" && cacheView?.meta?.shell ? (
+          {pairedHostId && state.kind !== "revoked" && !accessChanged && cacheView?.meta?.shell ? (
             <OfflineCachedWorkspace
               hostId={pairedHostId}
               cacheStore={cacheStore}
