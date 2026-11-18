@@ -10,6 +10,7 @@ import { projectedTurns } from "../remote/session-projection.js";
 import { SettingsDialog } from "../settings/common.js";
 import type { Action, Data } from "../services.js";
 import type { MobileCacheStore, MobileHostCacheView } from "./mobile-cache.js";
+import { SESSION_PAGE_SIZE } from "./mobile-workspace.mjs";
 
 export function projectDisplayName(project: Pick<ShellProject, "projectId" | "workspace">) {
   const folder = project.workspace.split("/").filter(Boolean).at(-1);
@@ -168,6 +169,7 @@ export function OfflineCachedWorkspace({
   const [threadId, setThreadId] = useState<string>("");
   const [cachedSession, setCachedSession] = useState<SessionRead | null>(null);
   const [loadingSession, setLoadingSession] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(SESSION_PAGE_SIZE);
 
   const projects = visibleAuthorizedProjects(cacheView);
   const activeProject =
@@ -179,6 +181,7 @@ export function OfflineCachedWorkspace({
   useEffect(() => {
     setThreadId("");
     setCachedSession(null);
+    setVisibleCount(SESSION_PAGE_SIZE);
   }, [activeProject?.projectId]);
 
   useEffect(() => {
@@ -211,7 +214,12 @@ export function OfflineCachedWorkspace({
   let observationTurns: Data[] | null = null;
   if (cachedSession) {
     try {
-      observationTurns = projectedTurns(readObservationResult(cachedSession.snapshot).thread.turns);
+      const mobileTurns = cachedSession.snapshot.mobileTurns;
+      observationTurns = projectedTurns(
+        Array.isArray(mobileTurns)
+          ? mobileTurns
+          : readObservationResult(cachedSession.snapshot).thread.turns,
+      );
     } catch {
       observationTurns = null;
     }
@@ -297,7 +305,7 @@ export function OfflineCachedWorkspace({
             <p className="text-foreground-subtle">{t("mobile.noSessions")}</p>
           ) : (
             <div className="flex flex-col gap-2">
-              {summaries.map((item) => {
+              {summaries.slice(0, visibleCount).map((item) => {
                 const isCached = cachedThreads.includes(item.id);
                 return (
                   <button
@@ -326,6 +334,16 @@ export function OfflineCachedWorkspace({
                   </button>
                 );
               })}
+              {summaries.length > visibleCount && (
+                <Button
+                  variant="ghost"
+                  className="mobile-touch min-h-[var(--size-touch-target)]"
+                  data-action="more-sessions"
+                  onClick={() => setVisibleCount((count) => count + SESSION_PAGE_SIZE)}
+                >
+                  {t("mobile.olderSessions")}
+                </Button>
+              )}
             </div>
           )}
         </div>

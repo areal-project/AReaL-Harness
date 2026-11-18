@@ -509,16 +509,3 @@ export class MobileCacheStore {
     this.notify();
   }
 }
-
-export function applyNavigationSelection(projectId: string | undefined, threadId?: string) {
-  if (typeof localStorage === "undefined") return;
-  if (!projectId) {
-    localStorage.setItem("areal-gui:project", "");
-    return;
-  }
-  localStorage.setItem("areal-gui:project", projectId);
-  if (threadId !== undefined) {
-    if (threadId) localStorage.setItem(`areal-gui:thread:${projectId}`, threadId);
-    else localStorage.removeItem(`areal-gui:thread:${projectId}`);
-  }
-}

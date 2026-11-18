@@ -2,7 +2,7 @@
 
 # 开发和验证 iOS App
 
-移动壳使用 Capacitor 8.5.3 和 Swift Package Manager。`clients/mobile/ios/` 是受控 Xcode 工程，原生部署目标为 iOS 17.4。iOS 17.5 已通过真实 WKWebView 门禁，iOS 17.4 尚需在相应运行时复验。移动入口提供扫码或粘贴 Relay 链接、电脑确认等待页、连接状态与清除设备设置。设备身份由本地 Swift 插件保存到 iOS Keychain。项目页、30 条分页会话列表和共享 Messages 只读会话页已接入 Remote API。会话创建、发送、运行中排队、停止与模型配置使用同一命令恢复状态；审批、提问和 App 推送仍待后续切片。iOS 17.0 的真实 WKWebView 门禁因生产依赖缺少 `Promise.withResolvers` 而在 Noise 阶段失败。最低版本采用已提供该标准 API 的 iOS 17.4。
+移动壳使用 Capacitor 8.5.3 和 Swift Package Manager。`clients/mobile/ios/` 是受控 Xcode 工程，原生部署目标为 iOS 17.4。iOS 17.5 已通过真实 WKWebView 门禁，iOS 17.4 尚需在相应运行时复验。移动入口提供扫码或粘贴 Relay 链接、电脑确认等待页、连接状态与清除设备设置。设备身份由本地 Swift 插件保存到 iOS Keychain。项目页、每页 5 条的会话列表和共享 Messages 只读会话页已接入 Remote API。会话创建、发送、运行中排队、停止与模型配置使用同一命令恢复状态；审批、提问和 App 推送仍待后续切片。iOS 17.0 的真实 WKWebView 门禁因生产依赖缺少 `Promise.withResolvers` 而在 Noise 阶段失败。最低版本采用已提供该标准 API 的 iOS 17.4。
 
 ## 准备环境
 
@@ -34,21 +34,9 @@ pnpm --dir clients/gui mobile:ios:live --target <simulator-udid>
 
 开发服务器固定监听 `127.0.0.1:5174`，端口占用时直接失败，避免连接到另一个 worktree。浏览器打开服务器地址即可修改移动页面。CSS 使用热更新；脚本更新整页重载，重建连接和订阅所有者。离开页面时关闭连接并停止重连。原生模式继续使用 Keychain；浏览器开发替身只在页面内存保存身份，刷新后重新配对，扫码路径使用粘贴代替。它不提供原生密钥存储、权限或后台行为的验收证据。
 
-`mobile:ios:live` 先确认服务器来自当前 worktree，再同步本地资源，临时设置生成配置的开发 URL，使用 MobileBuildMCP 构建并启动专用 Debug App；命令完成或失败后恢复生成配置。开发服务器继续提供更新。该入口避开 `native-run` 对旧 `Simulator.app` 路径的依赖。协议门禁、archive 或发布验证仍先运行 `mobile:sync`，使用本地打包资源。Live Reload 只面向本机模拟器页面开发；连接 Relay 时仍需符合 HTTPS origin 白名单、证书和 WSS 契约。浏览器门禁使用一次性 HTTPS 夹具完成该链路，不代表普通 HTTP 开发地址已获生产 Relay 授权。
+`mobile:ios:live` 先确认服务器来自当前 worktree，再同步本地资源，临时设置生成配置的开发 URL，使用 MobileBuildMCP 构建并启动专用 Debug App；命令完成或失败后恢复生成配置。开发服务器继续提供更新。该入口避开 `native-run` 对旧 `Simulator.app` 路径的依赖。协议门禁、archive 或发布验证仍先运行 `mobile:sync`，使用本地打包资源。Live Reload 只面向本机模拟器页面开发；连接 Relay 时仍需符合 HTTPS origin 白名单、证书和 WSS 契约。本地验证 Relay 时使用隔离 HTTPS 夹具，并将测试页面的 origin 加入白名单。
 
-以下命令运行生产移动 React 页面，在 Chromium 和 WebKit 中检查未配对、无效链接、真实 Noise 配对与夹具批准、连接成功、脚本更新后的重载，以及浅色和深色截图。平台存储使用浏览器内存替身，Host 使用现有夹具。最后检查发布资源不包含浏览器替身或开发 CSP。它不启动 Rust Core，也不代替原生门禁。
-
-```sh
-npm --prefix services/remote-relay ci --ignore-scripts
-pnpm --dir clients/gui/app exec playwright-core install chromium webkit
-AREAL_RELAY_NODE=/path/to/node-24.2.0/bin/node pnpm --dir clients/gui test:mobile-browser
-```
-
-每次尝试保存到 `.scratch/ios-development/browser/<attempt>/`，包含源码 SHA、dirty 路径、运行时版本、截图与哈希、耗时、结果及清理错误。浏览器上下文仅在隔离的 TLS 夹具中忽略证书错误；生产连接实现和 Relay origin 检查沿用原契约。
-
-本流程参考 t3code 的移动开发生命周期、可重复场景与设备证据组织：脚本热更要处理连接所有者，原生变化需要重建，截图要绑定设备和场景。其 Expo/React Native、Effect runtime 与设备池实现不作为本工程依赖。我们使用 Vite 整页重载与既有 Remote 门禁完成这些职责。
-
-相关 GUI、移动端和 Relay 改动由 `GUI checks` 的 `Linux mobile browser contracts` 检查移动类型、双浏览器路径和生产资源。该 job 执行共享计划的 `mobile` 组，上传报告与证据，并由 `GUI gate` 核对完整结果。原生构建与系统版本门禁使用上述本机入口；该 CI 不声明 iOS 原生或真机验收。浏览器门禁使用独立 Vite 缓存，结束后回收，避免与日常开发服务器共用预打包结果。
+CI 的 `mobile` 计划检查移动端 TypeScript 并安装锁定的 Relay 依赖。工作区与发送行为的本地检查见「验证移动工作区」。
 
 ## Agent 模拟器工具
 
@@ -96,9 +84,16 @@ node --test clients/gui/scripts/mobile-device-store.test.mjs
 
 这些门禁是开发检查。真机扫码、iOS 17.4、真实桌面人工确认、相机权限拒绝后的恢复、VoiceOver 与 TestFlight 仍需各自验收。视觉检查应与五屏参考稿逐态对照；顶部使用本地化“电脑”，因为现有 Host 契约不返回电脑显示名。截图不能替代 VoiceOver、真机键盘和最小系统版本检查。
 
-## 验证共享界面
+## 验证移动工作区
 
-配对后手机加载与桌面同一份界面（`SharedPairedWorkbench`），经配对连接读写 Host，不再有独立的移动工作区与命令实现。项目、会话、发送、停止和审批的行为由桌面与 Web 的同一组测试覆盖；手机端只需额外检查触控尺寸、键盘、前后台切换与断线重连。
+配对后，独立的移动工作区经 Host 读取授权项目，按每页 5 条加载历史会话。会话页复用 Messages 和 Composer，模型与权限通过手机底部面板选择。验证时使用有多页会话的授权项目，打开历史，再新建会话、选择模型和权限并发送，确认消息和模型回复同步到会话。
+
+```sh
+pnpm --dir clients/gui test:mobile-workspace-state
+pnpm --dir clients/gui test:mobile-commands
+```
+
+命令测试覆盖首次发送和回执恢复。连接中断后，客户端使用原命令 ID 查询回执，草稿留在内存中。在手机壳中另行检查键盘、前后台切换与断线重连。
 
 ## 选择后续验证工具
 

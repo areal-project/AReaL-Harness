@@ -181,7 +181,25 @@ export const mobileMessages = {
   "mobile.recent": { "zh-CN": "最近会话", en: "Recent conversations" },
   "mobile.noSessions": { "zh-CN": "这里还没有会话。", en: "No conversations yet." },
   "mobile.untitled": { "zh-CN": "未命名会话", en: "Untitled conversation" },
-  "mobile.olderSessions": { "zh-CN": "查看更早的会话", en: "View earlier conversations" },
+  "mobile.olderSessions": { "zh-CN": "加载更多", en: "Load more" },
+  "mobile.hostOnline": { "zh-CN": "电脑在线", en: "Computer online" },
+  "mobile.newShort": { "zh-CN": "新建", en: "New" },
+  "mobile.newPromptSimple": {
+    "zh-CN": "想在这个项目里做什么？",
+    en: "What would you like to do in this project?",
+  },
+  "mobile.providerCredentialRequired": {
+    "zh-CN": "模型服务凭据不可用。请在电脑上检查模型服务设置。",
+    en: "Model credentials are unavailable. Check model service settings on your computer.",
+  },
+  "mobile.activationPending": {
+    "zh-CN": "项目正在启动，草稿已保留。请稍后重试。",
+    en: "The project is starting. Your draft is saved. Try again shortly.",
+  },
+  "mobile.activationBlocked": {
+    "zh-CN": "项目已停止。请在电脑上恢复项目后重试。",
+    en: "The project is stopped. Resume it on your computer, then try again.",
+  },
   "mobile.retryBody": { "zh-CN": "正文读取失败，重试", en: "Retry loading message content" },
   "mobile.desktopOnly": {
     "zh-CN": "请在电脑上查看此内容。",

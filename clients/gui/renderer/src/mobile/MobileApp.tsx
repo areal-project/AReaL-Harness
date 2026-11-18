@@ -1,17 +1,18 @@
 import { createRoot } from "react-dom/client";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { applyShellDelta, readShell } from "@areal/client";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button, Input } from "@areal/ui";
 import { FolderGit2, Monitor, Settings } from "lucide-react";
 import { FeedbackNotice } from "@areal/ui/experimental";
 import { applyThemeWithoutTransitions } from "@areal/ui/theme";
 import { SettingsGroupCard, SettingsRow } from "@areal/ui/compositions";
 import { ApplicationIntlProvider, useI18n, type MessageId } from "../i18n/IntlProvider.js";
+import type { Data } from "../services.js";
 import { MobileClient } from "./mobile-client.mjs";
-import {
-  applyNavigationSelection,
-  MobileCacheStore,
-  type MobileHostCacheView,
-} from "./mobile-cache.js";
+import { MobileWorkspace } from "./mobile-workspace.mjs";
+import { MobileCommands } from "./mobile-commands.mjs";
+import { MobileWorkspaceView } from "./MobileWorkspace.js";
+import { MobileCacheStore, type MobileHostCacheView } from "./mobile-cache.js";
 import {
   formatCacheBytes,
   MobileProjectCacheSheet,
@@ -31,17 +32,39 @@ import "../styles.css";
 import "../workbench.css";
 import "./mobile.layout.css";
 
-const SharedPairedWorkbench = lazy(() =>
-  import("../SharedPairedWorkbench.js").then((module) => ({
-    default: module.SharedPairedWorkbench,
-  })),
-);
 const cacheStore = new MobileCacheStore();
 const client = new MobileClient({
   keychain,
   clientKind,
   capabilities: ["gui-read-v1", "gui-write-v1"],
 });
+const workspace = new MobileWorkspace(client, {
+  readShell,
+  applyShellDelta,
+  saveShell: (
+    ready: { hostId: string; grantRevision: number },
+    shell: Parameters<typeof cacheStore.saveShell>[2],
+  ) => {
+    void cacheStore.saveShell(ready.hostId, ready.grantRevision, shell).catch(() => {});
+  },
+  saveSession: (ready: { hostId: string }, projectId: string | undefined, detail: Data) => {
+    if (!projectId) return;
+    void cacheStore
+      .saveSession(ready.hostId, {
+        projectId,
+        threadId: detail.snapshot.threadId,
+        serviceGeneration: detail.serviceGeneration,
+        subscriptionId: detail.subscriptionId,
+        connectionId: detail.connectionId,
+        gatewayGeneration: detail.gatewayGeneration,
+        sequence: detail.sequence,
+        view: "conversation",
+        snapshot: { mobileTurns: detail.snapshot.turns },
+      })
+      .catch(() => {});
+  },
+});
+const commands = new MobileCommands(client, workspace);
 client.onRevoked = async (hostId) => {
   if (hostId) await cacheStore.clearHost(hostId);
 };
@@ -65,39 +88,20 @@ function MobileApp() {
     id: MessageId;
   } | null>(null);
   const [error, setError] = useState<MessageId | null>(null);
-  const [liveHostId, setLiveHostId] = useState<string | undefined>(undefined);
-  const [viewKey, setViewKey] = useState(0);
+  const dismissComposerSheet = useRef<(() => void) | null>(null);
   const [cacheView, setCacheView] = useState<MobileHostCacheView | null>(null);
-  const grantRevisionRef = useRef(0);
 
   const pairedHostId = "hostId" in state ? state.hostId : undefined;
-  if (state.kind === "connected") grantRevisionRef.current = state.ready.grantRevision;
 
   useEffect(() => {
     client.onReady = async (ready) => {
-      grantRevisionRef.current = ready.grantRevision;
-      await cacheStore.syncGrantRevision(ready.hostId, ready.grantRevision);
-      const view = await cacheStore.loadView(ready.hostId);
-      if (view.meta?.selectedProjectId) {
-        const selectedThread = view.meta.selectedThreads[view.meta.selectedProjectId];
-        applyNavigationSelection(view.meta.selectedProjectId, selectedThread);
-      }
-      setLiveHostId(ready.hostId);
+      await cacheStore.syncGrantRevision(ready.hostId, ready.grantRevision).catch(() => {});
     };
   }, []);
 
   useEffect(() => {
-    if (
-      state.kind === "unpaired" ||
-      state.kind === "revoked" ||
-      (liveHostId && pairedHostId && liveHostId !== pairedHostId)
-    ) {
-      setLiveHostId(undefined);
-      setCacheSheetOpen(false);
-    } else if (state.kind === "connected" && state.hostId !== liveHostId) {
-      setLiveHostId(state.hostId);
-    }
-  }, [state.kind, pairedHostId, liveHostId]);
+    if (state.kind === "unpaired" || state.kind === "revoked") setCacheSheetOpen(false);
+  }, [state.kind]);
 
   useEffect(() => {
     if (!pairedHostId) {
@@ -156,6 +160,8 @@ function MobileApp() {
       else if (clearConfirm) setClearConfirm(false);
       else if (settings) setSettings(false);
       else if (paste) setPaste(false);
+      else if (dismissComposerSheet.current) dismissComposerSheet.current();
+      else if (workspace.snapshot().page.kind !== "projects") void workspace.back();
       else void minimizeApp();
     });
     return () => {
@@ -213,22 +219,6 @@ function MobileApp() {
     }
   };
 
-  const hostCache = useMemo(
-    () =>
-      pairedHostId
-        ? {
-            loadShell: () => cacheStore.loadShell(pairedHostId),
-            saveShell: (shell: Parameters<typeof cacheStore.saveShell>[2]) =>
-              cacheStore.saveShell(pairedHostId, grantRevisionRef.current, shell),
-            loadSession: (target: { projectId: string; threadId: string }) =>
-              cacheStore.loadSession(pairedHostId, target.projectId, target.threadId),
-            saveSession: (session: Parameters<typeof cacheStore.saveSession>[1]) =>
-              cacheStore.saveSession(pairedHostId, session),
-          }
-        : undefined,
-    [pairedHostId],
-  );
-
   const authorizedProjects = visibleAuthorizedProjects(cacheView);
   const selectedProject = authorizedProjects.find(
     (p) => p.projectId === cacheView?.meta?.selectedProjectId,
@@ -241,8 +231,22 @@ function MobileApp() {
     (sum, s) => sum + s.bytes,
     0,
   );
-  const keepLiveWorkbench =
-    !!pairedHostId && liveHostId === pairedHostId && !["unpaired", "revoked"].includes(state.kind);
+  const showWorkspace = state.kind === "connected";
+
+  function selectCachedProject(projectId: string, threadId?: string) {
+    if (!pairedHostId) return;
+    void cacheStore.setSelection(pairedHostId, projectId, threadId);
+    const project = cacheView?.meta?.shell?.snapshot.projects.find(
+      (value) => value.projectId === projectId,
+    );
+    if (!project?.alias?.projectId) return;
+    const alias = project.alias.projectId;
+    void workspace.navigate(
+      threadId
+        ? { kind: "session", projectId: alias, threadId }
+        : { kind: "work", projectId: alias },
+    );
+  }
 
   const statusKey: MessageId =
     state.kind === "connected"
@@ -265,73 +269,80 @@ function MobileApp() {
       data-state={state.kind}
       data-remembered={state.kind === "connected" ? state.remembered : undefined}
     >
-      <header className="mobile-header shrink-0 min-h-[var(--size-touch-target)] flex items-center justify-between gap-inline">
-        {pairedHostId && !settings && (
-          <Monitor className="mobile-host-icon size-[var(--spacing-section)]" aria-hidden="true" />
-        )}
-        <div
-          className={
-            pairedHostId && !settings
-              ? "mobile-host-copy flex-1 min-w-0 [&_h1]:block [&_h1]:min-w-0 [&_h1]:max-w-full [&_h1]:truncate [&_h1]:text-fixed-body"
-              : "mobile-host-copy flex-1 min-w-0 [&_h1]:block [&_h1]:min-w-0 [&_h1]:max-w-full [&_h1]:truncate"
-          }
-        >
-          <h1
-            className={pairedHostId && !settings ? "text-fixed-emphasis" : "text-fixed-page-title"}
-          >
-            {t(
-              settings
-                ? "mobile.settings"
-                : state.kind === "unpaired"
-                  ? "mobile.connect"
-                  : state.kind === "pairing"
-                    ? "mobile.waiting"
-                    : pairedHostId
-                      ? "mobile.computer"
-                      : "mobile.projects",
-            )}
-          </h1>
+      {(!showWorkspace || settings) && (
+        <header className="mobile-header shrink-0 min-h-[var(--size-touch-target)] flex items-center justify-between gap-inline">
           {pairedHostId && !settings && (
-            <p className="mobile-host-status m-0 flex items-center gap-[calc(var(--spacing-inline)/2)] text-foreground-subtle text-fixed-caption">
-              <span
-                className={
-                  state.kind === "connected"
-                    ? "bg-success mobile-status-dot inline-block size-[var(--size-status-dot)] [border-radius:var(--radius-pill)]"
-                    : "bg-foreground-subtle mobile-status-dot inline-block size-[var(--size-status-dot)] [border-radius:var(--radius-pill)]"
-                }
-              />
-              {t(statusKey)}
-              {selectedProject ? ` · ${projectDisplayName(selectedProject)}` : ""}
-            </p>
+            <Monitor
+              className="mobile-host-icon size-[var(--spacing-section)]"
+              aria-hidden="true"
+            />
           )}
-        </div>
-        {pairedHostId && !settings && state.kind !== "revoked" && (
-          <Button
-            className="mobile-touch min-h-[var(--size-touch-target)] gap-1.5 px-2.5"
-            variant="outline"
-            size="sm"
-            data-action="projects-cache"
-            onClick={() => setCacheSheetOpen(true)}
+          <div
+            className={
+              pairedHostId && !settings
+                ? "mobile-host-copy flex-1 min-w-0 [&_h1]:block [&_h1]:min-w-0 [&_h1]:max-w-full [&_h1]:truncate [&_h1]:text-fixed-body"
+                : "mobile-host-copy flex-1 min-w-0 [&_h1]:block [&_h1]:min-w-0 [&_h1]:max-w-full [&_h1]:truncate"
+            }
           >
-            <FolderGit2 className="size-4" aria-hidden="true" />
-            <span>
-              {t("mobile.cache.button")}
-              {authorizedProjects.length ? ` (${authorizedProjects.length})` : ""}
-            </span>
-          </Button>
-        )}
-        {state.kind !== "unpaired" && state.kind !== "pairing" && (
-          <Button
-            className="mobile-touch size-[var(--size-touch-target)] min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] p-inline"
-            variant="ghost"
-            data-action="settings"
-            aria-label={t(settings ? "mobile.back" : "mobile.settings")}
-            onClick={() => setSettings(!settings)}
-          >
-            {settings ? t("mobile.back") : <Settings aria-hidden="true" />}
-          </Button>
-        )}
-      </header>
+            <h1
+              className={
+                pairedHostId && !settings ? "text-fixed-emphasis" : "text-fixed-page-title"
+              }
+            >
+              {t(
+                settings
+                  ? "mobile.settings"
+                  : state.kind === "unpaired"
+                    ? "mobile.connect"
+                    : state.kind === "pairing"
+                      ? "mobile.waiting"
+                      : pairedHostId
+                        ? "mobile.computer"
+                        : "mobile.projects",
+              )}
+            </h1>
+            {pairedHostId && !settings && (
+              <p className="mobile-host-status m-0 flex items-center gap-[calc(var(--spacing-inline)/2)] text-foreground-subtle text-fixed-caption">
+                <span
+                  className={
+                    state.kind === "connected"
+                      ? "bg-success mobile-status-dot inline-block size-[var(--size-status-dot)] [border-radius:var(--radius-pill)]"
+                      : "bg-foreground-subtle mobile-status-dot inline-block size-[var(--size-status-dot)] [border-radius:var(--radius-pill)]"
+                  }
+                />
+                {t(statusKey)}
+                {selectedProject ? ` · ${projectDisplayName(selectedProject)}` : ""}
+              </p>
+            )}
+          </div>
+          {pairedHostId && !settings && state.kind !== "revoked" && (
+            <Button
+              className="mobile-touch min-h-[var(--size-touch-target)] gap-1.5 px-2.5"
+              variant="outline"
+              size="sm"
+              data-action="projects-cache"
+              onClick={() => setCacheSheetOpen(true)}
+            >
+              <FolderGit2 className="size-4" aria-hidden="true" />
+              <span>
+                {t("mobile.cache.button")}
+                {authorizedProjects.length ? ` (${authorizedProjects.length})` : ""}
+              </span>
+            </Button>
+          )}
+          {state.kind !== "unpaired" && state.kind !== "pairing" && (
+            <Button
+              className="mobile-touch size-[var(--size-touch-target)] min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] p-inline"
+              variant="ghost"
+              data-action="settings"
+              aria-label={t(settings ? "mobile.back" : "mobile.settings")}
+              onClick={() => setSettings(!settings)}
+            >
+              {settings ? t("mobile.back") : <Settings aria-hidden="true" />}
+            </Button>
+          )}
+        </header>
+      )}
       {error && <FeedbackNotice tone="error" message={t(error)} />}
       {state.kind === "unpaired" && !settings ? (
         <section className="mobile-stack flex flex-col gap-field">
@@ -530,38 +541,28 @@ function MobileApp() {
           )}
         </section>
       ) : null}
-      {keepLiveWorkbench && (
+      {showWorkspace && (
         <section
           className={settings ? "hidden" : "mobile-stack flex flex-col gap-field"}
           aria-hidden={settings}
         >
-          {state.kind !== "connected" && (
-            <FeedbackNotice
-              tone="info"
-              message={t(statusKey)}
-              actions={
-                ["offline", "blocked"].includes(state.kind) ? (
-                  <Button size="sm" variant="outline" onClick={() => void client.setActive(true)}>
-                    {t("mobile.retry")}
-                  </Button>
-                ) : undefined
-              }
-            />
-          )}
           {state.kind === "connected" && !state.remembered && (
             <FeedbackNotice tone="warning" message={t("mobile.storageFailed")} />
           )}
-          <Suspense fallback={null}>
-            <SharedPairedWorkbench
-              client={client}
-              hostId={liveHostId}
-              cache={hostCache}
-              viewKey={viewKey}
-            />
-          </Suspense>
+          <MobileWorkspaceView
+            client={client}
+            workspace={workspace}
+            commands={commands}
+            dismissComposerSheet={dismissComposerSheet}
+            onSettings={() => setSettings(true)}
+            onSelection={(projectId, threadId) => {
+              if (pairedHostId && projectId)
+                void cacheStore.setSelection(pairedHostId, projectId, threadId);
+            }}
+          />
         </section>
       )}
-      {!settings && !keepLiveWorkbench && state.kind !== "unpaired" && state.kind !== "pairing" && (
+      {!settings && !showWorkspace && state.kind !== "unpaired" && state.kind !== "pairing" && (
         <section className="mobile-stack flex flex-col gap-field">
           {pairedHostId && state.kind !== "revoked" && cacheView?.meta?.shell ? (
             <OfflineCachedWorkspace
@@ -571,10 +572,7 @@ function MobileApp() {
               connecting={state.kind === "loading" || state.kind === "connecting"}
               onRetry={() => void client.setActive(true)}
               onOpenProjectSheet={() => setCacheSheetOpen(true)}
-              onSelectProject={(projectId, threadId) => {
-                applyNavigationSelection(projectId, threadId);
-                void cacheStore.setSelection(pairedHostId, projectId, threadId);
-              }}
+              onSelectProject={selectCachedProject}
             />
           ) : (
             <>
@@ -600,9 +598,8 @@ function MobileApp() {
           cacheView={cacheView}
           onSelectProject={(projectId) => {
             const remembered = cacheView?.meta?.selectedThreads[projectId];
-            applyNavigationSelection(projectId, remembered);
-            void cacheStore.setSelection(pairedHostId, projectId, remembered);
-            setViewKey((v) => v + 1);
+            selectCachedProject(projectId, remembered);
+            setSettings(false);
           }}
           onToggleProjectCache={(projectId, enabled) => {
             void cacheStore.toggleProjectCache(pairedHostId, projectId, enabled);

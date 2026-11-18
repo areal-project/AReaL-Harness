@@ -2,7 +2,7 @@
 
 # Develop and verify the iOS app
 
-The mobile shell uses Capacitor 8.5.3 and Swift Package Manager. `clients/mobile/ios/` is the tracked Xcode project, with an iOS 17.4 deployment target. iOS 17.5 passes the real WKWebView gate. iOS 17.4 still requires verification on that runtime. The mobile entry provides QR scanning or pasted Relay pairing links, a desktop confirmation waiting page, connection status, and device clearing. A local Swift plugin persists the device identity in iOS Keychain. Project cards, 30-row conversation pages, and the shared Messages read-only session view use the Remote API. Creation, sending, queueing during a turn, stopping, and model configuration use the shared command recovery state. Approvals, questions, and App push remain later slices. The real iOS 17.0 WKWebView gate fails during Noise because a production dependency calls the unavailable `Promise.withResolvers`. The minimum version is iOS 17.4, which provides this standard API.
+The mobile shell uses Capacitor 8.5.3 and Swift Package Manager. `clients/mobile/ios/` is the tracked Xcode project, with an iOS 17.4 deployment target. iOS 17.5 passes the real WKWebView gate. iOS 17.4 still requires verification on that runtime. The mobile entry provides QR scanning or pasted Relay pairing links, a desktop confirmation waiting page, connection status, and device clearing. A local Swift plugin persists the device identity in iOS Keychain. Project cards, five-row conversation pages, and the shared Messages read-only session view use the Remote API. Creation, sending, queueing during a turn, stopping, and model configuration use the shared command recovery state. Approvals, questions, and App push remain later slices. The real iOS 17.0 WKWebView gate fails during Noise because a production dependency calls the unavailable `Promise.withResolvers`. The minimum version is iOS 17.4, which provides this standard API.
 
 ## Prepare the environment
 
@@ -34,21 +34,9 @@ pnpm --dir clients/gui mobile:ios:live --target <simulator-udid>
 
 The development server binds to `127.0.0.1:5174` and fails if the port is occupied, preventing accidental attachment to another worktree. Open its URL in a browser to edit mobile pages. CSS updates in place; script changes reload the page to recreate connection and subscription owners. Leaving the page closes the connection and stops reconnect attempts. Native mode continues to use Keychain. The browser development substitute holds identity only in page memory, loses it on reload, and uses pasted links instead of scanning. It does not establish native storage, permission, or background behavior acceptance.
 
-`mobile:ios:live` verifies that the server belongs to this worktree, syncs local assets, temporarily sets the generated configuration's development URL, then uses MobileBuildMCP to build and launch a dedicated Debug app. It restores the generated configuration on completion or failure; the development server keeps serving updates. This avoids native-run's dependency on the old Simulator.app path. Run `mobile:sync` before protocol gates, archive, or release validation to use bundled local assets. Live Reload targets local simulator page development. Relay connections must still satisfy HTTPS origin allowlists, certificate trust, and WSS contracts. The browser gate exercises this through an ephemeral HTTPS fixture; an ordinary HTTP development URL is not thereby authorized by a production Relay.
+`mobile:ios:live` verifies that the server belongs to this worktree, syncs local assets, temporarily sets the generated configuration's development URL, then uses MobileBuildMCP to build and launch a dedicated Debug app. It restores the generated configuration on completion or failure; the development server keeps serving updates. This avoids native-run's dependency on the old Simulator.app path. Run `mobile:sync` before protocol gates, archive, or release validation to use bundled local assets. Live Reload targets local simulator page development. Relay connections must still satisfy HTTPS origin allowlists, certificate trust, and WSS contracts. Use an isolated HTTPS fixture and allowlist its origin for local Relay verification.
 
-The following commands exercise the production mobile React UI in Chromium and WebKit: unpaired state, invalid links, actual Noise pairing with fixture approval, successful connection, reload after a script update, and light/dark screenshots. Storage uses the browser memory substitute and the Host uses the existing fixture. The gate also checks that release assets exclude the browser substitute and development CSP. It does not start Rust Core or replace native gates.
-
-```sh
-npm --prefix services/remote-relay ci --ignore-scripts
-pnpm --dir clients/gui/app exec playwright-core install chromium webkit
-AREAL_RELAY_NODE=/path/to/node-24.2.0/bin/node pnpm --dir clients/gui test:mobile-browser
-```
-
-Each attempt writes `.scratch/ios-development/browser/<attempt>/` with source SHA, dirty paths, runtime versions, screenshots and hashes, timings, outcomes, and cleanup errors. Browser contexts ignore certificate errors only inside the isolated TLS fixture; production connection code and Relay origin checks retain their existing contracts.
-
-This workflow draws on t3code's mobile lifecycle, reproducible scenes, and device evidence organization: script updates must handle connection ownership, native changes require rebuilding, and screenshots need device and scene attribution. Its Expo/React Native, Effect runtime, and device pool are not dependencies here. Vite page reloads and existing Remote gates serve those responsibilities.
-
-For relevant GUI, mobile, and Relay changes, the `Linux mobile browser contracts` job in `GUI checks` runs mobile type checks, both browser paths, and production asset checks. It executes the shared `mobile` group, uploads reports and evidence, and contributes required results to `GUI gate`. Native builds and OS-version gates use the local entry points above; this CI does not establish native iOS or physical-device acceptance. The browser gate uses an independent Vite cache and removes it afterward to avoid sharing optimized dependencies with a daily development server.
+The CI `mobile` plan checks mobile TypeScript and installs the locked Relay dependencies. See “Verify the mobile workspace” for local checks of workspace and send behavior.
 
 ## Agent simulator tools
 
@@ -96,9 +84,16 @@ node --test clients/gui/scripts/mobile-device-store.test.mjs
 
 These gates are development checks. Physical QR scanning, iOS 17.4, real desktop confirmation, recovery from denied camera permission, VoiceOver, and TestFlight each require separate acceptance. Compare each UI state with the five-screen reference. The connection header uses the localized “Computer” because the Host contract does not return a computer display name. Screenshots do not replace VoiceOver, physical-keyboard, or minimum-OS checks.
 
-## Verify the shared UI
+## Verify the mobile workspace
 
-After pairing, the phone loads the same UI as the desktop (`SharedPairedWorkbench`) and reads and writes the Host over the paired connection. There is no separate mobile workspace or command implementation. Projects, conversations, sending, stopping, and approvals are covered by the same desktop and Web tests; on the phone, additionally check touch target sizes, the keyboard, background/foreground switching, and reconnection.
+After pairing, the mobile workspace reads authorized projects and five-row conversation pages through the Host. The conversation view shares Messages and Composer, with mobile bottom sheets for model and permission selection. Verify with an authorized project that has multiple pages of conversations. Open an existing conversation, then create one, select a model and permission, and send a message. Check that both the message and the reply appear in the conversation.
+
+```sh
+pnpm --dir clients/gui test:mobile-workspace-state
+pnpm --dir clients/gui test:mobile-commands
+```
+
+The command tests cover first send and receipt recovery. If the connection drops, the client queries the receipt using the original command ID and retains the draft in memory. Check the keyboard, background and foreground transitions, and reconnection in the mobile shell.
 
 ## Choose later verification tools
 

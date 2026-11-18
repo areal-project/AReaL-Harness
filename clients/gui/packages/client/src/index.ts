@@ -30,6 +30,7 @@ import {
 export { readHostBootstrap, type HostBootstrap } from "./bootstrap.js";
 export type * from "./read-state.js";
 export {
+  applyShellDelta,
   readShell,
   sessionReadKey,
   SESSION_READ_CACHE_MS,
