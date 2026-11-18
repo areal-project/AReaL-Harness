@@ -1,9 +1,6 @@
 import { ipcMain, type IpcMainInvokeEvent } from "electron";
 import { HostClient } from "@areal/client/node";
-import { constants } from "node:fs";
-import { open } from "node:fs/promises";
-import { join } from "node:path";
-import { readHostBootstrap, record } from "../../../packages/client/src/bootstrap.js";
+import { readHostBootstrap } from "../../../packages/client/src/bootstrap.js";
 
 export const hostTicketChannel = "areal-native:host-ticket";
 export const hostTicketSchema = {
@@ -13,17 +10,16 @@ export const hostTicketSchema = {
 
 export function registerHostTicket(options: {
   home: string;
-  binary: string;
   profile: string;
   trusted(event: IpcMainInvokeEvent): unknown;
 }) {
   ipcMain.handle(hostTicketChannel, async (event, ...args: unknown[]) => {
     options.trusted(event);
     if (args.length) throw new Error("Host ticket takes no arguments");
-    // 票据只依赖 Rust Host；工作台初始化在后台进行，不能阻塞首屏拿到 shell 快照。
+    // 读取票据不能绕过 Main 对原停止回执的核查并启动后继 Host。
     const client = new HostClient();
     try {
-      await client.connectOrStart(options.home, options.binary);
+      await client.connect(options.home);
       const value = readHostBootstrap(
         await client.request("web.ticket", {
           origin: "areal-ui://app",
@@ -39,52 +35,4 @@ export function registerHostTicket(options: {
       client.close();
     }
   });
-  return async () => {
-    const client = new HostClient();
-    try {
-      await client.connectOrStart(options.home, options.binary);
-      const file = await open(
-        join(options.home, "host/endpoint.json"),
-        constants.O_RDONLY | constants.O_NOFOLLOW,
-      );
-      try {
-        const stat = await file.stat();
-        if (
-          !stat.isFile() ||
-          stat.uid !== process.getuid?.() ||
-          (stat.mode & 0o077) !== 0 ||
-          stat.size > 4096
-        )
-          throw new Error("Invalid Host endpoint file");
-        const endpoint: unknown = JSON.parse(await file.readFile("utf8"));
-        if (
-          !record(endpoint) ||
-          endpoint.hostId !== client.hostId ||
-          endpoint.generation !== client.generation ||
-          typeof endpoint.websocketUrl !== "string"
-        )
-          throw new Error("Host endpoint identity changed");
-        const url = new URL(endpoint.websocketUrl);
-        if (
-          url.protocol !== "ws:" ||
-          url.hostname !== "127.0.0.1" ||
-          !url.port ||
-          url.username ||
-          url.password ||
-          url.search ||
-          url.hash
-        )
-          throw new Error("Invalid Host endpoint");
-        // Host 换代时端口会变，文档只授权同一回环主机；连接仍须新代一次性票据。
-        return {
-          connectSource: `${url.protocol}//${url.hostname}:*`,
-          frameSource: `http://${url.host}/host/pages/proxy`,
-        };
-      } finally {
-        await file.close();
-      }
-    } finally {
-      client.close();
-    }
-  };
 }

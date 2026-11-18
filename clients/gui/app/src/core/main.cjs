@@ -714,15 +714,14 @@ function startDesktop() {
             ),
           );
           startupTraceMain.finish("ok");
-          const hostConnectSource = require("../ipc/generated/host-ticket.cjs").registerHostTicket({
+          require("../ipc/generated/host-ticket.cjs").registerHostTicket({
             home: cfg.serviceOptions(app).hostHome,
-            binary: cfg.serviceOptions(app).binary,
             profile: app.getPath("userData"),
             trusted,
           });
           if (process.platform === "darwin")
             app.dock?.setIcon(join(__dirname, "../../assets/icon-1024.png"));
-          registerUiProtocol(guiRoot, hostConnectSource);
+          registerUiProtocol(guiRoot);
           const serviceBackend = new SharedCoreBackend({
             app,
             ...cfg.serviceOptions(app),

@@ -21,6 +21,8 @@ Host 默认监听 `127.0.0.1`，`AREAL_HOST_WEBSOCKET=0` 可关闭。首次选�
 
 已认证 Unix 连接调用 `web.ticket`，参数为 `{origin,expectedGeneration,profile?}`。origin 必须精确等于 `areal-ui://app` 或本代 HTTP origin；可选 profile 只选择已提交来源的导航偏好。结果包含上述身份、调用方 origin、`ticket`、`expiresAt` 和可选 `preferredSourceId`。32 随机字节票据只保存摘要，有效 30 秒，单次使用，最多保留 64 张。每次重连重新取票。
 
+Electron 申请票据时只连接现有 Host。显式停止后，重新加载窗口或 Renderer 的重试无法启动后继 Host。桌面 Main 根据原停止回执和显式重连动作决定何时启动后继代际。
+
 WS 只接受 `/host/socket`，拒绝 query，精确校验 Host authority 与单个 Origin。首帧为 `{version:1,id,method:"hello",params:{protocolVersions:[1],capabilities,ticket,expectedGeneration}}`。未协商时仅支持 `host.status`；加入 `gui-read-v1` 后返回协商能力、连接身份、方法与资源上限。Unix 的既有 hello 和未协商 Remote 客户端的方法、字段和限制保持原样。HTTP header 上限 8 KiB，升级、首帧和发送各限时 10 秒，连接最多 32 个，帧和消息最多 1 MiB。
 
 回环连接上的工作台查询可与业务命令并发，响应按 `id` 关联，不保证返回顺序；写操作仍保留同连接的受理顺序。等待后台请求时继续处理会话读取和事件。每个连接最多保留 16 个在途或排队的业务请求，超额请求在派发前返回 `CAPACITY_EXCEEDED`；这不改变已派发命令的回执与 UNKNOWN 恢复规则。

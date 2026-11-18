@@ -1315,6 +1315,11 @@ class SharedCoreBackend {
       this.connectionState = { state: "connecting" };
       this.onChange();
       await this.initialize();
+      if (result.operation.kind === "stopHost") {
+        // 后继连接已就绪。原回执由 Host 保留，Main 结束这一次停止的写入限制。
+        this.hostReferences.delete(result.operation.requestId);
+        this.hostReceipts.delete(result.operation.requestId);
+      }
       for (const [requestId, reference] of this.lifecycleReferences) {
         if (
           desktopKind(reference.kind) &&

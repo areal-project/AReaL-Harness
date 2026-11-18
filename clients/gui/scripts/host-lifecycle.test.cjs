@@ -1835,7 +1835,11 @@ test("native update keeps one original stop receipt and restarts only after comp
   assert.equal(result.operation.requestId, stopId);
   assert.equal(starts, 1);
   assert.equal(f.calls.filter((q) => q.method === "host.stop").length, 1);
-  assert.equal(f.backend.hostReferences.has(stopId), true);
+  assert.equal(f.backend.hostReferences.has(stopId), false);
+  assert.doesNotThrow(() =>
+    f.backend.assertLifecycleScope("connect", { projectId: "project", resumeScheduling: true }),
+  );
+  assert.equal(f.operations.get(stopId).state, "completed");
 });
 
 test("Main startup prepares the source and attaches native Host without Node startup or projection", async (t) => {
