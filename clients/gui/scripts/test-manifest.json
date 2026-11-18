@@ -734,6 +734,7 @@
   },
   {
     "script": "test:desktop-settings",
+    "testFiles": ["scripts/desktop-settings-smoke.mjs"],
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["desktop"],
@@ -878,6 +879,7 @@
     "platforms": ["darwin", "linux"],
     "areas": ["testing"],
     "requires": [],
+    "testFiles": ["scripts/support/acceptance-binary.mjs"],
     "notes": "脚本单测覆盖任务目录、隔离 Electron 身份、打包、开发服务路由、性能、Core 观察与 Host 传输屏障；不启动应用或调用供应商。"
   },
   {

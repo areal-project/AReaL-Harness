@@ -150,9 +150,10 @@ ci-gui-health: ## GUI 健康合同与基线检查（使用已安装的固定格�
 	@set -eu; \
 	test -n "$(CI_BASE)" || { echo 'CI_BASE is required' >&2; exit 1; }; \
 	base="$$(git merge-base "$(CI_BASE)" HEAD)"; \
+	node clients/gui/scripts/check-test-module-boundary.mts "$$base"; \
 	unset AREAL_DESIGN_BASE; \
 	mkdir -p target/ci/gui; \
-	node --test clients/gui/scripts/gui-health.test.mjs clients/gui/scripts/design-system-maturity.test.mjs clients/gui/scripts/unknown-outcome-sources.test.mjs; \
+	node --test clients/gui/scripts/gui-health.test.mjs clients/gui/scripts/design-system-maturity.test.mjs clients/gui/scripts/unknown-outcome-sources.test.mjs clients/gui/scripts/check-test-module-boundary.test.mjs; \
 	node clients/gui/scripts/copy-budget.mjs; \
 	node clients/gui/scripts/ui-honesty-lint.mjs; \
 	if git cat-file -e "$$base:clients/gui/health-baseline.json" 2>/dev/null; then \
