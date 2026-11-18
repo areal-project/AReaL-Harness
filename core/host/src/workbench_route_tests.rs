@@ -1911,6 +1911,71 @@ async fn native_remote_status_and_control_do_not_start_node() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn cold_native_gui_activation_applies_current_network_settings() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let root = root.path().canonicalize().unwrap();
+            let (host, input, source) = resumable_host(&root);
+            storage::private_dir(&host.home.join("host/projects")).unwrap();
+            let workspace = root.join("cold-project");
+            storage::private_dir(&workspace).unwrap();
+            host.schedules
+                .connections
+                .frontend_subscribe(&host, "cold-network", &source, input.options, None)
+                .unwrap();
+            super::super::library_store::change(&host, &source, |library| {
+                library["settings"]["httpProxy"] = json!("http://127.0.0.1:8888");
+                Ok(())
+            })
+            .unwrap();
+            let result = super::super::worktree_catalog::add_project(
+                &host,
+                &source,
+                json!({"root": workspace}),
+            )
+            .await
+            .unwrap();
+            let alias = result["projectId"].as_str().unwrap();
+            let registration =
+                super::super::worktree_catalog::project(&host, &source, alias).unwrap();
+            let path = host
+                .home
+                .join("host/launch")
+                .join(storage::digest(registration.project_id.as_bytes()))
+                .join("inputs.json");
+            let previous: crate::LaunchInputs = storage::read(&path).unwrap();
+            assert_eq!(previous.environment["HTTPS_PROXY"], "http://127.0.0.1:8888");
+            super::super::library_store::change(&host, &source, |library| {
+                library["settings"]["httpProxy"] = json!("http://127.0.0.1:9999");
+                Ok(())
+            })
+            .unwrap();
+            for name in ["areal-runtime", "areal-runtime-fs", "areal-runtime-reaper"] {
+                std::fs::write(host.bin.join(name), b"fixture").unwrap();
+            }
+            let attempt = host
+                .ensure(crate::server::Ensure {
+                    request_id: uuid::Uuid::new_v4().to_string(),
+                    expected_generation: host.identity.generation.clone(),
+                    project_id: registration.project_id,
+                    no_auto_restart: false,
+                    resume_scheduling: false,
+                    launch_inputs: None,
+                    credentials: Default::default(),
+                })
+                .await;
+            assert!(attempt.is_err(), "fixture executables cannot start Core");
+            let selected: crate::LaunchInputs = storage::read(&path).unwrap();
+            assert_eq!(selected.environment["HTTPS_PROXY"], "http://127.0.0.1:9999");
+            assert_eq!(selected.workspace, previous.workspace);
+            assert_eq!(selected.config_home, previous.config_home);
+            assert_eq!(selected.credential_names, previous.credential_names);
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn first_gui_activation_waits_for_its_native_launch_configuration() {
     tokio::task::LocalSet::new()
         .run_until(async {

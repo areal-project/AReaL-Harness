@@ -4,6 +4,7 @@ import { cleanupSyntheticHostKeychain, closeSmokeApplication } from "./applicati
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
 import assert from "node:assert/strict";
 import { readCoreThread } from "./support/core-observation.mjs";
+import { sendReady } from "./support/journey-fixture.mjs";
 
 import { createRequire } from "node:module";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
@@ -267,7 +268,8 @@ const endpoint = `http://127.0.0.1:${server.address().port}/v1/chat/completions`
 const config = join(scratch, "config.toml");
 await writeFile(
   config,
-  `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint=${JSON.stringify(endpoint)}\n`,
+  `schema_version=1\n[model]\n${desktopSettingsMode ? "catalog_version=1\n" : ""}provider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint=${JSON.stringify(endpoint)}\n` +
+    (desktopSettingsMode ? 'models=[{id="fixture",enabled=true}]\n' : ""),
 );
 // 本地 SSE fixture 必须直连；保留宿主已有排除项并同步两种大小写。
 const noProxy = [
@@ -295,6 +297,7 @@ const env = {
   AREAL_HARNESS_SERVICE_HOME: join(scratch, "services"),
 };
 delete env.AREAL_CORE_WORKSPACE;
+if (desktopSettingsMode) delete env.AREAL_CORE_DESKTOP_CONFIG;
 if (terminalMode) delete env.AREAL_HARNESS_HOME;
 if (process.env.AREAL_GUI_EXECUTABLE) delete env.AREAL_CORE_BIN;
 let app,
@@ -605,7 +608,12 @@ try {
   }, workspace);
   await button("不在项目中工作").click();
   await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
-  await waitForSnapshot((s) => project(s)?.state?.connected, "project ready");
+  if (desktopSettingsMode) {
+    await page.getByRole("button", { name: "选择模型", exact: true }).click();
+    await page.getByRole("radio", { name: "fixture", exact: true }).click();
+  } else {
+    await waitForSnapshot((s) => project(s)?.state?.connected, "project ready");
+  }
   const pid = project(await state()).id;
   const selectFixtureProfile = async () => {
     await page.waitForFunction((id) => {
@@ -619,7 +627,7 @@ try {
       window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: key }));
     }, pid);
   };
-  await selectFixtureProfile();
+  if (!desktopSettingsMode) await selectFixtureProfile();
   const input = () => page.locator("[data-testid=chat-input]");
   const turnCountOf = (s) =>
     Object.values(project(s).state.threads).reduce((n, t) => n + (t.turns?.length ?? 0), 0);
@@ -993,6 +1001,10 @@ try {
       received,
       checks,
       previewUrl,
+      binary,
+      env,
+      gui,
+      sendReady,
     });
   } else {
     // 通用提示入口是短暂 toast；后续真实发送不应把它升级为常驻错误。
@@ -2063,9 +2075,13 @@ try {
     .toString()
     .split("\0")
     .filter(Boolean)) {
-    sourceFiles[path] = createHash("sha256")
-      .update(await readFile(join(root, path)))
-      .digest("hex");
+    sourceFiles[path] = await readFile(join(root, path)).then(
+      (bytes) => createHash("sha256").update(bytes).digest("hex"),
+      (failure) => {
+        if (failure.code !== "ENOENT") throw failure;
+        return null;
+      },
+    );
   }
   const diff = execFileSync("git", ["diff", "--binary", "HEAD"], {
     cwd: root,

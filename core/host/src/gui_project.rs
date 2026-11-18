@@ -227,6 +227,50 @@ fn hooks(home: &Path, options: &Value) -> Result<Value> {
     Ok(serde_json::from_slice(&bytes)?)
 }
 
+async fn network_environment(
+    host: &Host,
+    project: &ProjectRegistration,
+    settings: &Value,
+    environment: &BTreeMap<String, String>,
+) -> Result<BTreeMap<String, String>> {
+    let network = crate::network::desktop(settings, environment).await?;
+    crate::network::launch_environment(network, launch_path(host, project).parent().unwrap())
+}
+
+pub(super) async fn refresh_saved_network(
+    host: &Host,
+    project: &ProjectRegistration,
+    inputs: &mut LaunchInputs,
+) -> Result<()> {
+    if !matches!(project.source, ProjectSource::Gui { .. }) || inputs.schedule_preparation.is_none()
+    {
+        return Ok(());
+    }
+    let source = host
+        .migration
+        .credential_source(project)?
+        .context("GUI_SOURCE_PENDING")?;
+    let library = library_store::read_source(host, &source)?;
+    let network_key = |key: &str| {
+        areal_config::PROXY_ENV_VARS.contains(&key) || areal_config::TLS_ENV_VARS.contains(&key)
+    };
+    let mut environment = std::env::vars()
+        .filter(|(key, _)| network_key(key))
+        .collect::<BTreeMap<_, _>>();
+    inputs.environment.retain(|key, _| !network_key(key));
+    match network_environment(host, project, &library["settings"], &environment).await {
+        Ok(network) => {
+            environment.extend(network);
+            inputs.environment.extend(environment);
+        }
+        Err(_) => {
+            inputs.options.history_only = true;
+            eprintln!("Host GUI network preparation unavailable; using history-only Core");
+        }
+    }
+    Ok(())
+}
+
 async fn prepare(
     host: &Host,
     source: &str,
@@ -269,15 +313,8 @@ async fn prepare(
         workgroup_toolchain: options["workgroupToolchain"].as_str().map(PathBuf::from),
         ..Default::default()
     };
-    let settings = library_store::read_source(host, source)?;
-    let network = match crate::network::desktop(&settings["settings"], &environment).await {
-        Ok(network) => crate::network::launch_environment(
-            network,
-            launch_path(host, project).parent().unwrap(),
-        ),
-        Err(error) => Err(error),
-    };
-    match network {
+    let library = library_store::read_source(host, source)?;
+    match network_environment(host, project, &library["settings"], &environment).await {
         Ok(network) => environment.extend(network),
         Err(_) => {
             args.history_only = true;

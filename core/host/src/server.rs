@@ -1878,11 +1878,14 @@ impl Host {
             .join("host/launch")
             .join(storage::digest(input.project_id.as_bytes()))
             .join("inputs.json");
-        let mut inputs = match &input.launch_inputs {
-            Some(v) => v.clone(),
+        let (mut inputs, using_saved_inputs) = match &input.launch_inputs {
+            Some(v) => (v.clone(), false),
             None => match storage::read_optional(&saved_path)? {
-                Some(inputs) => inputs,
-                None => gui_project::missing_inputs(self, &registration).await?,
+                Some(inputs) => (inputs, true),
+                None => (
+                    gui_project::missing_inputs(self, &registration).await?,
+                    false,
+                ),
             },
         };
         let uses_shared_host_config = self.uses_shared_host_config(&inputs);
@@ -2039,26 +2042,17 @@ impl Host {
         inputs
             .credential_names
             .retain(|name| !deferred_credentials.contains(name));
-        let (mut spec, _) =
-            launch::prepare(&self.home, &self.bin, &registration, &inputs, &credentials)?;
-        let mut journal = self
-            .receipt(&input.request_id)?
-            .context("missing activation receipt")?;
-        let previous = storage::read_optional::<Service>(&spec.directory()?.join("service.json"))?;
-        journal.evidence = json!({"serviceId":spec.service_id,"fingerprint":spec.fingerprint,"owner":self.owner(),"registration":registration,"previousService":previous,"components":spec.components});
-        storage::write(
-            &wire::operation_path(&self.home, &input.request_id),
-            &journal,
-        )?;
+        let service_id = Self::service_id(&registration);
+        let directory = storage::registry(&self.home, &service_id)?;
+        let previous = storage::read_optional::<Service>(&directory.join("service.json"))?;
         let current = if previous.is_some() {
-            let service = areal_local_service::status(&self.home, &spec.service_id)
+            let service = areal_local_service::status(&self.home, &service_id)
                 .await
                 .map_err(|cause| {
                     error(
                         "migrationBlocked",
                         format!(
-                            "cannot inspect existing service {} before activation: {cause:#}",
-                            spec.service_id
+                            "cannot inspect existing service {service_id} before activation: {cause:#}",
                         ),
                     )
                 })?;
@@ -2066,6 +2060,24 @@ impl Host {
         } else {
             None
         };
+        // 只给下一代 Core 使用当前网络设置；继续复用运行中代际的原始启动输入。
+        if using_saved_inputs
+            && current
+                .as_ref()
+                .is_none_or(|service| service.state == State::Stopped)
+        {
+            gui_project::refresh_saved_network(self, &registration, &mut inputs).await?;
+        }
+        let (mut spec, _) =
+            launch::prepare(&self.home, &self.bin, &registration, &inputs, &credentials)?;
+        let mut journal = self
+            .receipt(&input.request_id)?
+            .context("missing activation receipt")?;
+        journal.evidence = json!({"serviceId":spec.service_id,"fingerprint":spec.fingerprint,"owner":self.owner(),"registration":registration,"previousService":previous,"components":spec.components});
+        storage::write(
+            &wire::operation_path(&self.home, &input.request_id),
+            &journal,
+        )?;
         let mut prior_boot_activation = false;
         if let Some(previous) = current.as_ref().filter(|s| {
             s.owner.as_ref() != Some(&self.owner())
