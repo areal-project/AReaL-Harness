@@ -1059,14 +1059,7 @@ pub(super) fn desktop_command<'a>(
             Cmd::Value8 => Some("editMessage"),
             Cmd::Value9 => Some("fork"),
             Cmd::Value11 => Some("manage"),
-            Cmd::Value12
-                if matches!(
-                    params.request["operation"].as_str(),
-                    Some("list" | "release")
-                ) =>
-            {
-                Some("media")
-            }
+            Cmd::Value12 => Some("media"),
             Cmd::Value13 => Some("prediction"),
             Cmd::Value14 => Some("prepareCreator"),
             Cmd::Value15 => Some("projectless"),
@@ -1237,7 +1230,11 @@ async fn attachment_inventory_command(
         .as_str()
         .filter(|id| !id.is_empty() && id.len() <= 256)
         .context("INVALID_PARAMS")?;
-    let release = request["operation"] == "release";
+    let release = match request["operation"].as_str() {
+        Some("list") => false,
+        Some("release") => true,
+        _ => bail!("INVALID_PARAMS"),
+    };
     let scope = resolve_project_scope(host, source, request, release, true).await?;
     if !release {
         let result = shared_rpc(

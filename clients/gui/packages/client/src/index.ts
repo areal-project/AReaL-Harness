@@ -386,6 +386,72 @@ export class HostClient {
         : this.#commandContext(projectId),
     );
   }
+  async attachment(projectId: string, threadId: string, uri: string): Promise<MediaBytes> {
+    const transport = this.#transport;
+    const state = this.#state;
+    const context = this.#commandContext(projectId);
+    const request = this.#mediaQueue.then(async () => {
+      if (!transport?.write || state.connection !== "ready" || !this.writable("attachment.read"))
+        throw new Error("Attachment read unavailable");
+      const current = () => {
+        const active = this.#commandContext(projectId);
+        const connection = this.#state;
+        if (
+          transport !== this.#transport ||
+          active.serviceGeneration !== context.serviceGeneration ||
+          connection.connection !== "ready" ||
+          connection.identity.connectionId !== state.identity.connectionId ||
+          connection.identity.gatewayGeneration !== state.identity.gatewayGeneration
+        )
+          throw new Error("Attachment identity changed");
+      };
+      const parts: Uint8Array[] = [];
+      let offset = 0;
+      let total: number | undefined;
+      let mime: string | undefined;
+      const chunkSize = 256 * 1024;
+      do {
+        current();
+        const value = await transport.write("attachment.read", { threadId, uri, offset }, context);
+        current();
+        if (
+          !record(value) ||
+          value.projectId !== projectId ||
+          value.threadId !== threadId ||
+          value.uri !== uri ||
+          value.serviceGeneration !== context.serviceGeneration ||
+          value.offset !== offset ||
+          typeof value.totalBytes !== "number" ||
+          !Number.isSafeInteger(value.totalBytes) ||
+          value.totalBytes < 0 ||
+          value.totalBytes > 16 * 1024 * 1024 ||
+          typeof value.mimeType !== "string" ||
+          !value.mimeType ||
+          typeof value.base64 !== "string" ||
+          value.base64.length > Math.ceil(chunkSize / 3) * 4 ||
+          (total !== undefined && (value.totalBytes !== total || value.mimeType !== mime))
+        )
+          throw new Error("Invalid attachment chunk");
+        total = value.totalBytes;
+        mime = value.mimeType;
+        const bytes = Uint8Array.from(atob(value.base64), (char) => char.charCodeAt(0));
+        const end = offset + bytes.length;
+        if (
+          bytes.length !== Math.min(chunkSize, total - offset) ||
+          value.nextOffset !== (end < total ? end : null)
+        )
+          throw new Error("Invalid attachment range");
+        parts.push(bytes);
+        offset = end;
+      } while (offset < total);
+      return { mime, bytes: joinChunks(parts, total) };
+    });
+    this.#mediaQueue = request.then(
+      () => {},
+      () => {},
+    );
+    return request;
+  }
   /**
    * 附件分块交给 Host，再由 Host 存进 Core；返回 areal://blob/ 引用。
    * Host 校验重发块与已收内容一致，所以传输失败时同一块可以原样重发一次。

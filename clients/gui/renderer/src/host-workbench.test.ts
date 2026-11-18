@@ -724,8 +724,7 @@ describe("local web desktop commands", () => {
       ) => {
         calls.push([method, params]);
         if (params.request.fail) throw Object.assign(new Error("Core refused"), { code: "x" });
-        // JSON 通道把后台的 Uint8Array 变成按下标排的对象。
-        if (params.command === "media") return { bytes: { 0: 137, 1: 80 }, mime: "image/png" };
+        if (params.command === "media") return { uploads: [], archived: false };
         return { done: true };
       },
     } as unknown as HostClient;
@@ -742,9 +741,9 @@ describe("local web desktop commands", () => {
       ok: false,
       error: { code: "x", message: "Core refused" },
     });
-    expect(await command("media", { projectId: "p", operation: "read" } as never)).toEqual({
+    expect(await command("media", { projectId: "p", threadId: "t", operation: "list" })).toEqual({
       ok: true,
-      value: { bytes: new Uint8Array([137, 80]), mime: "image/png" },
+      value: { uploads: [], archived: false },
     });
     expect(calls[0]).toEqual([
       "desktop.command",

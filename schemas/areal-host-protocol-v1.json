@@ -13358,7 +13358,8 @@
               "providers.command",
               "plugins.read",
               "plugins.command",
-              "desktop.command"
+              "desktop.command",
+              "attachment.read"
             ]
           }
         },
@@ -16275,6 +16276,123 @@
           }
         }
       ]
+    },
+    "RemoteAttachmentReadParams": {
+      "type": "object",
+      "description": "Read a Core-owned attachment at offset zero, then continue on the same GUI connection at 262144-byte offsets.",
+      "properties": {
+        "threadId": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 128
+        },
+        "uri": {
+          "type": "string",
+          "pattern": "^areal://blob/[0-9a-f]{64}$"
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16777215
+        }
+      },
+      "required": [
+        "threadId",
+        "uri",
+        "offset"
+      ],
+      "additionalProperties": false
+    },
+    "RemoteAttachmentReadRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 64
+        },
+        "method": {
+          "type": "string",
+          "const": "attachment.read"
+        },
+        "params": {
+          "$ref": "#/$defs/RemoteAttachmentReadParams"
+        },
+        "context": {
+          "$ref": "#/$defs/RemoteMutationContext"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params",
+        "context"
+      ],
+      "additionalProperties": false
+    },
+    "RemoteAttachmentReadResult": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "serviceGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "threadId": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 128
+        },
+        "uri": {
+          "type": "string",
+          "pattern": "^areal://blob/[0-9a-f]{64}$"
+        },
+        "mimeType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16777215
+        },
+        "totalBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16777216
+        },
+        "nextOffset": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16777215
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "base64": {
+          "type": "string",
+          "maxLength": 349528
+        }
+      },
+      "required": [
+        "projectId",
+        "serviceGeneration",
+        "threadId",
+        "uri",
+        "mimeType",
+        "offset",
+        "totalBytes",
+        "nextOffset",
+        "base64"
+      ],
+      "additionalProperties": false
     },
     "RemoteAttachmentUploadParams": {
       "type": "object",
@@ -65342,6 +65460,12 @@
           "result": "#/$defs/ReadSubscriptionClosed",
           "source": "core/host/src/gateway/shared_reads.rs",
           "capability": "gui-read-v1"
+        },
+        "attachment.read": {
+          "request": "#/$defs/RemoteAttachmentReadRequest",
+          "result": "#/$defs/RemoteAttachmentReadResult",
+          "source": "core/host/src/gateway/uploads.rs",
+          "capability": "gui-write-v1"
         },
         "attachment.upload": {
           "request": "#/$defs/RemoteAttachmentUploadRequest",

@@ -25,7 +25,7 @@ const { CoreNotifications } = require("./notifications.cjs");
 const { manage } = require("./management.cjs");
 const { taskCatalog, OwnerTasks } = require("./task-catalog.cjs");
 const { isTaskDraftConfiguration, manageTaskDraft } = require("./task-draft.cjs");
-const { mediaCommand, messageInput } = require("./media.cjs");
+const { messageInput } = require("./media.cjs");
 const { workspaceCommand } = require("./workspace.cjs");
 const { CoreWorktrees } = require("./worktrees.cjs");
 const { WorktreeAdmission } = require("./worktree-admission.cjs");
@@ -1738,8 +1738,6 @@ class CoreBackend {
         await this.submissions.refreshProjectJournal(project);
         break;
       }
-      case "media":
-        return mediaCommand(project, request, this);
       case "manage":
         if (
           "threadId" in request &&

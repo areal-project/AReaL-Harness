@@ -66,6 +66,7 @@ const WRITE_METHODS: &[&str] = &[
     "project.activate",
     "command.read",
     "attachment.upload",
+    "attachment.read",
     "analytics.activity",
     "analytics.import",
     "analytics.read",
@@ -250,12 +251,11 @@ impl Loopback {
             "turn.stop" => "interrupt",
             "interaction.respond" | "task.question.reply" => "answer",
             "task.pause" => "pauseTask",
-            "library.command" | "analytics.import" | "worktree.read" | "worktree.command"
-            | "tasks.read" | "trajectory.read" | "trajectory.command" | "feedback.read"
-            | "feedback.command" | "manage.read" | "manage.command" | "providers.read"
-            | "providers.command" | "plugins.read" | "plugins.command" | "desktop.command" => {
-                "manage"
-            }
+            "attachment.read" | "library.command" | "analytics.import" | "worktree.read"
+            | "worktree.command" | "tasks.read" | "trajectory.read" | "trajectory.command"
+            | "feedback.read" | "feedback.command" | "manage.read" | "manage.command"
+            | "providers.read" | "providers.command" | "plugins.read" | "plugins.command"
+            | "desktop.command" => "manage",
             _ if WRITE_METHODS.contains(&method) => "observe",
             _ => return false,
         };

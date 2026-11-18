@@ -107,13 +107,6 @@ export const DESKTOP_COMMANDS = new Set([
   "side",
   "workspace",
 ]);
-// 命令通道是 JSON：后台返回的 Uint8Array 到这里成了按下标排的对象，还原后界面才能当字节用。
-function reviveBytes<T>(value: T): T {
-  const bytes = (value as { bytes?: unknown } | null)?.bytes;
-  if (!bytes || typeof bytes !== "object" || Array.isArray(bytes) || bytes instanceof Uint8Array)
-    return value;
-  return { ...value, bytes: Uint8Array.from(Object.values(bytes as Record<string, number>)) };
-}
 /** 本机网页的桌面命令通道；返回 undefined 表示该命令只能在桌面窗口里执行。 */
 export function hostDesktopCommand(
   client: HostClient,
@@ -148,7 +141,7 @@ export function hostDesktopCommand(
       }
       if (name === "cloudSession") await client.refreshShell();
       if (name === "providers") modelServiceObserved(client, value);
-      return { ok: true, value: reviveBytes(value) };
+      return { ok: true, value };
     } catch (error) {
       return {
         ok: false,
@@ -644,6 +637,7 @@ const HOST_ONLY_DESKTOP_COMMANDS = new Set([
   "editMessage",
   "fork",
   "manage",
+  "media",
   "prediction",
   "queue",
   "queueEdit",

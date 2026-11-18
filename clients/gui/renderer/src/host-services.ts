@@ -752,6 +752,12 @@ export function createHostReadServices(
       const target = hostTarget(params);
       if (!target) return undefined;
       try {
+        if (name === "media" && params.operation === "read" && typeof params.uri === "string") {
+          return {
+            routed: true,
+            value: await client.attachment(target.hostProjectId, target.threadId, params.uri),
+          };
+        }
         if (
           name === "media" &&
           params.operation === "upload" &&

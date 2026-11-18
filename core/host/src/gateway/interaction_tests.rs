@@ -314,6 +314,7 @@ impl Fixture {
             local: false,
             browser_device: None,
             uploads: Default::default(),
+            download: None,
             token_key: [7; 32],
         }
     }
@@ -1950,6 +1951,57 @@ async fn gui_write_uploads_attachments_in_chunks_and_replays_the_final_receipt()
             assert_eq!(replay.unwrap(), done);
         })
         .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn attachment_read_chunks_are_bound_to_the_original_thread_and_connection() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    tokio::task::LocalSet::new().run_until(async {
+        let f = Fixture::new().await;
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        f.host.slots.borrow_mut().get_mut("project").unwrap().service.as_mut().unwrap().endpoint =
+            format!("ws://{}/", listener.local_addr().unwrap());
+        let limit = 256 * 1024;
+        let bytes = vec![b'a'; 4 * limit + 17];
+        let uri = format!("areal://blob/{:x}", <sha2::Sha256 as sha2::Digest>::digest(&bytes));
+        let request = |thread: &str, offset: usize| {
+            let mut request = f.request("attachment.read", json!({"threadId":thread,"uri":uri,"offset":offset}), None);
+            request["context"] = json!({"projectId":"project","gatewayGeneration":f.host.identity.generation,"grantRevision":0,"serviceGeneration":"core-generation"});
+            request
+        };
+        let body = bytes.clone();
+        let expected_path = format!("get /areal/blobs/{}?threadid=thread ", uri.strip_prefix("areal://blob/").unwrap());
+        let core = tokio::task::spawn_local(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut head = Vec::new();
+            while !head.ends_with(b"\r\n\r\n") {
+                let mut byte = [0];
+                socket.read_exact(&mut byte).await.unwrap();
+                head.push(byte[0]);
+            }
+            let head = String::from_utf8(head).unwrap().to_lowercase();
+            assert!(head.starts_with(&expected_path));
+            assert!(head.contains("authorization: bearer original-owner-token\r\n"));
+            socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\n\r\n", body.len()).as_bytes()).await.unwrap();
+            socket.write_all(&body).await.unwrap();
+        });
+        let mut session = Session::local(f.host.clone(), "local-connection".into()).unwrap();
+        let first = session.request(&request("thread", 0)).await.unwrap();
+        core.await.unwrap();
+        assert_eq!(first["nextOffset"], limit);
+        assert!(serde_json::to_vec(&first).unwrap().len() < 1024 * 1024);
+        let mut foreign = Session::local(f.host.clone(), "other-connection".into()).unwrap();
+        assert!(foreign.request(&request("thread", limit)).await.is_err());
+        assert!(session.request(&request("other-thread", limit)).await.is_err());
+        for offset in (limit..bytes.len()).step_by(limit) {
+            let result = session.request(&request("thread", offset)).await.unwrap();
+            let end = (offset + limit).min(bytes.len());
+            assert_eq!(result["offset"], offset);
+            assert_eq!(result["nextOffset"], json!((end < bytes.len()).then_some(end)));
+            assert_eq!(base64::engine::general_purpose::STANDARD.decode(result["base64"].as_str().unwrap()).unwrap(), bytes[offset..end]);
+        }
+        assert!(!f.host.gateway.workbench.has_running_backend());
+    }).await;
 }
 
 #[tokio::test(flavor = "current_thread")]

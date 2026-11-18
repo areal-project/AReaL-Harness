@@ -223,6 +223,7 @@ pub(crate) struct Session {
     local: bool,
     browser_device: Option<String>,
     uploads: uploads::Uploads,
+    download: Option<Box<uploads::Download>>,
     token_key: [u8; 32],
 }
 struct SessionSlot {
@@ -517,6 +518,7 @@ impl Session {
             local: false,
             browser_device: None,
             uploads: Default::default(),
+            download: None,
             transport: admission.transport,
             kind: admission.kind,
             source_id: config["sourceId"]
@@ -795,6 +797,7 @@ impl Session {
             local: true,
             browser_device: None,
             uploads: Default::default(),
+            download: None,
             transport: String::new(),
             kind: gateway_owner::TransportKind::Direct,
             source_id: String::new(),
@@ -1270,6 +1273,7 @@ impl Session {
                     "session.send",
                     "turn.stop",
                     "attachment.upload",
+                    "attachment.read",
                     "artifact.read",
                     "command.read",
                     "interaction.respond",
@@ -1311,6 +1315,9 @@ impl Session {
             return self.command_read(&project, params).await;
         }
         if uploads::METHODS.contains(&method) {
+            if method == "attachment.read" {
+                return Box::pin(self.read_attachment(&project, request)).await;
+            }
             let generation = text(&request["context"], "serviceGeneration")?.to_owned();
             return self.upload_attachment(&project, &generation, request).await;
         }

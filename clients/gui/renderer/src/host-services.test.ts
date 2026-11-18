@@ -204,6 +204,62 @@ function options(factory: NonNullable<HostClientOptions["transport"]>): HostClie
   };
 }
 
+it("reads queued attachment bytes from the original Host project in bounded chunks", async () => {
+  const page = new EventTarget();
+  vi.stubGlobal("window", page);
+  const wire = transport();
+  const uri = `areal://blob/${"a".repeat(64)}`;
+  const limit = 256 * 1024;
+  const offsets: number[] = [];
+  const services = createHostReadServices(
+    undefined,
+    options(async (lifecycle) => {
+      const base = await wire.factory(lifecycle);
+      return {
+        ...base,
+        identity: { ...base.identity, writeMethods: ["attachment.read"] },
+        transport: {
+          ...base.transport,
+          async write(method, params, context) {
+            expect(method).toBe("attachment.read");
+            expect(context).toEqual({ projectId: "canonical", serviceGeneration: "core-gen" });
+            expect(params).toMatchObject({ threadId: "thread", uri });
+            const offset = Number(params.offset);
+            offsets.push(offset);
+            return {
+              ...context,
+              threadId: "thread",
+              uri,
+              mimeType: "application/octet-stream",
+              offset,
+              totalBytes: limit + 1,
+              nextOffset: offset === 0 ? limit : null,
+              base64: btoa(offset === 0 ? "A".repeat(limit) : "Z"),
+            };
+          },
+        },
+      };
+    }),
+  );
+  try {
+    await until(services);
+    const result = await call(services, "media", {
+      projectId: "alias",
+      threadId: "thread",
+      operation: "read",
+      uri,
+    });
+    expect(offsets).toEqual([0, limit]);
+    expect(result.mime).toBe("application/octet-stream");
+    expect(result.bytes).toHaveLength(limit + 1);
+    expect(result.bytes[limit - 1]).toBe(65);
+    expect(result.bytes[limit]).toBe(90);
+  } finally {
+    page.dispatchEvent(new Event("pagehide"));
+    vi.unstubAllGlobals();
+  }
+});
+
 it("projects a failed initial read with its owner and clears it on a successful retry", async () => {
   const page = new EventTarget();
   vi.stubGlobal("window", page);
