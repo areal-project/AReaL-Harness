@@ -834,12 +834,30 @@ export function createHostReadServices(
           };
         }
         if (name === "stop" && client.writable("turn.stop") && typeof params.turnId === "string") {
-          settled(
-            await client.command("turn.stop", target.hostProjectId, {
+          const commandId =
+            typeof params.requestId === "string" ? params.requestId : crypto.randomUUID();
+          const owner = client.snapshot();
+          if (owner.connection !== "ready") throw new Error("Host unavailable");
+          const result = await client.command(
+            "turn.stop",
+            target.hostProjectId,
+            {
               threadId: target.threadId,
               expectedTurnId: params.turnId,
-            }),
+            },
+            commandId,
           );
+          if (result.admissionState === "unknown" || result.admissionState === "pending") {
+            commandOwners.set(
+              JSON.stringify([owner.identity.hostId, commandId]),
+              target.hostProjectId,
+            );
+          }
+          admitted(result, {
+            method: "turn/interrupt",
+            requestId: commandId,
+            target: { kind: "thread", threadId: target.threadId },
+          });
           return { routed: true };
         }
         if (

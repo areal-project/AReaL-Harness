@@ -2092,11 +2092,24 @@ describe("Host renderer read authority", () => {
     await call(services, "stop", stop);
     expect(writes.at(-1)).toMatchObject({
       method: "turn.stop",
+      commandId: stop.requestId,
       params: { threadId: "thread", expectedTurnId: "latest-turn" },
     });
     expect(native_).not.toHaveBeenCalled();
     stopReply = { admissionState: "unknown", commandId: "lost" };
-    await expect(call(services, "stop", stop)).rejects.toMatchObject({ submissionUnknown: true });
+    await expect(call(services, "stop", stop)).rejects.toMatchObject({
+      requestId: stop.requestId,
+      submissionUnknown: true,
+      outcome: {
+        kind: "unconfirmed",
+        operation: { method: "turn/interrupt", requestId: stop.requestId },
+      },
+    });
+    stopReply = { admissionState: "pending" };
+    await expect(call(services, "stop", stop)).rejects.toMatchObject({
+      submissionUnknown: true,
+      requestId: stop.requestId,
+    });
     expect(native_).not.toHaveBeenCalled();
     stopReply = Object.assign(new Error("workflow"), { code: "TASK_CONTROL_REQUIRED" });
     await expect(call(services, "stop", stop)).rejects.toThrow("desktop path");
