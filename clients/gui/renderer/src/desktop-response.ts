@@ -19,8 +19,7 @@ const operation = z.object({
   desktopExit: z.string().optional(),
   targets: z.array(target),
 });
-// Historical feature projections remain opaque records; this decoder proves only
-// the shared renderer envelope. ProjectionReader owns history-tree integrity.
+// 这里只校验外壳状态；会话和历史由 Host 读协议校验。
 const snapshotSchema: z.ZodType<Snapshot> = z.object({
   projects: z.array(fields),
   desktopCapabilities: z.object({ currentCommands: z.boolean() }).optional(),
@@ -149,11 +148,6 @@ export const readTaskDirectory = (value: unknown) =>
   z.object({ cwd: z.string() }).nullable().parse(value);
 export const readProjectlessDirectory = (value: unknown) =>
   z.object({ directory: z.string() }).nullable().parse(value);
-export const readProjectionMessage = (value: unknown) =>
-  z
-    .object({ requestId: z.number().optional(), frame: z.unknown() })
-    .refine((value) => Object.hasOwn(value, "frame"))
-    .parse(value);
 const fileOpenTargets = z.object({
   targets: z.array(z.object({ id: z.string(), label: z.string() })),
   preferred: z.string(),

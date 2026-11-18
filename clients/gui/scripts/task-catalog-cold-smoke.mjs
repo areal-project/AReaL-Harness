@@ -268,25 +268,6 @@ try {
     "scheduled owner cold before click",
   );
   await writeFile(startTrace, "");
-  const projectionSource = await readFile(
-    join(gui, "packages/workbench/client/state-projection.cjs"),
-    "utf8",
-  );
-  await page.evaluate((source) => {
-    const module = { exports: {} };
-    Function("module", source)(module);
-    const reader = new module.exports.ProjectionReader();
-    window.__coldProjectionErrors = [];
-    window.arealDesktop.onProjection((message) => {
-      try {
-        window.__coldSnapshot = reader.read(message.frame);
-      } catch (error) {
-        window.__coldProjectionErrors.push(error.message);
-      }
-    });
-    window.arealDesktop.requestProjection(999999);
-  }, projectionSource);
-  await page.waitForFunction(() => window.__coldSnapshot);
   await page.getByRole("button", { name: "定时任务", exact: true }).evaluate(
     (button, { objective, taskOwner }) => {
       const timing = (window.__coldTaskTiming = { clickedAt: null, visibleAt: null });
@@ -297,7 +278,7 @@ try {
           (el) => el.getAttribute("aria-label") === "打开定时任务 " + objective,
         );
         if (!row || frame) return;
-        frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(async () => {
           frame = 0;
           const box = row.getBoundingClientRect(),
             style = getComputedStyle(row);
@@ -310,15 +291,21 @@ try {
           ) {
             timing.visibleAt = performance.now();
             timing.visibleWallAt = Date.now();
-            timing.executionReady = !!window.__coldSnapshot.projects.find((p) => p.id === taskOwner)
-              ?.state?.connected;
-            timing.owner = window.__coldSnapshot.projects.find((p) => p.id === taskOwner);
             timing.disabled = row.disabled;
             timing.statuses = [...document.querySelectorAll('[role="status"]')].map(
               (el) => el.textContent,
             );
             timing.rowText = row.textContent;
             observer.disconnect();
+            try {
+              const snapshot = await window.arealDesktop.snapshot();
+              timing.owner = snapshot.projects.find((project) => project.id === taskOwner);
+              timing.executionReady = timing.owner?.state?.connected === true;
+            } catch (error) {
+              timing.snapshotError = error.message;
+            } finally {
+              timing.observedOwner = true;
+            }
           }
         });
       };
@@ -338,7 +325,7 @@ try {
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
   const row = page.getByRole("button", { name: `打开定时任务 ${objective}`, exact: true });
   await row.waitFor({ timeout: 60000 });
-  await page.waitForFunction(() => window.__coldTaskTiming.visibleAt !== null);
+  await page.waitForFunction(() => window.__coldTaskTiming.observedOwner === true);
   observation = await page.evaluate(() => window.__coldTaskTiming);
   await writeFile(
     join(evidence, "observation.json"),
@@ -348,6 +335,7 @@ try {
       2,
     ),
   );
+  assert.equal(observation.snapshotError, undefined, "Owner observation succeeded");
   assert.ok(
     !observation.owner?.core?.runtimeEpoch,
     "Persisted task must be visible before execution Core authenticates",
@@ -355,8 +343,10 @@ try {
   assert.equal(observation.disabled, false, "Published task row remains selectable");
   await row.click();
   previewDetail = await page.evaluate(
-    ({ taskOwner }) => ({
-      owner: window.__coldSnapshot.projects.find((owner) => owner.id === taskOwner),
+    async ({ taskOwner }) => ({
+      owner: (await window.arealDesktop.snapshot()).projects.find(
+        (owner) => owner.id === taskOwner,
+      ),
       text: document.querySelector(".task-conversation")?.textContent,
       mutations: [...document.querySelectorAll(".task-conversation button")]
         .filter((button) =>
@@ -452,11 +442,6 @@ try {
     "Persisted preview explicitly identifies status refresh",
   );
   assert.deepEqual(errors, [], "No renderer errors");
-  assert.deepEqual(
-    await page.evaluate(() => window.__coldProjectionErrors),
-    [],
-    "Read-only projection observer decoded every frame",
-  );
 } catch (e) {
   failure = e.stack;
   console.error(failure);

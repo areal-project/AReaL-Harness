@@ -27,10 +27,8 @@ const {
 } = require("./desktop-ipc.cjs");
 const { realpath, stat } = require("node:fs/promises");
 const { join, resolve } = require("node:path");
-const { randomUUID } = require("node:crypto");
 /** @type {typeof import("../ipc/window-close.js")} */
 const { WindowCloseGate } = require("../ipc/generated/window-close.cjs");
-const { ProjectionEncoder } = require("@areal/workbench/state-projection");
 const { createOwner } = require("@areal/workbench/node/application-owner");
 const { setupUpdater } = require("../update/electron.cjs");
 const {
@@ -148,8 +146,8 @@ function startDesktop() {
   }
   /** @type {Map<string,()=>void>} */
   const previewSubscriptions = new Map();
-  /** @type {WeakMap<Electron.WebContents,{frame:Electron.WebFrameMain,encoder:InstanceType<typeof ProjectionEncoder>}>} */
-  const projections = new WeakMap();
+  /** @type {WeakMap<Electron.WebContents,{frame:Electron.WebFrameMain,last?:string}>} */
+  const nativeStateOwners = new WeakMap();
   let startupPresentation = "requested",
     startupPainted = false,
     startupReady = false;
@@ -457,12 +455,14 @@ function startDesktop() {
     setImmediate(() => {
       publishPending = false;
       if (!window || window.isDestroyed()) return;
-      const owner = window.webContents,
-        projection = projections.get(owner);
-      if (projection?.frame === owner.mainFrame)
-        sendDesktopEvent(owner, "areal-core:projection", {
-          frame: projection.encoder.encode(desktopSnapshot()),
-        });
+      const owner = window.webContents;
+      const subscription = nativeStateOwners.get(owner);
+      if (!backend || subscription?.frame !== owner.mainFrame) return;
+      const snapshot = nativeState();
+      const fingerprint = JSON.stringify(snapshot);
+      if (subscription.last === fingerprint) return;
+      subscription.last = fingerprint;
+      sendDesktopEvent(owner, "areal-core:native-state-changed", snapshot);
     });
   }
   let diagnosticTopology = "";
@@ -492,6 +492,30 @@ function startDesktop() {
     }
     return { ...state, menuBar: menuBar?.snapshot() ?? null };
   }
+  function nativeState() {
+    const snapshot = desktopSnapshot();
+    const settings = snapshot.library.settings;
+    return {
+      projects: [],
+      connection: snapshot.connection,
+      desktopCapabilities: snapshot.desktopCapabilities,
+      serviceSummary: snapshot.serviceSummary,
+      backendUpdate: snapshot.backendUpdate,
+      lifecycle: snapshot.lifecycle,
+      menuBar: snapshot.menuBar,
+      projectless: snapshot.projectless,
+      power: snapshot.power,
+      subscription: snapshot.subscription,
+      library: {
+        settings: {
+          httpProxy: settings.httpProxy,
+          httpProxyNoProxy: settings.httpProxyNoProxy,
+          httpProxyCaCertPath: settings.httpProxyCaCertPath,
+        },
+      },
+    };
+  }
+
   /** @param {Electron.IpcMainEvent|Electron.IpcMainInvokeEvent} event */
   function trustedSender(event) {
     if (
@@ -612,7 +636,7 @@ function startDesktop() {
       owner.on("did-start-navigation", (_event, _url, inPlace, mainFrame) => {
         if (mainFrame && !inPlace) {
           snapShots?.setSnapShotShortcutSuppressed(false);
-          projections.delete(owner);
+          nativeStateOwners.delete(owner);
         }
       });
       owner.on("did-finish-load", () => {
@@ -620,11 +644,11 @@ function startDesktop() {
       });
       owner.on("destroyed", () => {
         snapShots?.setSnapShotShortcutSuppressed(false);
-        projections.delete(owner);
+        nativeStateOwners.delete(owner);
       });
       owner.on("render-process-gone", () => {
         snapShots?.setSnapShotShortcutSuppressed(false);
-        projections.delete(owner);
+        nativeStateOwners.delete(owner);
       });
       createdWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
       createdWindow.webContents.on("will-navigate", (event) => event.preventDefault());
@@ -876,31 +900,14 @@ function startDesktop() {
             trusted(event);
             return result;
           });
-          onDesktopIpc("areal-core:projection-request", (event, requestId) => {
-            try {
-              trusted(event);
-            } catch {
-              return;
-            }
-            if (
-              typeof requestId !== "number" ||
-              !Number.isSafeInteger(requestId) ||
-              requestId <= 0 ||
-              !event.senderFrame
-            )
-              return;
-            let projection = projections.get(event.sender);
-            if (!projection || projection.frame !== event.senderFrame) {
-              projection = {
-                frame: event.senderFrame,
-                encoder: new ProjectionEncoder(randomUUID()),
-              };
-              projections.set(event.sender, projection);
-            }
-            sendDesktopEvent(event.sender, "areal-core:projection", {
-              requestId,
-              frame: projection.encoder.encode(desktopSnapshot(), true),
-            });
+          handleDesktopIpc("areal-core:native-state", (event) => {
+            const frame = trusted(event).webContents.mainFrame;
+            /** @type {{frame:Electron.WebFrameMain,last?:string}} */
+            const owner = { frame };
+            nativeStateOwners.set(event.sender, owner);
+            const snapshot = nativeState();
+            owner.last = JSON.stringify(snapshot);
+            return snapshot;
           });
           handleDesktopIpc("areal-core:present-ready", (event) => {
             trusted(event);

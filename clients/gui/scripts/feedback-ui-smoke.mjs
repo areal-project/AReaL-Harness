@@ -144,19 +144,9 @@ try {
     window.drafts = {};
     window.available = true;
     window.optedIn = true;
-    let projectionListener,
-      sequence = 0;
-    const projection = (requestId) => ({
-      ...(requestId === undefined ? {} : { requestId }),
-      frame: {
-        projection: 1,
-        stream: "feedback-fixture",
-        sequence: ++sequence,
-        kind: "full",
-        snapshot: structuredClone(window.fixtureSnapshot),
-      },
-    });
-    window.publish = () => projectionListener(projection());
+    let nativeStateListener;
+    const readNativeState = () => structuredClone(window.fixtureSnapshot);
+    window.publish = () => nativeStateListener?.(readNativeState());
     window.finishPolish = () => {
       const side = project.state.threads.side;
       side.turns.at(-1).status = "completed";
@@ -171,11 +161,11 @@ try {
       window.publish();
     };
     window.arealDesktop = {
-      onProjection: (listener) => {
-        projectionListener = listener;
+      nativeState: async () => readNativeState(),
+      onNativeState: (listener) => {
+        nativeStateListener = listener;
         return () => {};
       },
-      requestProjection: (requestId) => projectionListener(projection(requestId)),
       theme: async () => ({ platform: "darwin", dark: false, id: "light" }),
       onTheme: () => () => {},
       setInterfaceLocale: () => {},

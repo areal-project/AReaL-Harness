@@ -39,21 +39,12 @@ const snapshot: Snapshot = {
     projectOrder: [],
   },
 };
-let projectionListener: (value: unknown) => void = () => {
-  throw new Error("Projection listener is not installed");
+let nativeStateListener: (value: unknown) => void = () => {
+  throw new Error("Native state listener is not installed");
 };
-let sequence = 0;
 const publish = () => {
   snapshot.revision = (snapshot.revision ?? 0) + 1;
-  projectionListener({
-    frame: {
-      projection: 1,
-      stream: "navigation-fixture",
-      sequence: ++sequence,
-      kind: "full",
-      snapshot: structuredClone(snapshot),
-    },
-  });
+  nativeStateListener(structuredClone(snapshot));
 };
 const history = (id: string) => ({
   id,
@@ -89,21 +80,11 @@ localStorage.setItem("areal-gui:project", project.id);
 localStorage.removeItem("areal-gui:thread:" + project.id);
 const bridge: DesktopBridge = {
   snapshot: async () => structuredClone(snapshot),
-  onProjection: (callback) => {
-    projectionListener = callback;
+  nativeState: async () => structuredClone(snapshot),
+  onNativeState: (callback) => {
+    nativeStateListener = callback;
     return () => {};
   },
-  requestProjection: (requestId) =>
-    projectionListener({
-      requestId,
-      frame: {
-        projection: 1,
-        stream: "navigation-fixture",
-        sequence: ++sequence,
-        kind: "full",
-        snapshot: structuredClone(snapshot),
-      },
-    }),
   setInterfaceLocale: () => {},
   theme: async () => ({ platform: "darwin", dark: false, id: "light" }),
   onTheme: () => () => {},

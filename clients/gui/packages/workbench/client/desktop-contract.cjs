@@ -42,6 +42,7 @@ const invalid = require("./desktop-contract/transport.cjs").invalid;
  * "areal-core:present-ready":[],
  * "areal-core:preview":[request:unknown],
  * "areal-core:snapshot":[],
+ * "areal-core:native-state":[],
  * "areal-core:snap-shot-state":[],
  * "areal-core:snap-shot-permissions":[includeAccessibility:unknown],
  * "areal-core:snap-shot-setup":[action:unknown],
@@ -60,7 +61,6 @@ const invalid = require("./desktop-contract/transport.cjs").invalid;
  * }} DesktopInvokeArguments */
 /** @typedef {{
  * "areal-core:interface-locale":[locale:unknown],
- * "areal-core:projection-request":[requestId:unknown],
  * "areal-core:window-close-decision":[decision:unknown],
  * "areal-core:quit-decision":[decision:unknown]
  * }} DesktopSendArguments */
@@ -68,7 +68,7 @@ const invalid = require("./desktop-contract/transport.cjs").invalid;
  * "areal-core:notification-open":[],
  * "areal-core:preview-event":[event:unknown],
  * "areal-core:snap-shot-event":[event:unknown],
- * "areal-core:projection":[message:unknown],
+ * "areal-core:native-state-changed":[state:unknown],
  * "areal-core:quit-progress":[progress:unknown],
  * "areal-core:quit-request":[id:unknown],
  * "areal-core:window-closing":[id:unknown],
@@ -107,8 +107,8 @@ const invalid = require("./desktop-contract/transport.cjs").invalid;
  * theme:BridgeInvoke<'areal-core:theme'>,preview:BridgeInvoke<'areal-core:preview'>,
  * updateState:BridgeInvoke<'areal-core:update-state'>,downloadUpdate:BridgeInvoke<'areal-core:update-download'>,
  * recoverUpdateResources:BridgeInvoke<'areal-core:update-recover-resources'>,
- * setInterfaceLocale:(locale:unknown)=>void,requestProjection:(requestId:unknown)=>void,
- * onProjection:(listener:(value:unknown)=>void)=>()=>void,
+ * setInterfaceLocale:(locale:unknown)=>void,nativeState:BridgeInvoke<'areal-core:native-state'>,
+ * onNativeState:(listener:(value:unknown)=>void)=>()=>void,
  * onPreviewEvent:(listener:(value:unknown)=>void)=>()=>void,onTheme:(listener:(value:unknown)=>void)=>()=>void,
  * onUpdate:(listener:(value:unknown)=>void)=>()=>void,
  * onQuitProgress:(listener:(value:QuitProgress)=>void)=>()=>void,

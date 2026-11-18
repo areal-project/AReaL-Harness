@@ -169,10 +169,7 @@ try {
           sections: [],
         },
       };
-      let listener,
-        projectionListener,
-        sequence = 0,
-        completeLoad;
+      let listener, completeLoad;
       const publish = () => {
         snapshot.revision++;
         listener?.(structuredClone(snapshot));
@@ -238,31 +235,11 @@ try {
       };
       window.arealDesktop = {
         snapshot: async () => structuredClone(snapshot),
-        onProjection: (callback) => {
-          projectionListener = callback;
-          listener = (value) =>
-            callback({
-              frame: {
-                projection: 1,
-                stream: "history-fixture",
-                sequence: ++sequence,
-                kind: "full",
-                snapshot: value,
-              },
-            });
+        nativeState: async () => structuredClone(snapshot),
+        onNativeState: (callback) => {
+          listener = callback;
           return () => {};
         },
-        requestProjection: (requestId) =>
-          projectionListener({
-            requestId,
-            frame: {
-              projection: 1,
-              stream: "history-fixture",
-              sequence: ++sequence,
-              kind: "full",
-              snapshot: structuredClone(snapshot),
-            },
-          }),
         theme: async () => ({ platform: "darwin", dark: false, id: "light" }),
         setInterfaceLocale: async () => {},
         onQuitRequested: () => () => {},

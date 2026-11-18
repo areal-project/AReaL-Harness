@@ -131,7 +131,6 @@ export default defineConfig(({ mode }): UserConfig => ({
       "@areal/workbench/desktop-contract/shared",
       "@areal/workbench/desktop-contract/snapshots",
       "@areal/workbench/model-selection",
-      "@areal/workbench/state-projection",
       "@areal/provider-config",
     ],
   },

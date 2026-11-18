@@ -273,7 +273,7 @@ test("the shared preload bridge leaves unvalidated invoke and event responses un
 declare const bridge: DesktopBridge;
 const opaque: unknown = await bridge.command('send', {});
 const unsafe: string = await bridge.command('send', {});
-bridge.onProjection(value => { const unchecked: {frame:unknown} = value; });
+bridge.onNativeState(value => { const unchecked: {serviceSummary:unknown} = value; });
 `,
     );
     writeFileSync(

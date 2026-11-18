@@ -37,11 +37,8 @@ add("shell", "窗口外观主题", "theme onTheme");
 add("shell", "系统通知点击", "onNotificationOpen");
 
 add("transitional", "业务命令；网页走 Host desktop.command 与 session.*", "command");
-add(
-  "transitional",
-  "旧版整体快照与投影；网页走 Host 读模型",
-  "snapshot requestProjection onProjection",
-);
+add("shell", "读取和订阅窗口、菜单栏与资源恢复状态", "nativeState onNativeState");
+add("transitional", "旧版快照探针；业务从 Host 读模型获取", "snapshot");
 add("transitional", "选目录后加项目，加项目这一步是业务", "chooseProject");
 
 /**
@@ -74,6 +71,6 @@ const desktopOperations = {
 };
 
 /** 业务仍走 IPC 的上限：迁走一项就把对应数字减一，不允许加回去。 */
-const transitionalLimit = { bridge: 5, mainCommands: 3 };
+const transitionalLimit = { bridge: 3, mainCommands: 3 };
 
 module.exports = { bridge, mainCommands, desktopOperations, transitionalLimit };

@@ -207,14 +207,13 @@ const desktopBridge = {
       ipcRenderer.removeListener("areal-core:notification-open", handler);
     };
   },
-  /** @param {unknown} requestId */
-  requestProjection: (requestId) => sendDesktop("areal-core:projection-request", requestId),
+  nativeState: () => invokeDesktop("areal-core:native-state"),
   /** @param {(value:unknown)=>void} listener */
-  onProjection: (listener) => {
+  onNativeState: (listener) => {
     /** @param {import("electron").IpcRendererEvent} _event @param {unknown} value */
     const handler = (_event, value) => listener(value);
-    onDesktopEvent("areal-core:projection", handler);
-    return () => ipcRenderer.removeListener("areal-core:projection", handler);
+    onDesktopEvent("areal-core:native-state-changed", handler);
+    return () => ipcRenderer.removeListener("areal-core:native-state-changed", handler);
   },
   /** @param {(value:unknown)=>void} listener */
   onTheme: (listener) => {

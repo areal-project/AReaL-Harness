@@ -10,6 +10,8 @@ AReaL-Harness follows **Clients → Core → Runtime**. Core exclusively owns se
 
 Electron Main registers the embedded browser through an authenticated Host attachment. Host routes tool calls to the original attachment and its dedicated project Core connection. Clients continue to read historical lifecycle receipts by their original source, request ID, and generation.
 
+Renderer subscribes to business state through the Host. Electron IPC publishes native shell state such as menu bar and startup recovery status through a subscription owned by the current window's main document.
+
 The initial provider settings read projects only Host-parsed configuration and credential references. Secure-storage checks and project reconciliation continue in the background without blocking the catalog. This projection does not replace the execution snapshot or establish credential availability. Phone identity initialization also stays outside workbench readiness. Phone commands still await its original result; failures retain original receipts and recover through existing reconnection checks.
 
 ![Architecture](diagrams/architecture.svg)

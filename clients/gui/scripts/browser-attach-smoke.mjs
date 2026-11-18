@@ -105,6 +105,10 @@ try {
   const projectId = await workbench.getAttribute("data-project-id");
   const threadId = await workbench.getAttribute("data-thread-id");
   assert(projectId && threadId);
+  const nativeState = await page.evaluate(() => window.arealDesktop.nativeState());
+  assert.equal(nativeState.connection?.state, "ready");
+  assert.deepEqual(nativeState.projects, [], "Native state carries no project summaries or turns");
+  assert.equal(nativeState.library?.threads, undefined);
   const core = { binary: coreBin, env, gui, threadId, workspace: scene.project };
   const before = await readSettledThread(core, 1);
 

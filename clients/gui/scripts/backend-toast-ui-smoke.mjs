@@ -105,19 +105,10 @@ try {
         sections: [],
       },
     };
-    let projectionListener,
-      sequence = 0;
+    let nativeStateListener;
     const publish = () => {
       snapshot.revision++;
-      projectionListener?.({
-        frame: {
-          projection: 1,
-          stream: "toast-fixture",
-          sequence: ++sequence,
-          kind: "full",
-          snapshot: structuredClone(snapshot),
-        },
-      });
+      nativeStateListener?.(structuredClone(snapshot));
     };
     window.calls = [];
     window.setBackendState = (patch) => {
@@ -156,21 +147,11 @@ try {
     localStorage.setItem(`areal-gui:thread:${project.id}`, threadId);
     window.arealDesktop = {
       snapshot: async () => structuredClone(snapshot),
-      onProjection: (callback) => {
-        projectionListener = callback;
+      nativeState: async () => structuredClone(snapshot),
+      onNativeState: (callback) => {
+        nativeStateListener = callback;
         return () => {};
       },
-      requestProjection: (requestId) =>
-        projectionListener({
-          requestId,
-          frame: {
-            projection: 1,
-            stream: "toast-fixture",
-            sequence: ++sequence,
-            kind: "full",
-            snapshot: structuredClone(snapshot),
-          },
-        }),
       setInterfaceLocale: async () => {},
       onQuitRequested: () => () => {},
       onQuitProgress: () => () => {},
