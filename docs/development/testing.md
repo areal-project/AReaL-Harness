@@ -10,7 +10,7 @@
 
 长验收分别记录动作前置、业务完成、清理回执、进程退出和报告落盘，不能以其中一个替代其他完成条件。交互前等待影响目标位置的附件加载和有限动画完成；权威回执与可见结果分别断言。耗时使用单调时钟作诊断，期限用于暴露卡住的阶段；固定 sleep、墙钟差和反复重试不作业务完成证明。静态搜索这些写法只提供审查线索，不能代替行为证据或新增一刀切门禁。
 
-工作台后台冒烟可按领域运行，例如 `pnpm --dir clients/gui test:workbench-backend --domain=providers`。支持 library、trajectory、feedback、tasks、manage、worktree、providers、lifecycle，可组合；省略参数运行完整链路。每次运行使用独立数据目录；停机任务目录和运行中任务管理分别初始化不同项目。开发时选择目标领域及受影响回归，收尾运行完整链路。协议冒烟不替代真实 Web 页面操作。
+共享工作台使用 `pnpm --dir clients/gui test:web-journeys` 验证。旅程使用隔离 Host/Core 与本地模型，覆盖浏览器配对、发送、审批、原请求恢复、Side 审查和设置。
 
 高频操作基线 `pnpm --dir clients/gui test:ux-journeys` 在真实 Electron、后台和 Core 上走三条旅程：没配模型时去配置、打开项目发消息并在审批中继续排队、右上角摘要。外部模型是脚本内的假模型。每步截图并做 6 项确定性检查（400ms 内有反馈、无原始错误、中文界面不混英文、浮层不互相遮挡、等审批时不显示“运行中”、用户没操作时不弹提示）；检查逻辑在 `scripts/ux-checks.mjs`，由 `test:ux-checks` 单测。修一个体验问题时，往这里加一条检查防止回退。
 

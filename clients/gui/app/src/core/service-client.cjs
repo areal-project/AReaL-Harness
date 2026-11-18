@@ -28,7 +28,6 @@ const {
 } = require("./gui-resource-contract.cjs");
 const lifecycleControl = require("./service-control.cjs");
 const { desktopKind, needsOriginalCheck } = lifecycleControl;
-const { PROTOCOL } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 const { checkHostPrerequisites } = require("./host-prerequisites.cjs");
 /** @param {number} ms */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -577,119 +576,6 @@ class SharedCoreBackend {
       },
     );
     return connection;
-  }
-  /** @param {{expectedIdentity?:string,passive?:boolean}} [options] */
-  async attach({ expectedIdentity, passive = false } = {}) {
-    /** @type {unknown} */
-    let candidate;
-    try {
-      candidate = JSON.parse(await readFile(join(this.home, "service.json"), "utf8"));
-    } catch (e) {
-      if (desktopError(e).code === "ENOENT") return false;
-      throw e;
-    }
-    const connection = this.createConnection(candidate);
-    /** @type {import("./service-connection.cjs").ServiceMetadata} */
-    let metadata;
-    try {
-      metadata = await connection.connect(candidate);
-    } catch (e) {
-      connection.close();
-      if (desktopError(e).code === "DISCONNECTED") return false;
-      throw e;
-    }
-    let hostOwned = false;
-    {
-      const host = new HostClient();
-      try {
-        if (!this.options.hostHome) throw new Error("Host 目录不可用");
-        await host.connect(this.options.hostHome);
-        const status = await host.request("backend.status", {});
-        hostOwned =
-          status.owned === true &&
-          status.hostId === host.hostId &&
-          status.generation === host.generation &&
-          status.service?.pid === metadata.pid &&
-          status.service?.identity === metadata.identity &&
-          status.service?.desktopGeneration === metadata.desktopGeneration;
-        if (!hostOwned) throw new Error("Host 未确认此后台的所有权，请检查原后台");
-      } catch (error) {
-        connection.close();
-        throw error;
-      } finally {
-        host.close();
-      }
-    }
-    const identity =
-      expectedIdentity ??
-      (passive ? (this.metadata?.identity ?? this.identity) : metadata.identity);
-    if (this.disposed) {
-      connection.close();
-      throw new Error("GUI 连接已关闭");
-    }
-    if (passive && !this.canReconnect()) {
-      connection.close();
-      return false;
-    }
-    this.connection?.close();
-    this.connection = connection;
-    this.sequence = -1;
-    const helloTrace = startupTrace("service.hello", { servicePid: metadata.pid });
-    helloTrace.advance("hello");
-    try {
-      const deadline = Date.now() + 60000;
-      for (;;) {
-        try {
-          const packet = await connection.request("hello", {
-            protocol: PROTOCOL,
-            identity,
-            notifications: hostOwned && !!this.onNotification,
-            capabilities: hostOwned ? { browserHost: 1, projection: 1 } : {},
-          });
-          if (this.connection !== connection)
-            throw Object.assign(new Error("后台服务连接已变化，请重新连接"), {
-              code: "DISCONNECTED",
-            });
-          this.accept(packet, metadata);
-          // 成功握手覆盖此前升级或重连尝试留下的错误；错误只属于真正失败的连接，
-          // 后台恢复后不能再让它闪现在启动页。
-          this.lifecycleError = null;
-          break;
-        } catch (error) {
-          if (passive) throw error;
-          if (desktopError(error).code !== "SERVICE_STOPPING") throw error;
-          // Safety inspection can cancel retirement. Retry only the read-only
-          // handshake: attach if retained, rediscover when the old socket closes.
-          if (this.disposed || Date.now() >= deadline)
-            throw new Error("后台尚未完成退出检查，请稍后重新连接");
-          await sleep(100);
-        }
-      }
-    } catch (e) {
-      helloTrace.finish("error", e);
-      this.connection = null;
-      connection.close();
-      if (desktopError(e).code === "DISCONNECTED") return false; // Only a read-only handshake was attempted.
-      if (
-        expectedIdentity !== undefined &&
-        (desktopError(e).code === "SERVICE_INCOMPATIBLE" ||
-          desktopError(e).message.startsWith("后台服务版本或启动配置不兼容。"))
-      ) {
-        throw Object.assign(
-          new Error(
-            "当前后台使用了不同的启动配置，本次启动配置尚未生效。请重新连接，或安全停止后台后重试。",
-          ),
-          { code: "SERVICE_INCOMPATIBLE" },
-        );
-      }
-      throw e;
-    }
-    helloTrace.finish("ok");
-    if (this.lastActivity) void connection.request("activity", this.lastActivity).catch(() => {});
-    this.metadata = metadata;
-    if (hostOwned) this.identity = metadata.identity;
-    this.exitConfirmation = null;
-    return true;
   }
   get controlPath() {
     return join(this.app.getPath("userData"), "service-control.json");

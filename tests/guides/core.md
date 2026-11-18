@@ -18,7 +18,7 @@
 3. 契约：`pnpm --dir clients/gui test:host-protocol-conformance`、`test:host-client`。
 4. 真实进程冒烟（隔离 home，确定性模型）：
    - `node scripts/shared-host-smoke.mjs`、`shared-host-schedule-smoke.mjs`
-   - `pnpm --dir clients/gui test:workbench-backend`：Host 拉起桌面后台、资料库写回执、崩溃重启、Main detach、Host stop。
+   - `pnpm --dir clients/gui test:web-journeys`：隔离 Host/Core、网页配对、发送、原请求查询和 Host 停止。
    - `pnpm --dir clients/gui test:host-seed-copy`；需要真实数据形状时用 `seed-host-copy.mjs` 从 `~/.areal` 只读复制到临时目录。
 5. 收尾：`cargo fmt -p <crate> -- --check`、`make check-changed`（显式 `CI_BASE`）。
 
@@ -31,7 +31,6 @@
 ## Linux 容器的限制（留给 Mac 本机）
 
 - 以 root 运行时 `chmod 0o500` 拦不住写，Host 的写失败注入测试会失败。
-- Linux Core 不支持权限模式，`test:workbench-backend` 在"新建聊天"处停下。
 - 需要锁定 `AREAL_CORE_BIN` 的用例、经 Relay 的一致性（要 Node ≥ 24.2）、`make verify-native`。
 
 跑不了的记进 `/mnt/project-files/one-protocol/codex-本机待跑.md`，写清命令和原因。

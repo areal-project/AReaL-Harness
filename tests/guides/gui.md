@@ -12,7 +12,7 @@
    - 退出与交接：`test:host-quit`、`test:host-handoff`、`test:remote-gui-quit`
    - 浏览器预览：`test:browser-contracts`、`test:browser-attach`、`test:browser-loading` 等 `test:browser-*`
    - 电脑控制：`test:automation`
-   - 后台与 Host：`test:workbench-backend`（见 [core.md](core.md)）
+   - 后台与 Host：`test:web-journeys`（见 [core.md](core.md)）
 4. 真实 Electron：`make gui-smoke` 在隔离目录验证 Electron、Core 和本地模型。手动看用 `make build && make gui`，先设隔离数据目录。
 5. 候选安装包：`make gui-package`（只在 Mac）。
 

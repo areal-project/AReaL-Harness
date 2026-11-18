@@ -114,4 +114,4 @@ The backend entry point has no Electron dependency. Main provides native capabil
 
 ## Validation boundaries
 
-Shared business behavior primarily uses Web, real Host/Node processes and isolated data for acceptance; GUI packaging is not a routine prerequisite. `pnpm --dir clients/gui test:workbench-backend` covers ordinary browser public-key pairing, library receipts, backend crashes, Main detach and Host stop at process/protocol boundaries. It does not replace browser page interaction acceptance. Only Electron-specific paths such as windows, encryption, browser views and computer control require the desktop app. Release resource discovery, signing and upgrades still require validation in the corresponding release task.
+Verify shared workbench behavior against isolated Host and Core processes with `pnpm --dir clients/gui test:web-journeys`. Embedded browsing, system encryption, signing, and application upgrades require desktop acceptance.

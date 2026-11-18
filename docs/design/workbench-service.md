@@ -114,4 +114,4 @@ GUI 非原生资料库操作统一调用 `library.command`，保留原 `commandI
 
 ## 验证边界
 
-共享业务以 Web 和真实 Host/Node 进程、隔离数据为主要验收环境，不以 GUI 打包为常规前置。`pnpm --dir clients/gui test:workbench-backend` 覆盖普通浏览器公钥配对、资料库写回执及后台崩溃、Main detach、Host stop 的进程边界；它不替代浏览器页面交互验收。只有窗口、系统加密、浏览器视图、电脑控制等 Electron 专属路径需要启动桌面端。发行资源发现、签名和升级仍需在对应发行任务中单独验证。
+共享业务使用隔离的真实 Host/Core 验证。源码网页旅程通过 `pnpm --dir clients/gui test:web-journeys` 执行。嵌入浏览器、系统加密、签名与应用升级需要各自的桌面验收。

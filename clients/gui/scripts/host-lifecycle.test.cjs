@@ -384,7 +384,6 @@ test("an unidentified Desktop stop stays unchanged during startup and recovery",
     legacyRecovery: { phase: "retiring" },
   });
   await writeFile(f.backend.controlPath, original);
-  f.backend.attach = async () => assert.fail("Must not attach to the retired Desktop service");
   f.backend.initialize = async () => assert.fail("Must not start a replacement backend");
   await f.backend.init();
   const lifecycle = await f.backend.checkLifecycle();
