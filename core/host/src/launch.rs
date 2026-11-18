@@ -373,10 +373,7 @@ pub(crate) fn prepare(
                 );
                 value["skills"] = serde_json::to_value(retained.into_values().collect::<Vec<_>>())?;
             }
-            let digest = storage::digest(&serde_json::to_vec(&value)?);
-            let target = directory.join(format!("deployment-{digest}.json"));
-            storage::write(&target, &value)?;
-            saved.deployment_path = Some(target);
+            saved.deployment_path = Some(write_deployment_snapshot(&directory, &value)?);
         }
         Ok(())
     })()
@@ -403,6 +400,25 @@ pub(crate) fn prepare(
         storage::write(&directory.join("inputs.json"), &saved)?;
     }
     Ok((spec, saved))
+}
+
+pub(super) fn snapshot_external_deployment(
+    source: &Path,
+    directory: &Path,
+) -> Result<std::path::PathBuf> {
+    storage::private_dir(directory)?;
+    let deployment = snapshot_deployment(source, directory)?;
+    write_deployment_snapshot(directory, &deployment)
+}
+
+fn write_deployment_snapshot(
+    directory: &Path,
+    deployment: &serde_json::Value,
+) -> Result<std::path::PathBuf> {
+    let digest = storage::digest(&serde_json::to_vec(deployment)?);
+    let target = directory.join(format!("deployment-{digest}.json"));
+    storage::write(&target, deployment)?;
+    Ok(target)
 }
 
 fn snapshot_deployment(source: &Path, directory: &Path) -> Result<serde_json::Value> {

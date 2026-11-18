@@ -162,6 +162,19 @@ pub(super) async fn refresh_inputs(
         .context("GUI_SOURCE_PENDING")?;
     let options = self::options(host, &source)?;
     let mut candidate = prepare(host, &source, project, &options).await?;
+    if matches!(
+        candidate.schedule_preparation,
+        Some(SchedulePreparation::External { .. })
+    ) && let Some(external) = &candidate.deployment_path
+    {
+        // 外部部署是用户输入；刷新与启动共用同一份私有快照格式。
+        let snapshot = launch::snapshot_external_deployment(
+            external,
+            launch_path(host, project).parent().unwrap(),
+        )?;
+        candidate.options.desktop_config = Some(snapshot.clone());
+        candidate.deployment_path = Some(snapshot);
+    }
     if let Some(saved) = &saved {
         candidate.options.scratch = saved.options.scratch.clone();
         for name in saved

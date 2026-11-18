@@ -1405,6 +1405,48 @@ async fn fresh_gui_registration_prepares_launch_without_node_or_core() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn gui_refresh_compares_external_deployment_using_host_snapshots() {
+    use std::os::unix::fs::PermissionsExt;
+
+    tokio::task::LocalSet::new().run_until(async {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let (host, mut input, source) = resumable_host(&root);
+        storage::private_dir(&host.home.join("host/projects")).unwrap();
+        let external = root.join("desktop.json");
+        let write_deployment = |instructions| {
+            std::fs::write(&external, json!({"profiles":[{"id":"fixture","revision":"v1","displayName":"Fixture","instructions":instructions}]}).to_string()).unwrap();
+            std::fs::set_permissions(&external, std::fs::Permissions::from_mode(0o644)).unwrap();
+        };
+        write_deployment("Initial instructions");
+        input.options["desktopConfig"] = json!(external);
+        let options = frontend_options(&host, &source, input.options, None).unwrap();
+        host.schedules.connections.frontend_subscribe(&host, "external-profile", &source, options, None).unwrap();
+        let workspace = root.join("external-workspace");
+        storage::private_dir(&workspace).unwrap();
+        let added = super::super::worktree_catalog::add_project(&host, &source, json!({"root":workspace})).await.unwrap();
+        let registration = super::super::worktree_catalog::project(&host, &source, added["projectId"].as_str().unwrap()).unwrap();
+        let saved = host.home.join("host/launch").join(storage::digest(registration.project_id.as_bytes())).join("inputs.json");
+        let initial: crate::LaunchInputs = storage::read(&saved).unwrap();
+        for name in ["areal-runtime", "areal-runtime-fs", "areal-runtime-reaper"] {
+            std::fs::write(host.bin.join(name), b"fixture").unwrap();
+        }
+        let (spec, launched) = crate::launch::prepare(&host.home, &host.bin, &registration, &initial, &Default::default()).unwrap();
+        assert!(!spec.args.history_only);
+        let before = std::fs::read(&saved).unwrap();
+        let refresh = || super::super::gui_project::refresh_inputs(&host, &registration);
+        let candidate = refresh().await.unwrap().unwrap();
+        assert!(super::super::gui_project::same_inputs(&launched, &candidate).unwrap());
+
+        write_deployment("Updated instructions");
+        let updated = refresh().await.unwrap().unwrap();
+        assert!(!super::super::gui_project::same_inputs(&launched, &updated).unwrap());
+        assert_eq!(std::fs::read(&saved).unwrap(), before);
+        assert_eq!(std::fs::metadata(&external).unwrap().permissions().mode() & 0o777, 0o644);
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn projectless_allocations_keep_original_roots_without_node() {
     tokio::task::LocalSet::new().run_until(async {
         let temp=tempfile::tempdir().unwrap();let root=temp.path().canonicalize().unwrap();
