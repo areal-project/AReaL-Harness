@@ -8,7 +8,7 @@ const { setTimeout: delay } = require("node:timers/promises");
 const { executeHost } = require("./host-client.cjs");
 /** @typedef {{version:1,requestId:string,hostId:string,generation:string,pid:number,targetDigest:string,targetIdentity:string,phase:'stopping'|'starting'|'checking'}} Upgrade */
 /** @typedef {{dispatch:string,requestId:string,serviceGeneration:string,receipt?:{state:string,requestId:string,serviceGeneration:string}}} StopTarget */
-/** @typedef {{requestId:string,hostId:string,generation:string,strategy:string,state:string,projects:StopTarget[]}} Receipt */
+/** @typedef {{requestId:string,hostId:string,generation:string,strategy:string,state:string,projects:StopTarget[],preparationPending?:boolean,preparationInterrupted?:boolean}} Receipt */
 /** @param {unknown} error @param {string} code */
 const hasCode = (error, code) => error instanceof Error && "code" in error && error.code === code;
 
@@ -141,6 +141,7 @@ async function ensureDesktopHost(client, options) {
     ];
   };
   const targetOrder = order(version);
+  let recoveredPreparation = false;
   const checkOpen = () => {
     if (options.closed?.()) throw new Error("应用连接已关闭，交接将在下次启动继续");
   };
@@ -203,9 +204,38 @@ async function ensureDesktopHost(client, options) {
       }
       if (!receipt) throw new Error("应用交接结果尚未确认，请重新打开应用继续恢复");
       validateReceipt(record, receipt);
+      const undispatched = receipt.projects.every((item) => item.dispatch === "notStarted");
+      const preparing = receipt.state === "acceptedPending" && receipt.preparationPending === true;
+      const interrupted =
+        receipt.state === "blocked" &&
+        receipt.preparationInterrupted === true &&
+        receipt.projects.every((item) => item.receipt?.state === "blocked");
+      if (undispatched && (preparing || interrupted) && !recoveredPreparation) {
+        checkOpen();
+        const connected = client.socket && !client.socket.destroyed;
+        if (!connected) {
+          // 继任 Host 只有取得原目录的锁才能结算尚未派发的停止准备。
+          client.close();
+          await client.connectOrStart(options.home, binary);
+        }
+        if (client.hostId !== record.hostId)
+          throw new Error("应用交接的 Host 身份已变化，原记录已保留");
+        if (!connected) continue;
+        if (interrupted) {
+          // 原请求已被权威回执拒绝，重新按当前代际检查是否仍需交接。
+          await unlink(path);
+          record = null;
+          recoveredPreparation = true;
+          continue;
+        }
+        if (client.generation !== record.generation)
+          throw new Error("应用交接的停止准备尚未结算，原记录已保留");
+      }
       if (["blocked", "partial", "settlementIncomplete"].includes(receipt.state))
         throw new Error("应用交接尚未完成，原交接记录已保留，请重新打开应用继续恢复");
       if (receipt.state !== "completed") {
+        if (!client.socket || client.socket.destroyed || client.generation !== record.generation)
+          throw new Error("应用交接结果尚未确认，请重新打开应用继续恢复");
         await delay(500);
         continue;
       }
@@ -243,20 +273,28 @@ async function ensureDesktopHost(client, options) {
       if (!client.socket) await client.connectOrStart(options.home, binary);
     }
     if (!client.hello || !client.identity) throw new Error("无法确认应用后台身份");
-    const runningOrder = order(client.hello.executableVersion);
+    let runningOrder;
+    try {
+      runningOrder = order(client.hello.executableVersion);
+    } catch {
+      throw new Error("无法确认应用后台版本，请先用原版本安全停止后台，再打开新版应用");
+    }
     const different = targetOrder.findIndex((part, i) => part !== runningOrder[i]);
     if (different >= 0 && targetOrder[different] < runningOrder[different])
       throw new Error("已有更新版本正在运行，请打开新版应用");
-    const backend = await client.request("backend.status", {});
-    const active = await readPrivate(activePath);
-    if (
-      client.hello.executableDigest === targetDigest &&
-      (!backend.owned || backend.service?.identity === options.serviceIdentity) &&
-      (!active ||
-        active.generation !== client.generation ||
-        active.identity === options.buildIdentity)
-    )
-      return complete;
+    if (client.hello.executableDigest === targetDigest) {
+      const backend = await client.request("backend.status", {});
+      const active = await readPrivate(activePath);
+      if (
+        (!backend.owned || backend.service?.identity === options.serviceIdentity) &&
+        (!active ||
+          active.generation !== client.generation ||
+          active.identity === options.buildIdentity)
+      )
+        return complete;
+    }
+    if (!client.capabilities.includes("stopOperations"))
+      throw new Error("原应用后台不支持安全交接，请先用原版本安全停止后台，再打开新版应用");
     if ((await digest(binary)) !== targetDigest)
       throw new Error("应用文件在准备期间发生变化，请重新打开应用");
     record = {

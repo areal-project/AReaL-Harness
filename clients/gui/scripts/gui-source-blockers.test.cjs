@@ -7,6 +7,32 @@ const { join } = require("node:path");
 const { GuiHostProjects } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
 const { GuiSourceAdapter } = require("@areal/workbench-service/desktop/core/gui-source.cjs");
 
+test("source initialization keeps the authenticated Host connection open", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "areal-source-connected-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const owner = new GuiHostProjects({
+    binary: "/unused",
+    home: join(root, "host"),
+    singletonHeld: true,
+    source: {
+      profile: join(root, "profile"),
+      coreHome: join(root, "core"),
+      legacyServiceHome: join(root, "legacy"),
+    },
+  });
+  const socket = { destroyed: false };
+  owner.client.socket = socket;
+  owner.client.connectOrStart = async () => assert.fail("already authenticated");
+  owner.client.requireCapability = () => {};
+  owner.client.sourceState = async () => ({ sourceId: "source" });
+  owner.list = async () => [];
+  owner.retire = async () => {};
+
+  await owner.init();
+  assert.equal(owner.client.socket, socket);
+  assert.equal(owner.sourceId, "source");
+});
+
 test("backend setup sends only configured environment credentials and preserves config errors", async () => {
   const owner = new GuiHostProjects({
     binary: "/unused",

@@ -3,7 +3,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { join, resolve } = require("node:path");
 const { readFile, writeFile, mkdir, access } = require("node:fs/promises");
-const { randomUUID } = require("node:crypto");
+const { createHash, randomUUID } = require("node:crypto");
 const { tmpdir } = require("node:os");
 const { setTimeout: delay } = require("node:timers/promises");
 const { trackedMkdtemp } = require("./support/host-cleanup.cjs");
@@ -102,6 +102,96 @@ test("a changed desktop build replaces the actual Host and matching reconnect re
     await ensureDesktopHost(f.client, f.options)
   )();
   assert.equal(f.client.generation, generation);
+});
+
+test("a versioned Host without backend.status is replaced using its stop receipt", async (t) => {
+  const f = await fixture(t);
+  await f.client.connect(f.home);
+  delete f.client.hello.executableDigest;
+  const request = f.client.request.bind(f.client);
+  f.client.request = async (method, params) => {
+    if (method === "backend.status" && f.client.generation === f.original.generation)
+      throw Object.assign(new Error("unknown Host method"), { code: "methodNotFound" });
+    return request(method, params);
+  };
+  const complete = await ensureDesktopHost(f.client, f.options);
+  const record = JSON.parse(await readFile(join(f.home, "host/desktop-upgrade.json")));
+  assert.equal((await f.client.operation(record.requestId)).operation.state, "completed");
+  assert.notEqual(f.client.generation, f.original.generation);
+  await complete();
+});
+
+test("a Host whose version cannot be checked does not receive a stop request", async (t) => {
+  const f = await fixture(t);
+  await f.client.connect(f.home);
+  delete f.client.hello.executableVersion;
+  f.client.stop = async () => assert.fail("unknown Host version must not dispatch stop");
+  await assert.rejects(ensureDesktopHost(f.client, f.options), /用原版本安全停止后台/);
+  await assert.rejects(access(join(f.home, "host/desktop-upgrade.json")), { code: "ENOENT" });
+  assert.equal((await f.client.status()).state, "running");
+});
+
+test("startup resolves a crashed Host's undispatched stop without replaying it", async (t) => {
+  const f = await fixture(t);
+  await f.client.connect(f.home);
+  const hostId = f.client.hostId;
+  const executableDigest = f.client.hello.executableDigest;
+  await f.client.stop(randomUUID(), f.original.generation, "ifIdle");
+  f.client.close();
+  await waitFor(() => !alive(f.original.pid), "original fixture Host did not exit");
+  const requestId = randomUUID();
+  const receipt = {
+    version: 1,
+    requestId,
+    hostId,
+    generation: f.original.generation,
+    strategy: "cancel",
+    state: "acceptedPending",
+    projects: [],
+    localRelay: { state: "acceptedPending" },
+    preparationPending: true,
+  };
+  const host = join(f.home, "host");
+  const operation = createHash("sha256").update(requestId).digest("hex");
+  const path = join(host, "desktop-upgrade.json");
+  await writeFile(
+    join(host, "operations", `${operation}.json`),
+    JSON.stringify({ digest: "fixture", receipt }),
+    { mode: 0o600 },
+  );
+  await writeFile(join(host, "stop.json"), JSON.stringify(receipt), { mode: 0o600 });
+  await writeFile(
+    path,
+    JSON.stringify({
+      version: 1,
+      requestId,
+      hostId,
+      generation: f.original.generation,
+      pid: f.original.pid,
+      phase: "stopping",
+      targetDigest: executableDigest,
+      targetIdentity: f.options.buildIdentity,
+    }),
+    { mode: 0o600 },
+  );
+  const stops = [];
+  const stop = f.client.stop.bind(f.client);
+  f.client.stop = async (...args) => {
+    stops.push(args);
+    return stop(...args);
+  };
+  const deadline = Date.now() + 8000;
+  await (
+    await ensureDesktopHost(f.client, { ...f.options, closed: () => Date.now() >= deadline })
+  )();
+  const original = (await f.client.operation(requestId)).operation;
+  assert.equal(original.state, "blocked");
+  assert.equal(original.preparationInterrupted, true);
+  assert.deepEqual(stops, []);
+  assert.equal(f.client.hostId, hostId);
+  assert.notEqual(f.client.generation, f.original.generation);
+  assert.equal((await f.client.status()).stopIntent, false);
+  await assert.rejects(access(path), { code: "ENOENT" });
 });
 
 test("closing after stop resumes the original receipt without a second stop", async (t) => {

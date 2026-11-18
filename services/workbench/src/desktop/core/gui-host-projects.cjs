@@ -80,7 +80,10 @@ class GuiHostProjects {
     for (const path of Object.values(this.source))
       await mkdir(path, { recursive: true, mode: 0o700 });
     this.source = await canonicalSource(this.source);
-    await this.client.connectOrStart(this.home, this.options.binary);
+    if (!this.client.socket || this.client.socket.destroyed) {
+      this.client.close();
+      await this.client.connectOrStart(this.home, this.options.binary);
+    }
     this.client.requireCapability("scheduledActivation");
     this.client.requireCapability("scheduledPreparation");
     let state = await this.client.sourceState(this.source);

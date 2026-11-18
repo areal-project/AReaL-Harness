@@ -751,9 +751,12 @@ class SharedCoreBackend {
         buildIdentity,
         closed: () => this.disposed === true,
       });
-      source.client.close();
-      if (recover) await source.client.connect(options.hostHome);
-      else await source.init({ deferCredentials: true });
+      // 保持交接验证用的连接，直到 backend.ensure 撤销同代次的空闲回收意图。
+      if (!recover) await source.init({ deferCredentials: true });
+      else if (!source.client.socket || source.client.socket.destroyed) {
+        source.client.close();
+        await source.client.connect(options.hostHome);
+      }
       const owner = await source.ensureBackend(options, process.env);
       if (this.disposed) throw new Error("GUI 连接已关闭");
       if (!(await this.attach({ expectedIdentity: owner.identity })))
