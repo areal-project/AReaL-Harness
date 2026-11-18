@@ -274,13 +274,42 @@ export function useSessionNavigation(
             let persisted = false;
             let persistedRead = false;
             let connectError: unknown;
-            if (operation === "connect" && (!target?.state?.connected || options.forceConnect)) {
-              const connection = services.reads.status();
-              const canReadPersisted =
-                !!owner.threadId &&
-                !options.resumeScheduling &&
-                connection.connection === "ready" &&
-                connection.identity.persistedHistory === true;
+            const targetSession = owner.threadId
+              ? { projectId: owner.projectId, threadId: owner.threadId }
+              : null;
+            let needsConnect =
+              operation === "connect" && (!target?.state?.connected || options.forceConnect);
+            let opened = false;
+            let liveReadFailure: unknown;
+            const connection = services.reads.status();
+            const canReadPersisted =
+              !!targetSession &&
+              connection.connection === "ready" &&
+              connection.identity.persistedHistory === true;
+            if (!needsConnect && targetSession && operation === "open") {
+              try {
+                await services.reads.selectSession(targetSession);
+                opened = true;
+              } catch (error) {
+                if (!isProjectCoreUnavailable(error)) throw error;
+                liveReadFailure = error;
+                await services.reads.refreshProjects?.();
+                if (!current()) return;
+                // 目录刷新后由读客户端按当前代次选择实时或持久化历史。
+                if (!canReadPersisted) {
+                  try {
+                    await services.reads.selectSession(targetSession);
+                    opened = true;
+                  } catch (retryError) {
+                    if (!isProjectCoreUnavailable(retryError)) throw retryError;
+                    liveReadFailure = retryError;
+                  }
+                }
+                needsConnect = !opened;
+              }
+              if (!current()) return;
+            }
+            if (needsConnect) {
               if (canReadPersisted) {
                 try {
                   await services.reads.selectSession({
@@ -316,6 +345,12 @@ export function useSessionNavigation(
                   }
                 }
               }
+              if (
+                liveReadFailure &&
+                (services.capabilities?.mutations === false ||
+                  services.reads.canPrewarm?.() === false)
+              )
+                throw liveReadFailure;
               try {
                 await resourceAction("connect", {
                   projectId: owner.projectId,
@@ -335,6 +370,7 @@ export function useSessionNavigation(
                 // 已读到历史时，Host 停止只挡住后台预启动。主动恢复与未知结果仍按原路径处理。
                 if (
                   persisted &&
+                  !options.resumeScheduling &&
                   failure?.code === "stopInProgress" &&
                   failure.recovery?.kind !== "needsUser" &&
                   !unresolved
@@ -344,6 +380,7 @@ export function useSessionNavigation(
                 }
                 if (
                   !canReadPersisted ||
+                  options.resumeScheduling ||
                   unresolved ||
                   !["migrationBlocked", "MIGRATION_PENDING"].includes(String(failure?.code))
                 )
@@ -357,52 +394,19 @@ export function useSessionNavigation(
                 if (!current()) return;
               }
             }
-            const targetSession = owner.threadId
-              ? {
-                  projectId: owner.projectId,
-                  threadId: owner.threadId,
-                  ...(persisted ? { persisted: true } : {}),
-                }
-              : null;
-            try {
-              await services.reads.selectSession(targetSession);
-            } catch (error) {
-              if (!connectError && owner.threadId && isProjectCoreUnavailable(error)) {
-                if (operation === "open") {
-                  await services.reads.refreshProjects?.();
-                  if (!current()) return;
-                  try {
-                    await services.reads.selectSession(targetSession);
-                  } catch (retryError) {
-                    if (
-                      !isProjectCoreUnavailable(retryError) ||
-                      services.capabilities?.mutations === false ||
-                      services.reads.canPrewarm?.() === false
-                    )
-                      throw retryError;
-                    await resourceAction("connect", {
-                      projectId: owner.projectId,
-                      threadId: owner.threadId,
-                      ...(options.resumeScheduling ? { resumeScheduling: true } : {}),
-                    });
-                    if (!current()) return;
-                    await services.reads.refreshProjects?.();
-                    if (!current()) return;
-                    await services.reads.selectSession(targetSession);
-                  }
-                } else if (persistedRead && !options.resumeScheduling) {
-                  // 实时执行仍在启动或未就绪时保留已读出的持久化历史，避免退回整页报错。
-                  persisted = true;
-                  await services.reads.selectSession({
-                    projectId: owner.projectId,
-                    threadId: owner.threadId,
-                    persisted: true,
-                  });
-                } else {
-                  throw error;
-                }
-              } else {
-                throw connectError ?? error;
+            if (!opened && !(persistedRead && persisted)) {
+              try {
+                await services.reads.selectSession(
+                  targetSession && persisted
+                    ? { ...targetSession, persisted: true }
+                    : targetSession,
+                );
+              } catch (error) {
+                if (!targetSession || !persistedRead || !isProjectCoreUnavailable(error))
+                  throw connectError ?? error;
+                if (!current()) return;
+                persisted = true;
+                await services.reads.selectSession({ ...targetSession, persisted: true });
               }
             }
             if (current()) {
