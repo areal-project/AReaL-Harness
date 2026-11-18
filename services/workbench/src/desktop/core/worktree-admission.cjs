@@ -26,7 +26,6 @@ const noWorkspaceEffect = new Set([
   "create",
   "configure",
   "prepareCreator",
-  "attachBrowser",
   "prediction",
   "media",
   "dismissRecovery",

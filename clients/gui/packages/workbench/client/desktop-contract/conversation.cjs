@@ -39,7 +39,7 @@ const { modelRef, parameters, strings } = require("./provider.cjs");
 /** @typedef {ThreadRequest & ({requestId?:never,operation?:never}|{requestId:string,operation:'update'|'remove'|'reorder'|'pause'|'resume'|'steer'})} QueueRequest */
 /** @typedef {ThreadRequest & {expectedRevision:number,requestId?:string} & ({operation:'update',queueItemId:string,retainedInput?:Array<Record<string,unknown>>}&Message|{operation:'remove',queueItemId:string}|{operation:'steer',queueItemId:string,expectedTurnId:string}|{operation:'reorder',queueItemIds:string[]}|{operation:'pause'|'resume'})} QueueEditRequest */
 /** @typedef {ThreadRequest & ({requestId:string,decision:'deny'|'allowOnce'|'allowSession'|'allowProject',answers?:never}|{requestId:string,answers:Record<string,string>,decision?:never})} RespondRequest */
-/** @typedef {{connect:ProjectRequest & {resumeScheduling?:boolean,threadId?:string},list:ProjectRequest,open:ThreadRequest,history:HistoryRequest,create:CreateRequest,prepareCreator:ProjectRequest & {profile?:ResourceRef},fork:ForkRequest,side:SideRequest,prediction:ThreadRequest & {sourceTurnId:string,operation:'request'|'cancel'},send:ThreadRequest & Message & {requestId?:string},editMessage:ThreadRequest & Message & {expectedTurnId:string,itemId:string,text:string,expectedConfigRevision:number,requestId:string},"continue":ThreadRequest & {expectedTurnId:string,expectedConfigRevision?:number,requestId?:string},stop:ThreadRequest & {turnId:string,requestId:string},attachBrowser:ThreadRequest & {expectedToolsetRevision:number,requestId?:string},respond:RespondRequest,reconcile:ReconcileRequest,configure:ConfigureRequest,queue:QueueRequest,queueEdit:QueueEditRequest,steer:ThreadRequest & Message & {expectedTurnId:string,requestId?:string},dismissRecovery:ProjectRequest & {requestId:string}}} Requests */
+/** @typedef {{connect:ProjectRequest & {resumeScheduling?:boolean,threadId?:string},list:ProjectRequest,open:ThreadRequest,history:HistoryRequest,create:CreateRequest,prepareCreator:ProjectRequest & {profile?:ResourceRef},fork:ForkRequest,side:SideRequest,prediction:ThreadRequest & {sourceTurnId:string,operation:'request'|'cancel'},send:ThreadRequest & Message & {requestId?:string},editMessage:ThreadRequest & Message & {expectedTurnId:string,itemId:string,text:string,expectedConfigRevision:number,requestId:string},"continue":ThreadRequest & {expectedTurnId:string,expectedConfigRevision?:number,requestId?:string},stop:ThreadRequest & {turnId:string,requestId:string},respond:RespondRequest,reconcile:ReconcileRequest,configure:ConfigureRequest,queue:QueueRequest,queueEdit:QueueEditRequest,steer:ThreadRequest & Message & {expectedTurnId:string,requestId?:string},dismissRecovery:ProjectRequest & {requestId:string}}} Requests */
 /** @typedef {keyof Requests} Name */
 /** @template {Name} N @typedef {Requests[N]} Request */
 /** @typedef {{threadId:string,requestId:string}} Created */
@@ -51,7 +51,7 @@ const { modelRef, parameters, strings } = require("./provider.cjs");
 /** @template P @typedef {P extends {operation:'release'} ? {released:true} : {supported:false,message:string}|(P extends {operation:'acquire'} ? {supported:true,complete:boolean} : P extends {operation:'retain'} ? {supported:true,retained:boolean,revision:number,viewGeneration:string} : P extends {operation:'ensureAnchor'} ? AnchorResult : P extends {operation:'loadItem'} ? {loaded:true,itemId:string} : import('./conversation-history.cjs').HistoryPage|{data:[],complete:true,nextCursor:null})} HistoryResponse */
 /** @template P @typedef {P extends {operation:'start'} ? Created & {requestId:string,turnId?:string} : P extends {operation:'create'} ? Created & {requestId:string,turnId?:string} : P extends {operation:'close'} ? {threadId:string,requestId:string,accepted:boolean,cleanupConfirmed:boolean} : P extends {operation:'recover'} ? {confirmed:false}|{confirmed:true,requestId:string,threadId?:string,turnId?:string,accepted?:boolean,cleanupConfirmed?:boolean,status?:'failed',message?:string} : P extends {operation:'context'} ? SideContext : P extends {operation:'list'} ? {data:import('./conversation-history.cjs').HistorySummary[],nextCursor?:string|null} : TurnAdmission} SideResponse */
 /** @typedef {{projectId:string,profile:ResourceRef,skill:ResourceRef&{name:string,description:string},provenance:{upstream:string,revision:string,contentDigest:string}}} PrepareCreatorResponse */
-/** @template {Name} N @template [P=Requests[N]] @typedef {N extends 'connect'|'list'|'open'|'configure'|'respond'|'steer'|'dismissRecovery' ? import('./shared.cjs').DesktopSnapshot : N extends 'history' ? HistoryResponse<P> : N extends 'create' ? Created : N extends 'fork' ? Created & {requestId:string} : N extends 'prepareCreator' ? PrepareCreatorResponse : N extends 'side' ? SideResponse<P> : N extends 'prediction' ? Prediction|null : N extends 'send' ? TurnAdmission|{threadId:string,turnId?:string} : N extends 'continue'|'editMessage' ? TurnAdmission : N extends 'stop' ? import('./desktop-control.cjs').LifecycleResult : N extends 'attachBrowser' ? {threadId:string,toolsetRevision:number,bundleId:string} : N extends 'reconcile' ? {outcomes:Record<string,import('./shared.cjs').SubmissionOutcome>} : N extends 'queue' ? P extends {requestId:string} ? SubmissionRead : import('./shared.cjs').Queue : N extends 'queueEdit' ? P extends {operation:'steer'} ? QueueSteer : import('./shared.cjs').Queue : never} Response */
+/** @template {Name} N @template [P=Requests[N]] @typedef {N extends 'connect'|'list'|'open'|'configure'|'respond'|'steer'|'dismissRecovery' ? import('./shared.cjs').DesktopSnapshot : N extends 'history' ? HistoryResponse<P> : N extends 'create' ? Created : N extends 'fork' ? Created & {requestId:string} : N extends 'prepareCreator' ? PrepareCreatorResponse : N extends 'side' ? SideResponse<P> : N extends 'prediction' ? Prediction|null : N extends 'send' ? TurnAdmission|{threadId:string,turnId?:string} : N extends 'continue'|'editMessage' ? TurnAdmission : N extends 'stop' ? import('./desktop-control.cjs').LifecycleResult : N extends 'reconcile' ? {outcomes:Record<string,import('./shared.cjs').SubmissionOutcome>} : N extends 'queue' ? P extends {requestId:string} ? SubmissionRead : import('./shared.cjs').Queue : N extends 'queueEdit' ? P extends {operation:'steer'} ? QueueSteer : import('./shared.cjs').Queue : never} Response */
 /** @param {unknown} value @returns {value is string} */
 function identifier(value) {
   return typeof value === "string" && !!value.trim() && value.length <= 256;
@@ -235,7 +235,6 @@ function isRequest(name, value) {
       "editMessage",
       "continue",
       "stop",
-      "attachBrowser",
       "respond",
       "configure",
       "queue",
@@ -246,16 +245,7 @@ function isRequest(name, value) {
   )
     return false;
   if (
-    [
-      "create",
-      "configure",
-      "fork",
-      "attachBrowser",
-      "continue",
-      "send",
-      "queueEdit",
-      "steer",
-    ].includes(name) &&
+    ["create", "configure", "fork", "continue", "send", "queueEdit", "steer"].includes(name) &&
     value.requestId !== undefined &&
     !uuid(value.requestId)
   )
@@ -393,8 +383,6 @@ function isRequest(name, value) {
         uuid(value.requestId) &&
         only(value, ["projectId", "threadId", "turnId", "requestId"])
       );
-    case "attachBrowser":
-      return count(value.expectedToolsetRevision);
     case "respond":
       return (
         identifier(value.requestId) &&
@@ -593,12 +581,6 @@ function response(name, request, value) {
       typeof value.threadId === "string" &&
       typeof value.requestId === "string" &&
       (request.requestId === undefined || value.requestId === request.requestId)
-    );
-  if (name === "attachBrowser")
-    return (
-      value.threadId === request.threadId &&
-      count(value.toolsetRevision) &&
-      typeof value.bundleId === "string"
     );
   if (name === "reconcile") return isSubmissionOutcomes(value.outcomes);
   if (name === "queue")

@@ -1728,45 +1728,6 @@ class CoreBackend {
         break;
       case "history":
         return this.historyCommand(project, request);
-      case "attachBrowser": {
-        this.requireConnection(project, project.client);
-        if (
-          !project.client.capabilities?.methods?.includes("areal/thread/tools/attach") ||
-          project.client.capabilities?.features?.browserToolAttachment !== true ||
-          !project.client.capabilities?.browserToolBundles?.some(
-            (bundle) => bundle.bundleId === "areal.browser.v1",
-          )
-        ) {
-          throw new Error("当前 Core 不支持在已有聊天启用浏览器");
-        }
-        const existing = project.model.state.threads[request.threadId];
-        if (
-          !existing ||
-          existing.desktop?.archived ||
-          !modelRecord(existing.status) ||
-          existing.status.type !== "idle" ||
-          (existing.toolsetRevision !== request.expectedToolsetRevision &&
-            (existing.toolsetRevision ?? 0) !== request.expectedToolsetRevision)
-        ) {
-          throw new Error("聊天状态或工具版本已变化，请刷新后重试");
-        }
-        const result = await this.submit(
-          project,
-          "areal/thread/tools/attach",
-          {
-            threadId: request.threadId,
-            expectedToolsetRevision: request.expectedToolsetRevision,
-            bundleId: "areal.browser.v1",
-          },
-          { requestId: request.requestId },
-        );
-        await this.refreshAfterAdmission(
-          project,
-          request.threadId,
-          operationOf("areal/thread/tools/attach", request),
-        );
-        return result;
-      }
       case "configure": {
         if (
           isTaskDraftConfiguration(project.configurations?.[request.threadId]) &&

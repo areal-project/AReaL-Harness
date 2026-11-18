@@ -56,7 +56,6 @@ const commandDefinitions = Object.freeze({
   editMessage: ["service", "thread", recoverable],
   continue: ["service", "thread", recoverable],
   stop: ["service", "thread", recoverable],
-  attachBrowser: ["service", "thread", recoverable],
   respond: ["service", "thread", mutation],
   reconcile: ["service", "project", read],
   configure: ["service", "thread", recoverable],

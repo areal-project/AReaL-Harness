@@ -282,7 +282,6 @@ function validateCommand(name, params, { serviceOnly = false } = {}) {
     case "editMessage":
     case "continue":
     case "stop":
-    case "attachBrowser":
     case "respond":
     case "reconcile":
     case "configure":
@@ -625,7 +624,6 @@ function validateCommandResponse(name, params, value) {
     case "editMessage":
     case "continue":
     case "stop":
-    case "attachBrowser":
     case "respond":
     case "reconcile":
     case "configure":

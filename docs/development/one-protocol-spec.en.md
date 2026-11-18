@@ -300,7 +300,6 @@ Existing methods are partial coverage, never aliases. Proposals name operation f
 | `editMessage` | proposal session edit | Core edit and receipt |
 | `continue` | proposal session continuation | Core continuation and receipt |
 | `stop` | existing `turn.stop` (partial); proposal desktop stop | Core stop and receipt |
-| `attachBrowser` | proposal browser attachment | Core execution binding; shell native browser |
 | `respond` | existing `interaction.respond` (partial); proposal desktop response | Core interaction response |
 | `reconcile` | existing `command.read` (partial); proposal desktop receipt query | Core authoritative receipt; never replay uncertain submission |
 | `configure` | existing `session.control` (partial); proposal desktop configuration | Core session configuration |

@@ -300,7 +300,6 @@ Main 中其余业务迁入 Host 监督的 Node 工作台服务或 Core，经协�
 | `editMessage` | 提案 session edit | Core 编辑和回执 |
 | `continue` | 提案 session continuation | Core 继续执行和回执 |
 | `stop` | 现有 `turn.stop`（部分）; 提案 desktop stop | Core 停止和回执 |
-| `attachBrowser` | 提案 browser attachment | Core 执行绑定；外壳原生浏览器 |
 | `respond` | 现有 `interaction.respond`（部分）; 提案 desktop response | Core 交互回复 |
 | `reconcile` | 现有 `command.read`（部分）; 提案 desktop receipt query | Core 权威回执；不重放不确定提交 |
 | `configure` | 现有 `session.control`（部分）; 提案 desktop configuration | Core 会话配置 |
