@@ -34,11 +34,27 @@ export async function startModel() {
         }) + chunk({}, "tool_calls");
       res.writeHead(200, { "content-type": "text/event-stream" });
       const lastUser = messages.map((message) => message.role).lastIndexOf("user");
+      const userContent = messages[lastUser]?.content;
+      const userText = Array.isArray(userContent)
+        ? userContent
+            .filter((part) => part.type === "text")
+            .map((part) => part.text)
+            .join("")
+        : userContent;
       const toolResults = messages
         .slice(lastUser)
         .filter((message) => message.role === "tool").length;
       if (!request.stream || !tools.length)
         res.write(chunk({ content: "添加 clamp" }) + chunk({}, "stop"));
+      else if (userText === "准备一处侧边审查改动")
+        res.write(
+          toolResults === 0
+            ? call("side-review-create", "fs_create", {
+                path: "src/side-review.ts",
+                text: "export const sideReview = true;\n",
+              })
+            : chunk({ content: "侧边改动已就绪" }) + chunk({}, "stop"),
+        );
       else if (toolResults === 0)
         res.write(
           call("r1", tools.find((name) => /fs_read|read_file/.test(name)) ?? "fs_read", {
@@ -91,7 +107,7 @@ export async function createScene(prefix) {
     await writeFile(
       config,
       modelPort
-        ? `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${modelPort}/v1/chat/completions"\n`
+        ? `schema_version=1\n[model]\ncatalog_version=1\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${modelPort}/v1/chat/completions"\nmodels=[{id="fixture",enabled=true}]\n`
         : "schema_version=1\n",
     );
     const env = {
