@@ -55,7 +55,7 @@
         "clients/gui/scripts/journey-manifest.json"
       ],
       "boundaries": ["host-lifecycle"],
-      "authorities": ["host", "workbench"],
+      "authorities": ["host", "core"],
       "terminalFacts": [
         "stopReceiptSettled",
         "originalProcessesExited",
