@@ -58,6 +58,8 @@
 
 `policy.compactTools:true` 将原生常用层收敛为读取、搜索、`edit_files`、命令/验证、进程交互、图像、环境事实和原文回取；`tool_search` 按名称/说明发现其余已授权原生能力，完整 schema 在下一次模型请求可见，Turn 结束清空。底层文件、恢复、技能、服务和协作入口仍注册、受原权限及 allowlist 约束；批量编辑在内部调用底层工具。若 allowlist 不允许发现入口，保留原展示，避免让能力不可达。MCP 的 `lazyMcpSchemas` 仍独立配置。
 
+`tool_search` 精确查询已展示的常用工具时，返回 `schemaStatus:"already_available"` 与已有定义的位置，不加载额外 schema。原有 lazy 检索为空时，也识别句子中完整的常用工具名，例如 `tools.image_read`；不对说明做近似匹配，不改变 MCP 搜索或授权范围。返回多个已有工具仍遵守 `limit` 和 `truncated`。工具名内的字母、数字、下划线和连字符保持整体，避免把另一个工具名误认成已展示入口。
+
 精简配置使用较短基础说明和程序描述；不改变执行内核。`programmaticTools` 可独立开关，不按模型名称选择。`programmaticToolsOnly` 仍会把 schema 移入程序描述，不能据入口减少推断 token 下降。可将下面片段并入现有 extensions 文件，保留部署原有 tools/hooks/权限；它是显式候选，不是通用性能默认。
 
 ```json

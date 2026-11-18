@@ -62,7 +62,36 @@ impl ToolExposure {
                 "schemaLocation": "Use the existing tool definition, or its tools.NAME schema in tool_program when provided there."
             });
         }
-        self.search(query, limit)
+        let result = self.search(query, limit);
+        if result["tools"]
+            .as_array()
+            .is_some_and(|tools| !tools.is_empty())
+        {
+            return result;
+        }
+        // 模型常把完整工具名放进一句话。只在原检索无结果时提示已展示入口，
+        // 保留 lazy 匹配语义；不加载 schema、不猜测描述，也不扩大授权目录。
+        let terms: BTreeSet<_> = query
+            .split(|c: char| !c.is_alphanumeric() && c != '_' && c != '-')
+            .filter(|term| !term.is_empty())
+            .map(str::to_lowercase)
+            .collect();
+        let mut matches: Vec<_> = self
+            .common_catalog
+            .iter()
+            .filter(|tool| terms.contains(&tool.name.to_lowercase()))
+            .cloned()
+            .collect();
+        if matches.is_empty() {
+            return result;
+        }
+        matches.sort_by(|a, b| a.name.cmp(&b.name));
+        let truncated = matches.len() > limit;
+        matches.truncate(limit);
+        json!({
+            "tools": matches, "truncated": truncated, "schemaStatus": "already_available",
+            "schemaLocation": "Use the existing tool definition, or its tools.NAME schema in tool_program when provided there."
+        })
     }
 }
 
@@ -317,5 +346,53 @@ mod tests {
         let result = exposure.search_native("missing_tool", 1);
         assert_eq!(result["tools"].as_array().unwrap().len(), 0);
         assert!(result.get("schemaStatus").is_none());
+    }
+
+    #[test]
+    fn common_tool_names_in_a_sentence_report_the_existing_schema() {
+        let mut exposure = ToolExposure {
+            common_catalog: vec![
+                ToolSummary {
+                    name: "image_read".into(),
+                    server_id: "native".into(),
+                    description: "Read an image".into(),
+                },
+                ToolSummary {
+                    name: "read_file".into(),
+                    server_id: "native".into(),
+                    description: "Read a file".into(),
+                },
+            ],
+            ..Default::default()
+        };
+
+        let result = exposure.search_native("Use tools.IMAGE_READ to inspect the preview", 1);
+        assert_eq!(result["schemaStatus"], "already_available");
+        assert_eq!(result["tools"][0]["name"], "image_read");
+        assert!(exposure.loaded.is_empty());
+
+        let result = exposure.search_native("read_file, image_read", 1);
+        assert_eq!(result["tools"].as_array().unwrap().len(), 1);
+        assert_eq!(result["truncated"], true);
+        assert!(exposure.loaded.is_empty());
+
+        for query in ["other_image_read", "image_read2", "image_read-extra"] {
+            assert_eq!(
+                exposure.search_native(query, 1)["tools"],
+                json!([]),
+                "{query} must not match a different tool name"
+            );
+        }
+        // MCP 搜索和按说明匹配的 lazy 命中不受 common 回退影响。
+        assert_eq!(exposure.search("image_read preview", 1)["tools"], json!([]));
+        exposure.catalog.push(ToolSummary {
+            name: "read_history".into(),
+            server_id: "native".into(),
+            description: "Read image_read history".into(),
+        });
+        let result = exposure.search_native("image_read history", 1);
+        assert_eq!(result["tools"][0]["name"], "read_history");
+        assert!(result.get("schemaStatus").is_none());
+        assert_eq!(exposure.loaded, BTreeSet::from(["read_history".into()]));
     }
 }

@@ -58,6 +58,8 @@ Known file ranges can be read in one program with `for (const path of paths) tex
 
 `policy.compactTools:true` exposes reads, search, `edit_files`, commands/verification, process interaction, images, environment facts and raw-result retrieval. `tool_search` discovers other authorized native capabilities by name/description; matching schemas appear on the next model request and reset each Turn. Low-level files, recovery, skills, services and collaboration remain registered under existing permissions/allowlists. Batch edits dispatch native children internally. If an allowlist excludes discovery, the original surface remains available. MCP `lazyMcpSchemas` is independent.
 
+An exact `tool_search` query for an exposed common tool returns `schemaStatus:"already_available"` and the location of its existing definition, without loading another schema. If the original lazy search is empty, complete common-tool names inside a sentence, such as `tools.image_read`, are also recognized. This does not fuzzy-match descriptions or change MCP search or authorization. Multiple existing matches still respect `limit` and `truncated`. Letters, digits, underscores and hyphens remain part of the same name, so another tool name cannot be mistaken for an exposed entry.
+
 Compact mode uses shorter instructions and program descriptions with the same executor. `programmaticTools` is independently configurable, without model-name routing. `programmaticToolsOnly` moves schemas into the program description; fewer entry points do not imply fewer input tokens. Merge this explicit candidate fragment into existing extensions, preserving tools/hooks/permissions:
 
 ```json
