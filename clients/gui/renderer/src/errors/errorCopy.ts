@@ -32,6 +32,11 @@ export const ERROR_CODES = {
   CAPACITY_EXCEEDED: { action: "retry", retryable: true },
   COMMAND_CONFLICT: { action: "retry", retryable: false },
   RESOURCE_UNAVAILABLE: { action: "refresh", retryable: false },
+  RESOURCE_OBSERVATION_INVALID: {
+    message: "errors.INVALID_RESPONSE",
+    action: "refresh",
+    retryable: false,
+  },
   RESOURCE_BUSY: { action: "retry", retryable: true },
   NOT_FOUND: { action: "refresh", retryable: false },
   PROJECT_NOT_FOUND: { message: "errors.NOT_FOUND", action: "refresh", retryable: false },
