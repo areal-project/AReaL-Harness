@@ -355,14 +355,6 @@ class CoreBackend {
     }
   }
 
-  async reconnectHost() {
-    if (this.closing) throw new Error("应用正在退出");
-    await this.host.reconnect();
-    await this.refreshHostProjects({ observeForeign: true });
-    this.onChange();
-    return { hostId: this.host.client.hostId, generation: this.host.client.generation };
-  }
-
   /** @param {string} name @param {unknown} value */
   save(name, value) {
     const contents = JSON.stringify(value);

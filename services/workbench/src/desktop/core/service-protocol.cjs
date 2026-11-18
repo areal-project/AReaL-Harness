@@ -136,8 +136,6 @@ class DesktopService {
     /** @type {NodeJS.Timeout|undefined} */ this.activityTimer = undefined;
     /** @type {NodeJS.Timeout|undefined} */ this.flushTimer = undefined;
     /** @type {import('ws').WebSocketServer|undefined} */ this.server = undefined;
-    /** @type {Promise<{hostId:string,generation:string}>|undefined} */ this.hostReconnection =
-      undefined;
     this.exitRequested = false;
     this.recovering = false;
     backend.onChange = () => this.schedule();
@@ -615,14 +613,6 @@ class DesktopService {
         else pending.reject(new Error("系统安全存储不可用"));
         return null;
       }
-      if (method === "hostReconnect") {
-        if (params.protocol !== PROTOCOL || this.browserSocket !== socket)
-          throw new Error("Host reconnect requires the current local Main owner");
-        const result = await this.reconnectHost();
-        response = result;
-        this.schedule();
-        return response;
-      }
       if (["lifecycleRequest", "lifecycleRead", "lifecycleReconcile"].includes(method)) {
         if (!this.lifecycle)
           throw Object.assign(new Error("后台未声明持久生命周期能力"), {
@@ -1071,33 +1061,6 @@ class DesktopService {
       throw new Error("Desktop is closing");
     }
     return remote;
-  }
-  reconnectHost() {
-    if (this.hostReconnection) return this.hostReconnection;
-    const task = (async () => {
-      if (this.closed || this.exitRequested || this.backend.closing)
-        throw new Error("Desktop is closing");
-      const result = await this.backend.reconnectHost();
-      if (this.closed || this.exitRequested || this.backend.closing)
-        throw new Error("Desktop is closing");
-      if (this.remote?.closed) {
-        this.remoteInitialization = this.initRemote();
-        const remote = await this.remoteInitialization;
-        if (remote.closed || !remote.storageAvailable())
-          throw new Error(remote.directError || remote.relayError || "Remote recovery failed");
-      }
-      return result;
-    })();
-    this.hostReconnection = task;
-    void task.then(
-      () => {
-        this.hostReconnection = undefined;
-      },
-      () => {
-        this.hostReconnection = undefined;
-      },
-    );
-    return task;
   }
   close() {
     this.closed = true;
