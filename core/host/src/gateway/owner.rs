@@ -243,12 +243,13 @@ fn relay(config: &Value, local: &Value) -> Result<Option<RelayConfig>> {
             "local Relay is not owned"
         );
         let authority = origin[url::Position::BeforeHost..url::Position::AfterPort].to_owned();
-        let loopback = if origin.host_str().unwrap().contains(':') {
-            "::1"
-        } else {
-            "127.0.0.1"
+        let loopback = match origin.host() {
+            Some(url::Host::Ipv6(_)) => std::net::IpAddr::V6(std::net::Ipv6Addr::LOCALHOST),
+            _ => std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
         };
-        origin.set_host(Some(loopback))?;
+        origin
+            .set_ip_host(loopback)
+            .map_err(|_| anyhow::anyhow!("invalid local Relay loopback address"))?;
         Some(authority)
     } else {
         ensure!(origin.scheme() == "https", "Relay requires HTTPS");
@@ -669,6 +670,73 @@ impl Host {
 #[cfg(test)]
 mod local_relay_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn ipv6_local_relay_registers_over_loopback_with_public_authority() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                use futures_util::{SinkExt, StreamExt};
+                use tokio_tungstenite::tungstenite::{
+                    Message,
+                    handshake::server::{Request, Response},
+                };
+
+                let listener = tokio::net::TcpListener::bind("[::1]:0").await.unwrap();
+                let port = listener.local_addr().unwrap().port();
+                let authority = format!("[fd00::1]:{port}");
+                let origin = format!("http://{authority}");
+                let config = json!({
+                    "enabled": true,
+                    "relay": origin,
+                    "relayProtocol": "areal.remote.v2",
+                    "room": "room",
+                    "capability": "capability",
+                    "relayLocal": {"enabled": true, "origin": origin, "port": port}
+                });
+                let local = json!({"phase":"running","address":origin});
+                let connected = relay(&config, &local).unwrap().unwrap();
+                let peer = tokio::task::spawn_local(async move {
+                    let (stream, source) = listener.accept().await.unwrap();
+                    assert_eq!(source.ip(), std::net::Ipv6Addr::LOCALHOST);
+                    let mut socket = tokio_tungstenite::accept_hdr_async(
+                        stream,
+                        |request: &Request, response: Response| {
+                            assert_eq!(request.headers()["Host"], authority);
+                            assert_eq!(request.uri().path(), "/remote/socket");
+                            Ok(response)
+                        },
+                    )
+                    .await
+                    .unwrap();
+                    let registration = socket.next().await.unwrap().unwrap();
+                    assert_eq!(
+                        serde_json::from_str::<Value>(registration.to_text().unwrap()).unwrap(),
+                        json!({"protocol":"areal.relay.v1","role":"host","room":"room","capability":"capability"})
+                    );
+                    let ready = json!({
+                        "type": "ready",
+                        "limits": {
+                            "framesPerSecond": 12,
+                            "bytesPerSecond": 65536,
+                            "maxFrameBytes": 16384,
+                            "heartbeatIntervalMs": 500
+                        }
+                    });
+                    socket.send(Message::Text(ready.to_string().into())).await.unwrap();
+                });
+                let (owner, handle, mut events) = RelayOwner::new(connected);
+                let owner = tokio::task::spawn_local(owner.run());
+                match tokio::time::timeout(Duration::from_secs(5), events.recv()).await.unwrap() {
+                    Some(RelayEvent::Ready { .. }) => {}
+                    Some(RelayEvent::Disconnected { reason, .. }) => panic!("{reason}"),
+                    _ => panic!("missing Relay ready event"),
+                }
+                handle.stop();
+                owner.await.unwrap();
+                peer.await.unwrap();
+            })
+            .await;
+    }
 
     #[test]
     fn http_requires_the_exact_supervised_local_origin() {

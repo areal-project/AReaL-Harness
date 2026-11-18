@@ -12,8 +12,8 @@ export const remoteMessages = {
     en: "root@relay.example.com",
   },
   "settings.relayService.localSelected": {
-    "zh-CN": "本机 Relay 已连接 · {host}",
-    en: "Connected to local relay · {host}",
+    "zh-CN": "已选择本机 Relay · {host}",
+    en: "Local relay selected · {host}",
   },
   "settings.relayService.title": { "zh-CN": "Relay 服务", en: "Relay service" },
   "settings.relayService.description": {
