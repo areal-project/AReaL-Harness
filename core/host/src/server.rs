@@ -108,7 +108,7 @@ use std::{
 use tokio::{
     io::BufReader,
     net::{UnixListener, UnixStream},
-    sync::{Mutex, Notify, RwLock, watch},
+    sync::{Mutex, Notify, OwnedRwLockWriteGuard, RwLock, watch},
 };
 
 const DESKTOP_CORE_MAX_FRAME: usize = 64 * 1024 * 1024;
@@ -1771,16 +1771,43 @@ impl Host {
     async fn ensure_cause(&self, input: Ensure, scheduled: bool) -> Result<Value> {
         self.ensure_generation(input, scheduled, None).await
     }
+    async fn ensure_from_gateway(self: &Rc<Self>, input: Ensure) -> Result<Value> {
+        let (guard, digest, previous) = self.admit_ensure(&input, true, None).await?;
+        if let Some(previous) = previous {
+            return previous_result(previous);
+        }
+        // 受理之后由 Host 持有原项目锁和回执。Renderer 重载只撤回等待结果的连接。
+        let host = self.clone();
+        tokio::task::spawn_local(async move {
+            let _guard = guard;
+            host.finish_ensure(&input, true, &digest).await
+        })
+        .await
+        .context("project activation task failed")?
+    }
     async fn ensure_generation(
         &self,
         input: Ensure,
         scheduled: bool,
         service_generation: Option<&str>,
     ) -> Result<Value> {
+        let (_guard, digest, previous) = self
+            .admit_ensure(&input, scheduled, service_generation)
+            .await?;
+        if let Some(previous) = previous {
+            return previous_result(previous);
+        }
+        self.finish_ensure(&input, scheduled, &digest).await
+    }
+    async fn admit_ensure(
+        &self,
+        input: &Ensure,
+        scheduled: bool,
+        service_generation: Option<&str>,
+    ) -> Result<(OwnedRwLockWriteGuard<()>, String, Option<Value>)> {
         self.generation(&input.expected_generation)?;
         self.admission()?;
-        let gate = self.gate(&input.project_id)?;
-        let _guard = gate.write().await;
+        let guard = self.gate(&input.project_id)?.write_owned().await;
         self.admission()?;
         if let Some(generation) = service_generation {
             let instance = Self::service_id(&self.slots.borrow()[&input.project_id].registration);
@@ -1815,15 +1842,14 @@ impl Host {
         let (digest, previous) = self.accepted(
             &input.request_id,
             "project.ensure",
-            &input,
+            input,
             &input.project_id,
         )?;
-        if let Some(previous) = previous {
-            self.apply_scheduling_intent(&input.request_id)?;
-            return previous_result(previous);
-        }
         self.apply_scheduling_intent(&input.request_id)?;
-        let result = self.ensure_inner(&input).await;
+        Ok((guard, digest, previous))
+    }
+    async fn finish_ensure(&self, input: &Ensure, scheduled: bool, digest: &str) -> Result<Value> {
+        let result = self.ensure_inner(input).await;
         if result.is_err() {
             self.slots
                 .borrow_mut()
@@ -1831,7 +1857,7 @@ impl Host {
                 .unwrap()
                 .state = "unavailable".into();
         }
-        let result = self.finish_mutation(&input.request_id, &digest, result);
+        let result = self.finish_mutation(&input.request_id, digest, result);
         if !scheduled && input.launch_inputs.is_some() {
             self.schedules.wake.notify_one();
         }

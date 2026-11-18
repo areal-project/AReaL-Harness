@@ -2032,6 +2032,69 @@ async fn first_gui_activation_waits_for_its_native_launch_configuration() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn admitted_gui_activation_settles_after_its_client_disconnects() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let directory = tempfile::tempdir().unwrap();
+            let root = directory.path().canonicalize().unwrap();
+            let (host, mut input, source) = resumable_host(&root);
+            let alias = "0123456789abcdef01234567";
+            let registration = {
+                let mut slots = host.slots.borrow_mut();
+                let slot = slots.get_mut("project").unwrap();
+                slot.registration.source = crate::ProjectSource::Gui {
+                    profile: root.join("profile"),
+                    legacy_project_id: alias.into(),
+                };
+                slot.registration.clone()
+            };
+            storage::private_dir(&registration.workspace).unwrap();
+            storage::write(
+                &root.join("data/projects.json"),
+                &json!([{"id":alias,"root":registration.workspace}]),
+            )
+            .unwrap();
+            let mut session = crate::server::gateway_owner::LocalSession::new(
+                host.clone(),
+                "fixture-renderer".into(),
+            )
+            .unwrap();
+            let request = json!({"id":"activation","method":"project.activate","params":{},"context":{"projectId":"project"}});
+            let mut activation = Box::pin(session.request(&request));
+            assert!(futures_util::poll!(activation.as_mut()).is_pending());
+            let pending = storage::json_records(&host.home.join("host/operations"), false).unwrap();
+            assert_eq!(pending.len(), 1);
+            let original: crate::server::Operation = storage::read(&pending[0]).unwrap();
+            assert_eq!(original.receipt["state"], "acceptedPending");
+            drop(activation);
+            drop(session);
+            // 首次配置到达后明确拒绝这个相对路径，测试不启动外部进程。
+            input.options["workgroupPolicy"] = json!("relative-fixture-policy.toml");
+            host.schedules
+                .connections
+                .frontend_subscribe(&host, "native-initial-source", &source, input.options, None)
+                .unwrap();
+            let mut changes = host.changes.subscribe();
+            let terminal = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+                loop {
+                    let current: crate::server::Operation = storage::read(&pending[0]).unwrap();
+                    if current.receipt["state"] != "acceptedPending" {
+                        break current;
+                    }
+                    changes.changed().await.unwrap();
+                }
+            })
+            .await
+            .expect("the admitted activation must settle its original receipt after disconnect");
+            assert_eq!(terminal.receipt["requestId"], original.receipt["requestId"]);
+            assert_eq!(terminal.receipt["state"], "blocked");
+            assert!(terminal.receipt["error"]["message"].as_str().unwrap().contains("launch paths must be absolute"));
+            assert_eq!(storage::json_records(&host.home.join("host/operations"), false).unwrap(), pending);
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn native_attachment_reads_original_lifecycle_without_replaying_legacy_unknown() {
     tokio::task::LocalSet::new().run_until(async {
         let root=tempfile::tempdir().unwrap();
