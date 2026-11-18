@@ -1469,6 +1469,43 @@ test("cold lifecycle recovery reads the original receipt without opening a workb
   assert.equal(f.calls.filter((frame) => frame.method === "lifecycle.read").length, 1);
 });
 
+test("offline original Desktop receipt preserves its bytes and UNKNOWN state", async (t) => {
+  const f = await fixture(t);
+  f.backend.options.guiProfile = f.profile;
+  f.backend.options.hostHome = join(f.root, "offline-host");
+  const requestId = randomUUID(),
+    desktopGeneration = randomUUID();
+  const reference = {
+    requestId,
+    desktopGeneration,
+    kind: "stopProject",
+    mode: "cancel",
+    desktop: { pid: process.pid, identity: "original-desktop" },
+    targets: [{ projectId: "project", serviceId: "core", generation: "original" }],
+  };
+  const receipt = {
+    version: 1,
+    requestId,
+    desktopGeneration,
+    kind: reference.kind,
+    mode: reference.mode,
+    phase: "admissionUnconfirmed",
+    desktopExit: "notRequested",
+    targets: [{ ...reference.targets[0], phase: "admissionUnconfirmed" }],
+  };
+  const directory = join(f.home, "lifecycle-operations");
+  await mkdir(directory, { mode: 0o700 });
+  const path = join(directory, requestId + ".json");
+  const bytes = JSON.stringify(receipt);
+  await writeFile(path, bytes, { mode: 0o600 });
+  assert.deepEqual(await f.backend.readLifecycle(reference), receipt);
+  await assert.rejects(f.backend.readLifecycle({ ...reference, desktopGeneration: randomUUID() }), {
+    code: "LIFECYCLE_RECEIPT_INVALID",
+  });
+  assert.equal(await readFile(path, "utf8"), bytes);
+  assert.deepEqual(f.calls, []);
+});
+
 test("Skill Creator preparation uses native Host without a Node connection", async (t) => {
   const f = await fixture(t);
   const request = { projectId: "project", profile: { id: "standard", revision: "v2" } };

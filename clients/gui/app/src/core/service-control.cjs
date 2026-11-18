@@ -3,13 +3,11 @@
 const { hostReference } = require("./host-lifecycle.cjs");
 const { isDeepStrictEqual } = require("node:util");
 const { KINDS, isLifecycleReceipt } = require("@areal/workbench/desktop-contract/shared");
-/** @typedef {import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleKind} Kind */
-/** @typedef {import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleMode} Mode */
-/** @typedef {import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').TargetPhase} TargetPhase */
+/** @typedef {import('@areal/workbench/desktop-contract/shared').LifecycleKind} Kind */
+/** @typedef {import('@areal/workbench/desktop-contract/shared').LifecycleMode} Mode */
 /** @typedef {{projectId:string,serviceId:string|null,generation:string|null,phase?:import('@areal/workbench/desktop-contract/shared').TargetPhase,error?:unknown}} ReferenceTarget */
 /** @typedef {{pid:number,identity:string}} DesktopIdentity */
 /** @typedef {{requestId:string,desktopGeneration:string,kind:Kind,mode:Mode,targets:ReferenceTarget[],desktop:DesktopIdentity,threadId?:string,turnId?:string,logicalProjectId?:string}} LifecycleReference */
-/** @typedef {{projectId:string,serviceId:string,generation:string,phase:TargetPhase,error?:unknown,[key:string]:unknown}} ResponseTarget */
 /** @typedef {import('@areal/workbench/desktop-contract/shared').LifecycleReceipt} LifecycleResponse */
 
 /** @param {unknown} value @returns {value is Record<string,unknown>} */
@@ -83,7 +81,12 @@ function lifecycleResponse(reference, value) {
     value.desktopGeneration === reference.desktopGeneration &&
     value.kind === reference.kind &&
     value.mode === reference.mode &&
-    isDeepStrictEqual(require("./lifecycle.cjs").targets(value.targets), reference.targets) &&
+    isDeepStrictEqual(
+      value.targets
+        .map(({ projectId, serviceId, generation }) => ({ projectId, serviceId, generation }))
+        .sort((a, b) => a.projectId.localeCompare(b.projectId)),
+      reference.targets,
+    ) &&
     (reference.kind !== "interruptTurn" ||
       (value.threadId === reference.threadId && value.turnId === reference.turnId))
   );
@@ -98,7 +101,9 @@ function readLifecycleResponse(reference, value) {
   return value;
 }
 
-const { mkdir, open, rename, rm } = require("node:fs/promises");
+const { lstat, mkdir, open, rename, rm } = require("node:fs/promises");
+const { constants } = require("node:fs");
+const { join } = require("node:path");
 const { randomUUID } = require("node:crypto");
 const { PROTOCOL } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 /** @typedef {import('./lifecycle.cjs').RecoveryObservation} Observation */
@@ -274,6 +279,33 @@ function loadReferences(control) {
   } else this.controlState = control?.state ?? null;
 }
 
+/** @param {string} home @param {Reference} reference */
+async function readOfflineDesktopReceipt(home, reference) {
+  if (!uuid(reference.requestId)) throw new Error("原后台操作身份无效");
+  const directory = join(home, "lifecycle-operations");
+  try {
+    const owner = process.geteuid?.();
+    const dir = await lstat(directory);
+    if (!dir.isDirectory() || (owner !== undefined && dir.uid !== owner))
+      throw new Error("原后台回执目录不属于当前用户");
+    const file = await open(
+      join(directory, reference.requestId + ".json"),
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    );
+    try {
+      const stat = await file.stat();
+      if (!stat.isFile() || (owner !== undefined && stat.uid !== owner))
+        throw new Error("原后台回执不属于当前用户");
+      return readLifecycleResponse(reference, JSON.parse(await file.readFile("utf8")));
+    } finally {
+      await file.close();
+    }
+  } catch (error) {
+    if (desktopError(error).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
 /** @this {Backend}  @param {Reference} reference @param {boolean} [reconcile] @returns {Promise<Receipt>} */
 async function readLifecycle(reference, reconcile = true) {
   let receipt;
@@ -293,24 +325,28 @@ async function readLifecycle(reference, reconcile = true) {
       });
   } else if (profile && this.options.hostHome) {
     const host = new HostClient();
+    let connected = false;
     try {
       await host.connect(this.options.hostHome);
+      connected = true;
       receipt = await host.request("lifecycle.read", {
         profile,
         operation: reconcile ? "reconcile" : "read",
         requestId: reference.requestId,
         desktopGeneration: reference.desktopGeneration,
       });
-      if (this.disposed || this.nativeBrowserEpoch || profile !== this.options.guiProfile)
-        throw Object.assign(new Error("Original lifecycle source changed"), {
-          code: "RESYNC_REQUIRED",
-        });
     } catch (error) {
-      if (!["ENOENT", "ECONNREFUSED"].includes(String(desktopError(error).code))) throw error;
-      // Host 暂未运行时保留原 UNKNOWN，核查不会启动后台或重发原操作。
+      if (connected || !["ENOENT", "ECONNREFUSED"].includes(String(desktopError(error).code)))
+        throw error;
+      // 只读取原来源的持久回执，离线时不推断未结算目标。
+      receipt = await readOfflineDesktopReceipt(this.home, reference);
     } finally {
       host.close();
     }
+    if (this.disposed || this.nativeBrowserEpoch || profile !== this.options.guiProfile)
+      throw Object.assign(new Error("Original lifecycle source changed"), {
+        code: "RESYNC_REQUIRED",
+      });
   } else if (this.status.connected && this.status.lifecycle?.version === 2) {
     try {
       receipt = await this.requireConnection().request(
