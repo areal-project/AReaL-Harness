@@ -1669,13 +1669,7 @@ class CoreBackend {
         if (operation) throw new Error("工作树环境尚未就绪，不能执行会话写操作");
       }
     }
-    if (name === "workspace") {
-      if (this.worktreeAdmission.needsAdmission(name, request)) {
-        if (typeof request.projectId !== "string") throw new Error("缺少工作区项目标识");
-        await this.worktreeAdmission.admit(await this.start(request.projectId), name, request);
-      }
-      return workspaceCommand(this, request);
-    }
+    if (name === "workspace") return workspaceCommand(this, request);
     if (typeof projectId !== "string") throw new Error("缺少项目标识");
     if (name === "connect" && request.resumeScheduling === true)
       for (const owner of this.worktrees.owners(

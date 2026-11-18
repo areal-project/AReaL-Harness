@@ -863,7 +863,6 @@
     "owner": "app/src"
   },
   "$workbenchRetainedSources": [
-    "../../services/workbench/src/desktop/bridge/filetree.js",
     "../../services/workbench/src/desktop/core/analytics.cjs",
     "../../services/workbench/src/desktop/core/backend.cjs",
     "../../services/workbench/src/desktop/core/builtin-skills.cjs",
@@ -916,12 +915,10 @@
     "../../services/workbench/src/desktop/core/tasks.cjs",
     "../../services/workbench/src/desktop/core/terminal-profile.cjs",
     "../../services/workbench/src/desktop/core/thread-configuration.cjs",
-    "../../services/workbench/src/desktop/core/workgroup-artifacts.cjs",
     "../../services/workbench/src/desktop/core/workspace.cjs",
     "../../services/workbench/src/desktop/core/worktree-admission.cjs",
     "../../services/workbench/src/desktop/core/worktree-environment.cjs",
     "../../services/workbench/src/desktop/core/worktree-resources.cjs",
-    "../../services/workbench/src/desktop/workspace-files.js",
     "../../services/workbench/src/domains/feedback-context.cjs",
     "../../services/workbench/src/domains/feedback.cjs",
     "../../services/workbench/src/domains/trajectory-apply.cjs",

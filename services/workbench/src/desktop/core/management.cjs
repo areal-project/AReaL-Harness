@@ -9,12 +9,11 @@ const { readPluginSubmission } = require("./plugin-submission.cjs");
 const { commandResponseError } = require("@areal/workbench/desktop-contract");
 const { configurePluginAuthentication } = require("./plugin-authentication.cjs");
 const { manageTask, taskOperations } = require("./tasks.cjs");
-const { workgroupArtifactFile } = require("./workgroup-artifacts.cjs");
 const { resolveTerminalPresentation } = require("./terminal-profile.cjs");
 const { modelRecord, isCoreGoals, isCorePlan } = require("@areal/workbench/core-model-contract");
 const { readObservationResult, readHistoryInteractions } = require("./history-contract.cjs");
 const { readWorkgroup, readAdmission, submissionError } = require("./submission-results.cjs");
-const { serverStatus, models } = require("./provider-contract.cjs");
+const { models } = require("./provider-contract.cjs");
 /** @typedef {import('./project-state.cjs').SubmissionParams & {operation:string,mutation?:string}} Request */
 /** @typedef {import('./project-state.cjs').CoreProject} Project */
 const os = require("node:os");
@@ -329,7 +328,7 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
     }
   }
   if (operation === "workgroupApplyArtifact" || operation === "workgroupArtifactStatus")
-    return workgroupArtifactFile(project, request, operation === "workgroupApplyArtifact");
+    throw new Error("Workgroup artifact file operations require Host protocol");
   if (operation === "workgroupSubmission") {
     if (typeof request.requestId !== "string" || !request.requestId)
       throw new Error("缺少原提交标识");

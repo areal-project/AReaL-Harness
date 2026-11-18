@@ -2745,7 +2745,7 @@ mod tests {
                 let (host, _source, alias, workspace) = test_host(&base);
 
                 // 1. localDirectoryReference
-                let ext_dir = base.join("outside-dir");
+                let ext_dir = base.join(" 中文 notes (v2)#1> ");
                 std::fs::create_dir_all(&ext_dir).unwrap();
                 let ext_file = base.join("outside.txt");
                 std::fs::write(&ext_file, "outside\n").unwrap();
@@ -2757,7 +2757,34 @@ mod tests {
                 .await
                 .unwrap();
                 assert_eq!(ref_res["type"], "directory");
-                assert_eq!(ref_res["name"], "outside-dir");
+                assert_eq!(ref_res["name"], " 中文 notes (v2)#1> ");
+                assert_eq!(ref_res["path"], json!(ext_dir));
+                let link = base.join("selected-link");
+                std::os::unix::fs::symlink(ext_dir, &link).unwrap();
+                for path in [link.to_str().unwrap(), "/"] {
+                    let reference = run_cmd(
+                        &host,
+                        json!({"projectId":alias,"operation":"localDirectoryReference","path":path}),
+                    )
+                    .await
+                    .unwrap();
+                    assert_eq!(reference["path"], path);
+                }
+                let missing = base.join("missing-directory");
+                for (id, path) in [
+                    (alias.as_str(), "relative/path"),
+                    (alias.as_str(), missing.to_str().unwrap()),
+                    ("unknown", link.to_str().unwrap()),
+                ] {
+                    assert!(
+                        run_cmd(
+                            &host,
+                            json!({"projectId":id,"operation":"localDirectoryReference","path":path}),
+                        )
+                        .await
+                        .is_err()
+                    );
+                }
                 assert!(
                     run_cmd(
                         &host,
@@ -3144,6 +3171,17 @@ mod tests {
                 server.abort();
             })
             .await;
+    }
+
+    #[test]
+    fn turn_review_checks_deferred_content_only_within_the_requested_item() {
+        let turn = json!({"items":[
+            {"id":"loaded", "type":"dynamicToolCall"},
+            {"id":"deferred", "type":"historyDeferred", "originalType":"dynamicToolCall"}
+        ]});
+        assert!(check_no_deferred_tool_calls(&turn, Some("loaded")).is_ok());
+        assert!(check_no_deferred_tool_calls(&turn, Some("deferred")).is_err());
+        assert!(check_no_deferred_tool_calls(&turn, None).is_err());
     }
 
     #[tokio::test(flavor = "current_thread")]

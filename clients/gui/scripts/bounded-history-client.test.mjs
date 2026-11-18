@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createRequire } from "node:module";
 import { CoreTaskModel } from "../packages/workbench/client/core-model.js";
-import { createHash } from "node:crypto";
 const require = createRequire(import.meta.url);
 const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const {
@@ -12,7 +11,6 @@ const {
   validateCommand,
   commandSemantics,
 } = require("../packages/workbench/client/desktop-contract.cjs");
-const { workspaceCommand } = require("@areal/workbench-service/desktop/core/workspace.cjs");
 const {
   readObservationResult,
   readThreadMetadata,
@@ -783,49 +781,6 @@ test("completing more live history re-bounds a view even after an explicit old i
     0,
     "refresh returns explicit content to the Core-owned read window",
   );
-});
-
-test("a requested loaded tool can be reviewed while an unrelated tool remains deferred", async () => {
-  const f = fixture(async () => baseline());
-  f.backend.saved = [{ id: "project", root: "/fixture" }];
-  f.project.model.replace({
-    ...baseline().thread,
-    turns: [
-      turn("t2", [
-        {
-          id: "loaded",
-          type: "dynamicToolCall",
-          tool: "fs_create",
-          status: "completed",
-          success: true,
-          execution: { backend: "runtime", outcome: "succeeded" },
-          arguments: { path: "workspace://repo/test.txt", text: "hello" },
-          contentItems: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                path: "workspace://repo/test.txt",
-                size: 5,
-                sha256: createHash("sha256").update("hello").digest("hex"),
-              }),
-            },
-          ],
-        },
-        { id: "other", type: "historyDeferred", originalType: "dynamicToolCall" },
-      ]),
-    ],
-  });
-  const request = {
-    operation: "turnReview",
-    projectId: "project",
-    threadId: "thread",
-    turnId: "t2",
-  };
-  assert.equal(
-    (await workspaceCommand(f.backend, { ...request, itemId: "loaded" })).files[0].afterText,
-    "hello",
-  );
-  await assert.rejects(workspaceCommand(f.backend, request), /完整工具内容/);
 });
 
 test("conversation reading mode is negotiated only when Core advertises it", async () => {

@@ -152,54 +152,6 @@ test("Native directory metadata uses the read command contract without an admiss
     assert.throws(() => validateCommandResponse("workspace", request, result));
 });
 
-test("Native directory metadata stats real external directories and preserves the selected path", async (t) => {
-  const fs = require("node:fs/promises");
-  const path = require("node:path");
-  const root = await fs.mkdtemp(
-    path.join(require("node:os").tmpdir(), "areal-directory-reference-"),
-  );
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
-  const workspace = path.join(root, "workspace");
-  const external = path.join(root, " 中文 notes (v2)#1> ");
-  await fs.mkdir(workspace);
-  await fs.mkdir(external);
-  const file = path.join(root, "notes.txt");
-  await fs.writeFile(file, "ordinary file");
-  const { workspaceCommand } = require("@areal/workbench-service/desktop/core/workspace.cjs");
-  const backend = { rustDomains: [], saved: [{ id: "project", root: workspace }] };
-  const request = { projectId: "project", operation: "localDirectoryReference" };
-  assert.deepEqual(await workspaceCommand(backend, { ...request, path: external }), {
-    path: external,
-    name: " 中文 notes (v2)#1> ",
-    type: "directory",
-  });
-  const selected = path.join(root, "selected-link");
-  await fs.symlink(external, selected, "dir");
-  assert.equal((await workspaceCommand(backend, { ...request, path: selected })).path, selected);
-  const filesystemRoot = path.parse(root).root;
-  assert.equal(
-    (await workspaceCommand(backend, { ...request, path: filesystemRoot })).path,
-    filesystemRoot,
-  );
-  await assert.rejects(workspaceCommand(backend, { ...request, path: file }), /不是目录/);
-  await assert.rejects(
-    workspaceCommand(backend, { ...request, path: path.join(root, "missing") }),
-    /ENOENT/,
-  );
-  await assert.rejects(
-    workspaceCommand(backend, { ...request, path: "relative/path" }),
-    /无效本机目录路径/,
-  );
-  await assert.rejects(
-    workspaceCommand(backend, { ...request, projectId: "unknown", path: external }),
-    /未知工作区/,
-  );
-  await assert.rejects(
-    workspaceCommand(backend, { projectId: "project", operation: "list", path: external }),
-    /工作区内/,
-  );
-});
-
 test("scheduled scratch keeps its fixed owner without injecting caller submission IDs", () => {
   const request = { operation: "scratch" };
   assert.doesNotThrow(() => validateCommand("projectless", request));
