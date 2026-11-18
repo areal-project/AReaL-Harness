@@ -10,7 +10,7 @@ B-21–B-23 须通过公开 Core/GUI 路径，使用两个 Workspace 和合成�
 
 本文件定义完整 Browser 的测试契约。R0 原生实验已有独立入口，其结果以具体运行证据为准，不表示全部场景已经运行。后续主要测试切口沿用现有桌面 smoke/connection/architecture 的真实 Electron+Core+Runtime+确定性模型形态，参照[GUI指南](../../clients/gui/README.md)。
 
-当前同页读取切口运行 `make build`、`make gui-install`、`make gui-build` 后，以 `node clients/gui/scripts/browser-read-smoke.mjs` 验证 B-04/B-05/B-06。脚本仅用隔离 home、合成网页和本地确定性模型；记录 Core 动态工具 callId、真实原生 WebContents 身份与内存 sentinel、GUI/原生截图、服务端请求计数和跨 Thread/伪回执/宿主缺失结果。源码构建测试不代表安装包、真实账号或其他 OS 已验收。
+B-04 同页读取在 `make build`、`make gui-install`、`make gui-build` 后运行 `pnpm --dir clients/gui test:browser-attach`。隔离 Electron 夹具使用合成网页和本地确定性模型，记录真实 Core 工具 callId、原生 WebContents 身份、JS/Form/scroll 状态、网页请求计数以及截图。B-05 跨会话与人工控制拒绝由 `test:browser-contracts` 覆盖。Core 对其他 socket 的伪造回执和 B-06 宿主连接退出后的拒绝使用 `cargo test -p areal-app-server --test browser_attach`。这些入口使用源码产物。
 
 同一验收层使用 `node clients/gui/scripts/browser-evidence-smoke.mjs` 检查 B-07/B-08/B-09：部分观察后仍有效的 Ref、重复同名元素替换与 Frame 导航后的旧 Ref、iframe/Shadow 覆盖、语义状态和父节点关联、预算截断。脚本单独验证根页面/Frame/Shadow/明文敏感信息/跨源 Frame 的截图拒绝，检查截图期间视口变化与超大原生 PNG，并记录实际请求了哪种原生观察表面；随后验证模型图像输入、GUI 中的 Core 媒体回取及跨 Thread Blob 拒绝。仅脚本实际通过且保存运行清单时才能认定对应场景通过。
 

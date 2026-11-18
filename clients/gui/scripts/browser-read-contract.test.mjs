@@ -432,6 +432,31 @@ test("native browser owner loss during capture cannot publish or upload the old 
   assert.doesNotMatch(JSON.stringify(result), /arealMedia|aW1hZ2U=/);
 });
 
+test("native browser preparation cannot observe another thread's page or human-controlled input", async () => {
+  const f = nativeBrowserFixture();
+  f.frame.method = "areal/browser/prepare";
+  f.frame.params.arguments = { operation: "observe", parameters: { pageId: f.permit.pageId } };
+  let ownerThread = "other-thread";
+  f.preview.page = (projectId, threadId, pageId) =>
+    projectId === f.frame.guiProjectId && threadId === ownerThread && pageId === f.permit.pageId
+      ? { control: "human" }
+      : undefined;
+  f.preview.controlPermit = () => {
+    throw new Error("Human controls the page");
+  };
+  f.preview.prepare = () => assert.fail("Unauthorized pages must not be prepared");
+  assert.deepEqual(await f.tools.callback(f.frame, new AbortController().signal), {
+    error: "wrong_page",
+    dispatch: "not_sent",
+  });
+  ownerThread = f.frame.params.threadId;
+  assert.deepEqual(await f.tools.callback(f.frame, new AbortController().signal), {
+    error: "human_control",
+    dispatch: "not_sent",
+  });
+  assert.deepEqual(f.calls, []);
+});
+
 test("native browser preparation returns the native plan and execute requires Core approval", async () => {
   const f = nativeBrowserFixture();
   f.frame.method = "areal/browser/prepare";
