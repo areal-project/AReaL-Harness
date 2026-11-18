@@ -1561,7 +1561,8 @@ try {
   const files = [
     "packages/browser-automation/src/host-tool.cjs",
     "app/src/core/preview.cjs",
-    "../../services/workbench/src/desktop/core/service-protocol.cjs",
+    "app/src/core/service-client.cjs",
+    "../../core/host/src/workbench_frontend.rs",
     "renderer/src/ApprovalRequest.tsx",
     "scripts/browser-actions-smoke.mjs",
   ];
