@@ -297,7 +297,7 @@ Renderer 的 `[composer-skills]` JSON 将 Skills 读取分为 `core` 与可选�
 
 订阅状态从 Desktop 的共享公开快照读取。首次快照先读取活动账号的本地授权事实，设置页据此分组，不以模型数量判断登录。`chatgpt.status` 立即返回上次状态并在后台刷新；刷新图标表示进度，结果通过快照推送。成功目录以 `subscription-catalog.json` 缓存公开模型元数据，并绑定当前账号与注册身份。退出、切换和重新授权使不匹配缓存失效，文件不含令牌。缓存只供展示，不能授权发送。
 
-Composer 保留所选及最后受理模型，目录确认中不显示不可用警报，也不因 `available=false` 禁用发送。仅已确认失效的模型在标签中标记。首次订阅提交在写操作之前等待必要的目录与项目配置准备，之后由 Core 校验；明确拒绝显示原因并保留草稿。依赖写入或提交结果未知时沿用原请求核查。项目共享同一次账号检查，同项目同步串行，不同项目并行。本地转发端口与传输令牌仍先准备，再启动 Core。`provider-status.test.cjs` 与 `provider-recovery.test.mjs` 覆盖缓存、纯读取、并行和代际隔离；`AREAL_CORE_BIN=/absolute/path/to/areal node clients/gui/scripts/subscription-send-smoke.mjs --startup` 覆盖隔离 Electron/Core 的目录等待与恢复，不代替真实供应商或安装包验收。
+Composer 保留所选及最后受理模型，目录确认中不显示不可用警报，也不因 `available=false` 禁用发送。仅已确认失效的模型在标签中标记。首次订阅提交在写操作之前等待必要的目录与项目配置准备，之后由 Core 校验；明确拒绝显示原因并保留草稿。依赖写入或提交结果未知时沿用原请求核查。项目共享同一次账号检查，同项目同步串行，不同项目并行。本地转发端口与传输令牌仍先准备，再启动 Core。Rust Host 的订阅与模型配置测试覆盖被动读取、账号并发和 Core 代际隔离；`AREAL_CORE_BIN=/absolute/path/to/areal node clients/gui/scripts/subscription-send-smoke.mjs --startup` 覆盖隔离 Electron/Core 的目录等待与恢复，不代替真实供应商或安装包验收。
 
 新会话显式选择 ChatGPT 订阅模型时，创建会等待该模型在目标 Core 完成同步与就绪校验。新 Worktree 的独立 Core 也遵循此规则；普通模型不等待订阅同步，已就绪模型不重复查询账号。
 

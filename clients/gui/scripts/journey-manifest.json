@@ -80,7 +80,8 @@
         "clients/gui/scripts/support/core-observation.mjs",
         "schemas/areal-host-protocol-v1.json",
         "schemas/areal-core-v1.json",
-        "services/workbench/src/desktop/core/submission-recovery.cjs"
+        "core/host/src/journal.rs",
+        "core/host/src/workbench_submissions.rs"
       ]
     },
     {
@@ -103,7 +104,6 @@
         "schemas/local-service-v1.json",
         "clients/gui/app/src/core/main.cjs",
         "clients/gui/app/src/core/host-lifecycle.cjs",
-        "services/workbench/src/desktop/core/lifecycle*.cjs",
         "core/host/src/resource_inspections.rs"
       ]
     },
@@ -115,14 +115,17 @@
         "clients/gui/renderer/src/serviceGeneration.ts",
         "clients/gui/renderer/src/Messages.tsx",
         "clients/gui/renderer/src/components/messages/**",
-        "services/workbench/src/desktop/core/history-*.cjs"
+        "core/host/src/conversation_read.rs",
+        "core/engine/src/store/archive/own.rs"
       ]
     },
     {
       "id": "provider-configuration",
       "paths": [
         "core/server/src/lib.rs",
-        "services/workbench/src/desktop/core/provider*.cjs",
+        "core/host/src/provider*.rs",
+        "core/host/src/model_application*.rs",
+        "core/host/src/subscription/**",
         "core/host/src/library*.rs",
         "clients/gui/packages/workbench/client/desktop-contract/provider.cjs"
       ]
