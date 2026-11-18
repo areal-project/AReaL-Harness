@@ -1,0 +1,19 @@
+.github/workflows/toolsearch-overhead-musl.yml
+  s_f12f82d708da68::t_e3c537d6e292b9 1-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "233ead52e61671066a7b9528e5c5c8b5ba8adf84",
+  "prompts": {},
+  "sessions": {
+    "s_f12f82d708da68": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d39b-5e9e-71a0-b28d-b29ad3693a4b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
