@@ -581,10 +581,8 @@ async fn manage_mutations_artifacts_and_plugin_credentials_run_without_node_back
                         return fixture_plugin_detail();
                     }
                     assert_eq!(params["requestId"], original_config_request);
-                    let mut arguments = params.clone();
-                    arguments.as_object_mut().unwrap().remove("requestId");
                     config_digest = Some(areal_local_service::storage::digest(
-                        &serde_json::to_vec(&arguments).unwrap(),
+                        &serde_json::to_vec(&params).unwrap(),
                     ));
                     assert_eq!(params["values"]["token"]["kind"], "secretRef");
                     *saved_ref_cb.borrow_mut() =

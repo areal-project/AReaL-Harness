@@ -29,17 +29,7 @@ pub(crate) async fn dispatch(
     method: &str,
     params: Value,
 ) -> Result<Value, RpcError> {
-    if matches!(
-        method,
-        "areal/plugin/userConfig/set"
-            | "areal/plugin/development/link"
-            | "areal/plugin/development/unlink"
-            | "areal/plugin/hooks/configure"
-            | "areal/hook/acknowledge"
-            | "areal/plugin/connection"
-            | "areal/plugin/auth/configure"
-            | "areal/mcp/form/resource/stage"
-    ) {
+    if FULL_MANAGEMENT_RECEIPT_PARAMS.contains(&method) {
         let request = params
             .get("requestId")
             .and_then(|v| v.as_str().map(str::to_owned))

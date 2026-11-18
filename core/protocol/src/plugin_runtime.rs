@@ -1,5 +1,18 @@
 //! Typed desktop MCP boundaries shared with generated schemas. Secrets remain trusted launch inputs.
 use serde_json::Value;
+
+/// 以下管理方法对完整原始参数计算回执摘要，包括 requestId。
+pub const FULL_MANAGEMENT_RECEIPT_PARAMS: &[&str] = &[
+    "areal/plugin/userConfig/set",
+    "areal/plugin/development/link",
+    "areal/plugin/development/unlink",
+    "areal/plugin/hooks/configure",
+    "areal/hook/acknowledge",
+    "areal/plugin/connection",
+    "areal/plugin/auth/configure",
+    "areal/mcp/form/resource/stage",
+];
+
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Empty {}

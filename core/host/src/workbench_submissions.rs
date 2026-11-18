@@ -128,7 +128,9 @@ fn request_digest(method: &str, params: &Value, caps: &Value) -> Option<String> 
         "areal/channel/reply" => digest::<t::ChannelReply>(params),
         _ if caps["methodSemantics"][method]["receipt"] == "management" => {
             let mut params = params.clone();
-            params.as_object_mut()?.remove("requestId");
+            if !areal_protocol::plugin_runtime::FULL_MANAGEMENT_RECEIPT_PARAMS.contains(&method) {
+                params.as_object_mut()?.remove("requestId");
+            }
             Some(areal_local_service::storage::digest(
                 &serde_json::to_vec(&params).ok()?,
             ))
@@ -943,6 +945,15 @@ async fn submit_channel(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plugin_runtime_receipt_digest_includes_the_original_request_id() {
+        let method = "areal/plugin/hooks/configure";
+        let params = json!({"requestId":"original","id":"example@market","expectedDigest":"package","definitionDigest":"definition","enabled":true,"trusted":true});
+        let caps = json!({"methodSemantics":{(method):{"receipt":"management"}}});
+        let expected = areal_local_service::storage::digest(&serde_json::to_vec(&params).unwrap());
+        assert_eq!(request_digest(method, &params, &caps), Some(expected));
+    }
 
     #[test]
     fn journal_outcome_keeps_associations_without_result_or_error_body() {
