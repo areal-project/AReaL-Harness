@@ -1475,6 +1475,7 @@ impl Backend {
 
     async fn start(&self, host: &Rc<Host>, launch: Launch) -> Result<(Workbench, Value)> {
         let entry = discover_backend(&host.bin).await?;
+        let app_root = backend_application_root(&host.bin.canonicalize()?)?;
         let data = host.home.join("workbench");
         areal_local_service::storage::private_dir(&data)?;
         let owner = crate::workbench_owner::BackendOwner::acquire(
@@ -1486,7 +1487,7 @@ impl Backend {
             &host.identity,
         )?;
         let bootstrap = json!({
-            "appRoot": launch.app_root,
+            "appRoot": app_root,
             "options": launch.options,
             "retired": self.ownership.borrow().as_ref().map(|(_, value)| value.clone()),
             "owner": owner.identity,
@@ -1571,12 +1572,10 @@ fn environment_credential_names(options: &Value) -> Result<std::collections::BTr
 
 struct Launch {
     source_id: Option<String>,
-    app_root: PathBuf,
     options: Value,
 }
 
-/// 校验桌面后台的启动参数。数据目录保持已登记的原 GUI home，Host 数据目录必须是自己；
-/// Core 程序必须在 Host 自己的 Core 目录内；`appRoot` 从安装包推导，不接受客户端指定。
+/// 校验原生 GUI 来源配置，数据目录保持已登记的 GUI home，Core 必须与 Host 同属一套构建。
 fn launch(host: &Host, input: Ensure) -> Result<(String, Launch)> {
     let source = host
         .migration
@@ -1638,6 +1637,16 @@ fn launch_at(bin: &Path, host_home: &Path, input: Ensure) -> Result<(String, Lau
             && binary.file_name().is_some_and(|name| name == "areal"),
         invalid("Core executable is not the Host Core")
     );
+    Ok((
+        serde_json::to_string(&options)?,
+        Launch {
+            options,
+            source_id: None,
+        },
+    ))
+}
+
+fn backend_application_root(bin: &Path) -> Result<PathBuf> {
     let source = cfg!(debug_assertions)
         && bin.file_name().is_some_and(|name| name == "debug")
         && bin
@@ -1661,14 +1670,7 @@ fn launch_at(bin: &Path, host_home: &Path, input: Ensure) -> Result<(String, Lau
         },
         "CAPABILITY_UNAVAILABLE"
     );
-    Ok((
-        serde_json::to_string(&options)?,
-        Launch {
-            app_root,
-            options,
-            source_id: None,
-        },
-    ))
+    Ok(app_root)
 }
 
 /// 服务向 Host 的反向调用。服务只经 Host 取项目与 Core，Host 做代次检查。

@@ -325,9 +325,15 @@ fn code(result: Result<(String, Launch)>) -> String {
 }
 
 #[test]
-fn backend_launch_only_accepts_the_gui_profile_and_the_host_core() {
+fn launch_validation_uses_the_gui_profile_and_host_core_without_an_app_archive() {
     let root = tempfile::tempdir().unwrap();
     let (bin, profile, host_home) = layout(root.path());
+    let app = root.path().join("Contents/Resources/app.asar");
+    assert_eq!(
+        backend_application_root(&bin).unwrap(),
+        app.canonicalize().unwrap()
+    );
+    std::fs::remove_file(app).unwrap();
     let accepted = launch_at(
         &bin,
         &host_home,
@@ -342,13 +348,7 @@ fn backend_launch_only_accepts_the_gui_profile_and_the_host_core() {
         serde_json::from_str::<Value>(&accepted.0).unwrap(),
         options(root.path(), &bin)
     );
-    assert_eq!(
-        accepted.1.app_root,
-        root.path()
-            .join("Contents/Resources/app.asar")
-            .canonicalize()
-            .unwrap()
-    );
+    assert_eq!(accepted.1.options, options(root.path(), &bin));
 
     let mut other_core = options(root.path(), &bin);
     other_core["binary"] = json!(root.path().join("other/bin/areal"));
