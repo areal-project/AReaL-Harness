@@ -1,6 +1,6 @@
 // @ts-check
 "use strict";
-// Generated from the actual Desktop routing tables and checked Core schemas.
+// Generated from the management projections and checked Core schemas.
 /** @typedef {import("./management-plugins-protocol.cjs").RequestMap&import("./management-configuration-protocol.cjs").RequestMap&import("./management-thread-protocol.cjs").RequestMap&import("./management-processes-protocol.cjs").RequestMap&import("./management-execution-protocol.cjs").RequestMap&import("./management-agents-protocol.cjs").RequestMap&import("./management-workgroups-protocol.cjs").RequestMap&import("./management-plugin-setup-protocol.cjs").RequestMap&import("./management-mcp-protocol.cjs").RequestMap&import("./management-tasks-protocol.cjs").RequestMap} RequestMap */
 /** @typedef {import("./management-plugins-protocol.cjs").ResponseMap&import("./management-configuration-protocol.cjs").ResponseMap&import("./management-thread-protocol.cjs").ResponseMap&import("./management-processes-protocol.cjs").ResponseMap&import("./management-execution-protocol.cjs").ResponseMap&import("./management-agents-protocol.cjs").ResponseMap&import("./management-workgroups-protocol.cjs").ResponseMap&import("./management-plugin-setup-protocol.cjs").ResponseMap&import("./management-mcp-protocol.cjs").ResponseMap&import("./management-tasks-protocol.cjs").ResponseMap} ResponseMap */
 /** @param {string} operation */
