@@ -43,6 +43,7 @@ class NativeRemote {
     this.channels = new Map();
     this.closed = false;
     this.migrationCode = "";
+    this.initializationReadFailed = false;
     this.assetRoot = "";
     /** @type {Reference|null} */ this.pending = null;
     /** @type {Promise<unknown>|undefined} */ this.writes = undefined;
@@ -93,6 +94,7 @@ class NativeRemote {
         error instanceof Error && "code" in error && typeof error.code === "string"
           ? error.code
           : "";
+      /** @type {Readonly<Partial<Record<string, string>>>} */
       const storageErrors = {
         migrationPending: "手机连接身份尚未恢复，请在凭据可用后重新打开应用。",
         storageAuthorizationRequired:
@@ -101,9 +103,12 @@ class NativeRemote {
           "找不到读取手机连接加密凭据所需的钥匙串主密钥，需先恢复原有凭据或重置手机连接配置。",
         storageLocked: "本地凭据库当前已锁定，请解锁系统钥匙串后重试。",
       };
-      if (!(code in storageErrors)) throw error;
+      const message = storageErrors[code];
+      if (typeof message !== "string") throw error;
+      this.initializationReadFailed =
+        error instanceof Error && "remoteReadFailed" in error && error.remoteReadFailed === true;
       this.migrationCode = code === "migrationPending" ? "MIGRATION_PENDING" : code;
-      this.view.migrationError = storageErrors[code];
+      this.view.migrationError = message;
       this.view.directError = this.view.migrationError;
       this.view.relayError = this.view.migrationError;
       await this.close();

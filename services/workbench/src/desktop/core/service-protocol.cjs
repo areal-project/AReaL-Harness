@@ -1546,7 +1546,9 @@ class DesktopService {
   /** @param {unknown} request */
   async controlRemote(request) {
     const initialization = this.remoteInitialization;
+    const explicitAction = isRemoteRequest(request) && request.operation !== "status";
     let remote;
+    let retryInitialization = false;
     try {
       remote = await initialization;
     } catch (error) {
@@ -1554,12 +1556,10 @@ class DesktopService {
         error instanceof Error &&
         (("remoteReadFailed" in error && error.remoteReadFailed === true) ||
           ("code" in error && error.code === "storageWriteNotApplied"));
-      if (
-        !isRemoteRequest(request) ||
-        request.operation === "status" ||
-        !canReload
-      )
-        throw error;
+      if (!explicitAction || !canReload) throw error;
+      retryInitialization = true;
+    }
+    if (explicitAction && (retryInitialization || remote?.initializationReadFailed)) {
       // 只在读取失败或回执明确未写入时重试初始化；先核查原操作，再读取配置。
       if (this.remoteInitialization === initialization)
         this.remoteInitialization = this.initRemote();

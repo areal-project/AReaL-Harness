@@ -540,29 +540,39 @@ test("explicit phone action can initialize after a confirmed unapplied write", a
 
 test("an explicit phone action reloads configuration after a cold credential read failed", async (t) => {
   const { DesktopService } = require("../src/desktop/core/service-protocol.cjs");
-  const { HostRemote } = require("../src/desktop/core/host-remote.cjs");
+  const { NativeRemote } = require("../src/desktop/core/native-remote.cjs");
   const failure = Object.assign(new Error("Keychain read failed"), {
     code: "storageLocked",
   });
   const home = await mkdtemp(join(tmpdir(), "workbench-phone-reload-"));
   t.after(() => rm(home, { recursive: true, force: true }));
-  const initialRead = HostRemote.prototype.init.call({
+  const remote = new NativeRemote({
     backend: { home, host: { home, sourceId: "fixture" } },
-    requireOpen() {},
-    native: true,
-    client: { async connect() {}, requireCapability() {} },
-    async settle() {},
-    async read() {
-      throw failure;
-    },
+    schedule() {},
   });
+  remote.storage.client.connect = async () => {};
+  remote.storage.client.requireCapability = () => {};
+  remote.storage.read = async () => {
+    throw failure;
+  };
+  const initialization = remote.init().then(() => remote);
+  const starts = [];
   const service = {
-    remoteInitialization: initialRead,
-    initRemote: async () => ({ control: async () => "running" }),
+    remoteInitialization: initialization,
+    initRemote: async () => ({
+      control: async (request) => {
+        starts.push(request.operation);
+        return { relayService: { local: { phase: "running" } } };
+      },
+    }),
     inflight: 0,
     schedule() {},
   };
   const control = DesktopService.prototype.controlRemote.bind(service);
-  await assert.rejects(control({ operation: "status" }), failure);
-  assert.equal(await control({ operation: "relayServiceStartLocal" }), "running");
+  assert.match((await control({ operation: "status" })).migrationError, /钥匙串/);
+  assert.equal(service.remoteInitialization, initialization);
+  assert.deepEqual(starts, []);
+  const started = await control({ operation: "relayServiceStartLocal" });
+  assert.equal(started.relayService.local.phase, "running");
+  assert.deepEqual(starts, ["relayServiceStartLocal"]);
 });
