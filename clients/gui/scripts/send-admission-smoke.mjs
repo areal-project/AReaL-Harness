@@ -534,6 +534,84 @@ try {
   checks.push(
     "A lost creation reply keeps the same draft locked until the original Host receipt restores its empty Thread",
   );
+
+  await createProjectConversation(page, "demo");
+  await page.getByRole("button", { name: "选择模型", exact: true }).click();
+  await page.getByRole("radio", { name: "fixture", exact: true }).click();
+  const retainedText = "Keep the original UNKNOWN creation for inspection.";
+  const beforeRetain = commands.length;
+  gate = { method: "session.create", mode: "lost-after-acceptance" };
+  hideCreationReceipt = true;
+  await input.fill(retainedText);
+  await sendReady(page);
+  await send.click();
+  const original = await until(() => gate.command, "Original retained creation");
+  gate.release();
+  const originalReceipt = await accepted(original);
+  await pendingAction.waitFor();
+  assert.equal(gate.dropped, true);
+  const frozenKey = pendingKey + "-request";
+  const frozen = await page.evaluate((key) => localStorage.getItem(key), frozenKey);
+  assert.equal(JSON.parse(frozen).requestId, original.commandId);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await pendingAction.waitFor();
+  assert.equal(await pendingCreateId(), original.commandId);
+  assert.equal(await page.evaluate((key) => localStorage.getItem(key), frozenKey), frozen);
+  assert.equal(await editorText(), retainedText);
+  assert.equal(await send.isDisabled(), true);
+
+  await pendingAction.click();
+  await checkStatus.click();
+  await until(
+    () =>
+      ["command.read", "worktree.read"].every((method) =>
+        trace.some(
+          (entry) =>
+            entry.commandId === original.commandId && entry.method === method && entry.hidden,
+        ),
+      ),
+    "Both exact original receipts remain hidden after reload",
+  );
+  await pendingAction.click();
+  const retain = page.getByRole("menuitem", { name: "保留原结果，返回草稿", exact: true });
+  const confirm = page.waitForEvent("dialog").then(async (dialog) => {
+    assert.equal(dialog.type(), "confirm");
+    await dialog.accept();
+  });
+  await Promise.all([confirm, retain.click()]);
+  await sendReady(page);
+  const retainedKey = pendingKey.replace(
+    ":pending-create",
+    `:retained-create:${original.commandId}`,
+  );
+  const retained = await page.evaluate(
+    ({ pendingKey, frozenKey, retainedKey }) => ({
+      pending: localStorage.getItem(pendingKey),
+      frozen: localStorage.getItem(frozenKey),
+      retained: JSON.parse(localStorage.getItem(retainedKey)),
+    }),
+    { pendingKey, frozenKey, retainedKey },
+  );
+  assert.deepEqual(retained, {
+    pending: null,
+    frozen: null,
+    retained: { requestId: original.commandId, request: frozen },
+  });
+  assert.equal(await editorText(), retainedText);
+  const originalThread = await readCoreThread({
+    binary,
+    env,
+    gui,
+    workspace,
+    threadId: originalReceipt.threadId,
+  });
+  assert.deepEqual(originalThread.turns, []);
+  assert.equal(commands.length, beforeRetain + 1);
+  assert.equal(requests.length, modelCount);
+  await capture("creation-retained");
+  checks.push(
+    "An own UNKNOWN creation stays locked after reload, then retaining it frees the original draft without touching its Host result or sending",
+  );
   assert.deepEqual(errors, []);
   passed = true;
 } catch (error) {
