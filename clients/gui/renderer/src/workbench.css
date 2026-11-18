@@ -80,6 +80,34 @@ pre {
   flex-wrap: wrap;
   justify-content: center;
   gap: var(--spacing-inline);
+  -webkit-app-region: no-drag;
+}
+.startup-actions button,
+.startup-settings button {
+  -webkit-app-region: no-drag;
+}
+.startup-steps {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--spacing-inline);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-ui-sm, 12px);
+  color: var(--color-foreground-subtle);
+}
+.startup-steps li[data-state="active"] {
+  color: var(--color-foreground);
+  font-weight: var(--font-weight-medium);
+}
+.startup-steps li[data-state="done"] {
+  color: var(--color-foreground-muted, var(--color-foreground-subtle));
+  opacity: 0.7;
+}
+.startup-hint {
+  font-size: var(--text-ui-sm, 12px);
+  opacity: 0.85;
 }
 .startup-content pre {
   max-height: 160px;
@@ -87,11 +115,14 @@ pre {
   text-align: left;
 }
 .startup-settings {
+  position: relative;
+  z-index: 1;
   width: min(900px, 100%);
   height: 100%;
   padding: calc(var(--shell-bar-height) + calc(var(--spacing-inline) * 3 / 2))
     var(--spacing-section) var(--spacing-section);
   overflow: auto;
+  -webkit-app-region: no-drag;
 }
 /* One noninteractive outline spans navigation, conversation and workbench.
    It does not become another layout owner or intercept resize/drag targets. */

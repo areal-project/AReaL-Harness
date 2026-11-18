@@ -719,6 +719,10 @@ function startDesktop() {
         diagnostics.record({ type: "window-ready", windows: BrowserWindow.getAllWindows().length });
         computerUiAvailable = owner.mainFrame.url.startsWith("areal-ui://app/");
       });
+      owner.on("console-message", (_event, _level, message) => {
+        if (typeof message === "string" && message.startsWith("[startup-renderer] "))
+          process.stderr.write(`${message}\n`);
+      });
       owner.on("destroyed", () => {
         snapShots?.setSnapShotShortcutSuppressed(false);
         computerUiAvailable = false;
@@ -797,23 +801,45 @@ function startDesktop() {
         "startup",
         {},
         async () => {
+          startupTraceMain.advance("upgrade");
           if (await cfg.upgrade(app, dialog, cfg.serviceOptions, settingsError)) return;
+          startupTraceMain.advance("snapshots");
           snapShots = startSnapShots({ window: () => window ?? null, revealWindow, trusted });
+          startupTraceMain.advance("network_policy");
           await Promise.all(
             [session.defaultSession, session.fromPartition("persist:areal-embedded-browser")].map(
               (target) => applyDesktopSessionNetworkPolicy(target, startupSettings),
             ),
           );
-          startupTraceMain.finish("ok");
-          const hostConnectSource = require("../ipc/generated/host-ticket.cjs").registerHostTicket({
-            home: cfg.serviceOptions(app).hostHome,
-            binary: cfg.serviceOptions(app).binary,
-            profile: app.getPath("userData"),
-            trusted,
-          });
+          startupTraceMain.advance("protocol_setup");
+          const rawHostConnectSource =
+            require("../ipc/generated/host-ticket.cjs").registerHostTicket({
+              home: cfg.serviceOptions(app).hostHome,
+              binary: cfg.serviceOptions(app).binary,
+              profile: app.getPath("userData"),
+              trusted,
+            });
+          // 提前预热首帧 HTML 所需的 Host 连接来源，与窗口创建并行而非阻塞到加载页面才启动。
+          let warmedHostConnectSource = rawHostConnectSource();
+          warmedHostConnectSource.catch(() => {});
+          const hostConnectSource = async () => {
+            const protocolTrace = startupTrace("gui.ui_protocol_host");
+            protocolTrace.advance("connect");
+            const pending = warmedHostConnectSource;
+            warmedHostConnectSource = null;
+            try {
+              const result = await (pending ?? rawHostConnectSource());
+              protocolTrace.finish("ok");
+              return result;
+            } catch (error) {
+              protocolTrace.finish("error", error);
+              throw error;
+            }
+          };
           if (process.platform === "darwin")
             app.dock?.setIcon(join(__dirname, "../../assets/icon-1024.png"));
           registerUiProtocol(guiRoot, hostConnectSource);
+          startupTraceMain.finish("ok");
           const serviceBackend = new SharedCoreBackend({
             app,
             ...cfg.serviceOptions(app),
@@ -1763,8 +1789,8 @@ function startDesktop() {
               { role: "windowMenu" },
             ]),
           );
-          // 后台连接与隐藏首屏并行；状态由快照展示，启动不触发维护弹窗。
-          const windowLoaded = createWindow(serviceBackend);
+          // 先启动后台初始化（与窗口创建并行），避免等待 createWindow 同步阶段之后才触发依赖与指纹检查。
+          let windowLoaded;
           const serviceStarted = (async () => {
             const trace = startupTrace("gui.backend_init");
             trace.advance("initialize");
@@ -1780,6 +1806,7 @@ function startDesktop() {
             } /* 错误由后台连接快照展示，用户显式重试。 */
             publish();
           })();
+          windowLoaded = createWindow(serviceBackend);
           await windowLoaded;
           const activityPauses = new Set();
           const sampleActivity = () => {

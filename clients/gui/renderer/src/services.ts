@@ -111,6 +111,7 @@ export interface Snapshot {
   revision?: number;
   connection?: {
     state: "connecting" | "ready" | "unavailable";
+    stage?: string;
     message?: string;
     recovery?: "check" | "reconnect";
     prerequisite?: HostPrerequisite;

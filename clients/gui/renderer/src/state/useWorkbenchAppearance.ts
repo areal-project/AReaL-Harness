@@ -3,6 +3,7 @@ import { currentErrorText } from "../errors/currentErrorText.js";
 import { applyThemeWithoutTransitions } from "@areal/ui/theme";
 import type { PlatformServices } from "../services.js";
 import { useAppearance } from "../settings/applicationPreferences.js";
+import { markRendererStartup } from "./startupTiming.js";
 
 export function useWorkbenchAppearance(
   services: PlatformServices,
@@ -70,7 +71,10 @@ export function useWorkbenchAppearance(
         applyTheme(next);
       })
       .catch((cause) => onError(currentErrorText(cause)))
-      .finally(() => setThemeReady(true));
+      .finally(() => {
+        markRendererStartup("theme_ready");
+        setThemeReady(true);
+      });
   }, [theme, services]);
   return {
     dark,

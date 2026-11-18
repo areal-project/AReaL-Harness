@@ -196,8 +196,10 @@ class SharedCoreBackend {
     /** @type {Partial<import('@areal/workbench-service/desktop/core/resource-observation.cjs').RecoveryService>} */
     this.status = { connected: false };
     this.sequence = -1;
-    /** @type {{state:string,message?:string,recovery?:string,prerequisite?:unknown}} */
+    /** @type {{state:string,stage?:string,message?:string,recovery?:string,prerequisite?:unknown}} */
     this.connectionState = { state: "connecting" };
+    /** @type {string|undefined} */
+    this.startupStage = undefined;
     this.revision = 0;
     this.initializing = false;
     /** @type {Map<string,GuiTerminal>} */
@@ -262,14 +264,24 @@ class SharedCoreBackend {
   retainsThreadResources(projectId, threadId) {
     return retainsThreadResources(this.value, projectId, threadId);
   }
+  /** @param {string|undefined} stage */
+  setStartupStage(stage) {
+    if (this.startupStage === stage) return;
+    this.startupStage = stage;
+    this.onChange();
+  }
   snapshot() {
     const desktopCapabilities = {
       currentCommands: this.status.commandContract === COMMAND_CONTRACT,
     };
-    const connection =
+    const baseConnection =
       this.initializing && this.connectionState.state === "ready"
         ? { state: "connecting" }
         : this.connectionState;
+    const connection =
+      baseConnection.state === "connecting" && this.startupStage
+        ? { ...baseConnection, stage: this.startupStage }
+        : baseConnection;
     return {
       ...this.value,
       verifiedDesktopHost: this.verifiedDesktopHost,
@@ -436,24 +448,30 @@ class SharedCoreBackend {
   }
   /** @param {{expectedIdentity?:string,passive?:boolean}} [options] */
   async attach({ expectedIdentity, passive = false } = {}) {
+    const attachTrace = startupTrace("service.attach");
+    attachTrace.advance("read_metadata");
     /** @type {unknown} */
     let candidate;
     try {
       candidate = JSON.parse(await readFile(join(this.home, "service.json"), "utf8"));
     } catch (e) {
+      attachTrace.finish("error", e);
       if (desktopError(e).code === "ENOENT") return false;
       throw e;
     }
+    attachTrace.advance("ws_connect");
     const connection = this.createConnection(candidate);
     /** @type {import("./service-connection.cjs").ServiceMetadata} */
     let metadata;
     try {
       metadata = await connection.connect(candidate);
     } catch (e) {
+      attachTrace.finish("error", e);
       connection.close();
       if (desktopError(e).code === "DISCONNECTED") return false;
       throw e;
     }
+    attachTrace.advance("host_verify");
     let hostOwned = false;
     {
       const host = new HostClient();
@@ -470,6 +488,7 @@ class SharedCoreBackend {
           status.service?.desktopGeneration === metadata.desktopGeneration;
         if (!hostOwned) throw new Error("Host 未确认此后台的所有权，请检查原后台");
       } catch (error) {
+        attachTrace.finish("error", error);
         connection.close();
         throw error;
       } finally {
@@ -481,10 +500,12 @@ class SharedCoreBackend {
       expectedIdentity ??
       (passive ? (this.metadata?.identity ?? this.identity) : metadata.identity);
     if (this.disposed) {
+      attachTrace.finish("error");
       connection.close();
       throw new Error("GUI 连接已关闭");
     }
     if (passive && !this.canReconnect()) {
+      attachTrace.finish("skipped");
       connection.close();
       return false;
     }
@@ -492,6 +513,7 @@ class SharedCoreBackend {
     this.connection?.close();
     this.connection = connection;
     this.sequence = -1;
+    attachTrace.advance("hello");
     const helloTrace = startupTrace("service.hello", { servicePid: metadata.pid });
     helloTrace.advance("hello");
     try {
@@ -525,6 +547,7 @@ class SharedCoreBackend {
         }
       }
     } catch (e) {
+      attachTrace.finish("error", e);
       helloTrace.finish("error", e);
       this.connection = null;
       connection.close();
@@ -544,6 +567,7 @@ class SharedCoreBackend {
       throw e;
     }
     helloTrace.finish("ok");
+    attachTrace.finish("ok");
     if (this.lastActivity) void connection.request("activity", this.lastActivity).catch(() => {});
     this.metadata = metadata;
     if (hostOwned) this.identity = metadata.identity;
@@ -703,26 +727,66 @@ class SharedCoreBackend {
   async initialize({ recover = false } = {}) {
     const trace = startupTrace("service.initialize");
     try {
+      trace.advance("prepare_dir");
       await mkdir(this.home, { recursive: true, mode: 0o700 });
       this.home = await realpath(this.home);
       if (this.disposed) throw new Error("GUI 连接已关闭");
-      await this.initializeHostBackend({ recover });
+      await this.initializeHostBackend({ recover, trace });
       trace.finish("ok");
     } catch (error) {
       trace.finish("error", error);
       throw error;
     }
   }
-  async initializeHostBackend({ recover = false } = {}) {
-    if (!recover)
-      await this.prerequisiteCheck({ app: { isPackaged: this.app.isPackaged === true } });
+  async initializeHostBackend({ recover = false, trace = undefined } = {}) {
     const options = {
       ...this.options,
       home: this.home,
       userHome: this.options.userHome ?? this.app.getPath("home"),
     };
-    if (!options.binary || !options.hostHome || !options.guiProfile || !options.harnessHome)
+    const hasHostConfig = Boolean(
+      options.binary && options.hostHome && options.guiProfile && options.harnessHome,
+    );
+    const { ensureDesktopHost, desktopBuildIdentity } = require("@areal/client/desktop-upgrade");
+    // 依赖检查与构建指纹计算互相独立，并行执行避免启动串行阻塞；仍保证依赖失败先于任何 Host/Core 启动抛出。
+    this.setStartupStage(recover ? "identity" : "prerequisites");
+    trace?.advance(recover ? "build_identity" : "prerequisites");
+    const prereqPromise = !recover
+      ? this.prerequisiteCheck({ app: { isPackaged: this.app.isPackaged === true } })
+      : Promise.resolve();
+    const identityPromise = hasHostConfig
+      ? (async () => {
+          const serviceIdentity = await require("./service-config.cjs").serviceIdentity({
+            ...options,
+            binary: options.binary,
+          });
+          const buildIdentity = await desktopBuildIdentity(
+            serviceIdentity,
+            [join(__dirname, ".."), join(__dirname, "../../../renderer/dist")],
+            this.app.isPackaged ? join(process.resourcesPath, "desktop-build.json") : undefined,
+          );
+          return { serviceIdentity, buildIdentity };
+        })()
+      : Promise.resolve(null);
+    const [prereqResult, identityResult] = await Promise.allSettled([
+      prereqPromise,
+      identityPromise,
+    ]);
+    if (prereqResult.status === "rejected") {
+      this.setStartupStage(undefined);
+      throw prereqResult.reason;
+    }
+    if (!hasHostConfig) {
+      this.setStartupStage(undefined);
       throw new Error("Host 后台启动配置不完整");
+    }
+    if (identityResult.status === "rejected") {
+      this.setStartupStage(undefined);
+      throw identityResult.reason;
+    }
+    const { serviceIdentity, buildIdentity } =
+      /** @type {{serviceIdentity:string,buildIdentity:string}} */ (identityResult.value);
+    if (!recover) trace?.advance("build_identity");
     // 初次旧凭据导入仍由持有原单实例和 safeStorage 的 Main 完成。
     const {
       GuiHostProjects,
@@ -739,16 +803,8 @@ class SharedCoreBackend {
       singletonHeld: true,
     });
     try {
-      const { ensureDesktopHost, desktopBuildIdentity } = require("@areal/client/desktop-upgrade");
-      const serviceIdentity = await require("./service-config.cjs").serviceIdentity({
-        ...options,
-        binary: options.binary,
-      });
-      const buildIdentity = await desktopBuildIdentity(
-        serviceIdentity,
-        [join(__dirname, ".."), join(__dirname, "../../../renderer/dist")],
-        this.app.isPackaged ? join(process.resourcesPath, "desktop-build.json") : undefined,
-      );
+      this.setStartupStage("host");
+      trace?.advance("ensure_host");
       const completeUpgrade = await ensureDesktopHost(source.client, {
         home: options.hostHome,
         binary: options.binary,
@@ -765,21 +821,28 @@ class SharedCoreBackend {
         this.onChange();
       }
       // 保持交接验证用的连接，直到 backend.ensure 撤销同代次的空闲回收意图。
+      this.setStartupStage("workbench");
+      trace?.advance("source_init");
       if (!recover) await source.init({ deferCredentials: true });
       else if (!source.client.socket || source.client.socket.destroyed) {
         source.client.close();
         await source.client.connect(options.hostHome);
       }
+      trace?.advance("ensure_backend");
       const owner = await source.ensureBackend(options, process.env);
       if (this.disposed) throw new Error("GUI 连接已关闭");
+      this.setStartupStage("attach");
+      trace?.advance("attach");
       if (!(await this.attach({ expectedIdentity: owner.identity })))
         throw new Error("Host 后台尚未就绪");
       // 旧 Host 退出期间可能短暂报告身份不匹配；新 Host 完成 attach 且身份确认后，
       // 清掉这条过期错误，避免启动页继续停在失败状态。
       this.lifecycleError = null;
+      trace?.advance("complete_upgrade");
       await completeUpgrade();
       this.backendUpdate = undefined;
     } finally {
+      this.setStartupStage(undefined);
       source.close();
     }
   }
