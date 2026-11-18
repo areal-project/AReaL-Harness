@@ -1774,6 +1774,8 @@ mod tests {
                 }
                 let recorded_methods = Rc::new(RefCell::new(Vec::<String>::new()));
                 let methods_ref = recorded_methods.clone();
+                let plugin_command = json!({"pluginId":"fixture@local","componentId":"commands/review.md","installedDigest":"fixture-digest","arguments":"path with spaces.ts --strict"});
+                let expected_plugin_command = plugin_command.clone();
                 let ws = workspace.clone();
                 let server = tokio::task::spawn_local(async move {
                     let (stream, _) = listener.accept().await.unwrap();
@@ -1873,11 +1875,17 @@ mod tests {
                                 "thread": { "id": "forked-thread-1" },
                                 "requestId": params["requestId"]
                             }),
-                            "areal/turn/submit" => json!({
-                                "threadId": params["threadId"],
-                                "requestId": params["requestId"],
-                                "turn": { "id": "turn-submitted-1", "status": "inProgress", "items": [] }
-                            }),
+                            "areal/turn/submit" => {
+                                if params["intent"]["type"] == "edit" {
+                                    assert_eq!(params["intent"]["command"], expected_plugin_command);
+                                    assert_eq!(params["intent"]["input"], json!([]));
+                                }
+                                json!({
+                                    "threadId": params["threadId"],
+                                    "requestId": params["requestId"],
+                                    "turn": { "id": "turn-submitted-1", "status": "inProgress", "items": [] }
+                                })
+                            }
                             "areal/turn/start" => json!({
                                 "threadId": params["threadId"],
                                 "requestId": params["requestId"],
@@ -1991,12 +1999,14 @@ mod tests {
                         "itemId": "item-1",
                         "expectedConfigRevision": 3,
                         "requestId": edit_req,
-                        "text": "updated"
+                        "text": "",
+                        "command": plugin_command
                     }),
                 )
                 .await
                 .unwrap();
                 assert_eq!(edited["turn"]["id"], "turn-submitted-1");
+                assert_eq!(edited["requestId"], edit_req);
 
                 // 3. continue
                 let continued = call(
