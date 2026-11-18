@@ -193,25 +193,3 @@ test("browser workspace identity includes the selected thread execution host", (
   hosts.b = "new-core";
   assert.deepEqual(view.workspacePages("logical", "b"), []);
 });
-
-test("desktop browser callbacks select physical owner without changing logical identity", () => {
-  const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
-  const physical = { id: "physical", service: { serviceId: "core-isolated" } };
-  const backend = {
-    projects: new Map([
-      ["physical", physical],
-      ["logical", { id: "logical" }],
-    ]),
-    worktrees: {
-      executionProjectId: (logical, thread) => {
-        assert.equal(logical, "logical");
-        assert.equal(thread, "t");
-        return "physical";
-      },
-    },
-  };
-  assert.equal(
-    DesktopService.prototype.projectForThread.call({ backend }, "logical", "t"),
-    physical,
-  );
-});

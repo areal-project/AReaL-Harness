@@ -103,7 +103,9 @@ AReaL 复用统一宿主管理能力，不新增要求模型自愿调用的创�
 从仓库根运行 Git、宿主和桌面契约测试：
 
 ```sh
-node --test clients/gui/scripts/worktree-git.test.cjs clients/gui/scripts/worktree-host.test.cjs clients/gui/scripts/worktree-contract.test.cjs clients/gui/scripts/worktree-admission.test.cjs clients/gui/scripts/worktree-task-routing.test.cjs clients/gui/scripts/schedule-admission.test.cjs
+node --test clients/gui/scripts/worktree-git.test.cjs clients/gui/scripts/worktree-contract.test.cjs clients/gui/scripts/worktree-task-routing.test.cjs
+cargo test --locked -p areal-host worktree_catalog
+cargo test --locked -p areal-host schedule_admission
 ```
 
 生产组件交互由 `node clients/gui/scripts/worktree-ui-smoke.mjs` 验证。它使用 Chromium 和确定性桌面动作 fixture，不代表原生 Electron、安装包或 macOS 验收。
