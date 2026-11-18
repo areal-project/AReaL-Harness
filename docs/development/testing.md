@@ -526,7 +526,7 @@ macOS 实际崩溃预算使用 `AREAL_HOST_SERVICE_ROOT=/absolute/authorized/roo
 
 `pnpm --dir clients/gui run test:shared-host-consumers` 使用隔离真实 Host/Core 验证 GUI 命名环境凭据、等价 CLI 别名及外来项目的原配置和会话创建。`node clients/gui/scripts/shared-host-gui-journal.mjs` 经普通提交 owner 验证双客户端 CAS、大记录和丢回复后的原回执恢复。`node clients/gui/scripts/gui-host-lifecycle-smoke.mjs` 验证项目登记、客户端断开、显式停止/重开，以及独立客户端活动轮次的全局观察和结算；活动查询不把轮次重复计入任务数。三个脚本使用 `AREAL_TEST_BIN_DIR` 指定的固定完整产物；默认使用本仓 `.local/shared-host-bin`。这些场景不访问真实 Keychain，不启动 Renderer，不替代旧 Desktop writer fence、GUI/TUI 审批交接或安装包验收。
 
-`node clients/gui/scripts/gui-terminal-connection-smoke.mjs` 使用同一固定产物，在独立 Node 客户端中运行生产 Main 终端连接适配器。场景覆盖显式 Profile 权限、真实 PTY 输入/输出/resize、强杀客户端后的定向 Runtime 清理、原请求恢复及普通 thread 资源继续。它不启动 Electron，不验证 Desktop 提交 journal 桥接或退出界面。
+`node clients/gui/scripts/gui-terminal-connection-smoke.mjs` 使用同一固定产物，在独立 Node 客户端中运行 Main 的原生 Host 终端连接。场景覆盖显式 Profile 权限、真实 PTY 输入输出与尺寸调整、附件失联后的定向 Runtime 清理、后继附件通过原请求 ID 恢复回执，以及独立 Core 连接和普通 Thread 资源继续运行。最后分别核对 Host 停止回执与原进程退出。Electron 退出界面由桌面旅程覆盖。
 
 `node clients/gui/scripts/gui-toolhost-connection-smoke.mjs` 使用固定 Core 产物、已构建的 GUI 适配器、生产 Main 附件与认证 Host loopback。验证普通观察者断开保留浏览器租约，Main 断开保留原轮次，继任 Main 只在空闲后显式发送时接管。合成本地模型核对工具不可用结果和回调未重放。此测试不启动 Electron，也不使用真实浏览器或模型供应商。
 
