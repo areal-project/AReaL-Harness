@@ -865,8 +865,6 @@
     "owner": "app/src"
   },
   "$workbenchRetainedSources": [
-    "../../services/workbench/src/backend-main.cjs",
-    "../../services/workbench/src/channel.cjs",
     "../../services/workbench/src/desktop/bridge/filetree.js",
     "../../services/workbench/src/desktop/core/analytics.cjs",
     "../../services/workbench/src/desktop/core/backend.cjs",

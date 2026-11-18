@@ -6,7 +6,7 @@
 
 共享业务优先在 Web 与真实 Host 服务上用隔离数据验收，不以 GUI 打包为常规前置。窗口、系统加密、浏览器视图和电脑控制等 Electron 专属能力才启动桌面；发行资源、签名与升级仍在对应发行任务单独验证。协议测试、页面交互、原生与发行包证据分别记录，不互相替代。
 
-共享 smoke 夹具位于 `clients/gui/scripts/support/`：`core-observation.mjs` 统一解析原 Thread 的执行工作区与服务代际，并校验返回的 Thread 身份；显式 worktree 与已有投影冲突时直接失败，尚未投影的 worktree 不借用父项目代际。`host-transport-barrier.mjs` 在 Host 传输边界控制本次请求与响应。注入须断言命中的请求 ID，权威结算与 UI 呈现分别验证；清理复用 `application-cleanup.mjs` 核对原 Host 停止回执及实际退出，保留原失败。`test:script-units` 验证夹具，`test:core-observation` 验证真实隔离 Core；`test:workbench-errors` 在 GUI 构建后验证后台进程和 Host 错误码映射，依赖均登记在 manifest。
+共享 smoke 夹具位于 `clients/gui/scripts/support/`：`core-observation.mjs` 统一解析原 Thread 的执行工作区与服务代际，并校验返回的 Thread 身份；显式 worktree 与已有投影冲突时直接失败，尚未投影的 worktree 不借用父项目代际。`host-transport-barrier.mjs` 在 Host 传输边界控制本次请求与响应。注入须断言命中的请求 ID，权威结算与 UI 呈现分别验证；清理复用 `application-cleanup.mjs` 核对原 Host 停止回执及实际退出，保留原失败。`test:script-units` 验证夹具，`test:core-observation` 验证真实隔离 Core。客户端的认证、错误和重连边界由 `test:host-client` 验证。
 
 长验收分别记录动作前置、业务完成、清理回执、进程退出和报告落盘，不能以其中一个替代其他完成条件。交互前等待影响目标位置的附件加载和有限动画完成；权威回执与可见结果分别断言。耗时使用单调时钟作诊断，期限用于暴露卡住的阶段；固定 sleep、墙钟差和反复重试不作业务完成证明。静态搜索这些写法只提供审查线索，不能代替行为证据或新增一刀切门禁。
 

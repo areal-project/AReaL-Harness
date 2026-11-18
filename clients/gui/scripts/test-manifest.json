@@ -1,13 +1,5 @@
 [
   {
-    "script": "test:workbench-errors",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["protocol", "provider"],
-    "requires": ["gui-build"],
-    "notes": "Actual Workbench process framing and typed error mapping, including the Host error-code inventory."
-  },
-  {
     "script": "test:core-observation",
     "layer": "contract",
     "platforms": ["darwin", "linux"],

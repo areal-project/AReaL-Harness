@@ -625,7 +625,7 @@ class CiContracts(unittest.TestCase):
         for path in (
             "clients/gui/scripts/support/core-observation.mjs",
             "clients/gui/scripts/support/host-transport-barrier.mjs",
-            "services/workbench/src/backend-main.cjs",
+            "core/host/src/gateway/stop.rs",
             "core/host/src/gateway/session.rs",
         ):
             with self.subTest(path=path):
@@ -633,7 +633,7 @@ class CiContracts(unittest.TestCase):
                 portable = next(item for item in plan["items"] if item["id"] == "gui-portable")
                 for platform in ("darwin", "linux"):
                     self.assertIn("test:script-units", portable["expectedTests"][platform])
-                    self.assertIn("test:workbench-errors", portable["expectedTests"][platform])
+                    self.assertIn("test:host-client", portable["expectedTests"][platform])
                     self.assertNotIn("test:core-observation", portable["expectedTests"][platform])
                     core = [
                         script
@@ -649,7 +649,7 @@ class CiContracts(unittest.TestCase):
                             result["tests"] = [
                                 test
                                 for test in result["tests"]
-                                if test["script"] != "test:workbench-errors"
+                                if test["script"] != "test:host-client"
                             ]
                 self.assertIn(
                     "missing or duplicate runner tests: gui-portable",
