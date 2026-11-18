@@ -1,0 +1,31 @@
+core/engine/src/tools/registry.rs
+  s_6c4376080c8c23::t_d3f5ee76b020c2 1013-1037,1044,1060-1063
+  s_6c4376080c8c23::t_c044b04bddf2b6 299-303,308-311,955-957,1067,1081
+  s_6c4376080c8c23::t_c72b4e5c5dc93b 243-249,253-259,265-269,288-298,304-307
+  s_6c4376080c8c23::t_25738ecd85efab 1038-1043,1045-1059
+  s_6c4376080c8c23::t_aa124a4d3c9a52 1012
+docs/api/core.md
+  s_6c4376080c8c23::t_ad271cae173786 123
+core/engine/src/tools/edit_files.rs
+  s_6c4376080c8c23::t_da7c34cd843efe 19-26,30,180-196,227,230-240,246-253
+  s_6c4376080c8c23::t_61ff5cf4ff9395 197-226,228-229,241-245
+  s_6c4376080c8c23::t_d2dd12bd26a290 254
+docs/api/core.en.md
+  s_6c4376080c8c23::t_ad271cae173786 128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a7442842325eeb5a5aa88d420eddb2bac30f91b4",
+  "prompts": {},
+  "sessions": {
+    "s_6c4376080c8c23": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1e04f-aaf3-7101-9583-e4d3761f91e7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
