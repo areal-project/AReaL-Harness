@@ -483,6 +483,11 @@ async fn manage_mutations_artifacts_and_plugin_credentials_run_without_node_back
             let reg_creds_cb = registered_credentials.clone();
             let saved_secret_ref = Rc::new(RefCell::new(None));
             let saved_ref_cb = saved_secret_ref.clone();
+            let config_request_id = uuid::Uuid::new_v4().to_string();
+            let original_config_request = config_request_id.clone();
+            let config_writes = Rc::new(Cell::new(0));
+            let config_writes_cb = config_writes.clone();
+            let mut config_digest = None;
             let connected_plugin = Rc::new(Cell::new(false));
             let connected_cb = connected_plugin.clone();
             let wg_started = Rc::new(Cell::new(false));
@@ -501,7 +506,11 @@ async fn manage_mutations_artifacts_and_plugin_credentials_run_without_node_back
                         "areal/plugin/userConfig/set": { "effect": "mutation", "receipt": "management" },
                         "areal/plugin/auth/configure": { "effect": "mutation", "receipt": "management" }
                     },
-                    "features": { "threadCreationJournal": { "binding": null } }
+                    "features": { "threadCreationJournal": { "binding": {
+                        "identity": "desktop-owner",
+                        "journalEpoch": "fixture-epoch",
+                        "coreInstanceId": "fixture-core"
+                    } } }
                 }),
                 "thread/read" => {
                     let tid = params["threadId"].as_str().unwrap();
@@ -562,6 +571,13 @@ async fn manage_mutations_artifacts_and_plugin_credentials_run_without_node_back
                     json!({})
                 }
                 "areal/plugin/userConfig/set" => {
+                    assert_eq!(params["requestId"], original_config_request);
+                    config_writes_cb.set(config_writes_cb.get() + 1);
+                    let mut arguments = params.clone();
+                    arguments.as_object_mut().unwrap().remove("requestId");
+                    config_digest = Some(areal_local_service::storage::digest(
+                        &serde_json::to_vec(&arguments).unwrap(),
+                    ));
                     assert_eq!(params["values"]["token"]["kind"], "secretRef");
                     *saved_ref_cb.borrow_mut() =
                         params["values"]["token"]["value"].as_str().map(str::to_owned);
@@ -584,7 +600,18 @@ async fn manage_mutations_artifacts_and_plugin_credentials_run_without_node_back
                     fixture_workgroup()
                 }
                 "areal/request/read" => {
-                    if wg_started_cb.get() {
+                    if params["requestId"] == original_config_request {
+                        json!({
+                            "data": [{
+                                "requestId": original_config_request,
+                                "method": "areal/plugin/userConfig/set",
+                                "status": "completed",
+                                "identity": "desktop-owner",
+                                "digest": config_digest.as_ref().unwrap(),
+                                "result": fixture_plugin_detail()
+                            }]
+                        })
+                    } else if wg_started_cb.get() {
                         json!({
                             "data": [{
                                 "requestId": params["requestId"],
@@ -734,6 +761,7 @@ async fn manage_mutations_artifacts_and_plugin_credentials_run_without_node_back
                 json!({
                     "projectId": alias,
                     "operation": "pluginUserConfigSave",
+                    "requestId": config_request_id,
                     "id": "fixture@local",
                     "expectedRevision": 2,
                     "expectedDigest": "digest-1",
@@ -744,6 +772,31 @@ async fn manage_mutations_artifacts_and_plugin_credentials_run_without_node_back
             .await
             .unwrap();
             assert_eq!(cfg_res["id"], "fixture@local");
+            let query = |mutation: &str, request_id: &str| {
+                json!({
+                    "projectId": alias,
+                    "operation": "pluginSubmission",
+                    "mutation": mutation,
+                    "requestId": request_id
+                })
+            };
+            let recovered = run_desktop_manage(
+                &host,
+                query("pluginUserConfigSave", &config_request_id),
+            )
+            .await
+            .unwrap();
+            assert_eq!(recovered["confirmed"], true);
+            assert_eq!(recovered["result"]["id"], cfg_res["id"]);
+            assert!(run_desktop_manage(&host, query("pluginSetup", &config_request_id)).await.is_err());
+            let unknown = run_desktop_manage(
+                &host,
+                query("pluginUserConfigSave", &uuid::Uuid::new_v4().to_string()),
+            )
+            .await
+            .unwrap();
+            assert_eq!(unknown["confirmed"], false);
+            assert_eq!(config_writes.get(), 1);
             let secret_ref = saved_secret_ref.borrow().clone().unwrap();
             assert_eq!(
                 registered_credentials.borrow().as_ref().unwrap()[&secret_ref],

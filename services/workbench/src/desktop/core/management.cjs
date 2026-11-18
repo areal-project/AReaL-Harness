@@ -5,7 +5,6 @@ const {
   validateManagementResponse,
   readPluginReadiness,
 } = require("@areal/workbench/desktop-contract/management");
-const { readPluginSubmission } = require("./plugin-submission.cjs");
 const { commandResponseError } = require("@areal/workbench/desktop-contract");
 const { manageTask, taskOperations } = require("./tasks.cjs");
 const { modelRecord, isCoreGoals, isCorePlan } = require("@areal/workbench/core-model-contract");
@@ -172,12 +171,7 @@ async function executeManagement(backend, project, rawRequest) {
   if (operation === "processStart" && request.terminal !== undefined && request.terminal !== false)
     throw new Error("登录终端由 Host 创建");
   if (operation === "pluginSubmission")
-    return readPluginSubmission(
-      backend,
-      project,
-      request,
-      request.mutation ? mutations[request.mutation] : undefined,
-    );
+    throw new Error("Plugin submission receipts require Host protocol");
   if (rawRequest.operation === "pluginUserConfigSave")
     return require("./plugin-configuration.cjs").configurePluginValues(
       backend,
