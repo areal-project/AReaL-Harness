@@ -16,7 +16,7 @@ import {
 } from "./application-cleanup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
-import { captureSmokeFailure } from "./smoke-navigation.mjs";
+import { captureSmokeFailure, createProjectConversation } from "./smoke-navigation.mjs";
 import { openProjectInDesktop, sendReady } from "./support/journey-fixture.mjs";
 import { readCoreThread, withCore } from "./support/core-observation.mjs";
 
@@ -73,6 +73,7 @@ const errorReply = (id, code, message) =>
 let holdDirectory = false;
 let directory;
 let gate;
+let hideCreationReceipt = false;
 
 // 只拦截本次明确选择的 Host 帧，不记录握手票据，也不在清理时释放未派发的写入。
 function proxyHostSocket(socket) {
@@ -82,6 +83,27 @@ function proxyHostSocket(socket) {
   socket.onMessage((message) => {
     const frame = JSON.parse(message.toString());
     const { id, method, commandId, params, context } = frame;
+    const creationId = gate?.method === "session.create" && gate.dropped && gate.command.commandId;
+    const creationCommandRead = method === "command.read" && params?.commandId === creationId;
+    const creationWorktreeRead =
+      method === "worktree.read" &&
+      params?.operation === "worktreeRead" &&
+      params.requestId === creationId;
+    if (creationId && (creationCommandRead || creationWorktreeRead)) {
+      replies.set(id, (reply, bytes) => {
+        const ready = creationCommandRead
+          ? reply.result?.admissionState === "accepted"
+          : reply.result?.state === "ready";
+        const hidden = hideCreationReceipt && ready;
+        trace.push({ method, id, commandId: creationId, ready, hidden });
+        if (!hidden) return socket.send(bytes);
+        const { threadId: _threadId, ...record } = reply.result;
+        const result = creationCommandRead
+          ? { commandId: creationId, admissionState: "unknown", submissionUnknown: true }
+          : { ...record, state: "unknown" };
+        socket.send(JSON.stringify({ version: 1, id, result }));
+      });
+    }
     if (method === "shell.subscribe" && holdDirectory && !directory) {
       const held = { id };
       directory = held;
@@ -106,7 +128,12 @@ function proxyHostSocket(socket) {
     replies.set(id, (reply, bytes) => {
       command.result = reply.result;
       command.error = reply.error;
-      if (selected && method === "session.create" && reply.result?.admissionState === "accepted")
+      if (
+        selected &&
+        !selected.mode &&
+        method === "session.create" &&
+        reply.result?.admissionState === "accepted"
+      )
         holdDirectory = true;
       if (
         selected?.mode === "lost-after-acceptance" &&
@@ -439,6 +466,74 @@ try {
       `${mode}: original Host command identity, pending transcript, draft attachments and no replay`,
     );
   }
+  await createProjectConversation(page, "demo");
+  await page.getByRole("button", { name: "选择模型", exact: true }).click();
+  await page.getByRole("radio", { name: "fixture", exact: true }).click();
+  const lostCreationText = "Keep this draft unsent when the original creation reply is lost.";
+  const modelCount = requests.length;
+  const commandCount = commands.length;
+  gate = { method: "session.create", mode: "lost-after-acceptance" };
+  hideCreationReceipt = true;
+  await input.fill(lostCreationText);
+  await sendReady(page);
+  await send.click();
+  const lostCreate = await until(() => gate.command, "Original creation before lost reply");
+  gate.release();
+  const lostReceipt = await accepted(lostCreate);
+  assert.equal(gate.dropped, true);
+  const pendingKey = `areal-gui:draft:${await workbench.getAttribute("data-project-id")}:new:pending-create`;
+  const pendingCreateId = () => page.evaluate((key) => localStorage.getItem(key), pendingKey);
+  const pendingAction = page.getByRole("button", { name: "操作待确认", exact: true });
+  const checkStatus = page.getByRole("menuitem", { name: "检查操作状态", exact: true });
+  await pendingAction.waitFor();
+  assert.equal(await pendingCreateId(), lostCreate.commandId);
+  assert.equal(await send.isDisabled(), true);
+  assert.equal(await editorText(), lostCreationText);
+  await pendingAction.click();
+  await checkStatus.click();
+  const readSeen = (method, hidden) =>
+    trace.some(
+      (entry) =>
+        entry.commandId === lostCreate.commandId &&
+        entry.method === method &&
+        entry.ready &&
+        entry.hidden === hidden,
+    );
+  await until(
+    () => readSeen("command.read", true) && readSeen("worktree.read", true),
+    "Both original creation reads are hidden",
+  );
+  await pendingAction.click();
+  await page.getByRole("menuitem", { name: "保留原结果，返回草稿", exact: true }).waitFor();
+  assert.equal(await pendingCreateId(), lostCreate.commandId);
+  assert.equal(await send.isDisabled(), true);
+  assert.equal(requests.length, modelCount);
+  hideCreationReceipt = false;
+  await checkStatus.click();
+  await page.waitForFunction(
+    (id) => document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId === id,
+    lostReceipt.threadId,
+  );
+  await until(
+    async () => (await editorText()) === lostCreationText,
+    "Original unsent draft restores in its Thread",
+  );
+  assert.equal(await pendingCreateId(), null);
+  assert.equal(readSeen("command.read", false), true);
+  const restored = await readCoreThread({
+    binary,
+    env,
+    gui,
+    workspace,
+    threadId: lostReceipt.threadId,
+  });
+  assert.deepEqual(restored.turns, []);
+  assert.equal(commands.length, commandCount + 1);
+  assert.equal(requests.length, modelCount);
+  await capture("creation-recovered");
+  checks.push(
+    "A lost creation reply keeps the same draft locked until the original Host receipt restores its empty Thread",
+  );
   assert.deepEqual(errors, []);
   passed = true;
 } catch (error) {
