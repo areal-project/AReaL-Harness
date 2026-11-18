@@ -25,8 +25,7 @@ const cases = [
     {
       canStop: false,
       connected: true,
-      busy: false,
-      clients: "unknown",
+      busy: "unknown",
       starting: 0,
       providerUpdating: false,
       projects: [],
