@@ -365,17 +365,16 @@ impl Connections {
         tokio::time::timeout(Duration::from_secs(15), async {
             loop {
                 let changed = self.changed.notified();
+                let needs_preparation =
+                    !host.schedules.suppressed(id) && !host.schedules.import_blocked(id);
                 if self.sessions.borrow().get(id).is_some_and(|session| {
                     session.service.identity.generation == generation
-                        && session.ready.get()
-                        && session.current(host)
+                        && session.shared_current(host)
+                        && (!needs_preparation || session.ready.get())
                 }) {
                     return Ok(());
                 }
                 host.admission()?;
-                if host.schedules.suppressed(id) || host.schedules.import_blocked(id) {
-                    return Ok(());
-                }
                 ensure!(
                     host.slots
                         .borrow()
