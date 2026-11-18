@@ -334,6 +334,10 @@ export const mobileMessages = {
     "zh-CN": "原请求仍可查询状态。现在可以继续发送或操作。",
     en: "You can still check the previous request. You can continue sending or acting now.",
   },
+  "mobile.dismissNotice": {
+    "zh-CN": "清除提示",
+    en: "Dismiss",
+  },
   "mobile.startSeparateFailed": {
     "zh-CN": "未能保留原请求，请重试。",
     en: "Could not retain the original request. Try again.",

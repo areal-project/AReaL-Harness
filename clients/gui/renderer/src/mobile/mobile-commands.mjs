@@ -598,6 +598,31 @@ export class MobileCommands {
     if (command?.method !== "session.create") return;
     return this.detachNotFoundCommand(command);
   }
+  async dismissCommand(command) {
+    const key = this.commandKey(command);
+    if (
+      this.state.busy ||
+      this.state.recovering ||
+      command?.checkingReceipt ||
+      this.detachingCreation === command ||
+      (!command?.detached && command?.admissionState !== "notFound") ||
+      this.commands.commands.get(key) !== command ||
+      this.client.snapshot().kind !== "connected"
+    )
+      return;
+    const token = this.client.identities.current();
+    this.detachingCreation = command;
+    this.publish({ busy: true, error: null });
+    try {
+      await this.client.identities.dismissLocator(token, command.commandId);
+      if (this.commands.commands.get(key) === command) this.commands.commands.delete(key);
+    } catch {
+      this.publish({ error: "START_SEPARATE_FAILED" });
+    } finally {
+      this.detachingCreation = null;
+      this.finish();
+    }
+  }
   async configureIntent(projectId, threadId, intent) {
     const detail = this.workspace.state.detail,
       snapshot = detail?.snapshot;

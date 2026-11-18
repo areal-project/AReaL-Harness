@@ -704,3 +704,41 @@ test("detaching a notFound session.send unblocks the conversation while keeping 
   assert.equal(restored.draft("project", "thread"), "keep active draft");
   assert.equal(f.record().locators.length, 0);
 });
+
+test("dismissCommand removes detached or notFound prompts from local storage", async () => {
+  const f = await fixture();
+  const request = f.client.request;
+  f.client.request = async (envelope) => {
+    if (envelope.method === "session.create")
+      throw Object.assign(new Error("lost create"), { submissionUnknown: true });
+    if (envelope.method === "command.read")
+      return { commandId: envelope.params.commandId, admissionState: "notFound" };
+    return request(envelope);
+  };
+  f.commands.setDraft("project", "", "first draft");
+  await f.commands.send();
+  const [original] = f.commands.unresolved("project");
+  await f.commands.query(original);
+  await f.commands.startSeparateConversation(original);
+  assert.equal(f.commands.unresolved("project").length, 1);
+  assert.equal(f.record().locators.length, 1);
+
+  await f.commands.dismissCommand(f.commands.unresolved("project")[0]);
+  assert.equal(f.commands.unresolved("project").length, 0);
+  assert.equal(f.record().locators.length, 0);
+});
+
+test("pre-send socket failures marked submissionUnknown=false settle without leaving a notFound locator", async () => {
+  const f = await fixture();
+  f.client.request = async () => {
+    throw Object.assign(new Error("OFFLINE"), {
+      code: "RESYNC_REQUIRED",
+      submissionUnknown: false,
+    });
+  };
+  f.commands.setDraft("project", "", "draft stays safe");
+  await f.commands.send();
+  assert.equal(f.commands.unresolved("project").length, 0);
+  assert.equal(f.record().locators.length, 0);
+  assert.equal(f.commands.draft("project"), "draft stays safe");
+});

@@ -267,6 +267,15 @@ export class ClientState {
     });
     this.assertCurrent(token);
   }
+  async dismissLocator(token, commandId) {
+    this.assertCurrent(token);
+    if (token.mode === "guest") return;
+    await this.transaction(true, (record) => {
+      this.matching(record, token);
+      record.locators = record.locators.filter((item) => item.commandId !== commandId);
+    });
+    this.assertCurrent(token);
+  }
   draftStorageKey(token) {
     return `${this.draftPrefix}:draft:${token.instance}`;
   }

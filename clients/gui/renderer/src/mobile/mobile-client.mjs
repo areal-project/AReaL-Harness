@@ -275,7 +275,11 @@ export class MobileClient {
     }
   }
   async request(envelope, onResult) {
-    if (this.state.kind !== "connected") throw new Error("OFFLINE");
+    if (this.state.kind !== "connected")
+      throw Object.assign(new Error("OFFLINE"), {
+        code: "LOCAL_NOT_SENT",
+        submissionUnknown: false,
+      });
     try {
       return await this.connection.request(envelope, onResult);
     } catch (error) {

@@ -256,6 +256,17 @@ export function MobileComposer({
                   )}
                 </Button>
               )}
+              {(value.detached || value.admissionState === "notFound") && (
+                <Button
+                  className="mobile-touch min-h-[var(--size-touch-target)]"
+                  variant="ghost"
+                  data-action="dismiss-command"
+                  disabled={!connected || value.checkingReceipt}
+                  onClick={() => void commands.dismissCommand(value)}
+                >
+                  {t("mobile.dismissNotice")}
+                </Button>
+              )}
             </div>
           ))}
         {!isNew && snapshot?.queue && (
