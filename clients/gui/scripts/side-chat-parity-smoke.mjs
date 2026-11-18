@@ -13,8 +13,8 @@ import { fileURLToPath } from "node:url";
 import { applicationFixture } from "./application-fixture.mjs";
 import {
   closeSmokeApplication,
-  assertApplicationStopped,
-  stopFixtureHost,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
 } from "./application-cleanup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 import {
@@ -23,6 +23,7 @@ import {
   selectConversation,
   openSideChat,
 } from "./smoke-navigation.mjs";
+import { openProjectInDesktop } from "./support/journey-fixture.mjs";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
 
 const runnerGui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -32,9 +33,6 @@ const gui = process.env.AREAL_GUI_SOURCE_ROOT
   : runnerGui;
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const { ServiceConnection, waitForServiceExit } = require(
-  join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
-);
 const binary =
   process.env.AREAL_CORE_BIN || join(root, ".local/dev-bin/side-chat-zcode-parity/areal");
 assert.ok(isAbsolute(binary), "AREAL_CORE_BIN must be an absolute frozen executable path");
@@ -42,7 +40,6 @@ assert.equal(process.env.AREAL_GUI_EXECUTABLE, undefined, "Side parity requires 
 const requested = process.argv.indexOf("--scenario");
 const scenario = requested < 0 ? null : process.argv[requested + 1];
 assert.ok(scenario === null || /^P[1-6]$/.test(scenario), "--scenario accepts P1 through P6");
-const baseline = process.argv.includes("--baseline");
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 async function artifactHashes() {
   const files = ["app/src/main.cjs", "renderer/dist/index.html"];
@@ -74,9 +71,9 @@ const bundleHashes = async () =>
 const bundleHashesAtStart = await bundleHashes();
 const evidenceRoot = join(root, ".scratch/side-chat-parity");
 await mkdir(evidenceRoot, { recursive: true });
-const evidence = await trackedMkdtemp(join(evidenceRoot, baseline ? "baseline-" : "run-"));
+const evidence = await trackedMkdtemp(join(evidenceRoot, "run-"));
 const stateRoot = await makeTempDir("scp-");
-const workspace = join(stateRoot, "w");
+const workspace = join(stateRoot, "demo");
 const userHome = join(stateRoot, "u");
 await mkdir(workspace);
 await mkdir(userHome);
@@ -232,6 +229,7 @@ const env = { ...process.env };
 for (const key of Object.keys(env))
   if (/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) || key === "ELECTRON_RUN_AS_NODE") delete env[key];
 Object.assign(env, {
+  HOME: userHome,
   AREAL_CORE_BIN: binary,
   AREAL_CORE_CONFIG: config,
   AREAL_CORE_DESKTOP_CONFIG: deployment,
@@ -244,38 +242,13 @@ Object.assign(env, {
   no_proxy: "127.0.0.1,localhost,::1",
   LANG: "zh_CN.UTF-8",
 });
-const commandLog = join(evidence, "commands.jsonl");
 const transportTrace = [];
 const composerTrace = [];
 const escapeTrace = [];
 let traceSocket = 0;
-const fixture = await applicationFixture(
-  gui,
-  join(stateRoot, "app"),
-  `
-const { appendFileSync } = require('node:fs');
-const { SharedCoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/service-client.cjs"))});
-require('electron').app.on('browser-window-created', (_event, window) => {
-  for (const event of ['show', 'hide', 'close']) window.on(event, () => {
-    appendFileSync(${JSON.stringify(commandLog)}, JSON.stringify({ observed: event, at: Date.now() }) + '\\n');
-  });
-});
-const original = SharedCoreBackend.prototype.command;
-SharedCoreBackend.prototype.command = async function(name, request) {
-  try {
-    const value = await original.call(this, name, request);
-    appendFileSync(${JSON.stringify(commandLog)}, JSON.stringify({ name, request, ok: true }) + '\\n');
-    return value;
-  } catch (error) {
-    appendFileSync(${JSON.stringify(commandLog)}, JSON.stringify({ name, request, error: error.message }) + '\\n');
-    throw error;
-  }
-};
-`,
-);
+const fixture = await applicationFixture(gui, join(stateRoot, "app"));
 const facts = {
   startedAt: new Date().toISOString(),
-  baseline,
   stateRoot,
   workspace,
   evidence,
@@ -330,17 +303,13 @@ const ctx = { app, page, env, binary, workspace, projectId, requests, checks, ev
 const state = () => page.evaluate(() => window.arealDesktop.snapshot());
 const project = (snapshot) =>
   snapshot.projects.find((item) => item.id === projectId || item.root === workspace);
-const threads = (snapshot) => project(snapshot)?.state?.threads ?? {};
 const currentId = () => page.getByTestId("areal-workbench").getAttribute("data-thread-id");
 const mainComposer = () =>
   page
     .locator(".composer-dock:not(.side-chat-composer)")
     .filter({ has: page.getByTestId("chat-input") })
     .first();
-const sidePane = () =>
-  baseline
-    ? page.getByRole("region", { name: "侧边聊天", exact: true })
-    : page.getByTestId("side-chat-pane").filter({ visible: true });
+const sidePane = () => page.getByTestId("side-chat-pane").filter({ visible: true });
 const sideInput = () =>
   sidePane().getByRole("textbox", { name: "描述要做的事，@ 引用文件，/ 查看命令", exact: true });
 const sideTabs = () => page.locator('[data-side-pane-tab-id^="side:"]');
@@ -489,173 +458,86 @@ async function launch() {
   );
 }
 async function closeOwned() {
-  const metadata = await readFile(join(env.AREAL_CORE_HOME, "service.json"), "utf8")
-    .then(JSON.parse)
-    .catch((error) => {
-      if (error.code === "ENOENT") return null;
-      throw error;
-    });
-  let closeError;
-  if (app) {
-    await app
-      .evaluate(({ dialog }, isBaseline) => {
-        dialog.showMessageBox = async () => ({ response: isBaseline ? 1 : 0 });
-      }, baseline)
-      .catch(() => {});
-    try {
-      await closeSmokeApplication(app);
-    } catch (error) {
-      closeError = error;
-      facts.electronCleanupError = error.stack ?? String(error);
-    }
-    app = null;
-    ctx.app = null;
+  if (!app) return;
+  const host = await readFixtureHost(env);
+  const pid = app.process().pid;
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({ response: 0 });
+  });
+  await closeSmokeApplication(app);
+  app = null;
+  ctx.app = null;
+  const directory = join(evidence, `quit-${pid}`);
+  await mkdir(directory);
+  const receipt = await settleFixtureHostAfterQuit(binary, env, directory, { host, pid });
+  assert.equal(receipt?.state, "completed", "original fixture Host stop confirmed");
+  for (const item of receipt.projects) {
+    assert.equal(item.receipt?.state, "completed");
+    const cleanup = JSON.parse(
+      await readFile(
+        join(env.AREAL_HARNESS_SERVICE_HOME, "services", item.serviceId, "cleanup.json"),
+        "utf8",
+      ),
+    );
+    assert.equal(cleanup.identity.generation, item.serviceGeneration);
+    assert.equal(cleanup.cleanupConfirmed, true);
   }
-  if (!baseline) {
-    const receipt = await stopFixtureHost(binary, env.AREAL_HARNESS_SERVICE_HOME, evidence);
-    assert.ok(receipt, "the original fixture Host stop is confirmed");
-    assert.equal(receipt.state, "completed");
-    for (const item of receipt.projects) {
-      assert.equal(item.receipt?.state, "completed");
-      const cleanup = JSON.parse(
-        await readFile(
-          join(env.AREAL_HARNESS_SERVICE_HOME, "services", item.serviceId, "cleanup.json"),
-          "utf8",
-        ),
-      );
-      assert.equal(cleanup.identity.generation, item.serviceGeneration);
-      assert.equal(cleanup.cleanupConfirmed, true);
-    }
-    await assertApplicationStopped(binary, env, metadata);
-    facts.cleanup.push({ pid: metadata?.pid ?? null, serviceExited: true, hostStop: receipt });
-    if (closeError) throw closeError;
-    return;
-  }
-  try {
-    await assertApplicationStopped(binary, env, metadata);
-  } catch {
-    assert.ok(metadata, "cleanup targets only this run's metadata");
-    const connection = new ServiceConnection();
-    try {
-      await connection.connect(metadata);
-      await connection.request("hello", {
-        protocol: metadata.protocol,
-        identity: metadata.identity,
-      });
-      await connection.request("stopService", { protocol: metadata.protocol }, true);
-    } finally {
-      connection.close();
-    }
-    await waitForServiceExit(env.AREAL_CORE_HOME, metadata);
-    await assertApplicationStopped(binary, env, metadata);
-  }
-  facts.cleanup.push({ pid: metadata?.pid ?? null, serviceExited: true });
-  if (closeError) throw closeError;
+  facts.cleanup.push({ pid, hostPid: host.pid, serviceExited: true, hostStop: receipt });
 }
 async function sendMain(text, complete = true) {
   const previous = await currentId();
-  if (!baseline) {
-    const before = new Set(
-      previous ? (await readCoreThread(previous)).turns.map((turn) => turn.id) : [],
-    );
-    await mainComposer().getByTestId("chat-input").fill(text);
-    await mainComposer().getByRole("button", { name: "发送", exact: true }).click();
-    const id = await until(async () => (await currentId()) || null, "main thread identity");
-    let turn;
-    await until(async () => {
-      turn = (await readCoreThread(id)).turns.find((candidate) => !before.has(candidate.id));
-      return turn && (!complete || turn.status === "completed");
-    }, `main ${text}`);
-    if (complete)
-      await mainMessages()
-        .locator(`[data-turn-id="${turn.id}"][data-turn-status="completed"]`)
-        .waitFor();
-    return id;
+  const before = new Set(
+    previous ? (await readCoreThread(previous)).turns.map((turn) => turn.id) : [],
+  );
+  if (!previous) {
+    await mainComposer().getByTestId("composer-model-trigger").click();
+    await page.getByRole("radio", { name: "fixture", exact: true }).click();
   }
-  const before = previous ? (threads(await state())[previous]?.turns?.length ?? 0) : 0;
   await mainComposer().getByTestId("chat-input").fill(text);
   await mainComposer().getByRole("button", { name: "发送", exact: true }).click();
   const id = await until(async () => (await currentId()) || null, "main thread identity");
+  let turn;
   await until(async () => {
-    const thread = threads(await state())[id];
-    return (
-      thread?.turns?.length > before &&
-      (!complete || thread.turns.at(-1).status === "completed") &&
-      thread
-    );
+    turn = (await readCoreThread(id)).turns.find((candidate) => !before.has(candidate.id));
+    return turn && (!complete || turn.status === "completed");
   }, `main ${text}`);
+  if (complete)
+    await mainMessages()
+      .locator(`[data-turn-id="${turn.id}"][data-turn-status="completed"]`)
+      .waitFor();
   return id;
 }
 async function newParent(prompt) {
-  if (await currentId()) await createProjectConversation(page, "w");
+  if (await currentId()) await createProjectConversation(page, "demo");
   return sendMain(prompt);
 }
 async function openSide() {
   const parent = await currentId();
-  const before = baseline
-    ? new Set(Object.keys(threads(await state())))
-    : new Set(
-        await listCoreSides({
-          binary,
-          env,
-          gui,
-          threadId: parent,
-          project: project(await state()),
-          workspace,
-        }),
-      );
-  if (!baseline) {
-    await openSideChat(page);
-    await until(async () => {
-      const id = await sidePane().getAttribute("data-thread-id");
-      return id && !before.has(id);
-    }, "new empty child becomes the active pane");
-    await sideInput().waitFor();
-    const id = await sidePane().getAttribute("data-thread-id");
-    const created = await readCoreThread(id);
-    assert.equal(
-      created.conversation?.origin?.sourceThreadId,
-      parent,
-      "new Side belongs to the original parent",
-    );
-    assert.equal(created.turns.length, 0, "new Side has no turns");
-    return { before, id };
-  }
-  const launcher = page.locator(
-    baseline
-      ? '[data-side-pane-open-tab-item="旁路讨论"]'
-      : '[data-side-pane-open-tab-item="side"]',
+  const before = new Set(
+    await listCoreSides({
+      binary,
+      env,
+      gui,
+      threadId: parent,
+      project: project(await state()),
+      workspace,
+    }),
   );
-  if (await page.getByRole("button", { name: "打开侧边面板标签页", exact: true }).isVisible()) {
-    await page.getByRole("button", { name: "打开侧边面板标签页", exact: true }).click();
-    const entry = page.getByRole("menuitem", { name: /侧边聊天/ });
-    if (!(await entry.count()) && baseline) {
-      await page.keyboard.press("Escape");
-      await mainComposer().getByTestId("chat-input").fill("/side");
-      await mainComposer().getByRole("button", { name: "发送", exact: true }).click();
-    } else {
-      await entry.waitFor();
-      assert.equal(await entry.count(), 1, "plus menu offers Side Chat");
-      await entry.click();
-    }
-  } else {
-    if (!(await launcher.isVisible()))
-      await page.getByRole("button", { name: "展开侧边面板", exact: true }).click();
-    if (!(await launcher.isVisible()) && baseline) {
-      await mainComposer().getByTestId("chat-input").fill("/side");
-      await mainComposer().getByRole("button", { name: "发送", exact: true }).click();
-    } else {
-      assert.equal(await launcher.count(), 1, "fixed panel launcher offers Side Chat");
-      await launcher.click();
-    }
-  }
-  if (!baseline)
-    await until(async () => {
-      const id = await sidePane().getAttribute("data-thread-id");
-      return id && !before.has(id);
-    }, "new empty child becomes the active pane");
+  await openSideChat(page);
+  await until(async () => {
+    const id = await sidePane().getAttribute("data-thread-id");
+    return id && !before.has(id);
+  }, "new empty child becomes the active pane");
   await sideInput().waitFor();
-  return { before, id: await sidePane().getAttribute("data-thread-id") };
+  const id = await sidePane().getAttribute("data-thread-id");
+  const created = await readCoreThread(id);
+  assert.equal(
+    created.conversation?.origin?.sourceThreadId,
+    parent,
+    "new Side belongs to the original parent",
+  );
+  assert.equal(created.turns.length, 0, "new Side has no turns");
+  return { before, id };
 }
 async function closeTab(id) {
   await page
@@ -669,82 +551,57 @@ async function closeTab(id) {
   );
 }
 async function sendSide(text, complete = true) {
-  if (!baseline) {
-    const originalId = await sidePane().getAttribute("data-thread-id");
-    assert.ok(originalId, "the Side owns a Core thread before sending");
-    const before = new Set((await readCoreThread(originalId)).turns.map((turn) => turn.id));
-    await sideInput().fill(text);
-    if (text === "PARITY:P1_WRITE") {
-      composerTrace.push(
-        await sidePane().evaluate((pane, expected) => {
-          const input = pane.querySelector('[data-testid="side-chat-input"]');
-          const button = pane.querySelector('[data-testid="side-chat-send"]');
-          if (input) input.dataset.sideDiagnostic = "before-click";
-          return {
-            phase: "before",
-            threadId: pane.getAttribute("data-thread-id"),
-            matches: input?.textContent === expected,
-            disabled: button?.disabled,
-          };
-        }, text),
-      );
-    }
-    await sidePane().getByRole("button", { name: "发送", exact: true }).click();
-    if (text === "PARITY:P1_WRITE") {
-      composerTrace.push(
-        await sidePane().evaluate((pane, expected) => {
-          const input = pane.querySelector('[data-testid="side-chat-input"]');
-          const button = pane.querySelector('[data-testid="side-chat-send"]');
-          return {
-            phase: "after",
-            threadId: pane.getAttribute("data-thread-id"),
-            matches: input?.textContent === expected,
-            sameInput: input?.dataset.sideDiagnostic === "before-click",
-            disabled: button?.disabled,
-          };
-        }, text),
-      );
-    }
-    let turn;
-    await until(async () => {
-      assert.equal(await sidePane().getAttribute("data-thread-id"), originalId);
-      const thread = await readCoreThread(originalId);
-      turn = thread.turns.find((candidate) => !before.has(candidate.id));
-      if (turn && complete && turn.status !== "inProgress")
-        assert.equal(
-          turn.status,
-          "completed",
-          `child ${text} must complete successfully: ${JSON.stringify(turn.error)}`,
-        );
-      return turn && (!complete || turn.status === "completed");
-    }, `child ${text}`);
-    if (complete)
-      await sidePane()
-        .locator(`[data-turn-id="${turn.id}"][data-turn-status="completed"]`)
-        .waitFor();
-    return originalId;
-  }
-  const before = new Map(
-    Object.values(threads(await state()))
-      .filter((thread) => thread.conversation?.kind === "side")
-      .map((thread) => [thread.id, thread.turns?.length ?? 0]),
-  );
+  const originalId = await sidePane().getAttribute("data-thread-id");
+  assert.ok(originalId, "the Side owns a Core thread before sending");
+  const before = new Set((await readCoreThread(originalId)).turns.map((turn) => turn.id));
   await sideInput().fill(text);
-  await sidePane().getByRole("button", { name: "发送", exact: true }).click();
-  return until(async () => {
-    const found = Object.values(threads(await state())).find(
-      (thread) =>
-        thread.conversation?.kind === "side" &&
-        (thread.turns?.length ?? 0) > (before.get(thread.id) ?? 0),
+  if (text === "PARITY:P1_WRITE") {
+    composerTrace.push(
+      await sidePane().evaluate((pane, expected) => {
+        const input = pane.querySelector('[data-testid="side-chat-input"]');
+        const button = pane.querySelector('[data-testid="side-chat-send"]');
+        if (input) input.dataset.sideDiagnostic = "before-click";
+        return {
+          phase: "before",
+          threadId: pane.getAttribute("data-thread-id"),
+          matches: input?.textContent === expected,
+          disabled: button?.disabled,
+        };
+      }, text),
     );
-    if (found && complete && found.turns.at(-1).status !== "inProgress")
+  }
+  await sidePane().getByRole("button", { name: "发送", exact: true }).click();
+  if (text === "PARITY:P1_WRITE") {
+    composerTrace.push(
+      await sidePane().evaluate((pane, expected) => {
+        const input = pane.querySelector('[data-testid="side-chat-input"]');
+        const button = pane.querySelector('[data-testid="side-chat-send"]');
+        return {
+          phase: "after",
+          threadId: pane.getAttribute("data-thread-id"),
+          matches: input?.textContent === expected,
+          sameInput: input?.dataset.sideDiagnostic === "before-click",
+          disabled: button?.disabled,
+        };
+      }, text),
+    );
+  }
+  let turn;
+  await until(async () => {
+    assert.equal(await sidePane().getAttribute("data-thread-id"), originalId);
+    const thread = await readCoreThread(originalId);
+    turn = thread.turns.find((candidate) => !before.has(candidate.id));
+    if (turn && complete && turn.status !== "inProgress")
       assert.equal(
-        found.turns.at(-1).status,
+        turn.status,
         "completed",
-        `child ${text} must complete successfully: ${JSON.stringify(found.turns.at(-1).error)}`,
+        `child ${text} must complete successfully: ${JSON.stringify(turn.error)}`,
       );
-    return found && (!complete || found.turns.at(-1).status === "completed") ? found.id : null;
+    return turn && (!complete || turn.status === "completed");
   }, `child ${text}`);
+  if (complete)
+    await sidePane().locator(`[data-turn-id="${turn.id}"][data-turn-status="completed"]`).waitFor();
+  return originalId;
 }
 async function selectText(body, text, keyboard = false) {
   await body.scrollIntoViewIfNeeded();
@@ -913,15 +770,14 @@ async function toolAndPermission() {
   await sendSide("PARITY:P1_WRITE", false);
   const writeTurnId = (await readCoreThread(child)).turns.at(-1).id;
   const pending = await until(async () => {
-    const interactions = baseline
-      ? (project(await state()).state.interactions?.[child]?.data ?? [])
-      : ((await readCoreThread(child)).desktop?.interactions ?? []);
+    const interactions = (await readCoreThread(child)).desktop?.interactions ?? [];
     return interactions.find(
       (item) =>
         item.kind === "approval" &&
         item.status === "pending" &&
-        (baseline ||
-          (item.threadId === child && item.turnId === writeTurnId && item.tool === "fs_create")),
+        item.threadId === child &&
+        item.turnId === writeTurnId &&
+        item.tool === "fs_create",
     );
   }, "child fs_create approval");
   assert.equal(pending.tool, "fs_create");
@@ -985,12 +841,11 @@ async function toolAndPermission() {
 async function hiddenStableHistory() {
   await rm(release, { force: true });
   const parent = await newParent("PARITY:P2_SEED");
-  const executionRoot = threads(await state())[parent]?.worktree?.directory ?? workspace;
-  marker = join(executionRoot, "parent-tool.txt");
-  release = join(executionRoot, "release-parent-tool");
+  marker = join(workspace, "parent-tool.txt");
+  release = join(workspace, "release-parent-tool");
   await sendMain("PARITY:P2_ACTIVE", false);
   await until(() => exists(marker), "held Runtime parent tool started");
-  const parentTurnId = !baseline ? (await readCoreThread(parent)).turns.at(-1).id : null;
+  const parentTurnId = (await readCoreThread(parent)).turns.at(-1).id;
   const before = requests.length;
   await openSide();
   assert.equal(requests.length, before, "empty Side makes no model request");
@@ -1032,14 +887,12 @@ async function hiddenStableHistory() {
   );
   await writeFile(release, "release");
   await until(async () => {
-    if (baseline) return threads(await state())[parent]?.turns.at(-1).status === "completed";
     return (
       (await readCoreThread(parent)).turns.find((turn) => turn.id === parentTurnId)?.status ===
       "completed"
     );
   }, "parent tool completes");
-  if (!baseline)
-    await page.locator(`[data-turn-id="${parentTurnId}"][data-turn-status="completed"]`).waitFor();
+  await page.locator(`[data-turn-id="${parentTurnId}"][data-turn-status="completed"]`).waitFor();
   const childTurns = (await readCoreThread(child)).turns.length;
   await sendMain("PARITY:P2_LATER_PARENT");
   assert.equal(
@@ -1180,10 +1033,7 @@ async function multipleTabs() {
   await sideInput().fill("COLD_RESTART_DRAFT");
   await closeOwned();
   await launch();
-  await until(
-    async () => project(await state())?.state?.connected,
-    "project restored after restart",
-  );
+  await createProjectConversation(page, "demo");
   await selectConversation(page, parent);
   assert.equal(await sideTabs().count(), 0, "restart restores no ephemeral child tabs");
   await openSide();
@@ -1536,27 +1386,19 @@ async function escapeOwnership() {
   const parent = await newParent("PARITY:P6_PARENT");
   await openSide();
   const commandRecords = async () =>
-    baseline
-      ? (await readFile(commandLog, "utf8"))
-          .trim()
-          .split("\n")
-          .filter(Boolean)
-          .map(JSON.parse)
-          .filter((entry) => entry.name === "stop")
-          .map((entry) => ({ ...entry, response: { errorCode: entry.ok ? null : "error" } }))
-      : transportTrace
-          .filter((entry) => entry.direction === "sent" && entry.method === "turn.stop")
-          .map((entry) => ({
-            name: "stop",
-            request: { turnId: entry.turnId },
-            id: entry.id,
-            response: transportTrace.find(
-              (item) =>
-                item.direction === "received" &&
-                item.socketId === entry.socketId &&
-                item.id === entry.id,
-            ),
-          }));
+    transportTrace
+      .filter((entry) => entry.direction === "sent" && entry.method === "turn.stop")
+      .map((entry) => ({
+        name: "stop",
+        request: { turnId: entry.turnId },
+        id: entry.id,
+        response: transportTrace.find(
+          (item) =>
+            item.direction === "received" &&
+            item.socketId === entry.socketId &&
+            item.id === entry.id,
+        ),
+      }));
   const turnText = (turn) =>
     (turn?.items ?? [])
       .filter((item) => item.type === "agentMessage")
@@ -1806,17 +1648,10 @@ try {
   });
   await page.reload();
   await page.getByTestId("areal-workbench").waitFor();
-  await app.evaluate(({ dialog }, path) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
-  }, workspace);
-  await page.getByRole("button", { name: "不在项目中工作", exact: true }).click();
-  await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
-  await until(
-    async () => project(await state())?.state?.connected,
-    "isolated project connected",
-    90000,
-  );
-  projectId = project(await state()).id;
+  await openProjectInDesktop(app, page, workspace);
+  await page.getByTestId("chat-input").waitFor({ timeout: 60_000 });
+  projectId = await page.getByTestId("areal-workbench").getAttribute("data-project-id");
+  assert.ok(projectId);
   ctx.projectId = projectId;
   await page.waitForFunction(
     (id) => document.querySelector('[data-testid="areal-workbench"]')?.dataset.projectId === id,
@@ -1837,17 +1672,13 @@ try {
       await captureSmokeFailure(page, evidence, error);
       await shot(`${id}-failed`).catch(() => {});
       console.error(`${id} FAIL`, error.message);
-      if (!baseline) throw error;
+      throw error;
     } finally {
       row.requestsAfter = requests.length;
       await writeFile(release, "release");
       for (const settle of Array.from(streams.values())) settle();
       await until(
         async () => {
-          if (baseline)
-            return !Object.values(threads(await state())).some(
-              (thread) => thread.turns?.at(-1)?.status === "inProgress",
-            );
           const directory = join(env.AREAL_CORE_HOME, projectId, "state");
           const names = (await readdir(directory)).filter((name) =>
             /^[a-f0-9-]{36}\.json$/i.test(name),

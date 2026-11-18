@@ -1,4 +1,8 @@
-import { until as untilObservation } from "./support/desktop-fixture.mjs";
+import {
+  createFixtureThread,
+  fixtureWorkbench,
+  until as untilObservation,
+} from "./support/desktop-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -10,13 +14,20 @@ import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applicationFixture } from "./application-fixture.mjs";
-import { assertApplicationStopped } from "./application-cleanup.mjs";
+import {
+  closeSmokeApplication,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
+} from "./application-cleanup.mjs";
+import { readCoreThread } from "./support/core-observation.mjs";
+import { openProjectInDesktop } from "./support/journey-fixture.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 import {
   captureSmokeFailure,
   createProjectConversation,
   resizeConversation,
   selectConversation,
+  selectCreatedConversation,
 } from "./smoke-navigation.mjs";
 import { CoreClient } from "../packages/runtime-client/core.js";
 
@@ -29,7 +40,7 @@ const binary = process.env.AREAL_CORE_BIN;
 assert.ok(binary, "Set AREAL_CORE_BIN to the isolated built Core binary");
 const scratch = await makeTempDir("acu-");
 console.log(`Context usage evidence: ${scratch}`);
-const workspace = join(scratch, "workspace"),
+const workspace = join(scratch, "demo"),
   userHome = join(scratch, "user"),
   skill = join(scratch, "skill");
 for (const path of [workspace, userHome, skill]) await mkdir(path);
@@ -268,6 +279,8 @@ const env = { ...process.env };
 for (const key of Object.keys(env))
   if (/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) || key === "ELECTRON_RUN_AS_NODE") delete env[key];
 Object.assign(env, {
+  HOME: userHome,
+  AREAL_HARNESS_HOME: join(scratch, "registry"),
   AREAL_CORE_BIN: binary,
   AREAL_CORE_CONFIG: config,
   AREAL_CORE_DESKTOP_CONFIG: deployment,
@@ -298,9 +311,7 @@ const evidence = {
   requests,
   errors,
 };
-const state = () => page.evaluate(() => window.arealDesktop.snapshot());
-const project = (s) => s.projects.find((p) => p.id === projectId || p.root === workspace);
-const thread = (s, id) => project(s)?.state?.threads?.[id];
+const thread = (threadId) => readCoreThread({ binary, env, gui, threadId, workspace });
 async function call(name, parameters = {}) {
   const response = await page.evaluate(
     ({ name, parameters }) => window.arealDesktop.command(name, parameters),
@@ -309,21 +320,14 @@ async function call(name, parameters = {}) {
   assert.equal(response.ok, true, JSON.stringify(response));
   return response.value;
 }
-async function until(predicate, label) {
-  const deadline = Date.now() + 45000;
-  while (Date.now() < deadline) {
-    const s = await state();
-    if (predicate(s)) return s;
-    await delay(80);
-  }
-  throw Error(`Timeout: ${label}`);
-}
 const currentId = () => page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+const turnView = (turn) =>
+  page.locator(`[data-turn-id="${turn.id}"][data-turn-status="${turn.status}"]`);
 const context = (id) =>
   call("manage", { projectId, threadId: id, operation: "context", offset: 0, limit: 1 });
 async function choose(label) {
   await page.getByTestId("composer-model-trigger").click();
-  await page.getByRole("tab", { name: "Fixture", exact: true }).click();
+  await page.getByRole("tab", { name: "fixture", exact: true }).click();
   await page.getByRole("radio", { name: label, exact: true }).click();
   await dismissPopovers();
   await page.waitForFunction((label) => {
@@ -332,32 +336,34 @@ async function choose(label) {
   }, label);
 }
 async function send(prompt, expectedStatus = "completed") {
-  const before = (thread(await state(), await currentId())?.turns ?? []).length;
+  const selected = await currentId();
+  const before = selected ? (await thread(selected)).turns.length : 0;
   await page.getByTestId("chat-input").fill(prompt);
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  await page.waitForFunction(
-    () => document.querySelector("[data-testid=areal-workbench]")?.dataset.threadId,
-  );
-  const id = await currentId();
-  await until(
-    (s) =>
-      thread(s, id)?.turns?.length > before && thread(s, id).turns.at(-1).status === expectedStatus,
-    `turn ${prompt}`,
-  );
-  return { id, turn: thread(await state(), id).turns.at(-1) };
+  const id = selected || (await untilObservation(currentId, "created thread identity"));
+  const turn = await untilObservation(async () => {
+    const { turns } = await thread(id);
+    const turn = turns.at(-1);
+    return turns.length > before && turn?.status === expectedStatus ? turn : null;
+  }, `turn ${prompt}`);
+  await turnView(turn).waitFor();
+  return { id, turn };
 }
 async function dismissPopovers() {
   await page.keyboard.press("Escape");
-  await page.waitForFunction(() => !document.querySelector("[data-slot=popover-content]"));
+  await Promise.all([
+    page.getByTestId("context-popover").waitFor({ state: "hidden" }),
+    page.getByTestId("turn-usage-popover").waitFor({ state: "hidden" }),
+  ]);
 }
 async function showContext(id) {
   await page.getByTestId("context-popover").waitFor({ state: "detached" });
   await page.getByTestId("context-meter").click();
   await page.getByTestId("context-popover").waitFor();
+  const result = await context(id);
   await page.waitForFunction(() =>
     document.querySelector("[data-testid=context-popover]")?.textContent.includes("输出预留"),
   );
-  const result = await context(id);
   const capacity = new Intl.NumberFormat("en", {
     notation: "compact",
     maximumFractionDigits: 1,
@@ -373,6 +379,7 @@ async function showContext(id) {
     );
   return result;
 }
+let originalHost;
 async function launch() {
   app = await electron.launch({
     executablePath: require("electron"),
@@ -388,10 +395,18 @@ async function launch() {
     appendFileSync(join(scratch, `electron-${child.pid}.stdout.log`), bytes),
   );
   page = await app.firstWindow();
+  await page.getByTestId("areal-workbench").waitFor({ timeout: 120_000 });
+  await page.evaluate(() => {
+    const key = "areal-gui:application-preferences";
+    const preferences = JSON.parse(localStorage.getItem(key) ?? "{}");
+    localStorage.setItem(key, JSON.stringify({ ...preferences, nextPromptSuggestions: false }));
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
   page.setDefaultTimeout(20000);
   page.on("pageerror", (error) => errors.push(error.stack));
-  await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
-  await until((s) => s.connection?.state === "ready", "desktop ready");
+  await page
+    .locator('[data-testid="areal-workbench"][data-startup-ready="true"]')
+    .waitFor({ timeout: 120000 });
   const identity = await app.evaluate(({ app, BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0];
     window.setSize(1440, 960);
@@ -412,17 +427,16 @@ async function launch() {
     contextIsolation: true,
     nodeIntegration: false,
   });
-  const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-  const { ServiceConnection } = require(
-    join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
-  );
-  const observer = new ServiceConnection();
+  originalHost = await untilObservation(() => readFixtureHost(env), "original isolated Host");
+  const { HostClient } = require("@areal/client/node");
+  const observer = new HostClient();
   try {
-    await observer.connect(metadata);
-    await observer.request("hello", { protocol: metadata.protocol, identity: metadata.identity });
-    process.kill(metadata.pid, 0);
-    const { token: _token, ...service } = metadata;
-    identity.service = service;
+    await observer.connect(env.AREAL_HARNESS_SERVICE_HOME);
+    const { pid, hostId, generation } = originalHost;
+    assert.equal(observer.hostId, hostId);
+    assert.equal(observer.generation, generation);
+    process.kill(pid, 0);
+    identity.host = { pid, hostId, generation };
     identity.authenticatedHello = true;
   } finally {
     observer.close();
@@ -431,24 +445,39 @@ async function launch() {
 }
 async function close() {
   if (!app) return;
-  const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
   const child = app.process();
-  await app.evaluate(({ app }) => app.quit());
-  for (let i = 0; i < 200 && child.exitCode === null; i++) await delay(100);
-  assert.notEqual(child.exitCode, null, "Electron exits");
-  await assertApplicationStopped(binary, env, metadata);
+  const host = originalHost ?? (await readFixtureHost(env));
+  if (failure) {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async (...args) => {
+        const options = args.at(-1);
+        return {
+          response: ["question", "warning"].includes(options.type) ? 1 : (options.cancelId ?? 0),
+        };
+      };
+    });
+  }
+  await closeSmokeApplication(app, 60_000);
+  const evidenceDirectory = join(scratch, `quit-${child.pid}`);
+  await mkdir(evidenceDirectory);
+  await settleFixtureHostAfterQuit(binary, env, evidenceDirectory, { host, pid: child.pid });
   app = null;
+  originalHost = undefined;
 }
 async function verifyAccountCapacity() {
-  const descriptor = JSON.parse(
-    execFileSync(
-      binary,
-      ["service", "status", "--instance", project(await state()).core.instanceId, "--json"],
-      { env, encoding: "utf8", timeout: 20000 },
-    ),
+  const records = JSON.parse(
+    execFileSync(binary, ["service", "list", "--json"], { env, encoding: "utf8", timeout: 20000 }),
   );
+  const ready = records.filter(
+    (service) => service.state === "ready" && service.workspace === workspace,
+  );
+  assert.equal(ready.length, 1, "one Core owns the project workspace");
+  const [descriptor] = ready;
   assert.equal(descriptor.workspace, workspace);
-  assert.equal(descriptor.dataDir, join(env.AREAL_CORE_HOME, projectId, "state"));
+  assert.ok(
+    descriptor.dataDir.startsWith(join(scratch, "core") + "/"),
+    "Core data stays in this fixture",
+  );
   const auth = JSON.parse(await readFile(descriptor.authFile, "utf8"));
   const principal = auth.principals.find((item) =>
     ["observe", "interact", "manage"].every((permission) => item.permissions?.includes(permission)),
@@ -492,17 +521,21 @@ async function verifyAccountCapacity() {
           }),
         "service ready to apply provider catalog",
       );
-      const current = await call("providers", { operation: "list" });
-      await call("providers", { operation: "apply", expectedRevision: current.revision });
+      const current = await fixtureWorkbench(page, "providers.read", { operation: "list" });
+      await fixtureWorkbench(
+        page,
+        "providers.command",
+        { operation: "apply", expectedRevision: current.revision },
+        { write: true },
+      );
     };
     await refreshCatalog();
-    const created = await call("create", {
-      projectId,
+    const created = await createFixtureThread(page, projectId, {
       profile: { id: "standard", revision: "v1" },
       model: { providerId: account.id, modelId: "gpt-6.1-sol" },
     });
     const id = created.threadId;
-    await selectConversation(page, id);
+    await selectCreatedConversation(page, projectId, id);
     const originalBudget = (await showContext(id)).contextUsage.budget;
     assert.equal(originalBudget.windowTokens, 1050000);
     assert.equal(originalBudget.reportedWindowTokens, 1050000);
@@ -588,12 +621,11 @@ async function verifyAccountCapacity() {
     await popover.getByText("用户预算 64K", { exact: true }).waitFor();
     await page.screenshot({ path: join(scratch, "12-user-budget.png") });
     await dismissPopovers();
-    const missing = await call("create", {
-      projectId,
+    const missing = await createFixtureThread(page, projectId, {
       profile: { id: "standard", revision: "v1" },
       model: { providerId: account.id, modelId: "gpt-6-sol" },
     });
-    await selectConversation(page, missing.threadId);
+    await selectCreatedConversation(page, projectId, missing.threadId);
     const fallbackBudget = (await showContext(missing.threadId)).contextUsage.budget;
     assert.equal(fallbackBudget.windowTokens, 131072);
     assert.equal(fallbackBudget.windowSource, "fallback");
@@ -627,30 +659,34 @@ async function verifyAccountCapacity() {
 }
 try {
   await launch();
-  await app.evaluate(({ dialog }, path) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
-  }, workspace);
-  await page.getByRole("button", { name: "不在项目中工作", exact: true }).click();
-  await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
-  await until((s) => project(s)?.state?.connected, "project connected");
-  projectId = project(await state()).id;
-  const activityThread = await call("create", {
-    projectId,
+  await openProjectInDesktop(app, page, workspace);
+  await page.getByTestId("chat-input").waitFor({ timeout: 60_000 });
+  projectId = await page.getByTestId("areal-workbench").getAttribute("data-project-id");
+  assert.ok(projectId);
+  const activityThread = await createFixtureThread(page, projectId, {
     profile: { id: "standard", revision: "v1" },
     model: { providerId: "fixture", modelId: "alpha" },
   });
-  await selectConversation(page, activityThread.threadId);
+  await selectCreatedConversation(page, projectId, activityThread.threadId);
   await page.getByTestId("chat-input").fill("USAGE_ACTIVITY");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   const activityObservations = [];
-  for (const [stage, label] of [
-    ["waiting", "等待模型响应…"],
-    ["after-tool", "等待模型继续…"],
-    ["streaming", "正在生成回复…"],
-  ]) {
-    await until(() => !!held, `activity ${stage} barrier`);
+  for (const stage of ["waiting", "after-tool", "streaming"]) {
+    await untilObservation(() => !!held, `activity ${stage} barrier`);
     const active = page.locator('[data-turn-status="inProgress"]');
-    await active.getByTestId("turn-activity").getByText(label, { exact: true }).waitFor();
+    const status = active.getByTestId("turn-activity").getByRole("status");
+    if (stage === "streaming") {
+      await status.filter({ hasText: "正在生成回复…" }).waitFor();
+    } else {
+      await status.and(page.locator('[data-content="fallback"]')).waitFor();
+    }
+    const current = (await thread(activityThread.threadId)).turns.at(-1);
+    const completedRead = current.items.some(
+      (item) =>
+        item.type === "dynamicToolCall" && item.tool === "fs_read" && item.status === "completed",
+    );
+    assert.equal(completedRead, stage !== "waiting", `Runtime read evidence at ${stage}`);
+    assert.equal(current.status, "inProgress");
     activityObservations.push({
       stage,
       activityCount: await active.getByTestId("turn-activity").count(),
@@ -660,8 +696,8 @@ try {
     await page.screenshot({ path: join(scratch, `activity-${stage}.png`) });
     held();
   }
-  await until(
-    (s) => thread(s, activityThread.threadId)?.turns?.at(-1)?.status === "completed",
+  await untilObservation(
+    async () => (await thread(activityThread.threadId)).turns.at(-1)?.status === "completed",
     "activity completed",
   );
   await writeFile(
@@ -678,13 +714,12 @@ try {
   checks.push(
     "one activity during initial wait, after real Runtime tool result and streaming; completed usage replaces activity",
   );
-  const created = await call("create", {
-    projectId,
+  const created = await createFixtureThread(page, projectId, {
     profile: { id: "standard", revision: "v1" },
     model: { providerId: "fixture", modelId: "alpha" },
   });
   const source = created.threadId;
-  await selectConversation(page, source);
+  await selectCreatedConversation(page, projectId, source);
   const requestsBeforeSelection = requests.length;
   identities.at(-1).coreServices = JSON.parse(
     execFileSync(binary, ["service", "list", "--json"], { env, encoding: "utf8", timeout: 20000 }),
@@ -783,11 +818,10 @@ try {
   await page.waitForFunction(() => document.activeElement?.classList.contains("turn-fork-trigger"));
   await branchButton.click();
   await forkDialog.getByRole("button", { name: "创建分支", exact: true }).click();
-  await page.waitForFunction(
-    (source) =>
-      document.querySelector("[data-testid=areal-workbench]")?.dataset.threadId !== source,
-    source,
-  );
+  await page.waitForFunction((source) => {
+    const selected = document.querySelector("[data-testid=areal-workbench]")?.dataset.threadId;
+    return selected && selected !== source;
+  }, source);
   const fork = { threadId: await currentId() };
   let forkContext = await context(fork.threadId);
   assert.equal(
@@ -816,7 +850,7 @@ try {
   checks.push(
     "selected model/provider capacities before send, neutral changed instruction basis, matched generation, fork anchor and own-turn subtotal",
   );
-  await createProjectConversation(page, "workspace");
+  await createProjectConversation(page, "demo");
   assert.match(await page.getByTestId("composer-model-trigger").innerText(), /Beta/);
   await send("USAGE_NEW_ACCEPTED");
   assert.equal(requests.at(-1).model, "beta");
@@ -879,24 +913,34 @@ try {
     assert.equal(turn.generation.missingUsageRequests, ["UNKNOWN", "ERROR"].includes(mode) ? 1 : 0);
     if (mode === "ZERO")
       assert.deepEqual(turn.usage, { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 });
-    assert.ok(!(await page.getByTestId("turn-usage").last().innerText()).includes("tok/s"));
+    assert.equal(
+      await turnView(turn).getByTestId("turn-usage").filter({ hasText: "tok/s" }).count(),
+      0,
+    );
   }
   await page.getByTestId("chat-input").fill("USAGE_CANCEL");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  await until(() => !!held, "cancel stream began");
+  await untilObservation(() => !!held, "cancel stream began");
   const cancellationReply = delay(250).then(() => held?.());
   await page.getByRole("button", { name: "暂停执行", exact: true }).click();
-  await until((s) => thread(s, source)?.turns?.at(-1)?.status === "interrupted", "cancel settled");
-  const cancelled = thread(await state(), source).turns.at(-1);
+  await untilObservation(
+    async () => (await thread(source)).turns.at(-1)?.status === "interrupted",
+    "cancel settled",
+  );
+  const cancelled = (await thread(source)).turns.at(-1);
   assert.equal(cancelled.usage.inputTokens, 120);
   assert.equal(cancelled.generation.measuredRequests, 0);
   assert.equal(cancelled.generation.usageRequests, 1);
   await cancellationReply;
   await page.getByTestId("chat-input").fill("USAGE_LIVE");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  await until(() => !!held, "live content is held before provider usage");
+  await untilObservation(() => !!held, "live content is held before provider usage");
   const live = page.locator('[data-turn-status="inProgress"]');
-  await live.getByTestId("turn-activity").getByText("正在生成回复…", { exact: true }).waitFor();
+  await live
+    .getByTestId("turn-activity")
+    .getByRole("status")
+    .filter({ hasText: "正在生成回复…" })
+    .waitFor();
   assert.equal(
     await live.getByTestId("turn-usage").count(),
     0,
@@ -904,14 +948,15 @@ try {
   );
   await page.screenshot({ path: join(scratch, "06-generating.png") });
   held();
-  await until(
-    (s) => thread(s, source)?.turns?.at(-1)?.status === "completed",
-    "live stream finishes",
-  );
-  assert.match(
-    await page.getByTestId("turn-usage").last().innerText(),
-    /^150 Token · [\d.]+ tok\/s$/,
-  );
+  const completedLive = await untilObservation(async () => {
+    const turn = (await thread(source)).turns.at(-1);
+    return turn?.status === "completed" ? turn : null;
+  }, "live stream finishes");
+  assert.equal(completedLive.generation.measuredRequests, 1);
+  await turnView(completedLive)
+    .getByTestId("turn-usage")
+    .filter({ hasText: /^150 Token · [\d.]+ tok\/s$/ })
+    .waitFor();
   const long = await send("USAGE_LONG");
   await showContext(source);
   const beforeCompact = (await context(source)).contextUsage.estimate.tokens;
@@ -925,11 +970,11 @@ try {
       beforeCompact,
     ),
   );
-  await until(
-    (s) => thread(s, source)?.turns?.at(-1)?.usage?.inputTokens === 190,
+  await untilObservation(
+    async () => (await thread(source)).turns.at(-1)?.usage?.inputTokens === 190,
     "manual compact refreshes saved turn usage",
   );
-  const compacted = thread(await state(), source).turns.at(-1);
+  const compacted = (await thread(source)).turns.at(-1);
   assert.equal(compacted.id, long.turn.id);
   assert.equal(compacted.usage.outputTokens, 38);
   assert.equal(compacted.generation.outputTokens, 38);
@@ -939,7 +984,7 @@ try {
   const subtotal = (await context(source)).sessionUsage;
   assert.equal(subtotal.unknownTurns, 2);
   assert.equal(subtotal.generation.missingUsageRequests, 2);
-  const own = thread(await state(), source).turns;
+  const own = (await thread(source)).turns;
   assert.equal(
     subtotal.usage.inputTokens,
     own.reduce((n, t) => n + (t.usage?.inputTokens ?? 0), 0),
@@ -958,14 +1003,14 @@ try {
   await dismissPopovers();
   const before = requests.length,
     saved = structuredClone(
-      thread(await state(), source).turns.map(({ usage, generation }) => ({ usage, generation })),
+      (await thread(source)).turns.map(({ usage, generation }) => ({ usage, generation })),
     );
   await close();
   await launch();
-  await until((s) => project(s)?.state?.connected, "reopened project");
+  await createProjectConversation(page, "demo");
   await selectConversation(page, source);
   assert.deepEqual(
-    thread(await state(), source).turns.map(({ usage, generation }) => ({ usage, generation })),
+    (await thread(source)).turns.map(({ usage, generation }) => ({ usage, generation })),
     saved,
   );
   assert.equal(requests.length, before, "reopen never resubmits model requests");
@@ -974,7 +1019,7 @@ try {
   await page.screenshot({ path: join(scratch, "05-reopened-usage.png") });
   await dismissPopovers();
   const localeRequests = requests.length;
-  const localeTurns = structuredClone(thread(await state(), source).turns);
+  const localeTurns = structuredClone((await thread(source)).turns);
   const localeWindow = await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].getBounds(),
   );
@@ -1051,7 +1096,7 @@ try {
   await page.getByRole("button", { name: "返回应用", exact: true }).click();
   assert.equal((await page.getByTestId("chat-input").innerText()).trim(), localeDraft);
   assert.deepEqual(
-    thread(await state(), source).turns,
+    (await thread(source)).turns,
     localeTurns,
     "Locale switches preserve authoritative history and usage",
   );
@@ -1078,6 +1123,7 @@ try {
   try {
     await close();
   } catch (error) {
+    errors.push(`Application cleanup: ${error.stack}`);
     failure ??= error;
     passed = false;
   }
@@ -1090,7 +1136,7 @@ try {
       "core",
       "electron",
       "registry",
-      "workspace",
+      "demo",
       "user",
       "skill",
       "application",
