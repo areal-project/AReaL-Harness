@@ -3,7 +3,6 @@ import {
   createHostSnapshotProjector,
   shellSnapshot,
   type ShellSnapshot,
-  windowIdentity,
   hostCommandOutcome,
   closedSidePublisher,
   settleHostCommand as settled,
@@ -12,7 +11,13 @@ import {
   type ReadingWindow,
 } from "./host-snapshot.js";
 export type { ReadingTarget, ReadingWindow } from "./host-snapshot.js";
-import { cacheHistoryPages, pinnedPage, retainTarget, encodedBytes } from "./host-history-cache.js";
+import {
+  cacheHistoryPages,
+  pinnedPage,
+  retainTarget,
+  encodedBytes,
+  refreshReadingWindow,
+} from "./host-history-cache.js";
 import {
   HostClient,
   sessionLoadTiming,
@@ -65,10 +70,14 @@ export function createHostReadServices(
   const client = new HostClient({ ...options, writes: true });
   const listeners = new Set<(snapshot: Snapshot) => void>();
   let shellExtras: ShellSnapshot | undefined;
-  const { watchedThreads, resolveWatched, reservedBytes, watch } = createWatchedHistory(
-    client,
-    readObservationResult,
-  );
+  const {
+    watchedThreads,
+    resolveWatched,
+    reservedBytes,
+    watch,
+    current: watchedCurrent,
+    find: findWatched,
+  } = createWatchedHistory(client, readObservationResult);
   let librarySourceId: string | undefined;
   let snapshot: Snapshot = { projects: [], connection: { state: "connecting" } };
   let session: SessionRead | undefined;
@@ -114,13 +123,17 @@ export function createHostReadServices(
       cacheTimer = setTimeout(pruneWindows, Math.max(0, expires - Date.now()));
   }
   function requireWindow(generation?: string) {
-    if (
-      !readingWindow ||
-      (generation !== undefined && readingWindow.viewGeneration !== generation) ||
-      client.readsSnapshot().session.state !== "fresh"
-    )
-      throw new Error("Conversation unavailable");
-    return readingWindow;
+    const owner =
+      generation === undefined || readingWindow?.viewGeneration === generation
+        ? readingWindow
+        : findWatched(generation);
+    if (!owner || !windowCurrent(owner)) throw new Error("Conversation unavailable");
+    return owner;
+  }
+  function windowCurrent(owner: ReadingWindow) {
+    return readingWindow === owner
+      ? client.readsSnapshot().session.state === "fresh"
+      : watchedCurrent(owner);
   }
   function pruneStalePages(owner: ReadingWindow) {
     const pages = owner.stalePages.filter((page) => pinnedPage(owner, page));
@@ -131,8 +144,11 @@ export function createHostReadServices(
   }
   async function readOwnPage(owner: ReadingWindow, cursor: string): Promise<HistoryPage> {
     const subscription = owner.session.subscriptionId;
-    const page = readHistoryPage(await history({ view: "own", cursor, maxBytes: 131072 }));
-    if (readingWindow !== owner || owner.session.subscriptionId !== subscription)
+    const target = owner === readingWindow ? undefined : owner.session;
+    const page = readHistoryPage(
+      await client.history({ view: "own", cursor, maxBytes: 131072 }, target),
+    );
+    if (!windowCurrent(owner) || owner.session.subscriptionId !== subscription)
       throw new Error("History read cancelled");
     if (page.snapshotId !== owner.observation.history?.snapshotId)
       throw new Error("History snapshot changed");
@@ -180,40 +196,7 @@ export function createHostReadServices(
         const cached = windows.get(key);
         if (readingWindow && readingWindow !== cached)
           readingWindow.expires = Date.now() + SESSION_READ_CACHE_MS;
-        const identity = windowIdentity(nextObservation);
-        if (cached?.identity === identity) {
-          readingWindow = cached;
-          if (readingWindow.session.subscriptionId !== currentSession.subscriptionId)
-            readingWindow.viewGeneration = crypto.randomUUID();
-          readingWindow.session = currentSession;
-          readingWindow.observation = nextObservation;
-          readingWindow.expires = undefined;
-        } else {
-          readingWindow = {
-            session: currentSession,
-            observation: nextObservation,
-            identity,
-            viewGeneration: crypto.randomUUID(),
-            pages: [],
-            stalePages: cached
-              ? [
-                  ...cached.stalePages,
-                  ...[...cached.pages].sort(
-                    (a, b) =>
-                      cached.pageRecords.findIndex((record) => record.id === b.pageId) -
-                      cached.pageRecords.findIndex((record) => record.id === a.pageId),
-                  ),
-                ].filter((page) => pinnedPage(cached, page))
-              : [],
-            pageRecords: [],
-            targets: new Map(cached?.targets),
-            items: new Map(),
-            loading: new Map(),
-            nextCursor: nextObservation.history?.nextCursor ?? undefined,
-            complete: nextObservation.history?.complete ?? true,
-            baselineFirstItemId: nextObservation.thread.turns.flatMap((turn) => turn.items)[0]?.id,
-          };
-        }
+        readingWindow = refreshReadingWindow(cached, currentSession, nextObservation);
         windows.delete(key);
         windows.set(key, readingWindow);
         pruneWindows();
@@ -234,10 +217,9 @@ export function createHostReadServices(
       observation,
       {
         shellExtras,
-        watched: watchedThreads(),
+        watched: watchedThreads(historyVersion),
         tasks: taskState.tasks,
         readingWindow,
-        observation,
         session,
         historyVersion,
         commandOutcomes,
@@ -260,8 +242,12 @@ export function createHostReadServices(
     if (librarySourceId && client.writable("desktop.command"))
       refreshInspections(client, snapshot.projects as ReadProject[], inspections, publish);
   }
-  async function history(options: Parameters<PlatformReadServices["history"]>[0]) {
-    return readInheritedHistoryPage(await client.history(options));
+  async function history(
+    options: Parameters<PlatformReadServices["history"]>[0],
+    target?: Parameters<PlatformReadServices["history"]>[1],
+  ) {
+    const { watchedTarget } = resolveWatched(target, session, ids, threadTargets);
+    return readInheritedHistoryPage(await client.history(options, watchedTarget));
   }
   const reads: PlatformReadServices = {
     status: client.snapshot,
@@ -290,9 +276,12 @@ export function createHostReadServices(
       await client.selectSession({ ...target, projectId: canonical });
     },
     history,
-    media: (source, signal) => client.media(source, signal),
-    async loadOlder(pageId) {
-      const owner = requireWindow();
+    async media(source, signal, target) {
+      const { watchedTarget } = resolveWatched(target, session, ids, threadTargets);
+      return client.media(source, signal, watchedTarget);
+    },
+    async loadOlder(pageId, generation) {
+      const owner = requireWindow(generation);
       if (owner.olderRead) return owner.olderRead;
       const oldest = Math.max(
         -1,
@@ -313,7 +302,7 @@ export function createHostReadServices(
             throw new Error("History pages pinned by other reading views");
         } finally {
           owner.olderRead = undefined;
-          if (readingWindow === owner) {
+          if (windowCurrent(owner)) {
             ++historyVersion;
             publish();
           }
@@ -328,7 +317,9 @@ export function createHostReadServices(
       requireWindow(generation);
     },
     async release(viewId, generation) {
-      const owner = [...windows.values()].find((value) => value.viewGeneration === generation);
+      const owner =
+        [...windows.values()].find((value) => value.viewGeneration === generation) ??
+        findWatched(generation);
       if (!owner) return;
       owner.targets.delete(viewId);
       pruneStalePages(owner);
@@ -344,7 +335,7 @@ export function createHostReadServices(
       if (!intent) return "cancelled";
       const subscription = owner.session.subscriptionId;
       const current = () =>
-        readingWindow === owner &&
+        windowCurrent(owner) &&
         owner.session.subscriptionId === subscription &&
         owner.targets.get(viewId) === intent;
       const matches = (entry: HistoryEntry) =>
@@ -408,7 +399,7 @@ export function createHostReadServices(
         threadTargets,
       );
       const reading = auxiliary ?? requireWindow();
-      const olderEntry = ("pages" in reading ? [...reading.pages, ...reading.stalePages] : [])
+      const olderEntry = [...reading.pages, ...reading.stalePages]
         .flatMap((page) => page.data)
         .find((entry) => entry.item.id === itemId);
       const observed = watchedObservation ?? observation;
@@ -442,10 +433,7 @@ export function createHostReadServices(
               ? await client.history({ view: "own", cursor, maxBytes: 131072 }, watchedTarget)
               : await history({ view: "own", cursor, maxBytes: 131072 }),
           );
-          if (
-            !watchedTarget &&
-            (readingWindow !== reading || owner?.subscriptionId !== session?.subscriptionId)
-          )
+          if (!windowCurrent(reading) || owner?.subscriptionId !== reading.session.subscriptionId)
             throw new Error("History read cancelled");
           for (const entry of page.data) {
             const fragment = entry.fragment;

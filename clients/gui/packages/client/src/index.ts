@@ -26,6 +26,7 @@ import {
   type JsonObject,
   type MediaSource,
   type MediaBytes,
+  type Fresh,
 } from "./read-state.js";
 export { readHostBootstrap, type HostBootstrap } from "./bootstrap.js";
 export type * from "./read-state.js";
@@ -757,14 +758,22 @@ export class HostClient {
       throw new Error("History identity changed");
     return result.page;
   }
-  media(source: MediaSource, signal?: AbortSignal): Promise<MediaBytes> {
+  media(
+    source: MediaSource,
+    signal?: AbortSignal,
+    target?: { projectId: string; threadId: string },
+  ): Promise<MediaBytes> {
     if (!/^areal:\/\/blob\/[a-f0-9]{64}$/.test(source.uri))
       return Promise.reject(new Error("Conversation media unavailable"));
     const selection = this.#selection;
+    const key = target && `${target.projectId}:${target.threadId}`;
+    const observed = () => (key ? this.#watched.view.get(key) : this.#reads.session);
+    const initial = observed();
     const request = this.#mediaQueue.then(() => {
-      if (signal?.aborted || selection !== this.#selection)
+      if (signal?.aborted || (!key && selection !== this.#selection))
         throw new DOMException("Media read cancelled", "AbortError");
-      return this.#readMedia(source, signal);
+      if (initial?.state !== "fresh") throw new Error("Conversation unavailable");
+      return this.#readMedia(source, initial.value, observed, signal);
     });
     this.#mediaQueue = request.then(
       () => {},
@@ -772,18 +781,27 @@ export class HostClient {
     );
     return request;
   }
-  async #readMedia(source: MediaSource, signal?: AbortSignal): Promise<MediaBytes> {
-    const state = this.#reads.session,
-      transport = this.#transport,
-      selection = this.#selection;
-    if (state.state !== "fresh" || !transport) throw new Error("Conversation unavailable");
-    const owner = state.value,
-      parts: Uint8Array[] = [];
+  async #readMedia(
+    source: MediaSource,
+    owner: SessionRead,
+    observed: () => Fresh<SessionRead> | undefined,
+    signal?: AbortSignal,
+  ): Promise<MediaBytes> {
+    const transport = this.#transport;
+    if (!transport) throw new Error("Conversation unavailable");
+    const parts: Uint8Array[] = [];
     let offset = 0,
       totalBytes: number | undefined,
       mime: string | undefined;
     const current = () => {
-      if (signal?.aborted || selection !== this.#selection || transport !== this.#transport)
+      const state = observed();
+      if (
+        signal?.aborted ||
+        transport !== this.#transport ||
+        state?.state !== "fresh" ||
+        state.value.subscriptionId !== owner.subscriptionId ||
+        state.value.connectionId !== owner.connectionId
+      )
         throw new DOMException("Media read cancelled", "AbortError");
     };
     do {

@@ -1496,7 +1496,7 @@ describe("Host renderer read authority", () => {
       (await services.snapshot()).projects[0].state.threads.thread.turns[0].items[0].type,
     ).toBe("historyDeferred");
   });
-  it("loads a watched child tool body through that child's subscription", async () => {
+  it("loads a watched child's older history and tool body on its own subscription", async () => {
     const body = {
       sourceThreadId: "child",
       sourceTurnId: "child-turn",
@@ -1528,7 +1528,7 @@ describe("Host renderer read authority", () => {
           },
         ],
       },
-      history: { snapshotId: "child-history", complete: true, nextCursor: null },
+      history: { snapshotId: "child-history", complete: false, nextCursor: "child-older" },
     };
     const wire = transport();
     let holdHistory = false;
@@ -1562,21 +1562,31 @@ describe("Host renderer read authority", () => {
                   snapshotId: "child-history",
                   complete: true,
                   nextCursor: null,
-                  data: [
-                    {
-                      sourceThreadId: "child",
-                      sourceTurnId: "child-turn",
-                      sourceItemId: "tool",
-                      sourceTurnStatus: "completed",
-                      fragment: {
-                        text,
-                        offsetUtf8: 0,
-                        nextOffsetUtf8: totalBytes,
-                        totalBytes,
-                        version: "v1",
-                      },
-                    },
-                  ],
+                  data:
+                    params.cursor === "child-older"
+                      ? [
+                          {
+                            ...entry,
+                            sourceThreadId: "child",
+                            sourceTurnId: "older-turn",
+                            turn: { id: "older-turn", status: "completed" },
+                          },
+                        ]
+                      : [
+                          {
+                            sourceThreadId: "child",
+                            sourceTurnId: "child-turn",
+                            sourceItemId: "tool",
+                            sourceTurnStatus: "completed",
+                            fragment: {
+                              text,
+                              offsetUtf8: 0,
+                              nextOffsetUtf8: totalBytes,
+                              totalBytes,
+                              version: "v1",
+                            },
+                          },
+                        ],
                 },
               };
             }
@@ -1604,6 +1614,15 @@ describe("Host renderer read authority", () => {
         (await services.snapshot()).projects[0].state.threads.child.turns[0].items[0],
       ).toMatchObject({ type: "dynamicToolCall", arguments: { path: "child" } });
       expect((await services.snapshot()).projects[0].state.threads.thread.id).toBe("thread");
+      const projected = (await services.snapshot()).projects[0].state.threads.child;
+      expect(projected.displayHistory).toMatchObject({ supported: true, complete: false });
+      await services.reads!.loadOlder(undefined, projected.displayHistory.viewGeneration);
+      const paged = (await services.snapshot()).projects[0].state.threads;
+      expect(paged.child.turns.map((turn: { id: string }) => turn.id)).toEqual([
+        "older-turn",
+        "child-turn",
+      ]);
+      expect(paged.thread.turns.map((turn: { id: string }) => turn.id)).toEqual(["latest-turn"]);
       holdHistory = true;
       const pending = services.reads!.loadItem("tool", { projectId: "alias", threadId: "child" });
       await vi.waitFor(() => expect(releaseHistory).toBeDefined());

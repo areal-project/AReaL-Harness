@@ -92,7 +92,6 @@ export const DESKTOP_COMMANDS = new Set([
   "dismissRecovery",
   "editMessage",
   "fork",
-  "history",
   "manage",
   "media",
   "prediction",
@@ -671,6 +670,7 @@ export function routeDesktopCommand(
         "providers",
         "open",
         "list",
+        "history",
       ].includes(name)
     )
       throw backendUnavailable("Host 操作入口尚未就绪，请重新连接");

@@ -1031,8 +1031,7 @@ pub(super) fn desktop_command_capability(params: &Value) -> Option<&'static str>
     }
 }
 
-/// 本机网页的桌面命令：与桌面窗口同一用户，由后台按桌面命令合同校验后执行。
-/// 不进 Host journal，丢回复与桌面窗口原路径一样只能重新读取。
+/// 桌面与本机网页共用 Host 的命令入口；各领域负责准入、持久化及回执。
 pub(super) fn desktop_command<'a>(
     host: &'a Rc<Host>,
     principal: &'a str,
@@ -1048,175 +1047,137 @@ pub(super) fn desktop_command<'a>(
         )
         .context("INVALID_PARAMS")?;
         host.admission()?;
-        let native_command = match params.command {
-            Cmd::Value1 => Some("chatgpt"),
-            Cmd::Value2 => Some("cloud"),
-            Cmd::Value3 => Some("cloudSession"),
-            Cmd::Value4 => Some("configure"),
-            Cmd::Value5 => Some("connect"),
-            Cmd::Value6 => Some("continue"),
-            Cmd::Value7 => Some("dismissRecovery"),
-            Cmd::Value8 => Some("editMessage"),
-            Cmd::Value9 => Some("fork"),
-            Cmd::Value11 => Some("manage"),
-            Cmd::Value12 => Some("media"),
-            Cmd::Value13 => Some("prediction"),
-            Cmd::Value14 => Some("prepareCreator"),
-            Cmd::Value15 => Some("projectless"),
-            Cmd::Value16 => Some("queue"),
-            Cmd::Value17 => Some("queueEdit"),
-            Cmd::Value18 => Some("reconcile"),
-            Cmd::Value19 => Some("remoteControl"),
-            Cmd::Value20 => Some("resources"),
-            Cmd::Value21 => Some("side"),
-            Cmd::Value22 => Some("workspace"),
-            Cmd::Value23 => Some("recovery"),
-            _ => None,
+        let command = match params.command {
+            Cmd::Value1 => "chatgpt",
+            Cmd::Value2 => "cloud",
+            Cmd::Value3 => "cloudSession",
+            Cmd::Value4 => "configure",
+            Cmd::Value5 => "connect",
+            Cmd::Value6 => "continue",
+            Cmd::Value7 => "dismissRecovery",
+            Cmd::Value8 => "editMessage",
+            Cmd::Value9 => "fork",
+            Cmd::Value10 => "manage",
+            Cmd::Value11 => "media",
+            Cmd::Value12 => "prediction",
+            Cmd::Value13 => "prepareCreator",
+            Cmd::Value14 => "projectless",
+            Cmd::Value15 => "queue",
+            Cmd::Value16 => "queueEdit",
+            Cmd::Value17 => "reconcile",
+            Cmd::Value18 => "remoteControl",
+            Cmd::Value19 => "resources",
+            Cmd::Value20 => "side",
+            Cmd::Value21 => "workspace",
+            Cmd::Value22 => "recovery",
         };
-        if let Some(command) = native_command {
-            host.gateway.workbench.restore_source(host)?;
-            let source = host.gateway.workbench.active_source().ok_or_else(|| {
-                crate::wire::error(
-                    "CAPABILITY_UNAVAILABLE",
-                    "桌面后台未运行，请先打开一次桌面应用",
-                )
-            })?;
-            ensure!(
-                params.source_id.take().is_none_or(|id| id == source),
-                "FORBIDDEN"
-            );
-            return match command {
-                "recovery" => {
-                    let mut query = params.request;
-                    let operation = query
-                        .as_object_mut()
-                        .context("INVALID_PARAMS")?
-                        .remove("operation")
-                        .context("INVALID_PARAMS")?;
-                    match operation.as_str() {
-                        Some("history") => {
-                            crate::space::history::for_host(
-                                &host.home,
-                                serde_json::from_value(query)?,
-                            )
-                            .await
-                        }
-                        Some("importProvider") => {
-                            host.import_provider(serde_json::from_value(query)?)
-                        }
-                        Some("inspect" | "openWorkspace") => {
-                            let catalog =
-                                crate::space::inspect_params_for_host(&host.home, &query)?;
-                            if operation == "inspect" {
-                                return Ok(catalog);
-                            }
-                            let root = catalog["workspace"]
-                                .as_str()
-                                .context("RESOURCE_UNAVAILABLE")?;
-                            super::worktree_catalog::add_project(
-                                host,
-                                &source,
-                                json!({"root":root}),
-                            )
-                            .await
-                        }
-                        _ => anyhow::bail!("INVALID_PARAMS"),
-                    }
-                }
-                "remoteControl" => {
-                    host.gateway
-                        .workbench
-                        .remote_commands
-                        .command(host, &source, &params.request)
-                        .await
-                }
-                "cloudSession" => {
-                    Box::pin(host.gateway.workbench.cloud.sessions.command(
-                        host,
-                        &source,
-                        &params.request,
-                    ))
-                    .await
-                }
-                "cloud" => {
-                    host.gateway
-                        .workbench
-                        .cloud
-                        .settings(host, &source, &params.request)
-                        .await
-                }
-                "prepareCreator" => {
-                    host.gateway
-                        .workbench
-                        .resources
-                        .prepare_creator(host, &source, &params.request)
-                        .await
-                }
-                "resources" => {
-                    host.gateway
-                        .workbench
-                        .resources
-                        .command(host, &source, &params.request)
-                        .await
-                }
-                "projectless" => {
-                    host.gateway
-                        .workbench
-                        .projectless
-                        .command(host, &source, &params.request)
-                        .await
-                }
-                "chatgpt" => host.chatgpt_desktop_command(&source, &params.request).await,
-                "manage" => {
-                    host.gateway
-                        .workbench
-                        .manage_service
-                        .desktop_command(host, principal, &source, &params.request)
-                        .await
-                }
-                "media" => {
-                    Box::pin(attachment_inventory_command(host, &source, &params.request)).await
-                }
-                "side" => {
-                    host.gateway
-                        .workbench
-                        .side_owners
-                        .command(host, &source, connection, &params.request)
-                        .await
-                }
-                "workspace" => {
-                    host.gateway
-                        .workbench
-                        .workspace_ops
-                        .execute(host, &source, &params.request)
-                        .await
-                }
-                _ => {
-                    super::session_commands::execute(host, &source, command, &params.request).await
-                }
-            };
-        }
-        host.gateway.workbench.resume_backend(host).await?;
-        let source = host.gateway.workbench.backend.source.borrow().clone();
-        ensure!(
-            source.is_some(),
+        host.gateway.workbench.restore_source(host)?;
+        let source = host.gateway.workbench.active_source().ok_or_else(|| {
             crate::wire::error(
                 "CAPABILITY_UNAVAILABLE",
-                "桌面后台未运行，请先打开一次桌面应用"
+                "桌面后台未运行，请先打开一次桌面应用",
             )
+        })?;
+        ensure!(
+            params.source_id.take().is_none_or(|id| id == source),
+            "FORBIDDEN"
         );
-        let matched = params.source_id.take().is_none_or(|id| source == Some(id));
-        ensure!(matched, "FORBIDDEN");
-        let params = serde_json::to_value(params)?;
-        host.gateway
-            .workbench
-            .request(
-                host,
-                "desktop.command",
-                params,
-                json!({"principal":principal,"connection":connection}),
-            )
-            .await
+        match command {
+            "recovery" => {
+                let mut query = params.request;
+                let operation = query
+                    .as_object_mut()
+                    .context("INVALID_PARAMS")?
+                    .remove("operation")
+                    .context("INVALID_PARAMS")?;
+                match operation.as_str() {
+                    Some("history") => {
+                        crate::space::history::for_host(&host.home, serde_json::from_value(query)?)
+                            .await
+                    }
+                    Some("importProvider") => host.import_provider(serde_json::from_value(query)?),
+                    Some("inspect" | "openWorkspace") => {
+                        let catalog = crate::space::inspect_params_for_host(&host.home, &query)?;
+                        if operation == "inspect" {
+                            return Ok(catalog);
+                        }
+                        let root = catalog["workspace"]
+                            .as_str()
+                            .context("RESOURCE_UNAVAILABLE")?;
+                        super::worktree_catalog::add_project(host, &source, json!({"root":root}))
+                            .await
+                    }
+                    _ => anyhow::bail!("INVALID_PARAMS"),
+                }
+            }
+            "remoteControl" => {
+                host.gateway
+                    .workbench
+                    .remote_commands
+                    .command(host, &source, &params.request)
+                    .await
+            }
+            "cloudSession" => {
+                Box::pin(host.gateway.workbench.cloud.sessions.command(
+                    host,
+                    &source,
+                    &params.request,
+                ))
+                .await
+            }
+            "cloud" => {
+                host.gateway
+                    .workbench
+                    .cloud
+                    .settings(host, &source, &params.request)
+                    .await
+            }
+            "prepareCreator" => {
+                host.gateway
+                    .workbench
+                    .resources
+                    .prepare_creator(host, &source, &params.request)
+                    .await
+            }
+            "resources" => {
+                host.gateway
+                    .workbench
+                    .resources
+                    .command(host, &source, &params.request)
+                    .await
+            }
+            "projectless" => {
+                host.gateway
+                    .workbench
+                    .projectless
+                    .command(host, &source, &params.request)
+                    .await
+            }
+            "chatgpt" => host.chatgpt_desktop_command(&source, &params.request).await,
+            "manage" => {
+                host.gateway
+                    .workbench
+                    .manage_service
+                    .desktop_command(host, principal, &source, &params.request)
+                    .await
+            }
+            "media" => Box::pin(attachment_inventory_command(host, &source, &params.request)).await,
+            "side" => {
+                host.gateway
+                    .workbench
+                    .side_owners
+                    .command(host, &source, connection, &params.request)
+                    .await
+            }
+            "workspace" => {
+                host.gateway
+                    .workbench
+                    .workspace_ops
+                    .execute(host, &source, &params.request)
+                    .await
+            }
+            _ => super::session_commands::execute(host, &source, command, &params.request).await,
+        }
     })
 }
 

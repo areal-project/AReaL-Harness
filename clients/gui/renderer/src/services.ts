@@ -160,14 +160,18 @@ export interface PlatformReadServices {
   ): Promise<void>;
   /** 在选中会话之外再观察一个会话（侧边讨论）；返回的函数结束观察。 */
   watch?(target: { projectId: string; threadId: string }): () => void;
-  history(options: {
-    view: "own" | "inherited" | "reference";
-    cursor?: string;
-    maxBytes?: number;
-  }): Promise<import("./host-services.js").HostHistoryPage>;
+  history(
+    options: {
+      view: "own" | "inherited" | "reference";
+      cursor?: string;
+      maxBytes?: number;
+    },
+    target?: { projectId: string; threadId: string },
+  ): Promise<import("./host-services.js").HostHistoryPage>;
   media(
     source: import("@areal/client").MediaSource,
     signal?: AbortSignal,
+    target?: { projectId: string; threadId: string },
   ): Promise<import("@areal/client").MediaBytes>;
   acquire(viewId: string, generation: string): Promise<void>;
   release(viewId: string, generation: string): Promise<void>;
@@ -183,7 +187,7 @@ export interface PlatformReadServices {
     anchor: Pick<import("./readingViews.js").ReadingAnchor, "turnId" | "itemId">,
     generation: string,
   ): Promise<"ready" | import("./conversationReading.js").ReadingBlock>;
-  loadOlder(pageId?: string): Promise<void>;
+  loadOlder(pageId?: string, generation?: string): Promise<void>;
   loadItem(itemId: string, target?: { projectId: string; threadId: string }): Promise<void>;
 }
 export interface PlatformServices {

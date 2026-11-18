@@ -48,5 +48,8 @@ it("loads inherited history after a stale subscription is replaced", async () =>
     second.effect();
   }
   await vi.waitFor(() => expect(history).toHaveBeenCalledTimes(2));
-  expect(history).toHaveBeenLastCalledWith({ view: "inherited", maxBytes: 65536 });
+  expect(history).toHaveBeenLastCalledWith(
+    { view: "inherited", maxBytes: 65536 },
+    { projectId: "project", threadId: "fork" },
+  );
 });

@@ -1,10 +1,52 @@
-import type { ReadingWindow, HistoryPage, ReadingTarget } from "./host-services.js";
+import type { SessionRead } from "@areal/client";
+import type { Observation, ReadingWindow, HistoryPage, ReadingTarget } from "./host-services.js";
 import { pageTopology } from "@areal/workbench/history-projection";
+import { windowIdentity } from "./host-snapshot.js";
 
 const historyPageLimit = 16,
   historyTopologyBytes = 64 * 1024;
 export const encodedBytes = (value: unknown) =>
   new TextEncoder().encode(JSON.stringify(value)).length;
+export function refreshReadingWindow(
+  cached: ReadingWindow | undefined,
+  session: SessionRead,
+  observation: Observation,
+): ReadingWindow {
+  const identity = windowIdentity(observation);
+  if (cached?.identity === identity) {
+    if (cached.session.subscriptionId !== session.subscriptionId)
+      cached.viewGeneration = crypto.randomUUID();
+    cached.session = session;
+    cached.observation = observation;
+    cached.expires = undefined;
+    return cached;
+  }
+  const older = cached
+    ? [
+        ...cached.stalePages,
+        ...[...cached.pages].sort(
+          (a, b) =>
+            cached.pageRecords.findIndex((record) => record.id === b.pageId) -
+            cached.pageRecords.findIndex((record) => record.id === a.pageId),
+        ),
+      ].filter((page) => pinnedPage(cached, page))
+    : [];
+  return {
+    session,
+    observation,
+    identity,
+    viewGeneration: crypto.randomUUID(),
+    pages: [],
+    stalePages: older,
+    pageRecords: [],
+    targets: new Map(cached?.targets),
+    items: new Map(),
+    loading: new Map(),
+    nextCursor: observation.history?.nextCursor ?? undefined,
+    complete: observation.history?.complete ?? true,
+    baselineFirstItemId: observation.thread.turns.flatMap((turn) => turn.items)[0]?.id,
+  };
+}
 export function pinnedPage(readingWindow: ReadingWindow, page: HistoryPage) {
   return [...readingWindow.targets.values()].some(
     ({ anchor }) =>

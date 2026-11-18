@@ -407,6 +407,7 @@ export function SentAttachment({
               uri: part.url ?? part.uri,
             },
             abort.signal,
+            { projectId, threadId },
           )
         : Promise.reject(new Error("Media source unavailable"))
       : action("media", { projectId, threadId, operation: "read", uri: part.url ?? part.uri });

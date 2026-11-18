@@ -35315,7 +35315,7 @@
         "sourceId": {
           "type": "string",
           "minLength": 1,
-          "description": "调用方认定的工作台来源，只作核对；省略时用 Host 当前工作台后台的来源（新装桌面登记来源前也能执行）。"
+          "description": "调用方认定的 GUI 来源，只作核对；省略时使用 Host 当前登记的来源。"
         },
         "command": {
           "type": "string",
@@ -35329,7 +35329,6 @@
             "dismissRecovery",
             "editMessage",
             "fork",
-            "history",
             "manage",
             "media",
             "prediction",
@@ -35344,12 +35343,12 @@
             "workspace",
             "recovery"
           ],
-          "description": "桌面命令里由后台执行的部分。会话创建、发送、引导、停止与回答走 Host 自己的写方法；窗口、系统与应用生命周期命令只在桌面窗口里有。"
+          "description": "由 Host 执行的桌面业务命令。会话创建、发送、引导、停止与回答走 Host 自己的写方法；窗口、系统与应用生命周期命令只在桌面窗口里有。"
         },
         "request": {
           "x-opaque": true,
           "x-source": "clients/gui/packages/workbench/client/desktop-contract/transport.cjs",
-          "description": "桌面命令原参数；后台用桌面命令合同逐项校验，Host 只核对命令名与来源。"
+          "description": "桌面命令原参数；Host 按命令领域校验来源、目标及操作参数。"
         }
       },
       "required": [

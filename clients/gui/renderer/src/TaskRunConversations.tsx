@@ -65,6 +65,13 @@ export function TaskRunConversations({
     ...new Set<string>(runs.flatMap((run) => (run.threadId ? [run.threadId] : []))),
   ];
   const connected = !!project.state?.connected;
+  const [historyView, setHistoryView] = useState<{
+    key: string;
+    threadId: string;
+    error?: string;
+  }>();
+  const historyKey = JSON.stringify([project.id, task.id, project.core?.connectionGeneration]);
+  const historyThreadId = historyView?.key === historyKey ? historyView.threadId : undefined;
   // 历史 Run 保留单次快照，避免长任务占满附加会话的订阅名额。
   const liveThreadId = runs.findLast(
     (run) =>
@@ -75,6 +82,21 @@ export function TaskRunConversations({
     if (connected && liveThreadId)
       return platformReads?.watch?.({ projectId: project.id, threadId: liveThreadId });
   }, [connected, liveThreadId, platformReads, project.id]);
+  useEffect(() => {
+    if (!connected || !historyThreadId || historyThreadId === liveThreadId || !platformReads?.watch)
+      return;
+    const target = { projectId: project.id, threadId: historyThreadId };
+    const release = platformReads.watch(target);
+    let current = true;
+    void action("open", target).catch((cause) => {
+      if (current)
+        setHistoryView({ key: historyKey, threadId: historyThreadId, error: errorText(t, cause) });
+    });
+    return () => {
+      current = false;
+      release();
+    };
+  }, [action, connected, historyKey, historyThreadId, liveThreadId, platformReads, project.id, t]);
   const connection = useRef({ connected, epoch: 0 });
   if (connection.current.connected !== connected)
     connection.current = { connected, epoch: connection.current.epoch + 1 };
@@ -146,12 +168,25 @@ export function TaskRunConversations({
       {runs.map((run) => {
         const liveThread = project.state?.threads?.[run.threadId];
         const read = run.threadId ? reads[key(run.threadId)] : undefined;
-        const thread = liveThread ?? read?.thread;
+        const captured = read?.thread;
+        const thread =
+          liveThread ??
+          (captured?.displayHistory
+            ? {
+                ...captured,
+                displayHistory: {
+                  ...captured.displayHistory,
+                  supported: false,
+                  viewGeneration: undefined,
+                },
+              }
+            : captured);
         const interactions = project.state?.interactions?.[run.threadId];
         const readOnly =
           disabled ||
           !connected ||
           !liveThread ||
+          run.threadId !== liveThreadId ||
           read?.status !== "ready" ||
           !!thread?.desktop?.archived;
         const pending = (interactions?.data ?? []).filter(
@@ -227,6 +262,36 @@ export function TaskRunConversations({
                       重新读取
                     </Button>
                   </p>
+                )}
+                {captured && platformReads?.watch && run.threadId !== liveThreadId && (
+                  <div>
+                    <Button
+                      variant="ghost"
+                      disabled={!connected}
+                      onClick={() =>
+                        setHistoryView(
+                          historyThreadId === run.threadId
+                            ? undefined
+                            : { key: historyKey, threadId: run.threadId },
+                        )
+                      }
+                    >
+                      {t(
+                        historyThreadId === run.threadId
+                          ? "operations.closeRunHistory"
+                          : "operations.openRunHistory",
+                      )}
+                    </Button>
+                    {historyThreadId === run.threadId &&
+                      !liveThread &&
+                      (historyView?.error ? (
+                        <p role="alert">{historyView.error}</p>
+                      ) : (
+                        <DelayedVisible active={connected}>
+                          <p role="status">{t("operations.loadingRunHistory")}</p>
+                        </DelayedVisible>
+                      ))}
+                  </div>
                 )}
                 {thread &&
                   renderConversation(
