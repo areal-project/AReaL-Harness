@@ -28,10 +28,11 @@ type RestorationAttempt = RestorationOwner & {
 };
 
 function isProjectCoreUnavailable(failure: unknown) {
+  const error = failure as RecoveryFailure | null;
   return (
-    typeof failure === "object" &&
-    failure !== null &&
-    (failure as { message?: unknown }).message === "Project Core unavailable" // raw-error-ok: 仅用于识别项目 Core 未就绪以触发刷新或重连
+    error?.code === "CORE_UNAVAILABLE" ||
+    error?.code === "scheduleHostUnavailable" ||
+    error?.message === "Project Core unavailable" // raw-error-ok: 旧读客户端在本地目录缺代次时返回此错误
   );
 }
 
@@ -286,28 +287,26 @@ export function useSessionNavigation(
               !!targetSession &&
               connection.connection === "ready" &&
               connection.identity.persistedHistory === true;
-            if (!needsConnect && targetSession && operation === "open") {
+            const reads = services.reads;
+            const tryLiveRead = async () => {
               try {
-                await services.reads.selectSession(targetSession);
+                await reads.selectSession(targetSession);
                 opened = true;
               } catch (error) {
                 if (!isProjectCoreUnavailable(error)) throw error;
                 liveReadFailure = error;
-                await services.reads.refreshProjects?.();
+              }
+            };
+            if (!needsConnect && targetSession && operation === "open") {
+              await tryLiveRead();
+              if (!current()) return;
+              if (!opened) {
+                await reads.refreshProjects?.();
                 if (!current()) return;
-                // 目录刷新后由读客户端按当前代次选择实时或持久化历史。
-                if (!canReadPersisted) {
-                  try {
-                    await services.reads.selectSession(targetSession);
-                    opened = true;
-                  } catch (retryError) {
-                    if (!isProjectCoreUnavailable(retryError)) throw retryError;
-                    liveReadFailure = retryError;
-                  }
-                }
+                if (!canReadPersisted) await tryLiveRead();
+                if (!current()) return;
                 needsConnect = !opened;
               }
-              if (!current()) return;
             }
             if (needsConnect) {
               if (canReadPersisted) {
@@ -320,12 +319,15 @@ export function useSessionNavigation(
                   persisted = true;
                   persistedRead = true;
                 } catch (error) {
-                  if (
-                    !["PERSISTED_HISTORY_UNAVAILABLE", "RESOURCE_BUSY"].includes(
-                      String((error as RecoveryFailure)?.code),
-                    )
-                  )
+                  const code = (error as RecoveryFailure)?.code;
+                  if (code !== "PERSISTED_HISTORY_UNAVAILABLE" && code !== "RESOURCE_BUSY")
                     throw error;
+                  if (code === "RESOURCE_BUSY" && current()) {
+                    // Core 可能已重新持有 Store，先核对实时读取，避免重复启动。
+                    await reads.refreshProjects?.();
+                    if (!current()) return;
+                    await tryLiveRead();
+                  }
                 }
                 if (!current()) return;
                 // 本机桌面显示历史后继续恢复执行，避免发送入口又等待实时配置。
@@ -345,6 +347,8 @@ export function useSessionNavigation(
                   }
                 }
               }
+            }
+            if (needsConnect && (!opened || options.resumeScheduling)) {
               if (
                 liveReadFailure &&
                 (services.capabilities?.mutations === false ||

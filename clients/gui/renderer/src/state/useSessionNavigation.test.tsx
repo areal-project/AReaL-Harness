@@ -690,3 +690,24 @@ it.each(["sidebar", "startup", "retry"])(
     expect(f.command).not.toHaveBeenCalled();
   },
 );
+
+it("opens the new live generation when Core acquires the store during a saved read", async () => {
+  const f = fixture(
+    true,
+    async () => {
+      throw new Error("duplicate activation");
+    },
+    false,
+    true,
+  );
+  f.services.reads!.refreshProjects = async () => {
+    f.events.push("refresh");
+  };
+  f.selectSession.mockImplementation(async (target) => {
+    if (target?.persisted) throw Object.assign(new Error("busy"), { code: "RESOURCE_BUSY" });
+    f.events.push("live");
+  });
+  await f.navigation.selectConversation(owner.projectId, owner.threadId);
+  expect(f.events.filter((event) => event !== "library")).toEqual(["refresh", "live"]);
+  expect(seed.restoration).toMatchObject({ pending: false, error: "" });
+});
