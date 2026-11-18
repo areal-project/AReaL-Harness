@@ -18,7 +18,6 @@ import { buildMacOSDmg } from "./macos-dmg.mjs";
 import { parseArgs } from "node:util";
 import relayResources from "./relay-resources.cjs";
 import { signLocalMacOSApp } from "./macos-signing-paths.mjs";
-import { buildWorkbenchResources } from "./workbench-resources.mjs";
 import { checkIcon } from "./macos-icon.mjs";
 const gui = fileURLToPath(new URL("..", import.meta.url));
 const root = resolve(gui, "../..");
@@ -240,10 +239,6 @@ try {
         site: join(gui, "renderer/dist"),
         destination: join(output, "areal-relay"),
       });
-      const workbenchBundle = await buildWorkbenchResources({
-        source: join(root, "services/workbench"),
-        destination: join(output, "areal-workbench"),
-      });
       await timings.measure("electron-package", () =>
         build({
           publish: "never",
@@ -270,7 +265,6 @@ try {
                 from: join(relayBundle.bundleDir, "node_modules"),
                 to: "areal-relay/node_modules",
               },
-              { from: workbenchBundle.bundleDir, to: "areal-workbench" },
               {
                 from: join(gui, "renderer/dist"),
                 to: "areal-gui",
@@ -298,7 +292,7 @@ try {
       const resources = join(app, "Contents/Resources");
       const identity = createHash("sha256")
         .update(await readFile(join(resources, "app.asar")))
-        .update(await treeHash([join(resources, "areal-gui"), join(resources, "areal-workbench")]))
+        .update(await treeHash([join(resources, "areal-gui")]))
         .digest("hex");
       await writeFile(
         join(resources, "desktop-build.json"),

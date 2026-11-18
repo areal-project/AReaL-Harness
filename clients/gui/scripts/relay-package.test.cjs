@@ -24,14 +24,15 @@ test("packaged Relay resources retain every manifest file and load their own ws"
   const source = await readFile(join(__dirname, "package.mjs"), "utf8");
   const resources = source.match(/^( +)extraResources: (\[[\s\S]*?\n\1\]),/m);
   assert.ok(resources, "package.mjs must define extraResources");
-  const extraResources = runInNewContext(`(${resources[2]})`, {
+  const stagedResources = runInNewContext(`(${resources[2]})`, {
     join,
     gui,
     relayBundle,
-    workbenchBundle: { bundleDir: join(home, "workbench") },
     bundle: join(home, "core"),
     release: false,
-  }).filter(
+  });
+  assert.ok(stagedResources.every(({ to }) => to !== "areal-workbench"));
+  const extraResources = stagedResources.filter(
     ({ to }) => to === "areal-gui" || to === "areal-relay" || to.startsWith("areal-relay/"),
   );
   assert.ok(extraResources.length > 0, "package.mjs must include Relay resources");
