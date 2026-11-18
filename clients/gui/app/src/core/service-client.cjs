@@ -79,7 +79,7 @@ async function waitForProcessExit(pid) {
 /** @typedef {import('./service-control.cjs').LifecycleReference} Reference */
 /** @typedef {import('./service-control.cjs').LifecycleResponse} Receipt */
 /** @typedef {import('./lifecycle.cjs').RecoveryObservation} Observation */
-/** @typedef {import('@areal/workbench-service/desktop/core/resource-recovery.cjs').Notify} Notify */
+/** @typedef {import('./host-quit.cjs').Notify} Notify */
 /** @typedef {{projectId:string,threadId:string,id:string}} GuiTerminal */
 /** @typedef {{kind:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleKind,mode?:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleMode,observed?:Observation,projectId?:string,threadId?:string,turnId?:string,requestId?:string}} LifecycleOptions */
 /** @typedef {{stopped:boolean,operation:Receipt,kind?:string}} LifecycleResult */

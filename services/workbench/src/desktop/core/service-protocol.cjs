@@ -103,15 +103,13 @@ class DesktopService {
     });
   }
   /** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend @param {string} identity
-   * @param {()=>void} [onStop] @param {InstanceType<typeof import('./notifications.cjs').BackgroundNotifications>} [backgroundNotifications]
-   * @param {InstanceType<typeof import('./power.cjs').SharedPowerMonitor>} [power] */
-  constructor(backend, identity, onStop = () => {}, backgroundNotifications, power) {
+   * @param {()=>void} [onStop] @param {InstanceType<typeof import('./notifications.cjs').BackgroundNotifications>} [backgroundNotifications] */
+  constructor(backend, identity, onStop = () => {}, backgroundNotifications) {
     this.backend = backend;
     this.identity = identity;
     this.onStop = onStop;
     this.lifecycle = backend.lifecycleOperations?.attach(this);
     this.backgroundNotifications = backgroundNotifications;
-    this.power = power;
     /** @type {unknown} */
     this.pendingNotificationTarget = null;
     this.token = randomBytes(32).toString("hex");
@@ -333,7 +331,6 @@ class DesktopService {
     socket.historyViews?.clear();
   }
   schedule() {
-    void this.power?.refresh().catch(() => {});
     if (!this.timer)
       this.timer = setTimeout(() => {
         this.timer = null;
@@ -473,17 +470,6 @@ class DesktopService {
       },
       close: () => this.disconnectClient(owner),
     };
-  }
-  async startMain() {
-    await this.lifecycle?.init();
-    await this.lifecycle?.reconcileLoaded();
-    this.backend.host.client.requireCapability("remoteGatewayV1");
-    // 手机身份可能等待安全存储；它只阻塞手机命令，不阻塞普通设置与供应商目录。
-    this.remoteInitialization = this.initRemote();
-    void this.remoteInitialization.catch(() => {
-      if (!this.closed) this.schedule();
-    });
-    this.startObservers();
   }
   startObservers() {
     if (this.activityTimer) return;
@@ -1044,13 +1030,6 @@ class DesktopService {
           entry?.resolve(null);
         }
         if (method === "command" && name === "media") result = encodeMedia(result);
-        if (
-          method === "command" &&
-          name === "library" &&
-          request.operation === "settings" &&
-          request.key === "preventSleep"
-        )
-          await this.power?.refresh();
         this.publish();
         response = result;
       } finally {
@@ -1203,7 +1182,6 @@ class DesktopService {
     this.browserEntrypoints.clear();
     this.browserDiscoveryPlans.clear();
     this.remote?.close();
-    this.power?.close();
     this.backgroundNotifications?.close();
     this.pendingNotificationTarget = null;
     clearTimeout(this.timer ?? undefined);

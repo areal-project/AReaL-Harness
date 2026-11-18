@@ -308,7 +308,7 @@ const entryAssets = [...builtEntry.matchAll(/(?:src|href)="\.\/(assets\/[^"]+\.(
 );
 const sourcePaths = [
   "app/src/core/main.cjs",
-  "../../services/workbench/src/desktop/core/service-main.cjs",
+  "app/src/core/native-host-transport.ts",
   "app/src/core/service-client.cjs",
   "../../services/workbench/src/desktop/core/backend.cjs",
   "renderer/src/Messages.tsx",
