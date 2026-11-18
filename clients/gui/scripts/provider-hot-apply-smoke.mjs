@@ -19,11 +19,10 @@ const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const {
-  ServiceConnection,
-  waitForServiceProcessExit,
-  waitForProcessExit,
-} = require("../app/src/core/service-client.cjs");
+const { ServiceConnection, waitForServiceProcessExit } = require(
+  join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
+);
+const { waitForProcessExit } = require("../app/src/core/service-client.cjs");
 const WebSocket = require("ws");
 const binary = process.env.AREAL_CORE_BIN;
 const activeSaveOnly = process.argv.includes("--active-save");

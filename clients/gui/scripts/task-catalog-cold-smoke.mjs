@@ -19,7 +19,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../.."),
 const require = createRequire(join(root, "clients/gui/app/package.json"));
 const { _electron: electron } = require("playwright-core");
 const { ServiceConnection, waitForServiceExit } = require(
-  join(gui, "app/src/core/service-client.cjs"),
+  join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
 );
 const binary = resolve(process.env.AREAL_CORE_BIN || join(root, "target/debug/areal"));
 const seed = process.env.AREAL_COLD_FIXTURE_MANIFEST

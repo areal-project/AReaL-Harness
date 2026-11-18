@@ -12,10 +12,9 @@ const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const {
-  ServiceConnection,
-  waitForServiceProcessExit,
-} = require("../app/src/core/service-client.cjs");
+const { ServiceConnection, waitForServiceProcessExit } = require(
+  join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
+);
 const binary = process.env.AREAL_CORE_BIN;
 assert.ok(
   binary?.startsWith(join(root, ".local/dev-bin/")),

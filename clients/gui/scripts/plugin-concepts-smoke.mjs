@@ -19,7 +19,9 @@ const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const { ServiceConnection, waitForServiceExit } = require("../app/src/core/service-client.cjs");
+const { ServiceConnection, waitForServiceExit } = require(
+  join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
+);
 const scratch = await makeTempDir("areal-plugin-concepts-");
 const workspace = join(scratch, "workspace");
 const userHome = join(scratch, "user");

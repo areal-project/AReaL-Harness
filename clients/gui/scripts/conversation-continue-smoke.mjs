@@ -174,7 +174,7 @@ async function launch() {
         return result;
       };
     },
-    join(desktop, "src/core/service-client.cjs"),
+    join(gui, "scripts/support/desktop-service-fixture.cjs"),
   );
 }
 async function command(name, request) {

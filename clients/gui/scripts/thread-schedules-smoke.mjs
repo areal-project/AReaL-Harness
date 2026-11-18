@@ -22,7 +22,9 @@ const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
 const WebSocket = require("ws");
-const { ServiceConnection, waitForServiceExit } = require("../app/src/core/service-client.cjs");
+const { ServiceConnection, waitForServiceExit } = require(
+  join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
+);
 const binary = process.env.AREAL_CORE_BIN || join(root, ".local/dev-bin/areal");
 assert.ok(isAbsolute(binary), "AREAL_CORE_BIN must identify an absolute Core path");
 assert.equal(
@@ -634,31 +636,38 @@ async function recoverScheduledCreation() {
     );
     return;
   }
-  await app.evaluate(({ app }) => {
-    const require = process
-      .getBuiltinModule("module")
-      .createRequire(app.getAppPath() + "/package.json");
-    const { ServiceConnection } = require("./src/core/service-client.cjs");
-    const request = ServiceConnection.prototype.request;
-    ServiceConnection.prototype.request = async function (method, params, ...rest) {
-      const result = await request.call(this, method, params, ...rest);
-      if (method === "command" && params.name === "create")
-        globalThis.__scheduleCreateCalls = (globalThis.__scheduleCreateCalls ?? 0) + 1;
-      if (method === "command" && params.name === "create" && !globalThis.__scheduleLostCreation) {
-        globalThis.__scheduleLostCreation = {
-          requestId: params.request.requestId,
-          projectId: params.request.projectId,
-          threadId: result.threadId,
-          calls: 1,
-        };
-        throw Object.assign(new Error("Fixture lost committed creation reply"), {
-          submissionUnknown: true,
-          requestId: params.request.requestId,
-        });
-      }
-      return result;
-    };
-  });
+  await app.evaluate(
+    ({ app }, fixturePath) => {
+      const require = process
+        .getBuiltinModule("module")
+        .createRequire(app.getAppPath() + "/package.json");
+      const { ServiceConnection } = require(fixturePath);
+      const request = ServiceConnection.prototype.request;
+      ServiceConnection.prototype.request = async function (method, params, ...rest) {
+        const result = await request.call(this, method, params, ...rest);
+        if (method === "command" && params.name === "create")
+          globalThis.__scheduleCreateCalls = (globalThis.__scheduleCreateCalls ?? 0) + 1;
+        if (
+          method === "command" &&
+          params.name === "create" &&
+          !globalThis.__scheduleLostCreation
+        ) {
+          globalThis.__scheduleLostCreation = {
+            requestId: params.request.requestId,
+            projectId: params.request.projectId,
+            threadId: result.threadId,
+            calls: 1,
+          };
+          throw Object.assign(new Error("Fixture lost committed creation reply"), {
+            submissionUnknown: true,
+            requestId: params.request.requestId,
+          });
+        }
+        return result;
+      };
+    },
+    join(gui, "scripts/support/desktop-service-fixture.cjs"),
+  );
   const prepareId = randomUUID(),
     requestId = randomUUID();
   const prepared = await call("projectless", { operation: "prepare", requestId: prepareId });

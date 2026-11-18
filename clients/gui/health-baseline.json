@@ -168,7 +168,6 @@
     "app/src/core/proxy-relay.cjs": 97,
     "app/src/core/service-client.cjs": 1575,
     "app/src/core/service-config.cjs": 85,
-    "app/src/core/service-connection.cjs": 432,
     "app/src/core/service-control.cjs": 676,
     "app/src/core/shared-browser-profile.cjs": 186,
     "app/src/main.cjs": 11,

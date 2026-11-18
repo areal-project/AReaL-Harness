@@ -11,7 +11,9 @@ import { execFileSync } from "node:child_process";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const { waitForServiceProcessExit } = require("../app/src/core/service-client.cjs");
+const { waitForServiceProcessExit } = require(
+  join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
+);
 const binary = process.env.AREAL_CORE_BIN || resolve(gui, "../../target/debug/areal");
 const scratch = await makeTempDir("al-");
 const workspace = join(scratch, "workspace"),
@@ -138,7 +140,7 @@ if (process.env.AREAL_LIFECYCLE_AUTO_RECOVERY === '1') {
   };
 }
 if (process.env.AREAL_LIFECYCLE_CRASH_UPDATE === '1' && !process.argv.includes('--areal-core-service')) {
-  const {ServiceConnection}=require(${JSON.stringify(join(gui, "app/src/core/service-client.cjs"))});
+  const {ServiceConnection}=require(${JSON.stringify(join(gui, "scripts/support/desktop-service-fixture.cjs"))});
   const original=ServiceConnection.prototype.request;
   ServiceConnection.prototype.request=async function(method,params,mutation){
     const receipt=await original.call(this,method,params,mutation);

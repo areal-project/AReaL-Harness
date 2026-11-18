@@ -33,7 +33,7 @@ const gui = process.env.AREAL_GUI_SOURCE_ROOT
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
 const { ServiceConnection, waitForServiceExit } = require(
-  join(gui, "app/src/core/service-client.cjs"),
+  join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
 );
 const binary =
   process.env.AREAL_CORE_BIN || join(root, ".local/dev-bin/side-chat-zcode-parity/areal");

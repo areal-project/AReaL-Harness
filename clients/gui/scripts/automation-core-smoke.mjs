@@ -1549,7 +1549,7 @@ try {
     } catch (error) {
       errors.push(`Application cleanup ${error.message}`);
       const { ServiceConnection, waitForServiceProcessExit } = require(
-        join(productGUI, "app/src/core/service-client.cjs"),
+        join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
       );
       const connection = new ServiceConnection();
       try {

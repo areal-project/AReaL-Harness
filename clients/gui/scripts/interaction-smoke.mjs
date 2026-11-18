@@ -1158,7 +1158,9 @@ try {
       }
     };
     if (alive()) {
-      const { ServiceConnection } = require(join(desktop, "src/core/service-client.cjs"));
+      const { ServiceConnection } = require(
+        join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
+      );
       const connection = new ServiceConnection();
       try {
         await connection.connect(serviceMetadata);

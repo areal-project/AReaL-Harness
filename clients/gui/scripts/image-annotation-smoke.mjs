@@ -621,7 +621,7 @@ try {
         return original.call(this, method, params, ...rest);
       };
     },
-    join(gui, "app/src/core/service-client.cjs"),
+    join(gui, "scripts/support/desktop-service-fixture.cjs"),
   );
   await page.getByTestId("chat-send-button").click();
   await until(

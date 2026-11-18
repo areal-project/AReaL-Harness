@@ -749,10 +749,9 @@ try {
   }
   if (metadata && !cleanup.applicationStopped) {
     cleanup.assistedServiceStop = true;
-    const {
-      ServiceConnection,
-      waitForServiceProcessExit,
-    } = require("../app/src/core/service-client.cjs");
+    const { ServiceConnection, waitForServiceProcessExit } = require(
+      join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
+    );
     const connection = new ServiceConnection();
     try {
       await connection.connect(metadata);

@@ -1,6 +1,11 @@
 // @ts-check
 "use strict";
-const WebSocket = require("ws");
+// 只供仍在迁移的旧桌面夹具使用。
+const { createRequire } = require("node:module");
+const { readFile } = require("node:fs/promises");
+const { join } = require("node:path");
+const { desktopError } = require("@areal/workbench/desktop-contract");
+const WebSocket = createRequire(require.resolve("../../app/package.json"))("ws");
 const { PROTOCOL } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 const diagnostics = require("@areal/workbench/node/diagnostics");
 let diagnosticsConnectionGeneration = 0;
@@ -292,4 +297,34 @@ class ServiceConnection {
   }
 }
 
-module.exports = { ServiceConnection };
+/** @param {number} ms */
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** @param {string} home @param {{desktopGeneration?:unknown,token?:unknown}} metadata */
+async function waitForServiceExit(home, metadata) {
+  const deadline = Date.now() + 60000;
+  while (Date.now() < deadline) {
+    try {
+      /** @type {unknown} */
+      const current = JSON.parse(await readFile(join(home, "service.json"), "utf8"));
+      if (!record(current)) throw new Error("后台连接元数据无效");
+      if (
+        metadata.desktopGeneration
+          ? current.desktopGeneration !== metadata.desktopGeneration
+          : current.token !== metadata.token
+      )
+        return;
+    } catch (error) {
+      if (desktopError(error).code === "ENOENT") return;
+      throw error;
+    }
+    await sleep(100);
+  }
+  throw new Error("旧后台尚未完成退出，请稍后重新连接。未删除任何任务数据。");
+}
+/** @param {string} home @param {{pid:number,desktopGeneration?:unknown,token?:unknown}} metadata */
+async function waitForServiceProcessExit(home, metadata) {
+  await waitForServiceExit(home, metadata);
+  await require("../../app/src/core/service-client.cjs").waitForProcessExit(metadata.pid);
+}
+module.exports = { ServiceConnection, waitForServiceExit, waitForServiceProcessExit };

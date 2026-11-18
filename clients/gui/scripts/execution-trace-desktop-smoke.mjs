@@ -22,7 +22,7 @@ const desktop = join(root, "clients/gui/app");
 const require = createRequire(join(desktop, "package.json"));
 const { _electron: electron } = require("playwright-core");
 const { ServiceConnection, waitForServiceExit } = require(
-  join(desktop, "src/core/service-client.cjs"),
+  join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
 );
 const { verificationDoctor, lockVerificationSlot } = await import(
   new URL("./verification-build.mjs", import.meta.url)

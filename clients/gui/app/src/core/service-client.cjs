@@ -33,33 +33,6 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const uuid = (value) =>
   typeof value === "string" &&
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
-/** @param {string} home @param {{desktopGeneration?:unknown,token?:unknown}} metadata */
-async function waitForServiceExit(home, metadata) {
-  const deadline = Date.now() + 60000;
-  while (Date.now() < deadline) {
-    try {
-      /** @type {unknown} */
-      const current = JSON.parse(await readFile(join(home, "service.json"), "utf8"));
-      if (!record(current)) throw new Error("后台连接元数据无效");
-      if (
-        metadata.desktopGeneration
-          ? current.desktopGeneration !== metadata.desktopGeneration
-          : current.token !== metadata.token
-      )
-        return;
-    } catch (error) {
-      if (desktopError(error).code === "ENOENT") return;
-      throw error;
-    }
-    await sleep(100);
-  }
-  throw new Error("旧后台尚未完成退出，请稍后重新连接。未删除任何任务数据。");
-}
-/** @param {string} home @param {{pid:number,desktopGeneration?:unknown,token?:unknown}} metadata */
-async function waitForServiceProcessExit(home, metadata) {
-  await waitForServiceExit(home, metadata);
-  await waitForProcessExit(metadata.pid);
-}
 /** @param {number} pid */
 async function waitForProcessExit(pid) {
   const deadline = Date.now() + 15000;
@@ -1478,10 +1451,5 @@ function record(value) {
 
 module.exports = {
   SharedCoreBackend,
-  get ServiceConnection() {
-    return require("./service-connection.cjs").ServiceConnection;
-  },
-  waitForServiceExit,
-  waitForServiceProcessExit,
   waitForProcessExit,
 };

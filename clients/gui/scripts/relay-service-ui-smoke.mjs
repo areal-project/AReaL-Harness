@@ -14,7 +14,9 @@ const root = fileURLToPath(new URL("../../../", import.meta.url));
 const gui = join(root, "clients/gui");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const { ServiceConnection } = require("../app/src/core/service-client.cjs");
+const { ServiceConnection } = require(
+  join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
+);
 const binary = resolve(process.env.AREAL_CORE_BIN || join(root, "target/debug/areal"));
 const evidenceRoot = join(root, ".scratch/relay-service");
 await mkdir(evidenceRoot, { recursive: true });

@@ -25,7 +25,7 @@ const { _electron: electron } = require("playwright-core");
 const { CoreClient } = await import("../packages/runtime-client/core.js");
 const WebSocket = require("ws");
 const { ServiceConnection, waitForServiceExit } = require(
-  join(gui, "app/src/core/service-client.cjs"),
+  join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
 );
 const binary = process.env.AREAL_CORE_BIN || join(root, ".local/dev-bin/areal");
 assert.ok(isAbsolute(binary), "AREAL_CORE_BIN must identify the frozen absolute Core path");

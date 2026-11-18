@@ -13,7 +13,9 @@ import { stageMacOSService } from "./stage-macos-service.mjs";
 
 const require = createRequire(import.meta.url);
 const { desktopExecutables, serviceName } = require("../app/src/core/desktop-executables.cjs");
-const { ServiceConnection } = require("../app/src/core/service-client.cjs");
+const { ServiceConnection } = require(
+  join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
+);
 const plist = (path) =>
   JSON.parse(
     execFileSync("/usr/bin/plutil", ["-convert", "json", "-o", "-", path], { encoding: "utf8" }),

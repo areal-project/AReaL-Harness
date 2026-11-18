@@ -459,7 +459,9 @@ try {
     events.cross,
   );
 
-  const { ServiceConnection } = require("../app/src/core/service-client.cjs");
+  const { ServiceConnection } = require(
+    join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
+  );
   const metadata = JSON.parse(await readFile(join(scratch, "core", "service.json"), "utf8"));
   const rogue = new ServiceConnection();
   await rogue.connect(metadata);

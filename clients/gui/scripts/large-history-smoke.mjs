@@ -16,7 +16,9 @@ const {
   DesktopService,
   PROTOCOL,
 } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
-const { ServiceConnection } = require("../app/src/core/service-client.cjs");
+const { ServiceConnection } = require(
+  join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
+);
 const scratch = await makeTempDir("areal-large-history-");
 // Focused paging acceptance excludes the independent >64MiB fragment workload.
 const pagesOnly = process.argv.includes("--pages-only");

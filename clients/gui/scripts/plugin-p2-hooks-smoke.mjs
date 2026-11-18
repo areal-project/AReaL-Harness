@@ -380,7 +380,9 @@ try {
   if (app) {
     await app.close().catch((e) => errors.push("close GUI: " + e.message));
     try {
-      const { ServiceConnection } = require("../app/src/core/service-client.cjs");
+      const { ServiceConnection } = require(
+        join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
+      );
       const connection = new ServiceConnection();
       try {
         const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
