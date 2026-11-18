@@ -35,9 +35,14 @@ async function fixture(t, retired, projectionFixture = false) {
         backend.worktrees = new CoreWorktrees(backend);
         backend.onChange = () => process.stdout.write(JSON.stringify({ event: 'projection', records: [...backend.worktrees.records.values()] }) + '\\n');
       }
+      let relayStarts = 0;
       return { backend, adapter: { listen: async () => ({
         pid: process.pid, identity: 'fixture', desktopGeneration: 'generation', token: 'private-token'
-      }), controlRemote: async (request) => ({ phoneAction: request.operation }),
+      }), controlRemote: async (request) => {
+        if (request.operation === 'relayServiceStartLocal' && ++relayStarts === 2)
+          throw Object.assign(Error('private Keychain diagnostic'), { code: 'storageAuthorizationRequired' });
+        return { phoneAction: request.operation };
+      },
       executeRemote: async (name, params) => {
         if (params.holdMs) await new Promise((done) => setTimeout(done, params.holdMs));
         if (params.coreFailure) throw Object.assign(Error('PROFILE_NOT_SUPPORTED'), params.coreFailure);
@@ -179,6 +184,13 @@ test("本机网页的桌面命令只放行命令表内、合同通过的请求�
       request: { operation: "relayServiceStartLocal" },
     })).result,
     { phoneAction: "relayServiceStartLocal" },
+  );
+  assert.deepEqual(
+    (await call("relay-denied", {
+      command: "remoteControl",
+      request: { operation: "relayServiceStartLocal" },
+    })).error,
+    { code: "storageAuthorizationRequired" },
   );
   for (const [id, params, message] of [
     ["unknown", { command: "quit", request: {} }, "Invalid desktop command"],

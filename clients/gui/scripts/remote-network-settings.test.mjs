@@ -208,6 +208,12 @@ test("relay enrollment retains failed input and invitations render QR images in 
           window.requests = [];
           const action = async (_, request) => {
             window.requests.push(request);
+            if (request.operation === 'status' && window.failPhoneStatus) {
+              window.failedPhoneStatus = true;
+              throw new Error('Status unavailable');
+            }
+            if (request.operation === 'relayServiceStartLocal' && window.denyRelayKeychain)
+              throw Object.assign(new Error('Private Keychain diagnostic'), { code: 'storageAuthorizationRequired' });
             if (request.operation === 'enable') {
               await new Promise(resolve => { window.finishEnrollment = resolve; });
               if (!window.enrollmentSucceeds) throw new Error('Enrollment rejected');
@@ -296,6 +302,24 @@ test("relay enrollment retains failed input and invitations render QR images in 
       "https://relay.example.org/#invite=test",
     );
     await page.getByRole("button", { name: "关闭弹窗" }).click();
+    await page.evaluate(() => {
+      window.denyRelayKeychain = true;
+    });
+    await page.getByRole("button", { name: "开启内网连接", exact: true }).click();
+    const keychainError = page.getByRole("alert").filter({ hasText: "请在钥匙串访问中授权后重试" });
+    await keychainError.waitFor();
+    await page.evaluate(() => {
+      window.failPhoneStatus = true;
+    });
+    await page.waitForFunction(() => window.failedPhoneStatus);
+    await page.evaluate(
+      () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+    );
+    assert.match(await keychainError.textContent({ timeout: 1000 }), /macOS 钥匙串未授权/);
+    await page.evaluate(() => {
+      window.failPhoneStatus = false;
+      window.denyRelayKeychain = false;
+    });
     await page.getByRole("button", { name: "开启内网连接", exact: true }).click();
     await page.getByRole("status").filter({ hasText: "本机服务运行中" }).waitFor();
     await page.getByRole("button", { name: "添加设备", exact: true }).click();

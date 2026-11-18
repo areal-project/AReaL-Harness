@@ -296,6 +296,7 @@ const businessErrorCodes = /** @type {const} */ ([
   "PERSISTED_HISTORY_UNAVAILABLE",
   "MIGRATION_PENDING",
   "migrationBlocked",
+  "storageAuthorizationRequired",
   "RECONNECTING",
 ]);
 /** @typedef {(typeof businessErrorCodes)[number]} BusinessErrorCode */

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { currentErrorText } from "../errors/currentErrorText.js";
+import { errorCode } from "../errors/errorCopy.js";
 import { Smartphone } from "lucide-react";
 import { Button } from "@areal/ui";
 import { SettingsGroupCard } from "@areal/ui/compositions";
@@ -23,6 +24,7 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
   const [state, setState] = useState<Data>({ deviceGrants: [], pending: [] });
   const [error, setError] = useState<string | UiMessage>(""),
     [busy, setBusy] = useState(false);
+  const [statusError, setStatusError] = useState<string | UiMessage>("");
   const [invite, setInvite] = useState<Data | null>(null);
   const [inviteExpired, setInviteExpired] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -34,6 +36,7 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
     setError("");
     try {
       const result = await action("remoteControl", request);
+      setStatusError("");
       if (request.operation === "pair") {
         setInvite(result);
         setInviteExpired(false);
@@ -70,14 +73,19 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
         .then((value) => {
           if (!live) return;
           setState(value);
+          setStatusError("");
           directUrl.current = value.directUrl ?? "";
         })
         .catch((error) => {
           if (live)
-            setError({
-              id: "settings.mobileSettings.theHostIsOfflineOrTheBackground",
-              values: { value0: currentErrorText(error) },
-            });
+            setStatusError(
+              errorCode(error) === "storageAuthorizationRequired"
+                ? currentErrorText(error)
+                : {
+                    id: "settings.mobileSettings.theHostIsOfflineOrTheBackground",
+                    values: { value0: currentErrorText(error) },
+                  },
+            );
         });
     void read();
     const timer = setInterval(() => {
@@ -229,9 +237,12 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
           </Button>
         )}
       </SettingsGroupCard>
-      {!adding && (error || state.directError || state.migrationError) && (
+      {!adding && (error || state.migrationError || state.directError || statusError) && (
         <p className="remote-error" role="alert">
-          {formatUiMessage(t, error) || state.directError || state.migrationError}
+          {formatUiMessage(t, error) ||
+            state.migrationError ||
+            state.directError ||
+            formatUiMessage(t, statusError)}
         </p>
       )}
       <RelayServicePanel state={state} busy={busy} run={run} />

@@ -670,7 +670,7 @@ async fn backend_business_errors_preserve_only_codes_supported_by_the_host() {
         let (backend, _) = Workbench::start_with(&runtime, &runner, root.path(), reverse(&host), Some(("backend.start", json!({
             "appRoot":app,"options":{"home":data,"userHome":root.path()},
         }))), &[]).await.unwrap();
-        for (code, expected) in [(json!("COMMAND_CONFLICT"), "COMMAND_CONFLICT"), (json!("TURN_BUSY"), "TURN_BUSY"), (json!("MIGRATION_PENDING"), "MIGRATION_PENDING"), (json!("migrationBlocked"), "migrationBlocked"), (json!("ENOENT"), "CORE_UNAVAILABLE"), (json!(-32602), "CORE_UNAVAILABLE")] {
+        for (code, expected) in [(json!("COMMAND_CONFLICT"), "COMMAND_CONFLICT"), (json!("TURN_BUSY"), "TURN_BUSY"), (json!("MIGRATION_PENDING"), "MIGRATION_PENDING"), (json!("migrationBlocked"), "migrationBlocked"), (json!("storageAuthorizationRequired"), "storageAuthorizationRequired"), (json!("ENOENT"), "CORE_UNAVAILABLE"), (json!(-32602), "CORE_UNAVAILABLE")] {
             assert_eq!(backend.request("feedback.read", json!({"code":code}), json!({})).await.unwrap_err().to_string(), expected);
         }
         backend.stop().await.unwrap();
