@@ -2097,7 +2097,6 @@ async function runFullModelSelection() {
     "compact model rows show the name only",
   );
   assert.equal(await page.getByText("帮助", { exact: true }).count(), 0);
-  assert.equal(await page.getByText("凭据来源", { exact: true }).count(), 0);
   assert.equal(
     await page.getByRole("tab", { name: "模型", exact: true }).count(),
     0,

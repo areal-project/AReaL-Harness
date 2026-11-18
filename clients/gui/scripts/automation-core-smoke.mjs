@@ -420,7 +420,8 @@ async function benchmarkSourceSnapshot() {
       [
         "app/src/main.cjs",
         "packages/browser-automation/src/host-tool.cjs",
-        "../../services/workbench/src/desktop/core/service-protocol.cjs",
+        "app/src/core/service-client.cjs",
+        "../../core/host/src/workbench_frontend.rs",
         "app/src/core/preview-native/native-targets.cjs",
         "packages/browser-automation/src/upstream/browser/browserPlaywrightLocatorExecutor.ts",
         "app/src/core/preview.cjs",

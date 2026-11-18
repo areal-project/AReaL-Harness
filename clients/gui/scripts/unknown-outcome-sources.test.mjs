@@ -14,7 +14,6 @@ const scopes = [
   ["clients/gui/renderer/src", /\.(ts|tsx)$/],
   ["clients/gui/packages/runtime-client", /\.(js|ts)$/],
   ["clients/gui/packages/client/src", /\.ts$/],
-  ["services/workbench/src", /\.(cjs|ts)$/],
   ["core/host/src", /\.rs$/],
   ["core/app-server/src", /\.rs$/],
 ];

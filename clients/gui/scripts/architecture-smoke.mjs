@@ -58,7 +58,7 @@ const sourcePaths = [
   "app/src/core/main.cjs",
   "app/src/core/native-host-transport.ts",
   "app/src/core/service-client.cjs",
-  "../../services/workbench/src/desktop/core/backend.cjs",
+  "../../core/host/src/workbench_frontend.rs",
   "scripts/architecture-smoke.mjs",
   "scripts/application-fixture.mjs",
   "renderer/dist/index.html",
