@@ -499,7 +499,7 @@
     "layer": "contract",
     "platforms": ["darwin", "linux"],
     "areas": ["trajectory"],
-    "requires": ["core-binary"]
+    "requires": ["core-binary", "gui-build"]
   },
   {
     "script": "test:execution-trace-ui",
