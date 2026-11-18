@@ -226,11 +226,16 @@ try {
   });
   mark("stop-receipt", stopped);
   assert.equal(stopped.state, "completed", JSON.stringify(stopped));
+  const stoppedStatus = (await host.request("host.status", {})).projects.find(
+    (entry) => entry.registration.projectId === hostProject,
+  );
+  mark("before-history-open", {
+    state: stoppedStatus?.state,
+    generation: stoppedStatus?.service?.generation,
+  });
   await page.getByTestId(`task-item-${threadId}`).click();
   mark("opened-during-switch", {});
   const retry = page.getByRole("button", { name: "重试加载对话", exact: true });
-  if (await retry.isVisible()) await retry.click();
-  mark("retry-clicked", {});
   await page.getByText("OLD_GUI_FIRST", { exact: true }).waitFor({ timeout: 15000 });
   await page.getByText("OLD_GUI_QUEUE", { exact: true }).waitFor({ timeout: 15000 });
   record.stoppedHistoryVisible = true;
