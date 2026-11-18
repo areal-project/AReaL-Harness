@@ -340,7 +340,7 @@ HTTP 仅接受当前 loopback 或已配置 HTTPS 来源的精确 Host；WebSocke
 
 首次部署先异步检查 SSH 与既有实例；只读检查失败不创建待受理记录，用户可纠正输入。`deployment.canReconfigure` 只在独立检查确认程序、unit 和数据均不存在后为 true，允许更改 SSH 目标；保留数据的实例仍绑定原目标和 owner。已核对的失败或移除实例可纠正 HTTPS 地址并重新部署。
 
-本机模式以 `local:true` 独立于生产 HTTPS 模式，只接受 RFC1918 IPv4 或 ULA IPv6 的 HTTP origin。本机 Host 使用 loopback WS 和精确 Host 头；网卡来源不能注册 Host，HTTP `/enroll` 被拒绝。服务数据库通过 `provision --room <sha256>` 幂等登记公开 room，不接收 capability，也不恢复已撤销 room。主人 capability 先保存在加密 `remote.json`。手机配对链接额外携带 `local=1`，原生 socket 只接受私有数字 IP 和 `/remote/socket`，固定 App Origin；网页和外部服务的 HTTPS/WSS 校验不放宽。
+本机模式以 `local:true` 独立于生产 HTTPS 模式，接受 RFC1918 IPv4、ULA IPv6 和分配给本机网卡的同网段 IPv4 HTTP origin。非 RFC1918 的 IPv4 仅接收同网段客户端。本机 Host 使用 loopback WS 和精确 Host 头；网卡来源不能注册 Host，HTTP `/enroll` 被拒绝。服务数据库通过 `provision --room <sha256>` 幂等登记公开 room，不接收 capability，也不恢复已撤销 room。主人 capability 先保存在加密 `remote.json`。手机配对链接额外携带 `local=1`，原生 socket 使用数字 IP、`/remote/socket` 和固定 App Origin，非 RFC1918 的 IPv4 必须与手机在同一网段；网页和外部服务的 HTTPS/WSS 校验不放宽。
 
 托管 Linux 入口 `managed-serve --config <path>` 共享独占服务锁，启动 loopback 后端与自动证书 TLS 代理。证书与私钥原子存储为 `tls/material.json`，权限 0600。证书最后三分之一寿命内续期，每小时检查并热更新。SSH 安装核对实例 owner，升级保留数据，移除需显式指定是否删除数据。客户端仍验证 HTTPS 链、域名与有效期；服务端提供证书不会自动建立客户端信任。
 

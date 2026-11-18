@@ -1,4 +1,5 @@
 import Capacitor
+import Darwin
 import Network
 import Foundation
 
@@ -25,13 +26,42 @@ public class ArealLocalSocketPlugin: CAPPlugin, CAPBridgedPlugin {
         if let address = IPv4Address(literal) {
             let bytes = Array(address.rawValue)
             guard literal == bytes.map(String.init).joined(separator: "."),
-                  bytes[0] == 10 || (bytes[0] == 172 && (16...31).contains(bytes[1])) ||
-                  (bytes[0] == 192 && bytes[1] == 168) else { return nil }
+                  (1..<224).contains(bytes[0]), bytes[0] != 127,
+                  !(bytes[0] == 169 && bytes[1] == 254) else { return nil }
+            let isPrivate = bytes[0] == 10 || (bytes[0] == 172 && (16...31).contains(bytes[1])) ||
+                (bytes[0] == 192 && bytes[1] == 168)
+            guard isPrivate || isOnLink(address) else { return nil }
             return url
         }
         guard !literal.contains("%"), let address = IPv6Address(literal),
               address.rawValue.first.map({ $0 & 0xfe == 0xfc }) == true else { return nil }
         return url
+    }
+
+    private func isOnLink(_ target: IPv4Address) -> Bool {
+        var interfaces: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&interfaces) == 0, let interfaces else { return false }
+        defer { freeifaddrs(interfaces) }
+        let destination = target.rawValue.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+        let required = UInt32(IFF_UP | IFF_BROADCAST)
+        for pointer in sequence(first: interfaces, next: { $0.pointee.ifa_next }) {
+            let interface = pointer.pointee
+            guard interface.ifa_flags & required == required,
+                  let address = interface.ifa_addr, address.pointee.sa_family == AF_INET,
+                  let netmask = interface.ifa_netmask, netmask.pointee.sa_family == AF_INET else { continue }
+            let local = address.withMemoryRebound(to: sockaddr_in.self, capacity: 1) {
+                UInt32(bigEndian: $0.pointee.sin_addr.s_addr)
+            }
+            let mask = netmask.withMemoryRebound(to: sockaddr_in.self, capacity: 1) {
+                UInt32(bigEndian: $0.pointee.sin_addr.s_addr)
+            }
+            let network = local & mask
+            if (1...30).contains(mask.nonzeroBitCount), destination & mask == network,
+               destination != network, destination != (network | ~mask) {
+                return true
+            }
+        }
+        return false
     }
 
     private func event(_ id: String, _ type: String, data: Data? = nil, text: Bool = false) {

@@ -50,19 +50,20 @@ function bridge() {
   };
 }
 
-test("local invitation requires explicit mode and private numeric address, HTTPS still works", () => {
+test("local invitation requires explicit mode and a numeric LAN candidate, HTTPS still works", () => {
   for (const origin of [
     "http://10.2.3.4:7777",
     "http://172.31.0.2:80",
     "http://192.168.1.9:9876",
+    "http://192.0.2.12:47820",
     "http://[fd12::1]:7777",
   ])
     assert.equal(parsePairingLink(link(origin)).relayOrigin, new URL(origin).origin);
   for (const origin of [
     "http://127.0.0.1:7777",
     "http://localhost:7777",
-    "http://8.8.8.8:7777",
-    "http://172.32.0.1",
+    "http://224.0.0.1:7777",
+    "http://169.254.1.1",
     "http://[::1]",
     "http://[fe80::1]",
     "http://host.internal",
@@ -80,8 +81,13 @@ test("local invitation requires explicit mode and private numeric address, HTTPS
   assert.throws(() => createMobileSocket("ws://10.2.3.4:7777/remote/socket"), /NATIVE_APP/);
 });
 
-test("stored private relay is restored without widening public HTTP trust", async () => {
-  for (const origin of ["http://10.2.3.4:7777", "http://[fd12::1]:7777", "https://relay.example"]) {
+test("stored local relay is restored and hostnames still require HTTPS", async () => {
+  for (const origin of [
+    "http://10.2.3.4:7777",
+    "http://192.0.2.12:47820",
+    "http://[fd12::1]:7777",
+    "https://relay.example",
+  ]) {
     let value = null;
     const store = new DeviceStore({
       load: async () => ({ value }),
@@ -92,7 +98,7 @@ test("stored private relay is restored without widening public HTTP trust", asyn
     store.connection = { relayOrigin: origin, grantRevision: 4 };
     await store.transaction(true, () => ({ record: { identity: "opaque" }, result: null }));
     assert.equal((await store.load()).relayOrigin, origin);
-    value = value.replace(origin, "http://8.8.8.8:7777");
+    value = value.replace(origin, "http://relay.example:7777");
     await assert.rejects(store.load(), /INVALID_DEVICE_RECORD/);
   }
   assert.equal(isLocalRelayOrigin("http://10.2.3.4:7777/"), false);

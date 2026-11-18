@@ -52,7 +52,13 @@ export async function serve(config, store, pushOptions, logger) {
     reply(404, { error: 'UNAVAILABLE' });
   });
   const sockets = new Set();
-  server.on('connection', socket => {
+  server.prependListener('connection', socket => {
+    // 公有编号的办公网地址只接受同网段直连；Host 仍走 loopback。
+    const loopback = socket.localAddress === '127.0.0.1' && socket.remoteAddress === '127.0.0.1';
+    if (config.localPeers && !loopback &&
+        (socket.localAddress !== config.localAddress || !config.localPeers.check(socket.remoteAddress))) {
+      socket.destroy(); return;
+    }
     if (sockets.size >= config.maxConnections) { socket.destroy(); return; }
     sockets.add(socket); socket.setTimeout(15000, () => socket.destroy());
     const timer = setTimeout(() => socket.destroy(), 10000); timer.unref(); headerTimers.set(socket, timer);

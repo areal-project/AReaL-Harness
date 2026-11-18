@@ -4,19 +4,21 @@ const nativeSocket = registerPlugin("ArealLocalSocket");
 const MAX_FRAME = 512 * 1024;
 const MAX_BUFFER = 2 * 1024 * 1024;
 
-export function isPrivateAddress(hostname) {
+function isLocalAddressCandidate(hostname) {
   if (/^\[f[cd][0-9a-f]{2}:[0-9a-f:]+\]$/i.test(hostname)) return true;
   const parts = hostname.split(".");
   if (parts.length !== 4 || parts.some((part) => !/^(0|[1-9]\d{0,2})$/.test(part) || +part > 255))
     return false;
   const [a, b] = parts.map(Number);
-  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+  return a > 0 && a < 224 && a !== 127 && !(a === 169 && b === 254);
 }
 
 export function isLocalRelayOrigin(value) {
   try {
     const url = new URL(value);
-    return url.protocol === "http:" && url.origin === value && isPrivateAddress(url.hostname);
+    return (
+      url.protocol === "http:" && url.origin === value && isLocalAddressCandidate(url.hostname)
+    );
   } catch {
     return false;
   }
@@ -29,7 +31,7 @@ function localSocketURL(value) {
     url.protocol !== "ws:" ||
     url.href !== `${url.origin}/remote/socket` ||
     (authority !== url.host && authority !== `${url.hostname}:80`) ||
-    !isPrivateAddress(url.hostname) ||
+    !isLocalAddressCandidate(url.hostname) ||
     url.username ||
     url.password ||
     url.pathname !== "/remote/socket" ||

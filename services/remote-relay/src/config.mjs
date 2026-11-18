@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { isIP } from 'node:net';
+import { BlockList, isIP } from 'node:net';
+import { networkInterfaces } from 'node:os';
 
 function isPrivateAddress(host) {
   const value = host.replace(/^\[|\]$/g, '');
@@ -23,9 +24,23 @@ export function parseConfig(input) {
   const local = input.local === true;
   if (local && development) throw new Error('CONFIG_ORIGIN');
   if (origin.origin !== input.publicOrigin || origin.username || origin.password ||
-      (local ? origin.protocol !== 'http:' || !isPrivateAddress(origin.hostname) : development ? origin.protocol !== 'http:' || !['127.0.0.1', '[::1]', 'localhost'].includes(origin.hostname) : origin.protocol !== 'https:')) throw new Error('CONFIG_ORIGIN');
+      (local ? origin.protocol !== 'http:' : development ? origin.protocol !== 'http:' || !['127.0.0.1', '[::1]', 'localhost'].includes(origin.hostname) : origin.protocol !== 'https:')) throw new Error('CONFIG_ORIGIN');
+  let localPeers;
+  if (local && !isPrivateAddress(origin.hostname)) {
+    const host = origin.hostname;
+    const [a, b] = host.split('.').map(Number);
+    if (isIP(host) !== 4 || a === 0 || a === 127 || a >= 224 || (a === 169 && b === 254))
+      throw new Error('CONFIG_ORIGIN');
+    const iface = Object.values(networkInterfaces()).flat().find(entry =>
+      !entry.internal && entry.family === 'IPv4' && entry.address === host);
+    const prefix = Number(iface?.cidr?.split('/')[1]);
+    if (!(prefix >= 1 && prefix <= 30)) throw new Error('CONFIG_LOCAL_INTERFACE');
+    localPeers = new BlockList();
+    localPeers.addSubnet(host, prefix);
+  }
   const match = (local ? /^(0\.0\.0\.0|127\.0\.0\.1|\[::\]):([0-9]{1,5})$/ : /^(127\.0\.0\.1|\[::1\]):([0-9]{1,5})$/).exec(input.listen);
   if (!match || +match[2] < 1 || +match[2] > 65535 || (!development && !local && input.trustedLocalTlsProxy !== true)) throw new Error('CONFIG_LISTEN');
+  if (localPeers && (match[1] !== '0.0.0.0' || +match[2] !== Number(origin.port || 80))) throw new Error('CONFIG_LISTEN');
   if (!Array.isArray(input.allowedClientOrigins) || !input.allowedClientOrigins.length || input.allowedClientOrigins.some(value => {
     try { const u = new URL(value); return u.origin !== value || u.protocol !== origin.protocol || (local && value !== origin.origin) || (development && !['127.0.0.1', '[::1]', 'localhost'].includes(u.hostname)); } catch { return true; }
   })) throw new Error('CONFIG_CLIENT_ORIGIN');
@@ -58,6 +73,7 @@ export function parseConfig(input) {
   if (input.payloadLogging !== undefined && input.payloadLogging !== false) throw new Error('CONFIG_LOGGING');
   if (typeof input.dataDir !== 'string' || !input.dataDir) throw new Error('CONFIG_DATA');
   return { ...limits, publicOrigin: origin.origin, publicHost: origin.host, development, local,
+    localPeers, localAddress: localPeers && origin.hostname,
     listenHost: match[1].replace(/[\[\]]/g, ''), listenPort: +match[2],
     allowedClientOrigins: input.allowedClientOrigins, allowedAppOrigins, apns, dataDir: resolve(input.dataDir),
     assetsDir: input.assetsDir ? resolve(input.assetsDir) : undefined };

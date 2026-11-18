@@ -7,6 +7,7 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import java.net.InetAddress
+import java.net.NetworkInterface
 import java.net.URI
 import java.nio.ByteBuffer
 import java.util.UUID
@@ -38,9 +39,27 @@ class ArealLocalSocketPlugin : Plugin() {
             require(parts.size == 4 && parts.all { it.matches(Regex("0|[1-9][0-9]{0,2}")) && it.toInt() <= 255 })
             val a = parts[0].toInt()
             val b = parts[1].toInt()
-            require(a == 10 || (a == 172 && b in 16..31) || (a == 192 && b == 168))
+            require(a in 1..223 && a != 127 && !(a == 169 && b == 254))
+            val isPrivate = a == 10 || (a == 172 && b in 16..31) || (a == 192 && b == 168)
+            require(isPrivate || isOnLink(parts.fold(0) { address, part -> (address shl 8) or part.toInt() }))
         }
         return uri
+    }
+
+    private fun isOnLink(destination: Int): Boolean {
+        return NetworkInterface.getNetworkInterfaces().asSequence()
+            .filter { it.isUp && !it.isLoopback && !it.isPointToPoint }
+            .flatMap { it.interfaceAddresses.asSequence() }
+            .any { interfaceAddress ->
+                val prefix = interfaceAddress.networkPrefixLength.toInt()
+                val broadcast = interfaceAddress.broadcast ?: return@any false
+                if (prefix !in 1..30) return@any false
+                val local = ByteBuffer.wrap(interfaceAddress.address.address).int
+                val mask = -1 shl (32 - prefix)
+                val network = local and mask
+                (destination and mask) == network && destination != network &&
+                    destination != ByteBuffer.wrap(broadcast.address).int
+            }
     }
 
     private fun event(id: String, type: String, bytes: ByteArray? = null, text: Boolean = false) {

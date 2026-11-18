@@ -238,9 +238,12 @@ fn verify_files(root: &Path, manifest: &Manifest, required: &[&str]) -> Result<B
     ensure!(found == expected, "bundle inventory mismatch");
     Ok(expected)
 }
-pub(crate) fn private_address(address: IpAddr) -> bool {
+fn local_candidate(address: IpAddr) -> bool {
     match address {
-        IpAddr::V4(address) => address.is_private(),
+        IpAddr::V4(address) => {
+            let first = address.octets()[0];
+            (1..224).contains(&first) && !address.is_loopback() && !address.is_link_local()
+        }
         IpAddr::V6(address) => address.segments()[0] & 0xfe00 == 0xfc00,
     }
 }
@@ -257,7 +260,7 @@ pub(crate) fn local_origin(config: &Value) -> Result<url::Url> {
         .parse()?;
     ensure!(
         origin.scheme() == "http"
-            && private_address(address)
+            && local_candidate(address)
             && origin.port().map(u64::from) == config["relayLocal"]["port"].as_u64()
             && origin.username().is_empty()
             && origin.password().is_none()
@@ -269,7 +272,7 @@ pub(crate) fn local_origin(config: &Value) -> Result<url::Url> {
     Ok(origin)
 }
 fn address_rank(name: &str, address: IpAddr) -> Option<u8> {
-    if !private_address(address)
+    if !local_candidate(address)
         || [
             "bridge", "br-", "virbr", "docker", "veth", "vmenet", "vmnet", "vboxnet", "awdl",
             "llw", "anpi",
@@ -282,6 +285,11 @@ fn address_rank(name: &str, address: IpAddr) -> Option<u8> {
     let tunnel = ["utun", "tun", "tap", "ppp", "ipsec", "wg"]
         .iter()
         .any(|prefix| name.starts_with(prefix));
+    if matches!(address, IpAddr::V4(v4) if !v4.is_private()
+        && (tunnel || !["en", "eth", "wl"].iter().any(|prefix| name.starts_with(prefix))))
+    {
+        return None;
+    }
     Some(2 * u8::from(tunnel) + u8::from(address.is_ipv6()))
 }
 
@@ -330,7 +338,19 @@ fn local_addresses() -> Result<Vec<(u8, IpAddr)>> {
             if let Some(address) = address
                 && let Some(rank) = address_rank(name, address)
             {
-                addresses.push((rank, address));
+                let needs_subnet = matches!(address, IpAddr::V4(v4) if !v4.is_private());
+                if !needs_subnet
+                    || (interface.ifa_flags & libc::IFF_BROADCAST as u32 != 0
+                        && !interface.ifa_netmask.is_null()
+                        && (1..=30).contains(&unsafe {
+                            (*(interface.ifa_netmask as *const libc::sockaddr_in))
+                                .sin_addr
+                                .s_addr
+                                .count_ones()
+                        }))
+                {
+                    addresses.push((rank, address));
+                }
             }
         }
         current = interface.ifa_next;
@@ -771,7 +791,7 @@ mod tests {
     fn local_origin_rejects_external_and_mismatched_authorities() {
         for origin in [
             "http://127.0.0.1:47820",
-            "http://8.8.8.8:47820",
+            "http://224.0.0.1:47820",
             "https://192.168.1.2:47820",
             "http://name.local:47820",
             "http://192.168.1.2:47820/path",
@@ -914,7 +934,7 @@ mod tests {
     }
 
     #[test]
-    fn local_relay_uses_wifi_ipv6_when_ipv4_is_public_and_a_vm_bridge_exists() {
+    fn local_relay_uses_on_link_wifi_ipv4_when_a_vm_bridge_exists() {
         let candidates = |interfaces: &[(&str, &str)]| {
             select_address(interfaces.iter().filter_map(|(interface, address)| {
                 let address = address.parse().unwrap();
@@ -924,14 +944,15 @@ mod tests {
         assert_eq!(
             candidates(&[
                 ("bridge100", "192.168.139.3"),
-                ("en0", "30.172.96.134"),
+                ("en0", "192.0.2.12"),
                 ("en0", "fd00::5"),
                 ("utun4", "10.0.0.3"),
             ]),
-            Some("fd00::5".parse().unwrap())
+            Some("192.0.2.12".parse().unwrap())
         );
         assert_eq!(candidates(&[("bridge100", "192.168.139.3")]), None);
         assert_eq!(candidates(&[("vmenet0", "192.168.139.4")]), None);
+        assert_eq!(candidates(&[("utun4", "192.0.2.12")]), None);
         assert_eq!(
             candidates(&[("utun4", "10.0.0.3")]),
             Some("10.0.0.3".parse().unwrap())

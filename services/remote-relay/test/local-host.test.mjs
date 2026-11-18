@@ -3,11 +3,44 @@ import { test } from 'node:test';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createServer } from 'node:http';
+import { createServer, request } from 'node:http';
 import { WebSocket } from 'ws';
 import { attachRelay } from '../src/relay.mjs';
 import { openStore, secret, hash } from '../src/store.mjs';
-import { ceilings } from '../src/config.mjs';
+import { ceilings, parseConfig } from '../src/config.mjs';
+import { serve } from '../src/server.mjs';
+
+test('locally assigned non-RFC1918 IPv4 is reachable with the desktop authority, and rejects other sources', async t => {
+  const interfaces = Object.values(networkInterfaces()).flat();
+  const iface = interfaces.find(({ address, cidr, family, internal }) =>
+    !internal && family === 'IPv4' && !/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/.test(address) &&
+    Number(cidr?.split('/')[1]) >= 1 && Number(cidr?.split('/')[1]) <= 30);
+  if (!iface) return t.skip('Requires a non-RFC1918 local IPv4 interface with a LAN prefix');
+  const home = await mkdtemp(join(tmpdir(), 'areal-local-interface-'));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const reservation = createServer();
+  await new Promise(resolve => reservation.listen(0, '0.0.0.0', resolve));
+  const { port } = reservation.address();
+  await new Promise(resolve => reservation.close(resolve));
+  const origin = 'http://' + iface.address + ':' + port;
+  const config = parseConfig({ local: true, publicOrigin: origin, listen: '0.0.0.0:' + port,
+    allowedClientOrigins: [origin], dataDir: home });
+  const server = await serve(config, null, undefined, () => {});
+  t.after(() => server.close());
+  const probe = (hostname, localAddress) => new Promise((resolve, reject) => {
+    const req = request({ hostname, localAddress, port, path: '/healthz',
+      headers: { Host: config.publicHost } }, res => {
+      res.resume();
+      resolve(res.statusCode);
+    });
+    req.once('error', reject);
+    req.setTimeout(3000, () => req.destroy(new Error('health probe timeout')));
+    req.end();
+  });
+  assert.equal(await probe(iface.address, iface.address), 200);
+  assert.equal(await probe('127.0.0.1', '127.0.0.1'), 200);
+  await assert.rejects(probe(iface.address, '127.0.0.1'), { code: 'ECONNRESET' });
+});
 
 test('local Relay accepts Host credentials only on loopback while LAN devices remain clients', async t => {
   const address = Object.values(networkInterfaces()).flat().find(a => a && !a.internal && a.family === 'IPv4')?.address;
