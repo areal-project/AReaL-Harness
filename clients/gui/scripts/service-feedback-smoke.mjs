@@ -1,3 +1,4 @@
+import { installHostTransportBarrier } from "./support/host-transport-barrier.mjs";
 import { until } from "./support/desktop-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
@@ -5,7 +6,8 @@ import { createRequire } from "node:module";
 import { mkdir, readFile, writeFile, unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
+import { promisify } from "node:util";
 
 const gui = resolve(import.meta.dirname, "..");
 const require = createRequire(join(gui, "app/package.json"));
@@ -13,8 +15,7 @@ const { _electron: electron } = require("playwright-core");
 const { applicationFixture } = await import("./application-fixture.mjs");
 const { closeSmokeApplication, readFixtureHost, settleFixtureHostAfterQuit } =
   await import("./application-cleanup.mjs");
-const { createProjectConversation } = await import("./smoke-navigation.mjs");
-const binary = process.env.AREAL_CORE_BIN || resolve(gui, "../../.local/dev-bin/areal");
+const binary = process.env.AREAL_CORE_BIN || resolve(gui, "../../target/debug/areal");
 const scratch = await makeTempDir("areal-feedback-");
 const home = join(scratch, "core"),
   workspace = join(scratch, "workspace");
@@ -25,37 +26,51 @@ const registry = join(
 );
 await mkdir(workspace);
 await mkdir(join(scratch, "user/.areal"), { recursive: true });
+const deployment = join(scratch, "desktop.json");
+await writeFile(
+  deployment,
+  JSON.stringify({
+    profiles: [
+      {
+        id: "fixture",
+        revision: "v1",
+        displayName: "Fixture",
+        instructions: "Respond to the isolated test only.",
+      },
+    ],
+  }),
+);
 await writeFile(
   join(scratch, "user/.areal/config.toml"),
   'schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:1/v1/chat/completions"\n',
 );
-const rejectedWorkspace = join(scratch, "unavailable-project");
-const fault = join(scratch, "reject-ensure");
 const preparationGate = join(scratch, "hold-preparation");
+const preparationObservation = join(scratch, "preparation-attempts.json");
 await writeFile(preparationGate, "hold");
-await mkdir(rejectedWorkspace);
-const technicalError = "service socket path is too long; use a shorter AREAL_HARNESS_SERVICE_HOME";
+const technicalError = "Injected Host workspace preparation rejection";
 const fixture = await applicationFixture(
   gui,
   join(scratch, "app"),
   `
-const coreProcess = require(${JSON.stringify(join(gui, "scripts/support/core-process-fixture.cjs"))});
-const execute = coreProcess.executeCore;
-coreProcess.executeCore = (binary, args, options) => {
-  if (args[0] === 'service' && args[1] === 'ensure' && args.includes(${JSON.stringify(rejectedWorkspace)})
-    && require('node:fs').existsSync(${JSON.stringify(fault)})) {
-    const error = Object.assign(new Error('Injected service failure before launch'), {
-      stderr: JSON.stringify({ error: { code: 'localServiceError', message: ${JSON.stringify(technicalError)} } })
-    });
-    return Object.assign(Promise.reject(error), { child: {} });
-  }
-  return execute(binary, args, options);
-};
-const { CoreBackend } = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
-const startProject = CoreBackend.prototype.startProject;
-CoreBackend.prototype.startProject = async function (...args) {
-  while (require('node:fs').existsSync(${JSON.stringify(preparationGate)})) await new Promise(resolve => setTimeout(resolve, 25));
-  return startProject.apply(this, args);
+const fs = require('node:fs');
+const { SharedCoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/service-client.cjs"))});
+const callHost = SharedCoreBackend.prototype.nativeBrowserCall;
+const attempts = [];
+SharedCoreBackend.prototype.nativeBrowserCall = async function (method, params) {
+  if (method !== 'projectless.command' || params.operation !== 'prepare')
+    return callHost.call(this, method, params);
+  const observation = ${JSON.stringify(preparationObservation)};
+  const gate = ${JSON.stringify(preparationGate)};
+  const first = attempts.length === 0;
+  attempts.push({ requestId: params.requestId, forwarded: !first });
+  fs.writeFileSync(observation, JSON.stringify(attempts));
+  if (!first) return callHost.call(this, method, params);
+  while (fs.existsSync(gate)) await new Promise(resolve => setTimeout(resolve, 25));
+  throw Object.assign(new Error(${JSON.stringify(technicalError)}), {
+    code: 'COMMAND_FAILED',
+    outcome: { kind: 'noMutation' },
+    submissionUnknown: false,
+  });
 };
 `,
 );
@@ -63,12 +78,31 @@ const env = { ...process.env };
 for (const key of Object.keys(env))
   if (/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) || key === "ELECTRON_RUN_AS_NODE") delete env[key];
 Object.assign(env, {
+  HOME: join(scratch, "user"),
   AREAL_CORE_BIN: binary,
+  AREAL_CORE_DESKTOP_CONFIG: deployment,
+  AREAL_HARNESS_HOME: join(scratch, "harness"),
+  AREAL_CORE_CONFIG: join(scratch, "user/.areal/config.toml"),
   AREAL_GUI_USER_DATA: join(scratch, "electron"),
   AREAL_CORE_HOME: home,
   AREAL_CORE_USER_HOME: join(scratch, "user"),
   AREAL_HARNESS_SERVICE_HOME: registry,
 });
+const execute = promisify(execFile);
+const state = () => page.evaluate(() => window.arealDesktop.snapshot());
+const readAttempts = () =>
+  readFile(preparationObservation, "utf8")
+    .then(JSON.parse)
+    .catch((error) => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    });
+const readyCore = async (workspace) => {
+  const { stdout } = await execute(binary, ["service", "list", "--json"], { env, timeout: 5000 });
+  return JSON.parse(stdout).find(
+    (service) => service.workspace === workspace && service.state === "ready",
+  );
+};
 let app,
   page,
   passed = false;
@@ -87,61 +121,85 @@ try {
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
   const initialInput = page.getByTestId("chat-input");
   await initialInput.waitFor();
-  await initialInput.focus();
-  await page.keyboard.type("Draft during workspace preparation");
+  const [original] = await until(async () => {
+    const attempts = await readAttempts();
+    return attempts.length === 1 && attempts;
+  }, "Automatic preparation reached the native Host boundary");
+  assert.ok(original.requestId);
+  assert.equal(original.forwarded, false);
+  await initialInput.fill("Draft during workspace preparation");
   assert.equal(await initialInput.getAttribute("contenteditable"), "true");
   assert.equal(await page.getByTestId("chat-send-button").isDisabled(), true);
   const preparingText = await page.locator("body").innerText();
   assert.ok(!preparingText.includes("权限模式不受支持") && !preparingText.includes("暂无可用模型"));
   await page.screenshot({ path: join(scratch, "initial-preparation.png"), scale: "css" });
   await unlink(preparationGate);
-  const preparedDeadline = Date.now() + 30000;
-  let prepared;
-  while (Date.now() < preparedDeadline) {
-    prepared = (await page.evaluate(() => window.arealDesktop.snapshot())).projects.find(
-      (p) => p.projectless && p.state?.connected,
-    );
-    if (prepared) break;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  assert.ok(prepared, "The existing automatic preparation finishes without a user retry");
+  const status = page.getByTestId("workspace-preparation-status");
+  const retry = status.getByRole("button", { name: "重试准备", exact: true });
+  await retry.waitFor();
+  assert.ok(!(await page.locator("body").innerText()).includes(technicalError));
+  assert.equal(await page.getByTestId("chat-send-button").isDisabled(), true);
+  await initialInput.press("Enter");
   assert.equal(await initialInput.textContent(), "Draft during workspace preparation");
-  await initialInput.press("Meta+A");
-  await initialInput.press("Backspace");
+  assert.deepEqual(await readAttempts(), [original]);
+  await page.screenshot({ path: join(scratch, "quiet-project-status.png"), scale: "css" });
+  await page.evaluate(installHostTransportBarrier);
+  await page.evaluate((requestId) => {
+    const attempts = [];
+    globalThis.preparationRetries = attempts;
+    globalThis.preparationRetryObserver = globalThis.createHostTransportBarrier((frame) => {
+      if (
+        frame.method !== "desktop.command" ||
+        frame.params?.command !== "projectless" ||
+        frame.params?.request?.operation !== "prepare" ||
+        frame.params.request.requestId !== requestId
+      )
+        return null;
+      const attempt = { id: frame.id };
+      attempts.push(attempt);
+      return {
+        onResponse(reply) {
+          attempt.replyId = reply.id;
+          attempt.ok = !reply.error;
+        },
+      };
+    });
+  }, original.requestId);
+  await retry.click();
+  const prepared = await until(async () => {
+    const project = (await state()).projects.find((p) => p.projectless);
+    return project && (await readyCore(project.root));
+  }, "Explicit retry prepares the original projectless workspace in Core");
+  await status.waitFor({ state: "hidden" });
+  assert.ok(prepared.generation);
+  assert.deepEqual(await readAttempts(), [original]);
+  const retries = await page.evaluate(() => {
+    globalThis.preparationRetryObserver.restore();
+    return globalThis.preparationRetries;
+  });
+  assert.equal(retries.length, 1);
+  assert.deepEqual(retries[0], { id: retries[0].id, replyId: retries[0].id, ok: true });
+  await writeFile(join(scratch, "preparation-retries.json"), JSON.stringify(retries));
+  assert.equal(await initialInput.textContent(), "Draft during workspace preparation");
   checks.push(
-    "Initial workspace preparation is automatic, keeps writing available and preserves the draft",
+    "Automatic preparation and a confirmed before-dispatch failure keep an editable, unsent draft; explicit retry forwards the original request once and Core is ready",
   );
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
   }, workspace);
+  await page.locator(".composer-project").click();
+  await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
+  const project = await until(async () => {
+    const registered = (await state()).projects.find((p) => p.root === workspace);
+    return registered && (await readyCore(workspace)) && registered;
+  }, "Directory picker registers and activates the project with a long service home");
   await until(
-    () =>
-      page.evaluate(async () => {
-        const s = await window.arealDesktop.snapshot();
-        return s.connection?.state === "ready" || s.projects.some((p) => p.error || p.state?.error);
-      }),
-    "desktop ready or project error",
+    async () =>
+      (await page.getByTestId("areal-workbench").getAttribute("data-project-id")) === project.id,
+    "Named project selected",
   );
-  const startup = await page.evaluate(() => window.arealDesktop.snapshot());
-  const startupError = startup.projects.find((p) => p.error || p.state?.error);
-  assert.ok(!startupError, startupError?.error || startupError?.state?.error);
-  await page.getByRole("button", { name: "打开项目", exact: true }).first().click();
-  let snapshot, project;
-  const deadline = Date.now() + 30000;
-  while (Date.now() < deadline) {
-    snapshot = await page.evaluate(() => window.arealDesktop.snapshot());
-    project = snapshot.projects.find((p) => p.root === workspace);
-    if (project && (project.state?.connected || project.error || project.state?.error)) break;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  await writeFile(join(scratch, "snapshot.json"), JSON.stringify(snapshot, null, 2));
   await page.screenshot({ path: join(scratch, "project.png"), scale: "css" });
-  assert.ok(
-    project?.state?.connected,
-    project?.error || project?.state?.error || "Project must connect with a long service home",
-  );
   checks.push("Long service home opens a connected project through the directory picker");
-  await createProjectConversation(page, "workspace");
   const browserExplanation = page.getByRole("heading", { name: "浏览器", exact: true });
   await page.keyboard.press("Meta+t");
   await browserExplanation.waitFor();
@@ -162,73 +220,6 @@ try {
   await page.screenshot({ path: join(scratch, "new-chat-review-scope.png"), scale: "css" });
   await page.keyboard.press("Escape");
   checks.push("Review scope disables last turn when the conversation has no turn");
-  await writeFile(fault, "reject");
-  await app.evaluate(({ dialog }, path) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
-  }, rejectedWorkspace);
-  await page.getByRole("button", { name: "打开项目", exact: true }).first().click();
-  const failedProject = page.getByRole("button", { name: "unavailable-project", exact: true });
-  await failedProject.waitFor();
-  await createProjectConversation(page, "unavailable-project");
-  const status = page.getByTestId("toast").filter({ hasText: "连接暂不可用" });
-  await status.waitFor();
-  await status.hover();
-  const visibleText = await page.locator("body").innerText();
-  assert.ok(
-    !visibleText.includes(technicalError),
-    "Raw transport diagnostics must stay out of the writing flow",
-  );
-  assert.ok(!visibleText.includes("Error invoking remote method"));
-  assert.ok(!visibleText.includes("当前任务配置不可用"));
-  assert.ok(!visibleText.includes("权限模式不受支持"), "Unloaded capability is not unsupported");
-  assert.ok(!visibleText.includes("暂无可用模型"), "Unloaded catalog is not an empty catalog");
-  const offlineInput = page.getByTestId("chat-input");
-  await offlineInput.focus();
-  await page.keyboard.type("Draft while preparing");
-  assert.equal(await offlineInput.getAttribute("contenteditable"), "true");
-  assert.equal(await page.getByTestId("chat-send-button").isDisabled(), true);
-  await offlineInput.press("Enter");
-  assert.equal(
-    await offlineInput.textContent(),
-    "Draft while preparing",
-    "Enter neither submits nor clears the offline draft",
-  );
-  await page.screenshot({ path: join(scratch, "quiet-project-status.png"), scale: "css" });
-  await status.getByRole("button", { name: "查看详情", exact: true }).click();
-  assert.ok((await page.locator("body").innerText()).includes(technicalError));
-  await page.screenshot({ path: join(scratch, "project-status-details.png"), scale: "css" });
-  await status.getByRole("button", { name: "查看详情", exact: true }).click();
-  await status.getByRole("button", { name: "重新连接项目", exact: true }).click();
-  await page.waitForFunction(() => {
-    const button = [...document.querySelectorAll('[data-testid="toast"] button')].find(
-      (value) => value.textContent === "重新连接项目",
-    );
-    return button && !button.disabled;
-  });
-  checks.push("Offline draft stays editable; top notification exposes details and retry");
-  await unlink(fault);
-  await status.getByRole("button", { name: "重新连接项目", exact: true }).click();
-  const reconnectDeadline = Date.now() + 30000;
-  let recovered;
-  while (Date.now() < reconnectDeadline) {
-    recovered = (await page.evaluate(() => window.arealDesktop.snapshot())).projects.find(
-      (p) => p.root === rejectedWorkspace,
-    );
-    if (recovered?.state?.connected) break;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  assert.ok(
-    recovered?.state?.connected,
-    "Explicit retry connects the project after the before-launch failure is removed",
-  );
-  assert.equal(
-    await offlineInput.textContent(),
-    "Draft while preparing",
-    "Connection recovery preserves the offline draft",
-  );
-  checks.push(
-    "Explicit retry recovers the project through the real Core service and preserves the offline draft",
-  );
   const input = page.getByTestId("chat-input");
   await input.focus();
   await input.press("Meta+A");
@@ -259,9 +250,9 @@ try {
   await page.evaluate(() =>
     document.dispatchEvent(new CustomEvent("areal:toast", { detail: "内容已复制" })),
   );
-  const toast = page.getByTestId("toast");
+  const toast = page.getByTestId("toast").filter({ hasText: "内容已复制" });
   await toast.waitFor();
-  assert.equal(await toast.getAttribute("role"), "status");
+  await toast.getByRole("status").getByText("内容已复制", { exact: true }).waitFor();
   assert.equal(
     await operationNotice.count(),
     0,
@@ -295,9 +286,6 @@ try {
   }
 } finally {
   await unlink(preparationGate).catch((error) => {
-    if (error.code !== "ENOENT") throw error;
-  });
-  await unlink(fault).catch((error) => {
     if (error.code !== "ENOENT") throw error;
   });
   const guiPid = app?.process().pid;
@@ -347,7 +335,7 @@ try {
           .update(await readFile(import.meta.filename))
           .digest("hex"),
         boundary:
-          "Source Electron/Main/Core, injected native picker and controlled CLI before-launch rejection for UI failure case, isolated state, no provider request",
+          "Source Electron/Main/Core, injected native picker and controlled native Host before-dispatch rejection for UI failure case, isolated state, no provider request",
       },
       null,
       2,
