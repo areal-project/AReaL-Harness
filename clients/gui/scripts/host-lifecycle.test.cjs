@@ -1792,9 +1792,10 @@ test("native shell uses the shared Host read contract and never starts a Node ba
     f.calls.some((q) => q.method === "backend.ensure"),
     false,
   );
+  const serverClosed = once(socket, "close");
   socket.close();
   await Promise.race([
-    disconnect,
+    Promise.all([disconnect, serverClosed]),
     new Promise((_, reject) =>
       setTimeout(() => reject(new Error("native shell disconnect missing")), 2000).unref(),
     ),
