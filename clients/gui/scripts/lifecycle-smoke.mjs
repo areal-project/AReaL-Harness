@@ -1,3 +1,4 @@
+import { readFixtureHost, settleFixtureHostAfterQuit } from "./application-cleanup.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -10,11 +11,7 @@ import { execFileSync } from "node:child_process";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const {
-  ServiceConnection,
-  waitForServiceProcessExit,
-} = require("../app/src/core/service-client.cjs");
-const { DesktopLifecycle } = require("../app/src/core/lifecycle.cjs");
+const { waitForServiceProcessExit } = require("../app/src/core/service-client.cjs");
 const binary = process.env.AREAL_CORE_BIN || resolve(gui, "../../target/debug/areal");
 const scratch = await makeTempDir("al-");
 const workspace = join(scratch, "workspace"),
@@ -481,33 +478,23 @@ try {
   if (page) await page.screenshot({ path: join(scratch, "failure.png") }).catch(() => {});
   process.exitCode = 1;
 } finally {
+  const guiPid = app?.process().pid;
+  let originalHost;
+  try {
+    originalHost = await readFixtureHost(env);
+  } catch (error) {
+    errors.push("Host identity: " + error.message);
+    passed = false;
+  }
   await closeGui().catch((error) => {
     errors.push(error.message);
     passed = false;
   });
-  const connection = new ServiceConnection();
   try {
-    const metadata = JSON.parse(await readFile(join(home, "service.json"), "utf8"));
-    await connection.connect(metadata);
-    await connection.request("hello", { protocol: metadata.protocol, identity: metadata.identity });
-    const lifecycle = new DesktopLifecycle({
-      connection,
-      metadata,
-      home,
-      notify: async () => ({ response: 1 }),
-    });
-    await until(
-      async () => !(await lifecycle.observe()).blockers.length,
-      "cleanup waits for accepted adapter operations",
-    );
-    await lifecycle.stop({ mode: "cancel" });
+    await settleFixtureHostAfterQuit(binary, env, scratch, { pid: guiPid, host: originalHost });
   } catch (error) {
-    if (error.code !== "ENOENT") {
-      errors.push("cleanup: " + error.message);
-      passed = false;
-    }
-  } finally {
-    connection.close();
+    errors.push("cleanup: " + error.message);
+    passed = false;
   }
   for (const response of held) response.destroy();
   model.closeAllConnections();

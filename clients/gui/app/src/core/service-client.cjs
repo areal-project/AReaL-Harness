@@ -78,11 +78,8 @@ async function waitForProcessExit(pid) {
 /** @typedef {import('./service-connection.cjs').ServiceMetadata} Metadata */
 /** @typedef {import('./service-control.cjs').LifecycleReference} Reference */
 /** @typedef {import('./service-control.cjs').LifecycleResponse} Receipt */
-/** @typedef {import('./lifecycle.cjs').RecoveryObservation} Observation */
 /** @typedef {import('./host-quit.cjs').Notify} Notify */
 /** @typedef {{projectId:string,threadId:string,id:string}} GuiTerminal */
-/** @typedef {{kind:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleKind,mode?:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleMode,observed?:Observation,projectId?:string,threadId?:string,turnId?:string,requestId?:string}} LifecycleOptions */
-/** @typedef {{stopped:boolean,operation:Receipt,kind?:string}} LifecycleResult */
 /** @typedef {{stopped:boolean,operation:import('@areal/workbench/desktop-contract/shared').LifecycleViewOperation,receipt?:import('./host-lifecycle.cjs').HostReceipt}} HostLifecycleResult */
 // GUI-local connection/projection only. Control intent lives in GUI userData;
 // shared Core history and execution state remain owned by the service.
@@ -194,11 +191,6 @@ class SharedCoreBackend {
     this.hostStopInFlight = undefined;
     /** @type {Map<string,Receipt>} */
     this.lifecycleReceipts = new Map();
-  }
-  requireConnection() {
-    if (!this.status.connected || !this.connection)
-      throw new Error("后台尚未连接，请先处理后台连接提示");
-    return this.connection;
   }
   get saved() {
     return this.value.projects;
@@ -1317,19 +1309,6 @@ class SharedCoreBackend {
 
   assertLifecycleScope(name, request = {}) {
     return lifecycleControl.assertLifecycleScope.call(this, name, request);
-  }
-  /** @param {LifecycleOptions} options @returns {Promise<LifecycleResult>} */
-
-  requestLifecycle(options) {
-    return lifecycleControl.requestLifecycle.call(this, options);
-  }
-  /** @param {boolean} [forUpdate] @param {{kind?:import("@areal/workbench-service/desktop/core/lifecycle-operations.cjs").LifecycleKind,cancel?:boolean,observed?:Observation}} [options] */
-  async stopService(forUpdate = false, options = {}) {
-    return this.requestLifecycle({
-      kind: options.kind ?? (forUpdate ? "updateDesktop" : "stopDesktop"),
-      mode: options.cancel ? "cancel" : "ifIdle",
-      observed: options.observed,
-    });
   }
   /** @param {{notify?:Notify}} [options] */
   async applyUpdate({ notify } = {}) {

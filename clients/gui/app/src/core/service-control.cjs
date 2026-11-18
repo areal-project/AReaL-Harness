@@ -105,7 +105,6 @@ const { lstat, mkdir, open, rename, rm } = require("node:fs/promises");
 const { constants } = require("node:fs");
 const { join } = require("node:path");
 const { randomUUID } = require("node:crypto");
-/** @typedef {import('./lifecycle.cjs').RecoveryObservation} Observation */
 const { HostClient } = require("@areal/client/node");
 const { hostUpdateReceipt } = require("@areal/workbench/desktop-contract/desktop-control");
 const { commandSemantics, desktopError } = require("@areal/workbench/desktop-contract");
@@ -113,8 +112,6 @@ const { projectHostReceipt } = require("./host-lifecycle.cjs");
 /** @typedef {InstanceType<typeof import('./service-client.cjs').SharedCoreBackend>} Backend */
 /** @typedef {import('./service-control.cjs').LifecycleReference} Reference */
 /** @typedef {import('./service-control.cjs').LifecycleResponse} Receipt */
-/** @typedef {{kind:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleKind,mode?:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleMode,observed?:Observation,projectId?:string,threadId?:string,turnId?:string,requestId?:string}} LifecycleOptions */
-/** @typedef {{stopped:boolean,operation:Receipt,kind?:string}} LifecycleResult */
 /** @param {unknown} kind */
 const desktopKind = (kind) => kind === "stopDesktop" || kind === "updateDesktop";
 const originalDesktopMessage =
@@ -126,15 +123,6 @@ const needsOriginalCheck = (operation) =>
   operation.targets.some((target) =>
     ["notAttempted", "acceptedPending", "admissionUnconfirmed"].includes(target.phase),
   );
-const notAdmittedCodes = new Set([
-  "LIFECYCLE_ADMISSION_FAILED",
-  "LIFECYCLE_UNSUPPORTED",
-  "LIFECYCLE_INVALID_REQUEST",
-  "LIFECYCLE_REQUEST_CONFLICT",
-  "CONFIRMATION_STALE",
-  "LIFECYCLE_BLOCKED",
-  "LIFECYCLE_INCOMPLETE",
-]);
 /** @param {string} phase */
 const lifecycleMessage = (phase) =>
   /** @type {Record<string,string>} */ ({
@@ -475,103 +463,6 @@ function assertLifecycleScope(name, request = {}) {
   }
 }
 
-/** @this {Backend}  @param {LifecycleOptions} options @returns {Promise<LifecycleResult>} */
-async function requestLifecycle(options) {
-  const { PROTOCOL } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
-  const {
-    kind,
-    mode = "ifIdle",
-    observed,
-    projectId,
-    threadId,
-    turnId,
-    requestId = randomUUID(),
-  } = options;
-  if (!this.status.connected) throw new Error("后台尚未连接，请先重新连接后台");
-  const originalReference = this.lifecycleReferences.get(requestId);
-  const previous = originalReference ?? this.lifecycleReceipts.get(requestId);
-  if (previous) {
-    if (
-      previous.kind !== kind ||
-      previous.mode !== mode ||
-      previous.threadId !== threadId ||
-      previous.turnId !== turnId ||
-      (projectId &&
-        (previous.logicalProjectId
-          ? previous.logicalProjectId !== projectId
-          : !previous.targets.some((target) => target.projectId === projectId)))
-    )
-      throw Object.assign(new Error("原请求身份不能绑定其他操作或轮次"), {
-        code: "LIFECYCLE_REQUEST_CONFLICT",
-      });
-    const operation = originalReference
-      ? await this.readLifecycle(originalReference)
-      : this.lifecycleReceipts.get(requestId);
-    if (!operation) throw new Error("原生命周期回执已移除，请重新核查");
-    return { stopped: operation.phase === "completed", operation };
-  }
-  if (desktopKind(kind)) {
-    for (const reference of this.lifecycleReferences.values()) {
-      if (!desktopKind(reference.kind)) continue;
-      const operation = await this.readLifecycle(reference);
-      if (needsOriginalCheck(operation)) return { stopped: false, operation };
-    }
-  }
-  const { DesktopLifecycle } = require("./lifecycle.cjs");
-  const intent = await new DesktopLifecycle({
-    connection: this.requireConnection(),
-    metadata: this.metadata,
-    home: this.home,
-    forUpdate: desktopKind(kind),
-    purpose: kind === "stopDesktop" && observed?.purpose === "quit" ? "quit" : "manage",
-  }).prepare({ kind, mode, observed, projectId, threadId, turnId });
-  if (!this.metadata) throw new Error("后台连接元数据不可用");
-  /** @type {Reference} */
-  const reference = {
-    requestId,
-    kind,
-    mode,
-    desktopGeneration: intent.expectedDesktopGeneration,
-    targets: intent.expectedTargets,
-    desktop: { pid: this.metadata.pid, identity: this.metadata.identity },
-    ...(kind === "interruptTurn" ? { threadId, turnId, logicalProjectId: projectId } : {}),
-  };
-  this.lifecycleReferences.set(requestId, reference);
-  try {
-    await this.persistReferences();
-  } catch (error) {
-    this.lifecycleReferences.delete(requestId);
-    throw error;
-  }
-  this.lifecycleError = null;
-  this.onChange();
-  let operation;
-  try {
-    const receipt = await this.requireConnection().request(
-      "lifecycleRequest",
-      { protocol: PROTOCOL, requestId, ...intent },
-      true,
-    );
-    if (!receipt) throw Object.assign(new Error("后台操作回执缺失"), { submissionUnknown: true });
-    operation = await this.acceptLifecycleReceipt(reference, receipt);
-  } catch (error) {
-    if (
-      !desktopError(error).submissionUnknown &&
-      [...notAdmittedCodes].some((code) => code === desktopError(error).code)
-    ) {
-      this.lifecycleReferences.delete(requestId);
-      await this.persistReferences();
-      throw error;
-    }
-    operation = await this.readLifecycle(reference);
-  }
-  return {
-    stopped: operation.phase === "completed",
-    operation,
-    ...(desktopKind(kind) && operation.phase === "completed" ? { kind: "exited" } : {}),
-  };
-}
-
 /** @this {Backend}  @param {import('@areal/workbench/desktop-contract/desktop-control').HostUpdateRequest} request */
 async function hostUpdate(request) {
   if (this.hostUpdateInFlight) throw new Error("正在核查原升级请求，请稍后刷新");
@@ -697,7 +588,6 @@ module.exports = {
   readLifecycle,
   acceptLifecycleReceipt,
   assertLifecycleScope,
-  requestLifecycle,
   lifecycleProjection,
   desktopKind,
   needsOriginalCheck,

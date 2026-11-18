@@ -1,3 +1,4 @@
+import { readFixtureHost, settleFixtureHostAfterQuit } from "./application-cleanup.mjs";
 import { readTurnToolDetails } from "./support/tool-history.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
@@ -21,10 +22,6 @@ const sourceRenderer = resolve(
 );
 const require = createRequire(join(sourceDesktop, "package.json"));
 const { _electron: electron } = require("playwright-core");
-const { ServiceConnection, waitForServiceProcessExit } = require(
-  join(sourceDesktop, "src/core/service-client.cjs"),
-);
-const { DesktopLifecycle } = require(join(sourceDesktop, "src/core/lifecycle.cjs"));
 const binary = process.env.AREAL_CORE_BIN || join(root, "target/debug/areal");
 await mkdir(join(root, ".scratch/gui-evidence"), { recursive: true });
 const scratch = await trackedMkdtemp(join(root, ".scratch/gui-evidence/conversation-continue-"));
@@ -364,43 +361,18 @@ async function desktopMetadata() {
   }
   return metadata;
 }
-async function cleanup() {
+async function cleanup(host, pid) {
   const result = { passed: false, coreStopped: false, desktopExited: false, errors: [] };
-  const metadata = await desktopMetadata();
-  await coreInstances();
-  if (metadata) {
-    const connection = new ServiceConnection();
-    try {
-      await connection.connect(metadata);
-      await connection.request("hello", {
-        protocol: metadata.protocol,
-        identity: metadata.identity,
-      });
-      const lifecycle = new DesktopLifecycle({
-        connection,
-        metadata,
-        home: run.desktopHome,
-        notify: async () => ({ response: 1 }),
-      });
-      const observed = await lifecycle.observe();
-      assert.ok(
-        observed.projects.every((project) => project.root === workspace),
-        "desktop backend owns only this workspace",
-      );
-      await lifecycle.stop({ mode: "cancel", observed });
-      await waitForServiceProcessExit(run.desktopHome, metadata);
-      result.desktopExited = true;
-    } catch (error) {
-      result.errors.push(`Desktop: ${error.message}`);
-    } finally {
-      connection.close();
-    }
-  } else result.desktopExited = true;
   try {
-    result.coreServices = await stopService();
+    rpcClient?.close();
+    rpcClient = null;
+    await coreInstances();
+    result.hostStop = await settleFixtureHostAfterQuit(binary, env, scratch, { host, pid });
+    result.desktopExited = true;
+    result.coreServices = await coreInstances();
     result.coreStopped = true;
   } catch (error) {
-    result.errors.push(`Core: ${error.message}`);
+    result.errors.push(error.message);
   }
   result.passed = result.coreStopped && result.desktopExited && result.errors.length === 0;
   return result;
@@ -1538,6 +1510,14 @@ try {
   process.exitCode = 1;
   if (page) await captureSmokeFailure(page, scratch, error);
 } finally {
+  const guiPid = app?.process().pid;
+  let originalHost;
+  try {
+    originalHost = await readFixtureHost(env);
+  } catch (error) {
+    passed = false;
+    failure ||= error.stack || String(error);
+  }
   await checkpoint("capture final evidence and clean up owned services");
   if (app) {
     commands.push(
@@ -1555,7 +1535,7 @@ try {
     });
   }
   try {
-    cleanupResult = await cleanup();
+    cleanupResult = await cleanup(originalHost, guiPid);
   } catch (error) {
     cleanupResult = { passed: false, errors: [error.stack || String(error)] };
   }

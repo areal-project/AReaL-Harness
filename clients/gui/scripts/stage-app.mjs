@@ -17,7 +17,7 @@ const forbidden = new Set([
   "@areal/dsh-game-bundle",
   "@areal/workbench-service",
 ]);
-const fixtureOnlySources = new Set(["src/core/lifecycle.cjs", "src/core/service-connection.cjs"]);
+const fixtureOnlySources = new Set(["src/core/service-connection.cjs"]);
 function manifestAt(name, parent) {
   const req = createRequire(join(parent, "package.json"));
   const file = req.resolve

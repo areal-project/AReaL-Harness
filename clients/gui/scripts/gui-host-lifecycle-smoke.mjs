@@ -8,7 +8,12 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { connect } from "../../../examples/desktop-api/client.mjs";
 import { respondToSessionName } from "../../../scripts/model-fixture.mjs";
-import { assertApplicationStopped, stopAndAssertFixtureHost } from "./application-cleanup.mjs";
+import {
+  assertApplicationStopped,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
+  stopAndAssertFixtureHost,
+} from "./application-cleanup.mjs";
 
 const require = createRequire(new URL("../app/package.json", import.meta.url));
 const { GuiSourceSession } = require("@areal/client/gui-source");
@@ -276,6 +281,7 @@ try {
   checks.push("activity-observation-preserves-original-turn-and-settles-without-restart");
   core.socket.close();
   shell.close();
+  const originalHost = await readFixtureHost(process.env);
   originalStop = {
     kind: "stopHost",
     requestId: randomUUID(),
@@ -286,9 +292,10 @@ try {
   };
   const stopped = await observer.stop(originalStop.requestId, originalStop.generation, "ifIdle");
   assert.equal(stopped.state, "completed");
-  assert.deepEqual(await readOfflineHostReceipt(binary, originalStop), stopped);
-  await assertApplicationStopped(binary, process.env, { hostPid });
-  await writeFile(join(root, "host-stop.json"), JSON.stringify(stopped, null, 2));
+  assert.deepEqual(
+    await settleFixtureHostAfterQuit(binary, process.env, root, { host: originalHost }),
+    stopped,
+  );
   await writeFile(
     join(root, "result.json"),
     JSON.stringify(

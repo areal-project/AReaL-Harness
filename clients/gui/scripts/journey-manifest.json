@@ -103,7 +103,6 @@
         "schemas/local-service-v1.json",
         "clients/gui/app/src/core/main.cjs",
         "clients/gui/app/src/core/host-lifecycle.cjs",
-        "clients/gui/app/src/core/lifecycle.cjs",
         "services/workbench/src/desktop/core/lifecycle*.cjs",
         "services/workbench/src/desktop/core/resource-recovery.cjs"
       ]

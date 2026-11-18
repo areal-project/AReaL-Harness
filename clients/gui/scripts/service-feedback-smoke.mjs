@@ -2,30 +2,18 @@ import { until } from "./support/desktop-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { mkdir, readFile, writeFile, unlink, readdir } from "node:fs/promises";
+import { mkdir, readFile, writeFile, unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
-import { promisify } from "node:util";
-import { execFile, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 const gui = resolve(import.meta.dirname, "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
 const { applicationFixture } = await import("./application-fixture.mjs");
-const { closeSmokeApplication } = await import("./application-cleanup.mjs");
+const { closeSmokeApplication, readFixtureHost, settleFixtureHostAfterQuit } =
+  await import("./application-cleanup.mjs");
 const { createProjectConversation } = await import("./smoke-navigation.mjs");
-const { ServiceConnection } = require("../app/src/core/service-client.cjs");
-const { DesktopLifecycle } = require("../app/src/core/lifecycle.cjs");
-const execute = promisify(execFile);
-const alive = (pid) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if (error.code === "ESRCH") return false;
-    throw error;
-  }
-};
 const binary = process.env.AREAL_CORE_BIN || resolve(gui, "../../.local/dev-bin/areal");
 const scratch = await makeTempDir("areal-feedback-");
 const home = join(scratch, "core"),
@@ -312,11 +300,15 @@ try {
   await unlink(fault).catch((error) => {
     if (error.code !== "ENOENT") throw error;
   });
-  const metadata = await readFile(join(home, "service.json"), "utf8")
-    .then(JSON.parse)
-    .catch((error) => {
-      if (error.code !== "ENOENT") throw error;
-    });
+  const guiPid = app?.process().pid;
+  let originalHost;
+  try {
+    originalHost = await readFixtureHost(env);
+  } catch (error) {
+    errors.push("Host identity: " + error.message);
+    passed = false;
+    process.exitCode = 1;
+  }
   if (app) {
     await closeSmokeApplication(app).catch((error) => {
       errors.push("Electron cleanup: " + error.message);
@@ -324,52 +316,13 @@ try {
       process.exitCode = 1;
     });
   }
-  const connection = new ServiceConnection();
   try {
-    if (metadata && alive(metadata.pid)) {
-      try {
-        await connection.connect(metadata);
-        await connection.request("hello", {
-          protocol: metadata.protocol,
-          identity: metadata.identity,
-        });
-        await new DesktopLifecycle({
-          connection,
-          metadata,
-          home,
-          notify: async () => ({ response: 1 }),
-        }).stop({ mode: "cancel" });
-      } catch (error) {
-        assert.ok(!alive(metadata.pid), error.message);
-      }
-    }
-    const registrations = await readdir(join(registry, "services")).catch((error) => {
-      if (error.code === "ENOENT") return [];
-      throw error;
-    });
-    for (const id of registrations) {
-      const record = await readFile(join(registry, "services", id, "service.json"), "utf8")
-        .then(JSON.parse)
-        .catch((error) => {
-          if (error.code !== "ENOENT") throw error;
-        });
-      if (!record) continue;
-      assert.ok(record.dataDir.startsWith(home + "/"), "Cleanup only addresses this fixture data");
-      const run = (args) =>
-        execute(binary, ["service", ...args, "--instance", id, "--json"], {
-          env,
-          timeout: 30000,
-        }).then(({ stdout }) => JSON.parse(stdout));
-      if ((await run(["status"])).state !== "stopped") await run(["stop", "--cancel"]);
-      assert.equal((await run(["status"])).state, "stopped");
-    }
+    await settleFixtureHostAfterQuit(binary, env, scratch, { pid: guiPid, host: originalHost });
     checks.push("All fixture Core registrations are stopped after GUI exit");
   } catch (error) {
     errors.push("cleanup: " + error.message);
     passed = false;
     process.exitCode = 1;
-  } finally {
-    connection.close();
   }
   await fixture.close();
   await writeFile(

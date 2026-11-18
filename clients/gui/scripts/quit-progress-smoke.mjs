@@ -83,8 +83,8 @@ require('electron').dialog.showMessageBox = async (...args) => {
   record({ event: 'native-decision', response: globalThis.quitFixtureResponse });
   return { response: globalThis.quitFixtureResponse };
 };
-const stop = SharedCoreBackend.prototype.stopService;
-SharedCoreBackend.prototype.stopService = async function(...args) {
+const stop = SharedCoreBackend.prototype.requestHostStop;
+SharedCoreBackend.prototype.requestHostStop = async function(...args) {
   record({ event: 'stop-held' });
   const deadline = Date.now() + 120000;
   while (existsSync(${JSON.stringify(stopGate)})) {
@@ -555,7 +555,7 @@ try {
         errors,
         gui: { pid: child?.pid, exitCode: child?.exitCode, signalCode: child?.signalCode },
         boundaries:
-          "Isolated source Electron with real fixed Core and deterministic loopback SSE model. UI send and pause; real bridge creates a future scheduled task and visible native preview. Native WebContentsView identity/visibility observed through Main. Native folder picker and quit confirmation responses injected; confirmation is held to inspect the pre-approval UI. Stop gate delays before original stopService, with one known pre-stop failure. Final gate delays real prepareQuit after backend stop. Application-menu quit callback and native window close callback, no physical Command+Q. No packaged app or real provider.",
+          "Isolated source Electron with real fixed Core and deterministic loopback SSE model. UI send and pause; real bridge creates a future scheduled task and visible native preview. Native WebContentsView identity/visibility observed through Main. Native folder picker and quit confirmation responses injected; confirmation is held to inspect the pre-approval UI. Stop gate delays before the original Host stop request, with one known pre-stop failure. Final gate delays real prepareQuit after backend stop. Application-menu quit callback and native window close callback, no physical Command+Q. No packaged app or real provider.",
       },
       null,
       2,
