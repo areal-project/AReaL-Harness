@@ -91,9 +91,14 @@ pub fn projections() -> (Value, Value) {
     let status = object(
         json!({"readReady":boolean,"executionReady":boolean,"configuration":nullable(object(json!({"modelRevision":string,"restartRequired":boolean,"error":nullable(string.clone())}))),"apiVersion":{"const":API_VERSION},"stateVersion":number,"productVersion":string,"draining":boolean,"closed":boolean,"acceptingWork":boolean,"activeTasks":number,"activeGoals":array(string.clone()),"pendingQueueItems":number,"queues":array(object(json!({"threadId":string,"paused":boolean,"pending":number,"running":number}))),"activeTurns":array(object(json!({"threadId":string,"turnId":string}))),"resources":array(resource),"unresolvedTools":array(object(json!({"threadId":string,"itemId":string}))),"compactions":array(string.clone()),"workgroups":array(group_entry.clone()),"runtime":nullable(any_object.clone()),"capacity":object(json!({"threads":number,"maxThreads":number,"activeTurns":number,"maxActiveTurns":number,"historyBytesPerThread":number,"blobBytes":number})),"restartSafe":boolean,"lifecycle":lifecycle,"idleForMs":number}),
     );
-    let context_budget = object(
+    let mut context_budget = object(
         json!({"windowTokens":number,"outputReserveTokens":number,"inputLimitTokens":number,"targetTokens":number,"windowSource":{"enum":["model","fallback"]},"outputLimitTokens":nullable(number.clone()),"historyEstimatedTokens":number,"estimatedInputTokens":number,"estimateScope":{"const":"historyWithRecordedInstructionsAndCurrentTools"},"retentionStrategy":{"enum":["automatic","legacyRecentBoundary"]}}),
     );
+    // 指令基准断开后仍有新模型容量，旧指令的输入估算此时不可用。
+    context_budget["required"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|item| item != "estimatedInputTokens");
     let context = object(
         json!({"budget":nullable(context_budget),"threadId":string,"view":{"const":"historyProjectionForNextRequest"},"systemInstructionsIncluded":boolean,"instructionSnapshot":nullable(string.clone()),"checkpoint":nullable(schema::<ContextCheckpoint>()),"offset":number,"nextOffset":nullable(number.clone()),"data":array(object(json!({"role":string,"text":string,"toolCalls":array(any_object.clone()),"toolCallId":nullable(string.clone()),"opaqueProviderContextOmitted":boolean,"media":array(string.clone())})))}),
     );

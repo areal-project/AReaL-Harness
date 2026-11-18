@@ -144,3 +144,65 @@ test("scheduled scratch keeps its fixed owner without injecting caller submissio
   for (const extra of [{ requestId: "caller" }, { directory: "/outside" }])
     assert.throws(() => validateCommand("projectless", { ...request, ...extra }));
 });
+
+test("context reads preserve model capacity when the estimate is unavailable", () => {
+  const capacity = {
+    windowTokens: 64000,
+    outputReserveTokens: 4096,
+    inputLimitTokens: 59904,
+    windowSource: "user",
+  };
+  const response = {
+    budget: {
+      ...capacity,
+      targetTokens: 35942,
+      outputLimitTokens: null,
+      historyEstimatedTokens: 120,
+      estimateScope: "historyWithRecordedInstructionsAndCurrentTools",
+      retentionStrategy: "automatic",
+    },
+    threadId: "thread",
+    view: "historyProjectionForNextRequest",
+    systemInstructionsIncluded: true,
+    instructionSnapshot: "fixture instructions",
+    checkpoint: null,
+    offset: 0,
+    nextOffset: null,
+    data: [],
+    contextUsage: {
+      kind: "unavailable",
+      basis: {
+        provider: "fixture",
+        model: "alpha",
+        configurationRevision: 2,
+        defaultModelRevision: null,
+        turnId: "previous-turn",
+      },
+      budget: capacity,
+      reason: "instructionBasisChanged",
+    },
+    sessionUsage: {
+      scope: "ownTurns",
+      usage: { inputTokens: 120, cachedInputTokens: 20, outputTokens: 30 },
+      generation: {
+        outputTokens: 30,
+        durationMs: 200,
+        measuredRequests: 1,
+        unmeasuredRequests: 0,
+        usageRequests: 1,
+        missingUsageRequests: 0,
+      },
+      knownTurns: 1,
+      unknownTurns: 0,
+      partialTurns: 0,
+    },
+  };
+  const request = { operation: "context", projectId: "project", threadId: "thread" };
+  assert.doesNotThrow(() => validateCommandResponse("manage", request, response));
+  assert.throws(() =>
+    validateCommandResponse("manage", request, {
+      ...response,
+      budget: { ...response.budget, estimatedInputTokens: -1 },
+    }),
+  );
+});

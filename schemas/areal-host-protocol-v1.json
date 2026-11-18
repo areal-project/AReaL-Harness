@@ -33920,7 +33920,6 @@
               },
               "required": [
                 "estimateScope",
-                "estimatedInputTokens",
                 "historyEstimatedTokens",
                 "inputLimitTokens",
                 "outputLimitTokens",

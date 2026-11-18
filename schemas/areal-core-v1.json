@@ -44271,7 +44271,6 @@
               },
               "required": [
                 "estimateScope",
-                "estimatedInputTokens",
                 "historyEstimatedTokens",
                 "inputLimitTokens",
                 "outputLimitTokens",
@@ -44812,7 +44811,6 @@
               },
               "required": [
                 "estimateScope",
-                "estimatedInputTokens",
                 "historyEstimatedTokens",
                 "inputLimitTokens",
                 "outputLimitTokens",
