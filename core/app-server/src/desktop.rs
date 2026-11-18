@@ -181,6 +181,7 @@ pub(crate) async fn dispatch(
             | "areal/plugin/importArchive"
             | "areal/plugin/component/configure"
             | "areal/plugin/setup"
+            | "areal/queue/steer"
             | "areal/queue/update"
             | "areal/queue/remove"
             | "areal/queue/reorder"
@@ -221,7 +222,10 @@ pub(crate) async fn dispatch(
         let method = method.to_owned();
         let owner = identity.to_owned();
         let snapshot = params.clone();
-        if method == "areal/plugin/setup" || method == "areal/worktree/command" {
+        if matches!(
+            method.as_str(),
+            "areal/plugin/setup" | "areal/queue/steer" | "areal/worktree/command"
+        ) {
             params["requestId"] = json!(request);
         }
         let reply = engine

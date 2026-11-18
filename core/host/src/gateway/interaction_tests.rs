@@ -2459,9 +2459,16 @@ async fn loopback_attention_read_and_interaction_respond_share_connection_token_
                 ))
                 .await
                 .unwrap();
-            let hello: Value =
-                serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap())
-                    .unwrap();
+            let hello: Value = serde_json::from_str(
+                tokio::time::timeout(Duration::from_secs(5), socket.next())
+                    .await
+                    .expect("loopback response")
+                    .unwrap()
+                    .unwrap()
+                    .to_text()
+                    .unwrap(),
+            )
+            .unwrap();
             let gateway_generation = hello["result"]["gatewayGeneration"]
                 .as_str()
                 .unwrap()
@@ -2489,9 +2496,16 @@ async fn loopback_attention_read_and_interaction_respond_share_connection_token_
             f.call("areal/interaction/list")
                 .await
                 .reply(json!({"data":[Fixture::item("pending")]}));
-            let reviewed: Value =
-                serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap())
-                    .unwrap();
+            let reviewed: Value = serde_json::from_str(
+                tokio::time::timeout(Duration::from_secs(5), socket.next())
+                    .await
+                    .expect("loopback response")
+                    .unwrap()
+                    .unwrap()
+                    .to_text()
+                    .unwrap(),
+            )
+            .unwrap();
             assert_eq!(reviewed["id"], "read");
             let token = reviewed["result"]["reviewToken"].clone();
             assert!(token.is_string(), "{reviewed}");
@@ -2520,10 +2534,20 @@ async fn loopback_attention_read_and_interaction_respond_share_connection_token_
                 .reply(json!({"data":[Fixture::item("pending")]}));
             f.call("areal/interaction/respond")
                 .await
-                .reply(json!({"decision":"allowOnce","argumentsDigest":ORIGINAL_DIGEST}));
-            let responded: Value =
-                serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap())
-                    .unwrap();
+                .reply(json!({"answered":true,"requestId":"interaction"}));
+            f.call("areal/interaction/list")
+                .await
+                .reply(json!({"data":[Fixture::item("answered")]}));
+            let responded: Value = serde_json::from_str(
+                tokio::time::timeout(Duration::from_secs(5), socket.next())
+                    .await
+                    .expect("loopback response")
+                    .unwrap()
+                    .unwrap()
+                    .to_text()
+                    .unwrap(),
+            )
+            .unwrap();
             assert_eq!(responded["id"], "respond");
             assert_eq!(
                 responded["result"]["admissionState"], "accepted",

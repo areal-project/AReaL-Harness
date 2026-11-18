@@ -185,7 +185,10 @@ impl Engine {
                     "message":"mutation completed; response exceeds receipt budget; inspect authoritative state",
                     "data":{"reason":"RESPONSE_TOO_LARGE"}}});
             }
-            if let Some(error) = result.get_mut("error").and_then(Value::as_object_mut) {
+            // 队列引导的拒绝也要记账，防止同一请求再次运行 UserPromptSubmit hook。
+            let rejected_steer = operation.method == "areal/queue/steer"
+                && result.pointer("/error/data/outcome/kind").and_then(Value::as_str) == Some("rejected");
+            if !rejected_steer && let Some(error) = result.get_mut("error").and_then(Value::as_object_mut) {
                 let reason = error.get("data").and_then(|data| data.get("reason"))
                     .and_then(Value::as_str).filter(|value| valid_id(value))
                     .unwrap_or("OPERATION_FAILED").to_owned();

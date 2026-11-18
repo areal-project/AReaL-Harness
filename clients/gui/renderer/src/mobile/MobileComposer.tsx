@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button, DelayedVisible } from "@areal/ui";
+import { Disclosure } from "@areal/ui/experimental";
 import { Dialog, DialogContent, DialogTitle } from "@areal/ui";
 import { ConversationComposer } from "../ConversationComposer.js";
 import { RadioGroup } from "@base-ui/react/radio-group";
@@ -32,6 +33,7 @@ const errors: Record<string, MessageId> = {
   CORE_UNAVAILABLE: "mobile.projectCoreUnavailable",
   LIMIT_EXCEEDED: "mobile.requestLimited",
   FORBIDDEN: "mobile.submitForbidden",
+  CONNECTION_CLOSED: "mobile.connectionClosed",
   REQUEST_TIMEOUT: "mobile.requestTimedOut",
   START_SEPARATE_FAILED: "mobile.startSeparateFailed",
   UNSUPPORTED_PROFILE: "mobile.unsupportedProfile",
@@ -96,7 +98,7 @@ export function MobileComposer({
   );
   const intent = commands.intent(projectId, threadId);
   const pending = commands.unresolved(projectId, threadId);
-  const visiblePending = commands.visibleUnresolved(projectId, threadId);
+  const detached = pending.filter((value) => value.detached);
   const currentPending = pending.some((value) => !value.detached);
   const visibleError = commands.errorFor(projectId, threadId);
   const checking = command.busy || command.recovering;
@@ -185,6 +187,48 @@ export function MobileComposer({
     void commands.send();
     return false;
   };
+  const renderNotice = (value: (typeof pending)[number]) => (
+    <div
+      className="mobile-command-notice flex flex-wrap items-center gap-inline"
+      key={value.commandId}
+      data-command-state={value.admissionState}
+      data-command-id={value.commandId}
+    >
+      <p role="status">
+        {t(
+          value.detached
+            ? "mobile.separateConversationReady"
+            : value.admissionState === "notFound"
+              ? "mobile.receiptNotFound"
+              : value.method === "session.create"
+                ? "mobile.createUnknown"
+                : "mobile.commandUnknown",
+        )}
+      </p>
+      <Button
+        className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
+        variant="outline"
+        data-action="query-command"
+        disabled={!connected || value.checkingReceipt}
+        onClick={() => void commands.query(value)}
+      >
+        {t("mobile.queryCommand")}
+        {value.detached && detached.length > 1 ? " · " + value.commandId.slice(0, 8) : ""}
+      </Button>
+      {value.method === "session.create" &&
+        value.admissionState === "notFound" &&
+        !value.detached && (
+          <Button
+            className="mobile-touch min-h-[var(--size-touch-target)]"
+            variant="ghost"
+            disabled={!connected || value.checkingReceipt}
+            onClick={() => void commands.startSeparateConversation(value)}
+          >
+            {t("mobile.startSeparateConversation")}
+          </Button>
+        )}
+    </div>
+  );
   return (
     <>
       <div
@@ -209,48 +253,16 @@ export function MobileComposer({
             {t("mobile.commandPending")}
           </p>
         </DelayedVisible>
-        {!checking &&
-          visiblePending.map((value) => (
-            <div
-              className="mobile-command-notice flex flex-wrap items-center gap-inline"
-              key={value.commandId}
-              data-command-state={value.admissionState}
-              data-command-id={value.commandId}
-            >
-              <p role="status">
-                {t(
-                  value.detached
-                    ? "mobile.separateConversationReady"
-                    : value.admissionState === "notFound"
-                      ? "mobile.receiptNotFound"
-                      : value.method === "session.create"
-                        ? "mobile.createUnknown"
-                        : "mobile.commandUnknown",
-                )}
-              </p>
-              <Button
-                className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
-                variant="outline"
-                data-action="query-command"
-                disabled={!connected || value.checkingReceipt}
-                onClick={() => void commands.query(value)}
-              >
-                {t("mobile.queryCommand")}
-              </Button>
-              {value.method === "session.create" &&
-                value.admissionState === "notFound" &&
-                !value.detached && (
-                  <Button
-                    className="mobile-touch min-h-[var(--size-touch-target)]"
-                    variant="ghost"
-                    disabled={!connected || value.checkingReceipt}
-                    onClick={() => void commands.startSeparateConversation(value)}
-                  >
-                    {t("mobile.startSeparateConversation")}
-                  </Button>
-                )}
-            </div>
-          ))}
+        {!checking && pending.filter((value) => !value.detached).map(renderNotice)}
+        {!checking && detached.length === 1 && renderNotice(detached[0])}
+        {!checking && detached.length > 1 && (
+          <Disclosure
+            label={`${t("mobile.previousCreationRequests")} (${detached.length})`}
+            textRole="interface"
+          >
+            {detached.map(renderNotice)}
+          </Disclosure>
+        )}
         {!isNew && snapshot?.queue && (
           <ComposerQueue
             project={project}

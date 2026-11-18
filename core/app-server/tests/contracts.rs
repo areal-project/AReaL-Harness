@@ -917,7 +917,7 @@ async fn ordinary_admission_capabilities_and_rpc_errors_are_explicit() {
         108,
         "areal/queue/steer",
         json!({
-            "requestId": uuid::Uuid::new_v4().to_string(),
+            "requestId": "stale-steer",
             "threadId": id,
             "expectedRevision": 99,
             "queueItemId": "missing-item",
@@ -930,6 +930,16 @@ async fn ordinary_admission_capabilities_and_rpc_errors_are_explicit() {
         stale_steer["error"]["data"]["outcome"]["kind"], "rejected",
         "{stale_steer}"
     );
+    let (receipt, _) = call(
+        &mut socket,
+        109,
+        "areal/request/read",
+        json!({"threadId":id,"requestId":"stale-steer"}),
+    )
+    .await;
+    let records = receipt["result"]["data"].as_array().unwrap();
+    assert_eq!(records.len(), 1, "{receipt}");
+    assert_eq!(records[0]["error"], stale_steer["error"], "{receipt}");
     // 暂停和继续不覆盖任何内容，版本过期也照常执行。
     for (request, method, paused) in [
         (106, "areal/queue/pause", true),

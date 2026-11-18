@@ -140,12 +140,6 @@ export class MobileCommands {
         this.commands.unresolved(command),
     );
   }
-  visibleUnresolved(projectId, threadId = "") {
-    const pending = this.unresolved(projectId, threadId);
-    const latestDetached = pending.filter((value) => value.detached).at(-1);
-    // 同一项目只展示最近一条已另开会话的核对提示，避免多条相同横幅在 composer 上方堆叠。
-    return pending.filter((value) => !value.detached || value === latestDetached);
-  }
   blocksSend(projectId, threadId = "") {
     const snapshot = this.workspace.state.detail?.snapshot;
     return this.unresolved(projectId, threadId).some(
@@ -646,7 +640,7 @@ export class MobileCommands {
       this.commands.commands.delete(key);
       this.commands.commands.set(this.commandKey(command), command);
     } catch {
-      this.publish({ error: "START_SEPARATE_FAILED" });
+      this.publish({ error: "START_SEPARATE_FAILED", errorTarget: this.pageTarget(page) });
     } finally {
       this.detachingCreation = null;
       this.finish();

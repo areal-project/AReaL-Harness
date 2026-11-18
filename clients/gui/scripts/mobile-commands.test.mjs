@@ -771,7 +771,12 @@ test("remote timeouts and disconnects carry explicit unknown codes and longer wr
     context: { projectId: "project" },
     params: {},
   });
+  const pendingRead = connection.request({ method: "session.open", params: {} });
   connection.rejectPending();
+  await assert.rejects(
+    pendingRead,
+    (error) => error.code === "CONNECTION_CLOSED" && !error.submissionUnknown,
+  );
   await assert.rejects(
     pendingClose,
     (error) => error.code === "SUBMISSION_UNKNOWN" && error.submissionUnknown === true,
@@ -798,7 +803,7 @@ test("send errors are scoped to their target page and cleared when navigating el
   assert.equal(f.commands.snapshot().error, null);
 });
 
-test("visibleUnresolved collapses older detached creation locators for a project", async () => {
+test("each detached creation locator remains individually queryable", async () => {
   const f = await fixture();
   const request = f.client.request;
   f.client.request = async (envelope) => {
@@ -822,8 +827,18 @@ test("visibleUnresolved collapses older detached creation locators for a project
   }
 
   assert.equal(f.commands.unresolved("project").length, 2);
-  const visible = f.commands.visibleUnresolved("project");
-  assert.equal(visible.length, 1);
-  assert.equal(visible[0].commandId, f.record().locators[1].commandId);
-  assert.equal(visible[0].detached, true);
+  const checked = [];
+  f.client.request = async (envelope) => {
+    checked.push(envelope.params.commandId);
+    return {
+      commandId: envelope.params.commandId,
+      admissionState: "notFound",
+      submissionUnknown: true,
+    };
+  };
+  for (const command of f.commands.unresolved("project")) await f.commands.query(command);
+  assert.deepEqual(
+    checked,
+    f.record().locators.map((locator) => locator.commandId),
+  );
 });

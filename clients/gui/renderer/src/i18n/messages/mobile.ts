@@ -352,6 +352,14 @@ export const mobileMessages = {
     "zh-CN": "请求过于频繁，请稍后重试。",
     en: "Too many requests. Try again shortly.",
   },
+  "mobile.connectionClosed": {
+    "zh-CN": "与电脑的连接已断开。",
+    en: "Disconnected from the computer.",
+  },
+  "mobile.previousCreationRequests": {
+    "zh-CN": "查看之前的创建请求",
+    en: "View earlier creation requests",
+  },
   "mobile.requestTimedOut": {
     "zh-CN": "等待电脑响应超时，草稿已保留。",
     en: "The computer took too long to respond. Your draft is retained.",
