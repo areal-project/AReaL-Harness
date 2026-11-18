@@ -87,8 +87,4 @@ function serviceOptions(app) {
       : undefined,
   };
 }
-// 过渡：到 0.2.0 删（仅供旧后台显式恢复使用）。
-/** @type {typeof import('@areal/workbench-service/desktop/core/service-identity.cjs').serviceIdentity} */
-const serviceIdentity = (options) =>
-  require("@areal/workbench-service/desktop/core/service-identity.cjs").serviceIdentity(options);
-module.exports = { ...bootstrap, configureUserData, serviceHome, serviceOptions, serviceIdentity };
+module.exports = { ...bootstrap, configureUserData, serviceHome, serviceOptions };

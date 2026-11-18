@@ -13,7 +13,6 @@ const {
   nativeImage,
   WebContentsView,
   shell,
-  powerMonitor,
   Notification,
   crashReporter,
   session,
@@ -710,18 +709,6 @@ function startDesktop() {
             onNotification: (notice) =>
               showCoreNotification(Notification, window ?? null, notice, openNotificationTarget),
             onNotificationOpen: openNotificationTarget,
-            onRecoveryAttention: (attention) => {
-              if (!Array.isArray(attention) || !attention.every((item) => typeof item === "string"))
-                throw new Error("Invalid recovery attention");
-              return showMessageBox({
-                type: "warning",
-                message: nativeText("recovery.attention"),
-                detail: attention.join("\n\n") + nativeText("recovery.attentionDetail"),
-                buttons: [nativeText("recovery.review")],
-                defaultId: 0,
-                cancelId: 0,
-              });
-            },
           });
           backend = serviceBackend;
           let connectedOnce = false;
@@ -1257,60 +1244,17 @@ function startDesktop() {
             publish();
           })();
           await windowLoaded;
-          const activityPauses = new Set();
-          const sampleActivity = () => {
-            refreshHostMenu();
-            serviceBackend.analytics.sample({
-              focused:
-                !!window &&
-                !window.isDestroyed() &&
-                window.isFocused() &&
-                window.isVisible() &&
-                !window.isMinimized(),
-              idleSeconds: powerMonitor.getSystemIdleTime(),
-              suspended: activityPauses.size > 0,
-            });
-          };
-          const activityTimer = setInterval(sampleActivity, 5000);
-          const saveTimer = setInterval(() => {
-            void serviceBackend.analytics.flush();
-          }, 30000);
+          const menuTimer = setInterval(refreshHostMenu, 5000);
           window
-            ?.on("focus", sampleActivity)
-            .on("blur", sampleActivity)
-            .on("hide", sampleActivity)
-            .on("minimize", sampleActivity)
-            .on("restore", sampleActivity);
-          /** @param {"suspend"|"lock-screen"} event */
-          const pauseActivity = (event) => {
-            sampleActivity();
-            activityPauses.add(event);
-            sampleActivity();
-            void serviceBackend.analytics.flush();
-          };
-          powerMonitor
-            .on("suspend", () => pauseActivity("suspend"))
-            .on("lock-screen", () => pauseActivity("lock-screen"));
-          /** @param {"suspend"|"lock-screen"} pause */
-          const resumeActivity = (pause) => {
-            activityPauses.delete(pause);
-            sampleActivity();
-          };
-          powerMonitor
-            .on("resume", () => resumeActivity("suspend"))
-            .on("unlock-screen", () => resumeActivity("lock-screen"));
-          app.on("before-quit", () => {
-            if (exitReady || quitting) return;
-            sampleActivity();
-            void serviceBackend.analytics.flush();
-          });
-          app.on("will-quit", () => {
-            clearInterval(activityTimer);
-            clearInterval(saveTimer);
-          });
-          sampleActivity();
+            ?.on("focus", refreshHostMenu)
+            .on("blur", refreshHostMenu)
+            .on("hide", refreshHostMenu)
+            .on("minimize", refreshHostMenu)
+            .on("restore", refreshHostMenu);
+          app.on("will-quit", () => clearInterval(menuTimer));
+          refreshHostMenu();
           await serviceStarted;
-          sampleActivity();
+          refreshHostMenu();
           return !!window && !window.isDestroyed() && serviceBackend.status.connected;
         },
         (ready) => (ready ? "ok" : "unknown"),

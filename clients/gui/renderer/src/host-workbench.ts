@@ -644,6 +644,7 @@ const HOST_ONLY_DESKTOP_COMMANDS = new Set([
   "recovery",
   "remoteControl",
   "side",
+  "stop",
   "workspace",
 ]);
 

@@ -83,13 +83,12 @@ async function waitForProcessExit(pid) {
 /** @typedef {import('./lifecycle.cjs').RecoveryObservation} Observation */
 /** @typedef {import('@areal/workbench-service/desktop/core/resource-recovery.cjs').Notify} Notify */
 /** @typedef {{projectId:string,threadId:string,id:string}} GuiTerminal */
-/** @typedef {{focused:boolean,idleSeconds:number,suspended?:boolean}} Activity */
 /** @typedef {{kind:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleKind,mode?:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleMode,observed?:Observation,projectId?:string,threadId?:string,turnId?:string,requestId?:string}} LifecycleOptions */
 /** @typedef {{stopped:boolean,operation:Receipt,kind?:string}} LifecycleResult */
 /** @typedef {{stopped:boolean,operation:import('@areal/workbench/desktop-contract/shared').LifecycleViewOperation,receipt?:import('./host-lifecycle.cjs').HostReceipt}} HostLifecycleResult */
 // GUI-local connection/projection only. Control intent lives in GUI userData;
 // shared Core history and execution state remain owned by the service.
-/** @typedef {Omit<Partial<import('@areal/workbench-service/desktop/core/backend.cjs').CoreBackendOptions>,'home'|'onChange'> & {home:string,configHome?:string,app:Pick<Electron.App,'getPath'> & Partial<Pick<Electron.App,'isPackaged'|'getAppPath'>>,onChange?:()=>void,onNotification?:(value:unknown)=>void,onNotificationOpen?:(value:unknown)=>void,onRecoveryAttention?:(value:unknown)=>void,prerequisiteCheck?:typeof checkHostPrerequisites}} SharedBackendOptions */
+/** @typedef {Omit<Partial<ReturnType<typeof import('./service-config.cjs').serviceOptions>>,'home'> & {home:string,configHome?:string,app:Pick<Electron.App,'getPath'> & Partial<Pick<Electron.App,'isPackaged'|'getAppPath'>>,onChange?:()=>void,onNotification?:(value:unknown)=>void,onNotificationOpen?:(value:unknown)=>void,prerequisiteCheck?:typeof checkHostPrerequisites}} SharedBackendOptions */
 class SharedCoreBackend {
   /** @param {SharedBackendOptions} options */
   constructor({
@@ -97,7 +96,6 @@ class SharedCoreBackend {
     onChange = () => {},
     onNotification,
     onNotificationOpen,
-    onRecoveryAttention,
     prerequisiteCheck = checkHostPrerequisites,
     ...options
   }) {
@@ -134,8 +132,6 @@ class SharedCoreBackend {
     this.shutdownPromise = undefined;
     /** @type {Promise<unknown>|null|undefined} */
     this.recoveryInFlight = undefined;
-    /** @type {Activity|undefined} */
-    this.lastActivity = undefined;
     /** @type {(()=>void)|undefined} */
     this.onBrowserDisconnected = undefined;
     /** @type {Awaited<ReturnType<typeof createNativeHostTransport>>|undefined} */
@@ -157,7 +153,6 @@ class SharedCoreBackend {
     this.prerequisiteCheck = prerequisiteCheck;
     this.onNotification = onNotification;
     this.onNotificationOpen = onNotificationOpen;
-    this.onRecoveryAttention = onRecoveryAttention;
     this.app = app;
     this.options = options;
     this.home = options.home;
@@ -202,15 +197,6 @@ class SharedCoreBackend {
     this.hostStopInFlight = undefined;
     /** @type {Map<string,Receipt>} */
     this.lifecycleReceipts = new Map();
-    this.analytics = {
-      /** @param {Activity} sample */
-      sample: (sample) => {
-        this.lastActivity = sample;
-        if (this.status.connected)
-          void this.connection?.request("activity", sample).catch(() => {});
-      },
-      flush: async () => {},
-    };
   }
   requireConnection() {
     if (!this.status.connected || !this.connection)
@@ -922,26 +908,11 @@ class SharedCoreBackend {
     if (name === "connect" && !this.status.connected) await this.init();
     if (this.disposed) throw new Error("GUI 连接已关闭");
     if (!this.status.connected) throw new Error("后台尚未连接，请先处理后台连接提示");
-    if (name === "stop") {
-      if (
-        !uuid(request.requestId) ||
-        typeof request.turnId !== "string" ||
-        !request.turnId ||
-        typeof request.projectId !== "string" ||
-        typeof request.threadId !== "string"
-      )
-        throw Object.assign(new Error("暂停需要原轮次和操作身份，请刷新任务后重试"), {
-          code: "LIFECYCLE_INVALID_REQUEST",
-        });
-      return this.requestLifecycle({
-        kind: "interruptTurn",
-        mode: "cancel",
-        projectId: request.projectId,
-        threadId: request.threadId,
-        turnId: request.turnId,
-        requestId: request.requestId,
+    if (name === "stop")
+      throw Object.assign(new Error("请通过 Host 暂停当前轮次"), {
+        code: "CAPABILITY_UNAVAILABLE",
+        outcome: { kind: "noMutation" },
       });
-    }
     this.assertLifecycleScope(name, request);
     if (["projectless", "resources", "prepareCreator", "cloud", "cloudSession"].includes(name)) {
       const epoch = this.nativeBrowserEpoch;
@@ -1597,10 +1568,6 @@ class SharedCoreBackend {
     return (this.shutdownPromise = (async () => {
       try {
         await this.settleGuiTerminals();
-        if (this.status.connected && this.connection)
-          await this.requireConnection()
-            .request("activity", { focused: false, idleSeconds: 0 })
-            .catch(() => {});
       } finally {
         this.closeNativeBrowser();
         this.terminalConnections.close();

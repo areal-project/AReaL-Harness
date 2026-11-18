@@ -2,16 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createRequire } from "node:module";
 import {
-  cp,
   mkdtemp,
   mkdir,
   readFile,
-  readdir,
   writeFile,
   rm,
   realpath,
   stat,
-  symlink,
   utimes,
   chmod,
 } from "node:fs/promises";
@@ -28,7 +25,7 @@ const {
   PROTOCOL,
   COMMAND_CONTRACT,
 } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
-const { serviceIdentity } = require("../app/src/core/service-config.cjs");
+const { serviceIdentity } = require("@areal/workbench-service/desktop/core/service-identity.cjs");
 const { WebSocketServer } = require("../app/node_modules/ws");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -114,7 +111,6 @@ async function connectAdapter(backend, adapter) {
     });
     backend.browserHostOwned = packet?.browserHostOwned === true;
     backend.accept(packet, metadata);
-    if (backend.lastActivity) await connection.request("activity", backend.lastActivity);
   } catch (error) {
     backend.connection = null;
     connection.close();
@@ -1037,55 +1033,6 @@ test("deployment identity tracks actual executable content and ignores mtime alo
     );
     await writeFile(path, original);
   }
-});
-
-test("deployment identity includes split contracts and relocated workbench domains", async (t) => {
-  const f = await startupFixture(t);
-  const deployment = join(f.home, "deployment");
-  const core = join(deployment, "src/core");
-  await mkdir(core, { recursive: true });
-  for (const name of ["service-config.cjs", "space-bootstrap.cjs"])
-    await cp(require.resolve("../app/src/core/" + name), join(core, name));
-  await cp(
-    require.resolve("@areal/workbench-service/desktop/workspace-files.js"),
-    join(deployment, "src/workspace-files.js"),
-  );
-  const modules = join(deployment, "node_modules/@areal");
-  await mkdir(modules, { recursive: true });
-  const originalModules = require
-    .resolve("../app/package.json")
-    .replace(/package\.json$/, "node_modules/@areal");
-  for (const name of await readdir(originalModules)) {
-    if (name === "workbench") {
-      await mkdir(join(modules, name));
-      await cp(join(originalModules, name, "client"), join(modules, name, "client"), {
-        recursive: true,
-      });
-      await cp(join(originalModules, name, "package.json"), join(modules, name, "package.json"));
-    } else if (name === "workbench-service") {
-      await mkdir(join(modules, name));
-      await cp(join(originalModules, name, "src"), join(modules, name, "src"), { recursive: true });
-      await cp(join(originalModules, name, "package.json"), join(modules, name, "package.json"));
-    } else await symlink(join(originalModules, name), join(modules, name), "dir");
-  }
-  const { serviceIdentity: identity } = require(join(core, "service-config.cjs"));
-  const before = await identity(f.backend.options);
-  const catalog = join(modules, "workbench/client/desktop-contract/catalog.cjs");
-  const content = await readFile(catalog, "utf8");
-  await writeFile(catalog, content + "\n// 兼容性回归：模拟拆分协议变更。\n");
-  assert.notEqual(
-    await identity(f.backend.options),
-    before,
-    "split protocol edits must mark the retained backend for update",
-  );
-  await writeFile(catalog, content);
-  assert.equal(await identity(f.backend.options), before);
-  const domain = join(modules, "workbench-service/src/generated/host-core-client.cjs");
-  const original = await readFile(domain, "utf8");
-  await writeFile(domain, original + "\n// 兼容性回归：迁出领域仍参与后台身份。\n");
-  assert.notEqual(await identity(f.backend.options), before);
-  await writeFile(domain, original);
-  assert.equal(await identity(f.backend.options), before);
 });
 
 test("known blocked update stays connected and permits unrelated reads and writes", async (t) => {

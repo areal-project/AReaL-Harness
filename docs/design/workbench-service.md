@@ -1,117 +1,35 @@
 **中文** | [English](workbench-service.en.md)
 
-# 工作台服务迁移记录
+# 工作台业务与桌面附件
 
-本文记录已退役的 Node 工作台监督和私有管道。当前 Host 直接执行业务，并通过原生附件提供桌面浏览器回调。现行边界见[架构](architecture.md)。
-
-A3 将桌面后台整体交给 Host 监督。Main 以客户端身份连接，窗口、系统加密、浏览器和电脑控制仍由 Electron 外壳提供。决策见 [ADR 0017](../adr/0017-one-protocol-one-ui.md)，工作包见[一套协议规格](../development/one-protocol-spec.md)。领域协议与原生能力接线尚未全部完成，不能据此宣称 A3 已验收。
-
-## 所有权与迁移
-
-Worktree、资料库、任务目录等共用项目连接、会话生命周期、写队列和 journal。逐领域重建这些依赖会复制后台。因此先复用 `CoreBackend` 与 `DesktopService`，由 `services/workbench/src/backend-main.cjs` 启动，再按需把单项目逻辑下沉 Core、跨项目逻辑改写进 Host。搬运与改写分开；对应路径验收后才删 Main 的旧实现。
-
-公共客户端只连接 Host。后台保留已认证的私有 attach 监听供 Main 连接，它不是浏览器或手机的业务入口。项目连接与监督统一归 Host，后台经有限的 `core.request` 白名单读写 Core。Main 的领域回退也使用绑定原附件的 Host 连接；观察与终端使用独立租约，断开不会关闭其它客户端的项目连接。Core 与 Runtime 的权威和清理责任保持不变。
-
-Side Chat 的窗口资源由工作台服务按 Host 注入的认证连接归属登记。窗口关闭时，Main 仅请求原主 frame 确认；Renderer 经同一 Host 连接结算该连接的在途创建与原关闭回执，确认清理后 Main 才隐藏窗口。连接断开也结算原连接资源；UNKNOWN 保留原请求并查询，不换 ID 重发，不关闭其他连接的 Side。重新显示只开放已结算的原连接。Host 页面会话不计为 GUI 窗口，真实第二个 GUI 仍阻止需要独占窗口的生命周期操作。
-
-GUI 只由 Host 监督后台，没有界面开关。现有 GUI 须正常退出后重开，不热切换活跃写者；Host 启动失败时保留错误和原回执，不回退到 Main 新建后台。原单实例锁与未退役后台身份检查继续阻止接管。数据目录保持原 GUI 目录，Host 核对已登记的导航来源和 Core 路径，不搬数据。一个 Host 当前只接管一个后台配置；配置不一致拒绝复用，不静默切换来源。
-
-GUI 升级先等待来源和安全项目发布，再启动后台；原生凭据适配器用独立连接继续原槽导入和清理，不占用后台就绪门。一个项目或槽待确认时，其余已确认资源可用；未确认项保留迁移状态。解锁后重新打开 GUI 会核对原迁移，项目重新连接也只推进原项目交接，不恢复旧写者或重放 UNKNOWN。 项目启动用同一规范配置解析确认模型依赖：未依赖的在途或迁移中槽仅从本次启动延后，不清除缓存；选中槽或依赖不明时仍等待原操作。
-
-`CoreBackend`、`DesktopService` 与运行时依赖闭包位于 `services/workbench/src/desktop`；轨迹与反馈位于 `src/domains`。资料库修改统一使用 Host 命令与 patch，后台不再装配可切换的暂存写入器。后台通过 `@areal/workbench-service` 加载，Host 接管与 Main 回退共用唯一实现。Main 保留应用配置、连接客户端和原生生命周期客户端；部署身份包含服务源码、拆分协议与生成的 Host 客户端。服务包是 GUI 的显式 workspace 依赖，由现有依赖分发器连同资源和依赖闭包装入 `app.asar`，不依赖 `Resources/areal-workbench` 向兄弟归档隐式解析模块。
-
-GUI 项目首次启动输入现由 Rust Host 准备：项目登记后沿原数据目录保存配置、钩子与资源部署，后续 Core 启动复用既有启动器。默认 Profile 与内置 Skill 的唯一受控资产位于共享 `@areal/workbench` 包；Host 编译其固定内容并核对清单，避免依赖 ASAR 内部路径或工作台子进程生成文件。该边界不改变 Core Store 或来源导入契约。
-
-资源设置的技能扫描、读取、保存、启停与 hooks 编辑由 Rust Host 执行，Main 经原生认证通道调用；网页沿同一资源命令进入。技能选择与启动物化共用扫描器，hooks 保存校验原修订，启动使用内容摘要命名的不可变副本。保存成功与运行中的 Core 已应用分开报告。新建会话与定时执行在准入前比较当前候选配置；需要更新时复用原 `schedule-refresh` 日志，先记录候选输入与原代际，再排空、确认清理、重启并恢复插件。已绑定或 UNKNOWN 的创建只核对原回执，不切换代际重发。Skill Creator 准备沿同一更新路径，并由 Core 核对所选 Profile 中内置 Skill 的精确版本。
-
-## 进程监督
-
-Host 复用 `workbench_route.rs` 与 `workbench.rs` 的监督机制，承接尚未迁完的桌面后台；使用统计已由 Rust Host 直接持有：
-
-- 本机认证控制方法 `backend.ensure` 启动或复用后台，`backend.status` 返回 Host 代次、PID 与后台身份，不返回私有连接令牌。浏览器不能调用这两个控制方法。
-- 启动参数经私有管道传入；子进程清空环境后仅保留运行所需变量。后台使用原用户 home，数据目录以显式 options 为准。
-- GUI 通过本机 `backend.credentialNames` 查询配置声明的普通环境凭据名（模型 `api_key_env` 与轨迹 `headers_env`），排除安全存储专用的 `AREAL_CREDENTIAL_` 前缀，再以 `backend.ensure.environmentCredentials` 交接值。凭据只保存在匹配来源和后台身份的 Host 内存中，不进入启动记录；同代接入也更新凭据，省略字段保留原值，显式空映射清除原值。配置解析失败返回 `configurationError:true`，GUI 不提交凭据变更，仍可启动后台进入设置修复；模型配置读取继续报告原错误。
-- 发行布局从签名应用的 `Resources/areal-workbench` 发现入口，验证签名与清单，使用包内 Electron 的 Node 模式。源码 debug 布局可从相邻仓库发现服务并使用 PATH 中的 Node，无须构建 GUI 安装包；发行构建不接受此发现路径。
-- 子进程以 `ready` 帧报告方法和身份；启动超时为 20 秒。首次观察到的异常退出允许立即恢复，10 分钟窗口内的后续失败按 1、2、4…秒退避，累计 5 次失败后不再自动重启。
-- Main detach 不结束 Host 后台。Host 停止时关闭管道，后台等在途操作结束后退出；5 秒仍不退出则终止本次子进程。
-- Host 确认子进程退出后，清理与自己持有的 PID、身份和桌面代次完全匹配的 `service.json`；子进程关闭异常或被强制结束也不能遗留自己的发现记录，其他后台的记录保持原样。
-- 启动前在来源目录保存 `backend-owner.json`，绑定 Host 身份、代际与本次启动身份；工作台从创建 `service.json` 开始携带同一所有权，并继承 `backend.lock` 的独占租约。新 Host 只有取得该锁且残留登记与持久身份匹配时才能退役旧记录，覆盖 ready 前崩溃；缺少所有权证明或身份不符的历史记录保留并报告。
- - 用户重新打开 GUI 是一次显式连接：先核查原停止回执，已结算后可启动新后台；同一窗口停止后的自动重连仍保留停止意图。显式启动与自动重连共用初始化和原回执核查入口；未结算时只恢复观察，不能先启动替代后台再核查，也不重放写请求。
-- 交接中断后重装不同构建，或其他客户端先启动了不同构建的 Host，先按原请求核查停止回执并确认原 Host 退出，再独立核对当前安装包与运行中的 Host；原结果未确认时保留交接记录，不把原请求改绑到新包或新代际。
-- 交接停止完成后，启动等待原 Host 的独占锁释放，并通过同一 Host 身份的新认证代际确认接管；历史 PID 的存在、消失或权限错误不作为原实例退出的证明。
-
-## 协议与回执
-
-Host 与服务通过私有 Unix socket pair 传送逐行 JSON，带 `version: 1`，单帧上限 64 MiB。公共客户端仍受自己的协议帧上限限制。方法在 `schemas/areal-host-protocol-v1.json` 登记为 `x-owner: workbench`，还必须在 Host 白名单及服务 `ready` 中出现；没有通用后台 RPC。`lifecycle.dependencies.lifecycleGeneration` 只读投影当前生命周期代次；Worktree 删除把原 Host 停止回执嵌入既有桌面生命周期回执，不改变停止或恢复语义。
-
-`library.command` 接受有界的整理操作：重命名、置顶、分区、移动、排序、拖放、已读、隐藏项目及导航显示偏好。请求必须绑定 `sourceId` 并匹配当前后台，不能把另一个 GUI 来源的整理误写入当前资料库。成功回执返回与导航读模型同样过滤的资料库状态，不透传桌面配置或缓存正文。Host 在副作用前写入 journal，以主体和 `commandId` 隔离回执。相同语义的重复请求返回原回执；同 ID 不同语义报 `COMMAND_CONFLICT`。没有可信回复的操作保持 `submissionUnknown`，`command.read` 查询原 ID，不自动重发，也不退回 Main 重做。当前无法从后台补证的 UNKNOWN 会一直保留，不能显示为成功。
-
-这些领域方法目前只经本机回环连接开放。普通浏览器须经本机认证的 `web.approve` 显式获得范围，旧授权默认只有 `observe`。共享界面单独按资料库能力开放整理入口，不因此打开发送、归档或原生入口。`manage` 才允许资料库整理和统计导入，不能因此获得提交或审批能力。浏览器回执按设备隔离，撤销授权后连接失效。远程 Noise 设备的跨项目领域授权尚未接通，不能复用本机授权绕过项目范围。
-
-`worktree.read` 与 `worktree.command` 复用原 Worktree 的列举、设置、环境配置、创建、读取、打开、取消、动作和删除实现，保留领域 `requestId` 与既有生命周期记录；Host 写回执绑定方法、来源和参数，不能用相同 ID 改做其他操作。`tasks.read` 复用目录的 list、preview、observe、inbox；preview 保留 published/unobserved 语义，不因浏览目录启动已停止的 Core。当前两个领域在本机浏览器要求 manage，远程项目范围授权仍待接通。
-
-`manage.read/command` 复用后台原实现，只开放有界的管理操作。读包含任务读取、调度上下文与预览、任务列表与收件箱、运行记录、插件（列表、详情、组件、hooks、MCP）、配置（服务状态、Profile、Skill）、进程列表与输出、执行与 Workgroup/Workflow。写包含任务编辑、暂停、恢复、取消、删除与停止在途 Run，线程归档、资源关闭、计划更新、权限撤销、空闲排空与 GC、执行应用与取消、Workgroup 取消、插件与 marketplace 管理、进程启动与终端写操作、上下文压缩。沿用后台查找执行 owner 及 Core 回执校验；客户端未提供领域 `requestId` 时用 Host `commandId`，保留原请求查询身份。终端写操作和上下文压缩属于提交行为，另需 `submit`；执行、Workgroup 取消与停止 Run 另需 `interrupt`。新建任务、回复问题、立即运行与新建会话要等 Host 工具中转落地后再开放；插件归档导入与归档选择属原生文件选择，插件凭据与连接、hook 与 tool 审批确认、MCP 表单与应用、GenUI 源、按路径或 URI 读取执行产物、供应商设置（独立 `providers` 域）和 Goal 编辑均不经 manage 提供。结果按结构联合校验，不能把它当作通用 RPC 入口。
-
-`providers.read` 直接由 Host 读取配置和共享预设，不启动 Node，也不等待钥匙串或 Core。后台只在已有 Core 连接上核验应用证明，并按配置、凭据版本及连接身份丢弃过期结果；完成后通过导航 `providerRevision` 通知客户端。`providers.command` 的保存、默认模型、删除与显式应用统一由 Host 准入，写规范配置使用原命令 journal 与配置 revision CAS，不等待在线项目准备。每个共享 Core 连接独立应用自身来源的期望配置：忙碌时延后，空闲后继续；应用身份、代际和原回执复用现有 Journal，UNKNOWN 只查询原请求，明确失败后的显式应用可创建新意图。已确认项目不因其他项目失败回滚；未运行项目保留配置供下次启动。应用变化通过 `providerRevision` 推送。Node 只读取同代际应用证明，旧的配置写入、全项目应用和补偿回滚路径已退役；私有桌面配置写入不再开放。自动发现空模型列表、发现和探测也由 Host 执行，保留来源代理、系统信任根与补充 CA；请求禁止重定向，发现结果有界，探测须得到完整的流式文本成功终态。两者绑定本机浏览器的 manage 授权及来源。`revealKey` 不向浏览器开放。Host journal 只保存操作身份、语义摘要和结果，不保存原始参数；草稿 API Key 只经认证连接和对应执行方的私有调用传递，持久凭据仍由 HostVault 管理。
-
-旧桌面供应商由 Host 按原 `model-config-migrations.json` 路径标记一次导入；无需解锁凭据，同 ID 配置冲突保留原文件并报错，已导入路径不会重新添加用户删除的供应商。Node 的重复配置导入已移除。
-
-供应商预设与连接投影的公共元数据位于 `schemas/provider-config`，Rust 与客户端共享同一份定义；修改定义同时使 Core 和 GUI 构建身份失效。
-
-
-
-Host 与工作台在同一个 Core 连接上分别持有 Thread 订阅兴趣；任一方释放后，只有最后一个持有者离开才撤销 Core 订阅。工作台兴趣绑定原租约，旧租约不能撤销新连接持有的兴趣。
-
-`execution_preparation` 在 Host 内准备会话创建、发送、排队与引导，不再调用 Node 的 `execution.prepare/dispatch`。Host journal 冻结原 Core requestId 与参数，派发前重新校验来源及 Core 实例、代际和连接。浏览器工具使用原 Main 附件的专用 Core 租约；普通操作复用 Host 共享 Core 连接。带模型、配置和工作树选项的创建绑定原 Core 回执，同一请求 ID 改参数会被拒绝，重复读取不会再次创建。断开或结果未知时查询原回执，不重放提交。Main 的浏览器回调接入与原生窗口行为需独立验收。
-
-Electron 的进程命令保留 Main 原生连接适配，即使启用 `manage` 领域也不绕过其终端租约；该适配仍经 Host 连接 Core。浏览器继续经 Host 的 `manage` 合同访问受授权的进程能力。
-
+Rust Host 负责跨项目工作台业务，Core 负责项目内的 Thread、Turn、Task 和执行回执。GUI、网页和手机使用同一套 Host 协议。Electron Main 负责原生窗口、系统加密、系统文件交接和浏览器视图。分层见[架构](architecture.md)和 [ADR 0017](../adr/0017-one-protocol-one-ui.md)。
 
 ## Rust 领域实现
 
-资料库、执行、任务与工作树四个领域固定由 Host 的 Rust 实现负责，没有切换开关；工作台后台只承载其余领域（供应商、插件、页面宿主、反馈、轨迹等）。
+| 领域 | 权威与入口 |
+| --- | --- |
+| 资料库与统计 | Host 聚合导航、已读、配置偏好和用量。写入经 `library.command`，原请求经 `command.read` 核查。 |
+| 会话与执行 | Host 准备线程创建、发送、排队和引导并绑定原来源、执行项目和 Core 代际。Core 保存会话、执行状态与原提交回执。 |
+| 定时任务 | Core 管理计划、Run 和工作进程。Host 提供跨项目目录、published 预览和唤醒，读取停止项目的目录不唤醒 Core。 |
+| Worktree 与资源 | Host 解析逻辑项目与执行项目、配置和清理范围。Core 执行 Git、文件与受管进程操作。 |
+| 模型、插件、轨迹与反馈 | Host 管理共享配置、凭据、跨项目发布及领域回执。Core 按已应用的配置执行。 |
 
-本表描述各领域的所有权。四个领域的旧 JS 实现已删除，不存在回退路径；JS 一栏是后台仍然承担的职责。
+新的业务动作应先明确写入者、读取者、目标身份、代际和完成信号。公共方法与授权范围见[本地服务契约](../api/local-service.md)和 [Host API](../api/host.md)。
 
-| 领域 | Rust 权威 | JS 保留的职责 |
-| --- | --- | --- |
-| 资料库 | Host 同步事务执行导航整理，由 Core 通知与同代已观察进度的权威快照更新未读和导航摘要；保留未知桌面设置 | 设置校验和页面投影；只读云会话归属及尚未提交状态 |
-| 执行与恢复 | Host 持有 Core 连接与租约，Core 核对原请求回执；Host 汇总生命周期回执 | 阅读窗口、页面工具和输入状态准备 |
-| 定时任务 | Core 管理任务与配置草稿，Host 聚合目录、published 预览、收件箱及观察状态 | 已选供应商输入准备和目录展示 |
-| Worktree | Core 执行 Git 与进程操作，Host 管理跨项目归属、环境配置与生命周期记录 | 页面工具准备与结果投影 |
+## 来源、启动与升级
 
-页面投影只合入已绑定来源、在线且服务代次一致的完整 Side 会话、原定时任务的锚点及 Run 引用的执行会话。摘要不能充当完整会话；非当前导航会话的运行记录也必须保留可读投影，不改变用户导航。辅助会话与当前会话的分页和附件分别绑定各自的 Host 观察订阅。已结束的 Run 默认显示一次性快照；用户可打开一个完整历史视图，切换或关闭后释放原订阅。
+Main 持有原 GUI 单实例锁，通过 Host 发布并核对来源。导航保留稳定的 GUI 别名，执行使用来源绑定的规范项目 ID 和原数据目录。旧凭据经系统加密适配器一次导入，随后按原迁移回执清理；明文只在认证连接及运行所需内存中使用。无清理证明的项目保留待处理状态，其他已发布项目可继续使用。
 
-Host 的资料库事务从原位置读取完整 JSON，在同一同步段中校验、修改并原子写回；导航公开回执仍经同一过滤器。桌面设置仅在有界字段上按原值比较替换，Host 不解释代理、硬件加速等设置。Worktree 设置与环境配置复用同一资料库事务，不能另建文件写者。
+Host 验证来源的启动配置和普通环境凭据引用。首次项目启动物化配置、hooks 和资源；后续启动复用已登记的输入和现有启动器。运行中的 Core 是否采用新配置以原代际的应用证明为准。读取已发布状态或历史不为项目启动替代 Core。
 
-Core 通过 `features.taskPrepareCreate` 声明创建前预约能力，Host 仅为声明能力的 GUI 来源 Core 以 `areal/task/host/ready {prepareCreate:true}` 登记支持；CLI 来源沿用原准入。能力绑定原 Host 连接；Core 在定时任务校验后、持久化和调度发布前，经原 `areal/task/prepare` 的 `intent:create` 请求 Host 核对目录作者并保存原创建请求与执行锚点的预约。原请求已完成时直接返回既有回执；创建结果丢失时只按原 Core 回执绑定 Task，不重发。旧空 readiness 请求仍使用原语义。
+`backend.status` 供升级检查原 Host 是否仍持有上一版本的 Node 后台。安装交接按原 Host 的停止请求和子项目清理回执核查，等待原实例退出及独占锁释放后再确认新代际。丢失回复时查询原请求。缺少原操作身份的旧停止记录保留在 GUI 原目录。
 
-固定共享 Scratch 保留一个 Core 登记根，每个定时任务占用一个真实直接子目录；省略 `cwd` 时使用原创建 requestId 的规范 UUID 子目录。Host 严格核对来源登记与分配根，按子目录保存原请求、摘要和锚点作者记录。已有任务仅凭唯一匹配的 Core 创建回执恢复，缺证时不重发。其他子目录的活动只有在有界完整快照可归属且前后状态一致时才不阻塞当前目录；目录重叠、未知归属或快照变化均拒绝执行。
+## 原生附件与历史
 
-`worktree.thread.prepare` 从原 Core 保存的部署中返回已应用的资源 profile 与 revision，后台仅据此恢复可重建投影。原创建绑定期间，资源检查仍比较当前选择与该部署；发生变化时保留原请求并拒绝继续，不隐式重启 Core 或把原绑定换到新代次。
+Main 通过本机认证连接附加到原 GUI 来源。嵌入式浏览器 `browser_v1` 回调绑定原附件、执行项目、Core 代际和 Thread。浏览器页面的实际自动化、审批和控制权由 Electron 原生视图承担。工作台命令不能借用另一个窗口的浏览器租约。
 
-任务目录、任务管理与工作树目录读取仅从原启动记录恢复并校验来源和配置，不为此启动 Node。任务管理写入直接进入 Host/Core 原提交链；尚未迁移的工作台领域继续按需启动后台。
+Side Chat 的标签和资源由创建它的 Host 连接持有。关闭或断开连接只结算原连接的资源，未知结果保留原编号核对。辅助会话与前台会话的历史、单条正文和附件分别绑定自己的 Host 观察订阅。已结束的 Run 默认显示一次性快照，打开完整历史时建立只读订阅，切换或关闭后释放。
 
-`areal tasks` 与 `areal worktree` 经本机 Host 协议提供原生目录入口，不依赖 GUI 或 Node。CLI 默认使用 Host 原生来源 `host`；项目先经 `areal host` 登记。任务 list、preview、observe 对停止项目读取 published 目录并保留 unobserved，不启动 Core；observe 仅为已连接项目登记实时目录观察；私有任务观察只使用既有连接，不重新启动已停止项目。写操作保留领域 requestId，Host commandId 与创建 Worktree 的 requestId 分开，避免取消或打开原工作树时与创建回执冲突。
+## 验证
 
-CLI 打开带环境脚本的 Worktree 时，通过 `worktree open --agent id@revision` 显式选择已部署、允许线程进程的 Profile，执行项目仍受原并发写授权和进程预算约束；不由 Host 自动提权。`worktree --command-id <原 ID>` 可重复原参数核对已受理命令，不能换 ID 重放 UNKNOWN。 本机 CLI 的 `--source <已登记 GUI 来源>` 同样支持显式 Profile，但仍要求当前后台绑定该来源且启用 `worktree-rust`；关闭该 Rust 域时在准入前拒绝此参数。浏览器与远程继续使用不含 `agentProfile` 的公共合同。
-
-收口预算 `workbenchConvergeLines` 只统计待迁移资料库、提交恢复、历史观察、生命周期、服务协议、任务目录、任务草稿和 Worktree 模块。既有其余 JS 按精确路径保留；新文件和改名文件默认计入，基线不得增长，也不得新增排除路径掩盖迁移代码。协议方法仍必须同时登记 schema、Host 白名单和服务 ready；私有反向调用不成为公共 RPC。
-
-## 资料库与统计
-
-Host 是 `library.json` 的唯一写者，导航整理直接在 Host 事务中执行；后台需要改设置时经 `library.patch` 提交补丁，冲突后重读重算。
-
-统计方法为 `analytics.read`、`analytics.sync`、`analytics.activity`、`analytics.import`，由 Rust Host 直接提供，不启动 Node 或冷项目 Core。同步只经现有共享 Core 连接读取 `thread/list` 与 `thread/read`，并核对原连接代际；事件直接更新统计投影。客户端活跃时间取并集，旧 Main 活跃时间按天取较大值合并；沿用 `workbench/analytics.json` 的 version 1 结构。无法读取的原文件保持只读并显示错误，后台批量落盘及 Host 停止时刷新。
-
-GUI 非原生资料库操作统一调用 `library.command`，保留原 `commandId` 经 `command.read` 核对结果；缺少回执保持 UNKNOWN，不重发。Host 拥有准入和回执：导航整理直接执行，其他偏好交给工作台保留原有校验，再经 Host `library.patch` 写入。回执沿用公开导航投影，偏好值从现有状态订阅读取，不把私有配置写入回执。新增非原生偏好只扩展该契约与现有校验，不新增客户端路由。旧的整份资料库替换接口 `library.write` 已移除。`desktop.command` 不接受资料库操作，Host 不可用时不回退 IPC。只有电脑控制的 enabled、provider、executable 三项设置保留 Main 权限所有者。
-
-## 原生能力与凭据
-
-后台入口不依赖 Electron。Main 经原有连接提供原生能力，系统加密通过 `encryptionRequest/encryptionResult` 回调；请求绑定持有能力的连接，其他客户端不能结算，断开后请求失败且不重放。原加密文件格式不变，解密失败不能覆盖旧文件。运行所需的解密值只在内存使用，不写入日志、URL、argv 或明文文件。真实 macOS safeStorage 与既有密文兼容需要独立的本机验收。
-
-`trajectory.read/command` 与 `feedback.read/command` 复用后台原实现，要求本机浏览器 manage 授权与来源匹配，写入沿用 Host 回执。轨迹状态不解密凭据。反馈接收端传输由 Host 直接调用共享 Rust 轨迹库，不启动 CLI 或 Core；Host 只解析来源配置所引用的凭据，使用该来源网络设置，并在提交前核对目的地、账号与安装身份。Node 不再为这条调用刷新供应商凭据缓存；凭据不返回网页。接收端鉴权和实际反馈提交仍需独立验收。后台 attach 与工具能力登记不能替代原生工具的真实桌面验收。
-
-## 验证边界
-
-共享业务使用隔离的真实 Host/Core 验证。源码网页旅程通过 `pnpm --dir clients/gui test:web-journeys` 执行。嵌入浏览器、系统加密、签名与应用升级需要各自的桌面验收。
+共享业务使用隔离的真实 Host/Core 验证。源码网页旅程通过 `pnpm --dir clients/gui test:web-journeys` 执行。共享协议、回执、页面和本地原生资源需要分别验证。嵌入浏览器、系统加密、签名与应用升级需要各自的桌面验收。

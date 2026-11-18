@@ -2031,7 +2031,7 @@ describe("Host renderer read authority", () => {
     });
   });
 
-  it("routes stop and approvals through Host receipts and falls back only when Host declines", async () => {
+  it("routes stop and approvals through Host receipts without retrying a declined stop", async () => {
     const pending = {
       threadId: "thread",
       requestId: "approval",
@@ -2068,7 +2068,6 @@ describe("Host renderer read authority", () => {
         },
       };
     };
-    // 只核对是否退回桌面路径；桌面回执结构由桌面契约测试覆盖。
     const native_ = vi.fn(async () => ({ ok: false as const, error: { message: "desktop path" } }));
     const desktop: PlatformServices = {
       snapshot: async () => ({ projects: [] }),
@@ -2112,8 +2111,10 @@ describe("Host renderer read authority", () => {
     });
     expect(native_).not.toHaveBeenCalled();
     stopReply = Object.assign(new Error("workflow"), { code: "TASK_CONTROL_REQUIRED" });
-    await expect(call(services, "stop", stop)).rejects.toThrow("desktop path");
-    expect(native_).toHaveBeenCalledTimes(1);
+    await expect(call(services, "stop", stop)).rejects.toMatchObject({
+      code: "TASK_CONTROL_REQUIRED",
+    });
+    expect(native_).not.toHaveBeenCalled();
     await call(services, "respond", {
       projectId: "alias",
       threadId: "thread",
@@ -2132,7 +2133,7 @@ describe("Host renderer read authority", () => {
       },
     });
     expect(writes.filter((entry) => entry.method === "attention.read")).toHaveLength(2);
-    expect(native_).toHaveBeenCalledTimes(1);
+    expect(native_).not.toHaveBeenCalled();
   });
 });
 

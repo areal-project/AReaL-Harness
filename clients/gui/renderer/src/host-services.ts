@@ -902,6 +902,7 @@ export function createHostReadServices(
         if (
           error !== null &&
           typeof error === "object" &&
+          name !== "stop" &&
           HOST_DECLINED.has(String((error as { code?: unknown }).code))
         )
           return undefined;

@@ -2007,7 +2007,6 @@ test("Main startup prepares the source and attaches native Host without Node sta
   )("@areal/client/gui-source");
   const requireApp = require("node:module").createRequire(require.resolve("../app/package.json"));
   const upgrade = requireApp("@areal/client/desktop-upgrade");
-  const config = require("../app/src/core/service-config.cjs");
   const patch = (owner, name, value) => {
     const original = owner[name];
     owner[name] = value;
@@ -2020,9 +2019,6 @@ test("Main startup prepares the source and attaches native Host without Node sta
     steps.push("upgrade-complete");
   });
   patch(upgrade, "desktopBuildIdentity", async () => "build");
-  patch(config, "serviceIdentity", async () =>
-    assert.fail("Startup must use the native build identity"),
-  );
   patch(GuiSourceSession.prototype, "init", async function () {
     steps.push("source");
     this.sourceId = "source";
