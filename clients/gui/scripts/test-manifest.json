@@ -94,13 +94,6 @@
     "notes": "Mixed command; classified by highest browser or Electron boundary."
   },
   {
-    "script": "test:state-projection",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["projection"],
-    "requires": []
-  },
-  {
     "script": "test:recovery",
     "layer": "contract",
     "platforms": ["darwin", "linux"],

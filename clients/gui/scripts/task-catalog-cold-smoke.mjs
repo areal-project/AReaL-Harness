@@ -485,7 +485,7 @@ try {
         drift,
         failure,
         boundary:
-          "Real persisted future Task via production bridge/Core setup, real source Electron/renderer, no startup delay, actual browser click through visible rAF. Read-only projection observer uses production ProjectionReader. Primary connected; scheduled owner cold. Physical input, real provider, installed package and OS cache eviction are not covered.",
+          "Real persisted future Task via production bridge/Core setup, real source Electron/renderer, no startup delay, actual browser click through visible rAF. Read-only owner status is observed through the desktop snapshot probe. Primary connected; scheduled owner cold. Physical input, real provider, installed package and OS cache eviction are not covered.",
       },
       null,
       2,

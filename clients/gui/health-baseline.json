@@ -396,8 +396,6 @@
     "packages/workbench/client/desktop-contract/workspace.cjs": 402,
     "packages/workbench/client/model-selection.cjs": 26,
     "packages/workbench/client/model-selection.js": 2,
-    "packages/workbench/client/state-projection.cjs": 244,
-    "packages/workbench/client/state-projection.js": 8,
     "packages/workspace-git/index.js": 828,
     "packages/workspace-git/review-highlight.js": 34,
     "packages/workspace-git/turn-review.js": 193,

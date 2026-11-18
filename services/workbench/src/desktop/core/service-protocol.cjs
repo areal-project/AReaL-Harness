@@ -18,7 +18,6 @@ const {
   success: browserSuccess,
   unconfirmed: browserUnconfirmed,
 } = require("@areal/browser-automation/host-tool");
-const { ProjectionEncoder } = require("@areal/workbench/state-projection");
 const {
   record,
   text,
@@ -33,10 +32,10 @@ const {
 /** @typedef {import('./project-state.cjs').CoreProject} Project */
 /** @typedef {import('./service-transport-contract.cjs').ToolRequest} ToolRequest */
 /** @typedef {import('./service-transport-contract.cjs').ToolHostInput} ToolHostInput */
-/** @typedef {{kind:'packet',packet:ReturnType<InstanceType<typeof DesktopService>['packet']>,header:{method:'state'}|{id:number},full:boolean,bytes:number}} PacketEntry */
+/** @typedef {{kind:'packet',packet:ReturnType<InstanceType<typeof DesktopService>['packet']>,header:{method:'state'}|{id:number},bytes:number}} PacketEntry */
 /** @typedef {PacketEntry|{kind:'message',value:Fields,bytes:number}} OutboundEntry */
 /** @typedef {{queue:OutboundEntry[],bytes:number,active:boolean,state:PacketEntry|null,closed:boolean,timer?:NodeJS.Timeout}} Outbound */
-/** @typedef {import('ws') & {outbound?:Outbound,projection?:InstanceType<typeof ProjectionEncoder>|null,notifications?:boolean,activity?:{time:number,windowFocused:boolean,focused:boolean},lastFocused?:number,historyViews?:Map<string,Fields & {viewId:string}>}} ServiceSocket */
+/** @typedef {import('ws') & {outbound?:Outbound,notifications?:boolean,activity?:{time:number,windowFocused:boolean,focused:boolean},lastFocused?:number,historyViews?:Map<string,Fields & {viewId:string}>}} ServiceSocket */
 /** @param {ServiceSocket|null|undefined} client @returns {client is ServiceSocket} */
 const connected = (client) => client?.readyState === 1;
 /** @typedef {{pageId:string,pageGeneration:number,controlEpoch:number}} PageClaim */
@@ -191,9 +190,9 @@ class DesktopService {
   send(socket, value) {
     this.enqueue(socket, { kind: "message", value, bytes: 0 });
   }
-  /** @param {ServiceSocket} socket @param {PacketEntry['packet']} packet @param {PacketEntry['header']} header @param {boolean} [full] */
-  sendPacket(socket, packet, header, full = false) {
-    this.enqueue(socket, { kind: "packet", packet, header, full, bytes: 0 });
+  /** @param {ServiceSocket} socket @param {PacketEntry['packet']} packet @param {PacketEntry['header']} header */
+  sendPacket(socket, packet, header) {
+    this.enqueue(socket, { kind: "packet", packet, header, bytes: 0 });
   }
   /** @param {ServiceSocket} socket @param {OutboundEntry} entry */
   enqueue(socket, entry) {
@@ -254,7 +253,7 @@ class DesktopService {
     outbound.timer = setTimeout(fail, 150000);
     outbound.timer.unref?.();
     try {
-      const value = outboundMessage(entry, socket.projection);
+      const value = outboundMessage(entry);
       const text = JSON.stringify(value);
       if (Buffer.byteLength(text) > 256 * 1024 * 1024) {
         fail();
@@ -539,12 +538,7 @@ class DesktopService {
         record(message.params) ? message.params : {},
       );
       if (message.method === "hello" || message.method === "snapshot")
-        this.sendPacket(
-          socket,
-          /** @type {PacketEntry['packet']} */ (result),
-          { id: message.id },
-          true,
-        );
+        this.sendPacket(socket, /** @type {PacketEntry['packet']} */ (result), { id: message.id });
       else this.send(socket, { id: message.id, result });
     } catch (error) {
       this.send(socket, { id: message.id, error: desktopError(error) });
@@ -561,10 +555,6 @@ class DesktopService {
           throw Object.assign(new Error("后台服务版本或启动配置不兼容。请先安全停止旧后台服务。"), {
             code: "SERVICE_INCOMPATIBLE",
           });
-        socket.projection =
-          record(params.capabilities) && params.capabilities.projection === 1
-            ? (socket.projection ?? new ProjectionEncoder(randomUUID()))
-            : null;
         socket.notifications = params.notifications === true;
         if (
           record(params.capabilities) &&
@@ -1967,15 +1957,9 @@ module.exports = {
   decodeMedia,
 };
 
-/** @param {OutboundEntry} entry @param {ServiceSocket['projection']} [projection] */
-function outboundMessage(entry, projection) {
+/** @param {OutboundEntry} entry */
+function outboundMessage(entry) {
   if (entry.kind === "message") return entry.value;
   const key = "method" in entry.header ? "params" : "result";
-  const packet = entry.packet;
-  return {
-    ...entry.header,
-    [key]: projection
-      ? { ...packet, snapshot: projection.encode(packet.snapshot, entry.full) }
-      : packet,
-  };
+  return { ...entry.header, [key]: entry.packet };
 }

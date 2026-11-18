@@ -22,7 +22,7 @@ Renderer 界面语言由已有 application preferences 保存，仅允许 zh-CN 
 
 GUI Renderer 只在 `desktop-services.ts` 读取 preload 对象，由 `initializeDesktopServices` 完成本机初始化并返回 `PlatformServices`；`main.tsx` 只接收该平台接口。原生资源选择和图标加载通过该接口传递能力；缺少能力时不建立桌面订阅或原生资源入口。React 组件不另行读取全局 bridge。Main 继续校验 IPC 来源并持有窗口、App token 和原生授权，Core/Runtime 保持执行与历史权威。
 
-`no-renderer-desktop-bridge` 静态规则覆盖 Renderer 以及 `app`、`client`、`remote`、`remote-client`、`ui` 共享包，禁止界面直接使用 preload 全局对象或导入 `desktop-contract`、`state-projection` 桌面传输模块。只有明确的 `renderer/src/desktop-services.ts` 和 `desktop-response.ts` 可导入传输模块，preload 只由前者读取。`.test.*` 与 `.spec.*` 文件可设置 bridge mock，不需要逐行关闭规则；生产辅助文件不享有该例外。
+`no-renderer-desktop-bridge` 静态规则覆盖 Renderer 以及 `app`、`client`、`remote`、`remote-client`、`ui` 共享包，禁止界面直接使用 preload 全局对象或导入 `desktop-contract` 桌面传输模块。只有明确的 `renderer/src/desktop-services.ts` 和 `desktop-response.ts` 可导入传输模块，preload 只由前者读取。`.test.*` 与 `.spec.*` 文件可设置 bridge mock，不需要逐行关闭规则；生产辅助文件不享有该例外。
 
 ## 模块职责
 
@@ -135,7 +135,7 @@ GUI 首次展示与后台就绪分别判定。Renderer 在主题和图标加载�
 
 Renderer 的 `state/` 所有者分别管理启动、导航、工作区、任务、外观与通知的界面状态，领域 store 通过 `useSyncExternalStore` 订阅；持久化沿用原偏好键和所有者。`App.tsx` 保留读取与写入跨领域状态的编排 effect，不能把 Core 收据、历史或 UNKNOWN 恢复变成 store 内的重发逻辑。视图组合归 `app-shell/`，原生预览的 Electron 适配归 `app/src/core/preview-native/`，不依赖 Electron 的 URL、坐标、观察与计划逻辑归 `preview/`。窗口、WebContentsView 与后台焦点仍由 Main 的既有所有者管理。
 
-GUI 的 Desktop 服务和 Main 使用 `workbench/client/state-projection` 编码可重建状态。每条连接先发送当前显示窗口的基线，之后按 Project、Thread、Turn、Item 身份发送变化和顺序；未变化的正文不重复传输。Main 只编码筛选后的桌面状态，Renderer 在 contextBridge 之后重组显示快照。缺失基线或序号不连续时重新读取状态，不重发执行请求。支持有界历史的 Core 通过 `areal/thread/observe` 提供近期窗口，较早历史和超大条目由分页与分片读取；Renderer 在主动向上滚轮、键盘、滚动条或触摸阅读时，每次新输入最多读取一页，并在合并后恢复阅读锚点。短历史可通过后续输入继续读取，加载中与失败期间的输入不排队。时间线可聚焦以接收导航键；正常阅读没有普通历史加载按钮，加载只显示状态，失败提供独立重试。Desktop 每个窗口最多缓存 4 页较早正文；卸载页只保留当前快照内的轻量游标记录，在原位置提供可回读占位，回读仍受相同正文缓存上限约束。各阅读视图通过版本化目标保护当前正文页；缓存不足时拒绝新页而不驱逐目标。重新观察或游标失效重建窗口与占位，受保护正文等待权威核实。Messages 的显式阅读状态负责恢复、取消与定位，Desktop history 的 ensureAnchor 在有限扫描内取回缺失正文；缺页拓扑与正文驻留分别管理以保留语义分组身份。显示窗口不包含另一份完整权威历史。正在变化的单个 Item 通知仍整体替换，单条记录解析与活动条目增长的限制见 [Core 历史契约](../api/core.md)。
+Renderer 通过 Host 分别订阅资料库和当前会话。Host 校验连接、会话身份及序列，失效时客户端重新读取原状态。已受理的请求继续使用原请求 ID 核查。支持有界历史的 Core 通过 `areal/thread/observe` 提供近期窗口，较早历史和超大条目由分页与分片读取；Renderer 在主动向上滚轮、键盘、滚动条或触摸阅读时，每次新输入最多读取一页，并在合并后恢复阅读锚点。短历史可通过后续输入继续读取，加载中与失败期间的输入不排队。时间线可聚焦以接收导航键；正常阅读没有普通历史加载按钮，加载只显示状态，失败提供独立重试。Desktop 每个窗口最多缓存 4 页较早正文；卸载页只保留当前快照内的轻量游标记录，在原位置提供可回读占位，回读仍受相同正文缓存上限约束。各阅读视图通过版本化目标保护当前正文页；缓存不足时拒绝新页而不驱逐目标。重新观察或游标失效重建窗口与占位，受保护正文等待权威核实。Messages 的显式阅读状态负责恢复、取消与定位，Desktop history 的 ensureAnchor 在有限扫描内取回缺失正文；缺页拓扑与正文驻留分别管理以保留语义分组身份。显示窗口不包含另一份完整权威历史。正在变化的单个 Item 通知仍整体替换，单条记录解析与活动条目增长的限制见 [Core 历史契约](../api/core.md)。
 
 Renderer 文档重载或崩溃不拥有后台执行生命周期。显式刷新后，新文档从新的投影基线挂接原应用会话，不能重放已受理输入。`test:service-reopen` 用原模型连接上的新增片段和生产 App 的显示验证挂接，并区分文档恢复与应用重启后的新 owner、代际。
 

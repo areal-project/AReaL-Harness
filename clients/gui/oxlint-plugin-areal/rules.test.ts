@@ -230,10 +230,10 @@ describe("no-renderer-desktop-bridge", () => {
     'import contract = require("@areal/workbench/desktop-contract");',
     'const contract = require("../../packages/workbench/client/desktop-contract.cjs");',
     'import type { Request } from "../../packages/workbench/client/desktop-contract.js";',
-    'import { ProjectionReader } from "@areal/workbench/state-projection";',
-    'export * from "@areal/workbench/state-projection";',
-    'const projection = import("@areal/workbench/state-projection");',
-    'const projection = require("../../packages/workbench/client/state-projection.cjs");',
+    'import { validateCommand } from "@areal/workbench/desktop-contract/transport";',
+    'export * from "@areal/workbench/desktop-contract/transport";',
+    'const projection = import("@areal/workbench/desktop-contract/transport");',
+    'const projection = require("../../packages/workbench/client/desktop-contract.cjs");',
     'arealDesktop.command("stop");',
     "const bridge = arealDesktop;",
     "const bridge = { arealDesktop };",
@@ -347,7 +347,7 @@ describe("no-renderer-desktop-bridge", () => {
       "window.arealDesktop;",
       "arealHost.connect();",
       'import { validateCommand } from "@areal/workbench/desktop-contract";',
-      'import { ProjectionReader } from "@areal/workbench/state-projection";',
+      'import { validateCommand } from "@areal/workbench/desktop-contract/transport";',
     ]) {
       const result = lint("no-renderer-desktop-bridge", source, filename);
       expect(result.status, result.output).toBe(1);
@@ -371,7 +371,7 @@ describe("no-renderer-desktop-bridge", () => {
   test.each([
     "window.arealDesktop;",
     'import type { DesktopBridge } from "@areal/workbench/desktop-contract";',
-    'import { ProjectionReader } from "@areal/workbench/state-projection";',
+    'import { validateCommand } from "@areal/workbench/desktop-contract/transport";',
     "window.arealDesktop ||= {};",
   ])("rejects boundary violations in test files: %s", (source) => {
     const result = lint(

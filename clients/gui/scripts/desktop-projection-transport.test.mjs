@@ -10,10 +10,6 @@ const {
   PROTOCOL,
 } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 const { ServiceConnection } = require("../app/src/core/service-connection.cjs");
-const {
-  ProjectionEncoder,
-  ProjectionReader,
-} = require("../packages/workbench/client/state-projection.cjs");
 
 function fixture() {
   let thread = {
@@ -181,7 +177,6 @@ function heldSocket() {
     readyState: 1,
     bufferedAmount: 0,
     sent: [],
-    projection: new ProjectionEncoder("held"),
     send(text, callback) {
       this.sent.push({ value: JSON.parse(text), callback });
     },
@@ -192,25 +187,22 @@ function heldSocket() {
   };
 }
 
-test("a blocked frame coalesces state without projection gaps and keeps command replies ordered", () => {
+test("a blocked frame coalesces state and keeps command replies ordered", () => {
   const service = fixture(),
-    socket = heldSocket(),
-    decoder = new ProjectionReader();
+    socket = heldSocket();
   service.sendPacket(socket, service.packet(), { method: "state" });
   service.sendPacket(socket, service.packet(), { method: "state" });
   service.send(socket, { id: 1, result: "first" });
   service.sendPacket(socket, service.packet(), { method: "state" });
   service.send(socket, { id: 2, result: "second" });
   assert.equal(socket.sent.length, 1, "one frame is in flight until its callback");
-  decoder.read(socket.sent[0].value.params.snapshot);
   socket.sent[0].callback();
   assert.equal(socket.sent.length, 2);
   assert.equal(socket.sent[1].value.id, 1);
   socket.sent[1].callback();
   socket.sent[2].callback();
   socket.sent[3].callback();
-  decoder.read(socket.sent[2].value.params.snapshot);
-  assert.equal(socket.sent[2].value.params.sequence, 3, "only latest pending state is encoded");
+  assert.equal(socket.sent[2].value.params.sequence, 3, "only the latest pending state is sent");
   assert.deepEqual(
     socket.sent.filter((frame) => frame.value.id).map((frame) => frame.value.id),
     [1, 2],
@@ -230,8 +222,7 @@ test("a blocked response queue above 32MiB terminates and cannot send after fail
 
 test("coalescing state cannot move a newer packet before an already queued full snapshot reply", () => {
   const service = fixture(),
-    socket = heldSocket(),
-    reader = new ProjectionReader();
+    socket = heldSocket();
   const original = service.backend.snapshot;
   let version = 1;
   service.backend.snapshot = () => ({ ...original(), version });
@@ -239,7 +230,7 @@ test("coalescing state cannot move a newer packet before an already queued full 
   version = 2;
   service.sendPacket(socket, service.packet(), { method: "state" });
   version = 3;
-  service.sendPacket(socket, service.packet(), { id: 8 }, true);
+  service.sendPacket(socket, service.packet(), { id: 8 });
   version = 4;
   service.sendPacket(socket, service.packet(), { method: "state" });
   for (let i = 0; i < socket.sent.length; i++) socket.sent[i].callback();
@@ -247,11 +238,10 @@ test("coalescing state cannot move a newer packet before an already queued full 
   assert.deepEqual(
     packets.map((packet) => packet.sequence),
     [1, 3, 4],
-    "packet order and actual projection order must agree",
+    "packet order must preserve the snapshot reply",
   );
-  for (const packet of packets) reader.read(packet.snapshot);
   assert.equal(
-    reader.value.version,
+    packets.at(-1).snapshot.version,
     4,
     "the reader retains the latest state after all queued frames",
   );
@@ -275,7 +265,7 @@ function conversation(text, status) {
   };
 }
 
-test("a missing delta closes the socket, preserves unknown writes and reconnects from an authoritative baseline", async () => {
+test("a dropped connection preserves unknown writes and reconnects from an authoritative baseline", async () => {
   const service = fixture(),
     accepted = Promise.withResolvers(),
     release = Promise.withResolvers(),
@@ -284,13 +274,13 @@ test("a missing delta closes the socket, preserves unknown writes and reconnects
   let authoritative = conversation("original", "inProgress"),
     writes = 0;
   service.backend.snapshot = () => structuredClone(authoritative);
-  // 手动交付投影帧，精确控制缺帧位置；真实 socket 和生产解码仍参与验收。
+  // 由测试明确控制状态通知，断开时保留已受理的原写入。
   service.schedule = () => {};
   const sendPacket = service.sendPacket.bind(service);
   let handoff = false;
-  service.sendPacket = (socket, packet, header, full) => {
-    sendPacket(socket, packet, header, full);
-    if (full && !handoff) {
+  service.sendPacket = (socket, packet, header) => {
+    sendPacket(socket, packet, header);
+    if ("id" in header && !handoff) {
       handoff = true;
       authoritative = conversation("completed evidence", "completed");
       service.publish();
@@ -320,29 +310,6 @@ test("a missing delta closes the socket, preserves unknown writes and reconnects
     const socket = [...service.clients][0];
     await connection.request("activity", { focused: false });
     assert.deepEqual(states.at(-1), conversation("completed evidence", "completed"));
-    const sequence = socket.projection.sequence;
-    for (const oldSequence of [sequence, 1]) {
-      socket.send(
-        JSON.stringify({
-          method: "state",
-          params: {
-            snapshot: {
-              projection: 1,
-              stream: socket.projection.stream,
-              sequence: oldSequence,
-              kind: "full",
-              snapshot: conversation("obsolete", "inProgress"),
-            },
-          },
-        }),
-      );
-    }
-    await connection.request("activity", { focused: false });
-    assert.ok(
-      states.every(
-        (snapshot) => snapshot.projects[0].state.threads.t.turns[0].status === "completed",
-      ),
-    );
     const outcome = connection
       .request(
         "command",
@@ -362,11 +329,9 @@ test("a missing delta closes the socket, preserves unknown writes and reconnects
         (error) => error,
       );
     await withSmokeDeadline("archive admitted", () => accepted.promise);
-    // 编码但不交付一帧，下一帧引用的 base 因此不在客户端。
-    socket.projection.encode(conversation("missing intermediate", "completed"));
     authoritative = conversation("latest durable evidence", "completed");
-    service.sendPacket(socket, service.packet(), { method: "state" });
-    await withSmokeDeadline("projection gap disconnect", () => disconnected.promise);
+    socket.terminate();
+    await withSmokeDeadline("original socket disconnect", () => disconnected.promise);
     const unknown = await outcome;
     assert.equal(unknown.submissionUnknown, true);
     assert.equal(unknown.requestId, "archive-once");

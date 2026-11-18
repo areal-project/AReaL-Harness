@@ -1,7 +1,6 @@
 // @ts-check
 "use strict";
 const WebSocket = require("ws");
-const { ProjectionReader } = require("@areal/workbench/state-projection");
 const { PROTOCOL } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 const diagnostics = require("@areal/workbench/node/diagnostics");
 let diagnosticsConnectionGeneration = 0;
@@ -84,7 +83,6 @@ class ServiceConnection {
       followRedirects: false,
       maxPayload: 256 * 1024 * 1024,
     }));
-    const projection = new ProjectionReader();
     /** @satisfies {import("@areal/workbench/node/diagnostics").SocketTarget} */
     const target = Object.freeze({
       boundary: "main-desktop",
@@ -113,14 +111,6 @@ class ServiceConnection {
         const parsed = JSON.parse(bytes.toString());
         if (!serviceFrame(parsed)) throw new Error("Invalid Desktop service frame");
         message = parsed;
-        const key = message.method === "state" ? "params" : "result";
-        const packet = message[key];
-        if (
-          record(packet) &&
-          record(packet.snapshot) &&
-          Object.hasOwn(packet.snapshot, "projection")
-        )
-          message[key] = { ...packet, snapshot: projection.read(packet.snapshot) };
       } catch {
         socket.terminate();
         return;
@@ -299,11 +289,6 @@ class ServiceConnection {
           recovery: { kind: mutation ? "none" : "retryRead" },
         }),
       );
-    if (method === "hello")
-      params = {
-        ...params,
-        capabilities: Object.assign({}, params?.capabilities, { projection: 1 }),
-      };
     const id = ++this.nextId;
     const requestId =
       method === "command" && record(params?.request)

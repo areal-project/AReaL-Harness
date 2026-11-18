@@ -21,10 +21,6 @@
       "import": "./client/model-selection.js",
       "require": "./client/model-selection.cjs"
     },
-    "./state-projection": {
-      "import": "./client/state-projection.js",
-      "require": "./client/state-projection.cjs"
-    },
     "./history-projection": {
       "types": "./client/history-projection.cjs",
       "import": "./client/history-projection.js",
