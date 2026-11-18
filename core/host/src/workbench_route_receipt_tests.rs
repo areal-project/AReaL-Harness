@@ -603,3 +603,50 @@ async fn explicit_native_resume_records_intent_and_original_failed_activation() 
         close();server.await.unwrap();
     }).await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn attachment_inventory_and_release_do_not_start_node_or_repeat_original_request() {
+    tokio::task::LocalSet::new().run_until(async {
+        let root=tempfile::tempdir().unwrap();
+        let workspace=root.path().canonicalize().unwrap().join("project");
+        let count=Rc::new(std::cell::Cell::new(0));
+        let dispatched=count.clone();
+        let uri=format!("areal://blob/{}", "a".repeat(64));
+        let upload=json!({"uri":uri,"mimeType":"image/png","sizeBytes":123});
+        let stored=upload.clone();
+        let (host,source,server,close)=setup_archive_fixture(root.path(),move |method,params| match method {
+            "initialize" | "areal/server/status" => Some(json!({"result":{}})),
+            "areal/task/list" => Some(json!({"result":{"data":[],"nextCursor":null}})),
+            "thread/read" => {
+                assert_eq!(params["threadId"],"t");
+                assert_eq!(params["includeTurns"],false);
+                Some(json!({"result":{"thread":{"id":"t","sessionId":"s-1","cwd":workspace,"turns":[],"conversation":{"kind":"ordinary","policy":{"kind":"ordinaryV1"}},"desktop":{"archived":false,"uploads":[stored]}}}}))
+            }
+            "areal/capabilities" => Some(json!({"result":{"methodSemantics":{"areal/blob/release":{"effect":"mutation","receipt":"management"}}}})),
+            "areal/blob/release" => {
+                dispatched.set(dispatched.get()+1);
+                assert_eq!(params["threadId"],"t");
+                assert_eq!(params["uri"],stored["uri"]);
+                assert!(params["requestId"].is_string());
+                Some(json!({"result":{"released":true}}))
+            }
+            "areal/request/read" => Some(json!({"result":{}})),
+            other=>panic!("unexpected {other}"),
+        }).await;
+        let original=uuid::Uuid::new_v4().to_string();
+        let mut call=json!({"params":{"sourceId":source,"command":"media","request":{"projectId":TEST_PROJECT_ALIAS,"threadId":"t","operation":"list"}}});
+        assert_eq!(desktop_command_capability(&call["params"]), None);
+        let listed=desktop_command(&host,"local","native-media",&call).await.unwrap();
+        assert_eq!(listed,json!({"uploads":[upload],"archived":false}));
+        call["params"]["request"]["operation"]=json!("release");
+        call["params"]["request"]["uri"]=json!(uri);
+        call["params"]["request"]["requestId"]=json!(original);
+        assert_eq!(desktop_command_capability(&call["params"]), Some("submit"));
+        assert_eq!(desktop_command(&host,"local","native-media",&call).await.unwrap(),json!({"released":true}));
+        assert!(desktop_command(&host,"local","native-media",&call).await.is_err());
+        assert_eq!(count.get(),1);
+        assert!(crate::server::workbench_submissions::find(&host,"project",&original).unwrap().is_some());
+        assert!(!host.gateway.workbench.has_running_backend());
+        close();server.abort();
+    }).await;
+}

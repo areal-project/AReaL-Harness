@@ -1026,6 +1026,7 @@ pub(super) fn desktop_command_capability(params: &Value) -> Option<&'static str>
             Some("submit")
         }
         "side" if matches!(operation, Some("start" | "send" | "create")) => Some("submit"),
+        "media" if operation == Some("release") => Some("submit"),
         _ => None,
     }
 }
@@ -1058,6 +1059,14 @@ pub(super) fn desktop_command<'a>(
             Cmd::Value8 => Some("editMessage"),
             Cmd::Value9 => Some("fork"),
             Cmd::Value11 => Some("manage"),
+            Cmd::Value12
+                if matches!(
+                    params.request["operation"].as_str(),
+                    Some("list" | "release")
+                ) =>
+            {
+                Some("media")
+            }
             Cmd::Value13 => Some("prediction"),
             Cmd::Value14 => Some("prepareCreator"),
             Cmd::Value15 => Some("projectless"),
@@ -1172,6 +1181,7 @@ pub(super) fn desktop_command<'a>(
                         .desktop_command(host, principal, &source, &params.request)
                         .await
                 }
+                "media" => attachment_inventory_command(host, &source, &params.request).await,
                 "side" => {
                     host.gateway
                         .workbench
@@ -1213,6 +1223,48 @@ pub(super) fn desktop_command<'a>(
             )
             .await
     })
+}
+
+async fn attachment_inventory_command(
+    host: &Rc<Host>,
+    source: &str,
+    request: &Value,
+) -> Result<Value> {
+    use super::session_commands::{resolve_project_scope, shared_rpc};
+    let thread = request["threadId"]
+        .as_str()
+        .filter(|id| !id.is_empty() && id.len() <= 256)
+        .context("INVALID_PARAMS")?;
+    let release = request["operation"] == "release";
+    let scope = resolve_project_scope(host, source, request, release, true).await?;
+    if !release {
+        let result = shared_rpc(
+            host,
+            &scope.canonical_id,
+            "thread/read",
+            json!({"threadId": thread, "includeTurns": false}),
+        )
+        .await?;
+        let desktop = &result["thread"]["desktop"];
+        return Ok(json!({
+            "uploads": desktop["uploads"].as_array().map(Vec::as_slice).unwrap_or_default(),
+            "archived": desktop["archived"] == true,
+        }));
+    }
+    let uri = request["uri"].as_str().context("INVALID_PARAMS")?;
+    super::conversation_media::digest(uri).map_err(|_| anyhow::anyhow!("INVALID_PARAMS"))?;
+    let id = match request.get("requestId") {
+        Some(id) => id.as_str().context("INVALID_PARAMS")?.to_owned(),
+        None => uuid::Uuid::new_v4().to_string(),
+    };
+    super::workbench_submissions::submit_shared(
+        host,
+        &scope.canonical_id,
+        "areal/blob/release",
+        json!({"threadId": thread, "uri": uri, "requestId": id}),
+        true,
+    )
+    .await
 }
 
 pub(super) async fn backend_read(

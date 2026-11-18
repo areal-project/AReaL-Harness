@@ -67,7 +67,7 @@ impl MediaReference {
     }
 }
 
-fn digest(uri: &str) -> Result<&str> {
+pub(super) fn digest(uri: &str) -> Result<&str> {
     let digest = uri
         .strip_prefix("areal://blob/")
         .context("RESOURCE_UNAVAILABLE")?;
