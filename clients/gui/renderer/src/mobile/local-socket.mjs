@@ -53,6 +53,7 @@ export class LocalRelaySocket extends EventTarget {
     this.plugin = plugin;
     this.id = crypto.randomUUID();
     this.readyState = 0;
+    this.opened = false;
     this.bufferedAmount = 0;
     this.binaryType = "arraybuffer";
     this.queue = Promise.resolve();
@@ -73,6 +74,7 @@ export class LocalRelaySocket extends EventTarget {
         if (event.id !== this.id || this.readyState === 3) return;
         if (event.type === "open" && this.readyState === 0) {
           this.readyState = 1;
+          this.opened = true;
           this.emit("open");
         } else if (event.type === "message" && this.readyState === 1) {
           try {

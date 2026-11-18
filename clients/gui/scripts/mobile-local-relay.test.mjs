@@ -6,6 +6,7 @@ import {
   isLocalRelayOrigin,
 } from "../renderer/src/mobile/local-socket.mjs";
 import { DeviceStore, parsePairingLink } from "../renderer/src/mobile/device-store.mjs";
+import { MobileClient } from "../renderer/src/mobile/mobile-client.mjs";
 import { createRemoteWire } from "../packages/remote/src/wire.mjs";
 import {
   byteChannel,
@@ -166,6 +167,33 @@ test("bridge failure closes wire once and rejects readiness", async () => {
   await failed;
   assert.equal(socket.readyState, 3);
   assert.equal(plugin.listening(), false);
+});
+
+test("phone pairing distinguishes local WebSocket failure from failure after it opens", async () => {
+  for (const opened of [false, true]) {
+    const plugin = bridge();
+    const { promise: created, resolve } = Promise.withResolvers();
+    const client = new MobileClient({
+      clientKind: "ios",
+      keychain: { load: async () => ({ value: null }) },
+      socket(url) {
+        const socket = new LocalRelaySocket(url, plugin);
+        resolve(socket);
+        return socket;
+      },
+    });
+    await client.setActive(true);
+    const pairing = client.pair(link("http://[fd12::1]:7777"), "Fixture phone");
+    const socket = await created;
+    await socket.start;
+    if (opened) plugin.emit(socket, "open");
+    plugin.emit(socket, "error");
+    await pairing;
+    assert.deepEqual(client.snapshot(), {
+      kind: "unpaired",
+      error: opened ? "pairFailed" : "localRelayUnreachable",
+    });
+  }
 });
 
 test("native adapter carries real Noise handshake and rejects the wrong pinned Host", async () => {

@@ -109,6 +109,11 @@ export const mobileMessages = {
     "zh-CN": "配对未完成。请检查电脑、网络和配对链接后重试。",
     en: "Pairing did not complete. Check your computer, network and pairing link, then try again.",
   },
+  "mobile.localRelayUnreachable": {
+    "zh-CN":
+      "手机未能连接电脑的本机 Relay。请确认两台设备的网络可以互访，并检查 AReaL 的本地网络权限。",
+    en: "Your phone could not connect to the local relay. Check that both devices can reach each other and that AReaL has local network access.",
+  },
   "mobile.scanFailed": {
     "zh-CN": "无法扫描，请检查相机权限或粘贴配对链接。",
     en: "Could not scan. Check camera permission or paste the pairing link.",
