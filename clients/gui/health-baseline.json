@@ -871,7 +871,6 @@
     "../../services/workbench/src/desktop/core/native-remote.cjs",
     "../../services/workbench/src/desktop/core/native-subscription.cjs",
     "../../services/workbench/src/desktop/core/notifications.cjs",
-    "../../services/workbench/src/desktop/core/plugin-configuration.cjs",
     "../../services/workbench/src/desktop/core/project-connections.cjs",
     "../../services/workbench/src/desktop/core/project-index.cjs",
     "../../services/workbench/src/desktop/core/project-snapshot.cjs",

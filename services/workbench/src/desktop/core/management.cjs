@@ -172,12 +172,8 @@ async function executeManagement(backend, project, rawRequest) {
     throw new Error("登录终端由 Host 创建");
   if (operation === "pluginSubmission")
     throw new Error("Plugin submission receipts require Host protocol");
-  if (rawRequest.operation === "pluginUserConfigSave")
-    return require("./plugin-configuration.cjs").configurePluginValues(
-      backend,
-      project,
-      rawRequest,
-    );
+  if (operation === "pluginUserConfigSave")
+    throw new Error("Plugin configuration writes require Host protocol");
   if (operation === "pluginAuthCredential")
     throw new Error("Plugin credential operations require Host protocol");
   if (operation === "pluginAuth" || operation === "mcpExtensionCall") {

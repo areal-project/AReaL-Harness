@@ -6,7 +6,6 @@ const { tmpdir } = require("node:os");
 const { join } = require("node:path");
 const { ModelConfiguration } = require("../src/desktop/core/model-config.cjs");
 const { catalog } = require("../src/desktop/core/provider-model-catalog.cjs");
-const { configurePluginValues } = require("../src/desktop/core/plugin-configuration.cjs");
 
 test("execution snapshots reuse Host credential reads without exposing them in public state", async () => {
   const reference = "AREAL_CREDENTIAL_saved";
@@ -201,86 +200,6 @@ test("explicit API key reveal retries a locked credential interactively", async 
   assert.equal(await config.reveal(config.value.data[0]), "interactive-secret");
   assert.equal(config.vault.locked.has("AREAL_CREDENTIAL_active"), false);
   assert.deepEqual(calls.at(-1).options, { interactionAllowed: true });
-});
-
-test("clearing sensitive plugin configuration saves without restarting peers", async () => {
-  const calls = [];
-  const detail = {
-    id: "p",
-    name: "p",
-    displayName: "p",
-    description: "",
-    source: "/source",
-    sourceDigest: "d",
-    revision: 1,
-    components: [],
-    skills: [],
-    diagnostics: [],
-    installed: true,
-    enabled: true,
-    installedDigest: "d",
-    userConfiguration: {
-      fields: {
-        TOKEN: {
-          definition: {
-            type: "string",
-            title: null,
-            description: null,
-            required: false,
-            sensitive: true,
-            default: null,
-          },
-          configured: true,
-          value: null,
-        },
-      },
-      missingRequired: [],
-      revision: 1,
-    },
-  };
-  const project = {
-    id: "p",
-    client: {
-      ready: true,
-      request: async (method, _params, options) =>
-        method === "areal/plugin/read" ? options.decode(detail) : { restartSafe: true },
-    },
-  };
-  const idle = {
-    id: "idle",
-    client: { ready: true, request: async () => ({ restartSafe: true }) },
-  };
-  const busy = {
-    id: "busy",
-    client: { ready: true, request: async () => ({ restartSafe: false }) },
-  };
-  const backend = {
-    projects: new Map([
-      ["p", project],
-      ["idle", idle],
-      ["busy", busy],
-    ]),
-    starting: new Map(),
-    hasWork: () => false,
-    onChange() {},
-    providers: { config: {} },
-    restartProject: async (p) => calls.push(`restart:${p.id}`),
-    submit: async () => {
-      calls.push("save");
-      return { revision: 2 };
-    },
-  };
-  const result = await configurePluginValues(backend, project, {
-    id: "p",
-    expectedDigest: "d",
-    expectedRevision: 1,
-    requestId: "r",
-    values: {},
-    secrets: {},
-    clearKeys: ["TOKEN"],
-  });
-  assert.deepEqual(calls, ["save"]);
-  assert.equal(result.reloadDeferred, undefined);
 });
 
 test("projectless catalog exposes the active locked provider", async () => {

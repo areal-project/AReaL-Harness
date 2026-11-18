@@ -485,6 +485,8 @@ async fn manage_mutations_artifacts_and_plugin_credentials_run_without_node_back
             let saved_ref_cb = saved_secret_ref.clone();
             let config_request_id = uuid::Uuid::new_v4().to_string();
             let original_config_request = config_request_id.clone();
+            let clear_request_id = uuid::Uuid::new_v4().to_string();
+            let original_clear_request = clear_request_id.clone();
             let config_writes = Rc::new(Cell::new(0));
             let config_writes_cb = config_writes.clone();
             let mut config_digest = None;
@@ -571,8 +573,14 @@ async fn manage_mutations_artifacts_and_plugin_credentials_run_without_node_back
                     json!({})
                 }
                 "areal/plugin/userConfig/set" => {
-                    assert_eq!(params["requestId"], original_config_request);
                     config_writes_cb.set(config_writes_cb.get() + 1);
+                    if params["requestId"] == original_clear_request {
+                        assert_eq!(params["clearKeys"], json!(["token"]));
+                        assert_eq!(params["values"], json!({}));
+                        assert!(params.get("secrets").is_none());
+                        return fixture_plugin_detail();
+                    }
+                    assert_eq!(params["requestId"], original_config_request);
                     let mut arguments = params.clone();
                     arguments.as_object_mut().unwrap().remove("requestId");
                     config_digest = Some(areal_local_service::storage::digest(
@@ -802,6 +810,25 @@ async fn manage_mutations_artifacts_and_plugin_credentials_run_without_node_back
                 registered_credentials.borrow().as_ref().unwrap()[&secret_ref],
                 "secret-token-value"
             );
+            let registered = registered_credentials.borrow().clone();
+            let clear = run_desktop_manage(
+                &host,
+                json!({
+                    "projectId": alias,
+                    "operation": "pluginUserConfigSave",
+                    "requestId": clear_request_id,
+                    "id": "fixture@local",
+                    "expectedRevision": 2,
+                    "expectedDigest": "digest-1",
+                    "values": {},
+                    "clearKeys": ["token"]
+                }),
+            )
+            .await
+            .unwrap();
+            assert_eq!(clear["id"], cfg_res["id"]);
+            assert_eq!(config_writes.get(), 2);
+            assert_eq!(*registered_credentials.borrow(), registered);
 
             let auth_request = json!({
                 "projectId":alias, "operation":"pluginAuthCredential",

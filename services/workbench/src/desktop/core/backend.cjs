@@ -1619,9 +1619,14 @@ class CoreBackend {
     if (this.closing) throw new Error("应用正在退出");
     if (
       name === "manage" &&
-      ["pluginStoreSnapshot", "pluginStoreDoctor", "pluginSubmission"].includes(request.operation)
+      [
+        "pluginStoreSnapshot",
+        "pluginStoreDoctor",
+        "pluginSubmission",
+        "pluginUserConfigSave",
+      ].includes(request.operation)
     )
-      throw new Error("Plugin observations require Host protocol");
+      throw new Error("Plugin observations and configuration writes require Host protocol");
     if (name === "manage") {
       // 插件库登记归 Host：桌面命令通道与界面走同一个 Host 方法，不再经各项目 Core。
       const store = require("@areal/workbench/desktop-contract/plugin-store");
