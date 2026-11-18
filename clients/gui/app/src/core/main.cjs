@@ -1081,9 +1081,7 @@ function startDesktop() {
                     : params.operation === "stop"
                       ? await requestStopService()
                       : params.operation === "recover"
-                        ? await serviceBackend.recoverBackend({
-                            notify: (options) => showMessageBox(options),
-                          })
+                        ? await serviceBackend.recoverBackend()
                         : await serviceBackend.checkLifecycle();
                 return { ok: true, value };
               }
@@ -1104,9 +1102,7 @@ function startDesktop() {
               if (name === "recoverResources")
                 return {
                   ok: true,
-                  value: await serviceBackend.recoverBackend({
-                    notify: (options) => showMessageBox(options),
-                  }),
+                  value: await serviceBackend.recoverBackend(),
                 };
               if (name === "connectService") {
                 await serviceBackend.init();

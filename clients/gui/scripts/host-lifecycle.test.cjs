@@ -329,7 +329,7 @@ test("lost stop response and reopened Main only query the durable original ID", 
   reopened.initialize = async () => {
     starts++;
   };
-  assert.deepEqual(await reopened.recoverBackend({ notify: async () => ({ response: 0 }) }), {
+  assert.deepEqual(await reopened.recoverBackend(), {
     recovered: true,
   });
   assert.equal(starts, 1);
@@ -375,6 +375,25 @@ test("missing original receipt stays UNKNOWN and preserves old Desktop reference
   await assert.rejects(f.backend.requestHostStop({ strategy: "ifIdle", requestId }), {
     code: "LIFECYCLE_REQUEST_CONFLICT",
   });
+});
+test("an unidentified Desktop stop stays unchanged during startup and recovery", async (t) => {
+  const f = await fixture(t);
+  const original = JSON.stringify({
+    state: "unconfirmed",
+    home: f.backend.home,
+    legacyRecovery: { phase: "retiring" },
+  });
+  await writeFile(f.backend.controlPath, original);
+  f.backend.attach = async () => assert.fail("Must not attach to the retired Desktop service");
+  f.backend.initialize = async () => assert.fail("Must not start a replacement backend");
+  await f.backend.init();
+  const lifecycle = await f.backend.checkLifecycle();
+  assert.equal(lifecycle.phase, "admissionUnconfirmed");
+  assert.equal(lifecycle.recovery.canRecover, false);
+  await assert.rejects(f.backend.recoverBackend(), { code: "LIFECYCLE_INCOMPLETE" });
+  await assert.rejects(f.backend.persistReferences(), { code: "LIFECYCLE_INCOMPLETE" });
+  assert.equal(await readFile(f.backend.controlPath, "utf8"), original);
+  assert.deepEqual(f.calls, []);
 });
 test("Host stop receipt requires original identities and completed child proof", () => {
   const reference = {
@@ -612,7 +631,7 @@ test("blocked automatic startup exposes explicit reconnect and recovery starts o
   await f.backend.init({ automatic: true });
   assert.equal(starts, 0);
   assert.equal(f.backend.connectionState.recovery, "reconnect");
-  assert.deepEqual(await f.backend.recoverBackend({ notify: async () => ({ response: 0 }) }), {
+  assert.deepEqual(await f.backend.recoverBackend(), {
     recovered: true,
   });
   assert.equal(starts, 1);

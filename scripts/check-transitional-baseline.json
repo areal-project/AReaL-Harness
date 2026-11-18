@@ -1,11 +1,10 @@
 {
   "clients/cli/src/main.rs": 11,
   "clients/cli/src/run.rs": 1,
-  "clients/gui/app/src/core/legacy-desktop-recovery.cjs": 17,
   "clients/gui/app/src/core/main.cjs": 1,
   "clients/gui/app/src/core/relay-legacy-guard.cjs": 5,
-  "clients/gui/app/src/core/service-client.cjs": 10,
-  "clients/gui/app/src/core/service-control.cjs": 7,
+  "clients/gui/app/src/core/service-client.cjs": 1,
+  "clients/gui/app/src/core/service-control.cjs": 3,
   "clients/gui/app/src/main.cjs": 3,
   "clients/gui/packages/browser-automation/acceptance/navigation-benchmark.cjs": 6,
   "clients/gui/packages/browser-automation/src/upstream/browser/browserCommandPageHandlers.ts": 1,

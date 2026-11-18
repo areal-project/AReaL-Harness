@@ -327,7 +327,7 @@ Composer 保留所选及最后受理模型，目录确认中不显示不可用�
 
 Renderer 仅通过窄 preload IPC 访问桌面适配器。适配器在 Main 进程中连接共享 Rust Host，不启动独立 Desktop Service 或持有 Core 生命期管道。关闭窗口保留应用；退出应用关闭 GUI 连接与原生资源，已受理的 Core 工作、Host 定时激活和原生 Remote 入口继续由 Host 管理。桌面 Browser/Computer 连接撤销后，后续任务按当前可用工具准备。再次启动读取 Core 权威历史，不重放提交；停止后台使用单独的显式 Host 操作。
 
-用户可显式停止后台服务。空闲停止不取消工作；有活动轮次、目标、任务或待发输入时，只显示一次取消确认，确认范围绑定原 Desktop 和各 Core 代际。取消保留待发输入、安排、历史与草稿，暂停当前执行并等待资源结算。历史 UNKNOWN 保留原会话核查要求，但不代替活资源结算。结果分为已完成、已拒绝、仍在结算、部分完成或受理未确认；检查只读取原请求，既不重发停止，也不确认工具 UNKNOWN。旧后台未声明持久生命周期能力时保留兼容观察，不通过另一层 Core 连接代为取消。若已知旧 Desktop 留下部分停止记录，可在顶部或设置的“检查与恢复”入口检查原工作空间，再显式选择“恢复后台…”。检查读取原 Host 身份、准入与资源结算；已退出目标还需 Host 清理标记和实例／历史锁释放，不能仅凭 PID 或 socket 消失判断完成。仍未知、正在清理、忙碌或已换代时显示原因并保留记录。确认后只对核对为空闲的原代际发起新的安全停止；本次停止响应未知时只检查，不重发。全部原 Host 确认清理后才退出旧界面后台并启动当前版本；旧界面后台未响应退出时另行确认是否结束该管理进程，不向 Core/Runtime 发信号。模型配置、工作空间、历史与工具 UNKNOWN 保留，旧停止记录存档；恢复中断可重新检查并继续。`pnpm --dir clients/gui run test:legacy-recovery` 使用隔离历史 Desktop、当前 GUI/Core 与本地模型验证恢复；设置 `AREAL_RECOVERY_SCENARIO=exited` 覆盖停止已完成但响应未知的路径。
+用户可显式停止后台服务，Host 会绑定原代次和项目范围，结算执行与资源清理。结果未确认时只核查原请求。带原请求编号与代次的旧停止引用由 Host 核查。缺少操作身份的旧停止记录原样保留，请用原版本检查并结束该操作，再打开当前版本。
 
 macOS 安装包将 Desktop 放在独立应用身份的 `AReaL Harness Service.app` 中，与前台共享包资源、配置、凭据名称和数据目录。Main 独占 Desktop 生命期管道写端，Desktop 独占每个 GUI Host 的写端；关闭窗口不关闭这些管道。Main 或 Desktop 消失会使下游收到 EOF 并清理引擎。`AREAL_GUI_EXECUTABLE` 配合 `node --test clients/gui/scripts/macos-service.test.mjs` 核对包内入口、owner 和管道关闭后的退出。
 

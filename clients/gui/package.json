@@ -63,7 +63,6 @@
     "test:stop-reopen": "node scripts/gui-stop-reopen-smoke.mjs desktop && node scripts/gui-stop-reopen-smoke.mjs host",
     "test:crash-recovery": "node scripts/gui-crash-recovery-smoke.mjs",
     "test:host-handoff": "node scripts/gui-host-handoff-smoke.mjs",
-    "test:legacy-recovery": "node scripts/legacy-desktop-recovery-smoke.mjs",
     "test:queue": "node scripts/queue-smoke.mjs",
     "test:interactions": "node scripts/interaction-smoke.mjs",
     "test:permission-presets": "node scripts/permission-presets-smoke.mjs",

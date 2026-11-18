@@ -127,7 +127,6 @@
     "app/src/core/file-open.cjs": 291,
     "app/src/core/gui-resource-contract.cjs": 47,
     "app/src/core/host-prerequisites.cjs": 90,
-    "app/src/core/legacy-desktop-recovery.cjs": 458,
     "app/src/core/lifecycle.cjs": 149,
     "app/src/core/main.cjs": 1834,
     "app/src/core/mcp-apps-images.cjs": 198,

@@ -113,6 +113,8 @@ const { projectHostReceipt } = require("./host-lifecycle.cjs");
 /** @typedef {{stopped:boolean,operation:Receipt,kind?:string}} LifecycleResult */
 /** @param {unknown} kind */
 const desktopKind = (kind) => kind === "stopDesktop" || kind === "updateDesktop";
+const originalDesktopMessage =
+  "旧停止记录缺少可核查的操作身份。请在原版本检查并结束后台，再打开当前版本。";
 /** @param {Pick<import("./service-control.cjs").LifecycleResponse,"phase"|"targets"> & {desktopExit?:unknown}} operation */
 const needsOriginalCheck = (operation) =>
   operation.phase === "admissionUnconfirmed" ||
@@ -176,16 +178,16 @@ function lifecycleProjection() {
     operations.push(projectHostReceipt(reference, this.hostReceipts.get(reference.requestId)));
   const latest = operations.at(-1);
   const legacy =
-    this.legacyControl || (this.status.stopReport && this.status.lifecycle?.version !== 2);
+    this.unidentifiedStop || (this.status.stopReport && this.status.lifecycle?.version !== 2);
   return {
     supported: this.status.lifecycle?.version === 2,
     operations,
     ...(legacy
       ? {
-          recovery: this.legacyRecoveryView ?? {
+          recovery: {
             canRecover: false,
             projects: [],
-            message: "请检查原后台状态，再恢复工作。",
+            message: originalDesktopMessage,
           },
         }
       : {}),
@@ -193,7 +195,7 @@ function lifecycleProjection() {
       ? (latest ?? {
           phase: "admissionUnconfirmed",
           targets: [],
-          message: "旧停止记录缺少操作身份，已恢复观察连接。请检查原后台状态；不会重发旧操作。",
+          message: originalDesktopMessage,
         })
       : {}),
     ...(this.lifecycleError ? { error: this.lifecycleError, message: this.lifecycleError } : {}),
@@ -203,6 +205,8 @@ function lifecycleProjection() {
 /** @this {Backend} */
 async function persistReferences() {
   const write = async () => {
+    if (this.unidentifiedStop)
+      throw Object.assign(new Error(originalDesktopMessage), { code: "LIFECYCLE_INCOMPLETE" });
     await mkdir(this.app.getPath("userData"), { recursive: true, mode: 0o700 });
     if (!this.lifecycleReferences.size && !this.hostReferences.size && !this.hostUpdateReference) {
       await rm(this.controlPath, { force: true });
@@ -244,6 +248,7 @@ async function persistReferences() {
 
 /** @this {Backend}  @param {Record<string,unknown>|null} control */
 function loadReferences(control) {
+  this.unidentifiedStop = control?.state === "unconfirmed";
   if (control?.version === 2 || control?.version === 3) {
     if (control.hostUpdate != null) {
       const update = control.hostUpdate;
@@ -265,7 +270,6 @@ function loadReferences(control) {
     }
     this.controlState = null;
   } else if (control?.state === "unconfirmed") {
-    this.legacyControl = control;
     this.controlState = null;
   } else this.controlState = control?.state ?? null;
 }
@@ -437,10 +441,7 @@ function assertLifecycleScope(name, request = {}) {
     require("./lifecycle.cjs").isRecoveryCommand(name, request)
   )
     return;
-  if (
-    (this.legacyControl?.legacyRecovery || this.status.stopReport) &&
-    this.status.lifecycle?.version !== 2
-  )
+  if (this.unidentifiedStop || (this.status.stopReport && this.status.lifecycle?.version !== 2))
     throw Object.assign(new Error("请先检查并恢复原后台，再继续工作。输入和历史已保留。"), {
       code: "LIFECYCLE_INCOMPLETE",
     });
@@ -583,6 +584,8 @@ async function hostUpdate(request) {
       return empty;
     }
     if (!this.hostUpdateReference) this.loadReferences(await this.readControl());
+    if (this.unidentifiedStop && ["prepare", "apply"].includes(request.operation))
+      throw Object.assign(new Error(originalDesktopMessage), { code: "LIFECYCLE_INCOMPLETE" });
     const original = this.hostUpdateReference;
     if (original) {
       if (original.hostId !== client.hostId) throw new Error("Host 身份已变化，原升级请求仍需核查");
@@ -679,6 +682,7 @@ async function hostUpdate(request) {
   }
 }
 module.exports = {
+  originalDesktopMessage,
   hostUpdate,
   persistReferences,
   loadReferences,

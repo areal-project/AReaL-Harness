@@ -124,10 +124,7 @@ class SharedCoreBackend {
     this.identity = undefined;
     /** @type {unknown} */
     this.controlState = undefined;
-    /** @type {Record<string,unknown>|null|undefined} */
-    this.legacyControl = undefined;
-    /** @type {{canRecover:boolean,projects:unknown[],message:string}|null|undefined} */
-    this.legacyRecoveryView = undefined;
+    this.unidentifiedStop = false;
     /** @type {string|null|undefined} */
     this.lifecycleError = undefined;
     /** @type {{state:string,message?:string}|undefined} */
@@ -733,13 +730,21 @@ class SharedCoreBackend {
         this.status.connected &&
         !this.lifecycleReferences.size &&
         !this.hostReferences.size &&
-        !this.legacyControl
+        !this.unidentifiedStop
       )
         return;
       this.clearReconnect();
       this.initializing = true;
       this.connectionState = { state: "connecting" };
       this.onChange();
+      if (this.unidentifiedStop) {
+        this.connectionState = {
+          state: "unavailable",
+          recovery: "check",
+          message: lifecycleControl.originalDesktopMessage,
+        };
+        return;
+      }
       let reconnectHost = false;
       if (this.hostReferences.size) {
         for (const reference of this.hostReferences.values()) await this.readHostStop(reference);
@@ -761,7 +766,7 @@ class SharedCoreBackend {
         }
         reconnectHost = true;
       }
-      if (this.lifecycleReferences.size || this.legacyControl) {
+      if (this.lifecycleReferences.size) {
         await this.checkLifecycle();
         const completedStop =
           this.lifecycleReferences.size > 0 &&
@@ -1436,13 +1441,15 @@ class SharedCoreBackend {
   acceptLifecycleReceipt(reference, value) {
     return lifecycleControl.acceptLifecycleReceipt.call(this, reference, value);
   }
-  /** @param {{notify:Notify}} options @returns {Promise<unknown>} */
-  async recoverBackend({ notify }) {
+  /** @returns {Promise<unknown>} */
+  async recoverBackend() {
     if (this.recoveryInFlight) return this.recoveryInFlight;
     this.recoveryInFlight = (async () => {
       await this.checkLifecycle();
-      if (this.legacyControl || (this.status.stopReport && this.status.lifecycle?.version !== 2))
-        return require("./legacy-desktop-recovery.cjs").recover(this, notify);
+      if (this.unidentifiedStop || (this.status.stopReport && this.status.lifecycle?.version !== 2))
+        throw Object.assign(new Error(lifecycleControl.originalDesktopMessage), {
+          code: "LIFECYCLE_INCOMPLETE",
+        });
       const pending = [...this.lifecycleReferences.values()];
       if (!pending.length && this.hostReferences.size) {
         if (this.hostRecoveryState().recovery === "check")
@@ -1484,13 +1491,6 @@ class SharedCoreBackend {
   async checkLifecycle() {
     this.loadReferences(await this.readControl());
     this.clearReconnect();
-    // 过渡：到 0.2.0 删（旧后台的显式恢复随 Node 服务退役）。
-    if (
-      !this.status.connected &&
-      (!this.options.guiProfile || !this.options.hostHome || this.legacyControl) &&
-      (this.lifecycleReferences.size || !this.hostReferences.size)
-    )
-      await this.attach();
     for (const reference of Array.from(this.hostReferences.values()))
       await this.readHostStop(reference);
     if (
@@ -1501,17 +1501,6 @@ class SharedCoreBackend {
       this.connectionState = this.hostRecoveryState();
     for (const reference of Array.from(this.lifecycleReferences.values()))
       await this.readLifecycle(reference);
-    if (this.legacyControl || (this.status.stopReport && this.status.lifecycle?.version !== 2)) {
-      try {
-        await require("./legacy-desktop-recovery.cjs").inspect(this);
-      } catch (error) {
-        this.legacyRecoveryView = {
-          canRecover: false,
-          projects: [],
-          message: desktopError(error).message,
-        };
-      }
-    }
     this.lifecycleError = null;
     this.onChange();
     return this.lifecycleProjection();
