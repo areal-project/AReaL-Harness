@@ -8,7 +8,7 @@ const { NativeRemote } = require("./native-remote.cjs");
 const { desktopError } = require("@areal/workbench/desktop-contract");
 /** @type {typeof import('@areal/workbench/desktop-contract')} */
 const desktopContract = require("@areal/workbench/desktop-contract");
-const { inspectResources, recoverResource, blocked } = require("./resource-recovery.cjs");
+const { inspectResources } = require("./resource-recovery.cjs");
 const {
   validToolInput,
   describeCommands,
@@ -131,7 +131,6 @@ class DesktopService {
     /** @type {NodeJS.Timeout|undefined} */ this.activityTimer = undefined;
     /** @type {import('ws').WebSocketServer|undefined} */ this.server = undefined;
     this.exitRequested = false;
-    this.recovering = false;
     backend.onChange = () => this.schedule();
     backend.onNotification = (notice) => this.notify(notice);
   }
@@ -597,8 +596,6 @@ class DesktopService {
         this.schedule();
         return response;
       }
-      if (this.recovering && !["snapshot", "activity"].includes(method))
-        throw blocked("正在处理后台资源，请稍后重试");
       if (method === "browserClaim") {
         if (this.browserSocket !== socket) throw new Error("Desktop tool owner is unavailable");
         const {
@@ -779,51 +776,16 @@ class DesktopService {
         return response;
       }
       if (method === "resources") {
-        if (params?.operation === "inspect") {
-          this.inflight++;
-          try {
-            response = await inspectResources(this.backend, {
-              includeTasks: params.includeTasks === true,
-              purpose: params.purpose === "quit" ? "quit" : undefined,
-            });
-          } finally {
-            this.inflight--;
-          }
-          return response;
-        }
-        if (
-          (params.operation !== "terminate" && params.operation !== "acknowledge") ||
-          typeof params.projectId !== "string" ||
-          typeof params.threadId !== "string" ||
-          typeof params.id !== "string" ||
-          typeof params.epoch !== "string" ||
-          (params.confirmed !== undefined && typeof params.confirmed !== "boolean")
-        )
-          throw new Error("无效资源操作");
-        if (
-          this.inflight ||
-          this.backend.hasWork({ includePausedQueues: false }) ||
-          this.backend.starting.size ||
-          this.backend.providerUpdating
-        )
-          throw new Error("请先完成任务和其他操作，再处理资源");
+        if (params?.operation !== "inspect") throw new Error("无效资源操作");
         this.inflight++;
-        this.recovering = true;
         try {
-          response = await recoverResource(this.backend, {
-            projectId: params.projectId,
-            threadId: params.threadId,
-            id: params.id,
-            epoch: params.epoch,
-            operation: params.operation,
-            confirmed: params.confirmed,
+          return await inspectResources(this.backend, {
+            includeTasks: params.includeTasks === true,
+            purpose: params.purpose === "quit" ? "quit" : undefined,
           });
         } finally {
           this.inflight--;
-          this.recovering = false;
-          this.schedule();
         }
-        return response;
       }
       if (method === "snapshot") {
         const packet = this.packet();
@@ -954,7 +916,7 @@ class DesktopService {
   async executeRemote(name, request) {
     if (name === "providers" && request?.operation === "revealKey")
       throw new Error("API Key 仅可在本机模型设置中查看");
-    if (this.closed || this.recovering) throw new Error("后台正在停止或恢复，请稍后重试");
+    if (this.closed) throw new Error("后台正在停止，请稍后重试");
     this.inflight++;
     this.schedule();
     try {

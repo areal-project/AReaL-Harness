@@ -1,21 +1,16 @@
 // @ts-check
 "use strict";
 const { isAwaitingResponse } = require("./project-state.cjs");
-const { randomUUID } = require("node:crypto");
 const {
   readQueueCounts,
   readResourceStatus,
   readResourceProcesses,
   readResourceTasks,
   readResourceGoal,
-  readResourceInspections,
 } = require("@areal/workbench/desktop-contract/desktop-control-resources");
 /** @typedef {InstanceType<typeof import('./backend.cjs').CoreBackend>} Backend */
 /** @typedef {import('@areal/workbench/desktop-contract/desktop-control-resources').ResourceInspection} Inspection */
 /** @typedef {import('@areal/workbench/desktop-contract/desktop-control-resources').RecoveryResource} Resource */
-/** @typedef {(options:Electron.MessageBoxOptions)=>Promise<Electron.MessageBoxReturnValue>} Notify */
-/** @param {string} message */
-const blocked = (message) => Object.assign(new Error(message), { code: "CORE_RESOURCES" });
 const { coreLifecycle } = require("./lifecycle.cjs");
 /** @param {unknown} status */
 const restartSafe = (status) => coreLifecycle(status).ifIdle.allowed;
@@ -171,133 +166,4 @@ async function inspectResources(backend, { includeTasks = false, purpose } = {})
   }
   return projects;
 }
-/** @param {Backend} backend @param {{projectId:string,threadId:string,id:string,epoch:string,operation:string,confirmed?:boolean}} request */
-async function recoverResource(backend, request) {
-  const projects = await inspectResources(backend);
-  const target = projects
-    .find((p) => p.projectId === request.projectId)
-    ?.resources?.find((p) => p.threadId === request.threadId && p.id === request.id);
-  if (!target || target.epoch !== request.epoch) throw new Error("资源状态已变化，请重新检查");
-  const client = backend.projects.get(target.projectId)?.client;
-  if (!client) throw new Error("Core 连接未恢复，无法确认资源清理");
-  if (target.stale) {
-    if (request.operation !== "acknowledge" || request.confirmed !== true)
-      throw new Error("请先核实旧终端及其子进程已结束，再确认清理");
-    await client.request("areal/process/acknowledgeCleanup", {
-      threadId: target.threadId,
-      id: target.id,
-      note: "用户在 Harness 资源恢复对话框中明确确认：已检查旧终端及其子进程均已结束。仅确认资源清理，不改变历史执行结果。",
-    });
-  } else {
-    if (request.operation !== "terminate")
-      throw new Error("当前 Runtime 资源必须通过 Runtime 关闭");
-    await client.request("areal/process/terminate", {
-      threadId: target.threadId,
-      id: target.id,
-      requestId: randomUUID(),
-    });
-  }
-  const remaining = await client.request(
-    "areal/process/list",
-    { threadId: target.threadId },
-    { decode: readResourceProcesses },
-  );
-  if (!remaining.data?.find((p) => p.id === target.id)?.cleanupConfirmed)
-    throw new Error("Core 尚未确认资源清理，请重新检查");
-  return { cleanupConfirmed: true };
-}
-/** @param {Inspection[]} projects */
-function summary(projects) {
-  return projects
-    .filter((p) => !p.restartSafe || p.activeTasks || p.goalThreads?.length || p.waitingMessages)
-    .map(
-      (p) =>
-        `${p.root ?? p.projectId}\n终端 ${p.resources?.length ?? 0} · 活动轮次 ${p.activeTurns ?? 0} · 活动目标 ${p.goalThreads?.length ?? 0} · 后台任务 ${p.activeTasks ?? 0} · 排队消息 ${p.waitingMessages ?? 0}\n未确认工具 ${p.unresolvedTools ?? 0} · 上下文压缩 ${p.compactions ?? 0} · 子任务组 ${p.workgroups ?? 0}`,
-    )
-    .join("\n\n");
-}
-// Native main-process interaction; never expose an unrestricted attestation RPC
-// or credentials to the renderer. Cancellation never changes Core records.
-/** @param {{backend:Pick<InstanceType<typeof import('../../../../../clients/gui/app/src/core/service-client.cjs').SharedCoreBackend>,'resources'>,notify:Notify}} options */
-function createResourceRecovery({ backend, notify }) {
-  let opened = false;
-  return async () => {
-    if (opened) return;
-    opened = true;
-    try {
-      const projects = readResourceInspections(await backend.resources({ operation: "inspect" }));
-      const pending = projects.flatMap((p) =>
-        (p.resources ?? []).map((r) => ({ ...r, root: p.root })),
-      );
-      if (!pending.length) {
-        await notify({
-          type: "info",
-          message: projects.every((p) => p.restartSafe) ? "后台资源已就绪" : "还有其他操作阻止更新",
-          detail: summary(projects) || "可以从“检查更新…”重试安装。",
-          buttons: ["确定"],
-        });
-        return;
-      }
-      for (const r of pending) {
-        const detail = `工作区：${r.root}\n会话：${r.threadId}\n资源：${r.id}\n程序：${r.executable}\n状态：${r.state}\n\n`;
-        const answer = await notify({
-          type: "warning",
-          message: r.stale ? "检查旧终端的清理状态" : "关闭阻止更新的终端？",
-          detail:
-            detail +
-            (r.stale
-              ? "此终端属于已退出的 Runtime，应用无法确认其进程是否仍存在。请在系统活动监视器或终端中核实对应终端及其子进程已结束；无法确定时请选择稍后处理。确认仅记录清理证据，不会把历史执行改为成功。"
-              : "将通过 Runtime 结束此终端及其资源。请先保存该终端中的工作。"),
-          buttons: ["稍后处理", r.stale ? "确认已清理" : "关闭终端"],
-          defaultId: 0,
-          cancelId: 0,
-          ...(r.stale
-            ? { checkboxLabel: "我已核实该终端及其子进程均已结束", checkboxChecked: false }
-            : {}),
-        });
-        if (answer.response !== 1) return;
-        if (r.stale && !answer.checkboxChecked) {
-          await notify({
-            type: "info",
-            message: "尚未确认清理",
-            detail: "请完成进程核实后，再勾选确认。记录未修改。",
-            buttons: ["确定"],
-          });
-          return;
-        }
-        await backend.resources({
-          operation: r.stale ? "acknowledge" : "terminate",
-          projectId: r.projectId,
-          threadId: r.threadId,
-          id: r.id,
-          epoch: r.epoch,
-          confirmed: r.stale,
-        });
-      }
-      const after = readResourceInspections(await backend.resources({ operation: "inspect" }));
-      await notify({
-        type: "info",
-        message: after.every((p) => p.restartSafe) ? "资源清理已确认" : "仍有操作阻止更新",
-        detail: summary(after) || "可以从“检查更新…”重试安装，已下载的更新无需重复下载。",
-        buttons: ["确定"],
-      });
-    } catch (error) {
-      await notify({
-        type: "error",
-        message: "资源处理未完成",
-        detail: require("@areal/workbench/desktop-contract").desktopError(error).message,
-        buttons: ["确定"],
-      });
-    } finally {
-      opened = false;
-    }
-  };
-}
-module.exports = {
-  inspectResources,
-  recoverResource,
-  createResourceRecovery,
-  summary,
-  blocked,
-  restartSafe,
-};
+module.exports = { inspectResources };
