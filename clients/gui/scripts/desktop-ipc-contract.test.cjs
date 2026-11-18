@@ -238,12 +238,27 @@ function hostCommandBranches() {
     ].map((entry) => entry[1]),
   );
 }
+function rendererCommandBranches() {
+  const file = source(resolve("renderer/src/host-services.ts"));
+  const commands = commandBranches(file);
+  visit(file, (node) => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === "client" &&
+      node.expression.name.text === "history"
+    )
+      commands.add("history");
+  });
+  return commands;
+}
 function assertCommands(file) {
   const declared = commandNames(file).map((property) => property.name.text);
   const dispatched = union(
     commandBranches(mainSource()),
-    commandBranches(source(resolve("../../services/workbench/src/desktop/core/backend.cjs"))),
     hostCommandBranches(),
+    rendererCommandBranches(),
   );
   assert.deepEqual(
     sorted(declared),
@@ -372,22 +387,18 @@ test("Core target scanner recognizes a bound request without collecting unrelate
   }
 });
 
-test("Desktop commands map to their dispatch layer and Core catalog through actual RPC targets", () => {
+test("Desktop commands map to native dispatch and the Core method catalog", () => {
   const main = commandBranches(mainSource()),
-    backend = union(
-      commandBranches(source(resolve("../../services/workbench/src/desktop/core/backend.cjs"))),
-      hostCommandBranches(),
-    );
+    backend = union(hostCommandBranches(), rendererCommandBranches());
   for (const [name, [owner]] of Object.entries(commandDefinitions))
     assert.ok(
       (owner === "main" ? main : backend).has(name),
       `${owner} command lacks a dispatch branch: ${name}`,
     );
-  const files = ["app/src/core", "../../services/workbench/src/desktop/core"].flatMap((directory) =>
-    readdirSync(resolve(directory))
-      .filter((name) => name.endsWith(".cjs"))
-      .map((name) => resolve(directory, name)),
-  );
+  const directory = resolve("app/src/core");
+  const files = readdirSync(directory)
+    .filter((name) => /\.(cjs|ts)$/.test(name))
+    .map((name) => resolve(directory, name));
   const program = ts.createProgram(files, {
       allowJs: true,
       noResolve: true,
@@ -402,6 +413,12 @@ test("Desktop commands map to their dispatch layer and Core catalog through actu
     for (const method of found.methods) targets.add(method);
     templates.push(...found.templates);
   }
+  const host = resolve("../../core/host/src");
+  for (const path of readdirSync(host, { recursive: true })) {
+    if (!path.endsWith(".rs") || /(?:^|[/_])tests?(?:[/_.]|$)/.test(path)) continue;
+    for (const match of readFileSync(join(host, path), "utf8").matchAll(/"([\w-]+\/[\w/-]+)"/g))
+      targets.add(match[1]);
+  }
   const core = rustCatalog(resolve("../../core/app-server/src/desktop.rs"));
   assert.ok(
     !core.has("create") && !Object.hasOwn(commandDefinitions, "areal/thread/start"),
@@ -414,17 +431,8 @@ test("Desktop commands map to their dispatch layer and Core catalog through actu
       !targets.has(method) &&
       !templates.some(({ prefix, suffix }) => method.startsWith(prefix) && method.endsWith(suffix)),
   );
-  // 工作树和附件释放由 Host 调用 Core；模型详情由列表提供。
-  assert.match(
-    readFileSync(resolve("../../core/host/src/workbench_route.rs"), "utf8"),
-    /"areal\/blob\/release"/,
-  );
-  assert.deepEqual(unmapped, [
-    "areal/worktree/read",
-    "areal/worktree/command",
-    "areal/blob/release",
-    "areal/provider/read",
-  ]);
+  // 模型详情由列表提供。
+  assert.deepEqual(unmapped, ["areal/provider/read"]);
 });
 
 test("native notices use current settings and never replay a suppressed event", () => {
