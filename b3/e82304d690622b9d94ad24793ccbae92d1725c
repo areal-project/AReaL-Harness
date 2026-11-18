@@ -1,0 +1,21 @@
+core/engine/tests/skill_loading.rs
+  s_f12f82d708da68::t_f49e5903419a00 709-712,722-724,728-730,737-751,766-769
+  s_f12f82d708da68::t_0f434f637e3ec5 725-727,753
+  s_f12f82d708da68::t_64a5b392e7b82e 759
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b3e82304d690622b9d94ad24793ccbae92d1725c",
+  "prompts": {},
+  "sessions": {
+    "s_f12f82d708da68": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d39b-5e9e-71a0-b28d-b29ad3693a4b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
