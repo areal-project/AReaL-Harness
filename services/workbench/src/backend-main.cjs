@@ -633,12 +633,9 @@ async function start({ input, output }) {
           contract.validateCommand(command, params);
           if (command === "side" && typeof request.context?.connection !== "string")
             throw Error("INVALID_PARAMS");
-          // 手机连接在桌面窗口里也不经后台命令表，而是直接交给连接管理。
-          const remote = desktop.adapter.remote;
-          if (command === "remoteControl" && !remote) throw Error("手机连接未初始化");
           const result =
-            command === "remoteControl" && remote
-              ? await remote.control(params)
+            command === "remoteControl"
+              ? await desktop.adapter.controlRemote(params)
               : command === "side"
                 ? await sideOwners.command(request.context.connection, params, (side) =>
                     desktop.adapter.executeRemote(command, side),

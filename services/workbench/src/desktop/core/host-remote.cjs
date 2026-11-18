@@ -157,7 +157,10 @@ class HostRemote {
         });
       this.pending = null;
       await this.persist();
-      if (receipt.state !== "completed") throw new Error("Remote 配置未写入，请刷新后重试");
+      if (receipt.state !== "completed")
+        throw Object.assign(new Error("Remote 配置未写入，请重试"), {
+          code: receipt.error?.code,
+        });
       const current = await this.read();
       if (this.revision !== receipt.revision) throw new Error("Remote 配置已变更，请刷新后重试");
       return current;
