@@ -716,37 +716,52 @@ mod tests {
     }
 
     #[test]
-    fn directory_and_retained_version_limits_fail_before_writing_a_deployment() {
+    fn directory_and_retained_version_limits_preserve_the_previous_deployment() {
         let fixture = Fixture::new();
         let managed = fixture.managed(true);
-        fs::create_dir_all(&managed).unwrap();
-        for index in 0..513 {
+        write_skill(&managed.join("valid"), "discoverable skill");
+        for index in 0..511 {
             fs::write(managed.join(format!("entry-{index}")), "raw entry").unwrap();
         }
+        let saved = fixture.prepare();
+        let original = fs::read(&saved.deployment_path).unwrap();
+        assert_eq!(
+            current_skills(&deployment(&saved)),
+            ["valid", BUILTIN_SKILL_ID]
+        );
+        fs::write(managed.join("entry-overflow"), "raw entry").unwrap();
         let failure = materialize(&fixture.home, &fixture.registration, &fixture.inputs)
             .err()
             .unwrap()
             .to_string();
         assert!(failure.contains("512 entries"));
-        assert!(!fixture.home.join("host/launch").exists());
+        assert_eq!(fs::read(&saved.deployment_path).unwrap(), original);
 
         let fixture = Fixture::new();
         let source = fixture.inputs.deployment_path.as_ref().unwrap();
         let mut value: Value = serde_json::from_slice(&fs::read(source).unwrap()).unwrap();
         let builtin = value["skills"][0].clone();
-        for index in 0..512 {
+        for index in 0..511 {
             let mut previous = builtin.clone();
             previous["id"] = json!("retained");
             previous["revision"] = json!(format!("revision-{index}"));
             value["skills"].as_array_mut().unwrap().push(previous);
         }
         fs::write(source, serde_json::to_vec(&value).unwrap()).unwrap();
+        let saved = fixture.prepare();
+        assert_eq!(deployment(&saved)["skills"].as_array().unwrap().len(), 512);
+        let original = fs::read(&saved.deployment_path).unwrap();
+        let mut overflow = builtin;
+        overflow["id"] = json!("retained");
+        overflow["revision"] = json!("overflow");
+        value["skills"].as_array_mut().unwrap().push(overflow);
+        fs::write(source, serde_json::to_vec(&value).unwrap()).unwrap();
         let failure = materialize(&fixture.home, &fixture.registration, &fixture.inputs)
             .err()
             .unwrap()
             .to_string();
         assert!(failure.contains("512 retained versions"));
-        assert!(!fixture.home.join("host/launch").exists());
+        assert_eq!(fs::read(&saved.deployment_path).unwrap(), original);
     }
 
     #[test]
