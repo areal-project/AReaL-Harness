@@ -1,27 +1,7 @@
 // @ts-check
 "use strict";
-const { ServiceConnection } = require("./service-client.cjs");
-const {
-  DesktopLifecycle,
-  assertLifecycleSupport,
-  blockerMessage,
-  describe,
-} = require("./lifecycle.cjs");
+const { assertLifecycleSupport, blockerMessage, describe } = require("./lifecycle.cjs");
 const { nativeText } = require("@areal/workbench/node/native-i18n");
-const { PROTOCOL } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
-
-/** @param {{metadata:{identity?:unknown},home:string}} options */
-async function recoverStartupService({ metadata, home }) {
-  const connection = new ServiceConnection();
-  try {
-    const connected = await connection.connect(metadata);
-    await connection.request("hello", { protocol: PROTOCOL, identity: metadata.identity });
-    await new DesktopLifecycle({ connection, metadata: connected, home }).observe();
-    return { kind: "reconnect-existing" };
-  } finally {
-    connection.close();
-  }
-}
 
 /** @param {{backend:InstanceType<typeof import('./service-client.cjs').SharedCoreBackend>,notify?:import('@areal/workbench-service/desktop/core/resource-recovery.cjs').Notify,purpose?:string,forUpdate?:boolean,migration?:unknown}} options */
 async function recoverConnectedService({
@@ -128,4 +108,4 @@ async function recoverConnectedService({
   }
   return backend.stopService(forUpdate, { cancel, observed, kind, migration });
 }
-module.exports = { recoverStartupService, recoverConnectedService };
+module.exports = { recoverConnectedService };

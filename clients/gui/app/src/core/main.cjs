@@ -53,7 +53,6 @@ const cfg = require("./service-config.cjs");
 const { readLibraryStartupSettings } = require("@areal/workbench/node/library-startup");
 const { applyDesktopSessionNetworkPolicy } = require("@areal/workbench/node/desktop-network");
 const { SharedCoreBackend } = require("./service-client.cjs");
-const { recoverConnectedService } = require("./startup-recovery.cjs");
 const { setNativeLocale, nativeText } = require("@areal/workbench/node/native-i18n");
 const { confirmHostQuit, confirmHostStop, hostActivityLabel } = require("./host-quit.cjs");
 const { loadThemes, desktopTheme } = require("../themes");
@@ -347,18 +346,9 @@ function startDesktop() {
           (backend.status.connected || backend.metadata)
         ) {
           recordQuitStage(attempt, "stop");
-          const result = await recoverConnectedService({
-            backend,
-            notify: async (options) => {
-              const answer = await notify(options);
-              if (answer.response === 1) {
-                beginQuit("stopping");
-                recordQuitStage(attempt, "stop");
-              }
-              return answer;
-            },
-            purpose: intent === "install" ? "update" : "quit",
-            forUpdate: intent === "install",
+          const result = await confirmHostStop(backend, notify, () => {
+            beginQuit("stopping");
+            recordQuitStage(attempt, "stop");
           });
           if (!("stopped" in result) || result.stopped !== true) {
             recordQuitStage(
@@ -1174,12 +1164,7 @@ function startDesktop() {
           const recoverInstall = async () => {
             recoveryPending++;
             try {
-              await recoverConnectedService({
-                backend: serviceBackend,
-                notify: (options) => showMessageBox(options),
-                purpose: "update",
-                forUpdate: true,
-              });
+              await confirmHostStop(serviceBackend, (options) => showMessageBox(options));
             } finally {
               recoveryPending--;
               if (recoveryPending === 0 && updates?.state().status === "deferred")

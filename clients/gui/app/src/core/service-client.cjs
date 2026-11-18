@@ -1194,63 +1194,17 @@ class SharedCoreBackend {
   }
   /** @param {Record<string,unknown>} request @returns {Promise<unknown>} */
   async resources(request) {
-    if (request.operation !== "inspect") this.assertApplicationWrite();
-    if (!this.status.connected)
-      throw new Error("后台尚未连接，请点击“重新连接后台”检查并恢复旧服务");
-    if (request.operation === "inspect" && this.nativeBrowserEpoch)
-      return require("@areal/workbench/desktop-contract/desktop-control-resources").readResourceInspections(
-        await this.nativeResourceRead(request),
-      );
-    return this.requireConnection().request("resources", request, request.operation !== "inspect");
+    return require("@areal/workbench/desktop-contract/desktop-control-resources").readResourceInspections(
+      await this.nativeResourceRead(request),
+    );
   }
   async serviceStatus() {
     if (!this.status.connected) throw new Error("后台尚未连接");
-    if (this.nativeBrowserEpoch) {
-      const value = await this.nativeResourceRead({ operation: "status" });
-      /** @type {typeof import('@areal/workbench/desktop-contract/desktop-control').validateResponse} */
-      const validate =
-        require("@areal/workbench/desktop-contract/desktop-control").validateResponse;
-      validate("serviceStatus", {}, value);
-      return value;
-    }
-    const connection = this.requireConnection();
-    const projects =
-      require("@areal/workbench/desktop-contract/desktop-control-resources").readResourceInspections(
-        await this.resources({ operation: "inspect", includeTasks: true }),
-      );
-    const { service, snapshot } = readServicePacket(
-      await connection.request("snapshot"),
-      this.metadata,
-    );
-    if (connection !== this.connection || !this.status.connected)
-      throw new Error("后台连接已变化，请刷新状态");
-    // Only public lifecycle observations cross the renderer boundary, never the
-    // service descriptor, authentication token or resource command arguments.
-    const { recoveryView } = require("./lifecycle.cjs");
-    const visibleProjects = projects.map(
-      ({ serviceId: _serviceId, generation: _generation, lifecycle: _lifecycle, ...project }) =>
-        project,
-    );
-    return {
-      canStop: recoveryView(
-        require("@areal/workbench/desktop-contract/desktop-control-resources").readRecoveryService(
-          service,
-        ),
-        projects,
-      ).ifIdle,
-      connected: service.connected,
-      clients: service.clients,
-      busy: service.busy,
-      activeCommands: service.activeCommands,
-      starting: service.starting,
-      providerUpdating: service.providerUpdating,
-      projects: snapshot.projects.map((project) => ({
-        projectId: project.id,
-        root: project.root,
-        started: projects.some((item) => item.projectId === project.id),
-        ...visibleProjects.find((item) => item.projectId === project.id),
-      })),
-    };
+    const value = await this.nativeResourceRead({ operation: "status" });
+    /** @type {typeof import('@areal/workbench/desktop-contract/desktop-control').validateResponse} */
+    const validate = require("@areal/workbench/desktop-contract/desktop-control").validateResponse;
+    validate("serviceStatus", {}, value);
+    return value;
   }
   /** @param {'status'|'install'|'uninstall'} operation @param {()=>Promise<unknown>} [stop] @returns {Promise<import('@areal/workbench/desktop-contract/desktop-control').HostInstallation>} */
   async hostInstallation(operation, stop) {
@@ -1339,14 +1293,11 @@ class SharedCoreBackend {
         return true;
       }
     }
-    if (this.nativeBrowserEpoch) {
-      try {
-        return (await this.serviceStatus()).canStop !== true;
-      } catch {
-        return true;
-      }
+    try {
+      return (await this.serviceStatus()).canStop !== true;
+    } catch {
+      return true;
     }
-    return !(await this.observeLifecycle()).ifIdle;
   }
   /** @param {boolean} [forUpdate] @param {{purpose?:string}} [options] */
   async observeLifecycle(forUpdate = true, { purpose = "manage" } = {}) {
@@ -1725,17 +1676,19 @@ class SharedCoreBackend {
           result = { stopped: operation?.phase === "completed", operation };
       }
       if (!result) {
-        if (!this.nativeBrowserEpoch)
-          require("./lifecycle.cjs").assertLifecycleSupport(this.status, "updateDesktop");
         if (!this.options.binary) throw new Error("Core 程序路径不可用");
+        if (!notify)
+          throw Object.assign(
+            new Error(
+              require("@areal/workbench/node/native-i18n").nativeText(
+                "lifecycle.confirmationRequired",
+              ),
+            ),
+            { code: "LIFECYCLE_CONFIRMATION_REQUIRED" },
+          );
         this.backendUpdate = { state: "applying" };
         this.onChange();
-        result = await require("./startup-recovery.cjs").recoverConnectedService({
-          backend: this,
-          notify,
-          purpose: "update",
-          forUpdate: true,
-        });
+        result = await require("./host-quit.cjs").confirmHostStop(this, notify);
       }
       if (!("stopped" in result) || !result.stopped) {
         this.backendUpdate = { state: "pending" };

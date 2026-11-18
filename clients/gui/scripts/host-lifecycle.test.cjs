@@ -1868,11 +1868,13 @@ test("Main resource and service status reads use native Host without a Node conn
 
 test("native update readiness observes Host resources and treats missing observations as busy", async (t) => {
   const f = await fixture(t);
+  f.backend.observeLifecycle = async () => assert.fail("Node lifecycle must not be read");
+  assert.equal(await f.backend.hasUpdateWork(), true);
+
   f.backend.nativeBrowserEpoch = {};
   f.backend.status.connected = true;
   let canStop = true;
   f.backend.serviceStatus = async () => ({ canStop });
-  f.backend.observeLifecycle = async () => assert.fail("Node lifecycle must not be read");
   assert.equal(await f.backend.hasUpdateWork(), false);
   canStop = false;
   assert.equal(await f.backend.hasUpdateWork(), true);
