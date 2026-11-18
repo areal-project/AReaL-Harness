@@ -20,7 +20,7 @@ import { withSmokeDeadline } from "./smoke-deadline.mjs";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const { GuiHostProjects } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
+const { GuiSourceSession, requestIdFor } = require("@areal/client/gui-source");
 const { values } = parseArgs({
   options: {
     source: { type: "string" },
@@ -136,8 +136,23 @@ async function prepareHistorySource(owner, projects) {
   await writeFile(join(coreHome, "projects.json"), "[]", { mode: 0o600 });
   await owner.init();
   for (const project of projects) {
-    const binding = await owner.register(randomUUID(), project);
-    assert.equal(binding.dataDir, join(coreHome, project.id, "state"));
+    const dataDir = join(coreHome, project.id, "state");
+    const projectId = requestIdFor(`${owner.sourceId}:${project.id}`);
+    const { projects: registered } = await owner.client.listProjects();
+    const receipt = await owner.client.registerProject(randomUUID(), {
+      projectId,
+      workspace: project.root,
+      dataDir,
+      source: { kind: "gui", profile: owner.source.profile, legacyProjectId: project.id },
+      defaultBinding: !registered.some(
+        (item) => item.workspace === project.root && item.defaultBinding,
+      ),
+    });
+    assert.equal(receipt.registration.projectId, projectId);
+    const state = await owner.client.sourceState(owner.source);
+    const binding = state.bindings.find((entry) => entry.alias.legacyProjectId === project.id);
+    assert.equal(binding?.projectId, projectId);
+    assert.equal(binding.dataDir, dataDir);
     // 登记只创建归属，尚未启动 Core；复制前不得存在任何服务持锁文件。
     for (const name of ["owner.lock", "service.lock"])
       await assert.rejects(lstat(join(binding.dataDir, name)), { code: "ENOENT" });
@@ -298,7 +313,7 @@ try {
     AREAL_HISTORY_FIXTURE_KEY: "fixture-key",
   });
   if (!executablePath) env.AREAL_CORE_BIN = binary;
-  historyOwner = new GuiHostProjects({
+  historyOwner = new GuiSourceSession({
     binary,
     home: env.AREAL_HARNESS_SERVICE_HOME,
     singletonHeld: true,
