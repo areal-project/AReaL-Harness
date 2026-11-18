@@ -3,6 +3,7 @@ import { resolveNewConversationModel, resolveModelEffort } from "@areal/workbenc
 import type { Data } from "../services.js";
 
 export const modelValue = (item: Data) => `${item.providerId ?? ""}/${item.modelId}`;
+export const defaultReasoningEfforts = ["none", "medium", "low", "high", "xhigh"] as const;
 export function draftModelSelection(
   project: Data,
   _chosenProfile: Data | undefined,

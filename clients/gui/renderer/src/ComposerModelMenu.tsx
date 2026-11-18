@@ -9,6 +9,7 @@ import { Button } from "./components/ui/button.js";
 import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover.js";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./components/ui/tooltip.js";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs.js";
+import { defaultReasoningEfforts } from "./lib/draftModelSelection.js";
 
 const effortMessages = {
   none: "chat.composer.effort.none",
@@ -19,7 +20,6 @@ const effortMessages = {
   xhigh: "chat.composer.effort.xhigh",
   max: "chat.composer.effort.max",
 } as const;
-const defaultEfforts = ["none", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 export interface ComposerModelOption {
   value: string;
   label: string;
@@ -98,13 +98,14 @@ export function ComposerModelMenu({
       ? []
       : model?.effortsKnown || model?.efforts?.length
         ? (model.efforts ?? [])
-        : defaultEfforts;
+        : defaultReasoningEfforts;
   const selectedEffort = effort && effort !== "default" ? effort : undefined;
   const index = efforts.findIndex((item) => item === selectedEffort);
   const sliderIndex = pointerIndex ?? index;
   const effortName = (item: string) => {
-    const known = defaultEfforts.find((known) => known === item);
-    return known ? t(effortMessages[known]) : item;
+    return Object.hasOwn(effortMessages, item)
+      ? t(effortMessages[item as keyof typeof effortMessages])
+      : item;
   };
   const activeProvider = providers.has(provider) ? provider : (providers.keys().next().value ?? "");
   const commitEffort = async (next: number) => {

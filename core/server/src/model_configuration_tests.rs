@@ -255,13 +255,24 @@ async fn existing_thread_sends_with_rotated_provider_key_after_restart() {
 
 #[tokio::test]
 async fn model_display_names_follow_applied_configuration_and_provider_identity() {
-    let providers = |name: &str| {
+    let providers = |name: &str, provider_name: &str| {
         json!([
-            {"id":"first","name":"First","endpoint":"http://127.0.0.1:1/v1/chat/completions","protocol":"chat-completions","enabled":true,"models":[{"id":"shared","displayName":name,"enabled":true,"parameters":{}}],"parameters":{}},
+            {"id":"restored_5b32d70932a684ff87cd0f22","name":provider_name,"endpoint":"http://127.0.0.1:1/v1/chat/completions","protocol":"chat-completions","enabled":true,"models":[{"id":"shared","displayName":name,"enabled":true,"parameters":{}}],"parameters":{}},
             {"id":"second","name":"Second","endpoint":"http://127.0.0.1:1/v1/chat/completions","protocol":"chat-completions","enabled":true,"models":[{"id":"shared","displayName":"Second model","enabled":true,"parameters":{}},{"id":"unnamed","enabled":true,"parameters":{}}],"parameters":{}}
         ])
     };
-    let fixture = Fixture::open_with_providers(Some(providers("First model"))).await;
+    let fixture =
+        Fixture::open_with_providers(Some(providers("First model", "Restored supplier"))).await;
+    let restored_id = "restored_5b32d70932a684ff87cd0f22";
+    let supplier_name = |catalog: &Value| {
+        catalog["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|model| model["providerId"] == restored_id)
+            .unwrap()["providerName"]
+            .clone()
+    };
     let names = |catalog: &Value| {
         catalog["data"]
             .as_array()
@@ -276,8 +287,9 @@ async fn model_display_names_follow_applied_configuration_and_provider_identity(
             .collect::<Vec<_>>()
     };
     let before = fixture.control.engine.model_catalog().await;
+    assert_eq!(supplier_name(&before), "Restored supplier");
     assert!(names(&before).contains(&(
-        (json!("first"), json!("shared")),
+        (json!(restored_id), json!("shared")),
         Some(json!("First model"))
     )));
     assert!(names(&before).contains(&(
@@ -286,7 +298,7 @@ async fn model_display_names_follow_applied_configuration_and_provider_identity(
     )));
     assert!(names(&before).contains(&((json!("second"), json!("unnamed")), None)));
     let current = areal_config::models::read(&fixture.inputs, &[]).unwrap();
-    let update = serde_json::from_value(json!({"expectedRevision":current.revision,"data":providers("Renamed model"),"defaultModel":null})).unwrap();
+    let update = serde_json::from_value(json!({"expectedRevision":current.revision,"data":providers("Renamed model", "Renamed supplier"),"defaultModel":null})).unwrap();
     let saved = areal_config::models::write(&fixture.inputs, update, &[]).unwrap();
     assert_eq!(
         names(&fixture.control.engine.model_catalog().await),
@@ -297,8 +309,9 @@ async fn model_display_names_follow_applied_configuration_and_provider_identity(
     let receipt = fixture.control.clone().apply(intent).await.unwrap();
     assert_eq!(receipt["applied"]["revision"], saved.revision);
     let after = fixture.control.engine.model_catalog().await;
+    assert_eq!(supplier_name(&after), "Renamed supplier");
     assert!(names(&after).contains(&(
-        (json!("first"), json!("shared")),
+        (json!(restored_id), json!("shared")),
         Some(json!("Renamed model"))
     )));
     assert!(names(&after).contains(&(

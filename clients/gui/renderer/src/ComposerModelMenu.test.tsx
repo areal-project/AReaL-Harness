@@ -132,7 +132,7 @@ describe("composer reasoning capabilities", () => {
       reasoning: true,
       options: [],
       known: false,
-      expected: ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+      expected: ["none", "medium", "low", "high", "xhigh"],
     },
     {
       name: "non-reasoning model",

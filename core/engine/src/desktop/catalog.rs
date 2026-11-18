@@ -64,6 +64,7 @@ pub struct ConfiguredModels {
     pub history_thinking: model::HistoryThinking,
     pub providers: Vec<Provider>,
     pub provider_ids: BTreeSet<String>,
+    pub provider_names: BTreeMap<String, String>,
     pub parameters: BTreeMap<(String, String), ModelParameters>,
     pub display_names: BTreeMap<(String, String), String>,
     pub credential_environments: BTreeMap<(String, String), String>,

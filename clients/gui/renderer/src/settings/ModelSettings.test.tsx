@@ -1,4 +1,4 @@
-import { createElement } from "react";
+import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -36,6 +36,7 @@ vi.mock("./common.js", async (importOriginal) => {
   const original = await importOriginal<typeof import("./common.js")>();
   return {
     ...original,
+    SettingsDialog: ({ children }: { children: ReactNode }) => children,
     useResource: () => ({
       value: {
         revision: 1,
@@ -61,9 +62,31 @@ vi.mock("./common.js", async (importOriginal) => {
   };
 });
 import { ModelSettings } from "./ModelSettings.js";
+import { ModelEditor } from "./ModelEditor.js";
 
 beforeEach(() => {
   credential.selected = false;
+});
+
+it("defaults a new model to five thinking levels and enables vision input", () => {
+  const markup = renderToStaticMarkup(
+    createElement(ModelEditor, {
+      model: {},
+      editing: false,
+      ids: [],
+      onSave: vi.fn(),
+      onClose: vi.fn(),
+    }),
+  );
+  const checked = [
+    ...markup.matchAll(
+      /<input[^>]*checked=""[^>]*\/><span>settings\.modelEditor\.effort([A-Za-z]+)<\/span>/g,
+    ),
+  ].map((match) => match[1]);
+  expect(checked.sort()).toEqual(["ExtraHigh", "High", "Low", "Medium", "None"]);
+  expect(markup).toMatch(
+    /<[^>]*aria-label="settings\.modelEditor\.visionInput"[^>]*aria-checked="true"|<[^>]*aria-checked="true"[^>]*aria-label="settings\.modelEditor\.visionInput"/,
+  );
 });
 
 describe("locked provider credential", () => {

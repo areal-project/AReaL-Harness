@@ -852,6 +852,9 @@ fn configured_models(
         if models.is_empty() {
             continue;
         }
+        result
+            .provider_names
+            .insert(item.id.clone(), item.name.clone());
         for model in &item.models {
             if let Some(name) = model.display_name.as_ref().filter(|name| !name.is_empty()) {
                 result
