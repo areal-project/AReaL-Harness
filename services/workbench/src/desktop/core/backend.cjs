@@ -1274,11 +1274,6 @@ class CoreBackend {
     return this.submissions.recoverWorkgroupSubmission(...args);
   }
 
-  /** @param {Parameters<InstanceType<typeof SubmissionRecovery>['recoverProcessSubmission']>} args */
-  recoverProcessSubmission(...args) {
-    return this.submissions.recoverProcessSubmission(...args);
-  }
-
   /** @param {Parameters<InstanceType<typeof SubmissionRecovery>['recoverAgentSubmission']>} args */
   recoverAgentSubmission(...args) {
     return this.submissions.recoverAgentSubmission(...args);

@@ -8,67 +8,12 @@ const {
 const { readPluginSubmission } = require("./plugin-submission.cjs");
 const { commandResponseError } = require("@areal/workbench/desktop-contract");
 const { manageTask, taskOperations } = require("./tasks.cjs");
-const { resolveTerminalPresentation } = require("./terminal-profile.cjs");
 const { modelRecord, isCoreGoals, isCorePlan } = require("@areal/workbench/core-model-contract");
 const { readObservationResult, readHistoryInteractions } = require("./history-contract.cjs");
 const { readWorkgroup, readAdmission, submissionError } = require("./submission-results.cjs");
 const { models } = require("./provider-contract.cjs");
 /** @typedef {import('./project-state.cjs').SubmissionParams & {operation:string,mutation?:string}} Request */
 /** @typedef {import('./project-state.cjs').CoreProject} Project */
-const os = require("node:os");
-const fs = require("node:fs");
-const path = require("node:path");
-
-function loginTerminalCommand() {
-  const user = os.userInfo();
-  if (typeof user.username !== "string" || !user.username || user.username.includes("\0"))
-    throw new Error("无法读取终端所属账户");
-  const shell = [user.shell, process.env.SHELL, "/bin/sh"].find((candidate) => {
-    if (typeof candidate !== "string" || !path.isAbsolute(candidate) || candidate.includes("\0"))
-      return false;
-    try {
-      fs.accessSync(candidate, fs.constants.X_OK);
-      return fs.statSync(candidate).isFile();
-    } catch {
-      return false;
-    }
-  });
-  if (!shell) throw new Error("没有可用的登录 shell");
-  return {
-    shell,
-    argv: [
-      "/usr/bin/env",
-      `SHELL=${shell}`,
-      `USER=${user.username}`,
-      `LOGNAME=${user.username}`,
-      "TERM=xterm-256color",
-      shell,
-      "-l",
-      "-i",
-    ],
-  };
-}
-
-/** @param {unknown} argv */
-function shellFromManagedArgv(argv) {
-  if (!Array.isArray(argv) || !argv.every((arg) => typeof arg === "string")) return undefined;
-  if (
-    argv.length === 8 &&
-    argv[0] === "/usr/bin/env" &&
-    typeof argv[5] === "string" &&
-    argv[1] === `SHELL=${argv[5]}` &&
-    typeof argv[2] === "string" &&
-    argv[2].startsWith("USER=") &&
-    typeof argv[3] === "string" &&
-    argv[3].startsWith("LOGNAME=") &&
-    argv[4] === "TERM=xterm-256color" &&
-    argv[6] === "-l" &&
-    argv[7] === "-i"
-  )
-    return argv[5];
-  return argv[0];
-}
-
 /** @type {Record<string,string> & Record<import("@areal/workbench/desktop-contract/management").PluginMutation,string>} */
 const mutations = {
   pluginArchiveImport: "areal/plugin/importArchive",
@@ -224,6 +169,8 @@ async function executeManagement(backend, project, rawRequest) {
   const current = project.client;
   if (!current) throw new Error("Core 未连接");
   const { operation } = request;
+  if (operation === "processStart" && request.terminal !== undefined && request.terminal !== false)
+    throw new Error("登录终端由 Host 创建");
   if (operation === "pluginSubmission")
     return readPluginSubmission(
       backend,
@@ -380,29 +327,6 @@ async function executeManagement(backend, project, rawRequest) {
         error.submissionUnknown = true;
       throw error;
     }
-  }
-  if (operation === "processSubmission") {
-    if (
-      typeof request.threadId !== "string" ||
-      !request.threadId ||
-      typeof request.requestId !== "string" ||
-      !/^[0-9a-f-]{36}$/.test(request.requestId)
-    )
-      throw new Error("缺少原终端请求标识或任务");
-    const result = await backend.recoverProcessSubmission(
-      project,
-      request.threadId,
-      request.requestId,
-    );
-    if (!result) return { confirmed: false };
-    const presentation = await resolveTerminalPresentation(
-      backend.library?.value.settings,
-      backend.userHome,
-    );
-    return {
-      confirmed: true,
-      result: { ...result, shell: shellFromManagedArgv(result.argv), ...presentation },
-    };
   }
   if (operation === "agentSubmission") {
     if (
@@ -588,31 +512,13 @@ async function executeManagement(backend, project, rawRequest) {
         throw new Error("目标预算必须为正整数");
     }
   }
-  let terminal;
-  if (operation === "processStart") {
-    if (request.terminal !== undefined && typeof request.terminal !== "boolean")
-      throw new Error("无效终端启动标识");
-    if (request.terminal === true) {
-      if (request.argv !== undefined || request.tty !== true)
-        throw new Error("登录终端需要 tty，且不能同时指定 argv");
-      terminal = loginTerminalCommand();
-    }
-  }
   let result;
   try {
     if (operation === "goalCreate" || operation === "goalResume")
       await backend.providers.refreshGoalTransport(project, requireThread(request));
-    result = await backend.submit(
-      project,
-      method,
-      {
-        ...pick(request, fields[operation]),
-        ...(terminal ? { argv: terminal.argv } : {}),
-      },
-      {
-        requestId: request.requestId,
-      },
-    );
+    result = await backend.submit(project, method, pick(request, fields[operation]), {
+      requestId: request.requestId,
+    });
   } catch (error) {
     if (threadMutationMethods.has(method)) {
       // Refresh a conflict/unknown result, never retry the mutation with a new revision.
@@ -652,14 +558,7 @@ async function executeManagement(backend, project, rawRequest) {
     if (request.threadId) backend.observationFailure(project, request.threadId, error);
   }
   backend.onChange();
-  if (!terminal) return result;
-  if (!modelRecord(result))
-    throw Object.assign(new Error("终端受理结果结构无效"), { submissionUnknown: true });
-  return {
-    ...result,
-    shell: terminal.shell,
-    ...(await resolveTerminalPresentation(backend.library?.value.settings, backend.userHome)),
-  };
+  return result;
 }
 
 /** @param {Record<string,unknown>} value @returns {Request} */

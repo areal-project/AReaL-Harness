@@ -895,7 +895,6 @@
     "../../services/workbench/src/desktop/core/task-draft-target.cjs",
     "../../services/workbench/src/desktop/core/task-workspace-owners.cjs",
     "../../services/workbench/src/desktop/core/tasks.cjs",
-    "../../services/workbench/src/desktop/core/terminal-profile.cjs",
     "../../services/workbench/src/desktop/core/thread-configuration.cjs",
     "../../services/workbench/src/desktop/core/workspace.cjs",
     "../../services/workbench/src/desktop/core/worktree-admission.cjs",

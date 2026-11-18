@@ -201,56 +201,6 @@ class SubmissionRecovery {
     return project.outcomes[requestId]?.workgroupId ? project.outcomes[requestId] : null;
   }
 
-  /** @param {Project} project @param {string} threadId @param {string} requestId @param {CoreRequest} [requestCore] */
-  async recoverProcessSubmission(
-    project,
-    threadId,
-    requestId,
-    requestCore = project.client?.request.bind(project.client),
-  ) {
-    await this.refreshProjectJournal(project);
-    const entry = project.pending.find((item) => item.params.requestId === requestId);
-    if (
-      entry &&
-      (entry.method !== "areal/process/start" ||
-        entry.params.threadId !== threadId ||
-        isAwaitingResponse(this.host.awaitingResponses, project.id, entry))
-    )
-      return null;
-    const client = project.client;
-    if (!client || !requestCore) throw new Error("Core 连接尚未就绪");
-    const receipt = await this.readReceipt(
-      project,
-      entry ?? { method: "areal/process/start", params: { threadId, requestId } },
-      client,
-    );
-    const result = modelRecord(receipt?.result) ? receipt.result : undefined;
-    if (typeof result?.id !== "string") return null;
-    if (!project.client) throw new Error("Core 连接尚未就绪");
-    const processes = readProcesses(await requestCore("areal/process/list", { threadId }));
-    const process = processes.data.find((item) => item.id === result.id);
-    // A durable acceptance can precede actual process startup. Only attach once
-    // it has a Runtime process, or confirmed cleanup proves it has ended.
-    if (!process || (!process.processId && !process.cleanupConfirmed)) return null;
-    // process/list includes historical epochs. Core's get validates the live
-    // Runtime handle; an old/unavailable handle must not become an attached PTY.
-    if (!process.cleanupConfirmed) {
-      if (!project.client) throw new Error("Core 连接尚未就绪");
-      await requestCore("areal/process/get", { threadId, id: process.id });
-    }
-    if (entry) {
-      const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
-      if (client instanceof HostCoreClient) await client.reconcile(entry.method, entry.params);
-      await this.refreshProjectJournal(project);
-    }
-    return {
-      ...result,
-      argv: process.argv,
-      closed: process.cleanupConfirmed === true,
-      controls: process.inputs.length,
-    };
-  }
-
   /** @param {Project} project @param {string} parentThreadId @param {string} requestId */
   async recoverAgentSubmission(project, parentThreadId, requestId) {
     await this.refreshProjectJournal(project);
