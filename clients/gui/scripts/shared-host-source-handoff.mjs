@@ -19,7 +19,6 @@ import { connectNativeRemote } from "./remote-native-host-fixture.mjs";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { HostClient } = require("@areal/client/node");
-const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const { GuiSourceAdapter, assertLegacySourceWritable } = require("@areal/client/gui-source");
 const { readHostReceipt, readOfflineHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
 const WebSocket = require("ws");
@@ -700,7 +699,7 @@ check("after-load");
   const legacySendTracePath = join(root, "legacy-send-core-rpc.jsonl");
   const legacySendBarrierPath = join(root, "legacy-send-lost-response.json");
   const crashEvidence = [];
-  let pending, outcomes, legacyAccepted, safeStorageKeychain, passedResult;
+  let pendingBytes, pending, outcomes, legacyAccepted, safeStorageKeychain, passedResult;
   let recoveryCore,
     recoverySendCore,
     recoveryHost,
@@ -727,7 +726,6 @@ check("after-load");
     );
   };
   let originalThreadIds;
-  let recoveryBackend;
   await save(join(coreHome, "cloud.json"), { syntheticClientOnly: true });
   const fixtureEntry = join(root, "secure-fixture.cjs");
   let old, importer, reverse, stopper;
@@ -881,7 +879,8 @@ check("after-load");
     assert(legacyAccepted.result.thread.id);
     const createReply = await creation;
     assert.equal(createReply.error?.submissionUnknown, true, "old command reports UNKNOWN");
-    pending = JSON.parse(await readFile(join(coreHome, ids[0] + "-pending.json"), "utf8"));
+    pendingBytes = await readFile(join(coreHome, ids[0] + "-pending.json"));
+    pending = JSON.parse(pendingBytes);
     outcomes = JSON.parse((await optional(join(coreHome, ids[0] + "-outcomes.json"))) ?? "{}");
     assert.equal(pending.length, 1, "legacy writer persisted one real UNKNOWN");
     assert.equal(pending[0].method, "areal/thread/start");
@@ -1041,7 +1040,6 @@ check("after-load");
     legacySends = {
       projectId: sendProjectId,
       service: sendService,
-      snapshot: { pending: sendPending, outcomes: sendOutcomes },
       pendingBytes: sendPendingBytes,
       outcomeBytes: sendOutcomeBytes,
       hostPeer: legacyHostPeer,
@@ -1392,29 +1390,28 @@ check("after-load");
       assert(binding, "Host publishes original project alias");
       const journal = hostClient.journal(binding.projectId);
       const imported = await journal.read();
-      assert.deepEqual(
-        imported.snapshot.pending,
-        pending,
-        "actual old UNKNOWN params and admission retained",
-      );
+      assert.deepEqual(imported.snapshot.pending, [], "stopped import has no active old writes");
       assert.deepEqual(
         imported.snapshot.outcomes,
         outcomes,
-        "actual legacy outcome snapshot retained",
+        "settled local outcomes survive import",
       );
       const sendBinding = result.receipt.bindings.find(
         (entry) => entry.alias.legacyProjectId === ids[1],
       );
       assert(sendBinding);
       const sendImported = await hostClient.journal(sendBinding.projectId).read();
-      assert.deepEqual(sendImported.snapshot.pending, legacySends.snapshot.pending);
-      assert.deepEqual(sendImported.snapshot.outcomes, legacySends.snapshot.outcomes);
+      assert.deepEqual(sendImported.snapshot.pending, []);
+      for (const record of [legacySends.pending, legacySends.accepted]) {
+        assert.equal(sendImported.snapshot.outcomes[record.operationId], undefined);
+      }
       const rawJournalProof = [];
-      for (const [suffix, bytes] of [
-        ["pending", legacySends.pendingBytes],
-        ["outcomes", legacySends.outcomeBytes],
+      for (const [project, suffix, bytes] of [
+        [ids[0], "pending", pendingBytes],
+        [ids[1], "pending", legacySends.pendingBytes],
+        [ids[1], "outcomes", legacySends.outcomeBytes],
       ]) {
-        const name = ids[1] + "-" + suffix + ".json";
+        const name = project + "-" + suffix + ".json";
         const original = finalReceipt.originals.find((entry) => entry.relativeName === name);
         assert.equal(original.original.kind, "bytes");
         assert.equal(original.original.sha256, sha(bytes));
@@ -1428,7 +1425,7 @@ check("after-load");
             original.original.backupId + ".bytes",
           ),
         );
-        assert.equal(backup.equals(bytes), true, "second-project raw journal bytes survive import");
+        assert.equal(backup.equals(bytes), true, "original journal bytes survive import");
         rawJournalProof.push({
           name,
           sha256: sha(bytes),
@@ -1457,10 +1454,10 @@ check("after-load");
       const updated = await journal.read();
       assert.equal(
         updated.snapshot.pending.length,
-        2,
-        "new authority journal writer commits alongside UNKNOWN",
+        1,
+        "only the new writer contributes an active pending entry",
       );
-      assert.deepEqual(updated.snapshot.pending[0], pending[0]);
+      assert.equal(updated.snapshot.pending[0].method, "thread/create");
     } finally {
       hostClient.close();
     }
@@ -1536,53 +1533,28 @@ check("after-load");
       recoveryTrace.push({ method, params });
       return coreRequest(method, params, options);
     };
-    recoveryBackend = Object.assign(Object.create(CoreBackend.prototype), {
-      host: recoveryHost,
-      saved: [{ id: importedBinding.projectId, root: projects[0].root }],
-      projects: new Map(),
-      awaitingResponses: new Set(),
-      onChange() {},
-      worktrees: { observeProject: async () => {} },
-      providers: {
-        redact: (value) => value,
-        acceptModelSelection: async () => {},
-        rejectModel() {},
-      },
-      lifecycleOperations: { activeTargets: new Set(), blocking: () => false },
-      refreshAfterAdmission: async () => {},
-      listThreads: async () => {},
-    });
-    const reopened = await recoveryBackend.loadProjectJournal(importedBinding.projectId);
-    reopened.client = recoveryCore;
-    reopened.connectionGeneration = 1;
-    const beforeRecovery = reopened.pending.find(
-      (entry) => entry.params.requestId === originalRequestId,
-    );
-    assert.deepEqual(beforeRecovery, pending[0], "new consumer loads actual old UNKNOWN unchanged");
-    const recovered = await recoveryBackend.readSubmission(reopened, "areal/thread/start", {
+    const journalBeforeRead = await recoveryHost.journal(importedBinding.projectId).read();
+    const recovered = await recoveryCore.request("areal/request/read", {
       requestId: originalRequestId,
+      creationAdmission: pending[0].params.creationAdmission,
     });
-    assert.equal(recovered.confirmed, true);
-    assert.equal(recovered.accepted, true);
-    assert.equal(
-      recovered.result.threadId ?? recovered.result.thread?.id,
-      legacyAccepted.result.thread.id,
-    );
+    assert.equal(recovered.creationAdmission?.status, "admitted");
+    assert.equal(recovered.data.length, 1);
+    const originalCreate = recovered.data[0];
+    assert.equal(originalCreate.status, "completed");
+    assert.equal(originalCreate.method, "areal/thread/start");
+    assert.equal(originalCreate.requestId, originalRequestId);
+    assert.equal(originalCreate.threadId, legacyAccepted.result.thread.id);
     assert.deepEqual(
       recoveryTrace.map((entry) => entry.method),
       ["areal/request/read"],
-      "ordinary new consumer only queries original Core receipt",
+      "native observation only reads the original Core receipt",
     );
-    assert.equal(recoveryTrace[0].params.requestId, originalRequestId);
     assert.deepEqual(
-      recoveryTrace[0].params.creationAdmission,
-      pending[0].params.creationAdmission,
+      await recoveryHost.journal(importedBinding.projectId).read(),
+      journalBeforeRead,
+      "read-only evidence does not restore archived entries into the live Host journal",
     );
-    assert.equal(
-      reopened.pending.some((entry) => entry.params.requestId === originalRequestId),
-      false,
-    );
-    assert.equal(reopened.outcomes[originalRequestId].threadId, legacyAccepted.result.thread.id);
     const threadsAfter = await recoveryCore.request("thread/list", { limit: 100 });
     assert.equal(threadsAfter.nextCursor, null);
     const newThreadIds = threadsAfter.data
@@ -1690,12 +1662,12 @@ check("after-load");
         { projectId: ids[1] },
       );
       assert.equal(response.error, undefined);
-      assert.equal(response.result.admissionState, "accepted");
-      assert.equal(response.result.operationId, record.operationId);
+      assert.equal(response.result.commandId, record.remote.commandId);
+      assert.equal(response.result.admissionState, "notFound");
+      assert.equal(response.result.submissionUnknown, true);
       const originalReceipt = legacySends.originalReceipts.find(
         (entry) => entry.requestId === record.operationId,
       );
-      assert.equal(response.result.turnId, originalReceipt.turnId);
       const read = await recoverySendCore.request("areal/request/read", {
         threadId: legacySends.threadId,
         requestId: record.operationId,
@@ -1709,17 +1681,14 @@ check("after-load");
       assert.equal(rows[0].identity, originalReceipt.identity);
       assert.equal(rows[0].result.turn.id, originalReceipt.turnId);
       const { snapshot } = await recoveryHost.journal(sendBinding.projectId).read();
-      const settled = snapshot.outcomes[record.operationId];
-      assert.equal(settled.admissionState, "accepted");
-      assert.equal(settled.legacyReceiptProof.version, 1);
-      assert.equal(settled.nativeDigest, undefined);
-      assert.equal(settled.coreScope, undefined);
+      assert.ok(!snapshot.pending.some((entry) => entry.operationId === record.operationId));
+      assert.equal(snapshot.outcomes[record.operationId], undefined);
       recoveredSends.push({
         commandId: record.remote.commandId,
         operationId: record.operationId,
-        turnId: response.result.turnId,
-        receiptDigest: rows[0].digest,
-        proofSha256: sha(JSON.stringify(settled.legacyReceiptProof)),
+        turnId: originalReceipt.turnId,
+        coreReceiptDigest: rows[0].digest,
+        phoneAdmission: response.result.admissionState,
       });
     }
     const importedThread = (
@@ -1800,9 +1769,6 @@ check("after-load");
         hostBinary: { path: binary, sha256: sha(await readFile(binary)) },
         hostClient: sha(await readFile(join(gui, "packages/client/node/host-client.cjs"))),
         guiSource: sha(await readFile(join(gui, "packages/client/node/gui-source.cjs"))),
-        backend: sha(
-          await readFile(join(gui, "../../services/workbench/src/desktop/core/backend.cjs")),
-        ),
         coreClient: sha(await readFile(join(gui, "packages/runtime-client/core.js"))),
         handoffScript: sha(await readFile(fileURLToPath(import.meta.url))),
         legacySendHelper: sha(
@@ -1826,15 +1792,15 @@ check("after-load");
         "two importer SIGKILL interruptions restart the same request with original credential receipt",
         "restarted dummy credential is readable and its source and backups are retired",
         "real old Desktop accepted create loses socket response before CoreClient",
-        "ordinary new consumer recovers original Core receipt with zero create dispatches and one thread",
+        "read-only Core observation locates the original create receipt and exactly one thread",
         "controlled import completes credential retirement before returning ready",
         "registry and Store bytes retained",
         "journal fences cover absent files",
-        "actual old creation UNKNOWN and original admission identity retained",
+        "old creation UNKNOWN and original admission identity retained in validated backup bytes",
         "original frozen JS RemoteControl writes real send UNKNOWN and accepted records before initial import",
-        "native original command reads prove both old send receipts without replay after old Core cleanup",
+        "native phone cannot settle archived sends; authenticated Core observation confirms both original Turns without replay",
         "old writer uses the current verified static Remote asset closure without browser execution",
-        "new Host journal writer commits over 1 MiB alongside imported UNKNOWN",
+        "new Host journal accepts over 1 MiB independently of archived UNKNOWN",
         "actual old Desktop rejects fences without authority changes",
       ],
       interruptionEvidence: join(root, "migration-interruptions.json"),
@@ -1868,11 +1834,6 @@ check("after-load");
     recoveryCore?.close();
     recoverySendCore?.close();
     recoveryHost?.close();
-    if (recoveryBackend) {
-      recoveryBackend.closing = true;
-      for (const project of recoveryBackend.projects.values())
-        clearTimeout(project.reconciliation?.timer);
-    }
     for (const { name, process } of processes.filter((item) => item.name !== "host")) {
       try {
         if (process.child.exitCode == null && process.child.signalCode == null) {
