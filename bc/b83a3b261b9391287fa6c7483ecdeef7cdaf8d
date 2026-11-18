@@ -1,0 +1,19 @@
+.github/workflows/release.yml
+  s_f12f82d708da68::t_50aa461edfeee6 1-2,5-6,9-17,19-33,35-245
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bcb83a3b261b9391287fa6c7483ecdeef7cdaf8d",
+  "prompts": {},
+  "sessions": {
+    "s_f12f82d708da68": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d39b-5e9e-71a0-b28d-b29ad3693a4b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
