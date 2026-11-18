@@ -5,7 +5,7 @@ const { recoveryView, targets, assertLifecycleSupport, blockerMessage } = shared
 const {
   readResourceInspections,
   readRecoveryService,
-} = require("@areal/workbench-service/desktop/core/resource-observation.cjs");
+} = require("@areal/workbench/desktop-contract/desktop-control-resources");
 const { modelRecord: record } = require("@areal/workbench/core-model-contract");
 /** @typedef {import('@areal/workbench-service/desktop/core/lifecycle.cjs').RecoveryObservation} RecoveryObservation */
 class DesktopLifecycle {

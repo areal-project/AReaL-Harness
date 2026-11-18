@@ -8,7 +8,7 @@ const { createHash } = require("node:crypto");
 const YAML = require("yaml");
 const { builtinSkill, BUILTIN_SKILL_ID } = require("./builtin-skills.cjs");
 const { WorktreeResources } = require("./worktree-resources.cjs");
-const resourceContract = require("./resource-contract.cjs");
+const resourceContract = require("@areal/workbench/desktop-contract/resource");
 const { serverStatus } = require("./provider-contract.cjs");
 /** @typedef {import('./project-state.cjs').CoreProject} CoreProject */
 /** @typedef {Record<string,unknown> & {operation?:string,scope?:string,projectId?:string,id?:string,expectedRevision?:number,enabled?:boolean,content?:unknown,name?:unknown,description?:unknown,config?:unknown}} ResourceRequest */
@@ -63,7 +63,7 @@ class ScopedResources {
   /** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend */
   constructor(backend) {
     this.backend = backend;
-    /** @type {import('./resource-contract.cjs').ResourceState} */
+    /** @type {import('@areal/workbench/desktop-contract/resource').ResourceState} */
     this.value = { revision: 0, skills: {} };
     this.worktrees = new WorktreeResources(this);
   }
@@ -110,7 +110,7 @@ class ScopedResources {
     } catch (e) {
       if (!(e instanceof Error && "code" in e && e.code === "ENOENT")) throw e;
     }
-    /** @type {Map<string,import('./resource-contract.cjs').Skill>} */
+    /** @type {Map<string,import('@areal/workbench/desktop-contract/resource').Skill>} */
     const items = new Map();
     for (const root of roots) {
       let entries;
@@ -203,8 +203,9 @@ class ScopedResources {
     for (const s of local) selected.set(s.id, s);
     const skills = [...selected.values()]
       .filter(
-        /** @returns {s is import('./resource-contract.cjs').AvailableSkill} */ (s) =>
-          s.enabled && s.error === undefined,
+        /** @returns {s is import('@areal/workbench/desktop-contract/resource').AvailableSkill} */ (
+          s,
+        ) => s.enabled && s.error === undefined,
       )
       .map(({ id, revision, root, name, description }) => ({
         id,
@@ -226,7 +227,7 @@ class ScopedResources {
     profile.revision = `resources-${digest(profile).slice(0, 32)}`;
     // 重启后仍保留旧任务引用的资源版本。
     const filename = `${project.id}-skills.json`;
-    /** @type {import('./resource-contract.cjs').DeployedSkill[]} */
+    /** @type {import('@areal/workbench/desktop-contract/resource').DeployedSkill[]} */
     let previous = [];
     try {
       previous = resourceContract.deployedSkills(

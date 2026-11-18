@@ -1,7 +1,7 @@
 // @ts-check
 "use strict";
 // 凭据值存进 Host vault，再按引用交给在线 Core，不重启。
-const { record, pluginConnections } = require("./resource-contract.cjs");
+const { record, pluginConnections } = require("@areal/workbench/desktop-contract/resource");
 const { registerPluginCredentials } = require("./plugin-configuration.cjs");
 const fields = [
   "clientSecretRef",

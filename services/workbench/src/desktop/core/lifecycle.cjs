@@ -1,11 +1,14 @@
 // @ts-check
 "use strict";
 
-const { readResourceInspections, readRecoveryService } = require("./resource-observation.cjs");
-/** @typedef {import('./resource-observation.cjs').LifecycleDecision} Decision */
-/** @typedef {import('./resource-observation.cjs').CoreLifecycle} CoreLifecycle */
-/** @typedef {import('./resource-observation.cjs').ResourceInspection} Inspection */
-/** @typedef {import('./resource-observation.cjs').RecoveryService} Service */
+const {
+  readResourceInspections,
+  readRecoveryService,
+} = require("@areal/workbench/desktop-contract/desktop-control-resources");
+/** @typedef {import('@areal/workbench/desktop-contract/desktop-control-resources').LifecycleDecision} Decision */
+/** @typedef {import('@areal/workbench/desktop-contract/desktop-control-resources').CoreLifecycle} CoreLifecycle */
+/** @typedef {import('@areal/workbench/desktop-contract/desktop-control-resources').ResourceInspection} Inspection */
+/** @typedef {import('@areal/workbench/desktop-contract/desktop-control-resources').RecoveryService} Service */
 /** @typedef {ReturnType<typeof recoveryView> & {targets:ReturnType<typeof targets>,purpose:string,confirmedImpact?:boolean}} RecoveryObservation */
 /** @type {Record<string,string>} */
 const labels = {

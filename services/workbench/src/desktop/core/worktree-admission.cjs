@@ -7,7 +7,9 @@ const { commandSemantics } = require("@areal/workbench/desktop-contract");
 const { checkoutRoot } = require("@areal/workspace-git");
 const { modelRecord } = require("@areal/workbench/core-model-contract");
 const { readThreadMetadata } = require("./history-contract.cjs");
-const { readResourceStatus } = require("./resource-observation.cjs");
+const {
+  readResourceStatus,
+} = require("@areal/workbench/desktop-contract/desktop-control-resources");
 const { readTask, readTaskPage } = require("@areal/workbench/desktop-contract/management-tasks");
 const { readWorktreeRequest } = require("./worktrees.cjs");
 /** @typedef {import('./project-state.cjs').CoreProject} Project */

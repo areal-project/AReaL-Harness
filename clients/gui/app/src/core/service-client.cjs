@@ -202,7 +202,7 @@ class SharedCoreBackend {
       },
       projects: [],
     };
-    /** @type {Partial<import('@areal/workbench-service/desktop/core/resource-observation.cjs').RecoveryService>} */
+    /** @type {Partial<import('@areal/workbench/desktop-contract/desktop-control-resources').RecoveryService>} */
     this.status = { connected: false };
     this.sequence = -1;
     /** @type {{state:string,message?:string,recovery?:string,prerequisite?:unknown}} */
@@ -506,7 +506,7 @@ class SharedCoreBackend {
     this.sequence = checked.sequence;
     this.value = checked.snapshot;
     this.status = {
-      ...require("@areal/workbench-service/desktop/core/resource-observation.cjs").readRecoveryService(
+      ...require("@areal/workbench/desktop-contract/desktop-control-resources").readRecoveryService(
         checked.service,
       ),
       ...checked.service,
@@ -1319,7 +1319,7 @@ class SharedCoreBackend {
     }
     const connection = this.requireConnection();
     const projects =
-      require("@areal/workbench-service/desktop/core/resource-observation.cjs").readResourceInspections(
+      require("@areal/workbench/desktop-contract/desktop-control-resources").readResourceInspections(
         await this.resources({ operation: "inspect", includeTasks: true }),
       );
     const { service, snapshot } = readServicePacket(
@@ -1337,7 +1337,7 @@ class SharedCoreBackend {
     );
     return {
       canStop: recoveryView(
-        require("@areal/workbench-service/desktop/core/resource-observation.cjs").readRecoveryService(
+        require("@areal/workbench/desktop-contract/desktop-control-resources").readRecoveryService(
           service,
         ),
         projects,
@@ -1758,6 +1758,7 @@ class SharedCoreBackend {
   async checkLifecycle() {
     this.loadReferences(await this.readControl());
     this.clearReconnect();
+    // 过渡：到 0.2.0 删（旧后台的显式恢复随 Node 服务退役）。
     if (
       !this.status.connected &&
       (!this.options.guiProfile || !this.options.hostHome || this.legacyControl) &&

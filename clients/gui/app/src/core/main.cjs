@@ -37,7 +37,7 @@ const { setupUpdater } = require("../update/electron.cjs");
 const {
   showCoreNotification,
   readNotificationTarget,
-} = require("@areal/workbench-service/desktop/core/notifications.cjs");
+} = require("@areal/workbench/node/native-notifications");
 const { MenuBar } = require("./menu-bar.cjs");
 const { fileOpen, fileWorkspace } = require("./file-open.cjs");
 const { normalizeNativeImage, exportDiagnostics: saveDiagnostics } = require("./bug-reports.cjs");
@@ -51,7 +51,7 @@ const { CorePreview, developmentApproval } = require("./preview.cjs");
 const diagnostics = require("@areal/workbench/node/diagnostics");
 const { startSnapShots } = require("./snapshots/host.cjs");
 const cfg = require("./service-config.cjs");
-const { readLibraryStartupSettings } = require("@areal/workbench-service/desktop/core/library.cjs");
+const { readLibraryStartupSettings } = require("@areal/workbench/node/library-startup");
 const { applyDesktopSessionNetworkPolicy } = require("@areal/workbench/node/desktop-network");
 const { SharedCoreBackend } = require("./service-client.cjs");
 const { recoverConnectedService } = require("./startup-recovery.cjs");

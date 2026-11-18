@@ -9,10 +9,10 @@ const {
   readResourceTasks,
   readResourceGoal,
   readResourceInspections,
-} = require("./resource-observation.cjs");
+} = require("@areal/workbench/desktop-contract/desktop-control-resources");
 /** @typedef {InstanceType<typeof import('./backend.cjs').CoreBackend>} Backend */
-/** @typedef {import('./resource-observation.cjs').ResourceInspection} Inspection */
-/** @typedef {import('./resource-observation.cjs').RecoveryResource} Resource */
+/** @typedef {import('@areal/workbench/desktop-contract/desktop-control-resources').ResourceInspection} Inspection */
+/** @typedef {import('@areal/workbench/desktop-contract/desktop-control-resources').RecoveryResource} Resource */
 /** @typedef {(options:Electron.MessageBoxOptions)=>Promise<Electron.MessageBoxReturnValue>} Notify */
 /** @param {string} message */
 const blocked = (message) => Object.assign(new Error(message), { code: "CORE_RESOURCES" });
@@ -88,9 +88,9 @@ async function inspectResources(backend, { includeTasks = false, purpose } = {})
                 p.runtimeEpoch !== (status.runtime?.runtimeEpoch ?? status.runtime?.epoch),
             });
       }
-      /** @type {import('./resource-observation.cjs').RecoveryTask[]} */
+      /** @type {import('@areal/workbench/desktop-contract/desktop-control-resources').RecoveryTask[]} */
       const tasks = [];
-      /** @type {import('./resource-observation.cjs').RecoveryGoal[]} */
+      /** @type {import('@areal/workbench/desktop-contract/desktop-control-resources').RecoveryGoal[]} */
       const goals = [];
       if (includeTasks) {
         /** @type {string|null|undefined} */

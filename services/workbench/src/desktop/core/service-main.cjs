@@ -4,7 +4,7 @@ const { CoreBackend } = require("./backend.cjs");
 const { DesktopService } = require("./service-protocol.cjs");
 const { serviceIdentity } = require("./service-identity.cjs");
 const { resolveDesktopNetwork } = require("@areal/workbench/node/desktop-network");
-const { readLibraryStartupSettings } = require("./library.cjs");
+const { readLibraryStartupSettings } = require("@areal/workbench/node/library-startup");
 const { SharedPowerMonitor } = require("./power.cjs");
 const { join } = require("node:path");
 

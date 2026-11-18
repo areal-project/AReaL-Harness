@@ -2,7 +2,7 @@
 "use strict";
 const { cp, lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } = require("node:fs/promises");
 const { join } = require("node:path");
-const { record } = require("./resource-contract.cjs");
+const { record } = require("@areal/workbench/desktop-contract/resource");
 /** @typedef {{sourceId:string,sourceRoot:string,targetRoot:string,preferences:Record<string,boolean>}} ResourcePlan */
 
 // One-time Desktop resource import. Git owns repository files; Core owns MCP

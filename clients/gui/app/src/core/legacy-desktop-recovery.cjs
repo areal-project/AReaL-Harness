@@ -15,7 +15,7 @@ const { readServicePacket } = require("@areal/workbench-service/desktop/core/ser
 const {
   readRecoveryService,
   readResourceStatus,
-} = require("@areal/workbench-service/desktop/core/resource-observation.cjs");
+} = require("@areal/workbench/desktop-contract/desktop-control-resources");
 const { record } = require("@areal/workbench-service/desktop/core/service-transport-contract.cjs");
 /** @typedef {InstanceType<typeof import('./service-client.cjs').SharedCoreBackend>} Backend */
 /** @typedef {{pid:number,identity:string,endpoint:string}} DesktopSource */
