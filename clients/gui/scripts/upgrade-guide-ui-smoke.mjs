@@ -325,7 +325,10 @@ try {
       }),
     "desktop connection ready",
   );
-  await page.getByRole("button", { name: "查看旧历史", exact: true }).click();
+  const sidebar = page.getByTestId("areal-sidebar");
+  assert.equal(await sidebar.getByRole("button", { name: "查看旧历史", exact: true }).count(), 0);
+  await sidebar.getByRole("button", { name: "侧栏整理", exact: true }).click();
+  await page.getByRole("menuitem", { name: "查看旧历史", exact: true }).click();
   await page
     .getByRole("button", { name: "Old fixture · Old fixture history", exact: true })
     .click();

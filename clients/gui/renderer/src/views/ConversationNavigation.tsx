@@ -478,13 +478,6 @@ function SidebarContent({ onUpgradeHistory }: { onUpgradeHistory?: () => void })
             <NewTaskButtonGroup onCreateTask={() => void newTask()} />
           </div>
         )}
-        {onUpgradeHistory && (
-          <div className="sidebar-tools">
-            <Button variant="ghost" onClick={onUpgradeHistory}>
-              {t("upgrade.history")}
-            </Button>
-          </div>
-        )}
         {
           <DndContext {...sidebarDrag.context}>
             <div className="sidebar-scroll">
@@ -537,87 +530,99 @@ function SidebarContent({ onUpgradeHistory }: { onUpgradeHistory?: () => void })
                     expanded={!collapsedProjects["sidebar:projects"]}
                     onToggle={() => toggleSidebarGroup("sidebar:projects")}
                   />
-                  {!libraryReadOnly && (
-                    <>
-                      {!readOnly && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          className="section-action-btn"
-                          aria-label={t("settings.openProject")}
-                          title={t("settings.openProject")}
-                          onClick={() => void requestNavigation(() => void choose())}
-                        >
-                          <ComposerPlusIcon width={16} height={16} />
-                        </Button>
-                      )}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          render={
-                            <Button
-                              unstyled
-                              className="section-action-btn"
-                              aria-label={t("common.navigation.organize")}
-                            >
-                              <MoreOptionsIcon size={16} />
-                            </Button>
-                          }
-                        />
-                        <DropdownMenuContent>
-                          {!readOnly && (
-                            <>
-                              <DropdownMenuItem
-                                onClick={() => void requestNavigation(() => void choose())}
-                              >
-                                {t("chat.newProject")}
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                            </>
-                          )}
-                          {(
-                            [
-                              ["Chats", "独立任务排序"],
-                              ["Projects", "项目内任务排序"],
-                              ["Pinned", "置顶项排序"],
-                            ] as const
-                          ).map(([area, label]) => (
-                            <DropdownMenuSub key={area}>
-                              <DropdownMenuSubTrigger>{label}</DropdownMenuSubTrigger>
-                              <DropdownMenuSubContent>
-                                <DropdownMenuRadioGroup
-                                  value={sortMode(area)}
-                                  onValueChange={(value) =>
-                                    organize({
-                                      operation: "settings",
-                                      key: `sidebarSort${area}`,
-                                      value,
-                                      order: visibleRows.map(sidebarKey),
-                                    })
-                                  }
+                  {!libraryReadOnly && !readOnly && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="section-action-btn"
+                      aria-label={t("settings.openProject")}
+                      title={t("settings.openProject")}
+                      onClick={() => void requestNavigation(() => void choose())}
+                    >
+                      <ComposerPlusIcon width={16} height={16} />
+                    </Button>
+                  )}
+                  {(!libraryReadOnly || onUpgradeHistory) && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <Button
+                            unstyled
+                            className="section-action-btn"
+                            aria-label={t("common.navigation.organize")}
+                          >
+                            <MoreOptionsIcon size={16} />
+                          </Button>
+                        }
+                      />
+                      <DropdownMenuContent>
+                        {!libraryReadOnly && (
+                          <>
+                            {!readOnly && (
+                              <>
+                                <DropdownMenuItem
+                                  onClick={() => void requestNavigation(() => void choose())}
                                 >
-                                  {(
-                                    [
-                                      ["updated_at", "最近更新"],
-                                      ["priority", "优先处理"],
-                                      ["manual", "手动排序"],
-                                    ] as const
-                                  ).map(([value, title]) => (
-                                    <DropdownMenuRadioItem key={value} value={value}>
-                                      {title}
-                                    </DropdownMenuRadioItem>
-                                  ))}
-                                </DropdownMenuRadioGroup>
-                              </DropdownMenuSubContent>
-                            </DropdownMenuSub>
-                          ))}
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => organize({ operation: "markAllRead" })}>
-                            {t("common.navigation.markAllRead")}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </>
+                                  {t("chat.newProject")}
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                              </>
+                            )}
+                            {(
+                              [
+                                ["Chats", "独立任务排序"],
+                                ["Projects", "项目内任务排序"],
+                                ["Pinned", "置顶项排序"],
+                              ] as const
+                            ).map(([area, label]) => (
+                              <DropdownMenuSub key={area}>
+                                <DropdownMenuSubTrigger>{label}</DropdownMenuSubTrigger>
+                                <DropdownMenuSubContent>
+                                  <DropdownMenuRadioGroup
+                                    value={sortMode(area)}
+                                    onValueChange={(value) =>
+                                      organize({
+                                        operation: "settings",
+                                        key: `sidebarSort${area}`,
+                                        value,
+                                        order: visibleRows.map(sidebarKey),
+                                      })
+                                    }
+                                  >
+                                    {(
+                                      [
+                                        ["updated_at", "最近更新"],
+                                        ["priority", "优先处理"],
+                                        ["manual", "手动排序"],
+                                      ] as const
+                                    ).map(([value, title]) => (
+                                      <DropdownMenuRadioItem key={value} value={value}>
+                                        {title}
+                                      </DropdownMenuRadioItem>
+                                    ))}
+                                  </DropdownMenuRadioGroup>
+                                </DropdownMenuSubContent>
+                              </DropdownMenuSub>
+                            ))}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => organize({ operation: "markAllRead" })}
+                            >
+                              {t("common.navigation.markAllRead")}
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                        {onUpgradeHistory && (
+                          <>
+                            {!libraryReadOnly && <DropdownMenuSeparator />}
+                            <DropdownMenuItem onClick={onUpgradeHistory}>
+                              {t("upgrade.history")}
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   )}
                 </SidebarDragSurface>
                 <div id="sidebar-projects" hidden={!!collapsedProjects["sidebar:projects"]}>
