@@ -36,14 +36,9 @@ const {
 /** @typedef {{kind:'packet',packet:ReturnType<InstanceType<typeof DesktopService>['packet']>,header:{method:'state'}|{id:number},full:boolean,bytes:number}} PacketEntry */
 /** @typedef {PacketEntry|{kind:'message',value:Fields,bytes:number}} OutboundEntry */
 /** @typedef {{queue:OutboundEntry[],bytes:number,active:boolean,state:PacketEntry|null,closed:boolean,timer?:NodeJS.Timeout}} Outbound */
-/** @typedef {import('ws') & {outbound?:Outbound,projection?:InstanceType<typeof ProjectionEncoder>|null,notifications?:boolean,activity?:{time:number,windowFocused:boolean,focused:boolean},lastFocused?:number,historyViews?:Map<string,Fields & {viewId:string}>}} RemoteServiceSocket */
-/** @typedef {Pick<RemoteServiceSocket,'notifications'|'activity'|'lastFocused'|'historyViews'> & {kind:'main',internal:boolean,closed:boolean,onMessage:(message:Fields)=>void,onClose:()=>void}} MainClient */
-/** @typedef {RemoteServiceSocket|MainClient} ServiceSocket */
-/** @param {ServiceSocket|null|undefined} client @returns {client is MainClient} */
-const mainClient = (client) => !!client && "kind" in client && client.kind === "main";
+/** @typedef {import('ws') & {outbound?:Outbound,projection?:InstanceType<typeof ProjectionEncoder>|null,notifications?:boolean,activity?:{time:number,windowFocused:boolean,focused:boolean},lastFocused?:number,historyViews?:Map<string,Fields & {viewId:string}>}} ServiceSocket */
 /** @param {ServiceSocket|null|undefined} client @returns {client is ServiceSocket} */
-const connected = (client) =>
-  !!client && (mainClient(client) ? !client.closed : client.readyState === 1);
+const connected = (client) => client?.readyState === 1;
 /** @typedef {{pageId:string,pageGeneration:number,controlEpoch:number}} PageClaim */
 /** @typedef {{socket:ServiceSocket,coreInstanceId:string,coreGeneration:string,browserHostId:string,hostGeneration:number,pages:Map<string,PageClaim>,revokedPages:Set<string>}} BrowserClaim */
 /** @typedef {{turnId?:string,queueItemId?:string}|null} AcceptedEntry */
@@ -165,7 +160,7 @@ class DesktopService {
         connected: true,
         commandContract: COMMAND_CONTRACT,
         selectedThreadObservation: true,
-        clients: [...this.clients].filter((peer) => !(mainClient(peer) && peer.internal)).length,
+        clients: this.clients.size,
         busy: this.backend.hasWork({ includePausedQueues: false }),
         activeCommands: Math.max(this.inflight, this.backend.activeCommands ?? 0),
         providerUpdating: !!this.backend.providerUpdating,
@@ -194,23 +189,14 @@ class DesktopService {
   }
   /** @param {ServiceSocket} socket @param {Fields} value */
   send(socket, value) {
-    if (mainClient(socket)) {
-      if (!socket.closed) socket.onMessage(value);
-      return;
-    }
     this.enqueue(socket, { kind: "message", value, bytes: 0 });
   }
   /** @param {ServiceSocket} socket @param {PacketEntry['packet']} packet @param {PacketEntry['header']} header @param {boolean} [full] */
   sendPacket(socket, packet, header, full = false) {
-    if (mainClient(socket)) {
-      if (!socket.closed) socket.onMessage({ method: "state", params: packet });
-      return;
-    }
     this.enqueue(socket, { kind: "packet", packet, header, full, bytes: 0 });
   }
   /** @param {ServiceSocket} socket @param {OutboundEntry} entry */
   enqueue(socket, entry) {
-    if (mainClient(socket)) return;
     if (!connected(socket)) return;
     const outbound = (socket.outbound ??= {
       queue: [],
@@ -240,7 +226,6 @@ class DesktopService {
   }
   /** @param {ServiceSocket} socket */
   stopSending(socket) {
-    if (mainClient(socket)) return;
     const outbound = socket.outbound;
     if (!outbound) return;
     clearTimeout(outbound.timer);
@@ -251,7 +236,6 @@ class DesktopService {
   }
   /** @param {ServiceSocket} socket @param {OutboundEntry} entry */
   sendFrame(socket, entry) {
-    if (mainClient(socket)) return;
     const outbound = socket.outbound;
     if (!outbound || outbound.closed || !connected(socket)) {
       this.stopSending(socket);
@@ -393,10 +377,6 @@ class DesktopService {
   }
   /** @param {ServiceSocket} socket */
   disconnectClient(socket) {
-    if (mainClient(socket)) {
-      if (socket.closed) return;
-      socket.closed = true;
-    }
     const terminals = this.hostTerminals.get(socket);
     this.hostTerminals.delete(socket);
     for (const entry of terminals?.values() ?? []) {
@@ -443,33 +423,6 @@ class DesktopService {
     if (this.clients.delete(socket) && !this.clients.size) this.idleSince = Date.now();
     this.sampleActivity();
     this.schedule();
-    if (mainClient(socket)) socket.onClose();
-  }
-  /** @param {(message:Fields)=>void} onMessage @param {()=>void} onClose @param {boolean} [internal] */
-  connectMain(onMessage, onClose, internal = false) {
-    /** @type {MainClient} */
-    const owner = { kind: "main", internal, closed: false, onMessage, onClose };
-    return {
-      metadata: {
-        protocol: PROTOCOL,
-        identity: this.identity,
-        pid: process.pid,
-        applicationOwner: this.backend.applicationOwner,
-        desktopGeneration: this.lifecycle?.generation,
-        local: /** @type {const} */ (true),
-      },
-      request: (/** @type {string} */ method, /** @type {Fields} */ params = {}) => {
-        if (owner.closed || this.closed)
-          return Promise.reject(
-            Object.assign(new Error("GUI 连接已关闭"), {
-              code: "DISCONNECTED",
-              submissionUnknown: false,
-            }),
-          );
-        return this.execute(owner, method, params);
-      },
-      close: () => this.disconnectClient(owner),
-    };
   }
   startObservers() {
     if (this.activityTimer) return;
@@ -566,7 +519,7 @@ class DesktopService {
     this.exitRequested = true;
     setImmediate(() => this.onStop());
   }
-  /** @param {RemoteServiceSocket} socket @param {import("ws").RawData} bytes */
+  /** @param {ServiceSocket} socket @param {import("ws").RawData} bytes */
   async receive(socket, bytes) {
     /** @type {unknown} */ let message;
     try {
@@ -608,11 +561,10 @@ class DesktopService {
           throw Object.assign(new Error("后台服务版本或启动配置不兼容。请先安全停止旧后台服务。"), {
             code: "SERVICE_INCOMPATIBLE",
           });
-        if (!mainClient(socket))
-          socket.projection =
-            record(params.capabilities) && params.capabilities.projection === 1
-              ? (socket.projection ?? new ProjectionEncoder(randomUUID()))
-              : null;
+        socket.projection =
+          record(params.capabilities) && params.capabilities.projection === 1
+            ? (socket.projection ?? new ProjectionEncoder(randomUUID()))
+            : null;
         socket.notifications = params.notifications === true;
         if (
           record(params.capabilities) &&
@@ -1187,7 +1139,6 @@ class DesktopService {
     clearTimeout(this.timer ?? undefined);
     clearInterval(this.activityTimer);
     clearInterval(this.flushTimer);
-    for (const owner of this.clients) if (mainClient(owner)) this.disconnectClient(owner);
     for (const socket of this.server?.clients ?? []) {
       this.stopSending(socket);
       this.releaseHistoryViews(socket);
@@ -2016,7 +1967,7 @@ module.exports = {
   decodeMedia,
 };
 
-/** @param {OutboundEntry} entry @param {RemoteServiceSocket['projection']} [projection] */
+/** @param {OutboundEntry} entry @param {ServiceSocket['projection']} [projection] */
 function outboundMessage(entry, projection) {
   if (entry.kind === "message") return entry.value;
   const key = "method" in entry.header ? "params" : "result";

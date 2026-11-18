@@ -75,7 +75,7 @@ async function waitForProcessExit(pid) {
   }
 }
 
-/** @typedef {import('./service-connection.cjs').ServiceMetadata|ReturnType<InstanceType<typeof import('@areal/workbench-service/desktop/core/service-protocol.cjs').DesktopService>['connectMain']>['metadata']} Metadata */
+/** @typedef {import('./service-connection.cjs').ServiceMetadata} Metadata */
 /** @typedef {import('./service-control.cjs').LifecycleReference} Reference */
 /** @typedef {import('./service-control.cjs').LifecycleResponse} Receipt */
 /** @typedef {import('./lifecycle.cjs').RecoveryObservation} Observation */
@@ -474,12 +474,7 @@ class SharedCoreBackend {
     );
   }
   scheduleReconnect() {
-    if (
-      this.metadata?.local === true ||
-      !(this.metadata?.identity ?? this.identity) ||
-      !this.canReconnect() ||
-      this.reconnectTimer
-    )
+    if (!(this.metadata?.identity ?? this.identity) || !this.canReconnect() || this.reconnectTimer)
       return;
     this.connectionState = { state: "connecting" };
     const delay = Math.min(30000, 500 * 2 ** Math.min(this.reconnectAttempts ?? 0, 6));
