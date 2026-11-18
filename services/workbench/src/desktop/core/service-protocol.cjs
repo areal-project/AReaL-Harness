@@ -51,28 +51,6 @@ function validateCommand(name, params) {
   desktopContract.readCommandInvocation(name, params);
 }
 
-// Media is the only binary value in the desktop contract. Keep the existing
-// Uint8Array IPC API; use bounded base64 only across the service JSON transport.
-/** @param {unknown} value */
-function encodeMedia(value) {
-  if (!record(value) || value.bytes === undefined) return value;
-  if (!(value.bytes instanceof Uint8Array) || value.bytes.length > 16 * 1024 * 1024)
-    throw new Error("附件必须为 1 B–16 MiB");
-  return { ...value, bytes: Buffer.from(value.bytes).toString("base64") };
-}
-/** @overload @param {Fields} value @returns {Fields} */
-/** @overload @param {unknown} value @returns {unknown} */
-/** @param {unknown} value */
-function decodeMedia(value) {
-  if (!record(value) || value.bytes === undefined) return value;
-  if (typeof value.bytes !== "string" || value.bytes.length > 22369624)
-    throw new Error("无效附件编码");
-  const bytes = Buffer.from(value.bytes, "base64");
-  if (bytes.length > 16 * 1024 * 1024 || bytes.toString("base64") !== value.bytes)
-    throw new Error("无效附件编码");
-  return { ...value, bytes: new Uint8Array(bytes) };
-}
-
 // One writer for provider secrets, recovery journals and projections. Core remains
 // authoritative for execution. No generic RPC passthrough; credential reveal is an explicit local request.
 class DesktopService {
@@ -761,13 +739,9 @@ class DesktopService {
       }
       if (method !== "addProject" && method !== "command") throw new Error("不支持的后台服务操作");
       const name = typeof params.name === "string" ? params.name : "";
-      const request = record(params.request)
-        ? method === "command" && name === "media"
-          ? decodeMedia(params.request)
-          : params.request
-        : {};
+      const request = record(params.request) ? params.request : {};
       if (method === "command") {
-        validateCommand(name, name === "media" ? request : params.request);
+        validateCommand(name, params.request);
       } else if (typeof params.path !== "string") throw new Error("无效工作区路径");
       this.inflight++;
       this.schedule();
@@ -794,7 +768,6 @@ class DesktopService {
         } finally {
           entry?.resolve(null);
         }
-        if (method === "command" && name === "media") result = encodeMedia(result);
         this.publish();
         response = result;
       } finally {
@@ -1655,8 +1628,6 @@ module.exports = {
   COMMAND_CONTRACT,
   DesktopService,
   validateCommand,
-  encodeMedia,
-  decodeMedia,
 };
 
 /** @param {OutboundEntry} entry */
