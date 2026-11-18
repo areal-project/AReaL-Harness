@@ -1867,6 +1867,8 @@ describe("Host renderer read authority", () => {
     }> = [];
     let admissionState = "accepted";
     let failShellRefresh = false;
+    let heldShellRefresh: Promise<void> | undefined;
+    let shellRefreshHeld = false;
     const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
       const opened = await wire.factory(lifecycle);
       return {
@@ -1878,6 +1880,10 @@ describe("Host renderer read authority", () => {
         transport: {
           ...opened.transport,
           async request(method, params, context) {
+            if (method === "shell.subscribe" && heldShellRefresh) {
+              shellRefreshHeld = true;
+              await heldShellRefresh;
+            }
             if (failShellRefresh && method === "shell.subscribe")
               throw new Error("catalog unavailable");
             return opened.transport.request(method, params, context);
@@ -1923,6 +1929,22 @@ describe("Host renderer read authority", () => {
       },
     });
     expect(writes.at(-1)?.params).not.toHaveProperty("projectId");
+    let releaseShell!: () => void;
+    heldShellRefresh = new Promise<void>((resolve) => {
+      releaseShell = resolve;
+    });
+    const heldRequestId = "33333333-3333-4333-8333-333333333333";
+    try {
+      const result = await Promise.race([
+        call(services, "create", { ...creation, requestId: heldRequestId }),
+        new Promise((resolve) => setTimeout(() => resolve("blocked by shell"), 0)),
+      ]);
+      expect(shellRefreshHeld).toBe(true);
+      expect(result).toEqual({ threadId: "thread", requestId: heldRequestId });
+    } finally {
+      heldShellRefresh = undefined;
+      releaseShell();
+    }
     failShellRefresh = true;
     await expect(
       call(services, "create", { ...creation, requestId: "22222222-2222-4222-8222-222222222222" }),

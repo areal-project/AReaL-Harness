@@ -666,11 +666,11 @@ export function createHostReadServices(
             : project.hostProjectId;
         creationTargets.set(`${project.id}:${result.threadId}`, execution);
         threadTargets.set(`${project.id}:${result.threadId}`, execution);
-        try {
-          await client.refreshShell();
-        } catch {
-          // 原创建已有确切回执；目录读取失败保留自身错误，不能把已确认创建改成 UNKNOWN。
-        }
+        const refresh = client.refreshShell().catch(() => {
+          // 目录读取失败不改变已确认的原创建结果。
+        });
+        // 新工作树要先获得执行项目的代际；源目录已就绪，首条消息可以继续提交。
+        if (execution !== project.hostProjectId) await refresh;
         return {
           routed: true,
           value: { threadId: result.threadId, requestId: result.nativeRequestId ?? commandId },
