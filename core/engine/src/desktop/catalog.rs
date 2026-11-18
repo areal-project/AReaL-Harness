@@ -828,18 +828,19 @@ impl Engine {
             .as_ref()
             .map(|window| window.user_budget_tokens)
             .unwrap_or(configuration.parameters.context_window_tokens);
-        if let Some(current) = self
-            .desktop
-            .catalog
-            .read()
-            .unwrap()
-            .providers
-            .get(&model.provider_id)
+        let catalog = self.desktop.catalog.read().unwrap();
+        if let Some(current) = catalog.providers.get(&model.provider_id)
+            && current.id == provider.id
             && current.endpoint == provider.endpoint
             && current.protocol == provider.protocol
-            && current.credential_ref == provider.credential_ref
             && current.models.contains(&model.model_id)
+            && (current.credential_ref == provider.credential_ref
+                || (catalog.configured_provider_ids.contains(&provider.id)
+                    && provider.credential_ref.is_some()
+                    && current.credential_ref.is_some()))
         {
+            // 只为新请求更新同一受管供应商的已轮换凭据；历史配置与已受理工作继续使用各自的快照。
+            provider.credential_ref.clone_from(&current.credential_ref);
             let reported = current
                 .model_parameters
                 .get(&model.model_id)
