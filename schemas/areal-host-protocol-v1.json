@@ -58345,6 +58345,38 @@
         }
       ]
     },
+    "LocalDesktopLifecycleReadParams": {
+      "type": "object",
+      "properties": {
+        "desktopGeneration": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "sourceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "read",
+            "reconcile"
+          ]
+        },
+        "requestId": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "desktopGeneration",
+        "sourceId",
+        "operation",
+        "requestId"
+      ],
+      "additionalProperties": false
+    },
     "LocalDesktopCoreCallParams": {
       "oneOf": [
         {
@@ -58758,6 +58790,28 @@
             "params"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "attachmentId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "call": {
+              "type": "string",
+              "const": "lifecycle.read"
+            },
+            "params": {
+              "$ref": "#/$defs/LocalDesktopLifecycleReadParams"
+            }
+          },
+          "required": [
+            "attachmentId",
+            "call",
+            "params"
+          ],
+          "additionalProperties": false
         }
       ]
     },
@@ -58813,6 +58867,12 @@
         },
         {
           "$ref": "#/$defs/LocalDesktopTerminalCommandResult"
+        },
+        {
+          "$ref": "#/$defs/WorkbenchLifecycleReceipt"
+        },
+        {
+          "type": "null"
         }
       ],
       "examples": [

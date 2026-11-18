@@ -45,8 +45,6 @@ Host 发布包内与 Electron 相同的 Renderer。`areal web` 打开公开 orig
 
 `areal host web devices` 列出设备身份、公钥指纹和已授予的范围；`areal host web revoke DEVICE_ID` 持久撤销该浏览器，未使用票据和活跃连接随之失效。撤销和批准只在已认证 Unix 连接上提供。私钥、凭据和票据不进入 URL、进程参数、日志或诊断。省略 `web.approve.params.scopes` 时仅授予 `observe`，既有授权不自动扩大。该本机接口可显式授予 Host 全部项目的 `observe`、`submit`、`approve`、`manage` 范围（必须包含 observe）；CLI 默认只读；例如 `areal host web approve REQUEST_ID --scope observe,manage` 仅开放查看和管理。新浏览器还须协商 `gui-write-v1`，hello 仅列出授权内的方法，服务端逐次校验。`submit` 包含提交、附件及停止；`approve` 包含审批与回答；`manage` 包含资料库整理、统计导入和有界的管理操作，不隐含前两者；其中会推动或停止在途工作的管理操作（终端写入、上下文压缩、立即运行任务、恢复本次运行、取消执行、停止 Run）分别另需 `submit` 或 `interrupt`。跨项目资料库通过 `library.command` 写入，以 `commandId` 查 `command.read`，未知结果不重放。后台启动与原生能力边界见[工作台服务](../design/workbench-service.md)。
 
-`pages.command/resource` 是绑定本机已鉴权连接的 MCP Apps/Gen-UI 页面入口，要求 `gui-write-v1` 与 manage，目录查询 `catalog` 不执行工具；手动打开 MCP App 与页面 JSON-RPC 请求另需 submit。Host 注入连接 owner，事件 `pages.event` 带 `connectionId` 与 `gatewayGeneration`；资源分块只对原 owner 返回，断开撤销实例和页面工具租约。固定公开代理 `/host/pages/proxy` 不承载用户 HTML。页面请求不进入通用 journal，不得因断连自动重放。远程 Noise 和仅有 submit 的设备尚未开放。
-
 `providers.read` 读取 Host 的公开供应商配置投影；`providers.command` 接受保存、应用、默认模型、删除、发现和探测，要求本机浏览器的 manage 授权。写入以 `commandId` 查询原回执；草稿凭据不进入 journal 参数，浏览器不能调用 `revealKey`。保存、默认模型、删除和显式应用由 Host 统一准入。保存先写规范配置，不等待在线 Core；每个项目独立在空闲时应用，并按原请求核查回执。UNKNOWN 不重发，明确失败后可显式重试；未运行项目使用下次启动的配置。Node 只核验应用证明，不再写配置或全局回滚；发现和探测也由 Host 执行，不启动 Node 或 Core；保留来源网络设置、代理绕过及证书验证，30 秒超时，发现响应最多 1 MiB 和 64 个模型，探测要求完整且非空的 SSE 文本成功终态。模型草稿的 `reportedContextWindowTokens` 保留上游报告的上下文窗口，取 1–2,000,000 的整数，与用户覆盖的 `parameters.contextWindowTokens` 分开保存。保存要求 API Key 但既无输入也无已配置引用时返回 `PROVIDER_CREDENTIAL_REQUIRED`，原命令确定拒绝，不留待核对的提交。
 
 供应商列表通过 Host 的 `modelsCatalog` 只读取配置及凭据引用，不等待安全存储或项目配置对账。尚未核查的已存储凭据返回 `credentialStates: checking`；同一配置 revision 可复用最近一次凭据诊断。后台继续非交互检查凭据并核对原项目回执，客户端在 checking 或应用未确认时刷新投影。目录可见不代表凭据可用；保存、探测和执行仍走原校验路径。
@@ -118,6 +116,8 @@ Host 内部共享 Core 连接的监督器在状态探测暂时失败后，仍按
 Main 默认启动先准备来源和配置，再连接原生附件与 Host 外壳快照，不启动 Node 工作台或读取其项目投影；重新连接也重新核对原来源。外壳订阅失败会撤销本次原生附件。来源公开不代表启动配置已经就绪，首次项目激活等待同来源的原生配置后继续原请求。
 
 本机 Main 通过 `desktop.core.subscribe` 绑定来源和经核验的启动选项；可选 `environmentCredentials` 只接受已配置的环境凭据名，值仅保留在 Host 内存，不进入启动记录。`desktop.core.event` 的工具回调携带原 `sourceId/projectId/lease/coreInstanceId/coreGeneration/connectionId`，以及用于原生预览的 `guiProjectId/workspacePath`；逻辑项目与执行工作树不能互换。`desktop.core.callback` 仅回复同一附件的原请求，媒体上传仍使用原执行项目和租约。附件断开撤销专用连接，不重放回调或提交。 Main 订阅既有就绪项目或 Core 后续就绪时，Host 在该附件的项目专用租约上发布 `areal.browser.v1` 调度工具；普通原生连接与会话准备复用同一租约。旧 Node 观察连接只撤销自身工具发布，不能接管原生工具宿主。 用户首次打开预览时，Main 经 `desktop.core.call` 的 `browser.scope` 查询 Thread 归属；Host 复用工作树解析并核对 Core 中的未归档 Thread，返回逻辑项目、执行目录和同一原生租约，无需先产生工具回调或打开旧 Node 投影。
+
+Main 通过同一附件调用 `lifecycle.read`。Host 按附件来源及原 `requestId`、`desktopGeneration` 查找回执。核对只推进由 Rust Host 持有的回执，旧 Node 回执及其 UNKNOWN 状态原样保留。
 
 GUI 来源的新项目登记由 Host 生成首次 `LaunchInputs`，不等待 Node 写入启动记录；已保存的输入继续沿原记录复用。首次准备带有绑定项目和输入摘要的只读空闲证明，实际启动准备前持久撤销；缺少证明的既有输入仍按未知启动历史处理。已导入但缺少启动记录的 GUI 项目可从同一来源经校验的启动选项准备；CLI 的首次激活仍须显式提供输入。配置根、执行目录与数据目录独立绑定，凭据值仍经 Host 内存通道注入。默认 Profile 和内置 Skill 来自共享资源，固定清单与摘要校验后物化；用户与项目 Skill 选择复用定时准备的同一物化器，显式外部部署保留自身契约。代理与补充证书使用来源设置，附加 CA 保留原系统信任根。资源、钩子或网络准备失败时，启动输入标记为仅历史模式，不因此开放执行。
 

@@ -2350,3 +2350,35 @@ async fn first_gui_activation_waits_for_its_native_launch_configuration() {
         })
         .await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn native_attachment_reads_original_lifecycle_without_replaying_legacy_unknown() {
+    tokio::task::LocalSet::new().run_until(async {
+        let root=tempfile::tempdir().unwrap();
+        let root=root.path().canonicalize().unwrap();
+        let (host,input,source)=resumable_host(&root);
+        std::fs::remove_dir_all(root.join("services/workbench")).unwrap();
+        let (attachment,_events)=host.schedules.connections.frontend_subscribe(&host,"native-recovery",&source,input.options,None).unwrap();
+        let original=uuid::Uuid::new_v4().to_string();
+        let receipt=json!({"version":1,"requestId":original,"desktopGeneration":uuid::Uuid::new_v4().to_string(),"kind":"stopProject","mode":"cancel","phase":"admissionUnconfirmed","desktopExit":"notRequested","targets":[{"projectId":"project","serviceId":"original-service","generation":"original-generation","phase":"admissionUnconfirmed"}]});
+        let directory=root.join("data/lifecycle-operations");
+        storage::private_dir(&directory).unwrap();
+        let path=directory.join(format!("{original}.json"));
+        storage::write(&path,&receipt).unwrap();
+        let bytes=std::fs::read(&path).unwrap();
+        let mut request=json!({"attachmentId":attachment["attachmentId"],"call":"lifecycle.read","params":{"sourceId":source,"operation":"reconcile","requestId":original,"desktopGeneration":receipt["desktopGeneration"]}});
+        for _ in 0..2 {
+            let result=host.schedules.connections.frontend_call(&host,&request).await.unwrap();
+            assert_eq!(result,receipt);
+            assert_eq!(std::fs::read(&path).unwrap(),bytes);
+        }
+        let mut stale=request.clone();
+        stale["params"]["desktopGeneration"]=json!(uuid::Uuid::new_v4().to_string());
+        assert!(host.schedules.connections.frontend_call(&host,&stale).await.is_err());
+        request["params"]["sourceId"]=json!("another-source");
+        assert!(host.schedules.connections.frontend_call(&host,&request).await.is_err());
+        assert!(!host.gateway.workbench.has_running_backend());
+        assert!(storage::json_records(&host.home.join("host/operations"),false).unwrap().is_empty());
+        host.schedules.connections.frontend_disconnect("native-recovery");
+    }).await;
+}

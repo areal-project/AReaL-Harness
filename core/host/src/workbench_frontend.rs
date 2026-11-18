@@ -462,6 +462,10 @@ impl Connections {
         host.migration.source_profile(&source)?;
         let input = &params["params"];
         match call {
+            "lifecycle.read" => {
+                let _: areal_protocol::host::LocalDesktopLifecycleReadParams =
+                    serde_json::from_value(input.clone()).context("INVALID_PARAMS")?;
+            }
             "terminal.command" => {
                 let _: areal_protocol::host::LocalDesktopTerminalCommandParams =
                     serde_json::from_value(input.clone()).context("INVALID_PARAMS")?;
@@ -574,6 +578,10 @@ impl Connections {
             input.get("sourceId").is_none_or(|id| id == &source),
             "FORBIDDEN"
         );
+        if call == "lifecycle.read" {
+            let operation = input["operation"].as_str().context("INVALID_PARAMS")?;
+            return super::workbench_lifecycle::read_request(host, &source, operation, input).await;
+        }
         if call == "terminal.command" {
             return Box::pin(self.frontend_terminal_command(host, attachment, &source, input))
                 .await;

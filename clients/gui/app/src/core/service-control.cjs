@@ -282,7 +282,20 @@ function loadReferences(control) {
 /** @this {Backend}  @param {Reference} reference @param {boolean} [reconcile] @returns {Promise<Receipt>} */
 async function readLifecycle(reference, reconcile = true) {
   let receipt;
-  if (this.status.connected && this.status.lifecycle?.version === 2) {
+  const native = this.nativeBrowserEpoch;
+  if (native) {
+    const source = this.nativeBrowserSource;
+    receipt = await this.nativeBrowserCall("lifecycle.read", {
+      sourceId: source,
+      operation: reconcile ? "reconcile" : "read",
+      requestId: reference.requestId,
+      desktopGeneration: reference.desktopGeneration,
+    });
+    if (this.disposed || this.nativeBrowserEpoch !== native || this.nativeBrowserSource !== source)
+      throw Object.assign(new Error("Original native lifecycle source changed"), {
+        code: "RESYNC_REQUIRED",
+      });
+  } else if (this.status.connected && this.status.lifecycle?.version === 2) {
     try {
       receipt = await this.requireConnection().request(
         reconcile ? "lifecycleReconcile" : "lifecycleRead",
@@ -296,7 +309,7 @@ async function readLifecycle(reference, reconcile = true) {
         throw error;
     }
   }
-  if (!receipt) {
+  if (!receipt && !native) {
     const {
       readLifecycleReceipt,
       reconcileLifecycleReceipt,

@@ -1319,6 +1319,62 @@ test("native command late replies cannot settle a replacement source or replay a
   assert.equal(f.calls.filter((frame) => frame.method === "desktop.command").length, 1);
 });
 
+for (const replaced of [false, true])
+  test(`native lifecycle recovery reads the original Host receipt (replacement=${replaced})`, async (t) => {
+    const f = await fixture(t);
+    const requestId = randomUUID(),
+      desktopGeneration = randomUUID();
+    const reference = {
+      requestId,
+      desktopGeneration,
+      kind: "stopProject",
+      mode: "cancel",
+      desktop: { pid: process.pid, identity: "original-desktop" },
+      targets: [
+        { projectId: "project", serviceId: "original-core", generation: "original-generation" },
+      ],
+    };
+    const receipt = {
+      version: 1,
+      requestId,
+      desktopGeneration,
+      kind: "stopProject",
+      mode: "cancel",
+      phase: "completed",
+      desktopExit: "notRequested",
+      targets: [{ ...reference.targets[0], phase: "completed" }],
+    };
+    f.setHandler(async (frame) => {
+      if (frame.method === "desktop.core.subscribe") return { attachmentId: "attachment" };
+      assert.equal(frame.method, "desktop.core.call");
+      assert.equal(frame.params.call, "lifecycle.read");
+      assert.deepEqual(frame.params.params, {
+        sourceId: "source",
+        operation: "reconcile",
+        requestId,
+        desktopGeneration,
+      });
+      if (replaced) f.backend.nativeBrowserEpoch = {};
+      return receipt;
+    });
+    await f.backend.connectNativeBrowser({ home: f.hostHome, sourceId: "source" }, {});
+    t.after(() => f.backend.closeNativeBrowser());
+    f.backend.status.connected = true;
+    f.backend.lifecycleReferences.set(requestId, reference);
+    if (replaced) {
+      await assert.rejects(
+        f.backend.readLifecycle(reference),
+        (error) => error.code === "RESYNC_REQUIRED",
+      );
+      assert.equal(f.backend.lifecycleReferences.get(requestId), reference);
+      assert.equal(f.backend.lifecycleReceipts.size, 0);
+    } else {
+      assert.deepEqual(await f.backend.readLifecycle(reference), receipt);
+      assert.equal(f.backend.lifecycleReferences.size, 0);
+    }
+    assert.equal(f.backend.connection, undefined);
+  });
+
 test("resource settings use the native source without a Node connection", async (t) => {
   const f = await fixture(t);
   const request = { operation: "skills", scope: "user" };

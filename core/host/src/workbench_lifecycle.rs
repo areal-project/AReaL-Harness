@@ -322,6 +322,16 @@ pub(super) async fn read_request(
     let Some(mut record) = read(&directory, id)? else {
         return Ok(Value::Null);
     };
+    let verify_generation = |record: &Value| -> Result<()> {
+        ensure!(
+            params
+                .get("desktopGeneration")
+                .is_none_or(|generation| generation == &record["desktopGeneration"]),
+            "LIFECYCLE_RECEIPT_INVALID"
+        );
+        Ok(())
+    };
+    verify_generation(&record)?;
     if operation == "reconcile" {
         let gate = GATES.with(|gates| {
             gates
@@ -332,6 +342,7 @@ pub(super) async fn read_request(
         });
         let _guard = gate.lock().await;
         record = read(&directory, id)?.context("LIFECYCLE_RECEIPT_INVALID")?;
+        verify_generation(&record)?;
         // 旧 JS 回执保留为历史事实，不把原 UNKNOWN 迁成可重放请求。
         if record["rustOwner"] == true {
             settle(host, &bindings(host, source)?, &mut record).await?;

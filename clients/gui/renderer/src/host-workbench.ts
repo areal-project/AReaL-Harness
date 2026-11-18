@@ -114,9 +114,6 @@ export const DESKTOP_COMMANDS = new Set([
   "trajectory",
   "workspace",
 ]);
-/** 只有桌面窗口才有的设置页：电脑控制要本机系统权限。 */
-const DESKTOP_ONLY_SETTINGS = new Set(["电脑控制"]);
-
 // 命令通道是 JSON：后台返回的 Uint8Array 到这里成了按下标排的对象，还原后界面才能当字节用。
 function reviveBytes<T>(value: T): T {
   const bytes = (value as { bytes?: unknown } | null)?.bytes;
@@ -641,9 +638,7 @@ export function hostPlatformCapabilities(
       taskCatalog: available("tasks.read"),
       taskManage: available("manage.command"),
       settings: commands
-        ? settingsNavigationGroups
-            .flatMap((group) => group.items.map((item) => item.id))
-            .filter((id) => !DESKTOP_ONLY_SETTINGS.has(id))
+        ? settingsNavigationGroups.flatMap((group) => group.items.map((item) => item.id))
         : [
             ...(available("providers.read") ? ["模型服务"] : []),
             ...(available("worktree.read") ? ["Worktrees"] : []),
