@@ -13,7 +13,6 @@ import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { stageCoreApp } from "./stage-app.mjs";
-import { stageMacOSService } from "./stage-macos-service.mjs";
 import { buildMacOSDmg } from "./macos-dmg.mjs";
 import { parseArgs } from "node:util";
 import relayResources from "./relay-resources.cjs";
@@ -298,9 +297,6 @@ try {
         join(resources, "desktop-build.json"),
         JSON.stringify({ version: 1, identity }) + "\n",
       );
-      const backgroundService = await timings.measure("service-bundle", () =>
-        stageMacOSService(app),
-      );
       if (release) {
         const native = require("yaml").parse(
           await readFile(join(app, "Contents/Resources/app-update.yml"), "utf8"),
@@ -387,7 +383,6 @@ try {
             archive,
             dmg,
             dependencies,
-            backgroundService,
             builder: {
               node: process.version,
               executable: process.execPath,

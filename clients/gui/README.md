@@ -325,17 +325,13 @@ Composer 保留所选及最后受理模型，目录确认中不显示不可用�
 
 通知遵循“看到后能做什么”的原则：只有需要用户决策或采取行动时才弹出，并提供必要的处理入口。后台连接、更新和已受理处理中保持安静；Worktree 保存与删除成功直接更新界面。字段校验和局部读取失败在原位置显示，历史失败提供重新加载入口；旧历史视图的迟到请求不再生成全局错误，新视图成功后清除旧错误。UNKNOWN 继续绑定原请求核对，关闭通知不会重发操作。
 
-Renderer 仅通过窄 preload IPC 访问桌面适配器。适配器在 Main 进程中连接共享 Rust Host，不启动独立 Desktop Service 或持有 Core 生命期管道。关闭窗口保留应用；退出应用关闭 GUI 连接与原生资源，已受理的 Core 工作、Host 定时激活和原生 Remote 入口继续由 Host 管理。桌面 Browser/Computer 连接撤销后，后续任务按当前可用工具准备。再次启动读取 Core 权威历史，不重放提交；停止后台使用单独的显式 Host 操作。
+Renderer 仅通过窄 preload IPC 访问桌面适配器。适配器在 Main 进程中连接共享 Rust Host，不启动独立 Desktop Service 或持有 Core 生命期管道。关闭窗口保留应用；退出应用关闭 GUI 连接与原生资源，已受理的 Core 工作、Host 定时激活和原生 Remote 入口继续由 Host 管理。桌面浏览器连接撤销后，后续任务按当前可用工具准备。再次启动读取 Core 权威历史，不重放提交；停止后台使用单独的显式 Host 操作。
 
 用户可显式停止后台服务，Host 会绑定原代次和项目范围，结算执行与资源清理。结果未确认时只核查原请求。带原请求编号与代次的旧停止引用由 Host 核查。缺少操作身份的旧停止记录原样保留，请用原版本检查并结束该操作，再打开当前版本。
 
-macOS 安装包将 Desktop 放在独立应用身份的 `AReaL Harness Service.app` 中，与前台共享包资源、配置、凭据名称和数据目录。Main 独占 Desktop 生命期管道写端，Desktop 独占每个 GUI Host 的写端；关闭窗口不关闭这些管道。Main 或 Desktop 消失会使下游收到 EOF 并清理引擎。`AREAL_GUI_EXECUTABLE` 配合 `node --test clients/gui/scripts/macos-service.test.mjs` 核对包内入口、owner 和管道关闭后的退出。
+macOS 安装包提供 Electron GUI 与 Rust 可执行文件。退出 GUI 后，共享 Host 可以继续管理已受理的 Core 工作。需要换代时，按原停止请求核对回执和进程退出，再显式重新连接。
 
-同一应用会话重开窗口或恢复连接时，只复用相同 owner 的后台。新应用发现旧版独立后台或其他应用会话时只提供观察与显式安全迁移，不自动认领、取消或替换。GUI 管理始终使用已选安装的绝对 CLI 路径，`ensure --no-auto-restart` 校验 owner，显式更新继续绑定原 Desktop、Core 代际及 requestId。完整 owned registry 包含已隐藏、断连项目和启动中实例。已完成目标不重复停止；受理未知只核查原请求。工作区从 Core 权威快照恢复，不重放输入。
-
-运行中的 Desktop 后台通过 `service.commandContract` 声明当前桌面命令契约。未声明的旧后台仍可观察原任务、读取历史和管理兼容队列；生命周期写入另需 version 2 能力，但新版消息提交、评价、插件 Apps/表单、新增默认模型操作及轨迹开关会在 Main 发送前拒绝。输入和评价草稿保持原样，界面提供更新后台入口，停止确认成功后重新连接；不会探测性写入或自动重发。Core 的能力声明不能替代 Desktop 转发层的声明。
-
-`AREAL_CORE_BIN=/absolute/path/to/private/.local/dev-bin/<slot>/areal pnpm --dir clients/gui run test:service-reopen` 验证 Renderer reload、强制崩溃后的显式刷新，以及两次窗口关闭与重开。Renderer 恢复后从权威快照重新挂接，保留 Main、Desktop、Host、Core 的进程身份、owner、代际和同一模型连接。脚本分别追加新的流片段，在生产 App 中检查历史、活动状态、草稿及新增回复，并完成原 Turn。随后用独立活动 Turn 验证应用退出与重启，要求新 owner 和代际、历史与草稿保留，且不重发中断输入。命名请求与用户执行请求分别计数；Runtime PID 按实际出现记录，不要求启动工具。`AREAL_REOPEN_FORCE_GUI=1` 将应用退出替换为 Main SIGKILL。源码 runner 的生命期连接在测试被杀后结束 Main，再由产品 owner 管道回收服务。可选 `AREAL_REOPEN_REPLACEMENT_BIN=/absolute/verified/areal` 用另一份真实 Mach-O 替换私有路径，验证同次应用窗口重开不隐式换代，随后恢复原字节和时间。未指定时验证文件时间变化不触发换代。
+`AREAL_CORE_BIN=/absolute/path/to/private/.local/dev-bin/<slot>/areal pnpm --dir clients/gui run test:service-reopen` 验证 Renderer reload、强制崩溃后的显式刷新，以及两次窗口关闭与重开。Renderer 恢复后从权威快照重新挂接，保留 Main、Host、Core 的进程身份、代际和同一模型连接。脚本分别追加新的流片段，在生产 App 中检查历史、活动状态、草稿及新增回复，并完成原 Turn。随后用独立活动 Turn 验证应用退出与重启，要求新 owner 和代际、历史与草稿保留，且不重发中断输入。命名请求与用户执行请求分别计数；Runtime PID 按实际出现记录，不要求启动工具。`AREAL_REOPEN_FORCE_GUI=1` 将应用退出替换为 Main SIGKILL。该模式核对 Main 退出后原 Host/Core 与原模型请求继续结算。可选 `AREAL_REOPEN_REPLACEMENT_BIN=/absolute/verified/areal` 用另一份真实 Mach-O 替换私有路径，验证同次应用窗口重开不隐式换代，随后恢复原字节和时间。未指定时验证文件时间变化不触发换代。
 
 同窗口 Renderer 阅读恢复已有隔离真实 Electron/Core 验证，运行与边界见 [E-RECOVERY](../../design/archive/gui/base-evidence.md#e-recovery)。构建匹配的 Core 与 renderer 后，从仓库根运行 `AREAL_CORE_BIN=/absolute/path/to/private/.local/dev-bin/<slot>/areal node clients/gui/scripts/service-reopen-smoke.mjs --reading-slice`。Core 固定路径必须是该 checkout 内的私有普通副本。此模式核对重载、Renderer 崩溃后显式重载的已加载段落与偏移、阅读历史时的新输出、键盘返回最新以及再次重载后的跟随。原任务、草稿、执行身份与模型请求计数同时检查，不重放原提交。脚本使用隔离的源码 Electron/Core 与确定性本地模型，不证明完整应用重启后的阅读恢复、未加载历史获取、展开状态、真实供应商、其他平台或安装包验收。详细边界见 [Messages 阅读合同](renderer/src/Messages.md#同窗口-renderer-恢复阅读)。 加上 `--manual` 后，脚本先完成自动检查，再保留阅读样例与草稿供操作。看到 `Manual ready` 后可在同一窗口刷新、返回最新并比较；关闭该窗口会清理脚本自有服务。
 

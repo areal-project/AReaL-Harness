@@ -14,17 +14,12 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { stageMacOSService } from "./stage-macos-service.mjs";
 import { buildMacOSDmg } from "./macos-dmg.mjs";
 
-const require = createRequire(import.meta.url);
-const { serviceName } = require("../app/src/core/desktop-executables.cjs");
 const frameworkRelative = "Contents/Frameworks/Electron Framework.framework";
-const serviceRelative = `Contents/Frameworks/${serviceName}.app`;
 const run = (bin, args) =>
   execFileSync(bin, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 const sign = (path) => run("/usr/bin/codesign", ["--force", "--sign", "-", path]);
@@ -95,15 +90,12 @@ async function fixture(root) {
     CFBundleVersion: "1",
     CFBundleShortVersionString: "1.0",
   });
-  await stageMacOSService(app);
   await seal(app);
   return app;
 }
 
 async function seal(app) {
   sign(join(app, frameworkRelative));
-  sign(join(app, serviceRelative, frameworkRelative));
-  sign(join(app, serviceRelative));
   sign(app);
   verify(app);
 }
@@ -121,8 +113,6 @@ test(
     assert.equal(result.path, destination);
     assert.ok(result.bytes > 0);
     assert.match(result.sha256, /^[a-f0-9]{64}$/);
-    assert.ok(result.linkedFiles >= 3);
-    assert.equal(result.verifiedInodePairs, result.linkedFiles);
     const mount = join(root, "independent-mount");
     await mkdir(mount);
     run("/usr/bin/hdiutil", [
@@ -136,31 +126,18 @@ test(
     try {
       const inside = join(mount, basename(app));
       const binary = `${frameworkRelative}/Versions/A/Electron Framework`;
-      const main = await lstat(join(inside, binary));
-      const service = await lstat(join(inside, serviceRelative, binary));
-      assert.ok(main.isFile() && service.isFile());
-      assert.equal(main.dev, service.dev);
-      assert.equal(
-        main.ino,
-        service.ino,
-        "the DMG must physically share the main framework executable",
-      );
-      const info = (path) =>
-        JSON.parse(run("/usr/bin/plutil", ["-convert", "json", "-o", "-", path]));
-      const mainInfo = info(join(inside, "Contents/Info.plist"));
-      const serviceInfo = info(join(inside, serviceRelative, "Contents/Info.plist"));
-      assert.notEqual(mainInfo.CFBundleIdentifier, serviceInfo.CFBundleIdentifier);
-      assert.equal(serviceInfo.LSBackgroundOnly, true);
+      assert.deepEqual(await readFile(join(inside, binary)), await readFile(join(app, binary)));
+      assert.deepEqual(await readdir(join(inside, "Contents/Frameworks")), [
+        "Electron Framework.framework",
+      ]);
+      assert.equal(await readlink(join(mount, "Applications")), "/Applications");
       verify(inside);
       const reexport = await buildMacOSDmg({
         app: inside,
         destination: join(root, "reexport.dmg"),
         volumeName: "AReaL reexport",
       });
-      assert.ok(
-        reexport.bytes > 0,
-        "an already compact signed source must export without temporary link leaves",
-      );
+      assert.ok(reexport.bytes > 0, "a previously exported signed app remains exportable");
     } finally {
       run("/usr/bin/hdiutil", ["detach", mount]);
     }
@@ -183,85 +160,47 @@ test(
 );
 
 test(
-  "DMG rejects incompatible frameworks without changing source or publishing",
+  "DMG rejects a changed signature or an escaping framework alias before publishing",
   { skip: process.platform !== "darwin", timeout: 120_000 },
   async (t) => {
     const root = await realpath(await mkdtemp(join(tmpdir(), "areal-dmg-reject-")));
     t.after(() => rm(root, { recursive: true, force: true }));
-    for (const variant of ["payload", "extra", "escaping-link", "signature-policy", "executable"]) {
-      await t.test(variant, async () => {
-        const directory = join(root, variant);
-        await mkdir(directory);
-        const app = await fixture(directory);
-        const serviceFramework = join(app, serviceRelative, frameworkRelative);
-        const version = join(serviceFramework, "Versions/A");
-        if (variant === "payload")
-          await writeFile(join(version, "Resources/payload"), "different payload\n");
-        if (variant === "extra") await writeFile(join(version, "Resources/extra"), "extra\n");
-        if (variant === "executable") {
-          await writeFile(join(directory, "different.c"), "int fixture(void) { return 43; }\n");
-          run("/usr/bin/xcrun", [
-            "clang",
-            "-dynamiclib",
-            join(directory, "different.c"),
-            "-o",
-            join(version, "Electron Framework"),
-            "-Wl,-install_name,@rpath/Electron Framework.framework/Electron Framework",
-          ]);
-        }
-        if (variant === "escaping-link") {
-          for (const base of [join(app, frameworkRelative), serviceFramework])
-            await symlink("/System/Library/Frameworks", join(base, "Versions/A/escape"));
-        }
-        await seal(app);
-        if (variant === "signature-policy") {
-          run("/usr/bin/codesign", [
-            "--force",
-            "--sign",
-            "-",
-            "--identifier",
-            "org.areal.incompatible",
-            serviceFramework,
-          ]);
-          sign(join(app, serviceRelative));
-          sign(app);
-          verify(app);
-        }
-        const before = await fingerprint(app);
-        const destination = join(directory, "rejected.dmg");
-        await assert.rejects(
-          buildMacOSDmg({ app, destination, volumeName: "Rejected fixture" }),
-          /payload|layout|symlink|signature|policy|equivalent|framework/i,
-        );
-        await assert.rejects(lstat(destination), { code: "ENOENT" });
-        assert.deepEqual(
-          await fingerprint(app),
-          before,
-          "failure must leave the valid signed source unchanged",
-        );
-      });
-    }
+    const app = await fixture(root);
+    const version = join(app, frameworkRelative, "Versions/A");
+    const destination = join(root, "rejected.dmg");
+    await writeFile(join(version, "Resources/payload"), "changed after signing\n");
+    const before = await fingerprint(app);
+    await assert.rejects(buildMacOSDmg({ app, destination, volumeName: "Rejected" }), /codesign/);
+    await assert.rejects(lstat(destination), { code: "ENOENT" });
+    assert.deepEqual(await fingerprint(app), before);
+
+    // 无新签名的调试导出仍校验路径边界。
+    await symlink("/System/Library/Frameworks", join(version, "escape"));
+    await assert.rejects(
+      buildMacOSDmg({ app, destination, volumeName: "Rejected", verifySignatures: false }),
+      /symlink escapes/,
+    );
+    await assert.rejects(lstat(destination), { code: "ENOENT" });
   },
 );
 
-test("unsigned DMG compacts identical frameworks without sealing the source and rejects differing bytes", {
-  skip: process.platform !== "darwin", timeout: 120_000,
-}, async (t) => {
-  const root = await realpath(await mkdtemp(join(tmpdir(), "areal-dmg-unsigned-")));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const app = await fixture(root);
-  // Raw Electron inputs can have no framework signature envelope.
-  for (const framework of [join(app, frameworkRelative), join(app, serviceRelative, frameworkRelative)])
-    await rm(join(framework, "Versions/A/_CodeSignature"), { recursive: true, force: true });
-  // An unsealed outer app must still export in the explicit no-new-signatures mode.
-  await writeFile(join(app, "Contents/Resources/unsealed"), "local unsigned package");
-  const before = await fingerprint(app);
-  const result = await buildMacOSDmg({ app, destination: join(root, "unsigned.dmg"),
-    volumeName: "Unsigned fixture", verifySignatures: false });
-  assert.ok(result.linkedBytes > 0);
-  assert.deepEqual(await fingerprint(app), before);
-  await writeFile(join(app, serviceRelative, frameworkRelative, "Versions/A/Resources/payload"), "different bytes");
-  await assert.rejects(buildMacOSDmg({ app, destination: join(root, "rejected.dmg"),
-    volumeName: "Rejected", verifySignatures: false }), /bytes differ/);
-  await assert.rejects(lstat(join(root, "rejected.dmg")), { code: "ENOENT" });
-});
+test(
+  "Unsigned DMG exports an unsealed source without adding signatures",
+  { skip: process.platform !== "darwin", timeout: 120_000 },
+  async (t) => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), "areal-dmg-unsigned-")));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const app = await fixture(root);
+    await rm(join(app, frameworkRelative, "Versions/A/_CodeSignature"), { recursive: true });
+    await writeFile(join(app, "Contents/Resources/unsealed"), "local unsigned package");
+    const before = await fingerprint(app);
+    const result = await buildMacOSDmg({
+      app,
+      destination: join(root, "unsigned.dmg"),
+      volumeName: "Unsigned fixture",
+      verifySignatures: false,
+    });
+    assert.ok(result.bytes > 0);
+    assert.deepEqual(await fingerprint(app), before);
+  },
+);

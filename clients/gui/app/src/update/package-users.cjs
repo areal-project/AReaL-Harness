@@ -4,7 +4,6 @@ const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const { realpath, readFile } = require("node:fs/promises");
 const { join } = require("node:path");
-const { serviceName } = require("../core/desktop-executables.cjs");
 const { desktopError } = require("@areal/workbench/desktop-contract");
 const execute = promisify(execFile);
 const psOptions = { maxBuffer: 4 * 1024 * 1024, env: { ...process.env, LC_ALL: "C" } };
@@ -143,7 +142,11 @@ async function assertPackageUsersReleased(options = {}) {
   /** @type {Array<[string, string|undefined]>} */
   const locations = [
     ["", profile && join(profile, "diagnostics/main-crashes")],
-    [serviceName + ".app/Contents/Frameworks", home && join(home, "diagnostics/desktop-crashes")],
+    // 旧安装升级时只排除已经核实数据库归属的崩溃报告进程。
+    [
+      "AReaL Harness Service.app/Contents/Frameworks",
+      home && join(home, "diagnostics/desktop-crashes"),
+    ],
   ];
   for (const [relative, directory] of locations) {
     if (!directory || /["'\\\r\n]| --/.test(directory)) continue;
