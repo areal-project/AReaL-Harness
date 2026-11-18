@@ -208,8 +208,28 @@ async fn inspect(host: &Host, canonical: &str, alias: &str, include_tasks: bool)
     Ok(value)
 }
 
+fn creation_request(entry: &Value) -> Option<&str> {
+    let id = entry["params"]["requestId"].as_str()?;
+    (entry["method"] == "areal/thread/start"
+        && entry["params"]["threadId"].is_null()
+        && entry["params"]["taskId"].is_null()
+        && uuid::Uuid::parse_str(id).is_ok_and(|uuid| uuid.to_string() == id)
+        && entry.get("operation").is_none_or(|original| {
+            original["requestId"] == id
+                && original["method"] == "areal/thread/start"
+                && original["target"]["kind"] == "project"
+        }))
+    .then_some(id)
+}
+
 pub(super) async fn read(host: &Rc<Host>, source: &str, request: &Value) -> Result<Value> {
     host.migration.source_profile(source)?;
+    // 停机导入保留的待决记录只能在诊断读取，不能重新加入运行 journal 或阻塞后台。
+    let mut archived = if request["operation"] == "status" {
+        host.migration.archived_pending_creations(source)?
+    } else {
+        Default::default()
+    };
     let include_tasks = request["includeTasks"]
         .as_bool()
         .unwrap_or(request["operation"] == "status");
@@ -244,18 +264,32 @@ pub(super) async fn read(host: &Rc<Host>, source: &str, request: &Value) -> Resu
         row["projectId"] = json!(alias);
         row["root"] = json!(root);
         row["started"] = json!(state == "ready");
-        row["pendingRequests"] = json!(
-            pending
-                .iter()
-                .map(|entry| {
-                    let mut request = json!({"awaitingResponse":false});
-                    if let Some(thread) = entry["params"]["threadId"].as_str() {
-                        request["threadId"] = json!(thread);
-                    }
-                    request
-                })
-                .collect::<Vec<_>>()
-        );
+        let mut creations = BTreeSet::new();
+        let mut requests = Vec::new();
+        for entry in &pending {
+            let mut request = json!({"awaitingResponse":false});
+            if let Some(thread) = entry["params"]["threadId"].as_str() {
+                request["threadId"] = json!(thread);
+            }
+            if let Some(id) = creation_request(entry) {
+                request["creationRequestId"] = json!(id);
+                creations.insert(id.to_owned());
+            }
+            requests.push(request);
+        }
+        if let Some(entries) = archived.remove(&canonical) {
+            requests.extend(
+                entries
+                    .iter()
+                    .filter_map(creation_request)
+                    .filter_map(|id| {
+                        creations
+                            .insert(id.to_owned())
+                            .then(|| json!({"awaitingResponse":false,"creationRequestId":id}))
+                    }),
+            );
+        }
+        row["pendingRequests"] = json!(requests);
         safe &= pending.is_empty()
             && ((stable && state == "stopped") || row["lifecycle"]["ifIdle"]["allowed"] == true)
             && !row["tasks"]

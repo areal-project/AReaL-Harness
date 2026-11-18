@@ -3,33 +3,35 @@ import { errorText } from "../errors/errorCopy.js";
 import { useRef, useState } from "react";
 import { Button } from "../components/ui/button.js";
 import { useI18n } from "../i18n/IntlProvider.js";
-import { isIndependentCreation, recoveredOutcome } from "../recoveryPresentation.js";
-import type { Action, Data } from "../services.js";
+import { recoveredOutcome } from "../recoveryPresentation.js";
+import type { Action, CommandResponse } from "../services.js";
+
+type Project = CommandResponse<"serviceStatus">["projects"][number];
 
 export function CreationRecoverySettings({
   projects,
   connected,
   action,
 }: {
-  projects: Data[];
+  projects: Project[];
   connected: boolean;
   action: Action;
 }) {
   const { t } = useI18n();
   const records = projects.flatMap((project) =>
-    (project.pending ?? [])
-      .filter((entry: Data) => !entry.awaitingResponse && isIndependentCreation(entry, []))
-      .map((entry: Data) => ({ project, entry })),
+    (project.pendingRequests ?? []).flatMap(({ creationRequestId, awaitingResponse }) =>
+      creationRequestId && !awaitingResponse ? [{ project, requestId: creationRequestId }] : [],
+    ),
   );
   if (!records.length) return null;
   return (
     <SettingsSection title={t("recovery.creationRecords")}>
       <SettingsGroupCard>
-        {records.map(({ project, entry }) => (
+        {records.map(({ project, requestId }) => (
           <CreationRecord
-            key={`${project.id}:${entry.params.requestId}`}
+            key={`${project.projectId}:${requestId}`}
             project={project}
-            entry={entry}
+            requestId={requestId}
             connected={connected}
             action={action}
           />
@@ -41,12 +43,12 @@ export function CreationRecoverySettings({
 
 function CreationRecord({
   project,
-  entry,
+  requestId,
   connected,
   action,
 }: {
-  project: Data;
-  entry: Data;
+  project: Project;
+  requestId: string;
   connected: boolean;
   action: Action;
 }) {
@@ -54,15 +56,22 @@ function CreationRecord({
   const checking = useRef(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const requestId = entry.params.requestId;
   const check = async () => {
     if (checking.current || !connected) return;
     checking.current = true;
     setBusy(true);
     setMessage("");
     try {
-      const result = await action("reconcile", { projectId: project.id, requestId });
-      const outcome = recoveredOutcome(result ?? {}, requestId, "", entry.operation);
+      const result = await action("reconcile", {
+        projectId: project.projectId,
+        executionProjectId: project.projectId,
+        requestId,
+      });
+      const outcome = recoveredOutcome(result, requestId, "", {
+        requestId,
+        method: "areal/thread/start",
+        target: { kind: "project" },
+      });
       setMessage(
         t(
           outcome?.status === "completed"
@@ -81,7 +90,7 @@ function CreationRecord({
   };
   return (
     <SettingsRow
-      label={project.root.split(/[\\/]/).filter(Boolean).at(-1) || project.id}
+      label={project.root.split(/[\\/]/).filter(Boolean).at(-1) || project.projectId}
       description={t("recovery.creationRecordDescription")}
       detail={
         <>

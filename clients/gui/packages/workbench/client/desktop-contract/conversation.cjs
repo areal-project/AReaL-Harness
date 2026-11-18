@@ -16,7 +16,7 @@ const { isCoreTurn } = require("../core-model-contract.js");
 const { historyPage, historySummary } = require("./conversation-history.cjs");
 const { modelRef, parameters, strings } = require("./provider.cjs");
 /** @typedef {{projectId:string}} ProjectRequest */
-/** @typedef {ProjectRequest & {requestId?:string}} ReconcileRequest */
+/** @typedef {ProjectRequest & {requestId?:string,executionProjectId?:string}} ReconcileRequest */
 /** @typedef {ProjectRequest & {threadId:string}} ThreadRequest */
 /** @typedef {{id:string,revision:string}} ResourceRef */
 /** @typedef {import("./shared.cjs").ClientOptions} ClientOptions */
@@ -264,7 +264,9 @@ function isRequest(name, value) {
     case "reconcile":
       return (
         (value.requestId === undefined || identifier(value.requestId)) &&
-        only(value, ["projectId", "requestId"])
+        (value.executionProjectId === undefined ||
+          (identifier(value.requestId) && identifier(value.executionProjectId))) &&
+        only(value, ["projectId", "requestId", "executionProjectId"])
       );
     case "open":
       return only(value, ["projectId", "threadId"]);

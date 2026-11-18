@@ -76,7 +76,7 @@
   "core/host/src/local_relay.rs": 19,
   "core/host/src/migration.rs": 88,
   "core/host/src/migration/prior_boot.rs": 20,
-  "core/host/src/migration/progressive.rs": 8,
+  "core/host/src/migration/progressive.rs": 6,
   "core/host/src/migration/retirement.rs": 1,
   "core/host/src/migration/retirement/tests.rs": 8,
   "core/host/src/remote_state.rs": 2,

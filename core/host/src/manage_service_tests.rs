@@ -917,7 +917,13 @@ async fn native_resource_inspection_uses_current_core_and_redacts_process_argume
             other=>panic!("unexpected inspection RPC {other}"),
         }).await;
         let (revision,mut journal)=host.journal.native_snapshot("project").unwrap();
-        journal["pending"]=json!([{"method":"areal/process/start","params":{"requestId":uuid::Uuid::new_v4().to_string(),"threadId":"thread","argv":["synthetic-pending-secret"]}}]);
+        let creation=uuid::Uuid::new_v4().to_string();
+        let other_creation=uuid::Uuid::new_v4().to_string();
+        journal["pending"]=json!([
+            {"method":"areal/process/start","params":{"requestId":uuid::Uuid::new_v4().to_string(),"threadId":"thread","argv":["synthetic-pending-secret"]}},
+            {"method":"areal/thread/start","params":{"requestId":creation,"text":"synthetic-creation-body"},"operation":{"requestId":creation,"method":"areal/thread/start","target":{"kind":"project"}}},
+            {"method":"areal/thread/start","params":{"requestId":other_creation},"operation":{"requestId":creation,"method":"areal/thread/start","target":{"kind":"project"}}}
+        ]);
         host.journal.native_replace("project",revision,journal.clone()).unwrap();
         let value=host.gateway.workbench.resources.command(&host,&source,&json!({"operation":"inspect","includeTasks":true})).await.unwrap();
         assert_eq!(value[0]["projectId"],alias);assert_eq!(value[0]["root"],json!(workspace));
@@ -925,7 +931,10 @@ async fn native_resource_inspection_uses_current_core_and_redacts_process_argume
         assert_eq!(value[0]["resources"][0]["executable"],"/bin/sh");
         assert!(!value.to_string().contains("synthetic-secret-argument"));
         assert!(!value.to_string().contains("synthetic-pending-secret"));
+        assert!(!value.to_string().contains("synthetic-creation-body"));
         assert_eq!(value[0]["pendingRequests"][0]["threadId"],"thread");
+        assert_eq!(value[0]["pendingRequests"][1],json!({"awaitingResponse":false,"creationRequestId":creation}));
+        assert_eq!(value[0]["pendingRequests"][2],json!({"awaitingResponse":false}));
         assert_eq!(host.journal.native_snapshot("project").unwrap().1["pending"],journal["pending"]);
         close();server.await.unwrap();
         let stopped=host.gateway.workbench.resources.command(&host,&source,&json!({"operation":"inspect"})).await.unwrap();

@@ -6,7 +6,7 @@
 /** @typedef {{projectId:string,threadId:string,id:string,epoch:string,state:string,executable:string,stale:boolean}} RecoveryResource */
 /** @typedef {{id:string,threadId:string,mode:string,objective?:string|null,paused:boolean,nextRunAt?:number|null,running:boolean}} RecoveryTask */
 /** @typedef {{threadId:string,status:string,objective?:string|null}} RecoveryGoal */
-/** @typedef {{projectId:string,root?:string,serviceId?:string|null,generation?:string|null,observation?:'known'|'unavailable',lifecycle?:CoreLifecycle,restartSafe?:boolean,resources?:RecoveryResource[],activeTurns?:number,unresolvedTools?:number,compactions?:number,workgroups?:number,activeThreads?:Array<{threadId:string,turnId:string}>,goalThreads?:string[],activeTasks?:number,tasks?:RecoveryTask[],goals?:RecoveryGoal[],waitingMessages?:number,queues?:Array<{threadId:string,paused:boolean,pending:number,running:number}>,pendingRequests?:Array<{threadId?:string,awaitingResponse:boolean}>}} ResourceInspection */
+/** @typedef {{projectId:string,root?:string,serviceId?:string|null,generation?:string|null,observation?:'known'|'unavailable',lifecycle?:CoreLifecycle,restartSafe?:boolean,resources?:RecoveryResource[],activeTurns?:number,unresolvedTools?:number,compactions?:number,workgroups?:number,activeThreads?:Array<{threadId:string,turnId:string}>,goalThreads?:string[],activeTasks?:number,tasks?:RecoveryTask[],goals?:RecoveryGoal[],waitingMessages?:number,queues?:Array<{threadId:string,paused:boolean,pending:number,running:number}>,pendingRequests?:Array<{threadId?:string,creationRequestId?:string,awaitingResponse:boolean}>}} ResourceInspection */
 /** @typedef {{clients:number,activeCommands:number,starting:number,providerUpdating:boolean,connected?:boolean,busy?:boolean,stopReport?:unknown,browserCore?:Record<string,string|null>,browserControlEndpoints?:string[],remote?:{enabled?:boolean,connections?:number},lifecycle?:Record<string,unknown>,targets?:Array<{projectId:string,serviceId?:string|null,generation?:string|null}>,[key:string]:unknown}} RecoveryService */
 /** @typedef {Record<string,unknown> & {resources?:Array<Record<string,unknown>&{threadId?:unknown}>|null,activeTurns?:Array<{threadId:string,turnId:string}>|null,activeGoals?:string[]|null,activeTasks?:number|null,pendingQueueItems?:number|null,unresolvedTools?:unknown[]|null,compactions?:unknown[]|null,workgroups?:Array<{status?:unknown,cleanupConfirmed?:unknown}>|null,runtime?:{runtimeEpoch?:unknown,epoch?:unknown}|null}} ResourceStatus */
 /** @typedef {{id:string,runtimeEpoch:string,state:string,argv:string[],cleanupConfirmed:boolean,[key:string]:unknown}} ResourceProcess */
@@ -227,6 +227,12 @@ function resourceInspection(value) {
         (request) =>
           record(request) &&
           (request.threadId === undefined || typeof request.threadId === "string") &&
+          (request.creationRequestId === undefined ||
+            (request.threadId === undefined &&
+              typeof request.creationRequestId === "string" &&
+              /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+                request.creationRequestId,
+              ))) &&
           typeof request.awaitingResponse === "boolean",
       ))
   );

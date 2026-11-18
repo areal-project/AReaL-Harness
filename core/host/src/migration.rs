@@ -73,6 +73,11 @@ pub(crate) struct Alias {
     pub profile: PathBuf,
     pub legacy_project_id: String,
 }
+impl Alias {
+    fn submission_file(&self, role: &str) -> String {
+        format!("{}-{role}.json", self.legacy_project_id)
+    }
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 enum Original {
@@ -820,11 +825,8 @@ impl Migration {
         .map(|(a, b)| (a.to_owned(), b.to_owned()))
         .collect::<Vec<_>>();
         for binding in bindings {
-            for (role, suffix) in [("pending", "pending"), ("outcomes", "outcomes")] {
-                names.push((
-                    role.into(),
-                    format!("{}-{suffix}.json", binding.alias.legacy_project_id),
-                ));
+            for role in ["pending", "outcomes"] {
+                names.push((role.into(), binding.alias.submission_file(role)));
             }
         }
         for (role, directory) in [
@@ -1446,6 +1448,45 @@ impl Migration {
             }
         }
         Err(error("sourceNotFound", "GUI source is not ready"))
+    }
+    pub(crate) fn archived_pending_creations(
+        &self,
+        source_id: &str,
+    ) -> Result<BTreeMap<String, Vec<Value>>> {
+        let mut projects = BTreeMap::new();
+        for record in self.records()? {
+            if record.source_id != source_id || !self.source_ready(&record)? {
+                continue;
+            }
+            for binding in &record.bindings {
+                if !self.project_ready(&record, binding)? {
+                    continue;
+                }
+                let Ok(Some(Value::Array(pending))) =
+                    self.original_json(&record, &binding.alias.submission_file("pending"))
+                else {
+                    continue;
+                };
+                let Ok(outcomes) =
+                    self.original_json(&record, &binding.alias.submission_file("outcomes"))
+                else {
+                    continue;
+                };
+                let pending = pending
+                    .into_iter()
+                    .filter(|entry| {
+                        entry["method"] == "areal/thread/start"
+                            && entry["params"]["requestId"].as_str().is_some_and(|id| {
+                                outcomes
+                                    .as_ref()
+                                    .is_none_or(|values| values.get(id).is_none())
+                            })
+                    })
+                    .collect();
+                projects.insert(binding.project_id.clone(), pending);
+            }
+        }
+        Ok(projects)
     }
     pub(crate) fn remote_bindings(
         &self,

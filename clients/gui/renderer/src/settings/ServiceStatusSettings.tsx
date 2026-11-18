@@ -8,6 +8,7 @@ import { Button } from "../components/ui/button.js";
 import { SettingsSwitch } from "./SettingsPageParts.js";
 import { SpaceReclamation } from "./SpaceReclamation.js";
 import { HostServiceSettings } from "./HostServiceSettings.js";
+import { CreationRecoverySettings } from "./CreationRecoverySettings.js";
 import type { Action, CommandResponse, Snapshot } from "../services.js";
 
 type Status = CommandResponse<"serviceStatus">;
@@ -463,33 +464,35 @@ export function ServiceStatusSettings({
                     }
                   />
                 ))}
-                {project.pendingRequests?.map((request, index) => (
-                  <SettingsRow
-                    key={index}
-                    label={
-                      request.awaitingResponse
-                        ? t("settings.serviceStatusSettings.requestAwaitingAResponse")
-                        : t("settings.serviceStatusSettings.operationResultNeedsConfirmation")
-                    }
-                    description={t(
-                      "settings.serviceStatusSettings.itWillNotBeResentAutomaticallyCheck",
-                    )}
-                    control={
-                      request.threadId ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busy || !connected || !onOpen}
-                          onClick={() => onOpen?.(project.projectId, request.threadId!)}
-                        >
-                          {t("settings.serviceStatusSettings.openConversation")}
-                        </Button>
-                      ) : (
-                        <span>{t("settings.serviceStatusSettings.projectOperation")}</span>
-                      )
-                    }
-                  />
-                ))}
+                {project.pendingRequests
+                  ?.filter((request) => !request.creationRequestId)
+                  .map((request, index) => (
+                    <SettingsRow
+                      key={index}
+                      label={
+                        request.awaitingResponse
+                          ? t("settings.serviceStatusSettings.requestAwaitingAResponse")
+                          : t("settings.serviceStatusSettings.operationResultNeedsConfirmation")
+                      }
+                      description={t(
+                        "settings.serviceStatusSettings.itWillNotBeResentAutomaticallyCheck",
+                      )}
+                      control={
+                        request.threadId ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy || !connected || !onOpen}
+                            onClick={() => onOpen?.(project.projectId, request.threadId!)}
+                          >
+                            {t("settings.serviceStatusSettings.openConversation")}
+                          </Button>
+                        ) : (
+                          <span>{t("settings.serviceStatusSettings.projectOperation")}</span>
+                        )
+                      }
+                    />
+                  ))}
                 {project.resources?.map((resource) => (
                   <div key={resource.id} data-testid={`service-resource-${resource.id}`}>
                     <SettingsRow
@@ -552,6 +555,13 @@ export function ServiceStatusSettings({
         <p className="settings-section-desc">
           {t("settings.serviceStatusSettings.noWorkspacesAddedYet")}
         </p>
+      )}
+      {status && (
+        <CreationRecoverySettings
+          projects={status.projects}
+          connected={connected}
+          action={action}
+        />
       )}
     </div>
   );

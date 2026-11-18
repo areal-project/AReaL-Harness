@@ -680,6 +680,7 @@ export function createHostReadServices(
         project &&
         name === "reconcile" &&
         typeof params.requestId === "string" &&
+        params.executionProjectId === undefined &&
         client.writable("command.read")
       ) {
         const connection = client.snapshot();

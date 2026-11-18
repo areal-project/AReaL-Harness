@@ -13,7 +13,6 @@ import type {
 } from "../services.js";
 import { BrowserSettings } from "../settings/BrowserSettings.js";
 import { CloudSettings } from "../settings/CloudSettings.js";
-import { CreationRecoverySettings } from "../settings/CreationRecoverySettings.js";
 import { CoreCapabilitiesSettings } from "../settings/CoreCapabilitiesSettings.js";
 import { PluginDoctorSummary } from "../settings/PluginDoctorSummary.js";
 import { AppearanceSettings, GeneralSettings } from "../settings/DisplaySettings.js";
@@ -211,11 +210,6 @@ export function WorkbenchSettings({
             onConnect={reconnectService}
             onTask={initialReleased ? onTask : undefined}
             onOpen={initialReleased ? onOpen : undefined}
-          />
-          <CreationRecoverySettings
-            projects={snapshot.projects}
-            connected={snapshot.connection?.state === "ready"}
-            action={resourceAction}
           />
           <CoreCapabilitiesSettings
             projects={snapshot.projects}
