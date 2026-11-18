@@ -2024,6 +2024,25 @@ describe("Host renderer read authority", () => {
       params: { commandId: original.requestId },
     });
     expect(writes.filter((write) => write.method === "session.send")).toHaveLength(2);
+    const plugin = {
+      pluginId: "example@local",
+      componentId: "commands/review.md",
+      installedDigest: "installed",
+      arguments: "file with spaces.ts --strict",
+    };
+    await call(services, "send", {
+      projectId: "alias",
+      threadId: "thread",
+      text: "",
+      command: plugin,
+      requestId,
+    });
+    expect(writes.at(-1)).toEqual({
+      method: "session.send",
+      projectId: "canonical",
+      commandId: requestId,
+      params: { threadId: "thread", expectedConfigRevision: 7, text: "", command: plugin },
+    });
     expect(services.capabilities).toMatchObject({
       mutations: false,
       conversationSubmit: true,

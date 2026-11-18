@@ -1806,6 +1806,67 @@ async fn local_desktop_principal_sends_through_the_shared_journal_without_device
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn local_plugin_command_uses_the_original_send_receipt_for_turn_and_queue() {
+    tokio::task::LocalSet::new().run_until(async {
+        let mut f = Fixture::new().await;
+        f.host.gateway.workbench.test_source(&f.source);
+        let mut session = Session::local(f.host.clone(), "local-connection".into()).unwrap();
+        let reference = json!({"pluginId":"example@local","componentId":"commands/review.md","installedDigest":"installed","arguments":"file with spaces.ts --strict"});
+        let params = json!({"threadId":"thread","expectedConfigRevision":1,"text":"","command":reference});
+        let command = uuid::Uuid::new_v4().to_string();
+        let mut unscoped = f.request("session.send", params.clone(), Some(&command));
+        unscoped["params"]["text"] = json!("A remote message");
+        let (_, result) = Fixture::dispatch(f.session("a"), unscoped).await.unwrap();
+        assert_eq!(result.unwrap_err().to_string(), "INVALID_PARAMS");
+        let context = json!({"projectId":"project","gatewayGeneration":f.host.identity.generation,"grantRevision":0,"serviceGeneration":"core-generation"});
+        let mut caps = Fixture::capabilities();
+        caps["features"]["ordinaryTurnSubmit"] = json!(true);
+        caps["methods"].as_array_mut().unwrap().push(json!("areal/turn/submit"));
+        for queued in [false, true] {
+            let command = uuid::Uuid::new_v4().to_string();
+            let mut send = f.request("session.send", params.clone(), Some(&command));
+            send["context"] = context.clone();
+            let mut sending = Fixture::dispatch(session, send.clone());
+            tokio::select! {
+                call = f.call("areal/capabilities") => call.reply(caps.clone()),
+                result = &mut sending => panic!("plugin send settled before Core: {:?}", result.unwrap().1),
+            }
+            let mut observed = Fixture::idle_thread(1);
+            if queued {
+                observed["thread"]["status"]["type"] = json!("active");
+                observed["thread"]["turns"][0]["status"] = json!("inProgress");
+            }
+            f.call("areal/thread/observe").await.reply(observed);
+            f.workspace_admission().await;
+            let submit = f.call("areal/turn/submit").await;
+            assert_eq!(submit.request["params"]["intent"], json!({"type":"message","input":[],"command":reference}));
+            assert_eq!(submit.request["params"]["expectedConfigRevision"], 1);
+            let operation = submit.request["params"]["requestId"].as_str().unwrap().to_owned();
+            submit.reply(if queued { json!({"queueItemId":"plugin-queue"}) } else { json!({"turn":{"id":"plugin-turn"}}) });
+            let (current, result) = sending.await.unwrap();
+            let accepted = result.unwrap();
+            assert_eq!(accepted["admissionState"], "accepted");
+            assert_eq!(accepted["nativeRequestId"], operation);
+            if queued {
+                assert_eq!(accepted["receipt"]["queueItemId"], "plugin-queue");
+                assert!(accepted.get("turnId").is_none());
+            } else {
+                assert_eq!(accepted["turnId"], "plugin-turn");
+            }
+            let (current, duplicate) = Fixture::dispatch(current, send.clone()).await.unwrap();
+            assert_eq!(duplicate.unwrap(), accepted);
+            let read = f.native_read_request("command.read", json!({"commandId":command}));
+            let (current, recovered) = Fixture::dispatch(current, read).await.unwrap();
+            assert_eq!(recovered.unwrap(), accepted);
+            send["params"]["command"]["arguments"] = json!("different arguments");
+            let (current, changed) = Fixture::dispatch(current, send).await.unwrap();
+            assert_eq!(changed.unwrap_err().to_string(), "COMMAND_CONFLICT");
+            session = current;
+        }
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn local_send_and_steer_dispatch_without_node_and_retain_original_receipts() {
     tokio::task::LocalSet::new().run_until(async {
         let mut f = Fixture::new().await;

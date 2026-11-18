@@ -44,6 +44,7 @@ pub(super) async fn prepare_core(
             "areal/thread/start",
             "areal/turn/start",
             "areal/turn/enqueue",
+            "areal/turn/submit",
             "turn/steer"
         ]
         .contains(&method)

@@ -8294,8 +8294,20 @@
         },
         "text": {
           "type": "string",
-          "description": "Released clients must send non-whitespace text; gui-write-v1 clients may send empty text when other input is present.",
+          "description": "Released clients must send non-whitespace text; gui-write-v1 clients may send empty text with other input or a plugin command.",
           "x-maxUtf8Bytes": 65536
+        },
+        "command": {
+          "description": "gui-write-v1 only. Core selects immediate submission or queueing for the installed command; omit enqueue and expectedTurnId.",
+          "type": "object",
+          "properties": {
+            "pluginId": { "type": "string", "minLength": 1 },
+            "componentId": { "type": "string", "minLength": 1 },
+            "installedDigest": { "type": "string", "minLength": 1 },
+            "arguments": { "type": "string", "x-maxUtf8Bytes": 65536 }
+          },
+          "required": ["pluginId", "componentId", "installedDigest", "arguments"],
+          "additionalProperties": false
         },
         "enqueue": {
           "type": "boolean"

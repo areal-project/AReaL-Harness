@@ -788,6 +788,7 @@ export function createHostReadServices(
               : {}),
             ...(params.mcpContent !== undefined ? { mcpContent: params.mcpContent } : {}),
             ...(params.contextParts !== undefined ? { contextParts: params.contextParts } : {}),
+            ...(name === "send" && params.command !== undefined ? { command: params.command } : {}),
           });
           const commandId =
             typeof params.requestId === "string" ? params.requestId : crypto.randomUUID();
@@ -903,6 +904,7 @@ export function createHostReadServices(
           error !== null &&
           typeof error === "object" &&
           name !== "stop" &&
+          !(name === "send" && params.command !== undefined) &&
           HOST_DECLINED.has(String((error as { code?: unknown }).code))
         )
           return undefined;

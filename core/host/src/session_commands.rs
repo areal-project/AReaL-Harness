@@ -348,7 +348,7 @@ async fn ensure_subscription_if_needed(
     Ok(())
 }
 
-fn validate_plugin_command(value: &Value) -> Result<()> {
+pub(super) fn validate_plugin_command(value: &Value) -> Result<()> {
     let obj = value.as_object().context("INVALID_PARAMS")?;
     ensure_allowed_keys(
         obj,

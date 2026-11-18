@@ -19,6 +19,8 @@ struct Message {
     mcp_content: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     context_parts: Option<Vec<areal_protocol::ContextPart>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    command: Option<Value>,
 }
 #[derive(Serialize)]
 struct Semantic<'a> {
@@ -51,11 +53,21 @@ impl Session {
                 .is_none_or(Value::is_boolean)
                 && request["params"]
                     .get("expectedTurnId")
-                    .is_none_or(Value::is_string),
+                    .is_none_or(Value::is_string)
+                && request["params"]
+                    .get("command")
+                    .is_none_or(Value::is_object),
             "INVALID_PARAMS"
         );
         let mut params: Message =
             serde_json::from_value(request["params"].clone()).context("INVALID_PARAMS")?;
+        if let Some(reference) = &params.command {
+            ensure!(
+                self.gui_write && params.enqueue.is_none() && params.expected_turn_id.is_none(),
+                "INVALID_PARAMS"
+            );
+            crate::server::session_commands::validate_plugin_command(reference)?;
+        }
         ensure!(
             !params.thread_id.is_empty()
                 && params.thread_id.len() <= 128
@@ -156,13 +168,17 @@ impl Session {
                 (turn.is_some(), turn)
             }
         };
-        let method = if enqueue {
+        let method = if params.command.is_some() {
+            "areal/turn/submit"
+        } else if enqueue {
             "areal/turn/enqueue"
         } else {
             "areal/turn/start"
         };
         ensure!(
-            caps["features"][if enqueue {
+            caps["features"][if params.command.is_some() {
+                "ordinaryTurnSubmit"
+            } else if enqueue {
                 "turnEnqueueAdmissionGuard"
             } else {
                 "turnStartAdmissionGuard"
@@ -176,17 +192,28 @@ impl Session {
                         .all(|required| methods.iter().any(|method| method == required))),
             "CORE_INCOMPATIBLE"
         );
-        let effective = params.clone();
         let operation = uuid::Uuid::new_v4().to_string();
-        let mut guard =
-            json!({"ordinarySession":true,"configRevision":params.expected_config_revision});
-        if enqueue {
-            guard["expectedTurnId"] = json!(expected_turn);
-        }
-        let native: areal_protocol::desktop::TurnStart = serde_json::from_value(
-            json!({"requestId":operation,"threadId":params.thread_id,"input":message_input(&effective)?,"expectedConfigRevision":params.expected_config_revision,"admissionGuard":guard}),
-        )?;
-        let native = serde_json::to_value(native)?;
+        let input = message_input(params)?;
+        let (native, native_bytes) = if let Some(reference) = &params.command {
+            // Core 展开已安装插件命令，并在同一把锁内决定启动还是排队。
+            let typed: areal_protocol::desktop::TurnSubmit = serde_json::from_value(json!({
+                "requestId":operation,"threadId":params.thread_id,
+                "expectedConfigRevision":params.expected_config_revision,
+                "intent":{"type":"message","input":input,"command":reference},
+            }))?;
+            (serde_json::to_value(&typed)?, serde_json::to_vec(&typed)?)
+        } else {
+            let mut guard =
+                json!({"ordinarySession":true,"configRevision":params.expected_config_revision});
+            if enqueue {
+                guard["expectedTurnId"] = json!(expected_turn);
+            }
+            let typed: areal_protocol::desktop::TurnStart = serde_json::from_value(json!({
+                "requestId":operation,"threadId":params.thread_id,"input":input,
+                "expectedConfigRevision":params.expected_config_revision,"admissionGuard":guard,
+            }))?;
+            (serde_json::to_value(&typed)?, serde_json::to_vec(&typed)?)
+        };
         let mut execution = if !crate::server::cloud_sessions::CloudSessions::is_virtual(&id)
             && self.uses_workbench_execution()
         {
@@ -221,27 +248,27 @@ impl Session {
             state["ownership"]["kind"] == "ordinary",
             "TASK_CONTROL_REQUIRED"
         );
-        if enqueue {
-            ensure!(
-                state["activeTurnId"]
-                    .as_str()
-                    .is_some_and(|turn| Some(turn) == expected_turn.as_deref()),
-                "TARGET_CHANGED"
-            );
-        } else {
-            ensure!(
-                state["activeTurnId"].is_null() && state["status"] == "idle",
-                "TURN_BUSY"
-            );
-            ensure!(state["queue"]["pendingCount"] == 0, "TARGET_CHANGED");
+        if params.command.is_none() {
+            if enqueue {
+                ensure!(
+                    state["activeTurnId"]
+                        .as_str()
+                        .is_some_and(|turn| Some(turn) == expected_turn.as_deref()),
+                    "TARGET_CHANGED"
+                );
+            } else {
+                ensure!(
+                    state["activeTurnId"].is_null() && state["status"] == "idle",
+                    "TURN_BUSY"
+                );
+                ensure!(state["queue"]["pendingCount"] == 0, "TARGET_CHANGED");
+            }
         }
         ensure!(
             state["configRevision"] == params.expected_config_revision,
             "TARGET_CHANGED"
         );
-        let native: areal_protocol::desktop::TurnStart = serde_json::from_value(native.clone())?;
-        let native_digest = areal_local_service::storage::digest(&serde_json::to_vec(&native)?);
-        let native = serde_json::to_value(native)?;
+        let native_digest = areal_local_service::storage::digest(&native_bytes);
         let record = json!({"method":method,"operationId":operation,"params":native,"nativeDigest":native_digest,"coreScope":{"serviceId":scope.0,"generation":scope.1,"connectionId":scope.2,"storeBinding":caps["features"]["threadCreationJournal"]["binding"]},"threadId":params.thread_id,"remote":{"hostId":self.host_peer,"devicePeerId":self.peer,"projectId":project,"commandId":command,"method":"session.send","capability":"submit","admittedGrantRevision":self.grant["revision"],"semanticDigest":digest,"target":{"threadId":params.thread_id,"expectedConfigRevision":params.expected_config_revision}}});
         ensure!(
             serde_json::to_vec(&record)?.len() <= self.command_pending_bytes(),
@@ -320,7 +347,9 @@ impl Session {
             return tasks::apply_result(record, result);
         } else if record["remote"]["method"] == "session.control" {
             return controls::apply_result(record, result);
-        } else if record["method"] == "areal/turn/enqueue" {
+        } else if record["method"] == "areal/turn/enqueue"
+            || (record["method"] == "areal/turn/submit" && result["turn"].is_null())
+        {
             let Some(queue) = result["queueItemId"]
                 .as_str()
                 .filter(|id| !id.is_empty() && id.len() <= 128)
@@ -498,12 +527,13 @@ pub(crate) fn rich_message_input_with_command(
                 .cloned()
                 .map(serde_json::from_value)
                 .transpose()?,
+            command: None,
         },
         allow_empty_for_command,
     )
 }
 fn message_input(params: &Message) -> Result<Vec<areal_protocol::Input>> {
-    message_input_with_empty(params, false)
+    message_input_with_empty(params, params.command.is_some())
 }
 fn message_input_with_empty(
     params: &Message,
