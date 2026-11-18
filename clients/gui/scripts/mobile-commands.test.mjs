@@ -660,80 +660,54 @@ test("explicit service default is accepted independently of supported efforts an
   assert.equal(f.requests.at(-1).method, "session.send");
 });
 
-test("detaching a notFound session.send unblocks the conversation while keeping the original receipt inspectable", async () => {
+test("a missing send receipt cannot be detached or replayed", async () => {
   const f = await fixture();
   await f.workspace.navigate({ kind: "session", projectId: "project", threadId: "thread" });
-  const request = f.client.request;
-  let oldId;
-  let oldReceipt;
+  let originalId;
   f.client.request = async (envelope) => {
-    if (!oldId && envelope.method === "session.send") {
-      oldId = envelope.commandId;
-      f.requests.push(envelope);
-      throw Object.assign(new Error("lost send"), { submissionUnknown: true });
+    f.requests.push(envelope);
+    if (envelope.method === "session.send") {
+      originalId = envelope.commandId;
+      return { commandId: originalId, admissionState: "notFound", submissionUnknown: true };
     }
-    if (envelope.method === "command.read" && envelope.params.commandId === oldId)
-      return { commandId: oldId, admissionState: "notFound", ...oldReceipt };
-    return request(envelope);
+    assert.equal(envelope.params.commandId, originalId);
+    return { commandId: originalId, admissionState: "notFound", submissionUnknown: true };
   };
   f.commands.setDraft("project", "thread", "retain draft");
   await f.commands.send();
   const [original] = f.commands.unresolved("project", "thread");
-  assert.equal(original.admissionState, "notFound");
-  assert.equal(f.commands.blocksSend("project", "thread"), true);
-
-  await f.commands.detachNotFoundCommand(original);
-  assert.equal(f.record().locators[0].commandId, oldId);
-  assert.equal(f.record().locators[0].detached, true);
-  assert.equal(f.commands.blocksSend("project", "thread"), false);
-
+  await f.commands.startSeparateConversation(original);
   const restored = new MobileCommands(f.client, f.workspace);
   await restored.recover();
-  assert.equal(restored.blocksSend("project", "thread"), false);
-  restored.setDraft("project", "thread", "follow up message");
+  restored.setDraft("project", "thread", "retain draft");
   await restored.send();
-  const sends = f.requests.filter((envelope) => envelope.method === "session.send");
-  assert.equal(sends.length, 2);
-  assert.notEqual(sends[1].commandId, oldId);
-  assert.equal(sends[1].params.text, "follow up message");
-  assert.equal(f.record().locators[0].commandId, oldId);
-
-  restored.setDraft("project", "thread", "keep active draft");
-  oldReceipt = { admissionState: "accepted", turnId: "old-turn" };
-  await restored.query(restored.unresolved("project", "thread")[0]);
-  assert.equal(restored.draft("project", "thread"), "keep active draft");
-  assert.equal(f.record().locators.length, 0);
+  assert.equal(restored.blocksSend("project", "thread"), true);
+  assert.equal(f.record().locators[0].commandId, originalId);
+  assert.equal(f.requests.filter((request) => request.method === "session.send").length, 1);
 });
 
-test("dismissCommand removes detached or notFound prompts from local storage", async () => {
+test("a post-admission grant error retains the original receipt even with a false Host flag", async () => {
   const f = await fixture();
-  const request = f.client.request;
   f.client.request = async (envelope) => {
-    if (envelope.method === "session.create")
-      throw Object.assign(new Error("lost create"), { submissionUnknown: true });
-    if (envelope.method === "command.read")
-      return { commandId: envelope.params.commandId, admissionState: "notFound" };
-    return request(envelope);
+    throw Object.assign(new Error("grant changed"), {
+      code: "GRANT_CHANGED",
+      submissionUnknown: false,
+      commandId: envelope.commandId,
+    });
   };
-  f.commands.setDraft("project", "", "first draft");
+  f.commands.setDraft("project", "", "draft stays safe");
   await f.commands.send();
   const [original] = f.commands.unresolved("project");
-  await f.commands.query(original);
-  await f.commands.startSeparateConversation(original);
-  assert.equal(f.commands.unresolved("project").length, 1);
-  assert.equal(f.record().locators.length, 1);
-
-  await f.commands.dismissCommand(f.commands.unresolved("project")[0]);
-  assert.equal(f.commands.unresolved("project").length, 0);
-  assert.equal(f.record().locators.length, 0);
+  assert.equal(original?.admissionState, "unknown");
+  assert.equal(f.record().locators[0].commandId, original.commandId);
+  assert.equal(f.commands.draft("project"), "draft stays safe");
 });
 
-test("pre-send socket failures marked submissionUnknown=false settle without leaving a notFound locator", async () => {
+test("a local pre-send failure settles without leaving a notFound locator", async () => {
   const f = await fixture();
   f.client.request = async () => {
     throw Object.assign(new Error("OFFLINE"), {
-      code: "RESYNC_REQUIRED",
-      submissionUnknown: false,
+      code: "LOCAL_NOT_SENT",
     });
   };
   f.commands.setDraft("project", "", "draft stays safe");

@@ -38,7 +38,6 @@ export class CommandState {
       this.drafts.set(key, "");
   }
   failureIsUnknown(error, command) {
-    if (error.submissionUnknown === false) return false;
     // 旧 Host 的 RESYNC_REQUIRED 也可能发生在受理后，仍须核对原回执。
     if (
       ["session.create", "session.send"].includes(command?.method) &&

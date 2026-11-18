@@ -218,9 +218,7 @@ export function MobileComposer({
               <p role="status">
                 {t(
                   value.detached
-                    ? value.method === "session.create"
-                      ? "mobile.separateConversationReady"
-                      : "mobile.detachedCommandReady"
+                    ? "mobile.separateConversationReady"
                     : value.admissionState === "notFound"
                       ? "mobile.receiptNotFound"
                       : value.method === "session.create"
@@ -237,36 +235,18 @@ export function MobileComposer({
               >
                 {t("mobile.queryCommand")}
               </Button>
-              {value.admissionState === "notFound" && !value.detached && (
-                <Button
-                  className="mobile-touch min-h-[var(--size-touch-target)]"
-                  variant="ghost"
-                  data-action="detach-command"
-                  disabled={!connected || value.checkingReceipt}
-                  onClick={() =>
-                    void (value.method === "session.create"
-                      ? commands.startSeparateConversation(value)
-                      : commands.detachNotFoundCommand(value))
-                  }
-                >
-                  {t(
-                    value.method === "session.create"
-                      ? "mobile.startSeparateConversation"
-                      : "mobile.continueCurrentConversation",
-                  )}
-                </Button>
-              )}
-              {(value.detached || value.admissionState === "notFound") && (
-                <Button
-                  className="mobile-touch min-h-[var(--size-touch-target)]"
-                  variant="ghost"
-                  data-action="dismiss-command"
-                  disabled={!connected || value.checkingReceipt}
-                  onClick={() => void commands.dismissCommand(value)}
-                >
-                  {t("mobile.dismissNotice")}
-                </Button>
-              )}
+              {value.method === "session.create" &&
+                value.admissionState === "notFound" &&
+                !value.detached && (
+                  <Button
+                    className="mobile-touch min-h-[var(--size-touch-target)]"
+                    variant="ghost"
+                    disabled={!connected || value.checkingReceipt}
+                    onClick={() => void commands.startSeparateConversation(value)}
+                  >
+                    {t("mobile.startSeparateConversation")}
+                  </Button>
+                )}
             </div>
           ))}
         {!isNew && snapshot?.queue && (

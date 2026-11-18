@@ -40,17 +40,17 @@ export class MobileCommands {
   }
   commandKey(command) {
     const params = command.params;
-    if (command.method === "session.create")
-      return this.key(command.projectId, command.detached ? `create:${command.commandId}` : "");
-    const base =
-      params.threadId +
-      (command.method === "turn.stop" ? `:stop:${params.expectedTurnId}` : "") +
-      (command.method === "interaction.respond"
-        ? `:decision:${JSON.stringify([params.turnId, params.interactionId])}`
-        : "");
     return this.key(
       command.projectId,
-      command.detached ? `${base}:detached:${command.commandId}` : base,
+      command.method === "session.create"
+        ? command.detached
+          ? `create:${command.commandId}`
+          : ""
+        : command.params.threadId +
+            (command.method === "turn.stop" ? `:stop:${params.expectedTurnId}` : "") +
+            (command.method === "interaction.respond"
+              ? `:decision:${JSON.stringify([params.turnId, params.interactionId])}`
+              : ""),
     );
   }
   draft(projectId, threadId = "") {
@@ -558,22 +558,18 @@ export class MobileCommands {
       this.publish();
     }
   }
-  async detachNotFoundCommand(command) {
+  async startSeparateConversation(command) {
     const page = this.workspace.state.page;
     const key = this.commandKey(command);
-    const sameTarget =
-      command?.method === "session.create"
-        ? page.kind === "new" && page.projectId === command.projectId
-        : page.kind === "session" &&
-          page.projectId === command?.projectId &&
-          page.threadId === command?.params?.threadId;
     if (
       this.state.busy ||
       this.state.recovering ||
       command.checkingReceipt ||
       command.detached ||
+      command.method !== "session.create" ||
       command.admissionState !== "notFound" ||
-      !sameTarget ||
+      page.kind !== "new" ||
+      page.projectId !== command.projectId ||
       this.commands.commands.get(key) !== command ||
       this.client.snapshot().kind !== "connected"
     )
@@ -582,40 +578,11 @@ export class MobileCommands {
     this.detachingCreation = command;
     this.publish({ busy: true, error: null });
     try {
-      await this.client.identities.detachLocator(token, command);
+      await this.client.identities.detachCreationLocator(token, command);
       if (this.commands.commands.get(key) !== command) return;
       command.detached = true;
       this.commands.commands.delete(key);
       this.commands.commands.set(this.commandKey(command), command);
-    } catch {
-      this.publish({ error: "START_SEPARATE_FAILED" });
-    } finally {
-      this.detachingCreation = null;
-      this.finish();
-    }
-  }
-  async startSeparateConversation(command) {
-    if (command?.method !== "session.create") return;
-    return this.detachNotFoundCommand(command);
-  }
-  async dismissCommand(command) {
-    const key = this.commandKey(command);
-    if (
-      this.state.busy ||
-      this.state.recovering ||
-      command?.checkingReceipt ||
-      this.detachingCreation === command ||
-      (!command?.detached && command?.admissionState !== "notFound") ||
-      this.commands.commands.get(key) !== command ||
-      this.client.snapshot().kind !== "connected"
-    )
-      return;
-    const token = this.client.identities.current();
-    this.detachingCreation = command;
-    this.publish({ busy: true, error: null });
-    try {
-      await this.client.identities.dismissLocator(token, command.commandId);
-      if (this.commands.commands.get(key) === command) this.commands.commands.delete(key);
     } catch {
       this.publish({ error: "START_SEPARATE_FAILED" });
     } finally {

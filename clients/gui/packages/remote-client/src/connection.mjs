@@ -93,8 +93,7 @@ export class RemoteConnection {
       if (this.closed || !this.ready || !this.isCurrent())
         return reject(
           Object.assign(new Error("连接已失效，请重新读取状态"), {
-            code: "RESYNC_REQUIRED",
-            submissionUnknown: false,
+            code: "LOCAL_NOT_SENT",
           }),
         );
       const id = String(++this.sequence);
@@ -117,15 +116,7 @@ export class RemoteConnection {
         clearTimeout(timer);
         this.pending.delete(id);
         reject(
-          error && typeof error === "object"
-            ? Object.assign(error, {
-                code: error.code ?? "LOCAL_NOT_SENT",
-                submissionUnknown: false,
-              })
-            : Object.assign(new Error("LOCAL_NOT_SENT"), {
-                code: "LOCAL_NOT_SENT",
-                submissionUnknown: false,
-              }),
+          Object.assign(new Error("LOCAL_NOT_SENT", { cause: error }), { code: "LOCAL_NOT_SENT" }),
         );
       }
     });

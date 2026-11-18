@@ -65,6 +65,13 @@ body,
   background: none;
   color: var(--color-foreground-subtle);
 }
+.mobile-page .areal-thinking-message {
+  animation: none;
+}
+/* 手机只绘制一层状态文字，避免 WebKit 合成扫光时出现重影。 */
+.mobile-page .areal-thinking-sweep {
+  display: none;
+}
 .mobile-cache-sheet {
   gap: var(--spacing-inline);
   padding-top: var(--spacing-field);
