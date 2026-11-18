@@ -90,7 +90,7 @@ python3 -m unittest scripts.tests.test_check_changed
 cargo test --locked -p areal-engine --test http_model --test provider_replay --test model_timeouts
 cargo test --locked -p areal-engine --lib first_event_deadline_is_fixed_and_activity_starts_a_new_idle_window
 cargo test --locked -p areal-engine --test model_input_budget
-node --test clients/gui/scripts/desktop-projection-transport.test.mjs
+pnpm --dir clients/gui test:host-client
 pnpm --dir clients/gui test:navigation-cache
 pnpm --dir clients/gui test:unit renderer/src/readingViews.test.ts
 pnpm --dir clients/gui test:conversation-reading

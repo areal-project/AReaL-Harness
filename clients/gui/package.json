@@ -82,7 +82,7 @@
     "test:navigation-cache": "node scripts/navigation-cache-ui-smoke.mjs",
     "test:message-derivation": "node scripts/message-derivation-ui-smoke.mjs",
     "test:reading-checkpoint": "node scripts/reading-checkpoint-ui-smoke.mjs",
-    "test:history-recovery": "node --test scripts/core-read-recovery.test.mjs scripts/bounded-history-client.test.mjs scripts/desktop-projection-transport.test.mjs scripts/lifecycle-bounded-history.test.mjs scripts/history-reobserve.test.mjs && node scripts/large-history-smoke.mjs && node scripts/bounded-history-ui-smoke.mjs && node scripts/thread-restoration-ui-smoke.mjs",
+    "test:history-recovery": "node --test scripts/core-read-recovery.test.mjs scripts/bounded-history-client.test.mjs scripts/lifecycle-bounded-history.test.mjs scripts/history-reobserve.test.mjs && node scripts/large-history-smoke.mjs && node scripts/bounded-history-ui-smoke.mjs && node scripts/thread-restoration-ui-smoke.mjs",
     "test:startup": "node scripts/startup-timing-smoke.mjs",
     "test:history": "node --test scripts/history.test.mjs && node scripts/history-smoke.mjs",
     "test:history-upgrade": "cd ../.. && node clients/gui/scripts/history-upgrade-smoke.mjs",

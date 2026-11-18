@@ -113,11 +113,7 @@ Run `cargo test --locked -p areal-engine --test http_model --test provider_repla
 
 **T3 evidence.** [subscribeBeforeSnapshot.ts](https://github.com/pingdotgg/t3code/blob/93a9e079b107a13b0c312920b917b5f61a8f720c/apps/server/src/utils/subscribeBeforeSnapshot.ts) either reads the snapshot then subscribes inside a shared mutex, or subscribes first when no shared lock exists. Its [tests](https://github.com/pingdotgg/t3code/blob/93a9e079b107a13b0c312920b917b5f61a8f720c/apps/server/src/utils/subscribeBeforeSnapshot.test.ts) insert changes into the read window. [shell-sync.test.ts](https://github.com/pingdotgg/t3code/blob/93a9e079b107a13b0c312920b917b5f61a8f720c/packages/client-runtime/src/state/shell-sync.test.ts) covers stale asynchronous saves, authoritative resets, and enrichment conflicts. Borrow executable invariants, not ordering inferred from a function name.
 
-**Original implementation.** The former Node transport retained the stream/sequence/delta-base contracts in `state-projection.cjs` and ServiceConnection's ownership guard. [desktop-projection-transport.test.mjs](../../clients/gui/scripts/desktop-projection-transport.test.mjs) adds real local WebSocket observations covering duplicate/old frames, closure on a missing base, a full authoritative baseline after reconnect, and late old-connection frames that cannot overwrite the new connection.
-
-The archived validation also covered backpressure coalescing, receipt ordering, and cross-client acquire/release isolation. `node --test clients/gui/scripts/desktop-projection-transport.test.mjs` passes seven tests, comparing recovered public semantic state with service snapshots and checking that user writes are not automatically resent.
-
-Sequence reset remains tied to a new stream/reader instead of adopting T3's lower-sequence reset behavior. This evidence covers Desktop transport and projection. Complete Core history, mobile, and Relay retain their own acceptance paths; production fixes expand only when tests demonstrate an actual contract defect.
+**Current verification.** The [Host client contract](../../clients/gui/scripts/host-client.test.mjs) uses a real WebSocket to check resubscription after sequence gaps, late-event fencing, Core generation changes and lost write replies without replay. The [renderer history tests](../../clients/gui/renderer/src/host-services.test.ts) check native cursors, pagination and the retained view during loads.
 
 ## G. Change-scoped local checks sharing CI selection
 
