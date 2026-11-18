@@ -235,7 +235,6 @@ try {
   });
   await page.getByTestId(`task-item-${threadId}`).click();
   mark("opened-during-switch", {});
-  const retry = page.getByRole("button", { name: "重试加载对话", exact: true });
   await page.getByText("OLD_GUI_FIRST", { exact: true }).waitFor({ timeout: 15000 });
   await page.getByText("OLD_GUI_QUEUE", { exact: true }).waitFor({ timeout: 15000 });
   record.stoppedHistoryVisible = true;
@@ -264,7 +263,11 @@ try {
     return x?.state?.connected && x.core?.serviceGeneration !== desc.generation && x;
   }, "new Core generation");
   mark("new-generation", { old: desc.generation, new: refreshed.core.serviceGeneration });
-  if (await retry.isVisible()) await retry.click();
+  mark("reconnected-view", {
+    threadId: await page.getByTestId("areal-workbench").getAttribute("data-thread-id"),
+    inputVisible: await page.getByTestId("chat-input").isVisible(),
+  });
+  assert.equal(await page.getByTestId("areal-workbench").getAttribute("data-thread-id"), threadId);
   await page.getByText("HISTORY_GUI_DONE", { exact: true }).first().waitFor();
   await page.getByText("OLD_GUI_FIRST", { exact: true }).waitFor();
   await page.getByText("OLD_GUI_QUEUE", { exact: true }).waitFor();
