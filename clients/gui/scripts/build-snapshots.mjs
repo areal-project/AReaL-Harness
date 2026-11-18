@@ -45,20 +45,6 @@ results.push(
   await build({
     metafile: true,
     absWorkingDir: gui,
-    entryPoints: ["../../services/workbench/src/host-core-client.ts"],
-    outdir: "../../services/workbench/src/generated",
-    outExtension: { ".js": ".cjs" },
-    bundle: true,
-    platform: "node",
-    format: "cjs",
-    target: "node22",
-    external: ["@areal/client/node"],
-  }),
-);
-results.push(
-  await build({
-    metafile: true,
-    absWorkingDir: gui,
     entryPoints: ["app/src/core/native-host-transport.ts", "app/src/core/native-browser-tools.ts"],
     outdir: "app/src/core/generated",
     outExtension: { ".js": ".cjs" },

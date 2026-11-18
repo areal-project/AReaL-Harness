@@ -1,7 +1,7 @@
 "use strict";
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { HostCoreClient } = require("../src/generated/host-core-client.cjs");
+const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
 const { HostClient } = require("@areal/client/node");
 const attached = {
   lease: "lease",

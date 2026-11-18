@@ -3,19 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "commonjs",
-  "engines": {
-    "node": ">=22"
-  },
-  "scripts": {
-    "test": "node --test test/*.test.cjs"
-  },
   "exports": {
     "./desktop/*": "./src/desktop/*",
     "./package.json": "./package.json",
-    "./host-core-client": {
-      "types": "./src/host-core-client.ts",
-      "default": "./src/generated/host-core-client.cjs"
-    }
+    "./host-core-client": "./src/host-core-client.mts"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.cjs"
   },
   "dependencies": {
     "@areal/browser-automation": "workspace:*",
@@ -35,5 +29,8 @@
     "@types/node": "24.10.1",
     "@types/qrcode": "1.5.6",
     "@types/ws": "8.18.1"
+  },
+  "engines": {
+    "node": "^22.19.0 || ^24.11.0 || >=26.0.0"
   }
 }

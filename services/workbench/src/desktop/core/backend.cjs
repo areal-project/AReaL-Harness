@@ -85,7 +85,7 @@ class CoreBackend {
     this.hostCall = async () => {
       throw Object.assign(new Error("Host 管道尚未就绪"), { code: "CAPABILITY_UNAVAILABLE" });
     };
-    /** @type {Map<string,import('../../host-core-client').HostCoreClient>} */
+    /** @type {Map<string,import('@areal/workbench-service/host-core-client').HostCoreClient>} */
     this.hostCoreClients = new Map();
     this.applicationOwner = applicationOwner;
     this.host = new GuiHostProjects({

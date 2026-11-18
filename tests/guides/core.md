@@ -5,8 +5,7 @@
 ## 准备
 
 - `make build`：产出 `target/debug/areal`、`areal-runtime` 等。冒烟和后台都依赖它。
-- `node clients/gui/scripts/build-snapshots.mjs`：生成 `services/workbench/src/generated/host-core-client.cjs`。缺它时后台起不来，Host 只报 "workbench ready timed out"。
-- `pnpm --dir clients/gui install --frozen-lockfile`：后台测试解析 `@areal/workbench-service` 需要。
+- `pnpm --dir clients/gui install --frozen-lockfile`：旧 Node 测试夹具使用 `@areal/workbench-service`。Node 直接加载夹具的 TypeScript，测试不依赖 GUI 生成物。
 
 ## 由小到大
 

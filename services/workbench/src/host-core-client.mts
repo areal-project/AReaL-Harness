@@ -13,6 +13,14 @@ type Lease = {
   connectionId: string;
   capabilities: unknown;
 };
+type Options = {
+  host: Call;
+  sourceId: string;
+  projectId: string;
+  cloud?: { baseURL: string };
+  scope?: "terminal" | "observer";
+  onServerRequest?: ServerRequest;
+};
 const record = (value: unknown): value is Fields =>
   !!value && typeof value === "object" && !Array.isArray(value);
 
@@ -28,16 +36,11 @@ export class HostCoreClient {
   private callbacks = new Map<string, AbortController>();
   private observations = new Map<string, Set<ObservationFence>>();
 
-  constructor(
-    private options: {
-      host: Call;
-      sourceId: string;
-      projectId: string;
-      cloud?: { baseURL: string };
-      scope?: "terminal" | "observer";
-      onServerRequest?: ServerRequest;
-    },
-  ) {}
+  private readonly options: Options;
+
+  constructor(options: Options) {
+    this.options = options;
+  }
 
   async connect() {
     if (this.closed || this.lease) throw new Error("Host Core projection already attached");
