@@ -81,10 +81,12 @@ export function usePanelNavigation(
             ?.focus({ preventScroll: true });
       });
   };
+  const settings = session.services.capabilities?.settings;
+  const settingsRestricted = session.services.capabilities?.mutations === false;
+  const canOpenSettings = !settingsRestricted || !!settings?.length;
   const openSettings = (target: string) => {
     if (!initialReleased) return;
-    const supported = session.services.capabilities?.settings;
-    if (session.readOnly && !supported?.includes(target)) return;
+    if (settingsRestricted && !settings?.includes(target)) return;
     if (!session.readOnly) workspacePanels.exposePanel();
     setSettingsTab(target);
     setSettingsOpen(true);
@@ -95,9 +97,8 @@ export function usePanelNavigation(
       ["设置", "Skills", "MCP", "高级诊断", "后台服务", "会话配置"].includes(name) &&
       !(name === "Skills" && thread)
     ) {
-      const supported = session.services.capabilities?.settings;
       openSettings(
-        name === "设置" ? (supported?.[0] ?? "模型服务") : name === "后台服务" ? "高级诊断" : name,
+        name === "设置" ? (settings?.[0] ?? "模型服务") : name === "后台服务" ? "高级诊断" : name,
       );
       return;
     }
@@ -161,8 +162,7 @@ export function usePanelNavigation(
         session.readOnly &&
         !(
           (event.metaKey || event.ctrlKey) &&
-          (event.key.toLowerCase() === "k" ||
-            (event.key === "," && session.services.capabilities?.settings?.length))
+          (event.key.toLowerCase() === "k" || (event.key === "," && canOpenSettings))
         )
       )
         return;
@@ -172,6 +172,7 @@ export function usePanelNavigation(
         !event.shiftKey &&
         event.key === ","
       ) {
+        if (!canOpenSettings) return;
         event.preventDefault();
         if (!settingsOpen && !document.querySelector('[data-slot="dialog-content"]'))
           showPanel("设置");
