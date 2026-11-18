@@ -151,6 +151,7 @@
     "test:i18n": "node scripts/migration-smoke.mjs --settings-i18n",
     "test:i18n-native": "node scripts/migration-smoke.mjs --native-dialog-i18n",
     "test:recovery-electron": "node scripts/recovery-electron-smoke.mjs run",
+    "test:recovery-electron-history-steer": "node scripts/recovery-electron-history-steer.mjs",
     "test:gen-ui": "node scripts/gen-ui-smoke.mjs",
     "test:side-chat-parity": "node scripts/side-chat-parity-smoke.mjs",
     "test:automation": "node scripts/automation-core-smoke.mjs",
