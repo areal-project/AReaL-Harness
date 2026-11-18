@@ -450,7 +450,12 @@ export class MobileCommands {
     const text = this.draft(projectId, threadId);
     const intent = structuredClone(this.intent(projectId, threadId));
     if (!text.trim() || this.blocksSend(projectId, threadId)) return;
-    const outgoing = { key: this.key(projectId, threadId), text, turnId: null };
+    const outgoing = {
+      key: this.key(projectId, threadId),
+      text,
+      turnId: null,
+      reconnecting: false,
+    };
     this.outgoing = outgoing;
     this.publish({ busy: true, error: null });
     try {
