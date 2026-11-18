@@ -22,7 +22,7 @@ const { resourceInspection } = require("./desktop-control-resources.cjs");
 /** @typedef {{stopped:boolean,operation:import('./shared.cjs').LifecycleReceipt|import('./shared.cjs').LifecycleViewOperation,kind?:string}} LifecycleResult */
 /** @typedef {{recovered:boolean,canceled?:boolean,lifecycle?:import('./shared.cjs').LifecycleProjection}|Canceled} RecoveryResult */
 /** @typedef {LifecycleResult|Canceled|{stopped:true,quitting:true}} QuitResult */
-/** @typedef {{canStop:boolean,connected:boolean,clients?:number,busy:boolean,activeCommands?:number,starting:number,providerUpdating:boolean,projects:Array<Omit<import('./desktop-control-resources.cjs').ResourceInspection,'serviceId'|'generation'|'lifecycle'> & {root:string,started:boolean}>}} ServiceStatus */
+/** @typedef {{canStop:boolean,connected:boolean,busy:boolean,starting:number,providerUpdating:boolean,projects:Array<Omit<import('./desktop-control-resources.cjs').ResourceInspection,'serviceId'|'generation'|'lifecycle'> & {root:string,started:boolean}>}} ServiceStatus */
 /** @typedef {{success:boolean,cookies:{imported:number,skipped:number,failed:number},localStorage:{originsImported:number,entriesImported:number,originsSkipped:number,originsFailed:number,error?:string},issues?:string[],error?:string}} BrowserImportResult */
 /** @typedef {{available?:boolean,diagnostic?:string,version?:string,persistentServe?:boolean,funnelPorts?:number[]|null,login?:string,https?:string,policy?:string}} NetworkInspection */
 /** @typedef {{local:{phase:'stopped'|'starting'|'running'|'failed',address:string,error:string,version:string},deployment:{target:string,port:number,address:string,phase:'pending'|'ready'|'failed'|'removed',version:string,active:boolean,canReconfigure?:boolean}|null,job:{operation:string,phase:'running'|'done'|'failed'|'unknown',error:string}|null,profiles:Array<{origin:string,kind:'local'|'ssh'|'external',active:boolean}>}} RelayServiceStatus */
@@ -343,7 +343,6 @@ function serviceStatus(value) {
     ["canStop", "connected", "busy", "providerUpdating"].every(
       (key) => typeof value[key] === "boolean",
     ) &&
-    ["clients", "activeCommands"].every((key) => value[key] === undefined || count(value[key])) &&
     count(value.starting) &&
     Array.isArray(value.projects) &&
     value.projects.every(

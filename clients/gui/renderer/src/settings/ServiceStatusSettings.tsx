@@ -186,12 +186,7 @@ export function ServiceStatusSettings({
               connected
                 ? readError
                   ? t("settings.serviceStatusSettings.theInterfaceIsConnectedWorkspaceStatusNeeds")
-                  : status
-                    ? t("settings.serviceStatusSettings.connectedSummary", {
-                        value0: status.clients,
-                        value1: status.activeCommands,
-                      })
-                    : t("settings.serviceStatusSettings.connected")
+                  : t("settings.serviceStatusSettings.connected")
                 : t("settings.serviceStatusSettings.disconnected")
             }
             control={
@@ -229,11 +224,9 @@ export function ServiceStatusSettings({
                   : t(
                       "settings.serviceStatusSettings.disconnectedCheckWhetherTheBackgroundServiceIs",
                     )
-                : status?.clients && status.clients > 1
-                  ? t("settings.serviceStatusSettings.quitOtherInterfacesConnectedToTheSame")
-                  : status?.canStop
-                    ? t("settings.serviceStatusSettings.theCurrentCheckAllowsASafeStop")
-                    : t("settings.serviceStatusSettings.blockingItemsAreListedBelowOpenThe")
+                : status?.canStop
+                  ? t("settings.serviceStatusSettings.theCurrentCheckAllowsASafeStop")
+                  : t("settings.serviceStatusSettings.blockingItemsAreListedBelowOpenThe")
             }
           />
           <SettingsRow

@@ -50072,6 +50072,28 @@
           ],
           "type": "string"
         },
+        "pendingRequests": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "awaitingResponse": {
+                "type": "boolean"
+              },
+              "creationRequestId": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "threadId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "awaitingResponse"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
         "projectId": {
           "type": "string"
         },
@@ -50093,19 +50115,11 @@
     "LocalDesktopResourceStatus": {
       "additionalProperties": false,
       "properties": {
-        "activeCommands": {
-          "minimum": 0,
-          "type": "integer"
-        },
         "busy": {
           "type": "boolean"
         },
         "canStop": {
           "type": "boolean"
-        },
-        "clients": {
-          "minimum": 0,
-          "type": "integer"
         },
         "connected": {
           "type": "boolean"

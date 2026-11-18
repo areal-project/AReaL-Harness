@@ -1218,10 +1218,6 @@ export const remoteMessages = {
     "zh-CN": "当前未连接，后台是否仍在运行需要检查。",
     en: "Disconnected. Check whether the background service is still running.",
   },
-  "settings.serviceStatusSettings.quitOtherInterfacesConnectedToTheSame": {
-    "zh-CN": "请先退出其他连接同一后台的界面。",
-    en: "Quit other interfaces connected to the same background service first.",
-  },
   "settings.serviceStatusSettings.theCurrentCheckAllowsASafeStop": {
     "zh-CN": "当前检查允许安全停止。",
     en: "The current check allows a safe stop.",
@@ -1919,10 +1915,6 @@ export const remoteMessages = {
   "settings.usageDashboard.calendarDaySummary": {
     "zh-CN": "{value0}，使用 {value1}，{value2, number} Token，{value3, number} 次 Skills 调用",
     en: "{value0}, used for {value1}, {value2, plural, one {# token} other {# tokens}}, {value3, plural, one {# skill call} other {# skill calls}}",
-  },
-  "settings.serviceStatusSettings.connectedSummary": {
-    "zh-CN": "已连接 · {value0, number} 个窗口 · {value1, number} 个处理中请求",
-    en: "Connected · {value0, plural, one {# window} other {# windows}} · {value1, plural, one {# request in progress} other {# requests in progress}}",
   },
   "settings.serviceStatusSettings.workspaceActivity": {
     "zh-CN": "活动轮次 {value0, number} · 持续目标 {value1, number} · 任务 {value2, number}",
