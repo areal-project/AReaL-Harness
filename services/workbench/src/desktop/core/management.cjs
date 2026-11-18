@@ -7,7 +7,6 @@ const {
 } = require("@areal/workbench/desktop-contract/management");
 const { readPluginSubmission } = require("./plugin-submission.cjs");
 const { commandResponseError } = require("@areal/workbench/desktop-contract");
-const { configurePluginAuthentication } = require("./plugin-authentication.cjs");
 const { manageTask, taskOperations } = require("./tasks.cjs");
 const { resolveTerminalPresentation } = require("./terminal-profile.cjs");
 const { modelRecord, isCoreGoals, isCorePlan } = require("@areal/workbench/core-model-contract");
@@ -240,7 +239,7 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
       rawRequest,
     );
   if (operation === "pluginAuthCredential")
-    return configurePluginAuthentication(backend, project, request);
+    throw new Error("Plugin credential operations require Host protocol");
   if (operation === "pluginAuth" || operation === "mcpExtensionCall") {
     /** @type {Record<string,[string,string[]]>} */
     const operations = {

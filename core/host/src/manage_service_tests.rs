@@ -483,6 +483,8 @@ async fn manage_mutations_artifacts_and_plugin_credentials_run_without_node_back
             let reg_creds_cb = registered_credentials.clone();
             let saved_secret_ref = Rc::new(RefCell::new(None));
             let saved_ref_cb = saved_secret_ref.clone();
+            let connected_plugin = Rc::new(Cell::new(false));
+            let connected_cb = connected_plugin.clone();
             let wg_started = Rc::new(Cell::new(false));
             let wg_started_cb = wg_started.clone();
             let archive_count = Rc::new(AtomicUsize::new(0));
@@ -496,7 +498,8 @@ async fn manage_mutations_artifacts_and_plugin_credentials_run_without_node_back
                     "methodSemantics": {
                         "areal/thread/archive": { "effect": "mutation", "receipt": "management" },
                         "areal/workgroup/start": { "effect": "mutation", "receipt": "management" },
-                        "areal/plugin/userConfig/set": { "effect": "mutation", "receipt": "management" }
+                        "areal/plugin/userConfig/set": { "effect": "mutation", "receipt": "management" },
+                        "areal/plugin/auth/configure": { "effect": "mutation", "receipt": "management" }
                     },
                     "features": { "threadCreationJournal": { "binding": null } }
                 }),
@@ -563,6 +566,18 @@ async fn manage_mutations_artifacts_and_plugin_credentials_run_without_node_back
                     *saved_ref_cb.borrow_mut() =
                         params["values"]["token"]["value"].as_str().map(str::to_owned);
                     fixture_plugin_detail()
+                }
+                "areal/plugin/mcp/list" => json!({
+                    "data":[{"pluginId":"fixture@local","installedDigest":"digest-1",
+                        "state":if connected_cb.get() {"connected"} else {"disconnected"},
+                        "servers":[{"serverId":"fixture-server"}]}]
+                }),
+                "areal/plugin/auth/configure" => {
+                    assert_eq!(params["expectedDigest"], "digest-1");
+                    assert_eq!(params["server"], "fixture-server");
+                    assert!(params.get("credentials").is_none());
+                    assert!(!params.to_string().contains("synthetic-auth-secret"));
+                    json!({"configuration":params["configuration"]})
                 }
                 "areal/workgroup/start" => {
                     wg_started_cb.set(true);
@@ -734,6 +749,23 @@ async fn manage_mutations_artifacts_and_plugin_credentials_run_without_node_back
                 registered_credentials.borrow().as_ref().unwrap()[&secret_ref],
                 "secret-token-value"
             );
+
+            let auth_request = json!({
+                "projectId":alias, "operation":"pluginAuthCredential",
+                "id":"fixture@local", "server":"fixture-server",
+                "expectedDigest":"digest-1", "configuration":{},
+                "credentials":{"clientSecret":"synthetic-auth-secret"}
+            });
+            let mut stale = auth_request.clone();
+            stale["expectedDigest"] = json!("stale");
+            assert!(run_desktop_manage(&host, stale).await.is_err());
+            connected_plugin.set(true);
+            assert!(run_desktop_manage(&host, auth_request.clone()).await.is_err());
+            assert_eq!(registered_credentials.borrow().as_ref().unwrap()[&secret_ref], "secret-token-value");
+            connected_plugin.set(false);
+            let authenticated = run_desktop_manage(&host, auth_request).await.unwrap();
+            let auth_ref = authenticated["configuration"]["clientSecretRef"].as_str().unwrap();
+            assert_eq!(registered_credentials.borrow().as_ref().unwrap()[auth_ref], "synthetic-auth-secret");
 
             // 4. workgroupStart + workgroupSubmission
             let wg_req_id = uuid::Uuid::new_v4().to_string();
