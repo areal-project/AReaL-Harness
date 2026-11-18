@@ -75,7 +75,6 @@ async function waitForProcessExit(pid) {
   }
 }
 
-/** @typedef {import('./service-connection.cjs').ServiceMetadata} Metadata */
 /** @typedef {import('./service-control.cjs').LifecycleReference} Reference */
 /** @typedef {import('./service-control.cjs').LifecycleResponse} Receipt */
 /** @typedef {import('./host-quit.cjs').Notify} Notify */
@@ -94,14 +93,6 @@ class SharedCoreBackend {
     prerequisiteCheck = checkHostPrerequisites,
     ...options
   }) {
-    /** @type {InstanceType<typeof import("./service-connection.cjs").ServiceConnection>|null|undefined} */
-    this.connection = undefined;
-    /** @type {Metadata|undefined} */
-    this.metadata = undefined;
-    /** @type {InstanceType<typeof import("./service-connection.cjs").ServiceConnection>|null|undefined} */
-    this.stoppedConnection = undefined;
-    /** @type {Metadata|import("./service-control.cjs").DesktopIdentity|null|undefined} */
-    this.exitConfirmation = undefined;
     /** @type {Promise<void>|null|undefined} */
     this.connecting = undefined;
     /** @type {NodeJS.Timeout|null|undefined} */
@@ -305,7 +296,6 @@ class SharedCoreBackend {
       },
       onClosed: () => {
         if (this.nativeBrowserEpoch !== epoch || this.disposed) return;
-        this.connection?.close();
         this.disconnected();
       },
     });
@@ -439,16 +429,15 @@ class SharedCoreBackend {
     this.closeNativeBrowser();
     this.terminalConnections.close();
     this.onBrowserDisconnected?.();
-    const stopped = !!this.connection && this.stoppedConnection === this.connection;
-    const message = stopped ? "后台服务已停止，可按需重新连接" : "后台服务已断开，请重新连接";
+    const message = "后台服务已断开，请重新连接";
     this.connectionState = { state: "unavailable", message };
     this.status = { ...this.status, connected: false };
     this.value = {
       ...this.value,
       projects: this.value.projects.map((p) => ({
         ...p,
-        error: stopped ? null : message,
-        state: p.state ? { ...p.state, connected: false, error: stopped ? null : message } : null,
+        error: message,
+        state: p.state ? { ...p.state, connected: false, error: message } : null,
       })),
     };
     this.scheduleReconnect();
@@ -470,8 +459,7 @@ class SharedCoreBackend {
     );
   }
   scheduleReconnect() {
-    if (!(this.metadata?.identity ?? this.identity) || !this.canReconnect() || this.reconnectTimer)
-      return;
+    if (!this.identity || !this.canReconnect() || this.reconnectTimer) return;
     this.connectionState = { state: "connecting" };
     const delay = Math.min(30000, 500 * 2 ** Math.min(this.reconnectAttempts ?? 0, 6));
     this.reconnectAttempts = (this.reconnectAttempts ?? 0) + 1;
@@ -1014,7 +1002,6 @@ class SharedCoreBackend {
     };
   }
   get serviceExited() {
-    if (this.exitConfirmation && this.exitConfirmation === this.metadata) return true;
     const original = [...this.hostReferences.values()].at(-1);
     if (
       this.status.connected ||
@@ -1096,11 +1083,7 @@ class SharedCoreBackend {
       connections.close();
       if (this.terminalConnections === connections) {
         this.guiTerminals.clear();
-        const connection = this.connection;
-        this.stoppedConnection = connection;
         this.disconnected();
-        this.connection = null;
-        connection?.close();
         this.connectionState = this.hostRecoveryState();
       }
     }
@@ -1345,8 +1328,6 @@ class SharedCoreBackend {
         this.onChange();
         return result;
       }
-      this.connection?.close();
-      this.connection = null;
       this.reconnectBlocked = true;
       this.connectionState = { state: "connecting" };
       this.onChange();
@@ -1486,7 +1467,6 @@ class SharedCoreBackend {
       } finally {
         this.closeNativeBrowser();
         this.terminalConnections.close();
-        this.connection?.close();
       }
     })());
   }

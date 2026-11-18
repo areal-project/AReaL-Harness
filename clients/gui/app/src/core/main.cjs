@@ -334,7 +334,7 @@ function startDesktop() {
       } else {
         recordQuitStage(attempt, "reconcile");
         await backend.checkLifecycle();
-        if (!backend.serviceExited && (backend.status.connected || backend.metadata)) {
+        if (!backend.serviceExited && backend.status.connected) {
           recordQuitStage(attempt, "stop");
           const result = await confirmHostStop(backend, notify, () => {
             beginQuit("stopping");
@@ -610,13 +610,7 @@ function startDesktop() {
         (projectId, threadId) => backend.ownsThread(projectId, threadId),
         () => backend.snapshot().library?.settings ?? {},
         (projectId, threadId) => backend.browserCoreIdentity(projectId, threadId),
-        () =>
-          [
-            backend.metadata && "endpoint" in backend.metadata
-              ? backend.metadata.endpoint
-              : undefined,
-            ...(backend.status.browserControlEndpoints ?? []),
-          ].filter((value) => typeof value === "string"),
+        () => backend.status.browserControlEndpoints ?? [],
         developmentApproval(
           createdWindow,
           () =>

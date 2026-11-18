@@ -256,11 +256,8 @@ test("Host activity is passive and whole-Host stop is durable before one dispatc
     assert.equal(control.references[0].generation, f.generation);
     return f.receipt(request.params.requestId);
   });
-  f.backend.attach = async () => {
-    throw new Error("must not attach Desktop");
-  };
   let closed = false;
-  f.backend.connection = { close: () => (closed = true) };
+  f.backend.nativeBrowser = { close: () => (closed = true) };
   f.backend.status.connected = true;
   f.backend.connectionState = { state: "ready" };
   assert.deepEqual(await f.backend.readHostActivity(), activity);
@@ -526,7 +523,7 @@ test("completed original stop cannot clear successor Main terminal ownership", a
   const { NativeTerminalOwners } = require("../app/src/core/generated/native-host-transport.cjs");
   f.backend.terminalConnections = new NativeTerminalOwners({ options: () => ({}) });
   let closed = false;
-  f.backend.connection = { close: () => (closed = true) };
+  f.backend.nativeBrowser = { close: () => (closed = true) };
   f.backend.status.connected = true;
   f.backend.connectionState = { state: "ready" };
   f.backend.guiTerminals.set("successor", { projectId: "new", threadId: "new", id: "successor" });
@@ -695,14 +692,8 @@ test("missing Core executable preserves the original explicit Host recovery inte
   });
   await f.backend.persistReferences();
   let reconnects = 0;
-  f.backend.attach = async () => {
-    f.backend.status.connected = true;
-    f.backend.connection = {
-      request: async () => {
-        reconnects++;
-      },
-    };
-    return true;
+  f.backend.connectNativeBrowser = async () => {
+    reconnects++;
   };
   await assert.rejects(f.backend.init(), /Host 后台启动配置不完整/);
   assert.equal(reconnects, 0);
@@ -1114,7 +1105,6 @@ test("project picker registers through the native Host without a Node projection
   f.backend.status.connected = true;
   f.backend.init = async () => {};
   assert.equal(await f.backend.addProject(f.root), "a".repeat(24));
-  assert.equal(f.backend.connection, undefined);
 });
 
 test("projectless preparations use the native source without a Node connection", async (t) => {
@@ -1134,7 +1124,6 @@ test("projectless preparations use the native source without a Node connection",
     projectId: "a".repeat(24),
     cwd: f.root,
   });
-  assert.equal(f.backend.connection, undefined);
 });
 
 test("a selected plugin archive imports on the persistent native source without Node", async (t) => {
@@ -1182,17 +1171,13 @@ test("a selected plugin archive imports on the persistent native source without 
     ),
     { id: "imported-plugin" },
   );
-  assert.equal(f.backend.connection, undefined);
   const business = f.calls.filter((frame) => frame.method === "desktop.command");
   assert.equal(business.length, 1);
 });
 
-test("a legacy connection does not admit Main business commands without native Host", async (t) => {
+test("Main business commands require the native Host attachment", async (t) => {
   const f = await fixture(t);
   f.backend.status.connected = true;
-  f.backend.connection = {
-    request: () => assert.fail("retired business transport must remain unused"),
-  };
   await assert.rejects(f.backend.command("manage", { operation: "pluginArchiveImport" }), {
     code: "CAPABILITY_UNAVAILABLE",
     outcome: { kind: "noMutation" },
@@ -1295,7 +1280,6 @@ for (const replaced of [false, true])
       assert.deepEqual(await f.backend.readLifecycle(reference), receipt);
       assert.equal(f.backend.lifecycleReferences.size, 0);
     }
-    assert.equal(f.backend.connection, undefined);
   });
 
 test("resource settings use the native source without a Node connection", async (t) => {
@@ -1313,7 +1297,6 @@ test("resource settings use the native source without a Node connection", async 
   t.after(() => f.backend.closeNativeBrowser());
   f.backend.status.connected = true;
   assert.deepEqual(await f.backend.command("resources", request), response);
-  assert.equal(f.backend.connection, undefined);
 });
 
 test("cold lifecycle recovery reads the original receipt without opening a workbench connection", async (t) => {
@@ -1352,7 +1335,6 @@ test("cold lifecycle recovery reads the original receipt without opening a workb
   });
   assert.deepEqual(await f.backend.readLifecycle(reference), receipt);
   assert.equal(f.backend.lifecycleReferences.get(requestId), reference);
-  assert.equal(f.backend.connection, undefined);
   assert.equal(f.calls.filter((frame) => frame.method === "lifecycle.read").length, 1);
 });
 
@@ -1422,7 +1404,6 @@ test("Skill Creator preparation uses native Host without a Node connection", asy
   t.after(() => f.backend.closeNativeBrowser());
   f.backend.status.connected = true;
   assert.deepEqual(await f.backend.command("prepareCreator", request), response);
-  assert.equal(f.backend.connection, undefined);
 });
 
 test("legacy Cloud import binds original bytes and native source without rewriting ciphertext", async (t) => {
@@ -1488,7 +1469,6 @@ for (const [command, call, request, response] of [
     t.after(() => f.backend.closeNativeBrowser());
     f.backend.status.connected = true;
     assert.deepEqual(await f.backend.command(command, request), response);
-    assert.equal(f.backend.connection, undefined);
   });
 }
 
@@ -1535,7 +1515,6 @@ test("GUI terminals use native Host commands and confirm cleanup without a Node 
   await f.backend.settleGuiTerminals();
   assert.deepEqual(operations, ["processStart", "processes", "processTerminate", "processes"]);
   assert.equal(f.backend.guiTerminals.size, 0);
-  assert.equal(f.backend.connection, undefined);
 });
 
 test("native shell uses the shared Host read contract and never starts a Node backend", async (t) => {
@@ -1786,7 +1765,6 @@ test("Main resource and service status reads use native Host without a Node conn
   assert.deepEqual(await f.backend.resources({ operation: "inspect", includeTasks: true }), rows);
   assert.deepEqual(await f.backend.serviceStatus(), status);
   assert.deepEqual(operations, ["inspect", "status"]);
-  assert.equal(f.backend.connection, undefined);
 });
 
 test("native update readiness observes Host resources and treats missing observations as busy", async (t) => {
@@ -1822,7 +1800,8 @@ test("native recovery stops through the original Host receipt without Node lifec
   assert.equal(result.operation.kind, "stopHost");
   const saved = readReferences((await f.backend.readControl()).references);
   assert.equal(saved[0].requestId, result.operation.requestId);
-  assert.equal(f.backend.connection, null);
+  assert.equal(f.backend.status.connected, false);
+  assert.equal(f.backend.nativeBrowserEpoch, undefined);
 });
 
 test("native update keeps one original stop receipt and restarts only after completion", async (t) => {
@@ -1894,7 +1873,6 @@ test("Main startup prepares the source and attaches native Host without Node sta
     harnessHome: f.hostHome,
   };
   f.backend.prerequisiteCheck = async () => {};
-  f.backend.attach = async () => assert.fail("Node projection must not attach");
   f.backend.connectNativeBrowser = async (source, options) => {
     assert.equal(source.sourceId, "source");
     assert.equal(options.prepared, true);
@@ -1909,7 +1887,6 @@ test("Main startup prepares the source and attaches native Host without Node sta
   assert.deepEqual(steps, ["source", "prepare", "native", "shell", "upgrade-complete"]);
   assert.equal(f.backend.connectionState.state, "ready");
   assert.equal(f.backend.status.connected, true);
-  assert.equal(f.backend.connection, undefined);
   steps.length = 0;
   await f.backend.initializeHostBackend({ recover: true });
   assert.deepEqual(steps, ["source", "prepare", "native", "shell", "upgrade-complete"]);

@@ -389,27 +389,9 @@ async function acceptLifecycleReceipt(reference, value) {
     }
     if (exited) {
       operation = { ...receipt, phase: "completed" };
-      this.exitConfirmation =
-        this.metadata?.desktopGeneration === reference.desktopGeneration
-          ? this.metadata
-          : reference.desktop;
-      if (
-        this.metadata?.desktopGeneration === reference.desktopGeneration ||
-        !this.status.connected
-      ) {
+      if (!this.status.connected) {
         this.reconnectBlocked = true;
         this.clearReconnect();
-      }
-      // 完整停止回执和进程退出共同证明旧终端已清理，不能依赖连接是否先断开。
-      if (this.metadata?.desktopGeneration === reference.desktopGeneration) {
-        this.guiTerminals.clear();
-        if (this.status.connected) {
-          const connection = this.connection;
-          this.stoppedConnection = connection;
-          this.disconnected();
-          this.connection = null;
-          connection?.close();
-        }
       }
     }
   }
