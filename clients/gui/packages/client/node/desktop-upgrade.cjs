@@ -68,18 +68,41 @@ async function desktopBuildIdentity(serviceIdentity, roots, manifest) {
       throw new Error("应用构建清单无效");
     return hash.update(value.identity).digest("hex");
   }
+  /** @type {string[]} */
+  const files = [];
+  /** @type {(string | { name: string, fileIndex: number })[]} */
+  const tokens = [];
   /** @param {string} directory */
-  async function visit(directory) {
+  async function collect(directory) {
     const entries = await readdir(directory, { withFileTypes: true });
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name, "en"))) {
-      hash.update(entry.name);
+      tokens.push(entry.name);
       const path = join(directory, entry.name);
-      if (entry.isDirectory()) await visit(path);
-      else if (entry.isFile()) hash.update(await readFile(path));
-      else throw new Error("应用构建包含不支持的文件");
+      if (entry.isDirectory()) await collect(path);
+      else if (entry.isFile()) {
+        const fileIndex = files.length;
+        files.push(path);
+        tokens.push({ name: entry.name, fileIndex });
+      } else throw new Error("应用构建包含不支持的文件");
     }
   }
-  for (const root of roots) await visit(root);
+  for (const root of roots) await collect(root);
+  /** @type {Buffer[]} */
+  const contents = [];
+  const concurrency = 32;
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, files.length) }, async () => {
+      while (cursor < files.length) {
+        const index = cursor++;
+        contents[index] = await readFile(files[index]);
+      }
+    }),
+  );
+  for (const token of tokens) {
+    if (typeof token === "string") hash.update(token);
+    else hash.update(contents[token.fileIndex]);
+  }
   return hash.digest("hex");
 }
 
@@ -114,7 +137,6 @@ function validateReceipt(record, receipt) {
  */
 async function ensureDesktopHost(client, options) {
   const binary = await realpath(options.binary);
-  const targetDigest = await digest(binary);
   const environment = {
     ...Object.fromEntries(
       ["HOME", "PATH", "TMPDIR", "LANG"].flatMap((key) =>
@@ -124,10 +146,16 @@ async function ensureDesktopHost(client, options) {
     AREAL_HARNESS_HOME: options.home,
     AREAL_HARNESS_SERVICE_HOME: options.home,
   };
-  const { stdout } = await executeHost(binary, ["--version"], {
-    env: environment,
-    timeout: 10000,
-  });
+  const path = join(options.home, "host", "desktop-upgrade.json");
+  const activePath = join(options.home, "host", "desktop-build.json");
+  const [targetDigest, { stdout }, initialRecord] = await Promise.all([
+    digest(binary),
+    executeHost(binary, ["--version"], {
+      env: environment,
+      timeout: 10000,
+    }),
+    readPrivate(path),
+  ]);
   const version = stdout.trim().replace(/^areal /, "");
   const order = (/** @type {string} */ value) => {
     const match = /^(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$/.exec(value);
@@ -145,9 +173,7 @@ async function ensureDesktopHost(client, options) {
   const checkOpen = () => {
     if (options.closed?.()) throw new Error("应用连接已关闭，交接将在下次启动继续");
   };
-  const path = join(options.home, "host", "desktop-upgrade.json");
-  const activePath = join(options.home, "host", "desktop-build.json");
-  /** @type {Upgrade|null} */ let record = await readPrivate(path);
+  /** @type {Upgrade|null} */ let record = initialRecord;
   if (
     record &&
     (record.version !== 1 ||

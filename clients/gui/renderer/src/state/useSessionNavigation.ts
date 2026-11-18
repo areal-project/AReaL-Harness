@@ -9,6 +9,7 @@ import {
 } from "../recoveryPresentation.js";
 import { call, type Action, type PlatformServices, type Snapshot } from "../services.js";
 import { conversationCatalog } from "./conversationCatalog.js";
+import { markRendererStartup } from "./startupTiming.js";
 type InitialLocation =
   | { kind: "automatic" | "projectless" }
   | { kind: "project"; projectId: string; threadId: string };
@@ -241,6 +242,7 @@ export function useSessionNavigation(
         sameRestorationOwner(selectedRestoration.current, owner) &&
         readHostGeneration(services.reads) === owner.hostGeneration;
       attempt.promise = (async () => {
+        markRendererStartup("restore_start", { operation });
         try {
           if (services.recoverPersistedHistory) {
             await services.recoverPersistedHistory(null);
@@ -285,6 +287,7 @@ export function useSessionNavigation(
                 // 本机桌面显示历史后继续恢复执行，避免发送入口又等待实时配置。
                 // 只读网页仍停在持久化历史，不为阅读启动项目。
                 if (persisted) {
+                  markRendererStartup("restore_persisted_done");
                   setRestoration({ ...owner, pending: false, error: "" });
                   if (
                     services.capabilities?.native !== true ||
@@ -305,6 +308,7 @@ export function useSessionNavigation(
                   ...(options.resumeScheduling ? { resumeScheduling: true } : {}),
                 });
                 if (!current()) return;
+                markRendererStartup("restore_connect_done");
                 persisted = false;
               } catch (error) {
                 const failure = error as RecoveryFailure;
@@ -352,6 +356,7 @@ export function useSessionNavigation(
               throw connectError ?? error;
             }
             if (current()) {
+              markRendererStartup("restore_done", { persisted });
               setRestoration({ ...owner, pending: false, error: "" });
               if (owner.threadId && !persisted && services.capabilities?.mutations !== false)
                 void resourceAction("library", {
@@ -440,6 +445,10 @@ export function useSessionNavigation(
   };
   const synchronizeSelection = () => {
     if (snapshot.connection?.state !== "ready" || selectionReady) return;
+    markRendererStartup("selection_ready", {
+      hasProject: !!project?.id,
+      hasThread: !!localStorage.getItem(`areal-gui:thread:${project?.id ?? ""}`),
+    });
     setSelectedProject(project?.id ?? "");
     if (!project?.id) {
       setProjectId("");

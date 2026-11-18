@@ -558,7 +558,13 @@ function AppContent({ services }: { services: PlatformServices }) {
             onRetry={() => void retryRestoration()}
             onBackendAction={(kind) => void runBackendAction(kind)}
             onSettings={() => {
-              setSettingsTab((viewFailure && recoverySettings(viewFailure)) || "高级诊断");
+              const failed =
+                restorationFailed ||
+                snapshot.connection?.state === "unavailable" ||
+                !!startupLifecycle?.error;
+              setSettingsTab(
+                (viewFailure && recoverySettings(viewFailure)) || (failed ? "高级诊断" : "常规"),
+              );
               setSettingsOpen(true);
             }}
             onQuit={() => void quitStartup()}

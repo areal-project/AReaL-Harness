@@ -225,6 +225,7 @@ export const SHELL_SNAPSHOT_KEYS = [
 export const SHELL_SETTING_KEYS = ["httpProxy", "httpProxyNoProxy", "httpProxyCaCertPath"] as const;
 export type ShellSnapshot = Partial<Pick<Snapshot, (typeof SHELL_SNAPSHOT_KEYS)[number]>> & {
   settings?: Record<string, unknown>;
+  connectionStage?: string;
 };
 
 export function shellSnapshot(value: Snapshot): ShellSnapshot {
@@ -233,6 +234,7 @@ export function shellSnapshot(value: Snapshot): ShellSnapshot {
     ...Object.fromEntries(
       SHELL_SNAPSHOT_KEYS.flatMap((key) => (key in value ? [[key, value[key]]] : [])),
     ),
+    ...(value.connection?.stage ? { connectionStage: value.connection.stage } : {}),
     settings: Object.fromEntries(
       SHELL_SETTING_KEYS.flatMap((key) => (key in settings ? [[key, settings[key]]] : [])),
     ),
@@ -707,7 +709,7 @@ export function createHostSnapshotProjector(
       const value = navigation?.preferences[key];
       if (value !== undefined) navigationSettings[key] = value;
     }
-    const { settings: shellSettings, ...shellState } = shellExtras ?? {};
+    const { settings: shellSettings, connectionStage, ...shellState } = shellExtras ?? {};
     Object.assign(navigationSettings, shellSettings);
     return {
       sourceId,
@@ -722,6 +724,7 @@ export function createHostSnapshotProjector(
             : client.snapshot().connection === "connecting"
               ? "connecting"
               : "unavailable",
+          ...(fresh ? {} : connectionStage ? { stage: connectionStage } : {}),
         },
         desktopCapabilities: { currentCommands: desktop !== undefined },
         library: {

@@ -1,3 +1,5 @@
+import { markRendererStartup } from "./state/startupTiming.js";
+markRendererStartup("module_eval");
 import { BrowserHostAuthStatus } from "./BrowserHostAuthStatus.js";
 import {
   getApplicationPreferences,
@@ -38,5 +40,6 @@ async function start() {
       </TooltipProvider>
     </ApplicationIntlProvider>,
   );
+  markRendererStartup("render_root");
 }
 void start();

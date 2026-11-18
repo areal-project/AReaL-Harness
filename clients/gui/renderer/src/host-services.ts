@@ -50,6 +50,7 @@ import {
   refreshModelCatalogs,
 } from "./host-auxiliary-reads.js";
 import type { PlatformServices, PlatformReadServices, Snapshot } from "./services.js";
+import { markRendererStartup } from "./state/startupTiming.js";
 
 export { readObservationResult };
 export type Observation = ReturnType<typeof readObservationResult>;
@@ -253,21 +254,27 @@ export function createHostReadServices(
       },
     );
     snapshot = projection.snapshot;
+    if (projection.snapshot.connection?.state === "ready") markRendererStartup("shell_fresh");
     if (currentSession) sessionLoadTiming(currentSession.threadId)?.mark("projection");
     librarySourceId = projection.sourceId;
     for (const listener of listeners) listener(snapshot);
-    if (client.writable("project.models"))
-      refreshModelCatalogs(
-        client,
-        shell?.snapshot.projects ?? [],
-        catalogs,
-        publish,
-        snapshot.providerRevision,
-      );
-    if (librarySourceId && client.writable("tasks.read"))
-      refreshTaskDirectory(client, shell?.snapshot.projects ?? [], ids, taskState, publish);
-    if (librarySourceId && client.writable("desktop.command"))
-      refreshInspections(client, snapshot.projects as ReadProject[], inspections, publish);
+    // 延后目录、任务和环境巡检等次级刷新，让主线程和 Host 连接先完成首屏与会话恢复。
+    setTimeout(() => {
+      if (client.writable("project.models")) {
+        markRendererStartup("aux_refresh_start");
+        refreshModelCatalogs(
+          client,
+          shell?.snapshot.projects ?? [],
+          catalogs,
+          publish,
+          snapshot.providerRevision,
+        );
+      }
+      if (librarySourceId && client.writable("tasks.read"))
+        refreshTaskDirectory(client, shell?.snapshot.projects ?? [], ids, taskState, publish);
+      if (librarySourceId && client.writable("desktop.command"))
+        refreshInspections(client, snapshot.projects as ReadProject[], inspections, publish);
+    }, 0);
   }
   async function history(options: Parameters<PlatformReadServices["history"]>[0]) {
     return readInheritedHistoryPage(await client.history(options));
@@ -517,7 +524,9 @@ export function createHostReadServices(
     }
   });
   client.subscribe(() => {
-    if (client.snapshot().connection !== "ready") publish();
+    const status = client.snapshot();
+    if (status.connection === "ready") markRendererStartup("host_client_ready");
+    else publish();
   });
   if (desktop) {
     // 外壳只提供窗口、电源、菜单栏、生命周期和代理设置；项目、会话、任务与其余设置都从 Host 读。
