@@ -16,7 +16,7 @@ import { stageCoreApp } from "./stage-app.mjs";
 import { stageMacOSService } from "./stage-macos-service.mjs";
 import { buildMacOSDmg } from "./macos-dmg.mjs";
 import { parseArgs } from "node:util";
-import relayResources from "@areal/workbench-service/desktop/core/relay-resources.cjs";
+import relayResources from "./relay-resources.cjs";
 import { signLocalMacOSApp } from "./macos-signing-paths.mjs";
 import { buildWorkbenchResources } from "./workbench-resources.mjs";
 import { checkIcon } from "./macos-icon.mjs";

@@ -5,7 +5,6 @@ const { existsSync } = require("node:fs");
 const { join, dirname, resolve, sep } = require("node:path");
 const { createHash, randomUUID } = require("node:crypto");
 const { createRequire } = require("node:module");
-const { pathToFileURL } = require("node:url");
 
 /** @param {import("node:crypto").BinaryLike} bytes */
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -14,8 +13,8 @@ function locations() {
   if (packaged && existsSync(join(packaged, "bundle.json")))
     return { source: packaged, site: join(process.resourcesPath, "areal-gui") };
   return {
-    source: resolve(__dirname, "../../../../../services/remote-relay"),
-    site: resolve(__dirname, "../../../../../clients/gui/renderer/dist"),
+    source: resolve(__dirname, "../../../services/remote-relay"),
+    site: resolve(__dirname, "../renderer/dist"),
   };
 }
 
@@ -165,19 +164,8 @@ async function prepareRelayResources({ home }) {
   return { bundleDir, version };
 }
 
-async function loadRelayModules() {
-  const { source } = locations();
-  const [server, store, config] = await Promise.all(
-    ["server", "store", "config"].map(
-      (name) => import(pathToFileURL(join(source, "src", `${name}.mjs`)).href),
-    ),
-  );
-  return { serve: server.serve, openStore: store.openStore, readConfig: config.readConfig };
-}
-
 module.exports = {
   buildRelayResources,
   prepareRelayResources,
-  loadRelayModules,
   exportRemoteAssets,
 };

@@ -7,10 +7,7 @@ const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { runInNewContext } = require("node:vm");
-const {
-  buildRelayResources,
-  prepareRelayResources,
-} = require("@areal/workbench-service/desktop/core/relay-resources.cjs");
+const { buildRelayResources, prepareRelayResources } = require("./relay-resources.cjs");
 const requireFromApp = createRequire(resolve(__dirname, "../app/package.json"));
 const requireFromBuilder = createRequire(requireFromApp.resolve("electron-builder"));
 const { getFileMatchers, copyFiles } = requireFromBuilder("app-builder-lib/out/fileMatcher.js");
@@ -25,9 +22,9 @@ test("packaged Relay resources retain every manifest file and load their own ws"
     destination: join(home, "bundle"),
   });
   const source = await readFile(join(__dirname, "package.mjs"), "utf8");
-  const resources = source.match(/extraResources: (\[[\s\S]*?\n    \]),/);
+  const resources = source.match(/^( +)extraResources: (\[[\s\S]*?\n\1\]),/m);
   assert.ok(resources, "package.mjs must define extraResources");
-  const extraResources = runInNewContext(`(${resources[1]})`, {
+  const extraResources = runInNewContext(`(${resources[2]})`, {
     join,
     gui,
     relayBundle,
