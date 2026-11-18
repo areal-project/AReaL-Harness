@@ -518,45 +518,14 @@ impl Supervisor {
         Ok(result)
     }
 
-    pub(super) async fn request(
+    pub(super) async fn analytics_request(
         &self,
         host: &Rc<Host>,
         method: &str,
-        params: Value,
-        context: Value,
+        params: &Value,
+        context: &Value,
     ) -> Result<Value> {
-        ensure!(METHODS.contains(&method), "methodNotFound");
-        if method.starts_with("analytics.") {
-            return self
-                .analytics
-                .request(host, method, &params, &context)
-                .await;
-        }
-        if method == "providers.read" {
-            self.restore_source(host)?;
-            let source = self.backend_source().context("CAPABILITY_UNAVAILABLE")?;
-            return self.providers.read(host, &source);
-        }
-        if matches!(
-            method,
-            "worktree.read"
-                | "worktree.command"
-                | "tasks.read"
-                | "manage.read"
-                | "manage.command"
-                | "desktop.command"
-        ) {
-            self.resume_backend(host).await?;
-            let backend = self
-                .backend
-                .running
-                .borrow()
-                .clone()
-                .context("CAPABILITY_UNAVAILABLE")?;
-            ensure!(!backend.closed(), "CAPABILITY_UNAVAILABLE");
-            return backend.request(method, params, context).await;
-        }
-        bail!("methodNotFound")
+        self.analytics.request(host, method, params, context).await
     }
 
     /// 统计直接观察 Core 事实，不为事件启动工作台。
@@ -641,26 +610,6 @@ impl Supervisor {
             }
         }
         credentials
-    }
-
-    /// 本机网页需要后台而它没在运行时（Host 重启、桌面窗口已关），按桌面上次接受的参数重新拉起。
-    /// 参数只含路径，重新走与 `backend.ensure` 相同的校验；从没开过桌面时保持不可用。
-    pub(super) async fn resume_backend(&self, host: &Rc<Host>) -> Result<()> {
-        if self
-            .backend
-            .running
-            .borrow()
-            .as_ref()
-            .is_some_and(|backend| !backend.closed())
-        {
-            return Ok(());
-        }
-        let Some(input) =
-            areal_local_service::storage::read_optional::<Ensure>(&launch_record(host))?
-        else {
-            return Ok(());
-        };
-        self.ensure_backend(host, input).await.map(|_| ())
     }
 
     /// 原生领域只恢复经过校验的来源与配置输入，不为读取目录启动过渡后台。

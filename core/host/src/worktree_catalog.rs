@@ -894,7 +894,7 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
                         .get(&execution.project_id)
                         .and_then(|slot| slot.service.clone())
                         .context("RESOURCE_UNAVAILABLE")?;
-                    let desktop_generation = deletion_generation(host, source).await?;
+                    let desktop_generation = deletion_generation(host, source)?;
                     let stop_id = stable_id(&format!("{id}:stop"));
                     let mut target = json!({"projectId":execution_alias,"serviceId":service.identity.service_id,"generation":service.identity.generation,"dataDir":execution.data_dir,"requestId":stop_id,"phase":"acceptedPending"});
                     dispatched = true;
@@ -1127,35 +1127,15 @@ fn validate_script(value: &Value) -> Result<()> {
     Ok(())
 }
 
-async fn deletion_generation(host: &Rc<Host>, source: &str) -> Result<String> {
+fn deletion_generation(host: &Host, source: &str) -> Result<String> {
     if source == "host" {
         return Ok(host.identity.generation.clone());
     }
-    if host.gateway.workbench.backend_has_source(source) {
-        return super::workbench_lifecycle::current_generation(source)
-            .context("CAPABILITY_UNAVAILABLE");
-    }
-    let owner = host
-        .gateway
-        .workbench
-        .worktree_backend_identity(source)
-        .context("CAPABILITY_UNAVAILABLE")?;
-    let dependencies = host
-        .gateway
-        .workbench
-        .backend_private("lifecycle.dependencies", json!({}))
-        .await?;
     ensure!(
-        host.gateway
-            .workbench
-            .worktree_backend_identity(source)
-            .as_ref()
-            == Some(&owner),
-        "RESYNC_REQUIRED"
+        host.gateway.workbench.backend_has_source(source),
+        "CAPABILITY_UNAVAILABLE"
     );
-    let generation = required(&dependencies, "lifecycleGeneration")?;
-    uuid::Uuid::parse_str(generation).context("LIFECYCLE_RECEIPT_INVALID")?;
-    Ok(generation.to_owned())
+    super::workbench_lifecycle::current_generation(source).context("CAPABILITY_UNAVAILABLE")
 }
 
 fn deletion_stop_receipt(

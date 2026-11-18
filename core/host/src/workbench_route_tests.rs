@@ -676,7 +676,7 @@ async fn native_catalog_reads_restore_saved_source_without_starting_workbench() 
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn cold_native_provider_read_and_managed_requests_restore_the_persisted_launch() {
+async fn cold_native_provider_read_restores_the_persisted_launch() {
     tokio::task::LocalSet::new()
         .run_until(async {
             let root = tempfile::tempdir().unwrap();
@@ -706,57 +706,6 @@ async fn cold_native_provider_read_and_managed_requests_restore_the_persisted_la
                     .to_string(),
                 "FORBIDDEN"
             );
-            host.gateway.workbench.stop_backend().await;
-            let (host, _, _) = resumable_host(&root);
-            let desktop = host
-                .gateway
-                .workbench
-                .request(
-                    &host,
-                    "desktop.command",
-                    json!({}),
-                    json!({"connection":"fixture"}),
-                )
-                .await
-                .unwrap();
-            assert!(desktop["pid"].as_u64().is_some());
-            host.gateway.workbench.stop_backend().await;
-        })
-        .await;
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn backend_first_exit_recovers_immediately_but_repeated_exits_back_off() {
-    tokio::task::LocalSet::new()
-        .run_until(async {
-            let root = tempfile::tempdir().unwrap();
-            let (host, input, _) = resumable_host(&root.path().canonicalize().unwrap());
-            let original = host
-                .gateway
-                .workbench
-                .ensure_backend(&host, input)
-                .await
-                .unwrap();
-            let request = |params| {
-                host.gateway.workbench.request(
-                    &host,
-                    "desktop.command",
-                    params,
-                    json!({"connection":"fixture"}),
-                )
-            };
-            assert!(request(json!({"crash":true})).await.is_err());
-            let restarted = request(json!({})).await.unwrap();
-            assert_ne!(restarted["pid"], original["pid"]);
-            assert!(request(json!({"crash":true})).await.is_err());
-            let error = request(json!({})).await.unwrap_err();
-            assert_eq!(
-                error.downcast_ref::<crate::wire::Error>().unwrap().code,
-                "CAPABILITY_UNAVAILABLE"
-            );
-            tokio::time::sleep(Duration::from_millis(1100)).await;
-            assert!(request(json!({})).await.is_ok());
-            host.gateway.workbench.stop_backend().await;
         })
         .await;
 }

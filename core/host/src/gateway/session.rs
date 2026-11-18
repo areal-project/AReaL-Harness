@@ -1184,7 +1184,7 @@ impl Session {
                 return Ok(receipt);
             }
         }
-        if workbench_route::METHODS.contains(&method) {
+        if method.starts_with("analytics.") && workbench_route::METHODS.contains(&method) {
             ensure!(self.local, "FORBIDDEN");
             ensure!(
                 request.get("context").is_none() && request.get("commandId").is_none(),
@@ -1195,7 +1195,7 @@ impl Session {
                 .host
                 .gateway
                 .workbench
-                .request(&self.host, method, params.clone(), context)
+                .analytics_request(&self.host, method, params, &context)
                 .await;
         }
         if shared_reads::METHODS.contains(&method) {
