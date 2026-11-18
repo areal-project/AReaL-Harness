@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button, DelayedVisible } from "@areal/ui";
-import { Disclosure } from "@areal/ui/experimental";
+import { SettingsDisclosure } from "../settings/SettingsDisclosure.js";
 import { Dialog, DialogContent, DialogTitle } from "@areal/ui";
 import { ConversationComposer } from "../ConversationComposer.js";
 import { RadioGroup } from "@base-ui/react/radio-group";
@@ -256,12 +256,11 @@ export function MobileComposer({
         {!checking && pending.filter((value) => !value.detached).map(renderNotice)}
         {!checking && detached.length === 1 && renderNotice(detached[0])}
         {!checking && detached.length > 1 && (
-          <Disclosure
-            label={`${t("mobile.previousCreationRequests")} (${detached.length})`}
-            textRole="interface"
+          <SettingsDisclosure
+            title={`${t("mobile.previousCreationRequests")} (${detached.length})`}
           >
             {detached.map(renderNotice)}
-          </Disclosure>
+          </SettingsDisclosure>
         )}
         {!isNew && snapshot?.queue && (
           <ComposerQueue
