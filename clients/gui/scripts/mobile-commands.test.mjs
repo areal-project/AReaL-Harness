@@ -75,6 +75,8 @@ test("first send applies an explicit model only after create and baseline, with 
     model: { providerId: "provider", modelId: "other" },
     parameters: { reasoningEffort: "high" },
   });
+  f.workspace.refresh = () =>
+    assert.fail("sending must not re-open the session after configuration");
   await f.commands.send();
   assert.deepEqual(
     f.requests.map((r) => r.method),
@@ -85,6 +87,40 @@ test("first send applies an explicit model only after create and baseline, with 
   assert.equal(f.requests[3].params.expectedConfigRevision, 4);
   assert.equal(f.commands.draft("project", "thread"), "");
   assert.deepEqual(f.record().locators, []);
+});
+test("shows the outgoing bubble before opening a new session and hands off by accepted turn ID", async () => {
+  const f = await fixture();
+  const create = Promise.withResolvers();
+  const send = Promise.withResolvers();
+  const request = f.client.request;
+  f.client.request = async (envelope) => {
+    const result = await request(envelope);
+    if (envelope.method === "session.create") await create.promise;
+    if (envelope.method === "session.send") {
+      await send.promise;
+      return { ...result, turnId: "own-turn" };
+    }
+    return result;
+  };
+  f.commands.setDraft("project", "", "test from phone");
+  const sending = f.commands.send();
+  assert.equal(f.commands.outgoingFor("project", "").text, "test from phone");
+  create.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(f.commands.outgoingFor("project", "thread").text, "test from phone");
+  assert.equal(f.commands.outgoingFor("project", "thread").turnId, null);
+  send.resolve();
+  await sending;
+  const message = { type: "userMessage" };
+  assert.equal(
+    f.commands.outgoingFor("project", "thread", [{ id: "other-turn", items: [message] }]).turnId,
+    "own-turn",
+  );
+  assert.equal(
+    f.commands.outgoingFor("project", "thread", [{ id: "own-turn", items: [message] }]),
+    null,
+  );
+  assert.equal(f.commands.draft("project", "thread"), "");
 });
 test("first send uses the current generation even when the draft catalog is stale", async () => {
   const f = await fixture();

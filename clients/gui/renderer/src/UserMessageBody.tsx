@@ -1,4 +1,4 @@
-import { useI18n } from "./i18n/IntlProvider.js";
+import { useI18n, type MessageId } from "./i18n/IntlProvider.js";
 import type { PendingMessage } from "./pendingMessage.js";
 import { parsePromptConversationSelections } from "./conversationSelectionReference.js";
 import { ConversationSelectionReferences } from "./ConversationSelectionReferences.js";
@@ -124,10 +124,12 @@ export function PendingMessageView({
   message,
   fileReferenceRoot,
   theme = "light",
+  status,
 }: {
   message: PendingMessage;
   fileReferenceRoot?: string;
   theme?: "light" | "dark";
+  status?: MessageId;
 }) {
   const { t } = useI18n();
   return (
@@ -157,7 +159,7 @@ export function PendingMessageView({
       </div>
       <div className="turn-activity">
         <p className="execution-status" role="status">
-          {t(message.starting ? "chat.submission.starting" : "chat.submission.sending")}
+          {t(status ?? (message.starting ? "chat.submission.starting" : "chat.submission.sending"))}
         </p>
       </div>
     </section>

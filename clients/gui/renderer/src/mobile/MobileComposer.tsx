@@ -72,7 +72,9 @@ export function MobileComposer({
   const page = view.page;
   const projectId = page.kind === "projects" ? "" : page.projectId;
   const threadId = page.kind === "session" ? page.threadId : "";
-  const draft = commands.draft(projectId, threadId);
+  const draftText = commands.draft(projectId, threadId);
+  const outgoing = commands.outgoingFor(projectId, threadId, view.turns);
+  const draft = outgoing?.text === draftText ? "" : draftText;
   useEffect(() => {
     if (input.current && input.current.getMarkdown() !== draft) input.current.setText(draft);
   }, [draft, projectId, threadId]);
@@ -165,8 +167,9 @@ export function MobileComposer({
     (value) =>
       value.method === "turn.stop" && value.params.expectedTurnId === snapshot?.activeTurnId,
   );
-  const send = () => {
+  const send = (text: string) => {
     input.current?.blur();
+    commands.setDraft(projectId, threadId, text);
     void commands.send();
     return false;
   };
@@ -181,7 +184,7 @@ export function MobileComposer({
         {command.error && !pending.length && (
           <p role="alert">{t(errors[command.error] ?? "mobile.commandFailed")}</p>
         )}
-        <DelayedVisible active={checking && pending.length > 0}>
+        <DelayedVisible active={checking && pending.length > 0 && !outgoing}>
           <p role="status" className="text-fixed-caption text-foreground-subtle">
             {t("mobile.commandPending")}
           </p>
@@ -296,7 +299,7 @@ export function MobileComposer({
                 data-testid="mobile-chat-send"
                 data-action="send"
                 disabled={disabled || blocked || command.busy || !draft.trim()}
-                onClick={send}
+                onClick={() => send(input.current?.getMarkdown() ?? draft)}
               >
                 <SendMessageIcon />
               </Button>

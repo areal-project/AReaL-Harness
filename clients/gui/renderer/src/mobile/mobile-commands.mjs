@@ -8,6 +8,7 @@ export class MobileCommands {
     this.workspace = workspace;
     this.commands = new CommandState();
     this.configuration = new Map();
+    this.outgoing = null;
     this.listeners = new Set();
     /** @type {{revision:number,busy:boolean,recovering:boolean,error:string|null}} */
     this.state = { revision: 0, busy: false, recovering: false, error: null };
@@ -45,6 +46,22 @@ export class MobileCommands {
     this.commands.drafts.set(this.key(projectId, threadId), text);
     this.publish();
   }
+  outgoingFor(projectId, threadId, turns = []) {
+    const outgoing = this.outgoing;
+    if (outgoing?.key !== this.key(projectId, threadId)) return null;
+    if (
+      outgoing.turnId &&
+      turns.some(
+        (turn) =>
+          turn.id === outgoing.turnId &&
+          turn.items?.some(
+            (item) => item.type === "userMessage" || item.originalType === "userMessage",
+          ),
+      )
+    )
+      return null;
+    return outgoing;
+  }
   intent(projectId, threadId = "") {
     return this.configuration.get(this.key(projectId, threadId));
   }
@@ -76,6 +93,7 @@ export class MobileCommands {
       this.commands.commands.clear();
       this.commands.drafts.clear();
       this.configuration.clear();
+      this.outgoing = null;
       this.connection = null;
       this.publish({ busy: false, recovering: false, error: null });
       return;
@@ -316,10 +334,10 @@ export class MobileCommands {
       },
       detail.serviceGeneration,
     );
-    if (value?.admissionState !== "accepted") return false;
+    if (value?.admissionState !== "accepted") return null;
     this.configuration.delete(this.key(projectId, threadId));
-    await this.workspace.refresh();
-    return true;
+    // Host 只在 Core 返回 expectedRevision + 1 时结算配置成功。
+    return { revision: snapshot.configRevision + 1, serviceGeneration: detail.serviceGeneration };
   }
   async send() {
     if (this.state.busy || this.state.recovering) return;
@@ -331,52 +349,72 @@ export class MobileCommands {
     const text = this.draft(projectId, threadId);
     const intent = structuredClone(this.intent(projectId, threadId));
     if (!text.trim() || this.blocksSend(projectId, threadId)) return;
+    const outgoing = { key: this.key(projectId, threadId), text, turnId: null };
+    this.outgoing = outgoing;
     this.publish({ busy: true, error: null });
     try {
       if (!threadId) {
         const catalog = this.workspace.state.catalog;
         if (!catalog) throw failure("CONFIGURATION_UNAVAILABLE");
         const serviceGeneration = await this.workspace.activate(projectId);
-        if (this.workspace.state.page !== page) return;
+        if (this.workspace.state.page !== page || this.client.connection !== connection)
+          throw failure("LOCAL_NOT_SENT");
         // 配对设备创建后按实时配置版本提交设置；桌面创建选项在 Host 上仅限本机。
         const result = await this.issue("session.create", projectId, {}, serviceGeneration);
         if (result?.admissionState !== "accepted") return;
         threadId = result.threadId;
         this.migrateDraft(projectId, threadId);
-        if (this.workspace.state.page !== page) return;
+        if (this.workspace.state.page !== page || this.client.connection !== connection)
+          throw failure("LOCAL_NOT_SENT");
+        outgoing.key = this.key(projectId, threadId);
         await this.workspace.navigate({ kind: "session", projectId, threadId });
       }
       const target = this.workspace.state.page;
       if (
         target.kind !== "session" ||
         target.projectId !== projectId ||
-        target.threadId !== threadId
+        target.threadId !== threadId ||
+        this.client.connection !== connection
       )
-        return;
-      if (this.client.connection !== connection) return;
-      if (intent && !(await this.configureIntent(projectId, threadId, intent))) return;
-      if (this.client.connection !== connection || this.workspace.state.page !== target) return;
+        throw failure("LOCAL_NOT_SENT");
+      const configured = intent ? await this.configureIntent(projectId, threadId, intent) : null;
+      if (intent && !configured) return;
+      if (this.client.connection !== connection || this.workspace.state.page !== target)
+        throw failure("LOCAL_NOT_SENT");
       const detail = this.workspace.state.detail,
         snapshot = detail?.snapshot;
-      if (detail?.projectId !== projectId || snapshot?.threadId !== threadId)
-        throw failure("CONFIGURATION_UNAVAILABLE");
+      if (
+        detail?.projectId !== projectId ||
+        snapshot?.threadId !== threadId ||
+        this.workspace.state.stale ||
+        !Number.isSafeInteger(snapshot.configRevision) ||
+        (configured && configured.serviceGeneration !== detail.serviceGeneration)
+      )
+        throw failure("LOCAL_NOT_SENT");
       if (snapshot.ownership.kind !== "ordinary") throw failure("TASK_CONTROL_REQUIRED");
-      await this.issue(
+      const receipt = await this.issue(
         "session.send",
         projectId,
         {
           threadId,
           text,
-          expectedConfigRevision: snapshot.configRevision,
+          expectedConfigRevision: configured?.revision ?? snapshot.configRevision,
           ...(snapshot.activeTurnId
             ? { enqueue: true, expectedTurnId: snapshot.activeTurnId }
             : {}),
         },
         detail.serviceGeneration,
       );
+      if (receipt?.admissionState === "accepted" && receipt.turnId)
+        outgoing.turnId = receipt.turnId;
     } catch (error) {
       this.publish({ error: error.code ?? "COMMAND_FAILED" });
     } finally {
+      if (
+        this.outgoing === outgoing &&
+        (!outgoing.turnId || !this.outgoingFor(projectId, threadId, this.workspace.state.turns))
+      )
+        this.outgoing = null;
       this.publish({ busy: false });
     }
   }
@@ -387,7 +425,10 @@ export class MobileCommands {
     if (!threadId) return true;
     this.publish({ busy: true, error: null });
     try {
-      return await this.configureIntent(projectId, threadId, intent);
+      const configured = await this.configureIntent(projectId, threadId, intent);
+      if (!configured) return false;
+      await this.workspace.refresh();
+      return true;
     } catch (error) {
       this.publish({ error: error.code ?? "COMMAND_FAILED" });
       return false;

@@ -5,6 +5,7 @@ import { Button } from "@areal/ui";
 import { ChevronLeft, ChevronRight, Settings, SquarePen } from "lucide-react";
 import { TooltipProvider } from "../components/ui/tooltip.js";
 import { Messages } from "../Messages.js";
+import { PendingMessageView } from "../UserMessageBody.js";
 import { projectedTurns } from "../remote/session-projection.js";
 import { ProjectFolderIcon } from "../homeChromeIcons.js";
 import { useI18n, type MessageId } from "../i18n/IntlProvider.js";
@@ -92,6 +93,7 @@ export function MobileWorkspaceView({
 }) {
   const { t } = useI18n();
   const view = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
+  useSyncExternalStore(commands.subscribe, commands.snapshot);
   const connection = useSyncExternalStore(client.subscribe, client.snapshot);
   const pull = useRef<number | null>(null);
   const page = view.page;
@@ -126,6 +128,14 @@ export function MobileWorkspaceView({
         ? view.task?.title || t("mobile.task")
         : project?.name || t("mobile.projects");
   const snapshot = view.detail?.snapshot;
+  const outgoing =
+    page.kind === "session" || page.kind === "new"
+      ? commands.outgoingFor(
+          page.projectId,
+          page.kind === "session" ? page.threadId : "",
+          view.turns,
+        )
+      : null;
   return (
     <TooltipProvider>
       <section
@@ -313,7 +323,7 @@ export function MobileWorkspaceView({
             )}
           </>
         )}
-        {page.kind === "session" && snapshot && (
+        {(page.kind === "session" || page.kind === "new") && (snapshot || outgoing) && (
           <>
             {view.bodyError && (
               <Button
@@ -328,19 +338,28 @@ export function MobileWorkspaceView({
               project={{
                 id: page.projectId,
                 root: "",
-                models: snapshot.models ?? [],
+                models: snapshot?.models ?? [],
                 pending: [],
                 core: { features: {} },
                 state: { connected: true, queues: {}, interactions: {}, threads: {} },
               }}
               thread={{
-                id: snapshot.threadId,
-                title: snapshot.title,
+                id: page.kind === "session" ? page.threadId : "",
+                title: snapshot?.title,
                 turns: projectedTurns(view.turns),
-                goals: snapshot.goals,
+                goals: snapshot?.goals,
                 desktop: { archived: false },
-                displayHistory: workspace.historyView(),
+                displayHistory: snapshot ? workspace.historyView() : undefined,
               }}
+              afterTurns={
+                outgoing && (
+                  <PendingMessageView
+                    message={{ text: outgoing.text, files: [], previousUserIds: [] }}
+                    status={outgoing.turnId ? "mobile.thinking" : undefined}
+                    theme={matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"}
+                  />
+                )
+              }
               action={action}
               dark={matchMedia("(prefers-color-scheme: dark)").matches}
               readOnly
@@ -355,7 +374,7 @@ export function MobileWorkspaceView({
             />
           </>
         )}
-        {page.kind === "new" && (
+        {page.kind === "new" && !outgoing && (
           <div className="mobile-new-session min-h-0 p-section [&>svg]:size-[calc(var(--spacing-section)+var(--spacing-inline))] [&_h2]:max-w-full [&_h2]:truncate [&_>_svg]:text-foreground-subtle [&_h2]:text-fixed-section-title [&_p]:text-fixed-body [&_p]:leading-normal flex flex-1 flex-col items-center justify-center gap-field text-center">
             <h2 className="text-fixed-section-title">{t("mobile.newPromptSimple")}</h2>
           </div>

@@ -716,7 +716,13 @@ function KeyboardPlugin({
  * `prevEditorState.isEmpty()` 直接跳过，父组件的 input 状态拿不到首字符，发送按钮和输入内容会错位。
  * 这里改成自己监听 update，只在序列化后的 markdown 真正变化时同步，首字符输入也能稳定回传。
  */
-function TextContentPlugin({ onChange }: { onChange?: (text: string) => void }) {
+function TextContentPlugin({
+  onChange,
+  touchInput,
+}: {
+  onChange?: (text: string) => void;
+  touchInput: boolean;
+}) {
   const [editor] = useLexicalComposerContext();
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -753,9 +759,13 @@ function TextContentPlugin({ onChange }: { onChange?: (text: string) => void }) 
       rootElement?.addEventListener("compositionend", handleCompositionEnd);
     });
     const unregisterUpdate = editor.registerUpdateListener(
-      ({ dirtyElements, dirtyLeaves, editorState, prevEditorState }) => {
+      ({ dirtyElements, dirtyLeaves, editorState, prevEditorState, tags }) => {
         reader.invalidate(prevEditorState, dirtyElements.keys());
         reader.invalidate(editorState, dirtyElements.keys());
+        if (touchInput && tags.has(SKIP_DOM_SELECTION_TAG)) {
+          previousText = reader.read(editorState);
+          return;
+        }
         // 组词中间态由 Lexical/输入法即时展示，不序列化、保存草稿或刷新外层 Composer。
         if (dirtyElements.size || dirtyLeaves.size) publish(editorState);
       },
@@ -769,7 +779,7 @@ function TextContentPlugin({ onChange }: { onChange?: (text: string) => void }) 
         ?.removeEventListener("compositionstart", handleCompositionStart, true);
       editor.getRootElement()?.removeEventListener("compositionend", handleCompositionEnd);
     };
-  }, [editor]);
+  }, [editor, touchInput]);
 
   return null;
 }
@@ -1425,7 +1435,7 @@ export function LexicalChatInput({
           <PromptClipboardPlugin />
           <PromptMentionTooltipPlugin workspacePath={workspacePath} />
           <PluginMentionMetadataPlugin catalog={pluginMentionCatalog} />
-          <TextContentPlugin onChange={onChange} />
+          <TextContentPlugin onChange={onChange} touchInput={touchInput} />
           <KeyboardPlugin
             onSubmit={handleSubmit}
             onModifiedSubmit={onModifiedSubmit}

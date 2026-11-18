@@ -301,6 +301,7 @@ export const mobileMessages = {
     "zh-CN": "正在确认请求状态…",
     en: "Checking request status…",
   },
+  "mobile.thinking": { "zh-CN": "思考中…", en: "Thinking…" },
   "mobile.queryCommand": { "zh-CN": "核对原请求", en: "Check original request" },
   "mobile.effort.none": { "zh-CN": "无", en: "None" },
   "mobile.effort.minimal": { "zh-CN": "最少", en: "Minimal" },
