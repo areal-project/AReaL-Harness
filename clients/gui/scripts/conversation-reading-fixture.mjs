@@ -78,30 +78,37 @@ const baseline = () => ({
   history: { snapshotId: "reading-snapshot", nextCursor: "page:0", complete: false },
 });
 
-export async function createReadingFixture({ deferredTools = false } = {}) {
+export async function createReadingFixture({ deferredTools = false, pageCount = 12 } = {}) {
   const detailItems = new Map();
+  const defer = (turn, item, { oversized = false } = {}) => {
+    const { items: _items, ...turnHead } = turn;
+    const entry = {
+      sourceThreadId: threadId,
+      sourceTurnId: turn.id,
+      sourceTurnStatus: turn.status,
+      sourceItemId: item.id,
+      turn: turnHead,
+      item,
+    };
+    const cursor = `detail:${item.id}`;
+    const raw = JSON.stringify(entry);
+    if (!oversized) detailItems.set(cursor, { entry, raw });
+    return {
+      id: item.id,
+      type: "historyDeferred",
+      originalType: item.type,
+      cursor,
+      version: "fixture-v1",
+      totalBytes: oversized ? 70 * 1024 * 1024 : Buffer.byteLength(raw),
+    };
+  };
   const initial = baseline();
   if (deferredTools) {
     const sourceTurn = initial.thread.turns[0];
     sourceTurn.items = sourceTurn.items.map((item) => {
       if (item.type !== "dynamicToolCall") return item;
-      const entry = {
-        sourceThreadId: "reading-thread",
-        sourceTurnId: sourceTurn.id,
-        sourceItemId: item.id,
-        sourceTurnStatus: sourceTurn.status,
-        turn: { id: sourceTurn.id, status: sourceTurn.status, durationMs: sourceTurn.durationMs },
-        item,
-      };
-      const raw = JSON.stringify(entry);
-      detailItems.set(`detail:${item.id}`, { entry, raw });
       return {
-        id: item.id,
-        type: "historyDeferred",
-        originalType: item.type,
-        cursor: `detail:${item.id}`,
-        version: "fixture-v1",
-        totalBytes: Buffer.byteLength(raw),
+        ...defer(sourceTurn, item),
         preview: { ...item, contentItems: [] },
       };
     });
@@ -109,6 +116,7 @@ export async function createReadingFixture({ deferredTools = false } = {}) {
   const calls = [];
   const clients = new Map();
   let observation = structuredClone(initial);
+  let concisePages = false;
   let observationRevision = 0;
   let failNext = false;
   let failures = 0;
@@ -116,6 +124,7 @@ export async function createReadingFixture({ deferredTools = false } = {}) {
   const held = [];
   const snapshot = () => ({
     calls: calls.length,
+    cursors: calls.map(({ params }) => params.cursor),
     detailCalls: calls.filter(({ params }) => detailItems.has(params.cursor)),
     failures,
     pending: held.length,
@@ -128,6 +137,17 @@ export async function createReadingFixture({ deferredTools = false } = {}) {
       response.write(`event: fixture\ndata: ${JSON.stringify(snapshot())}\n\n`);
   };
   const publishObservation = () => {
+    const { turns, ...thread } = observation.thread;
+    const patch = {
+      head: { ...observation, thread },
+      order: turns.map(({ id }) => id),
+      turns: turns.map(({ id, items, ...head }) => ({
+        id,
+        head: { ...head, id },
+        order: items.map(({ id }) => id),
+        items: items.map((value) => ({ id: value.id, value })),
+      })),
+    };
     for (const client of clients.values()) {
       if (!client.session) continue;
       client.sequence++;
@@ -136,7 +156,7 @@ export async function createReadingFixture({ deferredTools = false } = {}) {
           ...client.session,
           sequence: client.sequence,
           event: "session.updated",
-          patch: { head: observation, turns: [] },
+          patch,
         })}\n\n`,
       );
     }
@@ -179,7 +199,15 @@ export async function createReadingFixture({ deferredTools = false } = {}) {
         ],
       };
     const n = Number(params.cursor.split(":")[1]);
-    const value = turn(n);
+    const value = concisePages
+      ? {
+          id: `short-${n}`,
+          status: "completed",
+          items: [
+            { id: `short-answer-${n}`, type: "agentMessage", text: `Short older reply ${n}.` },
+          ],
+        }
+      : turn(n);
     return {
       snapshotId,
       data: value.items.map((item) => ({
@@ -190,8 +218,8 @@ export async function createReadingFixture({ deferredTools = false } = {}) {
         turn: { id: value.id, status: value.status, durationMs: value.durationMs },
         item,
       })),
-      nextCursor: n < 11 ? `page:${n + 1}` : null,
-      complete: n === 11,
+      nextCursor: n < pageCount - 1 ? `page:${n + 1}` : null,
+      complete: n === pageCount - 1,
     };
   };
   const rpc = async (client, { method, params }) => {
@@ -343,6 +371,12 @@ export async function createReadingFixture({ deferredTools = false } = {}) {
       await vite.close();
     },
     snapshot,
+    replaceObservation(next, { concise = false } = {}) {
+      concisePages = concise;
+      observation = structuredClone(next);
+      publishObservation();
+    },
+    defer,
   };
 }
 if (process.argv.includes("--serve")) {
