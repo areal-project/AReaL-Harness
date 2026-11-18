@@ -182,7 +182,6 @@ pub(crate) async fn dispatch(
             | "areal/plugin/component/configure"
             | "areal/plugin/setup"
             | "areal/queue/update"
-            | "areal/queue/steer"
             | "areal/queue/remove"
             | "areal/queue/reorder"
             | "areal/queue/pause"
@@ -222,10 +221,7 @@ pub(crate) async fn dispatch(
         let method = method.to_owned();
         let owner = identity.to_owned();
         let snapshot = params.clone();
-        if method == "areal/plugin/setup"
-            || method == "areal/queue/steer"
-            || method == "areal/worktree/command"
-        {
+        if method == "areal/plugin/setup" || method == "areal/worktree/command" {
             params["requestId"] = json!(request);
         }
         let reply = engine
@@ -747,7 +743,10 @@ async fn dispatch_inner(
             .submit_turn(identity.into(), parse(params)?)
             .await
             .map_err(atomic_mutation_error),
-        "areal/queue/steer" => engine.steer_queue(identity.into(), parse(params)?).await,
+        "areal/queue/steer" => engine
+            .steer_queue(identity.into(), parse(params)?)
+            .await
+            .map_err(atomic_mutation_error),
         "areal/queue/list" => {
             let p: ThreadId = parse(params)?;
             engine.queue(&p.thread_id).await.map(|q| json!(q))

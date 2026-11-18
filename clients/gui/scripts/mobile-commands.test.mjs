@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { MobileCommands } from "../renderer/src/mobile/mobile-commands.mjs";
-import { ClientState } from "@areal/remote-client";
+import { ClientState, CommandState, RemoteConnection } from "@areal/remote-client";
 
 async function fixture() {
   let record = null;
@@ -715,4 +715,115 @@ test("a local pre-send failure settles without leaving a notFound locator", asyn
   assert.equal(f.commands.unresolved("project").length, 0);
   assert.equal(f.record().locators.length, 0);
   assert.equal(f.commands.draft("project"), "draft stays safe");
+});
+
+test("remote timeouts and disconnects carry explicit unknown codes and longer write deadlines", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const connection = new RemoteConnection({
+    socket: { close() {} },
+    identity: { peerId: "peer" },
+    host: "host",
+    room: null,
+    hello: { displayName: "phone", clientKind: "ios" },
+    isCurrent: () => true,
+    onClose() {},
+  });
+  connection.ready = true;
+  connection.wire = { send() {}, close() {} };
+  connection.secure = { send() {} };
+
+  const readPromise = connection.request({
+    method: "session.open",
+    context: { projectId: "project" },
+    params: { threadId: "thread" },
+  });
+  const writePromise = connection.request({
+    method: "session.send",
+    commandId: "cmd-write",
+    context: { projectId: "project" },
+    params: { threadId: "thread", text: "hello" },
+  });
+  let writeSettled = false;
+  void writePromise.catch(() => {
+    writeSettled = true;
+  });
+
+  t.mock.timers.tick(15000);
+  await assert.rejects(readPromise, (error) => error.code === "REQUEST_TIMEOUT");
+  assert.equal(writeSettled, false);
+
+  t.mock.timers.tick(15000);
+  await assert.rejects(
+    writePromise,
+    (error) => error.code === "REQUEST_TIMEOUT" && error.submissionUnknown === true,
+  );
+  assert.equal(
+    new CommandState().failureIsUnknown(
+      { code: "REQUEST_TIMEOUT" },
+      { method: "session.send", commandId: "cmd-write" },
+    ),
+    true,
+  );
+
+  const pendingClose = connection.request({
+    method: "session.create",
+    commandId: "cmd-close",
+    context: { projectId: "project" },
+    params: {},
+  });
+  connection.rejectPending();
+  await assert.rejects(
+    pendingClose,
+    (error) => error.code === "SUBMISSION_UNKNOWN" && error.submissionUnknown === true,
+  );
+});
+
+test("send errors are scoped to their target page and cleared when navigating elsewhere", async () => {
+  const f = await fixture();
+  await f.workspace.navigate({ kind: "session", projectId: "project", threadId: "thread" });
+  f.client.request = async (envelope) => {
+    if (envelope.method === "session.send")
+      throw Object.assign(new Error("forbidden"), { code: "FORBIDDEN" });
+    return { threadId: "thread" };
+  };
+  f.commands.setDraft("project", "thread", "hello");
+  await f.commands.send();
+
+  assert.equal(f.commands.errorFor("project", "thread"), "FORBIDDEN");
+  assert.equal(f.commands.errorFor("project", ""), null);
+
+  await f.workspace.navigate({ kind: "new", projectId: "project" });
+  assert.equal(f.commands.errorFor("project", ""), null);
+  assert.equal(f.commands.errorFor("project", "thread"), null);
+  assert.equal(f.commands.snapshot().error, null);
+});
+
+test("visibleUnresolved collapses older detached creation locators for a project", async () => {
+  const f = await fixture();
+  const request = f.client.request;
+  f.client.request = async (envelope) => {
+    if (envelope.method === "session.create")
+      throw Object.assign(new Error("lost response"), { submissionUnknown: true });
+    if (envelope.method === "command.read")
+      return {
+        commandId: envelope.params.commandId,
+        admissionState: "notFound",
+        submissionUnknown: true,
+      };
+    return request(envelope);
+  };
+
+  for (const label of ["first", "second"]) {
+    f.commands.setDraft("project", "", label);
+    await f.commands.send();
+    const [pending] = f.commands.unresolved("project").filter((item) => !item.detached);
+    await f.commands.query(pending);
+    await f.commands.startSeparateConversation(pending);
+  }
+
+  assert.equal(f.commands.unresolved("project").length, 2);
+  const visible = f.commands.visibleUnresolved("project");
+  assert.equal(visible.length, 1);
+  assert.equal(visible[0].commandId, f.record().locators[1].commandId);
+  assert.equal(visible[0].detached, true);
 });

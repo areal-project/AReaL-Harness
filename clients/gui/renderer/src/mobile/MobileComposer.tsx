@@ -96,7 +96,9 @@ export function MobileComposer({
   );
   const intent = commands.intent(projectId, threadId);
   const pending = commands.unresolved(projectId, threadId);
+  const visiblePending = commands.visibleUnresolved(projectId, threadId);
   const currentPending = pending.some((value) => !value.detached);
+  const visibleError = commands.errorFor(projectId, threadId);
   const checking = command.busy || command.recovering;
   const running = !!snapshot?.activeTurnId;
   const connected = connection.kind === "connected";
@@ -191,13 +193,13 @@ export function MobileComposer({
         data-config-revision={snapshot?.configRevision}
         data-active-turn={snapshot?.activeTurnId ?? ""}
       >
-        {command.error && (!currentPending || command.error === "START_SEPARATE_FAILED") && (
+        {visibleError && (!currentPending || visibleError === "START_SEPARATE_FAILED") && (
           <p role="alert">
             {command.errorStage && t(`mobile.sendStage.${command.errorStage}`)}{" "}
-            {t(errors[command.error] ?? "mobile.commandFailed")}
-            {command.errorStage && /^[A-Z][A-Z_0-9]*$|^-?[0-9]+$/.test(command.error) && (
+            {t(errors[visibleError] ?? "mobile.commandFailed")}
+            {command.errorStage && /^[A-Z][A-Z_0-9]*$|^-?[0-9]+$/.test(visibleError) && (
               <span className="ml-1 text-fixed-caption text-foreground-subtle">
-                ({command.error})
+                ({visibleError})
               </span>
             )}
           </p>
@@ -208,7 +210,7 @@ export function MobileComposer({
           </p>
         </DelayedVisible>
         {!checking &&
-          pending.map((value) => (
+          visiblePending.map((value) => (
             <div
               className="mobile-command-notice flex flex-wrap items-center gap-inline"
               key={value.commandId}
@@ -615,7 +617,7 @@ export function MobileComposer({
             <p className="mobile-sheet-note m-0 text-fixed-caption leading-normal text-foreground-subtle">
               {t("mobile.configureAfterTurn")} {t("mobile.applyOnSend")}
             </p>
-            {intent && command.error && (
+            {intent && visibleError && (
               <Button
                 variant="ghost"
                 className="min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"

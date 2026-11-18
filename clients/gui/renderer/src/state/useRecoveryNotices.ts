@@ -199,7 +199,7 @@ export function useRecoveryNotices(
           // 核对请求本身失败不提示：它由下面的自动核对按次数重试。
           name !== "reconcile" &&
           !["providers", "chatgpt", "prediction", "history"].includes(name) &&
-          !(name === "respond" && "answers" in params && params.answers) &&
+          name !== "respond" &&
           name !== "media" &&
           name !== "feedback" &&
           !(name === "manage" && "operation" in params && params.operation === "goalCreate")
@@ -243,7 +243,12 @@ export function useRecoveryNotices(
                 kind: unconfirmed ? "unconfirmed" : "error",
                 message: recoveryMessage(failure, "operation", t),
                 settings: recoverySettings(failure),
-                detail: [rawText(failure), failure.code, failure.reason, operation?.method]
+                detail: [
+                  (failure as { detail?: string }).detail ?? rawText(failure),
+                  failure.code,
+                  failure.reason,
+                  operation?.method,
+                ]
                   .filter((value) => value !== undefined)
                   .join("\n"),
               },

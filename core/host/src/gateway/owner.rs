@@ -27,11 +27,31 @@ pub(crate) fn settled_failure(code: &str) -> bool {
 /// 本机桌面写入口，包装 Gateway 会话的本机主体。
 pub(crate) struct LocalSession(session::Session);
 impl LocalSession {
+    pub(crate) fn random_token_key() -> Result<[u8; 32]> {
+        session::Session::random_token_key()
+    }
+    #[cfg(test)]
     pub(crate) fn new(host: Rc<Host>, connection: String) -> Result<Self> {
         Ok(Self(session::Session::local(host, connection)?))
     }
-    pub(crate) fn browser(host: Rc<Host>, connection: String, device: String) -> Result<Self> {
-        Ok(Self(session::Session::browser(host, connection, device)?))
+    pub(crate) fn new_with_key(
+        host: Rc<Host>,
+        connection: String,
+        token_key: [u8; 32],
+    ) -> Result<Self> {
+        Ok(Self(session::Session::local_with_key(
+            host, connection, token_key,
+        )?))
+    }
+    pub(crate) fn browser_with_key(
+        host: Rc<Host>,
+        connection: String,
+        device: String,
+        token_key: [u8; 32],
+    ) -> Result<Self> {
+        Ok(Self(session::Session::browser_with_key(
+            host, connection, device, token_key,
+        )?))
     }
     pub(crate) async fn request(&mut self, request: &Value) -> Result<Value> {
         self.0.local_request(request).await

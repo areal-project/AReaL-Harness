@@ -35,7 +35,12 @@ export class RemoteConnection {
   rejectPending() {
     for (const value of this.pending.values()) {
       clearTimeout(value.timer);
-      value.reject(new Error("Host 已断开，原提交需核对"));
+      value.reject(
+        Object.assign(new Error("Host 已断开，原提交需核对"), {
+          code: "SUBMISSION_UNKNOWN",
+          submissionUnknown: true,
+        }),
+      );
     }
     this.pending.clear();
   }
@@ -97,16 +102,25 @@ export class RemoteConnection {
           }),
         );
       const id = String(++this.sequence);
+      const isWrite = [
+        "session.create",
+        "session.send",
+        "session.control",
+        "turn.stop",
+        "interaction.respond",
+        "task.pause",
+        "task.question.reply",
+      ].includes(envelope.method);
+      const timeoutMs = isWrite ? 30000 : 15000;
       const timer = setTimeout(() => {
         this.pending.delete(id);
         if (envelope.method === "session.open") this.socket.close();
-        const error = new Error("读取超时，请刷新或核对原命令");
-        reject(
-          envelope.method === "project.activate" || envelope.method === "session.open"
-            ? Object.assign(error, { code: "REQUEST_TIMEOUT" })
-            : error,
-        );
-      }, 15000);
+        const error = Object.assign(new Error("读取超时，请刷新或核对原命令"), {
+          code: "REQUEST_TIMEOUT",
+          ...(isWrite || envelope.commandId ? { submissionUnknown: true } : {}),
+        });
+        reject(error);
+      }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer, onResult });
       try {
         /** @type {import('../generated/host-protocol').RemoteRequest} */

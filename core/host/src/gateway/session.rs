@@ -795,9 +795,19 @@ impl Session {
     }
     /// 本机桌面票据连接：本机用户即主人，拥有全部项目的全部能力；
     /// 回执用固定的本机设备 ID 记账，项目 ID 不经远程别名。
-    pub(crate) fn local(host: Rc<Host>, connection: String) -> Result<Self> {
+    pub(crate) fn random_token_key() -> Result<[u8; 32]> {
         let mut token_key = [0; 32];
         std::io::Read::read_exact(&mut std::fs::File::open("/dev/urandom")?, &mut token_key)?;
+        Ok(token_key)
+    }
+    pub(crate) fn local(host: Rc<Host>, connection: String) -> Result<Self> {
+        Self::local_with_key(host, connection, Self::random_token_key()?)
+    }
+    pub(crate) fn local_with_key(
+        host: Rc<Host>,
+        connection: String,
+        token_key: [u8; 32],
+    ) -> Result<Self> {
         Ok(Self {
             peer: LOCAL_PEER.into(),
             grant: json!({"revision":0,"capabilities":["observe","review","submit","interrupt","answer","pauseTask","manage"],"projectIds":[]}),
@@ -820,7 +830,15 @@ impl Session {
     }
     /// 浏览器沿用本机项目 ID，但每次副作用前检查独立设备授权，回执不与 Main 共用。
     pub(crate) fn browser(host: Rc<Host>, connection: String, device: String) -> Result<Self> {
-        let mut session = Self::local(host, connection)?;
+        Self::browser_with_key(host, connection, device, Self::random_token_key()?)
+    }
+    pub(crate) fn browser_with_key(
+        host: Rc<Host>,
+        connection: String,
+        device: String,
+        token_key: [u8; 32],
+    ) -> Result<Self> {
+        let mut session = Self::local_with_key(host, connection, token_key)?;
         let capabilities: Vec<_> = [
             "observe",
             "review",

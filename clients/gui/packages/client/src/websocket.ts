@@ -263,7 +263,9 @@ export async function connectWebSocket(
           const detail = [summary, typeof method === "string" ? method : "", reason]
             .filter((part): part is string => typeof part === "string" && part !== "")
             .join(" · ");
-          handler.reject(Object.assign(new Error(detail), message.error));
+          handler.reject(
+            Object.assign(new Error(summary), message.error, { message: summary, detail }),
+          );
         } else handler.resolve(message.result);
       } catch {
         close();

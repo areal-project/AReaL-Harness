@@ -526,6 +526,8 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
             .iter()
             .any(|capability| capability == "persistedHistoryV1");
     let connection_id = uuid::Uuid::new_v4().to_string();
+    // 同一 WebSocket 连接上的 Query / Control / Mutation 会话共享 token_key，确保 reviewToken / cursor 可跨通道校验。
+    let token_key = super::gateway_owner::LocalSession::random_token_key()?;
     host.clients
         .borrow_mut()
         .insert(connection_id.clone(), None);
@@ -546,12 +548,17 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
             .iter()
             .any(|capability| capability == "gui-write-v1"))
     .then(|| match &device_id {
-        Some(id) => super::gateway_owner::LocalSession::browser(
+        Some(id) => super::gateway_owner::LocalSession::browser_with_key(
             host.clone(),
             connection_id.clone(),
             id.clone(),
+            token_key,
         ),
-        None => super::gateway_owner::LocalSession::new(host.clone(), connection_id.clone()),
+        None => super::gateway_owner::LocalSession::new_with_key(
+            host.clone(),
+            connection_id.clone(),
+            token_key,
+        ),
     })
     .transpose()?;
     let result = protocol::LoopbackHelloResult {
@@ -708,8 +715,19 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                                 tasks.spawn_local(async move {
                                     // 独立通道不消费上传或观察状态，仍绑定原主体与连接。
                                     let local = match &device {
-                                        Some(device) => super::gateway_owner::LocalSession::browser(host.clone(), connection, device.clone()),
-                                        None => super::gateway_owner::LocalSession::new(host.clone(), connection),
+                                        Some(device) => {
+                                            super::gateway_owner::LocalSession::browser_with_key(
+                                                host.clone(),
+                                                connection,
+                                                device.clone(),
+                                                token_key,
+                                            )
+                                        }
+                                        None => super::gateway_owner::LocalSession::new_with_key(
+                                            host.clone(),
+                                            connection,
+                                            token_key,
+                                        ),
                                     };
                                     match local {
                                         Ok(mut local) => local_request(&host, &mut local, device.as_deref(), raw).await,

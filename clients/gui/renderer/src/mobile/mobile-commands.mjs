@@ -12,20 +12,68 @@ export class MobileCommands {
     this.outgoing = null;
     this.unsent = null;
     this.listeners = new Set();
-    /** @type {{revision:number,busy:boolean,recovering:boolean,error:string|null,errorStage:SendStage|null}} */
-    this.state = { revision: 0, busy: false, recovering: false, error: null, errorStage: null };
+    /** @type {{revision:number,busy:boolean,recovering:boolean,error:string|null,errorStage:SendStage|null,errorTarget:{projectId:string,threadId:string}|null}} */
+    this.state = {
+      revision: 0,
+      busy: false,
+      recovering: false,
+      error: null,
+      errorStage: null,
+      errorTarget: null,
+    };
+    this.lastPageTarget = this.pageTarget();
     this.unsubscribe = client.subscribe(() => this.connectionChanged());
-    this.unsubscribeWorkspace = workspace.subscribe?.(() => this.resumeUnsent());
+    this.unsubscribeWorkspace = workspace.subscribe?.(() => this.workspaceChanged());
   }
   snapshot = () => this.state;
   subscribe = (listener) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   };
+  pageTarget(page = this.workspace.state.page) {
+    if (page?.kind === "new") return { projectId: page.projectId, threadId: "" };
+    if (page?.kind === "session") return { projectId: page.projectId, threadId: page.threadId };
+    return null;
+  }
+  sameTarget(a, b) {
+    return Boolean(a && b && a.projectId === b.projectId && a.threadId === b.threadId);
+  }
+  errorFor(projectId, threadId = "") {
+    if (!this.state.error) return null;
+    if (!this.state.errorTarget) return this.state.error;
+    return this.state.errorTarget.projectId === projectId &&
+      this.state.errorTarget.threadId === threadId
+      ? this.state.error
+      : null;
+  }
+  workspaceChanged() {
+    const nextTarget = this.pageTarget();
+    if (!this.sameTarget(this.lastPageTarget, nextTarget)) {
+      this.lastPageTarget = nextTarget;
+      // 离开报错所在页面时清理局部错误提示，避免切回新会话仍残留旧错误。
+      if (
+        this.state.error &&
+        this.state.errorTarget &&
+        !this.sameTarget(this.state.errorTarget, nextTarget) &&
+        !this.state.busy
+      )
+        this.publish({ error: null });
+    }
+    this.resumeUnsent();
+  }
   publish(values = {}) {
+    const errorUpdates =
+      "error" in values
+        ? values.error
+          ? {
+              errorStage: null,
+              errorTarget: "errorTarget" in values ? values.errorTarget : this.pageTarget(),
+            }
+          : { errorStage: null, errorTarget: null }
+        : {};
     this.state = {
       ...this.state,
-      ...("error" in values ? { errorStage: null } : {}),
+      ...errorUpdates,
       ...values,
       revision: this.state.revision + 1,
     };
@@ -91,6 +139,12 @@ export class MobileCommands {
         (command.params.threadId ?? "") === threadId &&
         this.commands.unresolved(command),
     );
+  }
+  visibleUnresolved(projectId, threadId = "") {
+    const pending = this.unresolved(projectId, threadId);
+    const latestDetached = pending.filter((value) => value.detached).at(-1);
+    // 同一项目只展示最近一条已另开会话的核对提示，避免多条相同横幅在 composer 上方堆叠。
+    return pending.filter((value) => !value.detached || value === latestDetached);
   }
   blocksSend(projectId, threadId = "") {
     const snapshot = this.workspace.state.detail?.snapshot;
@@ -225,7 +279,7 @@ export class MobileCommands {
         await this.query(this.commands.commands.get(key));
       }
     } catch {
-      this.publish({ error: "RECOVERY_FAILED" });
+      this.publish({ error: "RECOVERY_FAILED", errorTarget: null });
     } finally {
       this.publish({ recovering: false });
       this.recoverConnection();
@@ -242,7 +296,13 @@ export class MobileCommands {
     }
     this.commands.receive(key, command, value);
     if (value.admissionState === "rejected" && !command.detached)
-      this.publish({ error: String(value.error?.code ?? "COMMAND_REJECTED") });
+      this.publish({
+        error: String(value.error?.code ?? "COMMAND_REJECTED"),
+        errorTarget: {
+          projectId: command.projectId,
+          threadId: command.method === "session.create" ? "" : (command.params?.threadId ?? ""),
+        },
+      });
     this.publish();
     return value;
   }
@@ -465,9 +525,11 @@ export class MobileCommands {
   }
   async respond(review, response) {
     if (this.state.busy || this.state.recovering) return false;
+    let errorTarget = this.pageTarget();
     this.publish({ busy: true, error: null });
     try {
       const current = this.decisionTarget(review.ref);
+      errorTarget = { projectId: current.page.projectId, threadId: current.page.threadId };
       if (
         current.page !== review.page ||
         current.connection !== review.connection ||
@@ -500,7 +562,7 @@ export class MobileCommands {
       );
       return receipt?.admissionState === "accepted";
     } catch (error) {
-      this.publish({ error: error.code ?? "COMMAND_FAILED" });
+      this.publish({ error: error.code ?? "COMMAND_FAILED", errorTarget });
       return false;
     } finally {
       this.finish();
@@ -750,7 +812,12 @@ export class MobileCommands {
           instance,
         };
         outgoing.reconnecting = true;
-      } else this.publish({ error: error.code ?? "COMMAND_FAILED", errorStage: stage });
+      } else
+        this.publish({
+          error: error.code ?? "COMMAND_FAILED",
+          errorStage: stage,
+          errorTarget: { projectId, threadId },
+        });
     } finally {
       if (
         this.outgoing === outgoing &&
@@ -774,7 +841,7 @@ export class MobileCommands {
       await this.workspace.refresh();
       return true;
     } catch (error) {
-      this.publish({ error: error.code ?? "COMMAND_FAILED" });
+      this.publish({ error: error.code ?? "COMMAND_FAILED", errorTarget: { projectId, threadId } });
       return false;
     } finally {
       this.finish();
@@ -803,7 +870,10 @@ export class MobileCommands {
         detail.serviceGeneration,
       );
     } catch (error) {
-      this.publish({ error: error.code ?? "COMMAND_FAILED" });
+      this.publish({
+        error: error.code ?? "COMMAND_FAILED",
+        errorTarget: { projectId: detail.projectId, threadId: snapshot.threadId },
+      });
     } finally {
       this.finish();
     }

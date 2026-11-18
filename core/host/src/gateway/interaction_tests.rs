@@ -2414,3 +2414,121 @@ async fn remote_authorization_uses_committed_grants_during_credential_io_and_rev
         assert!(after.is_err(), "revoked grant remained usable after durable commit");
     }).await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn loopback_attention_read_and_interaction_respond_share_connection_token_key() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let mut listener = crate::server::loopback::bind(f.host.clone(), true)
+                .await
+                .unwrap();
+            let ticket = f
+                .host
+                .loopback
+                .ticket(areal_protocol::host::LocalWebTicketParams {
+                    expected_generation: f.host.identity.generation.clone(),
+                    origin: "areal-ui://app".into(),
+                    profile: None,
+                })
+                .unwrap();
+            let _server = tokio::task::spawn_local(async move {
+                let _ = listener.run().await;
+            });
+            use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+            let mut request = ticket.websocket_url.clone().into_client_request().unwrap();
+            request
+                .headers_mut()
+                .insert("origin", "areal-ui://app".parse().unwrap());
+            let (mut socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+            socket
+                .send(Message::Text(
+                    json!({
+                        "version": 1,
+                        "id": "hello",
+                        "method": "hello",
+                        "params": {
+                            "protocolVersions": [1],
+                            "capabilities": ["gui-read-v1", "gui-write-v1"],
+                            "ticket": ticket.ticket,
+                            "expectedGeneration": ticket.generation
+                        }
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+            let hello: Value =
+                serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap())
+                    .unwrap();
+            let gateway_generation = hello["result"]["gatewayGeneration"]
+                .as_str()
+                .unwrap()
+                .to_owned();
+            let context = json!({
+                "projectId": "project",
+                "gatewayGeneration": gateway_generation,
+                "grantRevision": 0,
+                "serviceGeneration": "core-generation"
+            });
+            socket
+                .send(Message::Text(
+                    json!({
+                        "version": 1,
+                        "id": "read",
+                        "method": "attention.read",
+                        "context": context,
+                        "params": Fixture::target()
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+            f.call("areal/interaction/list")
+                .await
+                .reply(json!({"data":[Fixture::item("pending")]}));
+            let reviewed: Value =
+                serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap())
+                    .unwrap();
+            assert_eq!(reviewed["id"], "read");
+            let token = reviewed["result"]["reviewToken"].clone();
+            assert!(token.is_string(), "{reviewed}");
+
+            let mut params = Fixture::target();
+            params["argumentsDigest"] = json!(ORIGINAL_DIGEST);
+            params["decision"] = json!("allowOnce");
+            params["reviewToken"] = token;
+            socket
+                .send(Message::Text(
+                    json!({
+                        "version": 1,
+                        "id": "respond",
+                        "method": "interaction.respond",
+                        "commandId": uuid::Uuid::new_v4().to_string(),
+                        "context": context,
+                        "params": params
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+            f.call("areal/interaction/list")
+                .await
+                .reply(json!({"data":[Fixture::item("pending")]}));
+            f.call("areal/interaction/respond")
+                .await
+                .reply(json!({"decision":"allowOnce","argumentsDigest":ORIGINAL_DIGEST}));
+            let responded: Value =
+                serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap())
+                    .unwrap();
+            assert_eq!(responded["id"], "respond");
+            assert_eq!(
+                responded["result"]["admissionState"], "accepted",
+                "{responded}"
+            );
+        })
+        .await;
+}

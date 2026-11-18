@@ -912,6 +912,24 @@ async fn ordinary_admission_capabilities_and_rpc_errors_are_explicit() {
         stale["error"]["data"]["outcome"]["kind"], "rejected",
         "{stale}"
     );
+    let (stale_steer, _) = call(
+        &mut socket,
+        108,
+        "areal/queue/steer",
+        json!({
+            "requestId": uuid::Uuid::new_v4().to_string(),
+            "threadId": id,
+            "expectedRevision": 99,
+            "queueItemId": "missing-item",
+            "expectedTurnId": "missing-turn"
+        }),
+    )
+    .await;
+    assert_eq!(stale_steer["error"]["code"], -32009, "{stale_steer}");
+    assert_eq!(
+        stale_steer["error"]["data"]["outcome"]["kind"], "rejected",
+        "{stale_steer}"
+    );
     // 暂停和继续不覆盖任何内容，版本过期也照常执行。
     for (request, method, paused) in [
         (106, "areal/queue/pause", true),

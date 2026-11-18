@@ -1298,5 +1298,8 @@ test("a queue-full rejection keeps its message readable and its method and reaso
   assert.equal(failure.code, "CAPACITY_EXCEEDED");
   assert.equal(failure.method, "session.open");
   assert.equal(failure.reason, "commandQueueFull");
+  assert.notEqual(failure.message, "Host command failed");
+  assert.match(failure.detail, /session\.open/);
+  assert.match(failure.detail, /commandQueueFull/);
   assert.doesNotMatch(failure.message, /CAPACITY_EXCEEDED|session\.open|commandQueueFull/);
 });

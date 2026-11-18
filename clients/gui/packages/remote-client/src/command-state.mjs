@@ -49,9 +49,13 @@ export class CommandState {
     return (
       !error.code ||
       error.submissionUnknown ||
-      ["SUBMISSION_UNKNOWN", "RESYNC_REQUIRED", "GRANT_CHANGED", "CORE_UNAVAILABLE"].includes(
-        error.code,
-      )
+      [
+        "SUBMISSION_UNKNOWN",
+        "REQUEST_TIMEOUT",
+        "RESYNC_REQUIRED",
+        "GRANT_CHANGED",
+        "CORE_UNAVAILABLE",
+      ].includes(error.code)
     );
   }
   failed(key, command, error) {
