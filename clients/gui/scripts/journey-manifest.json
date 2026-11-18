@@ -104,7 +104,7 @@
         "clients/gui/app/src/core/main.cjs",
         "clients/gui/app/src/core/host-lifecycle.cjs",
         "services/workbench/src/desktop/core/lifecycle*.cjs",
-        "services/workbench/src/desktop/core/resource-recovery.cjs"
+        "core/host/src/resource_inspections.rs"
       ]
     },
     {

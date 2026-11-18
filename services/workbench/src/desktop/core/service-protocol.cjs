@@ -8,7 +8,6 @@ const { NativeRemote } = require("./native-remote.cjs");
 const { desktopError } = require("@areal/workbench/desktop-contract");
 /** @type {typeof import('@areal/workbench/desktop-contract')} */
 const desktopContract = require("@areal/workbench/desktop-contract");
-const { inspectResources } = require("./resource-recovery.cjs");
 const {
   validToolInput,
   describeCommands,
@@ -774,18 +773,6 @@ class DesktopService {
           this.schedule();
         }
         return response;
-      }
-      if (method === "resources") {
-        if (params?.operation !== "inspect") throw new Error("无效资源操作");
-        this.inflight++;
-        try {
-          return await inspectResources(this.backend, {
-            includeTasks: params.includeTasks === true,
-            purpose: params.purpose === "quit" ? "quit" : undefined,
-          });
-        } finally {
-          this.inflight--;
-        }
       }
       if (method === "snapshot") {
         const packet = this.packet();
