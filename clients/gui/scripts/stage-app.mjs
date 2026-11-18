@@ -17,6 +17,7 @@ const forbidden = new Set([
   "@areal/dsh-game-bundle",
   "@areal/workbench-service",
 ]);
+const fixtureOnlySources = new Set(["src/core/lifecycle.cjs", "src/core/service-connection.cjs"]);
 function manifestAt(name, parent) {
   const req = createRequire(join(parent, "package.json"));
   const file = req.resolve
@@ -51,7 +52,10 @@ export async function stageCoreApp({ root, destination }) {
   await mkdir(destination, { recursive: true });
   // Small desktop resources stay intact; no global docs/spec/README deletion.
   for (const path of ["src", "assets"])
-    await cp(join(desktop, path), join(destination, path), { recursive: true });
+    await cp(join(desktop, path), join(destination, path), {
+      recursive: true,
+      filter: (source) => !fixtureOnlySources.has(relative(desktop, source)),
+    });
   await cp(join(root, "../../LICENSE"), join(destination, "LICENSE"));
   await cp(join(desktop, "LICENSE"), join(destination, "CAXSON-LICENSE"));
   await cp(join(root, "renderer/ZCODE-LICENSE"), join(destination, "ZCODE-LICENSE"));
@@ -173,6 +177,8 @@ export async function verifyCoreApp(appRoot) {
     }
   }
   await visit(join(appRoot, "package.json"));
+  for (const path of fixtureOnlySources)
+    assert.ok(!existsSync(join(appRoot, path)), `Fixture source entered desktop release: ${path}`);
   assert.ok(
     existsSync(join(appRoot, "node_modules/@areal/chatgpt-provider/oauth-worker.js")),
     "Missing OAuth worker",
