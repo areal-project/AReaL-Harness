@@ -43,7 +43,9 @@ export class MobileCommands {
     return this.key(
       command.projectId,
       command.method === "session.create"
-        ? ""
+        ? command.detached
+          ? `create:${command.commandId}`
+          : ""
         : command.params.threadId +
             (command.method === "turn.stop" ? `:stop:${params.expectedTurnId}` : "") +
             (command.method === "interaction.respond"
@@ -94,10 +96,11 @@ export class MobileCommands {
     const snapshot = this.workspace.state.detail?.snapshot;
     return this.unresolved(projectId, threadId).some(
       (command) =>
-        command.method !== "turn.stop" ||
-        !snapshot ||
-        snapshot.threadId !== threadId ||
-        snapshot.activeTurnId === command.params.expectedTurnId,
+        !command.detached &&
+        (command.method !== "turn.stop" ||
+          !snapshot ||
+          snapshot.threadId !== threadId ||
+          snapshot.activeTurnId === command.params.expectedTurnId),
     );
   }
   connectionChanged() {
@@ -238,7 +241,7 @@ export class MobileCommands {
       throw failure("SUBMISSION_UNKNOWN");
     }
     this.commands.receive(key, command, value);
-    if (value.admissionState === "rejected")
+    if (value.admissionState === "rejected" && !command.detached)
       this.publish({ error: String(value.error?.code ?? "COMMAND_REJECTED") });
     this.publish();
     return value;
@@ -518,15 +521,19 @@ export class MobileCommands {
   async query(command) {
     if (
       !command ||
+      command.checkingReceipt ||
+      this.detachingCreation === command ||
       !this.commands.unresolved(command) ||
       this.client.snapshot().kind !== "connected"
     )
       return;
     const token = this.client.identities.current(),
       key = this.commandKey(command);
+    command.checkingReceipt = true;
+    this.publish();
     try {
       const received = await this.readReceipt(command, token);
-      if (received?.admissionState !== "accepted") return;
+      if (received?.admissionState !== "accepted" || command.detached) return;
       this.publish({ error: null });
       if (command.method === "session.create") {
         this.migrateDraft(command.projectId, received.threadId);
@@ -547,7 +554,40 @@ export class MobileCommands {
     } catch {
       this.commands.failed(key, command, failure("SUBMISSION_UNKNOWN"));
     } finally {
+      command.checkingReceipt = false;
       this.publish();
+    }
+  }
+  async startSeparateConversation(command) {
+    const page = this.workspace.state.page;
+    const key = this.commandKey(command);
+    if (
+      this.state.busy ||
+      this.state.recovering ||
+      command.checkingReceipt ||
+      command.detached ||
+      command.method !== "session.create" ||
+      command.admissionState !== "notFound" ||
+      page.kind !== "new" ||
+      page.projectId !== command.projectId ||
+      this.commands.commands.get(key) !== command ||
+      this.client.snapshot().kind !== "connected"
+    )
+      return;
+    const token = this.client.identities.current();
+    this.detachingCreation = command;
+    this.publish({ busy: true, error: null });
+    try {
+      await this.client.identities.detachCreationLocator(token, command);
+      if (this.commands.commands.get(key) !== command) return;
+      command.detached = true;
+      this.commands.commands.delete(key);
+      this.commands.commands.set(this.commandKey(command), command);
+    } catch {
+      this.publish({ error: "START_SEPARATE_FAILED" });
+    } finally {
+      this.detachingCreation = null;
+      this.finish();
     }
   }
   async configureIntent(projectId, threadId, intent) {

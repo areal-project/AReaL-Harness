@@ -411,6 +411,50 @@ test("a missing creation receipt leaves the original command and draft intact", 
   assert.equal(f.commands.draft("project"), "retain me");
 });
 
+test("starting separately keeps the old creation recoverable without blocking a new first send", async () => {
+  const f = await fixture();
+  const request = f.client.request;
+  let oldId;
+  let oldReceipt;
+  f.client.request = async (envelope) => {
+    if (!oldId && envelope.method === "session.create") {
+      oldId = envelope.commandId;
+      f.requests.push(envelope);
+      throw Object.assign(new Error("lost response"), { submissionUnknown: true });
+    }
+    if (envelope.method === "command.read" && envelope.params.commandId === oldId)
+      return { commandId: oldId, admissionState: "notFound", ...oldReceipt };
+    return request(envelope);
+  };
+  f.commands.setDraft("project", "", "retain me");
+  await f.commands.send();
+  const [original] = f.commands.unresolved("project");
+  await f.commands.query(original);
+  await f.commands.startSeparateConversation(original);
+  assert.equal(f.record().locators[0].commandId, oldId);
+  assert.equal(f.record().locators[0].detached, true);
+  assert.equal(f.commands.draft("project"), "retain me");
+
+  const restored = new MobileCommands(f.client, f.workspace);
+  await restored.recover();
+  assert.equal(restored.blocksSend("project"), false);
+  restored.setDraft("project", "", "new attempt");
+  await restored.send();
+  const creates = f.requests.filter((envelope) => envelope.method === "session.create");
+  assert.equal(creates.length, 2);
+  assert.notEqual(creates[1].commandId, oldId);
+  assert.equal(f.requests.filter((envelope) => envelope.method === "session.send").length, 1);
+  assert.equal(f.record().locators[0].commandId, oldId);
+
+  await f.workspace.navigate({ kind: "new", projectId: "project" });
+  restored.setDraft("project", "", "another draft");
+  oldReceipt = { admissionState: "accepted", threadId: "old-thread" };
+  await restored.query(restored.unresolved("project")[0]);
+  assert.equal(f.workspace.state.page.kind, "new");
+  assert.equal(restored.draft("project"), "another draft");
+  assert.equal(f.record().locators.length, 0);
+});
+
 test("lost create is queried, never automatically followed by a send, and preserves draft", async () => {
   const f = await fixture(),
     request = f.client.request;

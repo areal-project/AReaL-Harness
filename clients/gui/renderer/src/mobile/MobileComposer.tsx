@@ -33,6 +33,7 @@ const errors: Record<string, MessageId> = {
   LIMIT_EXCEEDED: "mobile.requestLimited",
   FORBIDDEN: "mobile.submitForbidden",
   REQUEST_TIMEOUT: "mobile.requestTimedOut",
+  START_SEPARATE_FAILED: "mobile.startSeparateFailed",
   UNSUPPORTED_PROFILE: "mobile.unsupportedProfile",
   TASK_CONTROL_REQUIRED: "mobile.taskControlRequired",
   SUBMISSION_UNKNOWN: "mobile.commandUnknown",
@@ -189,7 +190,7 @@ export function MobileComposer({
         data-config-revision={snapshot?.configRevision}
         data-active-turn={snapshot?.activeTurnId ?? ""}
       >
-        {command.error && !pending.length && (
+        {command.error && (!pending.length || command.error === "START_SEPARATE_FAILED") && (
           <p role="alert">
             {command.errorStage && t(`mobile.sendStage.${command.errorStage}`)}{" "}
             {t(errors[command.error] ?? "mobile.commandFailed")}
@@ -208,29 +209,43 @@ export function MobileComposer({
         {!checking &&
           pending.map((value) => (
             <div
-              className="mobile-command-notice flex items-center gap-inline"
+              className="mobile-command-notice flex flex-wrap items-center gap-inline"
               key={value.commandId}
               data-command-state={value.admissionState}
               data-command-id={value.commandId}
             >
               <p role="status">
                 {t(
-                  value.admissionState === "notFound"
-                    ? "mobile.receiptNotFound"
-                    : value.method === "session.create"
-                      ? "mobile.createUnknown"
-                      : "mobile.commandUnknown",
+                  value.detached
+                    ? "mobile.separateConversationReady"
+                    : value.admissionState === "notFound"
+                      ? "mobile.receiptNotFound"
+                      : value.method === "session.create"
+                        ? "mobile.createUnknown"
+                        : "mobile.commandUnknown",
                 )}
               </p>
               <Button
                 className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
                 variant="outline"
                 data-action="query-command"
-                disabled={!connected}
+                disabled={!connected || value.checkingReceipt}
                 onClick={() => void commands.query(value)}
               >
                 {t("mobile.queryCommand")}
               </Button>
+              {value.method === "session.create" &&
+                value.admissionState === "notFound" &&
+                !value.detached && (
+                  <Button
+                    className="mobile-touch min-h-[var(--size-touch-target)]"
+                    variant="ghost"
+                    disabled={!connected || value.checkingReceipt}
+                    onClick={() => void commands.startSeparateConversation(value)}
+                  >
+                    {t("mobile.startSeparateConversation")}
+                  </Button>
+                )}
             </div>
           ))}
         {!isNew && snapshot?.queue && (

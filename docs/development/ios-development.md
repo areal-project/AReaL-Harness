@@ -97,6 +97,8 @@ pnpm --dir clients/gui test:mobile-commands
 
 命令测试覆盖首次发送和回执恢复。连接中断后，客户端使用原命令 ID 查询回执，草稿留在内存中。在手机壳中另行检查键盘、前后台切换与断线重连。
 
+如果新会话的创建回执暂未找到，可选「另开新会话」。原请求仍可核对，现有草稿可发送到另一条会话。原回执晚到时，当前草稿和页面保持原位。
+
 ## 选择后续验证工具
 
 先使用原生 `xcodebuild`、`simctl` 和结构化结果重跑门禁。需要 Agent 统一构建、启动和日志工具时，可评估社区 [MobileBuildMCP](https://github.com/getsentry/MobileBuildMCP)。本工程不依赖它。

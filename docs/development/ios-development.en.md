@@ -97,6 +97,8 @@ pnpm --dir clients/gui test:mobile-commands
 
 The command tests cover first send and receipt recovery. If the connection drops, the client queries the receipt using the original command ID and retains the draft in memory. Check the keyboard, background and foreground transitions, and reconnection in the mobile shell.
 
+If the receipt for a new conversation cannot be found, choose “Start a separate conversation”. The original request remains available for lookup, and you can send the current draft to another conversation. A late receipt leaves the current draft and screen in place.
+
 ## Choose later verification tools
 
 Start with native `xcodebuild`, `simctl`, and structured gate results. Evaluate community [MobileBuildMCP](https://github.com/getsentry/MobileBuildMCP) if agents need a common build, launch, and log interface. This project does not depend on it.
