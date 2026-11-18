@@ -90,21 +90,6 @@ test("saved-key reveal accepts only a bounded provider/revision request and key 
     assert.throws(() => validateCommandResponse("providers", request, bad));
 });
 
-test("remote control cannot reveal local provider credentials", async () => {
-  const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
-  const service = {
-    backend: { command: () => assert.fail("Remote reveal must not reach credentials") },
-  };
-  await assert.rejects(
-    DesktopService.prototype.executeRemote.call(service, "providers", {
-      operation: "revealKey",
-      id: "p",
-      expectedRevision: "r",
-    }),
-    /本机/,
-  );
-});
-
 test("Cloud reconnect is an explicit identity-bound mutation", () => {
   const request = { operation: "reconnect", projectId: "project", threadId: "thread" };
   assert.doesNotThrow(() => validateCommand("cloudSession", request));

@@ -1667,6 +1667,21 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
             // 桌面命令通道只给本机已批准写入的网页；手机和远程即使有 gui-write 也拒绝。
             let desktop = json!({"id":"desktop","method":"desktop.command","params":{"sourceId":"source","command":"media","request":{"operation":"list","projectId":"project","threadId":"thread"}}});
             assert_eq!(session.request(&desktop).await.unwrap_err().to_string(), "FORBIDDEN");
+            let reveal = json!({"operation":"revealKey","id":"fixture","expectedRevision":"revision"});
+            let reveal_method = f.request(
+                "providers.revealKey",
+                json!({"id":"fixture","expectedRevision":"revision"}),
+                None,
+            );
+            assert_eq!(
+                Box::pin(session.request(&reveal_method)).await.unwrap_err().to_string(),
+                "INVALID_PARAMS"
+            );
+            let reveal_command = json!({"id":"reveal","method":"desktop.command","params":{"command":"providers","request":reveal}});
+            assert_eq!(
+                Box::pin(session.request(&reveal_command)).await.unwrap_err().to_string(),
+                "FORBIDDEN"
+            );
             let mut local = f.session("a");
             local.local = true;
             assert_eq!(local.request(&desktop).await.unwrap_err().to_string(), "FORBIDDEN");

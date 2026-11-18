@@ -4,7 +4,6 @@ const { randomBytes, randomUUID, timingSafeEqual } = require("node:crypto");
 const { isDeepStrictEqual } = require("node:util");
 const { appendFileSync } = require("node:fs");
 const { WebSocketServer } = require("ws");
-const { NativeRemote } = require("./native-remote.cjs");
 const { desktopError } = require("@areal/workbench/desktop-contract");
 /** @type {typeof import('@areal/workbench/desktop-contract')} */
 const desktopContract = require("@areal/workbench/desktop-contract");
@@ -120,9 +119,6 @@ class DesktopService {
     this.inflight = 0;
     /** @type {number|null} */ this.idleSince = Date.now();
     this.closed = false;
-    /** @type {InstanceType<typeof NativeRemote>|undefined} */ this.remote = undefined;
-    /** @type {Promise<InstanceType<typeof NativeRemote>>|undefined} */ this.remoteInitialization =
-      undefined;
     /** @type {ServiceSocket|null|undefined} */ this.browserSocket = undefined;
     backend.desktopToolOwner = () =>
       !this.closed && connected(this.browserSocket) ? this.browserSocket : null;
@@ -157,11 +153,6 @@ class DesktopService {
         pid: process.pid,
         ...(this.lifecycle ? { lifecycle: this.lifecycle.snapshot() } : {}),
         targets: this.lifecycle?.targets() ?? [],
-        remote: {
-          enabled:
-            this.remote?.config?.enabled === true || this.remote?.config?.directEnabled === true,
-          connections: this.remote?.channels?.size ?? 0,
-        },
         browserCore: Object.fromEntries(
           [...this.backend.projects].map(([id, project]) => [
             id,
@@ -313,7 +304,6 @@ class DesktopService {
   publish() {
     const state = this.packet();
     for (const socket of this.clients) this.sendPacket(socket, state, { method: "state" });
-    this.remote?.publish();
   }
   /** @param {Fields} notice */
   notify(notice) {
@@ -757,23 +747,6 @@ class DesktopService {
         response = null;
         return response;
       }
-      if (method === "remoteControl") {
-        this.inflight++;
-        try {
-          const result = await this.backend.hostCall("remote.control", {
-            sourceId: this.backend.host.sourceId,
-            request: params,
-          });
-          response =
-            params.operation === "pair" && record(result) && typeof result.payload === "string"
-              ? { ...result, qr: await require("qrcode").toDataURL(result.payload) }
-              : result;
-        } finally {
-          this.inflight--;
-          this.schedule();
-        }
-        return response;
-      }
       if (method === "snapshot") {
         const packet = this.packet();
         response = packet;
@@ -849,25 +822,6 @@ class DesktopService {
     }
     return response;
   }
-  async initRemote() {
-    this.backend.host.client.requireCapability("remoteGatewayV1");
-    await this.remote?.close();
-    if (this.closed || this.exitRequested || this.backend.closing)
-      throw new Error("Desktop is closing");
-    const remote = new NativeRemote(this);
-    this.remote = remote;
-    try {
-      await remote.init();
-    } catch (error) {
-      await remote.close();
-      throw error;
-    }
-    if (this.closed || this.exitRequested || this.backend.closing) {
-      await remote.close();
-      throw new Error("Desktop is closing");
-    }
-    return remote;
-  }
   close() {
     this.closed = true;
     for (const pending of this.encryptionPending?.values() ?? []) {
@@ -887,7 +841,6 @@ class DesktopService {
     this.browserClaims.clear();
     this.browserEntrypoints.clear();
     this.browserDiscoveryPlans.clear();
-    this.remote?.close();
     this.backgroundNotifications?.close();
     this.pendingNotificationTarget = null;
     clearTimeout(this.timer ?? undefined);
@@ -898,20 +851,6 @@ class DesktopService {
       socket.terminate();
     }
     this.server?.close();
-  }
-  /** @param {string} name @param {Fields} request */
-  async executeRemote(name, request) {
-    if (name === "providers" && request?.operation === "revealKey")
-      throw new Error("API Key 仅可在本机模型设置中查看");
-    if (this.closed) throw new Error("后台正在停止，请稍后重试");
-    this.inflight++;
-    this.schedule();
-    try {
-      return await this.backend.command(name, request);
-    } finally {
-      this.inflight--;
-      this.schedule();
-    }
   }
   /** @param {ServiceSocket} socket @param {Fields} request */
   beginBrowserEntrypoint(socket, request) {
