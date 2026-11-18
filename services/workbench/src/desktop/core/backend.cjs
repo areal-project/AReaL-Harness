@@ -725,14 +725,9 @@ class CoreBackend {
     return true;
   }
 
-  /** @param {Project} project @param {{expectedRevision?:string}} [options] */
-  async restartProject(project, { expectedRevision } = {}) {
+  /** @param {Project} project */
+  async restartProject(project) {
     await this.stopProjectForUpdate(project);
-    if (
-      expectedRevision !== undefined &&
-      (await this.providers.config.current()).revision !== expectedRevision
-    )
-      throw new Error("配置已有其它变化，请在后台服务中安全应用当前配置。");
     await this.launch(project);
     await this.connect(project);
     await this.reconcile(project);
