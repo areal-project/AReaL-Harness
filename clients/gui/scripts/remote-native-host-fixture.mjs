@@ -18,7 +18,7 @@ import { join, resolve } from "node:path";
 
 const require = createRequire(new URL("../app/package.json", import.meta.url));
 const { HostClient } = require("@areal/client/node");
-const { GuiHostProjects } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
+const { GuiSourceSession, requestIdFor } = require("@areal/client/gui-source");
 const { HostRemote } = require("@areal/workbench-service/desktop/core/host-remote.cjs");
 const { NativeRemote } = require("@areal/workbench-service/desktop/core/native-remote.cjs");
 const { readHostReceipt, readOfflineHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
@@ -44,7 +44,9 @@ export async function nativeHostFixture(
   } = {},
 ) {
   assert.ok(
-    process.platform !== "darwin" || process.env.AREAL_TEST_HOST_KEYCHAIN === "1",
+    (deferNative && !config) ||
+      process.platform !== "darwin" ||
+      process.env.AREAL_TEST_HOST_KEYCHAIN === "1",
     "Requires isolated synthetic Host vault authorization",
   );
   assert.ok(
@@ -58,7 +60,7 @@ export async function nativeHostFixture(
   const home = join(root, "registry");
   await mkdir(home, { mode: 0o700 });
   const host = new HostClient();
-  const source = new GuiHostProjects({
+  const source = new GuiSourceSession({
     binary,
     home,
     singletonHeld: true,
@@ -74,6 +76,18 @@ export async function nativeHostFixture(
       decryptString: (value) => value.toString("utf8"),
     },
   });
+  const register = async (requestId, project) => {
+    const { projects } = await host.listProjects();
+    return host.registerProject(requestId, {
+      projectId: requestIdFor(`${source.sourceId}:${project.id}`),
+      workspace: project.root,
+      dataDir: join(source.source.coreHome, project.id, "state"),
+      source: { kind: "gui", profile: source.source.profile, legacyProjectId: project.id },
+      defaultBinding: !projects.some(
+        (item) => item.workspace === project.root && item.defaultBinding,
+      ),
+    });
+  };
   const backend = {
     host: source,
     home: source.source.coreHome,
@@ -419,7 +433,6 @@ export async function nativeHostFixture(
     assert.notEqual(identity.pid, previous.pid);
     evidence.host = identity;
     observation.after = identity;
-    await source.reconnect();
     restartReference = null;
     const remote = await make();
     await writeFile(join(root, "evidence.json"), JSON.stringify(evidence, null, 2));
@@ -466,7 +479,6 @@ export async function nativeHostFixture(
     assert.equal(identity.pid, child.pid);
     evidence.host = identity;
     observation.after = identity;
-    await source.reconnect();
     return make();
   };
   const resumeOwnedHost = async (pid) => {
@@ -484,6 +496,7 @@ export async function nativeHostFixture(
     resumeOwnedHost,
     home,
     source,
+    register,
     client: host,
     evidence,
     persisted: async () => (await host.request("remote.read", {})).config,

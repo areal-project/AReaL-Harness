@@ -330,12 +330,6 @@ async function publicBoundary() {
   for (const operation of ["plugins", "pluginMcp"]) await call(operation);
   await call("plugin", { id: pluginId });
 }
-const {
-  builtinSkill,
-  BUILTIN_SKILL_ID,
-} = require("@areal/workbench-service/desktop/core/builtin-skills.cjs");
-// Provision verified product bytes once; this runner tests plugins, not concurrent first-run cache creation.
-await builtinSkill(join(scratch, "core"), BUILTIN_SKILL_ID);
 try {
   app = await electron.launch({
     executablePath: require("electron"),

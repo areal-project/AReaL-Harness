@@ -214,7 +214,7 @@ if (!process.env.RC12_TLS_HOME) {
     assert.equal(subscription.sequence, 0);
     const workspace = join(fixture.evidence.root, "Protocol Project");
     await mkdir(workspace);
-    await fixture.source.register(randomUUID(), {
+    await fixture.register(randomUUID(), {
       id: randomUUID().replaceAll("-", "").slice(0, 24),
       root: workspace,
     });
@@ -259,7 +259,7 @@ if (!process.env.RC12_TLS_HOME) {
     assert.ok(subscribed.snapshot.projects.every((project) => project.summaries.state !== "fresh"));
     const nextWorkspace = join(fixture.evidence.root, "Second Protocol Project");
     await mkdir(nextWorkspace);
-    await fixture.source.register(randomUUID(), {
+    await fixture.register(randomUUID(), {
       id: randomUUID().replaceAll("-", "").slice(0, 24),
       root: nextWorkspace,
     });

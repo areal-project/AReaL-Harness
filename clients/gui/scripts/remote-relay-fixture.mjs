@@ -327,7 +327,7 @@ export async function nativeRelayHostFixture(t, options = {}) {
   const workspace = join(fixture.evidence.root, "Project");
   await mkdir(workspace);
   const projectAlias = randomUUID().replaceAll("-", "").slice(0, 24);
-  await fixture.source.register(randomUUID(), { id: projectAlias, root: workspace });
+  await fixture.register(randomUUID(), { id: projectAlias, root: workspace });
   return { ...fixture, projectAlias };
 }
 
