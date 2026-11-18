@@ -42,7 +42,7 @@ The system handles a visible keyboard first. App Back then cancels the Composer 
 
 ## Reproducible gates
 
-Before the first product gate in a new worktree, run `npm ci --prefix services/remote-relay --ignore-scripts` and `pnpm --dir clients/gui --filter @areal/gen-ui build` to prepare the Relay and desktop fixture dependencies. workspace/commands also require `AREAL_CORE_BIN` and `AREAL_RUNTIME_BIN` from the same complete fixed slot. The macOS test environment must permit Runtime Seatbelt preflight.
+Before the first product gate in a new worktree, run `npm ci --prefix services/remote-relay --ignore-scripts` to prepare the Relay dependencies. workspace/commands also require `AREAL_CORE_BIN` and `AREAL_RUNTIME_BIN` from the same complete fixed slot. The macOS test environment must permit Runtime Seatbelt preflight.
 
 Use only a new isolated emulator for this task and select its serial explicitly. Runners do not select physical devices or modify system CAs. Relay fixtures have their own Node-version requirement; set `AREAL_RELAY_NODE` to a compatible executable when needed.
 
