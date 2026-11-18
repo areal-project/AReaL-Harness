@@ -209,7 +209,6 @@ try {
         return () => {};
       },
       setInterfaceLocale: () => {},
-      onMcpAppEvent: () => () => {},
       onPreviewEvent: () => () => {},
       onUpdate: () => () => {},
       updateState: async () => ({ enabled: false, status: "idle" }),

@@ -157,8 +157,6 @@ try {
       onPreviewEvent: () => () => {},
       onUpdate: () => () => {},
       onNotificationOpen: () => () => {},
-      onMcpAppDeepLink: () => () => {},
-      onMcpAppEvent: () => () => {},
       presentReady: async () => {},
       preview: async () => ({}),
       command: async (name, params) => {

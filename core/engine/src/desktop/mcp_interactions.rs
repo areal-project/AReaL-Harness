@@ -459,7 +459,7 @@ impl Engine {
                 &request_id,
                 method,
                 hash,
-                json!({"turnId":turn.id,"mcpAppInstance":null}),
+                json!({"turnId":turn.id}),
             );
             self.persist(&candidate).await?;
             state.thread = candidate;

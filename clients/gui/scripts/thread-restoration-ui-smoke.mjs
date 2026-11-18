@@ -343,7 +343,6 @@ try {
       setInterfaceLocale: () => {},
       theme: async () => ({ platform: "darwin", dark: false, id: "light" }),
       onTheme: () => () => {},
-      onMcpAppEvent: () => () => {},
       onPreviewEvent: () => () => {},
       onUpdate: () => () => {},
       updateState: async () => ({ enabled: false, status: "idle" }),
