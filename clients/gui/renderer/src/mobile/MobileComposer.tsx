@@ -32,6 +32,8 @@ const errors: Record<string, MessageId> = {
   UNSUPPORTED_PROFILE: "mobile.unsupportedProfile",
   TASK_CONTROL_REQUIRED: "mobile.taskControlRequired",
   SUBMISSION_UNKNOWN: "mobile.commandUnknown",
+  TARGET_CHANGED: "mobile.decisionChanged",
+  REVIEW_INCOMPLETE: "mobile.decisionReadFailed",
   RECOVERY_FAILED: "mobile.commandRecoveryFailed",
 };
 const effortLabels: Record<string, MessageId> = {

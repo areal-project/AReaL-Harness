@@ -2,6 +2,57 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { MobileWorkspace } from "../renderer/src/mobile/mobile-workspace.mjs";
 
+test("home lists pending decision conversations once and skips offline projects", async (t) => {
+  const ready = { methods: ["attention.list"], capabilities: ["observe", "answer"] };
+  const requests = [];
+  const client = {
+    connection: { ready },
+    snapshot: () => ({ kind: "connected", ready }),
+    subscribe: () => () => {},
+    async request(envelope) {
+      requests.push(envelope);
+      if (envelope.method === "project.list") {
+        return {
+          projects: [
+            { projectId: "p", name: "Available", connectionState: "online" },
+            { projectId: "q", name: "Stopped", connectionState: "offline" },
+          ],
+        };
+      }
+      assert.deepEqual(envelope, {
+        method: "attention.list",
+        params: { limit: 5 },
+        context: { projectId: "p" },
+      });
+      return {
+        projectId: "p",
+        data: [
+          { kind: "approval", threadId: "thread", status: "pending" },
+          { kind: "syncQuestion", threadId: "thread", status: "pending" },
+          { kind: "approval", threadId: "finished", status: "answered" },
+        ],
+      };
+    },
+  };
+  const workspace = new MobileWorkspace(client);
+  t.after(() => workspace.dispose());
+  await workspace.refresh();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(
+    requests.map((request) => request.method),
+    ["project.list", "attention.list"],
+  );
+  assert.deepEqual(
+    workspace.snapshot().inbox.map(({ threadId, projectId }) => [projectId, threadId]),
+    [["p", "thread"]],
+  );
+  workspace.publish({
+    page: { kind: "session", projectId: "p", threadId: "thread", fromInbox: true },
+  });
+  workspace.back();
+  assert.equal(workspace.snapshot().page.kind, "projects");
+});
+
 test("lists only Host-authorized projects and appends the requested session page", async (t) => {
   const requests = [];
   const ready = {

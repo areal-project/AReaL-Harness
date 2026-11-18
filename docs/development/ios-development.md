@@ -88,6 +88,8 @@ node --test clients/gui/scripts/mobile-device-store.test.mjs
 
 配对后，独立的移动工作区经 Host 读取授权项目，按每页 5 条加载历史会话。会话页复用 Messages 和 Composer，模型与权限通过手机底部面板选择。验证时使用有多页会话的授权项目，打开历史，再新建会话、选择模型和权限并发送，确认消息和模型回复同步到会话。
 
+用有回答权限的设备，从首页「待我处理」打开一个会话内的审批或同步提问。查看完整详情后提交决定，确认原 Core 轮次继续运行。模拟提交回执丢失时，重连应查询同一个命令 ID。只读设备可以查看会话，审批与回答入口需要 Host 的回答权限。
+
 ```sh
 pnpm --dir clients/gui test:mobile-workspace-state
 pnpm --dir clients/gui test:mobile-commands

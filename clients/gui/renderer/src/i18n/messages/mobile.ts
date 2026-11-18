@@ -1,4 +1,21 @@
 export const mobileMessages = {
+  "mobile.inbox": { "zh-CN": "待我处理", en: "Needs your attention" },
+  "mobile.decisionApproval": { "zh-CN": "请求审批", en: "Approval requested" },
+  "mobile.decisionQuestion": { "zh-CN": "等待回答", en: "Question pending" },
+  "mobile.decisionDetails": { "zh-CN": "查看详情", en: "View details" },
+  "mobile.decisionReadFailed": {
+    "zh-CN": "无法读取完整详情，请再试一次。",
+    en: "Could not load the complete details. Try again.",
+  },
+  "mobile.decisionSubmitted": { "zh-CN": "已提交", en: "Submitted" },
+  "mobile.decisionDeny": { "zh-CN": "拒绝", en: "Deny" },
+  "mobile.decisionAllow": { "zh-CN": "允许一次", en: "Allow once" },
+  "mobile.decisionReply": { "zh-CN": "提交回答", en: "Submit answers" },
+  "mobile.decisionCustomAnswer": { "zh-CN": "输入其他回答", en: "Enter another answer" },
+  "mobile.decisionChanged": {
+    "zh-CN": "请求已变化，请重新打开详情。",
+    en: "This request changed. Open its details again.",
+  },
   "mobile.unsupportedWebView": {
     "zh-CN": "请更新 Android System WebView 或操作系统后重试。当前网页环境缺少安全连接所需的能力。",
     en: "Update Android System WebView or your operating system and try again. This web environment lacks capabilities required for a secure connection.",

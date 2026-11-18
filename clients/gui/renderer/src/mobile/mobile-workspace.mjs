@@ -3,8 +3,8 @@ import { acceptSessionMessage, SessionBodyReader } from "@areal/remote-client";
 export const SESSION_PAGE_SIZE = 5;
 
 /** @typedef {import('../services.js').Data} Data */
-/** @typedef {{kind:'projects'}|{kind:'new',projectId:string}|{kind:'work',projectId:string}|{kind:'session',projectId:string,threadId:string}|{kind:'task',projectId:string,taskId:string,runId:string}} MobilePage */
-/** @typedef {{page:MobilePage, projects:Data[], groups:Record<string,Data>, detail:Data|null, turns:Data[], task:Data|null, catalog:Data|null, loading:boolean, error:boolean, loadingOlder:boolean, bodyError:boolean, stale:boolean, accessChanged:boolean}} WorkspaceView */
+/** @typedef {{kind:'projects'}|{kind:'new',projectId:string}|{kind:'work',projectId:string}|{kind:'session',projectId:string,threadId:string,fromInbox?:boolean}|{kind:'task',projectId:string,taskId:string,runId:string}} MobilePage */
+/** @typedef {{page:MobilePage, projects:Data[], inbox:Data[], groups:Record<string,Data>, detail:Data|null, turns:Data[], task:Data|null, catalog:Data|null, loading:boolean, error:boolean, loadingOlder:boolean, bodyError:boolean, stale:boolean, accessChanged:boolean}} WorkspaceView */
 export class MobileWorkspace {
   constructor(client, cache = {}) {
     this.client = client;
@@ -18,6 +18,7 @@ export class MobileWorkspace {
     this.state = {
       page: { kind: "projects" },
       projects: [],
+      inbox: [],
       groups: {},
       detail: null,
       turns: [],
@@ -68,6 +69,7 @@ export class MobileWorkspace {
       this.publish({
         page: { kind: "projects" },
         projects: [],
+        inbox: [],
         groups: {},
         detail: null,
         turns: [],
@@ -93,6 +95,7 @@ export class MobileWorkspace {
       this.publish({
         page: { kind: "projects" },
         projects: [],
+        inbox: [],
         groups: {},
         detail: null,
         turns: [],
@@ -131,7 +134,9 @@ export class MobileWorkspace {
     const page = this.state.page;
     if (page.kind === "projects") return;
     this.navigate(
-      page.kind === "work" ? { kind: "projects" } : { kind: "work", projectId: page.projectId },
+      page.kind === "work" || (page.kind === "session" && page.fromInbox)
+        ? { kind: "projects" }
+        : { kind: "work", projectId: page.projectId },
     );
   }
   navigate(page) {
@@ -171,6 +176,7 @@ export class MobileWorkspace {
           cursor = result.nextCursor;
         } while (cursor);
         this.publish({ projects });
+        void this.readInbox(projects, epoch);
       } else if (page.kind === "work")
         await this.work(
           page.projectId,
@@ -221,6 +227,59 @@ export class MobileWorkspace {
     } finally {
       if (epoch === this.epoch)
         this.publish({ loading: false, ...(page.kind !== "session" ? { stale: false } : {}) });
+    }
+  }
+  async readInbox(projects, epoch) {
+    if (
+      !this.client.snapshot().ready?.methods?.includes("attention.list") ||
+      this.inboxReading === epoch
+    )
+      return;
+    this.inboxReading = epoch;
+    try {
+      const items = new Map();
+      for (const project of projects) {
+        if (epoch !== this.epoch) return;
+        const attention = this.cachedProject(project.projectId)?.attention;
+        if (
+          project.connectionState !== "online" ||
+          (attention?.state === "fresh" && attention.count === 0)
+        )
+          continue;
+        try {
+          const result = await this.client.request({
+            method: "attention.list",
+            context: { projectId: project.projectId },
+            params: { limit: SESSION_PAGE_SIZE },
+          });
+          if (epoch !== this.epoch) return;
+          if (result.projectId !== project.projectId) continue;
+          for (const ref of result.data) {
+            if (
+              ref.status !== "pending" ||
+              !["approval", "syncQuestion"].includes(ref.kind) ||
+              !ref.threadId
+            )
+              continue;
+            const key = JSON.stringify([project.projectId, ref.threadId]);
+            const title = this.cachedProject(project.projectId)?.summaries.items.find(
+              (item) => item.id === ref.threadId,
+            )?.name;
+            if (!items.has(key))
+              items.set(key, {
+                ...ref,
+                projectId: project.projectId,
+                projectName: project.name,
+                title,
+              });
+          }
+        } catch {
+          // 单个 Core 不可用时仍显示其他项目和可用入口。
+        }
+      }
+      if (epoch === this.epoch) this.publish({ inbox: [...items.values()] });
+    } finally {
+      if (this.inboxReading === epoch) this.inboxReading = undefined;
     }
   }
   async readDirectory() {

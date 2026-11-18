@@ -18,6 +18,7 @@ import { ProjectFolderIcon } from "../homeChromeIcons.js";
 import { useI18n, type MessageId } from "../i18n/IntlProvider.js";
 import type { Action, CommandName, Data } from "../services.js";
 import { MobileComposer } from "./MobileComposer.js";
+import { MobileDecision } from "./MobileDecision.js";
 import type { MobileClient } from "./mobile-client.mjs";
 import type { MobileCommands } from "./mobile-commands.mjs";
 import type { MobileWorkspace } from "./mobile-workspace.mjs";
@@ -100,7 +101,7 @@ export function MobileWorkspaceView({
 }) {
   const { t } = useI18n();
   const view = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
-  useSyncExternalStore(commands.subscribe, commands.snapshot);
+  const command = useSyncExternalStore(commands.subscribe, commands.snapshot);
   const connection = useSyncExternalStore(client.subscribe, client.snapshot);
   const pull = useRef<number | null>(null);
   const scroller = useRef<HTMLElement>(null);
@@ -231,7 +232,11 @@ export function MobileWorkspaceView({
             >
               <ChevronLeft aria-hidden="true" />
               <span className="truncate">
-                {t(page.kind === "work" ? "mobile.projects" : "mobile.sessions")}
+                {t(
+                  page.kind === "work" || (page.kind === "session" && page.fromInbox)
+                    ? "mobile.projects"
+                    : "mobile.sessions",
+                )}
               </span>
             </Button>
             <div className="min-w-0 text-center">
@@ -276,6 +281,38 @@ export function MobileWorkspaceView({
         </DelayedVisible>
         {page.kind === "projects" && (
           <div className="mobile-stack flex flex-col gap-field">
+            {view.inbox.length > 0 && (
+              <section className="flex flex-col gap-inline">
+                <h3 className="text-fixed-label font-medium">{t("mobile.inbox")}</h3>
+                {view.inbox.map((item) => (
+                  <Button
+                    key={JSON.stringify([item.projectId, item.threadId])}
+                    variant="outline"
+                    disabled={connection.kind !== "connected"}
+                    className="min-h-[var(--size-touch-target)] justify-between gap-inline"
+                    onClick={() =>
+                      void workspace.navigate({
+                        kind: "session",
+                        projectId: item.projectId,
+                        threadId: item.threadId,
+                        fromInbox: true,
+                      })
+                    }
+                  >
+                    <span className="min-w-0 truncate">
+                      {item.title ? `${item.projectName} · ${item.title}` : item.projectName}
+                    </span>
+                    <span>
+                      {t(
+                        item.kind === "approval"
+                          ? "mobile.decisionApproval"
+                          : "mobile.decisionQuestion",
+                      )}
+                    </span>
+                  </Button>
+                ))}
+              </section>
+            )}
             {!view.projects.length && !view.loading && !view.error && (
               <p>{t("mobile.noProjects")}</p>
             )}
@@ -429,6 +466,41 @@ export function MobileWorkspaceView({
             <h2 className="text-fixed-section-title">{t("mobile.newPromptSimple")}</h2>
           </div>
         )}
+        {page.kind === "session" &&
+          !view.stale &&
+          connection.kind === "connected" &&
+          connection.ready.capabilities.includes("answer") &&
+          snapshot?.attentionRefs
+            ?.filter(
+              (item: Data) =>
+                item.status === "pending" && ["approval", "syncQuestion"].includes(item.kind),
+            )
+            .slice(0, 1)
+            .map((item: Data) => (
+              <MobileDecision
+                key={JSON.stringify([
+                  view.detail?.connectionId,
+                  page.projectId,
+                  page.threadId,
+                  item.turnId,
+                  item.interactionId,
+                ])}
+                item={item}
+                commands={commands}
+                busy={
+                  command.busy ||
+                  command.recovering ||
+                  commands
+                    .unresolved(page.projectId, page.threadId)
+                    .some(
+                      (pending) =>
+                        pending.method === "interaction.respond" &&
+                        pending.params.turnId === item.turnId &&
+                        pending.params.interactionId === item.interactionId,
+                    )
+                }
+              />
+            ))}
         {["new", "session"].includes(page.kind) && (
           <MobileComposer
             client={client}

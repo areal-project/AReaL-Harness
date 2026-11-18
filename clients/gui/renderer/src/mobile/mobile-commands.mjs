@@ -33,12 +33,16 @@ export class MobileCommands {
     );
   }
   commandKey(command) {
+    const params = command.params;
     return this.key(
       command.projectId,
       command.method === "session.create"
         ? ""
         : command.params.threadId +
-            (command.method === "turn.stop" ? `:stop:${command.params.expectedTurnId}` : ""),
+            (command.method === "turn.stop" ? `:stop:${params.expectedTurnId}` : "") +
+            (command.method === "interaction.respond"
+              ? `:decision:${JSON.stringify([params.turnId, params.interactionId])}`
+              : ""),
     );
   }
   draft(projectId, threadId = "") {
@@ -285,7 +289,7 @@ export class MobileCommands {
         this.client.connection !== connection ||
         this.workspace.state.page !== page ||
         this.workspace.state.stale ||
-        (method === "session.send" &&
+        (["session.send", "interaction.respond"].includes(method) &&
           this.workspace.state.detail?.serviceGeneration !== serviceGeneration)
       )
         throw failure("LOCAL_NOT_SENT");
@@ -332,11 +336,165 @@ export class MobileCommands {
       }
       this.commands.failed(key, command, rejected);
       this.publish();
-      if (command.dispatched && method === "session.send" && this.commands.unresolved(command)) {
+      if (
+        command.dispatched &&
+        ["session.send", "interaction.respond"].includes(method) &&
+        this.commands.unresolved(command)
+      ) {
         const receipt = await this.confirmReceipt(command, connection, token);
         if (receipt) return receipt;
       }
       throw rejected;
+    }
+  }
+  decisionTarget(ref) {
+    const { page, detail, stale } = this.workspace.state;
+    const state = this.client.snapshot();
+    if (
+      page.kind !== "session" ||
+      stale ||
+      !detail ||
+      state.kind !== "connected" ||
+      !state.ready.capabilities.includes("answer") ||
+      detail.projectId !== page.projectId ||
+      detail.snapshot.threadId !== page.threadId ||
+      ref.threadId !== page.threadId ||
+      !detail.snapshot.attentionRefs?.some(
+        (item) =>
+          item.status === "pending" &&
+          item.kind === ref.kind &&
+          item.threadId === page.threadId &&
+          item.turnId === ref.turnId &&
+          item.interactionId === ref.interactionId,
+      )
+    )
+      throw failure("TARGET_CHANGED");
+    return {
+      page,
+      connection: this.client.connection,
+      serviceGeneration: detail.serviceGeneration,
+    };
+  }
+  async readDecision(ref) {
+    const target = this.decisionTarget(ref);
+    const { threadId, turnId, interactionId } = ref;
+    let cursor,
+      offset = 0,
+      body = "",
+      digest,
+      total;
+    const encoder = new TextEncoder();
+    do {
+      const value = await this.client.request({
+        method: "attention.read",
+        context: { projectId: target.page.projectId },
+        params: { threadId, turnId, interactionId, ...(cursor ? { cursor } : {}) },
+      });
+      const current = this.decisionTarget(ref);
+      if (
+        current.page !== target.page ||
+        current.connection !== target.connection ||
+        current.serviceGeneration !== target.serviceGeneration ||
+        value.projectId !== target.page.projectId ||
+        value.serviceGeneration !== target.serviceGeneration ||
+        value.threadId !== threadId ||
+        value.turnId !== turnId ||
+        value.interactionId !== interactionId ||
+        value.kind !== ref.kind ||
+        value.status !== "pending"
+      )
+        throw failure("TARGET_CHANGED");
+      digest ??= value.argumentsDigest;
+      total ??= value.review?.totalBytes;
+      const chunk = value.review?.chunk;
+      if (
+        typeof chunk !== "string" ||
+        !chunk ||
+        !Number.isSafeInteger(total) ||
+        total > 256 * 1024 ||
+        value.review.encoding !== "json-utf8" ||
+        value.review.offset !== offset ||
+        value.review.totalBytes !== total ||
+        value.argumentsDigest !== digest
+      )
+        throw failure("REVIEW_INCOMPLETE");
+      offset += encoder.encode(chunk).length;
+      body += chunk;
+      if (
+        value.complete &&
+        offset === total &&
+        typeof value.reviewToken === "string" &&
+        value.reviewToken
+      ) {
+        const contents = JSON.parse(body);
+        if (
+          !contents ||
+          (ref.kind === "approval" && typeof contents.tool !== "string") ||
+          (ref.kind === "syncQuestion" &&
+            (!Array.isArray(contents.questions) || !contents.questions.length))
+        )
+          throw failure("REVIEW_INCOMPLETE");
+        return {
+          ...target,
+          ref,
+          body: contents,
+          argumentsDigest: digest,
+          reviewToken: value.reviewToken,
+        };
+      }
+      if (
+        value.complete ||
+        offset >= total ||
+        typeof value.nextCursor !== "string" ||
+        !value.nextCursor ||
+        cursor === value.nextCursor
+      )
+        throw failure("REVIEW_INCOMPLETE");
+      cursor = value.nextCursor;
+    } while (cursor);
+    throw failure("REVIEW_INCOMPLETE");
+  }
+  async respond(review, response) {
+    if (this.state.busy || this.state.recovering) return false;
+    this.publish({ busy: true, error: null });
+    try {
+      const current = this.decisionTarget(review.ref);
+      if (
+        current.page !== review.page ||
+        current.connection !== review.connection ||
+        current.serviceGeneration !== review.serviceGeneration
+      )
+        throw failure("TARGET_CHANGED");
+      const { threadId, turnId, interactionId, kind } = review.ref;
+      const params = {
+        threadId,
+        turnId,
+        interactionId,
+        reviewToken: review.reviewToken,
+        ...(kind === "approval"
+          ? { decision: response, argumentsDigest: review.argumentsDigest }
+          : { answers: response }),
+      };
+      const key = this.commandKey({
+        method: "interaction.respond",
+        projectId: current.page.projectId,
+        params,
+      });
+      const previous = this.commands.commands.get(key);
+      if (previous?.admissionState === "accepted") return true;
+      if (this.commands.unresolved(previous)) return false;
+      const receipt = await this.issue(
+        "interaction.respond",
+        current.page.projectId,
+        params,
+        current.serviceGeneration,
+      );
+      return receipt?.admissionState === "accepted";
+    } catch (error) {
+      this.publish({ error: error.code ?? "COMMAND_FAILED" });
+      return false;
+    } finally {
+      this.finish();
     }
   }
   migrateDraft(projectId, threadId) {

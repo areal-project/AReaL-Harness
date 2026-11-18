@@ -95,6 +95,89 @@ async function fixture() {
 }
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
+async function pendingDecision(kind) {
+  const f = await fixture();
+  f.ready.capabilities.push("answer");
+  await f.workspace.navigate({ kind: "session", projectId: "project", threadId: "thread" });
+  const ref = {
+    threadId: "thread",
+    turnId: "turn",
+    interactionId: "decision",
+    kind,
+    status: "pending",
+  };
+  f.snapshot.attentionRefs = [ref];
+  const request = f.client.request;
+  const digest = "f".repeat(64);
+  const body =
+    kind === "approval"
+      ? { tool: "fs_create", effectiveArguments: { path: "测试.txt" } }
+      : { questions: [{ id: "q", title: "继续吗？", options: ["是", "否"] }] };
+  const encoded = JSON.stringify(body);
+  const split = encoded.indexOf(kind === "approval" ? "试" : "续");
+  const chunks = [encoded.slice(0, split), encoded.slice(split)];
+  f.client.request = async (envelope) => {
+    if (envelope.method !== "attention.read") return request(envelope);
+    f.requests.push(envelope);
+    const complete = envelope.params.cursor === "cursor";
+    return {
+      ...ref,
+      projectId: "project",
+      serviceGeneration: "service",
+      argumentsDigest: digest,
+      complete,
+      ...(complete ? { reviewToken: "complete-review" } : { nextCursor: "cursor" }),
+      review: {
+        encoding: "json-utf8",
+        totalBytes: Buffer.byteLength(encoded),
+        offset: complete ? Buffer.byteLength(chunks[0]) : 0,
+        chunk: chunks[Number(complete)],
+      },
+    };
+  };
+  return { ...f, ref, body, digest };
+}
+
+test("approves only after loading all review bytes and binds the write to the original target", async () => {
+  const f = await pendingDecision("approval");
+  const review = await f.commands.readDecision(f.ref);
+  assert.deepEqual(review.body, f.body);
+  assert.equal(await f.commands.respond(review, "allowOnce"), true);
+  const [, first, second, write] = f.requests;
+  assert.equal(first.params.cursor, undefined);
+  assert.equal(second.params.cursor, "cursor");
+  assert.equal(write.method, "interaction.respond");
+  assert.deepEqual(write.params, {
+    threadId: "thread",
+    turnId: "turn",
+    interactionId: "decision",
+    argumentsDigest: f.digest,
+    reviewToken: "complete-review",
+    decision: "allowOnce",
+  });
+  assert.equal(write.context.serviceGeneration, "service");
+  assert.equal(await f.commands.respond(review, "allowOnce"), true);
+  assert.equal(f.requests.filter((event) => event.method === "interaction.respond").length, 1);
+});
+
+test("sends an explicit question answer but never writes with a review from a replaced connection", async () => {
+  const f = await pendingDecision("syncQuestion");
+  const oldReview = await f.commands.readDecision(f.ref);
+  f.client.connection = {};
+  assert.equal(await f.commands.respond(oldReview, { q: "是" }), false);
+  assert.equal(f.commands.snapshot().error, "TARGET_CHANGED");
+  assert.equal(f.requests.filter((event) => event.method === "interaction.respond").length, 0);
+  const review = await f.commands.readDecision(f.ref);
+  assert.equal(await f.commands.respond(review, { q: "是" }), true);
+  assert.deepEqual(f.requests.at(-1).params, {
+    threadId: "thread",
+    turnId: "turn",
+    interactionId: "decision",
+    reviewToken: "complete-review",
+    answers: { q: "是" },
+  });
+});
+
 for (const resume of ["same conversation", "another grant", "another conversation"]) {
   test(`connection changes before dispatch: ${resume}`, async () => {
     const f = await fixture();

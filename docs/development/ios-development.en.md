@@ -88,6 +88,8 @@ These gates are development checks. Physical QR scanning, iOS 17.4, real desktop
 
 After pairing, the mobile workspace reads authorized projects and five-row conversation pages through the Host. The conversation view shares Messages and Composer, with mobile bottom sheets for model and permission selection. Verify with an authorized project that has multiple pages of conversations. Open an existing conversation, then create one, select a model and permission, and send a message. Check that both the message and the reply appear in the conversation.
 
+On a device with answer access, open a conversation approval or synchronous question from “Needs your attention”. Review the complete details, submit a decision, and confirm the original Core turn resumes. Simulate losing the submission receipt and check that reconnect queries the same command ID. Read-only devices can view conversations. Decision controls require the Host's answer grant.
+
 ```sh
 pnpm --dir clients/gui test:mobile-workspace-state
 pnpm --dir clients/gui test:mobile-commands
