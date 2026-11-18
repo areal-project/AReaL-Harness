@@ -5,7 +5,7 @@ use areal_local_service::{
 };
 use base64::Engine;
 use fs2::FileExt;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeSet,
@@ -28,6 +28,7 @@ use tokio::{
 pub(crate) struct LocalRelay {
     inner: Mutex<Inner>,
     view: std::cell::RefCell<Value>,
+    tls: std::cell::RefCell<Option<ReadyTls>>,
     stopping: std::cell::Cell<bool>,
 }
 #[derive(Default)]
@@ -45,6 +46,37 @@ struct Inner {
 struct Running {
     child: TrustedChild,
     _lease: File,
+    tls: Option<ReadyTls>,
+}
+#[derive(Clone)]
+struct ReadyTls {
+    fingerprint: String,
+    loopback_port: u16,
+}
+#[derive(Deserialize, Serialize)]
+struct TlsMaterial {
+    certificate: String,
+    private_key: String,
+}
+
+fn tls_material(directory: &Path) -> Result<TlsMaterial> {
+    let path = directory.join("tls-identity.json");
+    match storage::read(&path) {
+        Ok(material) => return Ok(material),
+        Err(error)
+            if error
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound) => {}
+        Err(error) => return Err(error),
+    }
+    let issued = rcgen::generate_simple_self_signed(vec!["areal-local-relay".into()])?;
+    let base64 = base64::engine::general_purpose::STANDARD;
+    let material = TlsMaterial {
+        certificate: base64.encode(issued.cert.der()),
+        private_key: base64.encode(issued.key_pair.serialize_der()),
+    };
+    storage::write(&path, &material)?;
+    Ok(material)
 }
 #[derive(Clone)]
 pub(crate) struct Bundle {
@@ -259,7 +291,7 @@ pub(crate) fn local_origin(config: &Value) -> Result<url::Url> {
         .trim_matches(['[', ']'])
         .parse()?;
     ensure!(
-        origin.scheme() == "http"
+        matches!(origin.scheme(), "http" | "https")
             && local_candidate(address)
             && origin.port().map(u64::from) == config["relayLocal"]["port"].as_u64()
             && origin.username().is_empty()
@@ -397,6 +429,7 @@ fn configure_at(config: &mut Value, address: IpAddr) -> Result<()> {
     let port = config["relayLocal"]["port"].as_u64().unwrap_or(47820);
     ensure!((1024..=65535).contains(&port), "invalid local Relay port");
     let origin = match address {
+        IpAddr::V4(ip) if !ip.is_private() => format!("https://{address}:{port}"),
         IpAddr::V4(_) => format!("http://{address}:{port}"),
         IpAddr::V6(_) => format!("http://[{address}]:{port}"),
     };
@@ -461,7 +494,28 @@ impl LocalRelay {
         }
         view.clone()
     }
+    pub(crate) fn fingerprint(&self) -> Option<String> {
+        self.tls
+            .borrow()
+            .as_ref()
+            .map(|tls| tls.fingerprint.clone())
+    }
+    pub(crate) fn routing_state(&self) -> Value {
+        let mut state = self.state();
+        if let Some(tls) = self.tls.borrow().as_ref() {
+            state["loopbackPort"] = json!(tls.loopback_port);
+        }
+        state
+    }
     fn publish(&self, inner: &Inner) {
+        *self.tls.borrow_mut() = if inner.phase == "running" {
+            inner
+                .running
+                .as_ref()
+                .and_then(|running| running.tls.clone())
+        } else {
+            None
+        };
         *self.view.borrow_mut() = json!({"phase":if inner.phase.is_empty(){"stopped"}else{&inner.phase},"address":inner.address,"version":inner.version,"error":inner.diagnostic});
     }
     pub(crate) async fn start(
@@ -649,7 +703,12 @@ async fn start_runners(
         .stdout(Stdio::from(OwnedFd::from(writer)))
         .stderr(Stdio::inherit())
         .kill_on_drop(true);
-    let listen = if origin.host_str().unwrap().contains(':') {
+    let tls = (origin.scheme() == "https")
+        .then(|| tls_material(&directory))
+        .transpose()?;
+    let listen = if tls.is_some() {
+        origin.host_str().unwrap()
+    } else if origin.host_str().unwrap().contains(':') {
         "[::]"
     } else {
         "0.0.0.0"
@@ -668,10 +727,14 @@ async fn start_runners(
     if let Some(assets) = &bundle.assets {
         runner_config["assetsDir"] = json!(assets);
     }
-    let frame = json!({"version":1,"config":runner_config,"room":room});
+    let mut frame = json!({"version":1,"config":runner_config,"room":room});
+    if let Some(material) = &tls {
+        frame["tls"] = json!(material);
+    }
     inner.running = Some(Running {
         child: command.spawn().await?,
         _lease: lease,
+        tls: None,
     });
     let running = inner.running.as_mut().unwrap();
     let ready = async {
@@ -687,10 +750,29 @@ async fn start_runners(
             .take(1024)
             .read_line(&mut line)
             .await?;
-        ensure!(
-            serde_json::from_str::<Value>(&line)? == json!({"version":1,"event":"ready"}),
-            "invalid local Relay readiness"
-        );
+        let response = serde_json::from_str::<Value>(&line)?;
+        if let Some(material) = &tls {
+            let port = response["loopbackPort"]
+                .as_u64()
+                .and_then(|port| u16::try_from(port).ok())
+                .filter(|port| *port >= 1024)
+                .context("invalid local Relay loopback port")?;
+            ensure!(
+                response == json!({"version":1,"event":"ready","loopbackPort":port}),
+                "invalid local Relay readiness"
+            );
+            let certificate =
+                base64::engine::general_purpose::STANDARD.decode(&material.certificate)?;
+            running.tls = Some(ReadyTls {
+                loopback_port: port,
+                fingerprint: storage::digest(&certificate),
+            });
+        } else {
+            ensure!(
+                response == json!({"version":1,"event":"ready"}),
+                "invalid local Relay readiness"
+            );
+        }
         ensure!(
             running.child.try_wait()?.is_none(),
             "local Relay exited before readiness"
@@ -792,7 +874,6 @@ mod tests {
         for origin in [
             "http://127.0.0.1:47820",
             "http://224.0.0.1:47820",
-            "https://192.168.1.2:47820",
             "http://name.local:47820",
             "http://192.168.1.2:47820/path",
             "http://user@192.168.1.2:47820",
@@ -862,6 +943,7 @@ mod tests {
         relay.inner.lock().await.running = Some(Running {
             child,
             _lease: lease,
+            tls: None,
         });
         (relay, directory)
     }

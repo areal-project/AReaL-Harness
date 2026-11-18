@@ -55,8 +55,12 @@ export function RelayEnrollForm({ state, busy, run }: { state: Data; busy: boole
   const [relayConfirmed, setRelayConfirmed] = useState(false);
   const [enrolling, setEnrolling] = useState(false);
   useEffect(() => {
-    setRelayOrigin(state.relay?.startsWith("https://") ? state.relay : "");
-  }, [state.relay]);
+    setRelayOrigin(
+      state.relay?.startsWith("https://") && state.relayService?.local?.address !== state.relay
+        ? state.relay
+        : "",
+    );
+  }, [state.relay, state.relayService?.local?.address]);
   const enable = async () => {
     setEnrolling(true);
     const result = await run({

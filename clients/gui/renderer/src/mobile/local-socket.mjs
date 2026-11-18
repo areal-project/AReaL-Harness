@@ -24,13 +24,29 @@ export function isLocalRelayOrigin(value) {
   }
 }
 
-function localSocketURL(value) {
+export function isPinnedRelayOrigin(value, fingerprint) {
+  try {
+    const url = new URL(value);
+    return (
+      /^[a-f0-9]{64}$/.test(fingerprint) &&
+      url.protocol === "https:" &&
+      url.origin === value &&
+      isLocalAddressCandidate(url.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function localSocketURL(value, fingerprint) {
   const url = new URL(value);
-  const authority = /^ws:\/\/([^/]+)/.exec(value)?.[1];
+  const pinned = fingerprint !== undefined;
+  const authority = /^wss?:\/\/([^/]+)/.exec(value)?.[1];
   if (
-    url.protocol !== "ws:" ||
+    url.protocol !== (pinned ? "wss:" : "ws:") ||
+    (pinned && !isPinnedRelayOrigin(url.origin.replace(/^wss:/, "https:"), fingerprint)) ||
     url.href !== `${url.origin}/remote/socket` ||
-    (authority !== url.host && authority !== `${url.hostname}:80`) ||
+    (authority !== url.host && authority !== `${url.hostname}:${pinned ? 443 : 80}`) ||
     !isLocalAddressCandidate(url.hostname) ||
     url.username ||
     url.password ||
@@ -42,16 +58,17 @@ function localSocketURL(value) {
   return url.href;
 }
 
-export function createMobileSocket(url) {
-  if (url.startsWith("wss:")) return new WebSocket(url);
+export function createMobileSocket(url, fingerprint) {
+  if (url.startsWith("wss:") && fingerprint === undefined) return new WebSocket(url);
   if (!Capacitor.isNativePlatform()) throw new Error("LOCAL_RELAY_REQUIRES_NATIVE_APP");
-  return new LocalRelaySocket(url, nativeSocket);
+  return new LocalRelaySocket(url, nativeSocket, fingerprint);
 }
 
 export class LocalRelaySocket extends EventTarget {
-  constructor(url, plugin) {
+  constructor(url, plugin, fingerprint) {
     super();
-    this.url = localSocketURL(url);
+    this.url = localSocketURL(url, fingerprint);
+    this.fingerprint = fingerprint;
     this.plugin = plugin;
     this.id = crypto.randomUUID();
     this.readyState = 0;
@@ -98,7 +115,11 @@ export class LocalRelaySocket extends EventTarget {
         await this.listener.remove();
         return;
       }
-      await this.plugin.connect({ id: this.id, url: this.url });
+      await this.plugin.connect({
+        id: this.id,
+        url: this.url,
+        ...(this.fingerprint ? { fingerprint: this.fingerprint } : {}),
+      });
       if (this.readyState >= 2) await this.plugin.close({ id: this.id });
     } catch {
       this.fail();

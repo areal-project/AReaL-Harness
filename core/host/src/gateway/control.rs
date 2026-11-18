@@ -42,6 +42,7 @@ fn pair_link_parts(
     invite_secret: &str,
     transport: &str,
     direct_origin: Option<&str>,
+    fingerprint: Option<&str>,
 ) -> Result<(String, String)> {
     let mut fragment = url::form_urlencoded::Serializer::new(String::new());
     fragment
@@ -56,17 +57,29 @@ fn pair_link_parts(
             .as_str()
             .context("Relay origin is missing")?
             .to_owned();
-        if origin.starts_with("http://")
-            && config["relayLocal"]["enabled"] == true
-            && config["relayLocal"]["origin"] == origin
-        {
-            fragment.append_pair("local", "1");
-        }
+        append_local_transport(config, &origin, fingerprint, &mut fragment)?;
         origin
     } else {
         direct_origin.context("Direct is unavailable")?.to_owned()
     };
     Ok((origin, fragment.finish()))
+}
+fn append_local_transport(
+    config: &Value,
+    origin: &str,
+    fingerprint: Option<&str>,
+    fragment: &mut url::form_urlencoded::Serializer<'_, String>,
+) -> Result<()> {
+    if config["relayLocal"]["enabled"] == true && config["relayLocal"]["origin"] == origin {
+        fragment.append_pair("local", "1");
+        if origin.starts_with("https://") {
+            fragment.append_pair(
+                "cert",
+                fingerprint.context("local Relay TLS identity missing")?,
+            );
+        }
+    }
+    Ok(())
 }
 fn pair_payload(host: &Host, config: &Value, invite: &Invite) -> Result<Value> {
     let identity = wire::Identity::from_base64(
@@ -86,6 +99,7 @@ fn pair_payload(host: &Host, config: &Value, invite: &Invite) -> Result<Value> {
         &invite.secret,
         &invite.transport,
         direct.as_deref(),
+        host.gateway.local_relay.fingerprint().as_deref(),
     )?;
     Ok(json!({"payload":format!("{origin}/#{fragment}"),"expiresAt":invite.expires_at}))
 }
@@ -145,13 +159,14 @@ impl Host {
                 fragment
                     .append_pair("host", &host_peer)
                     .append_pair("room", config["room"].as_str().unwrap());
-                if relay.starts_with("http://")
-                    && config["relayLocal"]["enabled"] == true
-                    && config["relayLocal"]["origin"] == relay
+                let fingerprint = self.gateway.local_relay.fingerprint();
+                if append_local_transport(config, relay, fingerprint.as_deref(), &mut fragment)
+                    .is_ok()
                 {
-                    fragment.append_pair("local", "1");
+                    format!("{relay}/#{}", fragment.finish())
+                } else {
+                    String::new()
                 }
-                format!("{relay}/#{}", fragment.finish())
             } else {
                 String::new()
             };
@@ -746,9 +761,25 @@ mod tests {
             "relayLocal": { "enabled": true, "origin": "http://192.168.1.10:47820", "port": 47820 }
         });
         let (origin, frag) =
-            pair_link_parts(&local, "host-id", &"b".repeat(64), "relay", None).unwrap();
+            pair_link_parts(&local, "host-id", &"b".repeat(64), "relay", None, None).unwrap();
         assert_eq!(origin, "http://192.168.1.10:47820");
         assert!(frag.contains("local=1"));
+
+        let mut pinned = local.clone();
+        pinned["relay"] = json!("https://192.0.2.12:47820");
+        pinned["relayLocal"]["origin"] = pinned["relay"].clone();
+        assert!(pair_link_parts(&pinned, "host-id", &"b".repeat(64), "relay", None, None).is_err());
+        let pin = "c".repeat(64);
+        let (_, frag) = pair_link_parts(
+            &pinned,
+            "host-id",
+            &"b".repeat(64),
+            "relay",
+            None,
+            Some(&pin),
+        )
+        .unwrap();
+        assert!(frag.contains(&format!("local=1&cert={pin}")));
 
         let external = json!({
             "relay": "https://relay.example",
@@ -756,7 +787,7 @@ mod tests {
             "relayLocal": { "enabled": false, "origin": "http://192.168.1.10:47820", "port": 47820 }
         });
         let (origin, frag) =
-            pair_link_parts(&external, "host-id", &"b".repeat(64), "relay", None).unwrap();
+            pair_link_parts(&external, "host-id", &"b".repeat(64), "relay", None, None).unwrap();
         assert_eq!(origin, "https://relay.example");
         assert!(!frag.contains("local=1"));
     }

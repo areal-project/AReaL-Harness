@@ -1,6 +1,8 @@
 import Capacitor
+import CryptoKit
 import Darwin
 import Network
+import Security
 import Foundation
 
 @objc(ArealLocalSocketPlugin)
@@ -17,11 +19,14 @@ public class ArealLocalSocketPlugin: CAPPlugin, CAPBridgedPlugin {
     private var pending: [String: Int] = [:]
     private let maxFrame = 512 * 1024
 
-    private func localURL(_ value: String) -> URL? {
-        guard let url = URL(string: value), url.scheme == "ws", url.user == nil,
+    private func localURL(_ value: String, fingerprint: String?) -> URL? {
+        guard let url = URL(string: value), url.scheme == (fingerprint == nil ? "ws" : "wss"), url.user == nil,
               url.password == nil, url.path == "/remote/socket", url.query == nil,
               url.fragment == nil, let host = url.host,
               (1...65535).contains(url.port ?? 80) else { return nil }
+        if let fingerprint, fingerprint.range(of: "\\A[a-f0-9]{64}\\z", options: .regularExpression) == nil {
+            return nil
+        }
         let literal = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
         if let address = IPv4Address(literal) {
             let bytes = Array(address.rawValue)
@@ -30,7 +35,7 @@ public class ArealLocalSocketPlugin: CAPPlugin, CAPBridgedPlugin {
                   !(bytes[0] == 169 && bytes[1] == 254) else { return nil }
             let isPrivate = bytes[0] == 10 || (bytes[0] == 172 && (16...31).contains(bytes[1])) ||
                 (bytes[0] == 192 && bytes[1] == 168)
-            guard isPrivate || isOnLink(address) else { return nil }
+            guard fingerprint != nil || isPrivate || isOnLink(address) else { return nil }
             return url
         }
         guard !literal.contains("%"), let address = IPv6Address(literal),
@@ -79,8 +84,9 @@ public class ArealLocalSocketPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func connect(_ call: CAPPluginCall) {
+        let fingerprint = call.getString("fingerprint")
         guard let id = call.getString("id"), UUID(uuidString: id) != nil,
-              let value = call.getString("url"), let url = localURL(value) else {
+              let value = call.getString("url"), let url = localURL(value, fingerprint: fingerprint) else {
             call.reject("Invalid local relay", "INVALID_LOCAL_RELAY")
             return
         }
@@ -92,15 +98,32 @@ public class ArealLocalSocketPlugin: CAPPlugin, CAPBridgedPlugin {
             let websocket = NWProtocolWebSocket.Options()
             websocket.autoReplyPing = true
             let host = url.host!.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+            let defaultPort = fingerprint == nil ? 80 : 443
             let authority = (host.contains(":") ? "[\(host)]" : host) +
-                (url.port.map { $0 == 80 ? "" : ":\($0)" } ?? "")
+                (url.port.map { $0 == defaultPort ? "" : ":\($0)" } ?? "")
             // Network.framework 的默认 Host 会省略非默认端口，Relay 要求完整 authority。
             websocket.setAdditionalHeaders([
                 (name: "Origin", value: "capacitor://localhost"),
                 (name: "Host", value: authority)
             ])
             websocket.maximumMessageSize = self.maxFrame
-            let parameters = NWParameters(tls: nil, tcp: NWProtocolTCP.Options())
+            let tls = fingerprint.map { pin in
+                let options = NWProtocolTLS.Options()
+                sec_protocol_options_set_verify_block(options.securityProtocolOptions, { [weak self] _, trust, complete in
+                    let serverTrust = sec_trust_copy_ref(trust).takeRetainedValue()
+                    guard let leaf = (SecTrustCopyCertificateChain(serverTrust) as? [SecCertificate])?.first else {
+                        complete(false)
+                        self?.finish(id, failed: true)
+                        return
+                    }
+                    let der = SecCertificateCopyData(leaf) as Data
+                    let actual = SHA256.hash(data: der).map { String(format: "%02x", $0) }.joined()
+                    complete(actual == pin)
+                    if actual != pin { self?.finish(id, failed: true) }
+                }, self.queue)
+                return options
+            }
+            let parameters = NWParameters(tls: tls, tcp: NWProtocolTCP.Options())
             parameters.defaultProtocolStack.applicationProtocols.insert(websocket, at: 0)
             let connection = NWConnection(to: .url(url), using: parameters)
             self.sockets[id] = connection

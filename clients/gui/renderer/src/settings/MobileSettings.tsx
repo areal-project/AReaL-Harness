@@ -126,6 +126,8 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
         ? `${state.directUrl}/#host=${encodeURIComponent(state.directHostId)}`
         : "";
   const entryReady = transport === "relay" ? state.connected : state.directEnabled;
+  const localRelay =
+    state.relay?.startsWith("http:") || state.relayService?.local?.address === state.relay;
   const pending: Data | undefined = state.pending?.[0];
   const step: AddDeviceStep = pairedName ? "done" : pending ? "review" : "scan";
   const relayHost = (() => {
@@ -142,7 +144,7 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
           tone: "good",
           title: t("settings.mobileConnect.ready"),
           description: t(
-            state.relay?.startsWith("http:")
+            localRelay
               ? "settings.relayService.readyLocal"
               : "settings.mobileConnect.readyViaRelay",
             { host: relayHost },
@@ -238,7 +240,7 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
         {state.enabled ? (
           <p className="remote-muted" role="status">
             {t(
-              state.relay?.startsWith("http:")
+              localRelay
                 ? "settings.relayService.localSelected"
                 : "settings.mobileConnect.enrolled",
               { host: relayHost },

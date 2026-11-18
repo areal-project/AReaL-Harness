@@ -6,7 +6,7 @@ This guide covers implemented local Direct configuration and Relay Host/PWA inte
 
 ## Local network pairing and Relay Service
 
-In **Settings → Phone connection**, start the local relay. The app selects a LAN address and port and shows a pairing QR code for the mobile app. When company Wi-Fi assigns the computer a non-RFC1918 IPv4 address, the phone and computer must be able to connect directly on the same IPv4 subnet. With RFC1918 IPv4 or ULA IPv6, a LAN or VPN connection works when it can reach the address and port in the code. Computer firewalls, VPN access rules, and guest network isolation can still block the connection.
+In **Settings → Phone connection**, start the local relay. The app selects a LAN address and port and shows a pairing QR code for the mobile app. When company Wi-Fi assigns the computer a non-RFC1918 IPv4 address, a newly started local relay uses WSS. The phone app verifies the relay certificate using the fingerprint in the QR code. The phone can connect across subnets if the LAN or VPN routes traffic to that address and port. Stop and re-enable a previously configured plaintext local relay to switch it to WSS. Computer firewalls, VPN access rules, and guest network isolation can still block the connection.
 
 Local codes contain a private HTTP origin and `local=1`. The native mobile app uses a restricted local WebSocket transport. Host pins, Noise encryption, one-use invitations, desktop fingerprint confirmation, and project grants still apply. The app does not load the HTTP page as trusted client code. A mobile browser cannot replace this native path. Host credentials reach the local relay only over loopback, and the LAN interface does not consume enrollment codes.
 

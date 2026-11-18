@@ -233,7 +233,10 @@ fn relay(config: &Value, local: &Value) -> Result<Option<RelayConfig>> {
             && origin.path() == "/",
         "invalid Relay origin"
     );
-    let local_host = if origin.scheme() == "http" {
+    let is_local_tls = origin.scheme() == "https"
+        && config["relayLocal"]["origin"].as_str()
+            == Some(origin.origin().ascii_serialization().as_str());
+    let local_host = if origin.scheme() == "http" || is_local_tls {
         let expected = crate::local_relay::local_origin(config)?;
         ensure!(
             config["relayLocal"]["enabled"] == true
@@ -244,12 +247,23 @@ fn relay(config: &Value, local: &Value) -> Result<Option<RelayConfig>> {
         );
         let authority = origin[url::Position::BeforeHost..url::Position::AfterPort].to_owned();
         let loopback = match origin.host() {
+            _ if is_local_tls => std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
             Some(url::Host::Ipv6(_)) => std::net::IpAddr::V6(std::net::Ipv6Addr::LOCALHOST),
             _ => std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
         };
         origin
             .set_ip_host(loopback)
             .map_err(|_| anyhow::anyhow!("invalid local Relay loopback address"))?;
+        if is_local_tls {
+            let port = local["loopbackPort"]
+                .as_u64()
+                .and_then(|port| u16::try_from(port).ok())
+                .filter(|port| *port >= 1024)
+                .context("local Relay loopback port missing")?;
+            origin
+                .set_port(Some(port))
+                .map_err(|_| anyhow::anyhow!("invalid local Relay loopback port"))?;
+        }
         Some(authority)
     } else {
         ensure!(origin.scheme() == "https", "Relay requires HTTPS");
@@ -368,7 +382,8 @@ async fn run_relay(host: Rc<Host>) {
         {
             let config = &snapshot["config"];
             let startup = (|| -> Result<_> {
-                let Some(configured) = relay(config, &host.gateway.local_relay.state())? else {
+                let Some(configured) = relay(config, &host.gateway.local_relay.routing_state())?
+                else {
                     return Ok(None);
                 };
                 let identity = Rc::new(wire::Identity::from_base64(
@@ -629,7 +644,7 @@ pub(super) async fn run(host: Rc<Host>) {
 }
 async fn run_local_relay(host: Rc<Host>) {
     loop {
-        let previous = host.gateway.local_relay.state();
+        let previous = host.gateway.local_relay.routing_state();
         let _ = host.gateway.local_relay.poll().await;
         if host.admission().is_ok()
             && host.remote.native_owner().ok().flatten().is_some()
@@ -655,7 +670,11 @@ async fn run_local_relay(host: Rc<Host>) {
                 let _ = host.gateway.local_relay.stop().await;
             }
         }
-        if previous != host.gateway.local_relay.state() {
+        let current = host.gateway.local_relay.routing_state();
+        if previous["loopbackPort"] != current["loopbackPort"] {
+            host.gateway.relay_reconnect.set(true);
+        }
+        if previous != current {
             host.changed();
         }
         tokio::time::sleep(Duration::from_secs(2)).await;

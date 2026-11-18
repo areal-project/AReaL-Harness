@@ -81,7 +81,12 @@ export class MobileClient {
       this.pairedHostId = token.hostId;
       this.publish({ kind: "connecting", hostId: token.hostId });
       await this.connect(
-        { host: token.hostId, room: token.relayRoom, relayOrigin: device.relayOrigin },
+        {
+          host: token.hostId,
+          room: token.relayRoom,
+          relayOrigin: device.relayOrigin,
+          fingerprint: device.fingerprint,
+        },
         token,
         epoch,
       );
@@ -124,11 +129,15 @@ export class MobileClient {
     if (!token || token.mode !== "remembered" || token.hostId !== endpoint.host) {
       throw Object.assign(new Error("HOST_MISMATCH"), { code: "HOST_MISMATCH" });
     }
+    const previous = await this.store.load();
+    if (previous?.fingerprint && previous.fingerprint !== endpoint.fingerprint)
+      throw Object.assign(new Error("HOST_MISMATCH"), { code: "HOST_MISMATCH" });
     this.disconnect();
     const epoch = this.epoch;
     this.store.connection = {
       relayOrigin: endpoint.relayOrigin,
-      grantRevision: (await this.store.load())?.grantRevision ?? 0,
+      fingerprint: endpoint.fingerprint,
+      grantRevision: previous?.grantRevision ?? 0,
     };
     await this.identities.remember(token, endpoint.host, endpoint.room);
     if (epoch === this.epoch && this.active) {
@@ -139,7 +148,10 @@ export class MobileClient {
   async connect(target, token, epoch, displayName) {
     const deviceName = displayName ?? (await this.store.keychain.deviceName()).name;
     if (epoch !== this.epoch || !this.active) return;
-    const socket = this.socket(`${target.relayOrigin.replace(/^http/, "ws")}/remote/socket`);
+    const socket = this.socket(
+      `${target.relayOrigin.replace(/^http/, "ws")}/remote/socket`,
+      target.fingerprint,
+    );
     const connection = new RemoteConnection({
       socket,
       identity: token.identity,
@@ -172,6 +184,7 @@ export class MobileClient {
         this.identityTarget = { host: target.host, room: target.room };
         this.store.connection = {
           relayOrigin: target.relayOrigin,
+          fingerprint: target.fingerprint,
           grantRevision: ready.grantRevision,
         };
         try {

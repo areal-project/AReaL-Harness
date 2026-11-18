@@ -1,17 +1,26 @@
 import { remoteLocator } from "@areal/remote/wire";
-import { isLocalRelayOrigin } from "./local-socket.mjs";
+import { isLocalRelayOrigin, isPinnedRelayOrigin } from "./local-socket.mjs";
 
 export function parsePairingLink(value, { requireInvite = true } = {}) {
   try {
     const url = new URL(value);
     const fragment = new URLSearchParams(url.hash.slice(1));
-    const authority = /^http:\/\/([^/]+)/.exec(value)?.[1];
-    const local =
-      fragment.get("local") === "1" &&
+    const authority = /^https?:\/\/([^/]+)/.exec(value)?.[1];
+    const local = fragment.get("local") === "1";
+    const fingerprint = fragment.get("cert");
+    const legacyLocal =
+      local &&
+      fingerprint === null &&
       isLocalRelayOrigin(url.origin) &&
       (authority === url.host || authority === `${url.hostname}:80`);
+    const pinnedLocal =
+      local &&
+      isPinnedRelayOrigin(url.origin, fingerprint) &&
+      (authority === url.host || authority === `${url.hostname}:443`);
     if (
-      (url.protocol !== "https:" && !local) ||
+      (local ? !legacyLocal && !pinnedLocal : url.protocol !== "https:" || fingerprint !== null) ||
+      fragment.getAll("cert").length > 1 ||
+      fragment.getAll("local").length > 1 ||
       url.username ||
       url.password ||
       url.pathname !== "/" ||
@@ -28,6 +37,7 @@ export function parsePairingLink(value, { requireInvite = true } = {}) {
       host,
       room,
       ...(invite ? { invite } : {}),
+      ...(pinnedLocal ? { fingerprint } : {}),
       relayOrigin: url.origin,
     };
   } catch {
@@ -62,6 +72,8 @@ export class DeviceStore {
     const origin = new URL(device.relayOrigin);
     if (
       (origin.protocol !== "https:" && !isLocalRelayOrigin(device.relayOrigin)) ||
+      (device.fingerprint !== undefined &&
+        !isPinnedRelayOrigin(device.relayOrigin, device.fingerprint)) ||
       origin.origin !== device.relayOrigin
     )
       throw new Error("INVALID_DEVICE_RECORD");
@@ -81,6 +93,7 @@ export class DeviceStore {
           value: JSON.stringify({
             schema: 1,
             relayOrigin: metadata.relayOrigin,
+            ...(metadata.fingerprint ? { fingerprint: metadata.fingerprint } : {}),
             grantRevision: metadata.grantRevision,
             client: record,
           }),

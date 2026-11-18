@@ -22,9 +22,8 @@ export const remoteMessages = {
   },
   "settings.relayService.local": { "zh-CN": "本机 Relay", en: "Local relay" },
   "settings.relayService.localDescription": {
-    "zh-CN":
-      "自动选择内网地址。部分公司 Wi-Fi 仅支持同网段直连。请用 AReaL Remote App 扫描配对链接。",
-    en: "Chooses a LAN address automatically. Some company Wi-Fi setups require both devices on the same subnet. Scan the link in the AReaL Remote app.",
+    "zh-CN": "自动选择内网地址。手机与电脑之间需要网络互通。请用 AReaL Remote App 扫描配对链接。",
+    en: "Chooses a LAN address automatically. The phone must be able to reach the computer. Scan the link in the AReaL Remote app.",
   },
   "settings.relayService.startLocal": {
     "zh-CN": "开启内网连接",

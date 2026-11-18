@@ -21,6 +21,36 @@ const host = "A".repeat(40),
 const link = (origin, local = true) =>
   `${origin}/#host=${host}&room=${room}&invite=${invite}${local ? "&local=1" : ""}`;
 const tick = () => new Promise((resolve) => setImmediate(resolve));
+const fingerprint = "d".repeat(64);
+
+test("a pinned HTTPS pairing sends the exact fingerprint only to the native bridge", async () => {
+  const origin = "https://192.0.2.12:47820";
+  const pairing = parsePairingLink(link(origin) + "&cert=" + fingerprint);
+  assert.equal(pairing.relayOrigin, origin);
+  assert.equal(pairing.fingerprint, fingerprint);
+  assert.throws(() => parsePairingLink(link(origin)));
+  assert.throws(() => parsePairingLink(link(origin, false) + "&cert=" + fingerprint));
+  assert.throws(() => parsePairingLink(link("https://relay.example") + "&cert=" + fingerprint));
+  assert.throws(() => parsePairingLink(link("http://192.0.2.12:47820") + "&cert=" + fingerprint));
+  const plugin = bridge();
+  const socket = new LocalRelaySocket("wss://192.0.2.12:47820/remote/socket", plugin, fingerprint);
+  await socket.start;
+  assert.equal(plugin.calls[0][1].fingerprint, fingerprint);
+  socket.close();
+  let value = null;
+  const store = new DeviceStore({
+    load: async () => ({ value }),
+    save: async (record) => {
+      value = record.value;
+    },
+  });
+  store.connection = { ...pairing, grantRevision: 1 };
+  await store.transaction(true, () => ({ record: { identity: "opaque" }, result: null }));
+  store.connection = null;
+  assert.equal((await store.load()).fingerprint, fingerprint);
+  assert.equal(JSON.parse(value).invite, undefined);
+});
+
 function bridge() {
   let listener;
   const calls = [];

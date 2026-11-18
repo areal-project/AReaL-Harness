@@ -10,10 +10,16 @@ import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.URI
 import java.nio.ByteBuffer
+import java.security.MessageDigest
+import java.security.cert.CertificateException
+import java.security.cert.X509Certificate
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLParameters
+import javax.net.ssl.X509TrustManager
 import org.java_websocket.client.WebSocketClient
 import org.java_websocket.drafts.Draft_6455
 import org.java_websocket.handshake.ServerHandshake
@@ -25,9 +31,11 @@ class ArealLocalSocketPlugin : Plugin() {
     private val drain = Executors.newSingleThreadScheduledExecutor()
     private val maxFrame = 512 * 1024
 
-    private fun localURI(value: String): URI {
+    private fun localURI(value: String, fingerprint: String?): URI {
         val uri = URI(value)
-        require(uri.scheme == "ws" && uri.rawUserInfo == null && uri.rawPath == "/remote/socket" &&
+        require(fingerprint == null || fingerprint.matches(Regex("[a-f0-9]{64}")))
+        require(uri.scheme == (if (fingerprint == null) "ws" else "wss") &&
+            uri.rawUserInfo == null && uri.rawPath == "/remote/socket" &&
             uri.rawQuery == null && uri.rawFragment == null && (uri.port == -1 || uri.port in 1..65535))
         val host = requireNotNull(uri.host).removePrefix("[").removeSuffix("]")
         if (host.contains(':')) {
@@ -41,9 +49,26 @@ class ArealLocalSocketPlugin : Plugin() {
             val b = parts[1].toInt()
             require(a in 1..223 && a != 127 && !(a == 169 && b == 254))
             val isPrivate = a == 10 || (a == 172 && b in 16..31) || (a == 192 && b == 168)
-            require(isPrivate || isOnLink(parts.fold(0) { address, part -> (address shl 8) or part.toInt() }))
+            require(fingerprint != null || isPrivate ||
+                isOnLink(parts.fold(0) { address, part -> (address shl 8) or part.toInt() }))
         }
         return uri
+    }
+
+    private fun pinContext(fingerprint: String): SSLContext {
+        val expected = fingerprint.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val trust = object : X509TrustManager {
+            override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+            override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {
+                throw CertificateException("Unexpected client certificate")
+            }
+            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
+                val leaf = chain.firstOrNull() ?: throw CertificateException("Missing server certificate")
+                val actual = MessageDigest.getInstance("SHA-256").digest(leaf.encoded)
+                if (!MessageDigest.isEqual(expected, actual)) throw CertificateException("Local Relay certificate changed")
+            }
+        }
+        return SSLContext.getInstance("TLS").apply { init(null, arrayOf(trust), null) }
     }
 
     private fun isOnLink(destination: Int): Boolean {
@@ -81,9 +106,14 @@ class ArealLocalSocketPlugin : Plugin() {
         try {
             val id = requireNotNull(call.getString("id"))
             UUID.fromString(id)
-            val uri = localURI(requireNotNull(call.getString("url")))
+            val fingerprint = call.getString("fingerprint")
+            val uri = localURI(requireNotNull(call.getString("url")), fingerprint)
             require(sockets.size < 4 && !sockets.containsKey(id))
             val socket = object : WebSocketClient(uri, Draft_6455(emptyList(), maxFrame), mapOf("Origin" to "capacitor://localhost"), 15000) {
+                override fun onSetSSLParameters(parameters: SSLParameters) {
+                    super.onSetSSLParameters(parameters)
+                    if (fingerprint != null) parameters.endpointIdentificationAlgorithm = null
+                }
                 override fun onOpen(handshake: ServerHandshake) { if (sockets[id] === this) event(id, "open") }
                 override fun onMessage(message: String) {
                     val bytes = message.toByteArray(Charsets.UTF_8)
@@ -99,6 +129,7 @@ class ArealLocalSocketPlugin : Plugin() {
                 override fun onClose(code: Int, reason: String, remote: Boolean) { finish(id) }
                 override fun onError(error: Exception) { finish(id, true) }
             }
+            if (fingerprint != null) socket.setSocketFactory(pinContext(fingerprint).socketFactory)
             sockets[id] = socket
             socket.connect()
             call.resolve()

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createPrivateKey, randomUUID } from 'node:crypto';
 import { open, lstat, mkdir, unlink } from 'node:fs/promises';
 import { fstatSync } from 'node:fs';
 import { join } from 'node:path';
@@ -57,7 +57,7 @@ async function start(frame) {
     if (
       !frame ||
       frame.version !== 1 ||
-      Object.keys(frame).sort().join(',') !== 'config,room,version' ||
+      Object.keys(frame).sort().join(',') !== (frame.tls ? 'config,room,tls,version' : 'config,room,version') ||
       !frame.config ||
       frame.config.local !== true ||
       typeof frame.room !== 'string' ||
@@ -68,6 +68,11 @@ async function start(frame) {
     if (!Number.isSafeInteger(lease) || lease < 3 || !fstatSync(lease).isFile())
       throw new Error('INVALID_LEASE');
     const config = parseConfig(frame.config);
+    if (Boolean(frame.tls) !== config.localTls) throw new Error('CONFIG_LOCAL_TLS');
+    const tls = frame.tls ? {
+      cert: '-----BEGIN CERTIFICATE-----\n' + frame.tls.certificate + '\n-----END CERTIFICATE-----',
+      key: createPrivateKey({ key: Buffer.from(frame.tls.private_key, 'base64'), type: 'pkcs8', format: 'der' }).export({ type: 'pkcs8', format: 'pem' }),
+    } : undefined;
     await mkdir(config.dataDir, { recursive: true, mode: 0o700 });
     lockPath = join(config.dataDir, 'server.lock');
     lock = await open(lockPath, 'wx', 0o600);
@@ -77,11 +82,11 @@ async function start(frame) {
     store = openStore(config);
     store.provision(frame.room);
     if (ended) return await finish();
-    server = await serve(config, store, undefined, (entry) =>
-      process.stderr.write(JSON.stringify(entry) + '\n'),
-    );
+    server = await serve(config, store, undefined,
+      (entry) => process.stderr.write(JSON.stringify(entry) + '\n'), tls);
     if (ended) return await finish();
-    process.stdout.write(JSON.stringify({ version: 1, event: 'ready' }) + '\n');
+    process.stdout.write(JSON.stringify({ version: 1, event: 'ready',
+      ...(tls ? { loopbackPort: server.loopbackPort } : {}) }) + '\n');
   } catch {
     failed = true;
     await finish();
