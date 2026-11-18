@@ -148,3 +148,40 @@ test("dependency failure reaches the connection snapshot before any background o
   await assert.rejects(stat(join(home, "service.log")), { code: "ENOENT" });
   assert.equal(backend.reconnectTimer, null, "dependency failures wait for an explicit retry");
 });
+
+test("a prerequisite failure is visible while the concurrent identity check is still pending", async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "areal-prerequisite-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const identityStarted = Promise.withResolvers();
+  const identity = Promise.withResolvers();
+  const prerequisite = Promise.withResolvers();
+  t.mock.method(require("../app/src/core/service-config.cjs"), "serviceIdentity", () => {
+    identityStarted.resolve();
+    return identity.promise;
+  });
+  const unavailable = Object.assign(new Error("missing tools"), {
+    code: "HOST_PREREQUISITE_UNAVAILABLE",
+  });
+  const backend = new SharedCoreBackend({
+    app: { isPackaged: false, getPath: () => home },
+    home,
+    binary: join(home, "must-not-execute"),
+    hostHome: home,
+    guiProfile: home,
+    harnessHome: home,
+    prerequisiteCheck: () => prerequisite.promise,
+  });
+  const initialized = backend.init().catch((error) => error);
+  try {
+    await identityStarted.promise;
+    prerequisite.reject(unavailable);
+    assert.equal(
+      await Promise.race([initialized, new Promise((resolve) => setImmediate(resolve))]),
+      unavailable,
+    );
+    assert.equal(backend.snapshot().connection.state, "unavailable");
+  } finally {
+    identity.reject(new Error("identity check also failed"));
+    await initialized;
+  }
+});

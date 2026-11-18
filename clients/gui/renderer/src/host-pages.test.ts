@@ -21,7 +21,7 @@ const descriptor = {
   hostContext: {},
 };
 const open = { operation: "openGenUi" as const, ...descriptor.source };
-function setup(resources: Record<string, string>) {
+function setup(resources: Record<string, string>, desktop = false) {
   let state: HostReadState = {
     connection: "ready",
     freshness: "fresh",
@@ -72,7 +72,7 @@ function setup(resources: Record<string, string>) {
     },
   };
   return {
-    pages: createHostPages(client),
+    pages: createHostPages(client, desktop),
     calls,
     gate(value: Promise<unknown>) {
       gate = value;
@@ -100,6 +100,13 @@ describe("Host page resources", () => {
     expect(app.frameHtml).not.toContain('src="/runtime.js"');
     expect(app.frameHtml).not.toContain("'self'");
     expect(app.frameUrl).toBe(descriptor.frameUrl);
+    f.pages.dispose();
+  });
+  it("uses the fixed Electron proxy while still loading the page from the Host", async () => {
+    const f = setup({ "/view": "<p>Host content</p>" }, true);
+    const app = await f.pages.mcpApp(open);
+    expect(app.frameUrl).toBe("areal-mcp://host-pages/proxy");
+    expect(app.frameHtml).toContain("Host content");
     f.pages.dispose();
   });
   it("does not deliver resource bytes received after the owner disconnects", async () => {

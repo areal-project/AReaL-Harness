@@ -117,6 +117,7 @@ export async function guiBuildInput(root) {
       "services/workbench",
       "services/remote-relay",
       "core/sdk-typescript",
+      "core/host/src/page_proxy.html",
       "runtime/sdk-typescript",
       "schemas",
       "Makefile",

@@ -812,33 +812,16 @@ function startDesktop() {
             ),
           );
           startupTraceMain.advance("protocol_setup");
-          const rawHostConnectSource =
-            require("../ipc/generated/host-ticket.cjs").registerHostTicket({
-              home: cfg.serviceOptions(app).hostHome,
-              binary: cfg.serviceOptions(app).binary,
-              profile: app.getPath("userData"),
-              trusted,
-            });
-          // 提前预热首帧 HTML 所需的 Host 连接来源，与窗口创建并行而非阻塞到加载页面才启动。
-          let warmedHostConnectSource = rawHostConnectSource();
-          warmedHostConnectSource.catch(() => {});
-          const hostConnectSource = async () => {
-            const protocolTrace = startupTrace("gui.ui_protocol_host");
-            protocolTrace.advance("connect");
-            const pending = warmedHostConnectSource;
-            warmedHostConnectSource = null;
-            try {
-              const result = await (pending ?? rawHostConnectSource());
-              protocolTrace.finish("ok");
-              return result;
-            } catch (error) {
-              protocolTrace.finish("error", error);
-              throw error;
-            }
-          };
+          const { registerHostTicket, hostPageProxy } = require("../ipc/generated/host-ticket.cjs");
+          registerHostTicket({
+            home: cfg.serviceOptions(app).hostHome,
+            binary: cfg.serviceOptions(app).binary,
+            profile: app.getPath("userData"),
+            trusted,
+          });
           if (process.platform === "darwin")
             app.dock?.setIcon(join(__dirname, "../../assets/icon-1024.png"));
-          registerUiProtocol(guiRoot, hostConnectSource);
+          registerUiProtocol(guiRoot);
           startupTraceMain.finish("ok");
           const serviceBackend = new SharedCoreBackend({
             app,
@@ -1147,7 +1130,10 @@ function startDesktop() {
           };
           serviceBackend.onMcpPageToolsDisconnected = (event) =>
             mcpHost.pageToolsDisconnected(event);
-          protocol.handle("areal-mcp", (request) => mcpHost.resource(request));
+          protocol.handle(
+            "areal-mcp",
+            (request) => hostPageProxy(request) ?? mcpHost.resource(request),
+          );
           handleDesktopIpc("areal-core:mcp-app-deep-link-target", (event) => {
             trusted(event);
             return mcpAppDeepLink;

@@ -39,6 +39,7 @@ results.push(
     format: "cjs",
     target: "node22",
     external: ["electron", "@areal/client/node"],
+    loader: { ".html": "text" },
   }),
 );
 results.push(

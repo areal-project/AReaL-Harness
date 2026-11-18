@@ -12,7 +12,7 @@ const escapeAttribute = (value: string) =>
   value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
 
 /** 资源只从原连接读取；浏览器仅把内容交给不具有同源权限的固定代理。 */
-export function createHostPages(client: Client) {
+export function createHostPages(client: Client, desktop = false) {
   const listeners = new Set<(event: McpAppEvent) => void>();
   const tokens = new Set<string>();
   let disposed = false;
@@ -128,6 +128,7 @@ export function createHostPages(client: Client) {
       app.frameHtml =
         `<meta http-equiv="Content-Security-Policy" content="${escapeAttribute(csp.replaceAll("'self'", ""))}">` +
         html;
+      if (desktop) app.frameUrl = "areal-mcp://host-pages/proxy";
       return app;
     } catch (error) {
       tokens.delete(token);

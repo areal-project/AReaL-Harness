@@ -1,9 +1,7 @@
 import { ipcMain, type IpcMainInvokeEvent } from "electron";
 import { HostClient } from "@areal/client/node";
-import { constants } from "node:fs";
-import { open } from "node:fs/promises";
-import { join } from "node:path";
-import { readHostBootstrap, record } from "../../../packages/client/src/bootstrap.js";
+import { readHostBootstrap } from "../../../packages/client/src/bootstrap.js";
+import pageProxyHtml from "../../../../../core/host/src/page_proxy.html";
 
 export const hostTicketChannel = "areal-native:host-ticket";
 export const hostTicketSchema = {
@@ -39,52 +37,19 @@ export function registerHostTicket(options: {
       client.close();
     }
   });
-  return async () => {
-    const client = new HostClient();
-    try {
-      await client.connectOrStart(options.home, options.binary);
-      const file = await open(
-        join(options.home, "host/endpoint.json"),
-        constants.O_RDONLY | constants.O_NOFOLLOW,
-      );
-      try {
-        const stat = await file.stat();
-        if (
-          !stat.isFile() ||
-          stat.uid !== process.getuid?.() ||
-          (stat.mode & 0o077) !== 0 ||
-          stat.size > 4096
-        )
-          throw new Error("Invalid Host endpoint file");
-        const endpoint: unknown = JSON.parse(await file.readFile("utf8"));
-        if (
-          !record(endpoint) ||
-          endpoint.hostId !== client.hostId ||
-          endpoint.generation !== client.generation ||
-          typeof endpoint.websocketUrl !== "string"
-        )
-          throw new Error("Host endpoint identity changed");
-        const url = new URL(endpoint.websocketUrl);
-        if (
-          url.protocol !== "ws:" ||
-          url.hostname !== "127.0.0.1" ||
-          !url.port ||
-          url.username ||
-          url.password ||
-          url.search ||
-          url.hash
-        )
-          throw new Error("Invalid Host endpoint");
-        // Host 换代时端口会变，文档只授权同一回环主机；连接仍须新代一次性票据。
-        return {
-          connectSource: `${url.protocol}//${url.hostname}:*`,
-          frameSource: `http://${url.host}/host/pages/proxy`,
-        };
-      } finally {
-        await file.close();
-      }
-    } finally {
-      client.close();
-    }
-  };
+}
+
+/** 桌面只提供固定沙箱代理，页面内容和资源仍由当前已鉴权 Host 会话提供。 */
+export function hostPageProxy(request: Request) {
+  if (request.url !== "areal-mcp://host-pages/proxy" || request.method !== "GET") return undefined;
+  return new Response(pageProxyHtml, {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+      "Content-Security-Policy":
+        "default-src 'none'; script-src 'unsafe-inline' http: https: data: blob:; style-src 'unsafe-inline' http: https:; img-src http: https: data: blob:; font-src http: https: data:; media-src http: https: data: blob:; connect-src http: https: wss:; frame-src http: https: data: blob:; base-uri http: https:; object-src 'none'; form-action 'none'; worker-src 'none'; sandbox allow-scripts",
+    },
+  });
 }

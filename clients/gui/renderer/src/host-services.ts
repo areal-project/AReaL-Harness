@@ -71,7 +71,7 @@ export function createHostReadServices(
   },
 ): PlatformServices {
   const client = new HostClient({ ...options, writes: true });
-  const pages = createHostPages(client);
+  const pages = createHostPages(client, desktop !== undefined);
   const listeners = new Set<(snapshot: Snapshot) => void>();
   let shellExtras: ShellSnapshot | undefined;
   let verifiedDesktopHost: Snapshot["verifiedDesktopHost"];

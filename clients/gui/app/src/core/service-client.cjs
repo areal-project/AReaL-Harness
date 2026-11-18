@@ -748,45 +748,55 @@ class SharedCoreBackend {
       options.binary && options.hostHome && options.guiProfile && options.harnessHome,
     );
     const { ensureDesktopHost, desktopBuildIdentity } = require("@areal/client/desktop-upgrade");
-    // 依赖检查与构建指纹计算互相独立，并行执行避免启动串行阻塞；仍保证依赖失败先于任何 Host/Core 启动抛出。
+    // 依赖检查和指纹计算并行。依赖失败可以立即报出，启动 Host 必须等两者成功。
     this.setStartupStage(recover ? "identity" : "prerequisites");
-    trace?.advance(recover ? "build_identity" : "prerequisites");
+    trace?.advance("startup_checks");
     const prereqPromise = !recover
-      ? this.prerequisiteCheck({ app: { isPackaged: this.app.isPackaged === true } })
+      ? (async () => {
+          const checkTrace = startupTrace("service.prerequisites");
+          try {
+            await this.prerequisiteCheck({ app: { isPackaged: this.app.isPackaged === true } });
+            checkTrace.finish("ok");
+          } catch (error) {
+            checkTrace.finish("error", error);
+            throw error;
+          }
+        })()
       : Promise.resolve();
     const identityPromise = hasHostConfig
       ? (async () => {
-          const serviceIdentity = await require("./service-config.cjs").serviceIdentity({
-            ...options,
-            binary: options.binary,
-          });
-          const buildIdentity = await desktopBuildIdentity(
-            serviceIdentity,
-            [join(__dirname, ".."), join(__dirname, "../../../renderer/dist")],
-            this.app.isPackaged ? join(process.resourcesPath, "desktop-build.json") : undefined,
-          );
-          return { serviceIdentity, buildIdentity };
+          const identityTrace = startupTrace("service.build_identity");
+          try {
+            const serviceIdentity = await require("./service-config.cjs").serviceIdentity({
+              ...options,
+              binary: options.binary,
+            });
+            const buildIdentity = await desktopBuildIdentity(
+              serviceIdentity,
+              [join(__dirname, ".."), join(__dirname, "../../../renderer/dist")],
+              this.app.isPackaged ? join(process.resourcesPath, "desktop-build.json") : undefined,
+            );
+            identityTrace.finish("ok");
+            return { serviceIdentity, buildIdentity };
+          } catch (error) {
+            identityTrace.finish("error", error);
+            throw error;
+          }
         })()
       : Promise.resolve(null);
-    const [prereqResult, identityResult] = await Promise.allSettled([
-      prereqPromise,
-      identityPromise,
-    ]);
-    if (prereqResult.status === "rejected") {
+    // 两个检查都可能失败。先处理依赖错误，同时接住指纹的提前或迟到失败。
+    void identityPromise.catch(() => {});
+    let identity;
+    try {
+      await prereqPromise;
+      this.setStartupStage("identity");
+      identity = await identityPromise;
+      if (!identity) throw new Error("Host 后台启动配置不完整");
+    } catch (error) {
       this.setStartupStage(undefined);
-      throw prereqResult.reason;
+      throw error;
     }
-    if (!hasHostConfig) {
-      this.setStartupStage(undefined);
-      throw new Error("Host 后台启动配置不完整");
-    }
-    if (identityResult.status === "rejected") {
-      this.setStartupStage(undefined);
-      throw identityResult.reason;
-    }
-    const { serviceIdentity, buildIdentity } =
-      /** @type {{serviceIdentity:string,buildIdentity:string}} */ (identityResult.value);
-    if (!recover) trace?.advance("build_identity");
+    const { serviceIdentity, buildIdentity } = identity;
     // 初次旧凭据导入仍由持有原单实例和 safeStorage 的 Main 完成。
     const {
       GuiHostProjects,

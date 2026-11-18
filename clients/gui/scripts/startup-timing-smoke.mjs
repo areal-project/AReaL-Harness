@@ -103,7 +103,13 @@ async function until(predicate, label) {
   throw new Error(`Timeout: ${label}`);
 }
 
-async function launch(fixture, label, hideDuringRestore = false, preShowClose) {
+async function launch(
+  fixture,
+  label,
+  hideDuringRestore = false,
+  preShowClose,
+  settingsGate = false,
+) {
   activeHost = true;
   await preparePrivateFixtureDirectories(scratch, [
     fixture.home,
@@ -114,12 +120,21 @@ async function launch(fixture, label, hideDuringRestore = false, preShowClose) {
   ]);
   const started = performance.now();
   let entry = join(fixture.gui, "app");
-  if (preShowClose) {
+  if (preShowClose || settingsGate) {
     activeApplication = await applicationFixture(
       fixture.gui,
-      join(dirname(fixture.home), `app-${preShowClose}`),
+      join(dirname(fixture.home), `app-${preShowClose ?? "settings"}`),
       `
-if (!process.argv.includes('--areal-core-service')) {
+if (!process.argv.includes('--areal-core-service') && ${JSON.stringify(settingsGate)}) {
+  const { app, ipcMain } = require('electron');
+  let release; const gate = new Promise(resolve => { release = resolve; });
+  app.startupSettingsFixture = { reached: false, release };
+  const handle = ipcMain.handle.bind(ipcMain);
+  ipcMain.handle = (channel, listener) => handle(channel, channel === 'areal-native:host-ticket'
+    ? async (...args) => { app.startupSettingsFixture.reached = true; await gate; return listener(...args); }
+    : listener);
+}
+if (!process.argv.includes('--areal-core-service') && ${JSON.stringify(Boolean(preShowClose))}) {
   const { app, ipcMain } = require('electron');
   let release; const gate = new Promise(resolve => { release = resolve; });
   app.startupFixture = { closed: false, release };
@@ -169,7 +184,8 @@ if (!process.argv.includes('--areal-core-service')) {
       }, "hidden startup finishes real Core restoration");
       await page
         .getByTestId("chat-view")
-        .getByText("STARTUP_HISTORY_OK", { exact: true })
+        .getByRole("paragraph")
+        .filter({ hasText: /^STARTUP_HISTORY_OK$/ })
         .waitFor();
       assert.equal(
         await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()),
@@ -259,6 +275,27 @@ if (!process.argv.includes('--areal-core-service')) {
       false,
     );
   }
+  if (settingsGate) {
+    await until(
+      () => app.evaluate(({ app }) => app.startupSettingsFixture.reached),
+      "startup dependency gate reached",
+    );
+    assert.equal(
+      firstView.loading,
+      true,
+      "startup remains incomplete while initialization is gated",
+    );
+    assert.equal(
+      await page.getByTestId("areal-workbench").getAttribute("data-startup-ready"),
+      "false",
+      "renderer has not completed startup before the gate is released",
+    );
+    await page.getByRole("button", { name: "打开设置", exact: true }).click();
+    await page.locator(".startup-settings").getByText("语言", { exact: true }).first().waitFor();
+    await page.getByRole("button", { name: "返回加载界面", exact: true }).click();
+    await page.getByRole("button", { name: "打开设置", exact: true }).waitFor();
+    await app.evaluate(({ app }) => app.startupSettingsFixture.release());
+  }
   const snapshot = await until(async () => {
     const value = await page.evaluate(() => window.arealDesktop.snapshot());
     return (
@@ -269,7 +306,15 @@ if (!process.argv.includes('--areal-core-service')) {
     );
   }, `${label} project connected`);
   if (fixture.threadId)
-    await page.getByTestId("chat-view").getByText("STARTUP_HISTORY_OK", { exact: true }).waitFor();
+    await page
+      .getByTestId("chat-view")
+      .getByRole("paragraph")
+      .filter({ hasText: /^STARTUP_HISTORY_OK$/ })
+      .waitFor();
+  if (settingsGate)
+    lifecycleChecks.push(
+      "settings navigation mounted and returned while Host ticket was held; release restored history",
+    );
   if (hideDuringRestore) {
     assert.equal(
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()),
@@ -566,7 +611,21 @@ try {
   }
   const initialRequests = modelRequests.length;
   seedModelRequestCount = initialRequests;
-  for (let round = 0; round < rounds; round++)
+  if (process.env.AREAL_STARTUP_CHECK_SETTINGS === "1") {
+    activeFixture = variants.at(-1);
+    await launch(activeFixture, "current-settings-during-restoration", false, undefined, true);
+    assert.equal(
+      modelRequests.length,
+      initialRequests,
+      "settings navigation does not replay messages",
+    );
+    await stop(activeFixture, "current-settings-during-restoration");
+  }
+  for (
+    let round = 0;
+    round < (process.env.AREAL_STARTUP_CHECK_SETTINGS === "1" ? 0 : rounds);
+    round++
+  )
     for (const fixture of variants) {
       activeFixture = fixture;
       const label = `${fixture.label}-${round}`;
@@ -600,7 +659,8 @@ try {
       fixture.generation = descriptor.generation;
       await page
         .getByTestId("chat-view")
-        .getByText("STARTUP_HISTORY_OK", { exact: true })
+        .getByRole("paragraph")
+        .filter({ hasText: /^STARTUP_HISTORY_OK$/ })
         .waitFor();
       if (round > 0)
         assert.equal(

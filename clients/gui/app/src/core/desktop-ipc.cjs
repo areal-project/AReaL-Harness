@@ -21,8 +21,8 @@ function sendDesktopEvent(contents, channel, ...args) {
   contents.send(channel, ...args);
 }
 
-/** @param {string} guiRoot @param {()=>Promise<{connectSource:string,frameSource:string}>} hostConnectSource */
-function registerUiProtocol(guiRoot, hostConnectSource) {
+/** @param {string} guiRoot */
+function registerUiProtocol(guiRoot) {
   /** @type {Record<string,string>} */
   const mime = {
     ".wasm": "application/wasm",
@@ -45,14 +45,12 @@ function registerUiProtocol(guiRoot, hostConnectSource) {
     );
     if (!path.startsWith(guiRoot + sep)) return new Response("Not found", { status: 404 });
     try {
-      const { connectSource, frameSource } =
-        extname(path) === ".html"
-          ? await hostConnectSource().catch(() => ({ connectSource: "", frameSource: "" }))
-          : { connectSource: "", frameSource: "" };
       return new Response(await readFile(path), {
         headers: {
           "Content-Type": mime[extname(path)] ?? "application/octet-stream",
-          "Content-Security-Policy": `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' ${connectSource}; worker-src 'self' blob:; object-src 'none'; frame-src areal-mcp: ${frameSource}`,
+          // 换代后端口会变，回环连接仍须由当前 Host 签发一次性票据。
+          "Content-Security-Policy":
+            "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' ws://127.0.0.1:*; worker-src 'self' blob:; object-src 'none'; frame-src areal-mcp:",
         },
       });
     } catch {

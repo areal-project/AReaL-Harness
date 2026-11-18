@@ -14,7 +14,11 @@ import {
   createProjectConversation,
   selectConversation,
 } from "./smoke-navigation.mjs";
-import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
+import {
+  assertApplicationStopped,
+  closeSmokeApplication,
+  stopFixtureHost,
+} from "./application-cleanup.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), ".."),
   root = resolve(gui, "../..");
@@ -163,7 +167,7 @@ const server = createServer(async (req, res) => {
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 await writeFile(
   join(user, ".areal/config.toml"),
-  `schema_version=1\n[model]\nname="fixture"\n[model.providers.default]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${server.address().port}"\n`,
+  `schema_version=1\n[model]\ncatalog_version=1\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${server.address().port}"\nmodels=[{id="fixture",enabled=true}]\n`,
 );
 const binary = process.env.AREAL_CORE_BIN ?? join(root, "target/debug/areal");
 const env = {
@@ -171,16 +175,12 @@ const env = {
   AREAL_GUI_USER_DATA: join(scratch, "electron"),
   AREAL_CORE_HOME: join(scratch, "core"),
   AREAL_CORE_USER_HOME: user,
+  AREAL_CORE_CONFIG: join(user, ".areal/config.toml"),
+  AREAL_HARNESS_HOME: join(scratch, "config-home"),
   AREAL_HARNESS_SERVICE_HOME: join(scratch, "registry"),
   AREAL_CORE_BIN: binary,
 };
-for (const key of [
-  "AREAL_CORE_WORKSPACE",
-  "AREAL_CORE_CONFIG",
-  "AREAL_HARNESS_HOME",
-  "AREAL_HARNESS_CONFIG",
-  "AREAL_CORE_DESKTOP_CONFIG",
-])
+for (const key of ["AREAL_CORE_WORKSPACE", "AREAL_HARNESS_CONFIG", "AREAL_CORE_DESKTOP_CONFIG"])
   delete env[key];
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const source = {
@@ -253,14 +253,25 @@ const pane = (side) =>
   side
     ? page.getByTestId("side-chat-pane").filter({ visible: true })
     : page.getByTestId("chat-view");
-async function frame(threadId, side = false) {
-  await pane(side).getByTestId("gen-ui-card").first().scrollIntoViewIfNeeded();
+async function frame(threadId, side = false, latest = false) {
+  const cards = pane(side).getByTestId("gen-ui-card");
+  await (latest ? cards.last() : cards.first()).scrollIntoViewIfNeeded();
   let guest;
   await until(async () => {
     const host = page.locator(`[data-gen-ui-thread="${threadId}"][aria-hidden="false"]`);
     if (!(await host.count())) return false;
-    const token = await host.first().getAttribute("data-gen-ui-token");
-    guest = page.frames().find((frame) => frame.url() === `areal-mcp://${token}/view`);
+    if (process.env.AREAL_GEN_UI_HOST_RESTART === "1")
+      guest = page
+        .frames()
+        .findLast(
+          (frame) =>
+            frame.url() === "about:srcdoc" &&
+            frame.parentFrame()?.url() === "areal-mcp://host-pages/proxy",
+        );
+    else {
+      const token = await host.first().getAttribute("data-gen-ui-token");
+      guest = page.frames().find((frame) => frame.url() === `areal-mcp://${token}/view`);
+    }
     return guest && (await guest.locator("#rate").count());
   }, "generated guest renders");
   return guest;
@@ -364,13 +375,16 @@ async function closeApplication() {
   if (cleanupErrors.length) throw Error(`Cleanup failed: ${cleanupErrors.join("\n")}`);
 }
 
-try {
+async function runJourney() {
   await launch();
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
   }, workspace);
   await page.evaluate(() => window.arealDesktop.chooseProject());
   await createProjectConversation(page, "workspace");
+  await page.getByRole("button", { name: "选择模型", exact: true }).click();
+  await page.getByRole("radio", { name: "fixture", exact: true }).click();
+  await page.keyboard.press("Escape");
   owner = await page
     .getByTestId("areal-workbench")
     .evaluate((el) => ({ projectId: el.dataset.projectId, threadId: el.dataset.threadId }));
@@ -430,6 +444,83 @@ try {
     "author dollar strings retain their literal meaning",
   );
   await save(guest, 11);
+  if (process.env.AREAL_GEN_UI_HOST_RESTART === "1") {
+    const before = JSON.parse(
+      await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/endpoint.json"), "utf8"),
+    );
+    const beforeHost = JSON.parse(
+      await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/host.json"), "utf8"),
+    );
+    await page.evaluate(() => {
+      window.__hostRestartDocument = crypto.randomUUID();
+    });
+    const documentId = await page.evaluate(() => window.__hostRestartDocument);
+    await stopFixtureHost(binary, env.AREAL_HARNESS_SERVICE_HOME, scratch);
+    await until(() => {
+      try {
+        process.kill(beforeHost.pid, 0);
+        return false;
+      } catch (error) {
+        if (error.code === "ESRCH") return true;
+        throw error;
+      }
+    }, "previous Host process exits");
+    const occupied = createServer();
+    await new Promise((resolve, reject) =>
+      occupied
+        .once("error", reject)
+        .listen(Number(new URL(before.websocketUrl).port), "127.0.0.1", resolve),
+    );
+    const { HostClient } = require("@areal/client/node");
+    const host = new HostClient();
+    try {
+      await host.connectOrStart(env.AREAL_HARNESS_SERVICE_HOME, binary);
+    } finally {
+      host.close();
+      await new Promise((resolve) => occupied.close(resolve));
+    }
+    const after = await until(async () => {
+      const value = await readFile(
+        join(env.AREAL_HARNESS_SERVICE_HOME, "host/endpoint.json"),
+        "utf8",
+      ).then(JSON.parse, (error) => {
+        if (error.code === "ENOENT") return null;
+        throw error;
+      });
+      if (!value) return false;
+      return value.generation !== before.generation && value;
+    }, "new Host generation");
+    assert.notEqual(
+      new URL(after.websocketUrl).port,
+      new URL(before.websocketUrl).port,
+      "Host port changed",
+    );
+    assert.equal(
+      await page.evaluate(() => window.__hostRestartDocument),
+      documentId,
+      "Electron document was retained",
+    );
+    await until(async () => (await state()).connection?.state === "ready", "desktop reconnected");
+    await send("CREATE_GEN_UI_AFTER_HOST_RESTART");
+    guest = await frame(owner.threadId, false, true);
+    assert.equal(
+      guest.parentFrame()?.url(),
+      "areal-mcp://host-pages/proxy",
+      "new preview uses the stable proxy",
+    );
+    await guest.locator("#rate").focus();
+    await guest.locator("#rate").press("End");
+    assert.equal(
+      await guest.locator("#value").innerText(),
+      "20",
+      "new preview executes interactive JavaScript",
+    );
+    evidence.hostRestart = { generationChanged: true, portChanged: true, sameDocument: true };
+    checks.push(
+      "new generated preview executes interactive JavaScript in the existing Electron document after a real Host generation and port change",
+    );
+    return;
+  }
   await page.screenshot({ path: join(scratch, "main-saved.png"), animations: "disabled" });
   const oldToken = new URL(guest.url()).hostname;
   await page.reload();
@@ -610,6 +701,9 @@ try {
   );
   assert(!JSON.stringify(requests).includes(privateSentinel));
   assert.equal(errors.length, 0, errors.join("\n"));
+}
+try {
+  await runJourney();
 } catch (error) {
   failure = error;
   if (page) await captureSmokeFailure(page, scratch, error);
