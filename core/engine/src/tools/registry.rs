@@ -240,21 +240,33 @@ impl RegisteredTool {
         {
             return result;
         }
-        self.input
-            .validate(arguments)
-            .map_err(|e| anyhow::anyhow!(validation_feedback("invalid tool arguments", &e)))
+        self.input.validate(arguments).map_err(|e| {
+            anyhow::anyhow!(validation_feedback(
+                "invalid tool arguments",
+                &e,
+                &self.definition.input_schema
+            ))
+        })
     }
     pub fn validate_output(&self, result: &Value) -> anyhow::Result<()> {
         if let Some(output) = &self.output {
-            output
-                .validate(result)
-                .map_err(|e| anyhow::anyhow!(validation_feedback("invalid tool result", &e)))?;
+            output.validate(result).map_err(|e| {
+                anyhow::anyhow!(validation_feedback(
+                    "invalid tool result",
+                    &e,
+                    self.definition.output_schema.as_ref().unwrap()
+                ))
+            })?;
         }
         Ok(())
     }
 }
 
-fn validation_feedback(label: &str, error: &jsonschema::ValidationError<'_>) -> String {
+fn validation_feedback(
+    label: &str,
+    error: &jsonschema::ValidationError<'_>,
+    schema: &Value,
+) -> String {
     fn bounded(mut text: String, maximum: usize) -> String {
         if text.len() > maximum {
             let mut end = maximum - "…".len();
@@ -273,6 +285,30 @@ fn validation_feedback(label: &str, error: &jsonschema::ValidationError<'_>) -> 
         error.schema_path,
         error.masked()
     );
+    if matches!(
+        error.kind,
+        jsonschema::error::ValidationErrorKind::AdditionalProperties { .. }
+    ) && let Some(path) = error
+        .schema_path
+        .as_str()
+        .strip_suffix("/additionalProperties")
+        && let Some(properties) = schema
+            .pointer(path)
+            .and_then(|node| node.get("properties"))
+            .and_then(Value::as_object)
+        && !properties.is_empty()
+    {
+        // 只取公开 schema 中的字段名；不回显参数值，也不替调用方选择修改分支。
+        let fields: Vec<_> = properties.keys().take(16).collect();
+        message = bounded(message, 384);
+        message.push_str(&format!(
+            "; declared properties: {}",
+            bounded(serde_json::to_string(&fields).unwrap(), 768)
+        ));
+        if properties.len() > fields.len() {
+            message.push_str("; further declared properties omitted");
+        }
+    }
     let alternatives = match &error.kind {
         jsonschema::error::ValidationErrorKind::OneOfNotValid { context }
         | jsonschema::error::ValidationErrorKind::AnyOf { context } => Some(context),
@@ -916,7 +952,9 @@ mod tests {
         let original = arguments.clone();
         let message = tool.validate_input(&arguments).unwrap_err().to_string();
         assert!(message.contains("/files/0"), "{message}");
-        assert!(message.contains("oneOf"), "{message}");
+        assert!(message.contains("additionalProperties"), "{message}");
+        assert!(message.contains("declared properties"), "{message}");
+        assert!(message.contains("patches"), "{message}");
         assert!(!message.contains("SOURCE_BODY_MARKER"));
         assert!(message.len() < 512);
         assert_eq!(arguments, original);
@@ -972,9 +1010,61 @@ mod tests {
     }
 
     #[test]
+    fn unknown_field_feedback_uses_nested_declared_names_without_relaxing_validation() {
+        let shape = json!({"type":"object","properties":{"box/with~key":{"type":"object","properties":{"patches":{"type":"array"},"path":{"type":"string"}},"additionalProperties":false}},"required":["box/with~key"],"additionalProperties":false});
+        let mut spec = definition(shape.clone());
+        spec.output_schema = Some(shape);
+        let registry = Registry::default().with_dynamic(&[spec]).unwrap();
+        let tool = registry.get("lookup").unwrap();
+        let rejected = json!({"box/with~key":{"oldText":"BODY_MUST_STAY_PRIVATE".repeat(1024)}});
+        let original = rejected.clone();
+        for message in [
+            tool.validate_input(&rejected).unwrap_err().to_string(),
+            tool.validate_output(&rejected).unwrap_err().to_string(),
+        ] {
+            assert!(message.contains("oldText"), "{message}");
+            assert!(message.contains("declared properties"), "{message}");
+            assert!(message.contains("patches"), "{message}");
+            assert!(message.contains("path"), "{message}");
+            assert!(!message.contains("BODY_MUST_STAY_PRIVATE"));
+            assert!(message.len() <= 2048);
+        }
+        assert_eq!(rejected, original);
+        let accepted = json!({"box/with~key":{"path":"renamed.py","patches":[]}});
+        tool.validate_input(&accepted).unwrap();
+        tool.validate_output(&accepted).unwrap();
+
+        let fields: serde_json::Map<String, Value> = (0..24)
+            .map(|i| {
+                (
+                    format!("field{i}{}", "长".repeat(200)),
+                    json!({"type":"string"}),
+                )
+            })
+            .collect();
+        let registry = Registry::default()
+            .with_dynamic(&[definition(
+                json!({"type":"object","properties":fields,"additionalProperties":false}),
+            )])
+            .unwrap();
+        let message = registry
+            .get("lookup")
+            .unwrap()
+            .validate_input(&json!({"extra":"BODY_MUST_STAY_PRIVATE"}))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            message.contains("further declared properties omitted"),
+            "{message}"
+        );
+        assert!(!message.contains("BODY_MUST_STAY_PRIVATE"));
+        assert!(message.len() <= 2048);
+    }
+
+    #[test]
     fn validation_feedback_explains_rejected_union_branches() {
         let registry = Registry::new(true, &ToolExtensions::default()).unwrap();
-        let arguments = json!({"files":[{"path":"renamed.ts","oldText":"before","newText":"REJECTED_BODY".repeat(1024)}]});
+        let arguments = json!({"files":[{"path":"renamed.ts","fileVersion":"v1","text":"REJECTED_BODY".repeat(1024)}]});
         let original = arguments.clone();
         let message = registry
             .get("edit_files")
@@ -988,7 +1078,7 @@ mod tests {
             message.contains("\"patches\" is a required property"),
             "{message}"
         );
-        assert!(message.contains("oldText"), "{message}");
+        assert!(message.contains("fileVersion"), "{message}");
         assert!(!message.contains("REJECTED_BODY"));
         assert!(message.len() <= 2048);
         assert_eq!(arguments, original);

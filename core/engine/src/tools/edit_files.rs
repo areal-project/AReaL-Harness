@@ -16,10 +16,18 @@ pub(super) fn definition() -> areal_protocol::ToolDefinition {
                 .clone()
         })
         .collect();
+    // 将公共字段放在文件项上层展示；创建与修改仍互斥，创建项不能携带版本条件。
+    let mut file_schema = schemas[1].clone();
+    file_schema["properties"]["text"] = schemas[0]["properties"]["text"].clone();
+    file_schema["required"] = json!(["path"]);
+    file_schema["oneOf"] = json!([
+        {"required":["text"],"properties":{"patches":false,"fileVersion":false,"expectedSha256":false}},
+        {"required":["patches"],"properties":{"text":false}}
+    ]);
     areal_protocol::ToolDefinition {
         name: "edit_files".into(),
         description: "Create or modify 1..16 distinct files in order. Use {path,text} for an absent file or {path,patches:[{oldText,newText}]} for an observed file; optional fileVersion/expectedSha256. Existing parents are required. Each oldText must match once; file versions, permissions and hooks are checked per file. Stops at first failure with APPLIED/FAILED/NOT_RUN/UNKNOWN receipts; prior writes remain, so never replay the whole batch. Use this direct entry for large file bodies. For small patches or short helper files plus a selected check, use tool_program's JSON input example and await collect(await tools.verify_command(input.check)) only when e.success && e.data.allApplied.".into(),
-        input_schema: json!({"type":"object","properties":{"files":{"type":"array","minItems":1,"maxItems":MAX_FILES,"items":{"oneOf":schemas}}},"required":["files"],"additionalProperties":false}),
+        input_schema: json!({"type":"object","properties":{"files":{"type":"array","minItems":1,"maxItems":MAX_FILES,"items":file_schema}},"required":["files"],"additionalProperties":false}),
         output_schema: None,
     }
 }
@@ -168,6 +176,81 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn file_schema_preserves_native_creation_and_patch_contracts() {
+        let definitions = definitions_with_policy(&ToolPolicy::default());
+        let original_branches: Vec<_> = ["fs_create", "fs_apply_patches"]
+            .iter()
+            .map(|name| {
+                definitions
+                    .iter()
+                    .find(|d| d["function"]["name"] == *name)
+                    .unwrap()["function"]["parameters"]
+                    .clone()
+            })
+            .collect();
+        let original = json!({"type":"object","properties":{"files":{"type":"array","minItems":1,"maxItems":MAX_FILES,"items":{"oneOf":original_branches}}},"required":["files"],"additionalProperties":false});
+        let previous = jsonschema::validator_for(&original).unwrap();
+        let current = jsonschema::validator_for(&definition().input_schema).unwrap();
+        let patches = json!([{"oldText":"old","newText":"new"}]);
+        for path in [
+            None,
+            Some(json!("renamed.ts")),
+            Some(Value::Null),
+            Some(json!(7)),
+        ] {
+            for text in [
+                None,
+                Some(json!("")),
+                Some(json!("body")),
+                Some(Value::Null),
+                Some(json!(7)),
+            ] {
+                for edits in [
+                    None,
+                    Some(patches.clone()),
+                    Some(json!([])),
+                    Some(json!([{"oldText":"","newText":"new"}])),
+                    Some(json!([{"oldText":"old","newText":"new","extra":true}])),
+                    Some(Value::Null),
+                    Some(json!("patch")),
+                ] {
+                    for metadata in [
+                        json!({}),
+                        json!({"fileVersion":"v1"}),
+                        json!({"expectedSha256":"a".repeat(64)}),
+                        json!({"expectedSha256":null}),
+                        json!({"oldText":"old","newText":"new"}),
+                        json!({"extra":true}),
+                    ] {
+                        let mut file = metadata;
+                        for (key, value) in [("path", &path), ("text", &text), ("patches", &edits)]
+                        {
+                            if let Some(value) = value {
+                                file[key] = value.clone();
+                            }
+                        }
+                        let args = json!({"files":[file]});
+                        assert_eq!(current.is_valid(&args), previous.is_valid(&args), "{args}");
+                    }
+                }
+            }
+        }
+        for args in [
+            json!({}),
+            json!({"files":null}),
+            json!({"files":[]}),
+            json!({"files":[null]}),
+            json!({"files":[{"path":"a","text":"a"}],"extra":true}),
+            json!({"files":vec![json!({"path":"a","text":"a"}); MAX_FILES]}),
+            json!({"files":vec![json!({"path":"a","text":"a"}); MAX_FILES+1]}),
+            json!({"files":[{"path":"a","patches":vec![json!({"oldText":"a","newText":"b"});32]}]}),
+            json!({"files":[{"path":"a","patches":vec![json!({"oldText":"a","newText":"b"});33]}]}),
+        ] {
+            assert_eq!(current.is_valid(&args), previous.is_valid(&args), "{args}");
+        }
+    }
 
     #[test]
     fn recovery_retains_partial_effects_and_never_replays_missing_children() {
