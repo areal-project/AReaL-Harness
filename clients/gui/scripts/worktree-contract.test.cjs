@@ -64,7 +64,12 @@ test("native file handoff follows selected thread checkout and rejects source/fo
         },
       },
     };
-    const backend = { snapshot: () => ({ library: { settings: {} }, projects: [project] }) };
+    const backend = {
+      snapshot: () => ({
+        library: { settings: { fileOpenTarget: "previously-installed-editor" } },
+        projects: [project],
+      }),
+    };
     const opened = [];
     const dependencies = {
       backend,
@@ -78,12 +83,14 @@ test("native file handoff follows selected thread checkout and rejects source/fo
       authorize: () => {},
       chooseSave: () => assert.fail("not saving"),
     };
-    await fileOpen(dependencies, {
+    const request = {
       operation: "open",
       projectId: "p",
       threadId: "t",
       path: "same.txt",
-    });
+    };
+    await assert.rejects(fileOpen(dependencies, request), /默认打开应用已不可用/);
+    await fileOpen(dependencies, { ...request, target: "system" });
     assert.deepEqual(opened, [join(directory, "same.txt")]);
     await assert.rejects(
       fileOpen(dependencies, {

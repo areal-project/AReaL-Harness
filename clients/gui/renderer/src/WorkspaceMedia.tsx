@@ -17,6 +17,7 @@ import type {
   PlatformServices,
   WorkspaceImage as ImageBytes,
 } from "./services.js";
+import { isFileOpenTargets } from "./desktop-response.js";
 
 type FileOpen = NonNullable<PlatformServices["fileOpen"]>;
 
@@ -173,10 +174,10 @@ export function WorkspaceFileCard({
     setMessage("");
     try {
       if (target !== undefined) {
-        await fileOpen({ operation: "setDefault", target });
-        setTargets((await fileOpen({ operation: "targets" })) as FileOpenTargets);
+        const catalog = await fileOpen({ operation: "setDefault", target });
+        if (isFileOpenTargets(catalog)) setTargets(catalog);
       }
-      const result = await fileOpen({ operation, projectId, path });
+      const result = await fileOpen({ operation, projectId, path, target });
       if (operation === "saveAs" && "saved" in result && result.saved)
         setMessage(t("content.fileCard.saved"));
     } catch (cause) {

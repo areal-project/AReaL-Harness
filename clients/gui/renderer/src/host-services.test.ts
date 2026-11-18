@@ -204,6 +204,66 @@ function options(factory: NonNullable<HostClientOptions["transport"]>): HostClie
   };
 }
 
+it("writes the file-opening preference once through Host and returns the selected application", async () => {
+  const page = new EventTarget();
+  vi.stubGlobal("window", page);
+  const wire = transport();
+  const fileOpen = vi.fn(async () => ({
+    targets: [{ id: "finder", label: "Finder" }],
+    preferred: "system",
+    preferredLabel: "System",
+  }));
+  const write = vi.fn(async (method, _params, _context, commandId) => ({
+    method,
+    commandId,
+    admissionState: "accepted",
+    submissionUnknown: false,
+    receipt: { ...navigation, settings: { fileOpenTarget: "finder" } },
+  }));
+  const services = createHostReadServices(
+    {
+      snapshot: async () => ({ projects: [] }),
+      onState: () => () => {},
+      chooseProject: async () => null,
+      command: async () => {
+        throw new Error("Unexpected desktop mutation");
+      },
+      theme: async () => ({ dark: false, id: "light" }),
+      onTheme: () => () => {},
+      preview: async () => {
+        throw new Error("Unexpected preview");
+      },
+      fileOpen,
+    },
+    options(async (lifecycle) => {
+      const base = await wire.factory(lifecycle);
+      return {
+        ...base,
+        identity: { ...base.identity, writeMethods: ["library.command"] },
+        transport: { ...base.transport, write },
+      };
+    }),
+  );
+  try {
+    await until(services);
+    await expect(
+      services.fileOpen!({ operation: "setDefault", target: "finder" }),
+    ).resolves.toMatchObject({ preferred: "finder", preferredLabel: "Finder" });
+    expect(fileOpen.mock.calls).toEqual([[{ operation: "targets" }]]);
+    expect(write.mock.calls).toEqual([
+      [
+        "library.command",
+        { operation: "settings", key: "fileOpenTarget", value: "finder" },
+        null,
+        expect.any(String),
+      ],
+    ]);
+  } finally {
+    page.dispatchEvent(new Event("pagehide"));
+    vi.unstubAllGlobals();
+  }
+});
+
 it("reads queued attachment bytes from the original Host project in bounded chunks", async () => {
   const page = new EventTarget();
   vi.stubGlobal("window", page);

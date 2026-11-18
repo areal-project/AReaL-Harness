@@ -75,6 +75,7 @@ export type FileOpenRequest =
     }
   | {
       operation: "open" | "reveal" | "saveAs" | "readImage" | "readPdf";
+      target?: string;
       projectId: string;
       threadId?: string;
       path: string;

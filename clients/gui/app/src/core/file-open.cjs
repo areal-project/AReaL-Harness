@@ -30,11 +30,11 @@ const editors = [
   { id: "cursor", label: "Cursor", bundle: "Cursor.app" },
 ];
 
-/** @param {Pick<InstanceType<typeof import("./service-client.cjs").SharedCoreBackend>,"snapshot"|"nativeBrowserWorkspace">} backend @param {Record<string,unknown>} request @returns {import("@areal/workbench-service/desktop/core/service-state.cjs").ServiceProject} */
+/** @param {Pick<InstanceType<typeof import("./service-client.cjs").SharedCoreBackend>,"snapshot"|"nativeBrowserWorkspace">} backend @param {Record<string,unknown>} request @returns {import("@areal/workbench/desktop-contract/shared").ServiceProject} */
 function fileWorkspace(backend, request) {
   const native = backend.nativeBrowserWorkspace?.(request);
   if (native) return native;
-  /** @type {import("@areal/workbench-service/desktop/core/service-state.cjs").ServiceProject|undefined} */
+  /** @type {import("@areal/workbench/desktop-contract/shared").ServiceProject|undefined} */
   const project = backend.snapshot().projects.find((value) => value.id === request.projectId);
   if (!project) throw new Error("未知工作区");
   if (request.threadId === undefined) return project;
@@ -64,7 +64,7 @@ function fileWorkspace(backend, request) {
   };
 }
 
-/** @param {{backend:Pick<InstanceType<typeof import("./service-client.cjs").SharedCoreBackend>,"snapshot"|"command"|"nativeBrowserWorkspace">,shell:Pick<typeof import("electron").shell,"showItemInFolder"|"openPath">,home:string,authorize:()=>void,openHtml:(request:{projectId:string,threadId:string,path:string,workspacePath:string,valid:()=>boolean})=>Promise<{pageId:string,url:string,dispatch:string}>,chooseSave:(options:import("electron").SaveDialogOptions)=>Promise<import("electron").SaveDialogReturnValue>}} options @param {unknown} request */
+/** @param {{backend:Pick<InstanceType<typeof import("./service-client.cjs").SharedCoreBackend>,"snapshot"|"nativeBrowserWorkspace">,shell:Pick<typeof import("electron").shell,"showItemInFolder"|"openPath">,home:string,authorize:()=>void,openHtml:(request:{projectId:string,threadId:string,path:string,workspacePath:string,valid:()=>boolean})=>Promise<{pageId:string,url:string,dispatch:string}>,chooseSave:(options:import("electron").SaveDialogOptions)=>Promise<import("electron").SaveDialogReturnValue>}} options @param {unknown} request */
 async function fileOpen({ backend, shell, home, authorize, chooseSave, openHtml }, request) {
   if (!modelRecord(request)) throw new Error("无效文件打开请求");
   /** @type {Array<{id:string,label:string,application?:string}>} */
@@ -94,17 +94,6 @@ async function fileOpen({ backend, shell, home, authorize, chooseSave, openHtml 
         targets.find((t) => t.id === preferred)?.label ??
         `${editors.find((t) => t.id === preferred)?.label ?? preferred}（不可用）`,
     };
-  if (request.operation === "setDefault") {
-    if (typeof request.target !== "string" || !targets.some((t) => t.id === request.target))
-      throw new Error("所选打开应用不可用，请重新选择");
-    authorize();
-    await backend.command("library", {
-      operation: "settings",
-      key: "fileOpenTarget",
-      value: request.target,
-    });
-    return {};
-  }
   if (
     typeof request.operation !== "string" ||
     !["open", "openHtml", "reveal", "saveAs", "readImage", "readPdf"].includes(request.operation) ||
@@ -113,6 +102,9 @@ async function fileOpen({ backend, shell, home, authorize, chooseSave, openHtml 
     !request.path ||
     request.path.length > 4096 ||
     request.path.includes("\0") ||
+    (request.operation === "open" &&
+      request.target !== undefined &&
+      typeof request.target !== "string") ||
     (request.operation === "openHtml" &&
       (typeof request.threadId !== "string" || !request.threadId || /^[\\/]{2}/.test(request.path)))
   )
@@ -266,8 +258,13 @@ async function fileOpen({ backend, shell, home, authorize, chooseSave, openHtml 
     shell.showItemInFolder(path);
     return {};
   }
-  const target = targets.find((t) => t.id === preferred);
-  if (!target) throw new Error("默认打开应用已不可用，请在设置中重新选择");
+  const target = targets.find((t) => t.id === (request.target ?? preferred));
+  if (!target)
+    throw new Error(
+      request.target === undefined
+        ? "默认打开应用已不可用，请在设置中重新选择"
+        : "所选打开应用不可用，请重新选择",
+    );
   authorize();
   if (target.id === "finder") {
     shell.showItemInFolder(path);

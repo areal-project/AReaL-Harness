@@ -36,7 +36,7 @@ import {
   readInheritedHistoryPage,
 } from "@areal/workbench/desktop-contract/conversation-history";
 import { pageTopology } from "@areal/workbench/history-projection";
-import { hostCommandError } from "./desktop-response.js";
+import { hostCommandError, isFileOpenTargets } from "./desktop-response.js";
 import {
   createWorkbenchRoutes,
   hostDesktopCommand,
@@ -912,6 +912,7 @@ export function createHostReadServices(
     () => librarySourceId,
     closedSidePublisher(client, commandOutcomes, hostTarget, publish),
   ) as PlatformServices["command"];
+  const nativeFileOpen = desktop?.fileOpen;
   return {
     ...(desktop ?? {
       chooseProject: () => chooseHostProject(client),
@@ -921,6 +922,21 @@ export function createHostReadServices(
       }),
       onTheme: () => () => {},
       preview: unavailable,
+    }),
+    ...(nativeFileOpen && {
+      async fileOpen(request) {
+        if (request.operation !== "setDefault") return nativeFileOpen(request);
+        const catalog = await nativeFileOpen({ operation: "targets" });
+        if (!isFileOpenTargets(catalog)) throw new Error("所选打开应用不可用，请重新选择");
+        const target = catalog.targets.find(({ id }) => id === request.target);
+        if (!target) throw new Error("所选打开应用不可用，请重新选择");
+        await workbench.call("library", {
+          operation: "settings",
+          key: "fileOpenTarget",
+          value: request.target,
+        });
+        return { ...catalog, preferred: target.id, preferredLabel: target.label };
+      },
     }),
     command,
     openExternal,

@@ -28,6 +28,7 @@ import {
 import { FileDisplayInline } from "./lib/fileDisplay.js";
 import { CodeViewer } from "./components/ui/code-viewer.js";
 import type { Action, PlatformServices, FileOpenTargets } from "./services.js";
+import { isFileOpenTargets } from "./desktop-response.js";
 import { useCodePreferences } from "./settings/preferences.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 const DiagramPreview = lazy(async () => {
@@ -268,11 +269,10 @@ export function WorkspaceFilePane({
     setMessage("");
     try {
       if (target !== undefined) {
-        await fileOpen({ operation: "setDefault", target });
-        const catalog = await fileOpen({ operation: "targets" });
-        if (mounted.current) setOpenTargets(catalog as FileOpenTargets);
+        const catalog = await fileOpen({ operation: "setDefault", target });
+        if (mounted.current && isFileOpenTargets(catalog)) setOpenTargets(catalog);
       }
-      const result = await fileOpen({ operation, projectId, path });
+      const result = await fileOpen({ operation, projectId, path, target });
       if (operation === "saveAs" && "saved" in result && result.saved && mounted.current)
         setMessage("文件已另存");
     } catch (cause) {

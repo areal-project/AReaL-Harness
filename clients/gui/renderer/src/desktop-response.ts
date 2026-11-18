@@ -154,6 +154,16 @@ export const readProjectionMessage = (value: unknown) =>
     .object({ requestId: z.number().optional(), frame: z.unknown() })
     .refine((value) => Object.hasOwn(value, "frame"))
     .parse(value);
+const fileOpenTargets = z.object({
+  targets: z.array(z.object({ id: z.string(), label: z.string() })),
+  preferred: z.string(),
+  preferredLabel: z.string(),
+});
+
+export function isFileOpenTargets(value: unknown): value is FileOpenTargets {
+  return fileOpenTargets.safeParse(value).success;
+}
+
 export function readFileOpenResult(
   value: unknown,
 ): FileOpenTargets | { saved: boolean } | WorkspaceImage | Record<string, never> {
@@ -163,11 +173,7 @@ export function readFileOpenResult(
         mimeType: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf"]),
         bytes: z.instanceof(Uint8Array),
       }),
-      z.object({
-        targets: z.array(z.object({ id: z.string(), label: z.string() })),
-        preferred: z.string(),
-        preferredLabel: z.string(),
-      }),
+      fileOpenTargets,
       z.object({ saved: z.boolean() }),
       z.record(z.string(), z.never()),
     ])
