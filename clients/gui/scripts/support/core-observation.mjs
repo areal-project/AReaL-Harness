@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 
 const execute = promisify(execFile);
 
-async function withCore(
+export async function withCore(
   { binary, env, gui, threadId, project, workspace, executionWorkspace, inventory, connect },
   observe,
 ) {

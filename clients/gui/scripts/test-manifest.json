@@ -438,8 +438,8 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["history"],
-    "requires": ["browser", "core-binary", "gui-build"],
-    "notes": "Mixed command; classified by highest browser or Electron boundary."
+    "requires": ["electron", "core-binary", "native-runtime", "gui-build"],
+    "notes": "Native Electron writes and real Host/Core history with a local synthetic model."
   },
   {
     "script": "test:architecture",
