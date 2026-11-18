@@ -83,7 +83,6 @@ const MANAGE_WRITES = new Set([
  * 回答走 Host 写方法；窗口、系统与应用生命周期命令只在桌面窗口里有。
  */
 export const DESKTOP_COMMANDS = new Set([
-  "analytics",
   "chatgpt",
   "cloud",
   "cloudSession",
@@ -425,8 +424,7 @@ async function acceptedCommand(client: HostClient, method: string, payload: unkn
 }
 
 /**
- * 使用统计切到 Host 的工作台服务：读与同步走 Host；本窗口每 5 秒上报前台与空闲状态，
- * 服务对所有客户端取并集；首次连上时把桌面原有的每日活跃时间合并过去。
+ * 使用统计由 Rust Host 读取、同步与持久化，并对各窗口上报的活跃区间取并集。
  */
 export function createWorkbenchRoutes(
   client: HostClient,

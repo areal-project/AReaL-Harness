@@ -22,6 +22,18 @@ class HostProtocolSchemaTests(unittest.TestCase):
     def setUpClass(cls):
         cls.schema = json.loads((ROOT / GEN.SCHEMA).read_text())
 
+    def test_remote_methods_require_a_known_lane(self):
+        for lane in (None, "background", []):
+            with self.subTest(lane=lane):
+                changed = copy.deepcopy(self.schema)
+                method = changed["x-current"]["remote"]["methods"]["turn.stop"]
+                if lane is None:
+                    del method["x-lane"]
+                else:
+                    method["x-lane"] = lane
+                with self.assertRaisesRegex(ValueError, r"remote/turn\.stop: .*x-lane"):
+                    GEN.validate_schema(changed)
+
     def test_current_inventory_matches_actual_dispatch_and_handshake(self):
         GEN.check_inventory(self.schema, ROOT)
         changed = copy.deepcopy(self.schema)

@@ -66359,144 +66359,172 @@
     "remote": {
       "methods": {
         "host.describe": {
+          "x-lane": "query",
           "request": "#/$defs/RemoteHostDescribeRequest",
           "result": "#/$defs/RemoteHostDescribeResult",
           "source": "core/host/src/gateway/session.rs"
         },
         "project.list": {
+          "x-lane": "query",
           "request": "#/$defs/RemoteProjectListRequest",
           "result": "#/$defs/RemoteProjectListResult",
           "source": "core/host/src/gateway/session.rs"
         },
         "project.models": {
+          "x-lane": "query",
           "request": "#/$defs/RemoteProjectModelsRequest",
           "result": "#/$defs/RemoteProjectModelsResult",
           "source": "core/host/src/gateway/models.rs"
         },
         "session.create": {
+          "x-lane": "mutation",
           "request": "#/$defs/RemoteSessionCreateRequest",
           "result": "#/$defs/RemoteSessionCreateResult",
           "source": "core/host/src/gateway/create.rs"
         },
         "session.send": {
+          "x-lane": "mutation",
           "request": "#/$defs/RemoteSessionSendRequest",
           "result": "#/$defs/RemoteSessionSendResult",
           "source": "core/host/src/gateway/send.rs"
         },
         "session.control": {
+          "x-lane": "mutation",
           "request": "#/$defs/RemoteSessionControlRequest",
           "result": "#/$defs/RemoteSessionControlResult",
           "source": "core/host/src/gateway/controls.rs"
         },
         "turn.stop": {
+          "x-lane": "control",
           "request": "#/$defs/RemoteTurnStopRequest",
           "result": "#/$defs/RemoteTurnStopResult",
           "source": "core/host/src/gateway/stop.rs"
         },
         "command.read": {
+          "x-lane": "control",
           "request": "#/$defs/RemoteCommandReadRequest",
           "result": "#/$defs/RemoteCommandReadResult",
           "source": "core/host/src/gateway/session.rs"
         },
         "session.open": {
+          "x-lane": "mutation",
           "request": "#/$defs/RemoteSessionOpenRequest",
           "result": "#/$defs/RemoteSessionOpenResult",
           "source": "core/host/src/gateway/observer.rs"
         },
         "subscription.close": {
+          "x-lane": "mutation",
           "request": "#/$defs/RemoteSubscriptionCloseRequest",
           "result": "#/$defs/RemoteSubscriptionCloseResult",
           "source": "core/host/src/gateway/observer.rs"
         },
         "session.history": {
+          "x-lane": "mutation",
           "request": "#/$defs/RemoteSessionHistoryRequest",
           "result": "#/$defs/RemoteSessionHistoryResult",
           "source": "core/host/src/gateway/observer.rs"
         },
         "session.body": {
+          "x-lane": "mutation",
           "request": "#/$defs/RemoteSessionBodyRequest",
           "result": "#/$defs/RemoteSessionBodyResult",
           "source": "core/host/src/gateway/observer.rs"
         },
         "work.list": {
+          "x-lane": "query",
           "request": "#/$defs/RemoteWorkListRequest",
           "result": "#/$defs/RemoteWorkListResult",
           "source": "core/host/src/gateway/overview.rs"
         },
         "attention.list": {
+          "x-lane": "query",
           "request": "#/$defs/RemoteAttentionListRequest",
           "result": "#/$defs/RemoteAttentionListResult",
           "source": "core/host/src/gateway/overview.rs"
         },
         "task.read": {
+          "x-lane": "query",
           "request": "#/$defs/RemoteTaskReadRequest",
           "result": "#/$defs/RemoteTaskReadResult",
           "source": "core/host/src/gateway/tasks.rs"
         },
         "task.question.read": {
+          "x-lane": "query",
           "request": "#/$defs/RemoteTaskQuestionReadRequest",
           "result": "#/$defs/RemoteTaskQuestionReadResult",
           "source": "core/host/src/gateway/tasks.rs"
         },
         "task.pause": {
+          "x-lane": "mutation",
           "request": "#/$defs/RemoteTaskPauseRequest",
           "result": "#/$defs/RemoteTaskPauseResult",
           "source": "core/host/src/gateway/tasks.rs"
         },
         "task.question.reply": {
+          "x-lane": "mutation",
           "request": "#/$defs/RemoteTaskQuestionReplyRequest",
           "result": "#/$defs/RemoteTaskQuestionReplyResult",
           "source": "core/host/src/gateway/tasks.rs"
         },
         "attention.read": {
+          "x-lane": "query",
           "request": "#/$defs/RemoteAttentionReadRequest",
           "result": "#/$defs/RemoteAttentionReadResult",
           "source": "core/host/src/gateway/session.rs"
         },
         "interaction.respond": {
+          "x-lane": "mutation",
           "request": "#/$defs/RemoteInteractionRespondRequest",
           "result": "#/$defs/RemoteInteractionRespondResult",
           "source": "core/host/src/gateway/session.rs"
         },
         "review.read": {
+          "x-lane": "query",
           "request": "#/$defs/RemoteReviewReadRequest",
           "result": "#/$defs/RemoteReviewReadResult",
           "source": "core/host/src/gateway/review.rs"
         },
         "artifact.read": {
+          "x-lane": "mutation",
           "request": "#/$defs/RemoteArtifactReadRequest",
           "result": "#/$defs/RemoteArtifactReadResult",
           "source": "core/host/src/gateway/artifacts.rs"
         },
         "device.push.register": {
+          "x-lane": "mutation",
           "request": "#/$defs/RemoteDevicePushRegisterRequest",
           "result": "#/$defs/RemoteDevicePushRegisterResult",
           "source": "core/host/src/gateway/push.rs"
         },
         "device.push.unregister": {
+          "x-lane": "mutation",
           "request": "#/$defs/RemoteDevicePushUnregisterRequest",
           "result": "#/$defs/RemoteDevicePushUnregisterResult",
           "source": "core/host/src/gateway/push.rs"
         },
         "shell.subscribe": {
+          "x-lane": "mutation",
           "request": "#/$defs/RemoteShellSubscribeRequest",
           "result": "#/$defs/ShellSubscriptionResult",
           "source": "core/host/src/gateway/shared_reads.rs",
           "capability": "gui-read-v1"
         },
         "shell.unsubscribe": {
+          "x-lane": "mutation",
           "request": "#/$defs/RemoteShellUnsubscribeRequest",
           "result": "#/$defs/ReadSubscriptionClosed",
           "source": "core/host/src/gateway/shared_reads.rs",
           "capability": "gui-read-v1"
         },
         "attachment.upload": {
+          "x-lane": "mutation",
           "request": "#/$defs/RemoteAttachmentUploadRequest",
           "result": "#/$defs/RemoteAttachmentUploadResult",
           "source": "core/host/src/gateway/uploads.rs",
           "capability": "gui-write-v1"
         },
         "analytics.read": {
+          "x-lane": "query",
           "request": "#/$defs/WorkbenchAnalyticsReadRequest",
           "result": "#/$defs/WorkbenchAnalyticsReadResult",
           "source": "core/host/src/workbench_route.rs",
@@ -66504,6 +66532,7 @@
           "x-owner": "workbench"
         },
         "analytics.sync": {
+          "x-lane": "mutation",
           "request": "#/$defs/WorkbenchAnalyticsSyncRequest",
           "result": "#/$defs/WorkbenchAnalyticsSyncResult",
           "source": "core/host/src/workbench_route.rs",
@@ -66511,6 +66540,7 @@
           "x-owner": "workbench"
         },
         "analytics.activity": {
+          "x-lane": "query",
           "request": "#/$defs/WorkbenchAnalyticsActivityRequest",
           "result": "#/$defs/WorkbenchAnalyticsActivityResult",
           "source": "core/host/src/workbench_route.rs",
@@ -66518,6 +66548,7 @@
           "x-owner": "workbench"
         },
         "analytics.import": {
+          "x-lane": "mutation",
           "request": "#/$defs/WorkbenchAnalyticsImportRequest",
           "result": "#/$defs/WorkbenchAnalyticsImportResult",
           "source": "core/host/src/workbench_route.rs",
@@ -66525,6 +66556,7 @@
           "x-owner": "workbench"
         },
         "library.command": {
+          "x-lane": "mutation",
           "request": "#/$defs/WorkbenchLibraryRequest",
           "result": "#/$defs/WorkbenchLibraryResult",
           "source": "core/host/src/workbench_route.rs",
@@ -66532,6 +66564,7 @@
           "x-owner": "workbench"
         },
         "worktree.read": {
+          "x-lane": "query",
           "request": "#/$defs/WorkbenchWorktreeReadRequest",
           "result": "#/$defs/WorkbenchWorktreeReadResult",
           "source": "core/host/src/workbench_route.rs",
@@ -66539,6 +66572,7 @@
           "x-owner": "workbench"
         },
         "worktree.command": {
+          "x-lane": "mutation",
           "request": "#/$defs/WorkbenchWorktreeCommandRequest",
           "result": "#/$defs/WorkbenchWorktreeCommandResult",
           "source": "core/host/src/workbench_route.rs",
@@ -66546,6 +66580,7 @@
           "x-owner": "workbench"
         },
         "tasks.read": {
+          "x-lane": "query",
           "request": "#/$defs/WorkbenchTasksReadRequest",
           "result": "#/$defs/WorkbenchTasksReadResult",
           "source": "core/host/src/workbench_route.rs",
@@ -66553,6 +66588,7 @@
           "x-owner": "workbench"
         },
         "trajectory.read": {
+          "x-lane": "query",
           "request": "#/$defs/WorkbenchTrajectoryReadRequest",
           "result": "#/$defs/WorkbenchTrajectoryReadResult",
           "source": "core/host/src/workbench_route.rs",
@@ -66560,6 +66596,7 @@
           "x-owner": "workbench"
         },
         "trajectory.command": {
+          "x-lane": "mutation",
           "request": "#/$defs/WorkbenchTrajectoryCommandRequest",
           "result": "#/$defs/WorkbenchTrajectoryCommandResult",
           "source": "core/host/src/workbench_route.rs",
@@ -66567,6 +66604,7 @@
           "x-owner": "workbench"
         },
         "feedback.read": {
+          "x-lane": "query",
           "request": "#/$defs/WorkbenchFeedbackReadRequest",
           "result": "#/$defs/WorkbenchFeedbackReadResult",
           "source": "core/host/src/workbench_route.rs",
@@ -66574,6 +66612,7 @@
           "x-owner": "workbench"
         },
         "feedback.command": {
+          "x-lane": "mutation",
           "request": "#/$defs/WorkbenchFeedbackCommandRequest",
           "result": "#/$defs/WorkbenchFeedbackCommandResult",
           "source": "core/host/src/workbench_route.rs",
@@ -66581,6 +66620,7 @@
           "x-owner": "workbench"
         },
         "manage.read": {
+          "x-lane": "query",
           "request": "#/$defs/WorkbenchManageReadRequest",
           "result": "#/$defs/WorkbenchManageReadResult",
           "source": "core/host/src/workbench_route.rs",
@@ -66588,6 +66628,7 @@
           "x-owner": "workbench"
         },
         "manage.command": {
+          "x-lane": "mutation",
           "request": "#/$defs/WorkbenchManageCommandRequest",
           "result": "#/$defs/WorkbenchManageCommandResult",
           "source": "core/host/src/workbench_route.rs",
@@ -66595,6 +66636,7 @@
           "x-owner": "workbench"
         },
         "providers.read": {
+          "x-lane": "query",
           "request": "#/$defs/WorkbenchProviderReadRequest",
           "result": "#/$defs/WorkbenchProviderReadResult",
           "source": "core/host/src/workbench_route.rs",
@@ -66602,6 +66644,7 @@
           "x-owner": "workbench"
         },
         "providers.command": {
+          "x-lane": "mutation",
           "request": "#/$defs/WorkbenchProviderCommandRequest",
           "result": "#/$defs/WorkbenchProviderCommandResult",
           "source": "core/host/src/workbench_route.rs",
@@ -66609,6 +66652,7 @@
           "x-owner": "workbench"
         },
         "plugins.read": {
+          "x-lane": "query",
           "request": "#/$defs/WorkbenchPluginsReadRequest",
           "result": "#/$defs/WorkbenchPluginsReadResult",
           "source": "core/host/src/plugins.rs",
@@ -66616,6 +66660,7 @@
           "x-owner": "host"
         },
         "plugins.command": {
+          "x-lane": "mutation",
           "request": "#/$defs/WorkbenchPluginsCommandRequest",
           "result": "#/$defs/WorkbenchPluginsCommandResult",
           "source": "core/host/src/plugins.rs",
@@ -66623,6 +66668,7 @@
           "x-owner": "host"
         },
         "pages.command": {
+          "x-lane": "mutation",
           "request": "#/$defs/WorkbenchPageCommandRequest",
           "result": "#/$defs/WorkbenchPageCommandResult",
           "source": "core/host/src/workbench_route.rs",
@@ -66630,6 +66676,7 @@
           "x-owner": "workbench"
         },
         "pages.resource": {
+          "x-lane": "query",
           "request": "#/$defs/WorkbenchPageResourceRequest",
           "result": "#/$defs/WorkbenchPageResourceResult",
           "source": "core/host/src/workbench_route.rs",
@@ -66637,6 +66684,7 @@
           "x-owner": "workbench"
         },
         "desktop.command": {
+          "x-lane": "mutation",
           "request": "#/$defs/DesktopCommandRequest",
           "result": "#/$defs/DesktopCommandResult",
           "source": "core/host/src/workbench_route.rs",
@@ -66644,6 +66692,7 @@
           "x-owner": "workbench"
         },
         "project.activate": {
+          "x-lane": "mutation",
           "request": "#/$defs/RemoteProjectActivateRequest",
           "result": "#/$defs/RemoteProjectActivateResult",
           "source": "core/host/src/gateway/activate.rs"

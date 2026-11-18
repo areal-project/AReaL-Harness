@@ -214,7 +214,6 @@ const pageMethods = ["pages.command", "pages.resource"];
 // 本机网页的桌面命令；与 Host 协议的 DesktopCommandParams.command 一致。
 const desktopCommands = new Set([
   "addProject",
-  "analytics",
   "chatgpt",
   "cloud",
   "cloudSession",

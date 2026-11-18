@@ -44,7 +44,7 @@ const {
 /** @typedef {{kind:'packet',packet:ReturnType<InstanceType<typeof DesktopService>['packet']>,header:{method:'state'}|{id:number},full:boolean,bytes:number}} PacketEntry */
 /** @typedef {PacketEntry|{kind:'message',value:Fields,bytes:number}} OutboundEntry */
 /** @typedef {{queue:OutboundEntry[],bytes:number,active:boolean,state:PacketEntry|null,closed:boolean,timer?:NodeJS.Timeout}} Outbound */
-/** @typedef {import('ws') & {outbound?:Outbound,projection?:InstanceType<typeof ProjectionEncoder>|null,notifications?:boolean,activity?:{time:number,windowFocused:boolean,focused:boolean},lastFocused?:number,historyViews?:Map<string,Fields & {viewId:string}>,mcpPageOwnerId?:string}} RemoteServiceSocket */
+/** @typedef {import('ws') & {outbound?:Outbound,projection?:InstanceType<typeof ProjectionEncoder>|null,notifications?:boolean,activity?:{time:number,windowFocused:boolean},lastFocused?:number,historyViews?:Map<string,Fields & {viewId:string}>,mcpPageOwnerId?:string}} RemoteServiceSocket */
 /** @typedef {Pick<RemoteServiceSocket,'notifications'|'activity'|'lastFocused'|'historyViews'|'mcpPageOwnerId'> & {kind:'main',internal:boolean,closed:boolean,onMessage:(message:Fields)=>void,onClose:()=>void}} MainClient */
 /** @typedef {RemoteServiceSocket|MainClient} ServiceSocket */
 /** @param {ServiceSocket|null|undefined} client @returns {client is MainClient} */
@@ -172,8 +172,7 @@ class DesktopService {
       !this.closed && connected(this.computerSocket) ? this.computerSocket : null;
     /** @type {NodeJS.Timeout|null|undefined} */ this.timer = undefined;
     /** @type {NodeJS.Timeout|undefined} */ this.mcpPageExpiryTimer = undefined;
-    /** @type {NodeJS.Timeout|undefined} */ this.activityTimer = undefined;
-    /** @type {NodeJS.Timeout|undefined} */ this.flushTimer = undefined;
+    /** @type {NodeJS.Timeout|undefined} */ this.schedulingTimer = undefined;
     /** @type {import('ws').WebSocketServer|undefined} */ this.server = undefined;
     /** @type {Promise<{hostId:string,generation:string}>|undefined} */ this.hostReconnection =
       undefined;
@@ -818,9 +817,7 @@ class DesktopService {
         clearTimeout(pending.timer);
         pending.reject(new Error("Browser host disconnected after dispatch"));
       }
-    this.sampleActivity();
     if (this.clients.delete(socket) && !this.clients.size) this.idleSince = Date.now();
-    this.sampleActivity();
     this.schedule();
     if (mainClient(socket)) socket.onClose();
   }
@@ -862,9 +859,8 @@ class DesktopService {
     this.startObservers();
   }
   startObservers() {
-    if (this.activityTimer) return;
-    this.activityTimer = setInterval(() => {
-      this.sampleActivity();
+    if (this.schedulingTimer) return;
+    this.schedulingTimer = setInterval(() => {
       void this.backend.host
         .refreshScheduling()
         .then((changed) => {
@@ -872,9 +868,6 @@ class DesktopService {
         })
         .catch(() => {});
     }, 5000);
-    this.flushTimer = setInterval(() => {
-      void this.backend.analytics.flush();
-    }, 30000);
   }
   async listen({ initialized = false } = {}) {
     if (!initialized) {
@@ -922,14 +915,6 @@ class DesktopService {
       ...(this.lifecycle ? { desktopGeneration: this.lifecycle.generation } : {}),
       pid: process.pid,
     };
-  }
-  sampleActivity() {
-    const now = Date.now();
-    const active = [...this.clients].some(
-      (s) => s.activity && now - s.activity.time <= 15000 && s.activity.focused,
-    );
-    // Count the union of active GUI intervals, never one duration per client.
-    this.backend.analytics.sample({ time: now, focused: active });
   }
   async stop({ cancel = false } = {}) {
     if (!this.lifecycle)
@@ -1333,20 +1318,12 @@ class DesktopService {
         return response;
       }
       if (method === "activity") {
-        this.sampleActivity();
         const windowFocused = params?.focused === true && params?.suspended !== true;
         if (windowFocused && !socket.activity?.windowFocused) socket.lastFocused = Date.now();
         socket.activity = {
           time: Date.now(),
           windowFocused,
-          focused:
-            params?.focused === true &&
-            params?.suspended !== true &&
-            typeof params.idleSeconds === "number" &&
-            Number.isFinite(params.idleSeconds) &&
-            params.idleSeconds <= 300,
         };
-        this.sampleActivity();
         response = null;
         return response;
       }
@@ -1634,8 +1611,7 @@ class DesktopService {
     this.backgroundNotifications?.close();
     this.pendingNotificationTarget = null;
     clearTimeout(this.timer ?? undefined);
-    clearInterval(this.activityTimer);
-    clearInterval(this.flushTimer);
+    clearInterval(this.schedulingTimer);
     for (const owner of this.clients) if (mainClient(owner)) this.disconnectClient(owner);
     for (const socket of this.server?.clients ?? []) {
       this.stopSending(socket);

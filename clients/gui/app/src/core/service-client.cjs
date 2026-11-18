@@ -96,7 +96,7 @@ async function waitForProcessExit(pid) {
 /** @typedef {import('./lifecycle.cjs').RecoveryObservation} Observation */
 /** @typedef {import('@areal/workbench-service/desktop/core/resource-recovery.cjs').Notify} Notify */
 /** @typedef {{projectId:string,threadId:string,id:string}} GuiTerminal */
-/** @typedef {{focused:boolean,idleSeconds:number,suspended?:boolean}} Activity */
+/** @typedef {{focused:boolean}} Activity */
 /** @typedef {{kind:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleKind,mode?:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleMode,observed?:Observation,projectId?:string,threadId?:string,turnId?:string,requestId?:string,migration?:unknown}} LifecycleOptions */
 /** @typedef {{stopped:boolean,operation:Receipt,kind?:string}} LifecycleResult */
 /** @typedef {{stopped:boolean,operation:import('@areal/workbench/desktop-contract/shared').LifecycleViewOperation,receipt?:import('./host-lifecycle.cjs').HostReceipt}} HostLifecycleResult */
@@ -222,19 +222,16 @@ class SharedCoreBackend {
     this.hostStopInFlight = undefined;
     /** @type {Map<string,Receipt>} */
     this.lifecycleReceipts = new Map();
-    this.analytics = {
-      /** @param {Activity} sample */
-      sample: (sample) => {
-        this.lastActivity = sample;
-        if (this.status.connected)
-          void this.connection?.request("activity", sample).catch(() => {});
-      },
-      flush: async () => {},
-    };
   }
   /** @param {import("@areal/workbench-service/desktop/core/gen-ui-state.cjs").GenUiProject} project @param {string} threadId */
   genUiScope(project, threadId) {
     return genUiScope(this.home, project, threadId);
+  }
+  /** @param {Activity} activity */
+  reportWindowFocus(activity) {
+    // 后台用窗口焦点选择系统通知的投递目标。
+    this.lastActivity = activity;
+    if (this.status.connected) void this.connection?.request("activity", activity).catch(() => {});
   }
   requireConnection() {
     if (!this.status.connected || !this.connection)
@@ -1700,7 +1697,7 @@ class SharedCoreBackend {
         await this.settleGuiTerminals();
         if (this.status.connected)
           await this.requireConnection()
-            .request("activity", { focused: false, idleSeconds: 0 })
+            .request("activity", { focused: false })
             .catch(() => {});
       } finally {
         this.terminalConnections.close();

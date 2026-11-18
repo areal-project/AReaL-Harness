@@ -212,6 +212,12 @@ def validate_schema(document, root=ROOT):
     for transport in ("local", "remote", "loopback", "workbench"):
         methods = document["x-current"][transport]["methods"]
         for method, entry in methods.items():
+            if transport == "remote" and entry.get("x-lane") not in (
+                "control",
+                "query",
+                "mutation",
+            ):
+                raise ValueError(f"{transport}/{method}: invalid or missing x-lane")
             for kind in ("request", "result"):
                 visit({"$ref": entry[kind]}, f"{transport}/{method}/{kind}")
             request = definitions[entry["request"][8:]]
@@ -557,10 +563,23 @@ class Emitter:
         constants = "\n".join(
             f"pub const {key}: u64 = {value};" for key, value in sorted(limits.items())
         )
+        lanes = [
+            "#[derive(Debug, Clone, Copy, PartialEq, Eq)]",
+            "pub enum RemoteMethodLane { Control, Query, Mutation }",
+            "pub const fn remote_method_lane(method: &str) -> Option<RemoteMethodLane> {",
+            "    match method.as_bytes() {",
+        ]
+        for method, entry in sorted(document["x-current"]["remote"]["methods"].items()):
+            lanes.append(
+                f"        b{json.dumps(method)} => Some(RemoteMethodLane::{entry['x-lane'].title()}),"
+            )
+        lanes += ["        _ => None,", "    }", "}"]
         rust_output = (
             header
             + "#![allow(dead_code)]\n\n"
             + constants
+            + "\n\n"
+            + "\n".join(lanes)
             + "\n\n"
             + helper
             + "\n"

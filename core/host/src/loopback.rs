@@ -7,6 +7,7 @@ use areal_local_service::storage;
 use areal_protocol::host as protocol;
 use areal_protocol::host::{
     LocalWebTicketParams, LocalWebTicketResult, LoopbackEndpoint, LoopbackHelloParams,
+    RemoteMethodLane,
 };
 use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt};
@@ -679,16 +680,13 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                     Message::Text(bytes) => {
                         ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
                         let raw: Value = serde_json::from_str(&bytes)?;
-                        if writable && raw["method"].as_str().is_some_and(|method| WRITE_METHODS.contains(&method)) {
+                        if let Some(method) = raw["method"].as_str().filter(|method| writable && WRITE_METHODS.contains(method)) {
                             let id = raw["id"].as_str().filter(|id| !id.is_empty() && id.len() <= 64).context("invalid request")?.to_owned();
-                            let recovery_request = recovery_request(&raw);
-                            let independent = recovery_request || independent_query(&raw);
-                            let (full, reason) = if recovery_request {
-                                (recovery.len() >= MAX_PENDING_RECOVERY, "recoveryQueueFull")
-                            } else if independent {
-                                (queries.len() >= MAX_PENDING_QUERIES, "queryQueueFull")
-                            } else {
-                                (commands.len() + usize::from(command.is_some()) >= MAX_PENDING_COMMANDS, "commandQueueFull")
+                            let lane = request_lane(method, &raw["params"]).context("missing Host method lane")?;
+                            let (full, reason) = match lane {
+                                RemoteMethodLane::Control => (recovery.len() >= MAX_PENDING_RECOVERY, "recoveryQueueFull"),
+                                RemoteMethodLane::Query => (queries.len() >= MAX_PENDING_QUERIES, "queryQueueFull"),
+                                RemoteMethodLane::Mutation => (commands.len() + usize::from(command.is_some()) >= MAX_PENDING_COMMANDS, "commandQueueFull"),
                             };
                             if full {
                                 let mut error = loopback_error(&raw, &anyhow::anyhow!("CAPACITY_EXCEEDED"));
@@ -700,13 +698,15 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                                 send(&mut socket, &json!({"version":VERSION,"id":id,
                                     "error":error
                                 })).await?;
-                            } else if independent {
+                            } else if lane == RemoteMethodLane::Mutation {
+                                commands.push_back(raw);
+                            } else {
                                 let host = host.clone();
                                 let device = device_id.clone();
                                 let connection = connection_id.clone();
-                                let tasks = if recovery_request { &mut recovery } else { &mut queries };
+                                let tasks = if lane == RemoteMethodLane::Control { &mut recovery } else { &mut queries };
                                 tasks.spawn_local(async move {
-                                    // 这些查询不消费上传、分页令牌或选中会话；沿原工厂绑定同一主体与连接。
+                                    // 独立通道不消费上传或观察状态，仍绑定原主体与连接。
                                     let local = match &device {
                                         Some(device) => super::gateway_owner::LocalSession::browser(host.clone(), connection, device.clone()),
                                         None => super::gateway_owner::LocalSession::new(host.clone(), connection),
@@ -716,8 +716,6 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                                         Err(error) => json!({"version":VERSION,"id":id,"error":loopback_error(&raw, &error)}),
                                     }
                                 });
-                            } else {
-                                commands.push_back(raw);
                             }
                             continue;
                         }
@@ -884,43 +882,23 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
     Ok(())
 }
 
-fn recovery_request(raw: &Value) -> bool {
-    matches!(raw["method"].as_str(), Some("command.read" | "turn.stop"))
-        || (raw["method"] == "desktop.command" && raw["params"]["command"] == "reconcile")
-}
-
-fn independent_query(raw: &Value) -> bool {
-    matches!(
-        raw["method"].as_str(),
-        Some(
-            "project.models"
-                | "task.read"
-                | "task.question.read"
-                | "review.read"
-                | "attention.read"
-                | "pages.resource"
-                | "analytics.read"
-                | "analytics.activity"
-                | "providers.read"
-                | "tasks.read"
-                | "manage.read"
-                | "worktree.read"
-                | "trajectory.read"
-                | "feedback.read"
-                | "plugins.read"
-        )
-    ) || (raw["method"] == "desktop.command"
-        && raw["params"]["command"] == "manage"
-        && raw["params"]["request"]["operation"] == "inspect")
-        || (raw["method"] == "desktop.command"
-            && raw["params"]["command"] == "chatgpt"
-            && raw["params"]["request"]["operation"] == "status")
-        || (raw["method"] == "desktop.command"
-            && raw["params"]["command"] == "prediction"
-            && matches!(
-                raw["params"]["request"]["operation"].as_str(),
-                Some("request" | "cancel")
-            ))
+fn request_lane(method: &str, params: &Value) -> Option<RemoteMethodLane> {
+    // 过渡：到 0.2.0 删。desktop.command 拆分后由各 Schema 方法声明通道。
+    if method == "desktop.command" {
+        match (
+            params["command"].as_str(),
+            params["request"]["operation"].as_str(),
+        ) {
+            (Some("reconcile"), _) => return Some(RemoteMethodLane::Control),
+            (Some("manage"), Some("inspect"))
+            | (Some("chatgpt"), Some("status"))
+            | (Some("prediction"), Some("request" | "cancel")) => {
+                return Some(RemoteMethodLane::Query);
+            }
+            _ => {}
+        }
+    }
+    protocol::remote_method_lane(method)
 }
 
 async fn local_request(

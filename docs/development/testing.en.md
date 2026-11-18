@@ -306,8 +306,6 @@ Independent CLI configuration reads, service stop and status queries in the desk
 
 ## Usage analytics history sync
 
-`node --test scripts/analytics-history.test.cjs` uses the real `CoreClient` and a local WebSocket protocol fixture to verify that the dedicated read-only history connection's 4 MiB frame limit does not close the primary project connection. It also covers startup before the model connects, identity changes, history deduplication, partial caches, handshake/RPC timeouts, and cleanup with partial-history errors after primary closure. The analytics connection only initializes, negotiates capabilities, and calls `thread/read`, using the client's default request deadlines; each project has at most one sync in progress. Large-history failures remain partially synced and do not establish complete history coverage. This test does not replace real Core, native GUI, installed-package, or provider acceptance.
-
 ## Python and scratch
 
 Failure state and screenshot capture each wait at most 10 seconds; derivation Electron cleanup waits at most 20 seconds. Timeouts enter the evidence without replacing the original failure. CI limits the derivation step to 10 minutes so failed diagnostics cannot block subsequent artifact upload. `make script-test` verifies diagnostic deadlines and propagation of original errors.

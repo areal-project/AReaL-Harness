@@ -23,7 +23,6 @@ const { AppProviders } = require("./providers.cjs");
 const { snapshotProject } = require("./project-snapshot.cjs");
 const { CloudSettings } = require("./cloud-settings.cjs");
 const { CloudConversations } = require("./cloud-conversations.cjs");
-const { UsageAnalytics } = require("./analytics.cjs");
 const { CoreLibrary } = require("./library.cjs");
 const { CoreNotifications } = require("./notifications.cjs");
 const { manage } = require("./management.cjs");
@@ -164,7 +163,6 @@ class CoreBackend {
         this.taskWorkspaceOwners = new TaskWorkspaceOwners(this);
         this.projectless = new ProjectlessWorkspaces(this);
         this.notifications = new CoreNotifications((notice) => this.onNotification?.(notice));
-        this.analytics = new UsageAnalytics(this);
         this.resources = new ScopedResources(this);
         this.hooks = new AppHooks(this);
         this.trajectory = new TrajectoryExport(this);
@@ -201,9 +199,6 @@ class CoreBackend {
         if (!this._connections) {
             const backend = this;
             this._connections = new ProjectConnections({
-                get analytics() {
-                    return backend.analytics;
-                },
                 get hostCall() {
                     return backend.hostCall;
                 },
@@ -285,9 +280,6 @@ class CoreBackend {
             const backend = this;
             this._observations = new HistoryObservation({
                 ownerTasks: backend.ownerTasks,
-                get analytics() {
-                    return backend.analytics;
-                },
                 get notifications() {
                     return backend.notifications;
                 },
@@ -381,7 +373,6 @@ class CoreBackend {
                 this.cloudConversations.init(),
                 this.worktrees.init(),
                 this.projectless.init(),
-                this.analytics.init(),
                 inspectCoreCapabilities(this),
                 this.providers.init(),
                 this.feedback.init(),
@@ -1612,7 +1603,6 @@ class CoreBackend {
                 throw new Error("Invalid recovery workspace");
             return { projectId: await this.addProject(catalog.workspace) };
         }
-        if (name === "analytics") return this.analytics.command(request);
         // 后台只读状态不占任务或配置准入；参数仍由轨迹能力校验。
         if (name === "trajectory" && request?.operation === "status")
             return this.trajectory.command(request);
@@ -2462,7 +2452,6 @@ class CoreBackend {
         );
         await this.providers.close();
         await this.proxyRelay?.close();
-        await this.analytics.flush();
         this.host.close();
     }
 }

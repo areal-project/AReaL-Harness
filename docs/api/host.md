@@ -137,7 +137,7 @@ GUI 的 `LaunchInputs.schedulePreparation` 显式选择 `managed` 或 `external`
 
 启动准备核对当前 Task、Run、来源线程、旧独立目录预约和工作区作者记录。固定共享 Scratch 按真实直接子目录保存作者及原创建请求身份，Core 登记根不变；省略 `cwd` 的任务使用原 requestId 的规范 UUID 子目录。恢复须唯一匹配原 Core 创建回执，兄弟目录活动仅在完整有界快照可归属且前后状态一致时放行。资源 profile 变化时，Host 保存原重启请求 ID、MCP 及可信 plugin 连接，确认 `restartSafe` 后执行 drain 和受控重启。重连核对原回执并恢复精确连接后才注册调度宿主。原 Core 回调不返回新代际的 profile；`resume` 保留已冻结的执行配置。GUI 后续启动也合并 Host 已保存的 managed Skill 版本，避免旧 profile 引用丢失。
 
-本机 WebSocket 对业务写入、独立查询、原命令查询与停止请求分别限流。业务写入额度耗尽不占用读取与恢复额度；准入前的容量拒绝返回 `submissionUnknown:false` 和具体队列原因，已受理但结果不明的命令仍只按原 ID 查询。项目状态探测超时保留原执行身份；连接关闭、权威归属变化或服务回执另行确认失效。连接关闭诊断记录项目、代际、连接与原因，不记录凭据。
+本机 WebSocket 对业务写入、独立查询、原命令查询与停止请求分别限流。共用 Gateway 方法的通道由 Host Schema 的 `x-lane` 声明。需要原观察会话状态的分页请求（如 `session.body`）沿用串行会话处理。业务写入额度耗尽不占用读取与恢复额度；准入前的容量拒绝返回 `submissionUnknown:false` 和具体队列原因，已受理但结果不明的命令仍只按原 ID 查询。项目状态探测超时保留原执行身份；连接关闭、权威归属变化或服务回执另行确认失效。连接关闭诊断记录项目、代际、连接与原因，不记录凭据。
 
 ## 全局活动
 

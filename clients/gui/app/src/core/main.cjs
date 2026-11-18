@@ -1795,37 +1795,31 @@ function startDesktop() {
           windowLoaded = createWindow(serviceBackend);
           await windowLoaded;
           const activityPauses = new Set();
-          const sampleActivity = () => {
+          const reportWindowFocus = () => {
             refreshHostMenu();
-            serviceBackend.analytics.sample({
+            serviceBackend.reportWindowFocus({
               focused:
+                !computerSystemPaused &&
                 !!window &&
                 !window.isDestroyed() &&
                 window.isFocused() &&
                 window.isVisible() &&
                 !window.isMinimized(),
-              idleSeconds: powerMonitor.getSystemIdleTime(),
-              suspended: activityPauses.size > 0,
             });
           };
-          const activityTimer = setInterval(sampleActivity, 5000);
-          const saveTimer = setInterval(() => {
-            void serviceBackend.analytics.flush();
-          }, 30000);
+          const activityTimer = setInterval(reportWindowFocus, 5000);
           window
-            ?.on("focus", sampleActivity)
-            .on("blur", sampleActivity)
-            .on("hide", sampleActivity)
-            .on("minimize", sampleActivity)
-            .on("restore", sampleActivity);
+            ?.on("focus", reportWindowFocus)
+            .on("blur", reportWindowFocus)
+            .on("hide", reportWindowFocus)
+            .on("minimize", reportWindowFocus)
+            .on("restore", reportWindowFocus);
           /** @param {"suspend"|"lock-screen"} event */
           const pauseActivity = (event) => {
             computerSystemPaused = true;
             void stopComputer(event).catch(() => {});
-            sampleActivity();
             activityPauses.add(event);
-            sampleActivity();
-            void serviceBackend.analytics.flush();
+            reportWindowFocus();
           };
           powerMonitor
             .on("suspend", () => pauseActivity("suspend"))
@@ -1834,22 +1828,15 @@ function startDesktop() {
           const resumeActivity = (pause) => {
             activityPauses.delete(pause);
             computerSystemPaused = activityPauses.size > 0;
-            sampleActivity();
+            reportWindowFocus();
           };
           powerMonitor
             .on("resume", () => resumeActivity("suspend"))
             .on("unlock-screen", () => resumeActivity("lock-screen"));
-          app.on("before-quit", () => {
-            sampleActivity();
-            void serviceBackend.analytics.flush();
-          });
-          app.on("will-quit", () => {
-            clearInterval(activityTimer);
-            clearInterval(saveTimer);
-          });
-          sampleActivity();
+          app.on("will-quit", () => clearInterval(activityTimer));
+          reportWindowFocus();
           await serviceStarted;
-          sampleActivity();
+          reportWindowFocus();
           return !!window && !window.isDestroyed() && serviceBackend.status.connected;
         },
         (ready) => (ready ? "ok" : "unknown"),
