@@ -52,7 +52,7 @@
     "test:schedule-reliability-lifecycle": "node scripts/schedule-reliability-lifecycle-smoke.mjs",
     "test:stop-turn": "node scripts/stop-turn-smoke.mjs",
     "test:service-reopen": "node scripts/service-reopen-smoke.mjs",
-    "test:lifecycle": "node scripts/startup-recovery-smoke.mjs && node scripts/lifecycle-smoke.mjs",
+    "test:lifecycle": "node scripts/gui-host-lifecycle-smoke.mjs && node scripts/lifecycle-smoke.mjs",
     "test:desktop-exit": "node scripts/desktop-exit-smoke.mjs",
     "test:quit-draft": "node scripts/quit-draft-smoke.mjs",
     "test:quit-progress": "node scripts/quit-progress-smoke.mjs",
