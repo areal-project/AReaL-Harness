@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { mkdir, mkdtemp, readFile, writeFile, realpath, readdir } from "node:fs/promises";
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import { watch } from "node:fs";
 import { join, resolve } from "node:path";
 import { randomUUID, generateKeyPairSync, sign, createHash } from "node:crypto";
@@ -413,6 +413,8 @@ try {
     checks.push("Feedback preference uses Host receipts without starting an uploader");
   }
   if (selected("providers")) {
+    const direct = process.env.AREAL_TEST_PROVIDER_PROXY_MODE === "direct";
+    const networkRoute = direct ? "direct" : "proxy";
     let requests = 0;
     const secret = `synthetic-${randomUUID()}`;
     const receiver = createServer(async (request, response) => {
@@ -436,11 +438,42 @@ try {
     });
     receiver.listen(0, "127.0.0.1");
     await once(receiver, "listening");
+    const proxied = [];
+    const proxy = createServer((request, response) => {
+      const target = new URL(request.url);
+      assert.equal(target.hostname, "model.invalid");
+      proxied.push(target.pathname);
+      const forward = httpRequest(
+        {
+          hostname: "127.0.0.1",
+          port: receiver.address().port,
+          path: target.pathname,
+          method: request.method,
+          headers: request.headers,
+        },
+        (reply) => {
+          response.writeHead(reply.statusCode, reply.headers);
+          reply.pipe(response);
+        },
+      );
+      forward.on("error", () => response.destroy());
+      request.pipe(forward);
+    });
+    proxy.listen(0, "127.0.0.1");
+    await once(proxy, "listening");
     try {
       const sourceId = change.sourceId;
-      const baseUrl = `http://127.0.0.1:${receiver.address().port}/v1`;
+      await backend.command("library", {
+        operation: "settings",
+        key: "httpProxy",
+        value: direct ? "direct" : `http://127.0.0.1:${proxy.address().port}`,
+      });
+      const baseUrl = direct
+        ? `http://127.0.0.1:${receiver.address().port}/v1`
+        : "http://model.invalid/v1";
       const read = () => call("providers.read", { sourceId, operation: "list" });
-      let status = await read();
+      const originalStatus = await read();
+      let status = originalStatus;
       require("../packages/workbench/client/desktop-contract.cjs").validateCommandResponse(
         "providers",
         { operation: "list" },
@@ -522,15 +555,67 @@ try {
       });
       assert.equal((await read()).defaultModel.providerId, provider.id);
       await mutate({ operation: "apply" });
-      await mutate({ operation: "defaultAndApply", model: null });
       const probe = await call(
         "providers.command",
         { sourceId, operation: "probe", id: provider.id, model: "fixture-model" },
         randomUUID(),
       );
       assert.equal(probe.submissionUnknown, false);
-      assert.deepEqual(probe.receipt, { state: "connected" });
+      assert.deepEqual(probe.receipt, { state: "connected", networkRoute });
       assert.equal(requests, 2);
+      await backend.command("connect", { projectId });
+      let threadId;
+      const started = await projects.status(projectId);
+      const auth = JSON.parse(await readFile(started.service.authFile, "utf8"));
+      const core = new CoreClient({
+        createSocket: () =>
+          new WebSocket(started.service.endpoint, {
+            headers: { Authorization: `Bearer ${auth.principals[0].token}` },
+          }),
+      });
+      try {
+        await core.connect();
+        const created = await core.request("areal/thread/start", {
+          requestId: randomUUID(),
+          cwd: workspace,
+        });
+        threadId = created.thread.id;
+        const sent = await core.request("turn/start", {
+          threadId,
+          input: [{ type: "text", text: "Proxy route fixture" }],
+        });
+        await until(async () => {
+          const { thread: current } = await core.request("thread/read", {
+            threadId,
+            includeTurns: true,
+          });
+          return current.turns.some(
+            (turn) => turn.id === sent.turn.id && turn.status === "completed",
+          );
+        }, "proxied model turn completes");
+      } finally {
+        core.close();
+      }
+      const auditDir = join(started.registration.dataDir, "model-requests");
+      await until(async () => {
+        for (const file of await readdir(auditDir)) {
+          if (!file.endsWith(".json")) continue;
+          const audit = JSON.parse(await readFile(join(auditDir, file), "utf8"));
+          if (audit.threadId === threadId && audit.outcome === "completed") {
+            assert.equal(audit.networkRoute, networkRoute);
+            return true;
+          }
+        }
+        return false;
+      }, "Core records the route of the completed proxied turn");
+      assert.deepEqual(
+        proxied.slice(0, 3),
+        direct ? [] : ["/v1/models", "/v1/chat/completions", "/v1/chat/completions"],
+      );
+      checks.push(
+        `Host provider probe and an actual Core turn use and report the same route: ${networkRoute}`,
+      );
+      await mutate({ operation: "defaultAndApply", model: null });
       await mutate({ operation: "removeAndApply", id: provider.id });
       assert.equal(
         (await read()).data.some((item) => item.id === provider.id),
@@ -567,6 +652,9 @@ try {
         "Browser provider discovery/probe, save/apply/default/remove share backend ownership; credentials never enter receipts or Host files",
       );
     } finally {
+      proxy.closeAllConnections();
+      await new Promise((resolveClose) => proxy.close(resolveClose));
+      receiver.closeAllConnections();
       await new Promise((resolveClose) => receiver.close(resolveClose));
     }
   }

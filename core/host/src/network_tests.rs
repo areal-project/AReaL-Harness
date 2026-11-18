@@ -270,3 +270,24 @@ async fn configured_proxy_overrides_environment_and_loopback_still_connects_dire
     );
     server.await.unwrap();
 }
+
+#[tokio::test]
+async fn no_proxy_mode_clears_inherited_proxy_before_launching_a_model() {
+    let mut environment = BTreeMap::from([
+        ("HTTP_PROXY".into(), "http://inherited.invalid:80".into()),
+        ("http_proxy".into(), "http://inherited.invalid:80".into()),
+        (
+            "ALL_PROXY".into(),
+            "socks5h://inherited.invalid:1080".into(),
+        ),
+    ]);
+    let input = desktop(&serde_json::json!({"httpProxy":"direct"}), &environment)
+        .await
+        .unwrap();
+    let url = Url::parse("https://model.invalid/v1/responses").unwrap();
+    assert_eq!(proxy_for_url(&url, &input.proxies), None);
+    apply_model_proxy(input, &mut environment);
+    assert_eq!(proxy_for_url(&url, &environment), None);
+    assert!(!environment.contains_key("http_proxy"));
+    assert_eq!(environment[areal_config::proxy::MANAGED_PROXY], "1");
+}

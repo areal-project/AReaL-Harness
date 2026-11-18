@@ -1879,6 +1879,12 @@ impl Host {
         let credential_source = self
             .migration
             .shared_credential_source(&registration, uses_shared_host_config)?;
+        if let crate::ProjectSource::Gui { .. } = registration.source
+            && let Some(source) = &credential_source
+        {
+            let network = self.gateway.workbench.model_network(self, source).await?;
+            crate::network::apply_model_proxy(network, &mut inputs.environment);
+        }
         let environment_credentials = self.gateway.workbench.project_environment_credentials(
             &registration,
             credential_source.as_deref(),

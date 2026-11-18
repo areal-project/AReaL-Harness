@@ -25283,6 +25283,13 @@
               "enum": [
                 "connected"
               ]
+            },
+            "networkRoute": {
+              "type": "string",
+              "enum": [
+                "proxy",
+                "direct"
+              ]
             }
           },
           "required": [

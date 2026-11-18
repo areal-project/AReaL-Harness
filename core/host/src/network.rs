@@ -1,5 +1,6 @@
 //! Host 共享 HTTP 传输：保留公共与系统信任根、代理绕过和禁止重定向。
 use anyhow::{Context, Result, ensure};
+use areal_config::proxy::proxy_for_url;
 use reqwest::{Client, Url};
 use serde_json::Value;
 use std::{
@@ -32,102 +33,6 @@ pub(crate) fn client(input: &NetworkInput) -> Result<Client> {
         }
     }
     Ok(builder.build()?)
-}
-
-fn proxy_for_url(url: &Url, source: &BTreeMap<String, String>) -> Option<String> {
-    let host = url
-        .host_str()?
-        .trim_matches(['[', ']'])
-        .to_ascii_lowercase();
-    let ip = host.parse::<IpAddr>().ok();
-    if host == "localhost" || host.ends_with(".localhost") || ip.is_some_and(|ip| ip.is_loopback())
-    {
-        return None;
-    }
-    let variable = |key: &str| {
-        source
-            .get(key)
-            .filter(|s| !s.is_empty())
-            .or_else(|| source.get(&key.to_ascii_lowercase()))
-            .filter(|s| !s.is_empty())
-            .cloned()
-    };
-    let port = url.port_or_known_default().unwrap_or(0);
-    for entry in variable("NO_PROXY")
-        .unwrap_or_default()
-        .split(|c: char| c == ',' || c.is_whitespace())
-        .filter(|s| !s.is_empty())
-    {
-        let entry = entry.to_ascii_lowercase();
-        if entry == "*" {
-            return None;
-        }
-        if let Some((address, prefix)) = entry.split_once('/') {
-            if let (Some(ip), Ok(network), Ok(bits)) = (
-                ip,
-                address.trim_matches(['[', ']']).parse::<IpAddr>(),
-                prefix.parse::<u32>(),
-            ) {
-                let matched = match (ip, network) {
-                    (IpAddr::V4(ip), IpAddr::V4(net)) if bits <= 32 => {
-                        u32::from(ip).checked_shr(32 - bits).unwrap_or(0)
-                            == u32::from(net).checked_shr(32 - bits).unwrap_or(0)
-                    }
-                    (IpAddr::V6(ip), IpAddr::V6(net)) if bits <= 128 => {
-                        u128::from(ip).checked_shr(128 - bits).unwrap_or(0)
-                            == u128::from(net).checked_shr(128 - bits).unwrap_or(0)
-                    }
-                    _ => false,
-                };
-                if matched {
-                    return None;
-                }
-            }
-            continue;
-        }
-        let entry = if let Some((name, suffix)) = entry
-            .rsplit_once(':')
-            .filter(|(name, _)| !name.contains(':') || name.ends_with(']'))
-        {
-            if let Ok(value) = suffix.parse::<u16>() {
-                if value != port {
-                    continue;
-                }
-                name
-            } else {
-                &entry
-            }
-        } else {
-            &entry
-        };
-        let domain = entry
-            .trim_matches(['[', ']'])
-            .trim_start_matches("*.")
-            .trim_start_matches('.');
-        if host == domain
-            || (domain.parse::<IpAddr>().is_err() && host.ends_with(&format!(".{domain}")))
-        {
-            return None;
-        }
-    }
-    if source
-        .get("AREAL_CHATGPT_SYSTEM_PROXY")
-        .is_some_and(|s| s == "DIRECT")
-    {
-        return None;
-    }
-    source
-        .get("AREAL_CHATGPT_SYSTEM_PROXY")
-        .filter(|s| !s.is_empty())
-        .cloned()
-        .or_else(|| {
-            variable(if url.scheme() == "https" {
-                "HTTPS_PROXY"
-            } else {
-                "HTTP_PROXY"
-            })
-        })
-        .or_else(|| variable("ALL_PROXY"))
 }
 
 fn setting<'a>(settings: &'a Value, key: &str) -> Result<&'a str> {
@@ -364,10 +269,12 @@ pub(crate) async fn desktop(
     settings: &Value,
     environment: &BTreeMap<String, String>,
 ) -> Result<NetworkInput> {
-    let proxy = proxy_setting(setting(settings, "httpProxy")?)?;
+    let setting_proxy = setting(settings, "httpProxy")?;
+    let direct = setting_proxy == "direct";
+    let proxy = proxy_setting(if direct { "" } else { setting_proxy })?;
     let bypass = bypass_setting(setting(settings, "httpProxyNoProxy")?)?;
     let ca = setting(settings, "httpProxyCaCertPath")?;
-    let system = if proxy.is_empty() {
+    let system = if !direct && proxy.is_empty() {
         system_proxy().await?
     } else {
         BTreeMap::new()
@@ -397,12 +304,15 @@ pub(crate) async fn desktop(
                 .cloned()
                 .unwrap_or_default()
         };
-        if !selected.is_empty() {
+        if !direct && !selected.is_empty() {
             proxies.insert(name.into(), selected);
         }
     }
-    if !proxy.is_empty() {
-        proxies.insert("AREAL_CHATGPT_SYSTEM_PROXY".into(), proxy);
+    if direct || !proxy.is_empty() {
+        proxies.insert(
+            "AREAL_CHATGPT_SYSTEM_PROXY".into(),
+            if direct { "DIRECT".into() } else { proxy },
+        );
     }
     proxies.insert(
         "NO_PROXY".into(),
@@ -436,6 +346,16 @@ pub(crate) async fn desktop(
         extra_ca_pem,
         proxy_unavailable: false,
     })
+}
+
+pub(super) fn apply_model_proxy(input: NetworkInput, environment: &mut BTreeMap<String, String>) {
+    environment.retain(|key, _| !areal_config::PROXY_ENV_VARS.contains(&key.as_str()));
+    for (key, value) in input.proxies {
+        if areal_config::PROXY_ENV_VARS.contains(&key.as_str()) {
+            environment.insert(key, value);
+        }
+    }
+    environment.insert(areal_config::proxy::MANAGED_PROXY.into(), "1".into());
 }
 
 #[cfg(test)]

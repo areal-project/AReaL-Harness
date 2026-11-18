@@ -896,6 +896,14 @@ export const generalMessages = {
     "zh-CN": "连接成功",
     en: "Connected",
   },
+  "settings.modelSettings.connectedViaProxy": {
+    "zh-CN": "已通过代理连接 {value0}",
+    en: "Connected to {value0} through a proxy",
+  },
+  "settings.modelSettings.connectedDirectly": {
+    "zh-CN": "已直连 {value0}",
+    en: "Connected directly to {value0}",
+  },
   "settings.modelSettings.connectedToModelValue": {
     "zh-CN": "模型 {value0} 连接成功",
     en: "Connected to model {value0}",

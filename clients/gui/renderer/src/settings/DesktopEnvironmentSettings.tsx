@@ -26,24 +26,33 @@ function SavedSetting({
   description,
   placeholder,
   toggle = false,
+  proxyMode = false,
 }: SettingsProps & {
   setting: string;
   label: MessageId;
   description: MessageId;
   placeholder?: string;
   toggle?: boolean;
+  proxyMode?: boolean;
 }) {
   const { t } = useI18n();
   const value = toggle ? settings[setting] !== false : String(settings[setting] ?? "");
   const [draft, setDraft] = useState(String(value));
+  const [editingProxy, setEditingProxy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | UiMessage>("");
   const [saved, setSaved] = useState(false);
   const saving = useRef(false);
   useEffect(() => {
-    setDraft(String(value));
-  }, [value]);
+    setDraft(proxyMode && value === "direct" ? "" : String(value));
+    setEditingProxy(false);
+  }, [value, proxyMode]);
   const disabled = !connected || !action || busy;
+  const mode = value === "direct" ? "direct" : value ? "custom" : "system";
+  const showInput = !toggle && (!proxyMode || editingProxy || mode === "custom");
+  const saveDraft = () => {
+    if (!proxyMode || (draft.trim() && draft.trim() !== "direct")) void save(draft.trim());
+  };
   const save = async (next: string | boolean) => {
     if (!connected || !action || saving.current) return;
     saving.current = true;
@@ -82,18 +91,44 @@ function SavedSetting({
             disabled={disabled}
             onCheckedChange={(next) => void save(next)}
           />
-        ) : (
+        ) : showInput ? (
           <ActionButton
-            disabled={disabled || draft === value}
-            onClick={() => void save(draft.trim())}
+            disabled={
+              disabled ||
+              draft === value ||
+              (proxyMode && (!draft.trim() || draft.trim() === "direct"))
+            }
+            onClick={saveDraft}
           >
             {t("settings.desktop.save")}
           </ActionButton>
-        )
+        ) : undefined
       }
       detail={
         <>
-          {!toggle && (
+          {proxyMode && (
+            <div className="flex flex-wrap gap-2" role="group" aria-label={t(label)}>
+              {(["system", "direct", "custom"] as const).map((option) => (
+                <ActionButton
+                  key={option}
+                  disabled={disabled}
+                  variant={(editingProxy ? "custom" : mode) === option ? "default" : "outline"}
+                  aria-pressed={(editingProxy ? "custom" : mode) === option}
+                  onClick={() => {
+                    if (option === "custom") {
+                      setEditingProxy(true);
+                      return;
+                    }
+                    setEditingProxy(false);
+                    if (mode !== option) void save(option === "direct" ? "direct" : "");
+                  }}
+                >
+                  {t(`settings.desktop.proxyMode.${option}`)}
+                </ActionButton>
+              ))}
+            </div>
+          )}
+          {showInput && (
             <Input
               aria-label={t(label)}
               value={draft}
@@ -108,7 +143,7 @@ function SavedSetting({
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.nativeEvent.isComposing) {
                   event.preventDefault();
-                  void save(draft.trim());
+                  saveDraft();
                 }
               }}
             />
@@ -152,6 +187,7 @@ export function DesktopEnvironmentSettings(props: SettingsProps) {
           <SavedSetting
             {...props}
             setting="httpProxy"
+            proxyMode
             label="settings.desktop.proxy"
             description="settings.desktop.proxyDescription"
             placeholder={t("settings.desktop.proxyPlaceholder")}

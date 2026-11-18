@@ -53,7 +53,7 @@ function settingString(value, name, limit = 4096) {
 /** @param {unknown} value */
 function proxySetting(value) {
   const text = settingString(value, "HTTP proxy");
-  if (!text) return "";
+  if (!text || text === "direct") return text;
   let url;
   try {
     url = new URL(text);
@@ -158,18 +158,20 @@ function normalizeNetworkSetting(key, value) {
 /** @param {DesktopNetworkSettings} [settings] @param {NodeJS.ProcessEnv} [source]
  * @param {{platform?:NodeJS.Platform,run?:Parameters<typeof systemProxyEnvironment>[2],caBundleDirectory?:string}} [options] */
 async function resolveDesktopNetwork(settings = {}, source = process.env, options = {}) {
-  const proxy = proxySetting(settings.httpProxy);
+  const configured = proxySetting(settings.httpProxy);
+  const direct = configured === "direct";
+  const proxy = direct ? "" : configured;
   const bypass = bypassSetting(settings.httpProxyNoProxy);
   const caPath = normalizeNetworkSetting("httpProxyCaCertPath", settings.httpProxyCaCertPath);
   /** @type {NodeJS.ProcessEnv} */
-  const env = proxy
+  const env = configured
     ? Object.fromEntries(
         ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"].map(
           (key) => [key, proxy],
         ),
       )
     : await systemProxyEnvironment(source, options.platform, options.run);
-  if (proxy) env.AREAL_CHATGPT_SYSTEM_PROXY = proxy;
+  if (direct || proxy) env.AREAL_CHATGPT_SYSTEM_PROXY = direct ? "DIRECT" : proxy;
   env.NO_PROXY = env.no_proxy = [
     ...new Set([env.NO_PROXY, bypass, ...LOOPBACK_BYPASS].filter(Boolean)),
   ].join(",");
@@ -267,7 +269,9 @@ async function applyDesktopSessionNetworkPolicy(
   settings = {},
   { fallbackProxyMode = "system" } = {},
 ) {
-  const proxy = proxySetting(settings.httpProxy);
+  const configured = proxySetting(settings.httpProxy);
+  const direct = configured === "direct";
+  const proxy = direct ? "" : configured;
   const bypass = bypassSetting(settings.httpProxyNoProxy);
   const caPath = normalizeNetworkSetting("httpProxyCaCertPath", settings.httpProxyCaCertPath);
   if (proxy) {
@@ -283,7 +287,7 @@ async function applyDesktopSessionNetworkPolicy(
       proxyRules: proxy,
       proxyBypassRules: chromiumBypass.join(","),
     });
-  } else await session.setProxy({ mode: fallbackProxyMode });
+  } else await session.setProxy({ mode: direct ? "direct" : fallbackProxyMode });
   await session.closeAllConnections();
   if (!caPath) {
     session.setCertificateVerifyProc(null);

@@ -4,7 +4,7 @@ use anyhow::bail;
 use futures_util::StreamExt;
 
 #[derive(Debug)]
-struct Failure(&'static str);
+struct Failure(String);
 impl std::fmt::Display for Failure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("RESOURCE_UNAVAILABLE")
@@ -12,7 +12,7 @@ impl std::fmt::Display for Failure {
 }
 impl std::error::Error for Failure {}
 pub(super) fn failure(message: &'static str) -> anyhow::Error {
-    Failure(message).into()
+    Failure(message.into()).into()
 }
 pub(super) fn rejection(error: &anyhow::Error) -> Option<Value> {
     error
@@ -174,11 +174,10 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, request: &Value) -> R
 }
 async fn execute(host: &Rc<Host>, source: &str, request: &Value) -> Result<Value> {
     let connection = connection(host, source, request).await?;
-    let settings = super::library_store::read_source(host, source)?;
-    let environment = std::env::vars_os()
-        .filter_map(|(name, value)| Some((name.into_string().ok()?, value.into_string().ok()?)))
-        .collect();
-    let network = crate::network::desktop(&settings["settings"], &environment)
+    let network = host
+        .gateway
+        .workbench
+        .model_network(host, source)
         .await
         .map_err(|_| failure("网络代理或补充证书配置不可用，请检查网络设置。"))?;
     host.admission()?;
@@ -210,8 +209,17 @@ async fn execute(host: &Rc<Host>, source: &str, request: &Value) -> Result<Value
             && url.fragment().is_none(),
         "INVALID_PARAMS"
     );
+    let route = if areal_config::proxy::proxy_for_url(&url, &network.proxies).is_some() {
+        "proxy"
+    } else {
+        "direct"
+    };
+    let route_failure = |message: &str| {
+        let label = if route == "proxy" { "代理" } else { "直连" };
+        anyhow::Error::from(Failure(format!("请求路径：{label}。{message}")))
+    };
     let client = crate::network::client(&network)
-        .map_err(|_| failure("模型网络连接不可用，请检查代理和证书。"))?;
+        .map_err(|_| route_failure("模型网络连接不可用，请检查代理和证书。"))?;
     let mut upstream=if request["operation"]=="discover"{client.get(url)}else{
         let body=if connection.protocol=="responses"{json!({"model":request["model"],"input":[{"role":"user","content":"Reply with OK."}],"store":false,"stream":true})}
             else{json!({"model":request["model"],"messages":[{"role":"user","content":"Reply with OK."}],"stream":true})};
@@ -223,9 +231,9 @@ async fn execute(host: &Rc<Host>, source: &str, request: &Value) -> Result<Value
     let response = upstream
         .send()
         .await
-        .map_err(|_| failure("连接失败，请检查服务地址、网络代理和证书。"))?;
+        .map_err(|_| route_failure("连接失败，请检查服务地址、网络代理和证书。"))?;
     if !response.status().is_success() {
-        return Err(failure(if response.status().is_redirection() {
+        return Err(route_failure(if response.status().is_redirection() {
             "模型服务返回重定向，请使用最终服务地址。"
         } else if matches!(response.status().as_u16(), 401 | 403) {
             "认证失败，请检查 API Key 与模型权限。"
@@ -234,7 +242,17 @@ async fn execute(host: &Rc<Host>, source: &str, request: &Value) -> Result<Value
         }));
     }
     if request["operation"] == "probe" {
-        return probe(response, &connection.protocol).await;
+        let mut result = probe(response, &connection.protocol)
+            .await
+            .map_err(|error| {
+                if let Some(failure) = error.downcast_ref::<Failure>() {
+                    route_failure(&failure.0)
+                } else {
+                    error
+                }
+            })?;
+        result["networkRoute"] = json!(route);
+        return Ok(result);
     }
     let mut bytes = Vec::new();
     let mut stream = response.bytes_stream();

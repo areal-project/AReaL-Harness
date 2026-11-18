@@ -355,7 +355,7 @@ function modelCapabilities(raw) {
 /** @typedef {{authenticated:boolean,state:string,email:string|null,planType:string|null,modelError:string|null,models:SubscriptionModel[],diagnostic:Diagnostic|null,login:Login|null,error:string|null,activeAccountId?:string|null,accounts?:Array<{id:string,label:string,email:string|null,active:boolean,state:string,billing:string}>}} AccountStatus */
 /** @typedef {AccountStatus & {availability?:'checking'|'available'|'unavailable',refreshing?:boolean,billing:string,catalog:{source:string,fetchedAt:number|null,fresh:boolean,sessionRevision:number|null,overrides:boolean}|null}} ChatGPTStatus */
 /** @template {string} N @typedef {N extends 'providers' ? ProviderRequest : N extends 'chatgpt' ? ChatGPTRequest : never} Request */
-/** @template {string} N @template P @typedef {N extends 'providers' ? P extends {operation:'revealKey'} ? {apiKey:string} : P extends {operation:'probe'} ? {state:'connected'} : P extends {operation:'discover'} ? {models:string[],modelParameters?:Record<string,ModelParameters>} : P extends {operation:'list'|'apply'|'save'|'saveAndApply'|'removeAndApply'|'defaultAndApply'|'remove'|'default'} ? ProviderStatus : never : N extends 'chatgpt' ? P extends {operation:'login'} ? Login : P extends {operation:'probe'} ? {state:'connected'} : P extends {operation:'status'|'forget'|'logout'|'selectAccount'|'cancel'} ? ChatGPTStatus : never : never} Response */
+/** @template {string} N @template P @typedef {N extends 'providers' ? P extends {operation:'revealKey'} ? {apiKey:string} : P extends {operation:'probe'} ? {state:'connected',networkRoute?:'proxy'|'direct'} : P extends {operation:'discover'} ? {models:string[],modelParameters?:Record<string,ModelParameters>} : P extends {operation:'list'|'apply'|'save'|'saveAndApply'|'removeAndApply'|'defaultAndApply'|'remove'|'default'} ? ProviderStatus : never : N extends 'chatgpt' ? P extends {operation:'login'} ? Login : P extends {operation:'probe'} ? {state:'connected'} : P extends {operation:'status'|'forget'|'logout'|'selectAccount'|'cancel'} ? ChatGPTStatus : never : never} Response */
 /** @param {unknown} value @returns {value is string} */
 function text(value) {
   return typeof value === "string";
@@ -638,7 +638,13 @@ function isResponse(name, request, value) {
         value.apiKey.length <= 16384 &&
         Object.keys(value).every((key) => key === "apiKey")
       );
-    if (request.operation === "probe") return value.state === "connected";
+    if (request.operation === "probe")
+      return (
+        value.state === "connected" &&
+        (value.networkRoute === undefined ||
+          value.networkRoute === "proxy" ||
+          value.networkRoute === "direct")
+      );
     if (request.operation === "discover")
       return (
         strings(value.models) &&

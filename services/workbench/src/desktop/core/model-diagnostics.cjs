@@ -73,6 +73,7 @@ function projectModelRequest(value, requestId) {
     protocol: choice(value.protocol, ["responses", "chat-completions"]),
     transport: choice(value.transport, ["http-sse", "responses-websocket"]),
     endpoint: endpoint(value.endpoint),
+    networkRoute: choice(value.networkRoute, ["proxy", "direct"]),
     model:
       model && /^[a-zA-Z0-9][a-zA-Z0-9_./:-]{0,127}$/.test(model) && !/^(sk-|Bearer)/i.test(model)
         ? model

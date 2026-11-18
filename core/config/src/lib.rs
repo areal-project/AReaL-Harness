@@ -2,6 +2,7 @@
 pub mod cloud;
 mod file;
 pub mod models;
+pub mod proxy;
 mod resolve;
 pub mod skills;
 mod trajectory;

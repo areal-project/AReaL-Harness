@@ -262,6 +262,20 @@ export function ModelSettings({
       const saved = draft || key !== undefined ? await save() : provider;
       await task(saved);
     });
+  const testModel = (model: string) =>
+    saveThen(async (saved) => {
+      const result = await api({ operation: "probe", id: saved.id, model });
+      setProbe((previous) => ({ ...previous, [model]: true }));
+      setMessage({
+        id:
+          result.networkRoute === "proxy"
+            ? "settings.modelSettings.connectedViaProxy"
+            : result.networkRoute === "direct"
+              ? "settings.modelSettings.connectedDirectly"
+              : "settings.modelSettings.connectedToModelValue",
+        values: { value0: model },
+      });
+    });
   const current =
     selected ??
     (accountEnabled ? CHATGPT : (items.find((item) => item.enabled)?.id ?? items[0]?.id ?? null));
@@ -680,19 +694,7 @@ export function ModelSettings({
                         busy || !provider.enabled || !provider.models.some((m: Data) => m.enabled)
                       }
                       onClick={() =>
-                        void saveThen(async (saved) => {
-                          const model = saved.models.find((m: Data) => m.enabled);
-                          await api({
-                            operation: "probe",
-                            id: saved.id,
-                            model: model.id,
-                          });
-                          setProbe((p) => ({ ...p, [model.id]: true }));
-                          setMessage({
-                            id: "settings.modelSettings.connectedToModelValue",
-                            values: { value0: model.id },
-                          });
-                        })
+                        void testModel(provider.models.find((model: Data) => model.enabled).id)
                       }
                     >
                       {t("settings.modelSettings.testConnection")}
@@ -853,25 +855,7 @@ export function ModelSettings({
                                   value0: model.id,
                                 })}
                                 disabled={busy || !provider.enabled || !model.enabled}
-                                onClick={() =>
-                                  void saveThen(async (saved) => {
-                                    await api({
-                                      operation: "probe",
-                                      id: saved.id,
-                                      model: model.id,
-                                    });
-                                    setProbe((p) => ({
-                                      ...p,
-                                      [model.id]: true,
-                                    }));
-                                    setMessage({
-                                      id: "settings.modelSettings.connectedToModelValue",
-                                      values: {
-                                        value0: model.id,
-                                      },
-                                    });
-                                  })
-                                }
+                                onClick={() => void testModel(model.id)}
                               >
                                 <Unplug size={14} />
                                 {t("settings.modelSettings.testConnection")}

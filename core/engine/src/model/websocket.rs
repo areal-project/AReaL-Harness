@@ -150,6 +150,7 @@ impl HttpModel {
         audit.value["historyThinking"] = json!(self.options.history_thinking);
         audit.endpoint(&self.endpoint);
         audit.value["transport"] = json!("responses-websocket");
+        audit.value["networkRoute"] = json!("direct");
         audit.value["incremental"] = json!(wire.get("previous_response_id").is_some());
         audit.value["wireInputItems"] = json!(wire["input"].as_array().map_or(0, Vec::len));
         audit.value["wireBodyBytes"] = json!(encoded.len());

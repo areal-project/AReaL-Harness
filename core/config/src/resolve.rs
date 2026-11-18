@@ -255,6 +255,7 @@ const ENV: &[(&str, &str, &str)] = &[
 /// 已知的非秘密配置覆盖键；配置根目录由调用方单独提供。
 pub fn is_config_environment_name(name: &str) -> bool {
     name == "ASK_PERMISSIONS"
+        || name == crate::proxy::MANAGED_PROXY
         || ENV
             .iter()
             .any(|(key, alias, _)| name == *key || (!alias.is_empty() && name == *alias))

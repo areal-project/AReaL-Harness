@@ -79,6 +79,8 @@ fn record_exit(failures: &RefCell<Vec<Instant>>) -> bool {
 pub(super) struct Supervisor {
     analytics: Rc<super::analytics::Analytics>,
     providers: Rc<super::provider_catalog::Providers>,
+    model_network:
+        tokio::sync::Mutex<std::collections::BTreeMap<String, crate::network::NetworkInput>>,
     /// 桌面后台：界面 Main 原来在进程内启动的 CoreBackend + DesktopService，改由 Host 监督。
     backend: Backend,
     page_events: RefCell<Option<tokio::sync::broadcast::Sender<Value>>>,
@@ -258,6 +260,25 @@ impl Drop for PreparedExecution {
 }
 
 impl Supervisor {
+    /// 与项目 Core 共用当前 Host 代际的网络快照。重启后重新读取系统代理。
+    pub(super) async fn model_network(
+        &self,
+        host: &Host,
+        source: &str,
+    ) -> Result<crate::network::NetworkInput> {
+        let mut snapshots = self.model_network.lock().await;
+        if let Some(input) = snapshots.get(source) {
+            return Ok(input.clone());
+        }
+        let settings = super::library_store::read_source(host, source)?;
+        let environment = std::env::vars_os()
+            .filter_map(|(key, value)| Some((key.into_string().ok()?, value.into_string().ok()?)))
+            .collect();
+        let input = crate::network::desktop(&settings["settings"], &environment).await?;
+        snapshots.insert(source.into(), input.clone());
+        Ok(input)
+    }
+
     pub(super) fn tasks_event(&self, host: &Host, canonical: &str, mut body: Value) {
         let Some(source) = self.active_source() else {
             return;
