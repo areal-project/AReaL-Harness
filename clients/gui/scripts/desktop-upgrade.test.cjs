@@ -54,7 +54,7 @@ function alive(pid) {
   }
 }
 async function fixture(t) {
-  const home = await trackedMkdtemp("/private/tmp/areal-upgrade-");
+  const home = await trackedMkdtemp(join(tmpdir(), "agu-"));
   await mkdir(join(home, "user"), { mode: 0o700 });
   const old = new HostClient();
   await old.connectOrStart(home, process.env.AREAL_UPGRADE_OLD_BIN || binary);
