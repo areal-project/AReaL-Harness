@@ -942,7 +942,8 @@
     "platformReason": "Uses the macOS fixed Core runner and optional iOS Simulator.",
     "platforms": ["darwin"],
     "areas": ["remote", "mobile"],
-    "requires": ["electron", "gui-build", "core-build"]
+    "requires": ["electron", "gui-build", "core-build"],
+    "notes": "Native Host with isolated Keychain authorization (AREAL_TEST_HOST_KEYCHAIN=1). Optional iOS Simulator."
   },
   {
     "script": "test:snapshots",
