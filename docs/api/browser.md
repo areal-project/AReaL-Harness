@@ -303,6 +303,8 @@ Core 的4 MiB WS帧上限是全链路实际约束；适配器更大的本地帧�
 
 当前 GUI 宿主只执行 `browser_v1`。含其他既有客户端动态工具的 Thread 仅在同一在线原宿主连接上允许追加；原宿主已断开时拒绝改绑，以免把那些工具交给不能执行它们的 GUI 回调。原有定义和历史仍可读。
 
+可执行 Side Chat 从源会话继承仍在线、同一认证身份持有的 `browser_v1` 连接。源会话没有此绑定时，子会话从空工具表开始，后续可通过受控附件绑定浏览器。子会话回调使用自己的 Thread 和 Turn 身份。
+
 存储版本从 12 提升至 13；新 Core 用默认 0 读取旧 Thread。旧 Core 拒绝 13 版记录；回退前应备份数据，并使用支持版本 13 的 Core 读取，禁止改写版本号或删去工具历史。旧 Core 未公布能力时明确报告 Browser 不可用。
 
 支持 Browser 的新建 GUI Thread 登记固定 Dispatcher；旧 Thread 在下一次空闲时明确发送受控追加固定包，无需手动启用开关。CLI/TUI 作为观察者使用新 observe，不实现 Electron Driver。由已有 GUI ToolHost 服务的Thread可继续通过授权Core入口提交消息；GUI不存在时明确 Browser unavailable，不启动另一个Chrome。子Agent默认不继承父Thread浏览控制；共享只读历史不等于控制授权。

@@ -587,7 +587,7 @@ impl Engine {
         self: &Arc<Self>,
         identity: String,
         request: SideCreate,
-        host: Option<Arc<dyn crate::tools::DynamicToolHost>>,
+        can_inherit_browser: bool,
     ) -> Result<(Thread, Option<Turn>)> {
         self.refresh_plugins().await?;
         self.mutate(move |engine| async move {
@@ -635,12 +635,6 @@ impl Engine {
                 if !engine.accepting_work() {
                     return Err(Error::Closed);
                 }
-                if host
-                    .as_ref()
-                    .is_some_and(|host| host.is_closed() || host.identity() != identity)
-                {
-                    return Err(Error::Conflict);
-                }
                 let source_cell = engine.cell(&request.source_thread_id).await?;
                 let source_state = source_cell.state.lock().await;
                 if source_state.thread.is_side()
@@ -653,6 +647,26 @@ impl Engine {
                 {
                     return Err(invalid("SOURCE_KIND_UNSUPPORTED"));
                 }
+                // 浏览器执行权来自源会话的实际绑定。提交 Side 的共享连接可以与它不同。
+                let browser = areal_protocol::desktop::browser_v1_tool();
+                let host = if can_inherit_browser
+                    && source_state.thread.dynamic_tools.iter().any(|tool| {
+                        tool.name == browser.name
+                            && tool.description == browser.description
+                            && tool.input_schema == browser.input_schema
+                            && tool.output_schema == browser.output_schema
+                    }) {
+                    source_cell
+                        .bindings
+                        .read()
+                        .await
+                        .host
+                        .as_ref()
+                        .filter(|host| !host.is_closed() && host.identity() == identity)
+                        .cloned()
+                } else {
+                    None
+                };
                 let config =
                     engine.next_request_configuration(desktop(&source_state.thread).configuration);
                 if config
@@ -753,10 +767,7 @@ impl Engine {
                     turns: Vec::new(),
                     history_archive: None,
                     context_checkpoint: None,
-                    dynamic_tools: host
-                        .as_ref()
-                        .map(|_| vec![areal_protocol::desktop::browser_v1_tool()])
-                        .unwrap_or_default(),
+                    dynamic_tools: host.as_ref().map(|_| vec![browser]).unwrap_or_default(),
                     toolset_revision: u64::from(host.is_some()),
                 };
                 let (mut thread, turn) = match request.first_input {

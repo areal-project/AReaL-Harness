@@ -263,6 +263,8 @@ After commit, Core emits `areal/thread/tools/attached` with `threadId`, the new 
 
 The current GUI host executes only `browser_v1`. A Thread with other existing client dynamic tools allows attachment only on the same live original host connection. Once that host disconnects, rebinding to a GUI callback that cannot execute those tools is refused. Their definitions and history remain readable.
 
+An executable Side Chat inherits the source Thread's live `browser_v1` connection when it belongs to the same authenticated identity. With no such binding, the Side starts with an empty client toolset and can later attach the browser through the guarded attachment operation. Callbacks carry the Side's own Thread and Turn identities.
+
 Storage version increases from 12 to 13. The new Core reads older Threads with revision 0. Older Core binaries reject version 13 records; back up data and use a Core that understands version 13 rather than editing the version field or dropping tool history. An older Core without the capability reports Browser unavailable.
 
 New Browser-capable GUI Threads register the fixed dispatcher; older Threads append the fixed bundle on the next explicit send while idle, without a manual activation switch. CLI/TUI use observe rather than becoming an Electron driver. Authorized submissions to a GUI-hosted Thread retain that host. With no GUI, Browser is unavailable rather than a new Chrome. Child agents do not inherit parent browser control by default.

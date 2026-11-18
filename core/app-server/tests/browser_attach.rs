@@ -116,18 +116,32 @@ impl Model for ModelFixture {
 }
 
 #[tokio::test]
-async fn executable_side_first_input_binds_desktop_browser_before_activation() {
+async fn executable_side_inherits_the_sources_browser_connection() {
     let dir = tempfile::tempdir().unwrap();
     let engine = Engine::open(dir.path(), Arc::new(ModelFixture), Limits::default()).unwrap();
     let source = engine.create("/workspace".into()).await.unwrap();
     let (url, stop, task) = server(engine.clone()).await;
     let mut owner = connected(&url).await;
+    let mut shared = connected(&url).await;
+    let without_browser = call(
+        &mut shared,
+        "areal/side/create",
+        json!({"sourceThreadId":source.id,"requestId":"side-without-browser"}),
+    )
+    .await;
+    assert!(without_browser["result"]["thread"]["id"].is_string());
+    assert!(
+        without_browser["result"]["thread"]["dynamicTools"]
+            .as_array()
+            .is_none_or(Vec::is_empty),
+        "a source without a browser attachment cannot give one to the Side"
+    );
     let attached = call(&mut owner, "areal/thread/tools/attach", json!({
         "threadId":source.id,"requestId":"attach-browser-side","expectedToolsetRevision":0,"bundleId":"areal.browser.v1"
     })).await;
     assert!(attached.get("result").is_some(), "{attached}");
     let created = call(
-        &mut owner,
+        &mut shared,
         "areal/side/create",
         json!({"sourceThreadId":source.id,
         "requestId":"browser-side","firstInput":[{"type":"text","text":"inspect browser"}]}),
@@ -175,12 +189,16 @@ async fn executable_side_first_input_binds_desktop_browser_before_activation() {
         ))
         .await
         .unwrap();
-    let request = loop {
-        let message = next(&mut owner).await;
-        if message["method"] == "item/tool/call" {
-            break message;
+    let request = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let message = next(&mut owner).await;
+            if message["method"] == "item/tool/call" {
+                break message;
+            }
         }
-    };
+    })
+    .await
+    .expect("Side callback must reach the browser owner, not the submitting connection");
     assert_eq!(request["params"]["threadId"], id);
     assert_eq!(request["params"]["turnId"], created["result"]["turn"]["id"]);
     assert_eq!(request["params"]["tool"], "browser_v1");

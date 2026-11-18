@@ -665,7 +665,6 @@ async fn connection(
             };
             let method = method.to_owned();
             let identity = conn.principal.id.clone();
-            let tool_host = conn.tool_host.clone();
             let principal = conn.principal.clone();
             let configuration = conn.configuration.clone();
             let engine = engine.clone();
@@ -697,12 +696,11 @@ async fn connection(
                     } else if method == "turn/steer" {
                         steer_request(&engine, &identity, params).await
                     } else if method == "areal/side/create" {
-                        let host = (principal.id == "desktop-owner"
+                        let can_inherit_browser = principal.id == "desktop-owner"
                             && principal.allows(auth::Permission::Interact)
                             && principal.allows(auth::Permission::Tools)
-                            && principal.thread_ids.is_none())
-                        .then_some(tool_host as Arc<dyn areal_engine::tools::DynamicToolHost>);
-                        desktop::create_side(&engine, &identity, params, host).await
+                            && principal.thread_ids.is_none();
+                        desktop::create_side(&engine, &identity, params, can_inherit_browser).await
                     } else if plugin_runtime::METHODS.contains(&method.as_str()) {
                         plugin_runtime::dispatch(&engine, &identity, &method, params).await
                     } else if codex_plugins::METHODS.contains(&method.as_str()) {
