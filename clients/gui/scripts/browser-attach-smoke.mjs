@@ -25,13 +25,21 @@ async function readSettledThread(core, count) {
 
 const ready = "NATIVE_BROWSER_INITIAL_REPLY";
 const completed = "NATIVE_BROWSER_TOOL_REPLY";
-const toolId = "native-browser-describe";
+const describeId = "native-browser-describe";
+const observeId = "native-browser-observe";
+const sentinel = "NATIVE_BROWSER_OBSERVATION_SENTINEL";
+const querySecret = "SYNTHETIC_BROWSER_QUERY_SECRET";
 const evidence = await makeTempDir("areal-browser-attach-");
 let requests = 0;
+let pageId;
 const site = createServer((_request, response) => {
   requests++;
   response.setHeader("Content-Type", "text/html");
-  response.end("<title>Browser fixture</title><h1>Embedded preview fixture</h1>");
+  response.end(`<!doctype html><title>Browser fixture</title>
+    <h1 style="position:fixed;top:0;left:0">${sentinel}</h1>
+    <input aria-label="Unsaved draft" id="draft" style="position:fixed;top:90px;left:0">
+    <div style="height:1800px"></div>
+    <script>globalThis.fixturePageMarker=crypto.randomUUID()</script>`);
 });
 const model = createServer(async (request, response) => {
   let raw = "";
@@ -39,35 +47,44 @@ const model = createServer(async (request, response) => {
   const { messages = [], tools = [] } = JSON.parse(raw);
   const user = messages.findLastIndex(({ role }) => role === "user");
   const inspect = JSON.stringify(messages[user]?.content).includes("Inspect the current page");
-  const hasToolResult = messages.slice(user + 1).some(({ role }) => role === "tool");
+  const toolResults = messages.slice(user + 1).filter(({ role }) => role === "tool");
   const sse = (delta, finish = null) =>
     `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
   response.setHeader("Content-Type", "text/event-stream");
-  if (inspect && !hasToolResult && tools.some((tool) => tool.function?.name === "browser_v1")) {
+  if (
+    inspect &&
+    toolResults.length < 2 &&
+    tools.some((tool) => tool.function?.name === "browser_v1")
+  ) {
+    const describing = toolResults.length === 0;
     response.write(
       sse({
         tool_calls: [
           {
             index: 0,
-            id: toolId,
+            id: describing ? describeId : observeId,
             type: "function",
             function: {
               name: "browser_v1",
-              arguments: JSON.stringify({ operation: "describe", parameters: {} }),
+              arguments: JSON.stringify(
+                describing
+                  ? { operation: "describe", parameters: {} }
+                  : { operation: "observe", parameters: { pageId } },
+              ),
             },
           },
         ],
       }) + sse({}, "tool_calls"),
     );
   } else {
-    response.write(sse({ content: hasToolResult ? completed : ready }) + sse({}, "stop"));
+    response.write(sse({ content: toolResults.length ? completed : ready }) + sse({}, "stop"));
   }
   response.end("data: [DONE]\n\n");
 });
 await Promise.all(
   [site, model].map((server) => new Promise((done) => server.listen(0, "127.0.0.1", done))),
 );
-const url = `http://127.0.0.1:${site.address().port}/`;
+const url = `http://127.0.0.1:${site.address().port}/?token=${querySecret}`;
 const scene = await createScene("areal-native-browser-");
 const result = {
   coreSha256: createHash("sha256")
@@ -122,7 +139,7 @@ try {
     (target) => window.arealDesktop.preview({ operation: "navigate", ...target }),
     { projectId, threadId, url },
   );
-  const pageId = navigate?.browser?.pageId;
+  pageId = navigate?.browser?.pageId;
   assert(pageId, "Preview returns a browser page identity");
   const nativePageId = () =>
     app.evaluate(
@@ -140,6 +157,24 @@ try {
   assert(webContentsId, "Preview loads in an Electron WebContents");
   const originalRequests = requests;
   assert(originalRequests > 0);
+  const pageState = (prepare = false) =>
+    app.evaluate(
+      async ({ webContents }, { id, prepare }) => {
+        const contents = webContents.fromId(id);
+        if (!contents) return null;
+        if (prepare)
+          await contents.executeJavaScript(
+            "document.querySelector('#draft').value='UNSAVED_BROWSER_DRAFT';window.scrollTo(0,660)",
+          );
+        return contents.executeJavaScript(
+          "({marker:globalThis.fixturePageMarker,draft:document.querySelector('#draft').value,scrollY})",
+        );
+      },
+      { id: webContentsId, prepare },
+    );
+  const originalPage = await pageState(true);
+  assert.ok(originalPage?.marker && originalPage.scrollY > 0);
+  assert.equal(originalPage.draft, "UNSAVED_BROWSER_DRAFT");
 
   await send("Inspect the current page");
   const allow = page.getByRole("button", { name: "允许一次", exact: true });
@@ -149,21 +184,33 @@ try {
   await page.getByText(completed, { exact: false }).first().waitFor({ timeout: 60000 });
   const after = await readSettledThread(core, 2);
   assert.deepEqual(after.turns[0], before.turns[0]);
-  const item = after.turns[1].items.find(
+  const calls = after.turns[1].items.filter(
     (entry) => entry.type === "dynamicToolCall" && entry.tool === "browser_v1",
   );
-  assert.equal(item?.callId, toolId);
-  assert.equal(item?.status, "completed");
-  assert.equal(item?.execution?.outcome, "succeeded");
-  const description = JSON.parse(item.contentItems.find(({ type }) => type === "inputText").text);
+  assert.deepEqual(
+    calls.map(({ callId }) => callId),
+    [describeId, observeId],
+  );
+  for (const call of calls) {
+    assert.equal(call.status, "completed");
+    assert.equal(call.execution?.outcome, "succeeded");
+  }
+  const description = JSON.parse(
+    calls[0].contentItems.find(({ type }) => type === "inputText").text,
+  );
   assert.equal(description.threadId, threadId);
   assert.equal(description.pageId, pageId);
+  assert.ok(JSON.stringify(calls[1].contentItems).includes(sentinel));
+  assert.ok(!JSON.stringify(after.turns[1]).includes(querySecret));
   assert.equal(await nativePageId(), webContentsId);
+  assert.deepEqual(await pageState(), originalPage);
   assert.equal(requests, originalRequests, "Browser tool execution leaves the loaded page intact");
   result.threadId = threadId;
   result.pageId = pageId;
   result.webContentsId = webContentsId;
-  result.toolCallId = item.callId;
+  result.toolCallIds = calls.map(({ callId }) => callId);
+  result.pageState = originalPage;
+  result.siteRequests = { before: originalRequests, after: requests };
   await page.screenshot({ path: join(evidence, "finished.png") });
 } catch (error) {
   failure = error;
