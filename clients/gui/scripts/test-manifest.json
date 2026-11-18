@@ -1078,10 +1078,10 @@
     "script": "test:upgrade-guide-lifecycle",
     "layer": "e2e",
     "platforms": ["darwin"],
-    "platformReason": "Upgrade acceptance from 0.1.18 to 0.1.19 uses /private/tmp, packaged Electron and real legacy data layouts on macOS.",
+    "platformReason": "Native lifecycle probe for the macOS upgrade guide.",
     "areas": ["lifecycle", "service"],
-    "requires": ["electron", "core-binary", "gui-build"],
-    "notes": "Old Core stop receipt and Host takeover probe used by the upgrade guide; set AREAL_UPGRADE_OLD_CORE."
+    "requires": ["core-binary", "native-runtime"],
+    "notes": "Uses a fixed Core and an isolated Host-owned service to verify the original UNKNOWN stop receipt after service termination. Set AREAL_UPGRADE_OLD_CORE and AREAL_UPGRADE_OLD_CORE_SHA256."
   },
   {
     "script": "test:web-partial-migration",
