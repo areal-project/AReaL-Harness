@@ -13359,7 +13359,8 @@
               "plugins.read",
               "plugins.command",
               "desktop.command",
-              "attachment.read"
+              "attachment.read",
+              "worktree.project.add"
             ]
           }
         },
@@ -17800,6 +17801,46 @@
         "fetchBeforeCreate",
         "autoCleanup",
         "keepCount"
+      ],
+      "additionalProperties": false
+    },
+    "RemoteWorktreeProjectAddParams": {
+      "type": "object",
+      "properties": {
+        "root": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32768
+        },
+        "sourceId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "root"
+      ],
+      "additionalProperties": false
+    },
+    "RemoteWorktreeProjectAddRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "const": "worktree.project.add",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/RemoteWorktreeProjectAddParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
       ],
       "additionalProperties": false
     },
@@ -65527,6 +65568,13 @@
           "result": "#/$defs/ReadSubscriptionClosed",
           "source": "core/host/src/gateway/shared_reads.rs",
           "capability": "gui-read-v1"
+        },
+        "worktree.project.add": {
+          "request": "#/$defs/RemoteWorktreeProjectAddRequest",
+          "result": "#/$defs/WorkbenchPrivateWorktreeProjectAddResult",
+          "source": "core/host/src/gateway/session.rs",
+          "capability": "gui-write-v1",
+          "x-owner": "host"
         },
         "attachment.read": {
           "request": "#/$defs/RemoteAttachmentReadRequest",

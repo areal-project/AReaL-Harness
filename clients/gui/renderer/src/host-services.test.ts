@@ -260,6 +260,39 @@ it("reads queued attachment bytes from the original Host project in bounded chun
   }
 });
 
+it("registers a browser-selected project through Host and refreshes the Shell", async () => {
+  vi.stubGlobal("prompt", () => " /fixture/workspace ");
+  const wire = transport();
+  const register = vi.fn().mockResolvedValue({ projectId: "browser-project" });
+  const services = createHostReadServices(
+    undefined,
+    options(async (lifecycle) => {
+      const base = await wire.factory(lifecycle);
+      return {
+        ...base,
+        identity: { ...base.identity, writeMethods: ["worktree.project.add"] },
+        transport: { ...base.transport, write: register },
+      };
+    }),
+  );
+  try {
+    await until(services);
+    const previous = wire.requests.filter((call) => call.method === "shell.subscribe").length;
+    expect(await services.chooseProject()).toBe("browser-project");
+    expect(register).toHaveBeenCalledWith(
+      "worktree.project.add",
+      { root: "/fixture/workspace" },
+      null,
+      undefined,
+    );
+    expect(wire.requests.filter((call) => call.method === "shell.subscribe")).toHaveLength(
+      previous + 1,
+    );
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
 it("projects a failed initial read with its owner and clears it on a successful retry", async () => {
   const page = new EventTarget();
   vi.stubGlobal("window", page);

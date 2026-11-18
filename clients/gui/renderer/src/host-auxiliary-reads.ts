@@ -158,18 +158,15 @@ export function refreshInspections(
   }
 }
 
-/** 浏览器拿不到本机文件夹选择框；本机网页让用户填路径，登记仍由桌面后台完成。 */
+/** 本机网页接受文件夹路径，由 Host 登记后刷新项目列表。 */
 export async function chooseHostProject(client: HostClient) {
-  if (!client.writable("desktop.command")) throw new Error("此功能需要桌面应用");
+  if (!client.writable("worktree.project.add")) throw new Error("当前连接无法登记项目");
   const path = globalThis.prompt("输入项目文件夹的完整路径")?.trim();
   if (!path) return null;
-  const id = await client.workbench("desktop.command", {
-    command: "addProject",
-    request: { path },
-  });
-  if (typeof id !== "string") throw new Error("项目登记结果无效");
-  client.refreshShell();
-  return id;
+  const value = await client.workbench("worktree.project.add", { root: path });
+  if (!object(value) || typeof value.projectId !== "string") throw new Error("项目登记结果无效");
+  await client.refreshShell();
+  return value.projectId;
 }
 
 export async function reviewToken(

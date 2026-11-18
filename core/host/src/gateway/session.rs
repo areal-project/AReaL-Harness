@@ -1159,6 +1159,32 @@ impl Session {
             }
             return workbench_route::backend_command(&self.host, &self.peer, &request).await;
         }
+        if method == "worktree.project.add" {
+            ensure!(self.local && self.gui_write, "FORBIDDEN");
+            self.authorize(None, "manage")?;
+            ensure!(
+                request.get("context").is_none() && request.get("commandId").is_none(),
+                "INVALID_PARAMS"
+            );
+            let input: areal_protocol::host::RemoteWorktreeProjectAddParams =
+                serde_json::from_value(params.clone()).context("INVALID_PARAMS")?;
+            ensure!(
+                (1..=32768).contains(&input.root.len()) && !input.root.contains('\0'),
+                "INVALID_PARAMS"
+            );
+            let workbench = &self.host.gateway.workbench;
+            workbench.restore_source(&self.host)?;
+            let source = workbench
+                .active_source()
+                .context("CAPABILITY_UNAVAILABLE")?;
+            ensure!(input.source_id.is_none_or(|id| id == source), "FORBIDDEN");
+            return Box::pin(crate::server::worktree_catalog::add_project(
+                &self.host,
+                &source,
+                json!({"root":input.root}),
+            ))
+            .await;
+        }
         if method == "desktop.command" || crate::server::plugins::METHODS.contains(&method) {
             ensure!(self.local && self.gui_write, "FORBIDDEN");
             self.authorize(None, "manage")?;

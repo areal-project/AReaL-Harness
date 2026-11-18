@@ -31,6 +31,7 @@ pub(super) const METHODS: &[&str] = &[
     "providers.read",
     "providers.command",
     "worktree.command",
+    "worktree.project.add",
     "desktop.command",
 ];
 /// manage 里会推动执行的管理写操作。manage 能力只表示“能管理本机后台”，

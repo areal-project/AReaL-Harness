@@ -834,6 +834,46 @@ async fn local_gui_source_worktree_profile_keeps_native_admission_and_identity()
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn local_project_picker_registers_once_without_node_and_fences_source() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let temporary = tempfile::tempdir().unwrap();
+            let root = temporary.path().canonicalize().unwrap();
+            let (host, input, source) = resumable_host(&root);
+            storage::private_dir(&host.home.join("host/projects")).unwrap();
+            let workspace = root.join("browser-project");
+            storage::private_dir(&workspace).unwrap();
+            let (attachment, _events) = host
+                .schedules
+                .connections
+                .frontend_subscribe(&host, "native-project-picker", &source, input.options, None)
+                .unwrap();
+            assert!(attachment["attachmentId"].is_string());
+            let mut local = crate::server::gateway_owner::LocalSession::new(
+                host.clone(),
+                "web-project-picker".into(),
+            )
+            .unwrap();
+            let request =
+                json!({"id":"project","method":"worktree.project.add","params":{"root":workspace}});
+            let original = local.request(&request).await.unwrap();
+            assert_eq!(local.request(&request).await.unwrap(), original);
+            let alias = original["projectId"].as_str().unwrap();
+            let projects =
+                super::super::worktree_catalog::saved_projects(&root.join("data")).unwrap();
+            assert_eq!(projects.iter().filter(|row| row["id"] == alias).count(), 1);
+            let mut foreign = request;
+            foreign["params"]["sourceId"] = json!("other-source");
+            assert_eq!(
+                local.request(&foreign).await.unwrap_err().to_string(),
+                "FORBIDDEN"
+            );
+            assert!(!host.gateway.workbench.has_running_backend());
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn reverse_calls_reject_removed_analytics_ports() {
     let root = tempfile::tempdir().unwrap();
     let host = Rc::new(crate::server::schedules::tests::fixture(root.path()));
