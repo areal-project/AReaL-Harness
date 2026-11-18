@@ -913,6 +913,7 @@ describe("library Host-only routing", () => {
     "queueEdit",
     "reconcile",
     "recovery",
+    "remoteControl",
     "side",
     "workspace",
   ])("never falls back %s to native Main when Host is unready or declines", async (name) => {

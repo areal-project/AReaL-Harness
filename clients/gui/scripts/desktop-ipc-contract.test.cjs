@@ -225,11 +225,25 @@ function commandNames(file) {
   assert.ok(definitions && ts.isObjectLiteralExpression(definitions));
   return definitions.properties;
 }
+function hostCommandBranches() {
+  const route = readFileSync(resolve("../../core/host/src/workbench_route.rs"), "utf8");
+  const command = route.match(/let command = match params\.command \{([\s\S]*?)\n\s*\};/);
+  assert.ok(command, "Host desktop.command dispatch table missing");
+  const domains = route.match(/const METHODS: &\[&str\] = &\[([\s\S]*?)\];/);
+  assert.ok(domains, "Host domain dispatch table missing");
+  return union(
+    [...command[1].matchAll(/Cmd::Value\d+ => "(\w+)"/g)].map((entry) => entry[1]),
+    [
+      ...domains[1].matchAll(/"(analytics|feedback|library|manage|providers|tasks|trajectory)\./g),
+    ].map((entry) => entry[1]),
+  );
+}
 function assertCommands(file) {
   const declared = commandNames(file).map((property) => property.name.text);
   const dispatched = union(
     commandBranches(mainSource()),
     commandBranches(source(resolve("../../services/workbench/src/desktop/core/backend.cjs"))),
+    hostCommandBranches(),
   );
   assert.deepEqual(
     sorted(declared),
@@ -358,10 +372,11 @@ test("Core target scanner recognizes a bound request without collecting unrelate
   }
 });
 
-test("Desktop commands map to their own dispatch layer and Core catalog through actual RPC targets", () => {
+test("Desktop commands map to their dispatch layer and Core catalog through actual RPC targets", () => {
   const main = commandBranches(mainSource()),
-    backend = commandBranches(
-      source(resolve("../../services/workbench/src/desktop/core/backend.cjs")),
+    backend = union(
+      commandBranches(source(resolve("../../services/workbench/src/desktop/core/backend.cjs"))),
+      hostCommandBranches(),
     );
   for (const [name, [owner]] of Object.entries(commandDefinitions))
     assert.ok(
@@ -399,10 +414,15 @@ test("Desktop commands map to their own dispatch layer and Core catalog through 
       !targets.has(method) &&
       !templates.some(({ prefix, suffix }) => method.startsWith(prefix) && method.endsWith(suffix)),
   );
-  // Worktree 执行由 Host 直接调用 Core；GUI 只调用 Host 目录，模型详情由列表提供。
+  // 工作树和附件释放由 Host 调用 Core；模型详情由列表提供。
+  assert.match(
+    readFileSync(resolve("../../core/host/src/workbench_route.rs"), "utf8"),
+    /"areal\/blob\/release"/,
+  );
   assert.deepEqual(unmapped, [
     "areal/worktree/read",
     "areal/worktree/command",
+    "areal/blob/release",
     "areal/provider/read",
   ]);
 });

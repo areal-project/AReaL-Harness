@@ -46,7 +46,6 @@ const { readCommandInvocation, desktopError } = require("@areal/workbench/deskto
 /** @type {typeof import("@areal/workbench/desktop-contract").validatePreview} */
 const validatePreview = require("@areal/workbench/desktop-contract").validatePreview;
 const { modelRecord } = require("@areal/workbench/core-model-contract");
-const { readBrowserHostRequest, browserHostFailure } = require("./browser-host-request.cjs");
 const { CorePreview, developmentApproval } = require("./preview.cjs");
 const diagnostics = require("@areal/workbench/node/diagnostics");
 const { startSnapShots } = require("./snapshots/host.cjs");
@@ -612,7 +611,10 @@ function startDesktop() {
           ].filter((value) => typeof value === "string"),
         developmentApproval(
           createdWindow,
-          () => !quitting && backend.status.connected === true && backend.browserHostOwned === true,
+          () =>
+            !quitting &&
+            backend.status.connected === true &&
+            backend.nativeBrowser?.closed === false,
           () => preview,
         ),
         (projectId, threadId) => backend.retainsThreadResources(projectId, threadId),
@@ -780,133 +782,6 @@ function startDesktop() {
             preview?.revokeThread(projectId, threadId);
           serviceBackend.onBrowserDisconnected = () => {
             preview?.revokeAll();
-          };
-          serviceBackend.onBrowserCancel = (request) => {
-            if (!modelRecord(request) || typeof request.requestId !== "number") return;
-            if (
-              typeof request.projectId === "string" &&
-              typeof request.threadId === "string" &&
-              typeof request.hostGeneration === "number"
-            )
-              preview?.cancelRead({
-                projectId: request.projectId,
-                threadId: request.threadId,
-                requestId: request.requestId,
-                hostGeneration: request.hostGeneration,
-              });
-          };
-          serviceBackend.onBrowserRequest = async (request) => {
-            if (quitting || !preview || !window || window.isDestroyed())
-              throw new Error("Browser host unavailable");
-            const browserRequest = readBrowserHostRequest(request);
-            try {
-              if (browserRequest.operation === "describe") {
-                if (browserRequest.phase === "prepare")
-                  return preview.prepareDiscovery(browserRequest);
-                if (browserRequest.browserApproval?.plan) preview.consumeDiscovery(browserRequest);
-                const identity = await preview.ensureAgentPage(
-                  browserRequest.projectId,
-                  browserRequest.threadId,
-                );
-                try {
-                  if (
-                    !(
-                      modelRecord(browserRequest.browserApproval?.plan) &&
-                      browserRequest.browserApproval.plan.alreadyControlled
-                    )
-                  )
-                    await serviceBackend.browserClaim({
-                      ...identity,
-                      bootstrapRequestId: browserRequest.requestId,
-                    });
-                  const page = preview.page(
-                    browserRequest.projectId,
-                    browserRequest.threadId,
-                    identity.pageId,
-                  );
-                  if (
-                    !page ||
-                    !preview.pageStillOwned(page) ||
-                    page.control !== "agent" ||
-                    preview.page(browserRequest.projectId, browserRequest.threadId, undefined) !==
-                      page ||
-                    page.controlEpoch !== identity.controlEpoch ||
-                    page.pageGeneration !== identity.pageGeneration
-                  )
-                    throw new Error("Browser entry was revoked");
-                } catch (error) {
-                  const page = preview.page(
-                    browserRequest.projectId,
-                    browserRequest.threadId,
-                    identity.pageId,
-                  );
-                  if (page?.controlEpoch === identity.controlEpoch && page.control === "agent")
-                    preview.takeover(
-                      browserRequest.projectId,
-                      browserRequest.threadId,
-                      identity.pageId,
-                    );
-                  throw error;
-                }
-                if (!window.isDestroyed())
-                  sendDesktopEvent(window.webContents, "areal-core:preview-event", {
-                    kind: "reveal",
-                    projectId: browserRequest.projectId,
-                    threadId: browserRequest.threadId,
-                    pageId: identity.pageId,
-                  });
-                return {
-                  ...identity,
-                  coreGeneration: browserRequest.coreGeneration,
-                  turnId: browserRequest.turnId,
-                  callId: browserRequest.callId,
-                  claimed: true,
-                  controlPermit: preview.controlPermit(
-                    browserRequest.projectId,
-                    browserRequest.threadId,
-                    identity.pageId,
-                  ),
-                };
-              }
-              const result = await (browserRequest.phase === "prepare"
-                ? preview.prepare(browserRequest)
-                : preview.execute(browserRequest));
-              if (!modelRecord(result)) throw new Error("Invalid browser host result");
-              if (browserRequest.phase !== "prepare" && !result.error) {
-                result.controlPermit = preview.controlPermit(
-                  browserRequest.projectId,
-                  browserRequest.threadId,
-                  browserRequest.pageId,
-                );
-                if (
-                  modelRecord(result.createdPage) &&
-                  typeof result.createdPage.pageId === "string"
-                )
-                  result.controlPermits = [
-                    result.controlPermit,
-                    preview.controlPermit(
-                      browserRequest.projectId,
-                      browserRequest.threadId,
-                      result.createdPage.pageId,
-                    ),
-                  ];
-              }
-              if (
-                browserRequest.operation === "openDocument" &&
-                browserRequest.phase === "execute" &&
-                result.dispatch === "confirmed" &&
-                !window.isDestroyed()
-              )
-                sendDesktopEvent(window.webContents, "areal-core:preview-event", {
-                  kind: "reveal",
-                  projectId: browserRequest.projectId,
-                  threadId: browserRequest.threadId,
-                  pageId: browserRequest.pageId,
-                });
-              return result;
-            } catch (error) {
-              return browserHostFailure(request, error);
-            }
           };
           app.on("will-quit", () => {});
           /** @param {Parameters<InstanceType<typeof CorePreview>["openDocument"]>[0]} request */
@@ -1227,8 +1102,6 @@ function startDesktop() {
                   ok: true,
                   value: await pluginArchives.command(params, () => trusted(event)),
                 };
-              if (name === "remoteControl")
-                return { ok: true, value: await serviceBackend.remoteControl(params) };
               if (name === "serviceLifecycle") {
                 if (params.operation === "quitInterface")
                   return { ok: true, value: await requestQuit() };

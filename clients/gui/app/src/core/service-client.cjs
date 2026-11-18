@@ -156,12 +156,8 @@ class SharedCoreBackend {
     this.recoveryInFlight = undefined;
     /** @type {Activity|undefined} */
     this.lastActivity = undefined;
-    /** @type {boolean|undefined} */
-    this.browserHostOwned = undefined;
     /** @type {(()=>void)|undefined} */
     this.onBrowserDisconnected = undefined;
-    /** @type {((request:Record<string,unknown>&{requestId:number})=>unknown)|undefined} */
-    this.onBrowserRequest = undefined;
     /** @type {Awaited<ReturnType<typeof createNativeHostTransport>>|undefined} */
     this.nativeBrowser = undefined;
     /** @type {Awaited<ReturnType<typeof createNativeShellTransport>>|undefined} */
@@ -178,8 +174,6 @@ class SharedCoreBackend {
     this.onNativeBrowserRequest = undefined;
     /** @type {((projectId:string,threadId:string)=>void)|undefined} */
     this.onNativeBrowserRevoked = undefined;
-    /** @type {((request:unknown)=>void)|undefined} */
-    this.onBrowserCancel = undefined;
     this.prerequisiteCheck = prerequisiteCheck;
     this.onNotification = onNotification;
     this.onNotificationOpen = onNotificationOpen;
@@ -523,7 +517,6 @@ class SharedCoreBackend {
   disconnected() {
     this.closeNativeBrowser();
     this.terminalConnections.close();
-    this.browserHostOwned = false;
     this.onBrowserDisconnected?.();
     const stopped = !!this.connection && this.stoppedConnection === this.connection;
     const message = stopped ? "后台服务已停止，可按需重新连接" : "后台服务已断开，请重新连接";
@@ -621,16 +614,6 @@ class SharedCoreBackend {
       (target) => {
         if (this.connection === connection) this.onNotificationOpen?.(target);
       },
-      (request) => {
-        if (this.connection !== connection || this.disposed)
-          throw new Error("Browser host is disconnected");
-        return (
-          this.onBrowserRequest?.(request) ?? Promise.reject(new Error("Browser host unavailable"))
-        );
-      },
-      (request) => {
-        if (this.connection === connection) this.onBrowserCancel?.(request);
-      },
     );
     return connection;
   }
@@ -707,7 +690,6 @@ class SharedCoreBackend {
             throw Object.assign(new Error("后台服务连接已变化，请重新连接"), {
               code: "DISCONNECTED",
             });
-          this.browserHostOwned = record(packet) && packet.browserHostOwned === true;
           this.accept(packet, metadata);
           // 成功握手覆盖此前升级或重连尝试留下的错误；错误只属于真正失败的连接，
           // 后台恢复后不能再让它闪现在启动页。
@@ -1296,16 +1278,6 @@ class SharedCoreBackend {
         await this.nativeResourceRead(request),
       );
     return this.requireConnection().request("resources", request, request.operation !== "inspect");
-  }
-  /** @param {Record<string,unknown>} request */
-  async remoteControl(request) {
-    if (request.operation !== "status") this.assertApplicationWrite();
-    if (!this.status.connected) throw new Error("后台尚未连接");
-    return this.requireConnection().request(
-      "remoteControl",
-      request,
-      request.operation !== "status",
-    );
   }
   async serviceStatus() {
     if (!this.status.connected) throw new Error("后台尚未连接");
