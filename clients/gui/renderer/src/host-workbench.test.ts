@@ -374,6 +374,12 @@ describe("plugin store Host routing", () => {
     } as unknown as HostClient;
     const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => "source")!;
     await routes.call("manage", { operation: "plugins", projectId: "project" });
+    await routes.call("manage", {
+      operation: "pluginResolve",
+      projectId: "project",
+      id: "web-search@areal-official",
+      expectedRevision: 1,
+    });
     const install = await routes.call("manage", {
       operation: "pluginInstall",
       projectId: "project",
@@ -405,6 +411,15 @@ describe("plugin store Host routing", () => {
     expect(install).toEqual({ value: { ok: 1 } });
     expect(requests.map(({ method, params }) => [method, params])).toEqual([
       ["plugins.read", { operation: "plugins", projectId: "project" }],
+      [
+        "plugins.command",
+        {
+          operation: "pluginResolve",
+          id: "web-search@areal-official",
+          expectedRevision: 1,
+          projectId: "project",
+        },
+      ],
       [
         "plugins.command",
         {

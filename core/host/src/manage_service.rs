@@ -463,8 +463,10 @@ fn validate_plugin_store_op(
         ensure!(is_hex_sha256(Some(digest)), "INVALID_PARAMS");
     }
     let keep_project = obj.get("projectId").is_some()
-        && (matches!(operation, "plugins" | "plugin" | "mcp" | "pluginInstall")
-            || (operation == "pluginConfigure" && scope == Some("project")));
+        && (matches!(
+            operation,
+            "plugins" | "plugin" | "mcp" | "pluginInstall" | "pluginResolve"
+        ) || (operation == "pluginConfigure" && scope == Some("project")));
 
     let mut normalized = obj.clone();
     for stripped in ["sourceId", "requestId", "logicalProjectId", "scope"] {

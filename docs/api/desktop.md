@@ -431,7 +431,7 @@ MCP 清理失败保持 cleanupFailed，并持久保存 cleanupUnconfirmed。无�
 
 ## 插件包管理
 
-插件登记（市场来源、解析、安装、启用、卸载、直接添加的 MCP）归 Host：客户端调用 Host 的 `plugins.read`（`plugins`、`plugin`、`mcp`）与 `plugins.command`（`pluginInstall`、`pluginUninstall`、`pluginResolve`、`pluginConfigure`、`marketplaceAdd/AddGit/Remove/Update/SyncDefault`、`mcpSave`、`mcpRemove`），需本机 GUI 写授权和 `manage`。Host 写插件库后通知在线 Core 重新读取。以下 Core 方法要求无限制的 `manage` 身份；限制到 Thread 的身份不能调用。客户端不得自行改写安装文件。固定格式和阶段边界见[插件指南](../guides/plugins.md)与[实施计划](../development/codex-plugins-plan.md)。
+插件登记（市场来源、解析、安装、启用、卸载、直接添加的 MCP）归 Host：客户端调用 Host 的 `plugins.read`（`plugins`、`plugin`、`mcp`）与 `plugins.command`（`pluginInstall`、`pluginUninstall`、`pluginResolve`、`pluginConfigure`、`marketplaceAdd/AddGit/Remove/Update/SyncDefault`、`mcpSave`、`mcpRemove`），需本机 GUI 写授权和 `manage`。解析和安装携带项目 ID 时，Host 从该项目的市场查找来源。Host 写插件库后通知在线 Core 重新读取。以下 Core 方法要求无限制的 `manage` 身份；限制到 Thread 的身份不能调用。客户端不得自行改写安装文件。固定格式和阶段边界见[插件指南](../guides/plugins.md)与[实施计划](../development/codex-plugins-plan.md)。
 
 | 方法 | 参数 | 结果/约束 |
 |---|---|---|
