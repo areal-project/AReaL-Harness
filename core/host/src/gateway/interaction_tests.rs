@@ -1839,6 +1839,9 @@ async fn local_desktop_principal_sends_through_the_shared_journal_without_device
             alias["context"]["projectId"] = json!(f.alias);
             let (session, rejected) = Fixture::dispatch(session, alias).await.unwrap();
             assert_eq!(rejected.unwrap_err().to_string(), "FORBIDDEN");
+            let (revision, snapshot) = f.host.journal.native_snapshot("project").unwrap();
+            let old_steer = json!({"rustOwner":true,"method":"areal/queue/steer","params":{"requestId":"old-steer","threadId":"thread","queueItemId":"old-item","expectedTurnId":"finished-turn","expectedRevision":1}});
+            f.host.journal.native_admit("project", revision, snapshot, old_steer.clone(), true).unwrap();
             let sending = Fixture::dispatch(session, send);
             f.call("areal/capabilities").await.reply(Fixture::capabilities());
             f.call("areal/thread/observe").await.reply(Fixture::idle_thread(1));
@@ -1849,6 +1852,7 @@ async fn local_desktop_principal_sends_through_the_shared_journal_without_device
             let (session, sent) = sending.await.unwrap();
             assert_eq!(sent.unwrap()["admissionState"], "accepted");
             let (_, snapshot) = f.host.journal.native_snapshot("project").unwrap();
+            assert_eq!(snapshot["pending"], json!([old_steer]));
             let record = snapshot["outcomes"].as_object().unwrap().values().chain(snapshot["pending"].as_array().unwrap()).find(|entry| entry["remote"]["commandId"] == command).unwrap().clone();
             assert_eq!(record["remote"]["devicePeerId"], LOCAL_PEER);
             assert_eq!(record["remote"]["projectId"], "project");

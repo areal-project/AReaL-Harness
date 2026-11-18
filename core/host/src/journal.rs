@@ -763,6 +763,20 @@ fn check_admission(snapshot: &Value, entry: &Value, block_target: bool) -> Resul
                 if settled || areal_protocol::submissions::remote_control(row) {
                     return false;
                 }
+                // 新轮次只能在 Core 空闲且没有待执行队列项时启动。旧 steer 绑定原活动轮次，
+                // 即使仍缺回执，也不能向这次新建的轮次写入；保留原记录供单独核对。
+                if entry["method"] == "areal/turn/start"
+                    && params["admissionGuard"]["ordinarySession"] == true
+                    && row["method"] == "areal/queue/steer"
+                    && row["params"]["expectedTurnId"]
+                        .as_str()
+                        .is_some_and(|id| !id.is_empty())
+                    && row["params"]["queueItemId"]
+                        .as_str()
+                        .is_some_and(|id| !id.is_empty())
+                {
+                    return false;
+                }
                 if matches!(
                     entry["method"].as_str(),
                     Some("areal/thread/fork" | "areal/side/start" | "areal/side/create")
