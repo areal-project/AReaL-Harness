@@ -173,8 +173,9 @@ const server = createServer(async (request, response) => {
   }
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+const modelConfig = join(userHome, ".areal/config.toml");
 await writeFile(
-  join(userHome, ".areal/config.toml"),
+  modelConfig,
   `schema_version=1\n[model]\ncatalog_version=1\nprovider="fixture"\nname="fixture"\n[permissions]\nmode="ASK_PERMISSIONS"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\nmodels=[{id="fixture",enabled=true}]\n`,
 );
 const binary = process.env.AREAL_GUI_EXECUTABLE
@@ -216,6 +217,7 @@ for (const key of Object.keys(env))
   if (/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) || key === "ELECTRON_RUN_AS_NODE") delete env[key];
 Object.assign(env, {
   AREAL_CORE_USER_HOME: userHome,
+  AREAL_CORE_CONFIG: modelConfig,
   AREAL_GUI_USER_DATA: join(scratch, "electron"),
   AREAL_CORE_HOME: join(scratch, "core"),
   AREAL_HARNESS_SERVICE_HOME: join(scratch, "registry"),
@@ -362,6 +364,10 @@ async function draftText() {
   return page.getByTestId("chat-input").innerText();
 }
 async function sendDraft(text) {
+  await page.getByTestId("composer-model-trigger").click();
+  await page.getByRole("tab", { name: "fixture", exact: true }).click();
+  await page.getByRole("radio", { name: "fixture", exact: true }).click();
+  await page.keyboard.press("Escape");
   await page.getByTestId("chat-input").fill(text);
   await button("发送").click();
   record("send-clicked", { text });
