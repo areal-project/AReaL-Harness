@@ -380,7 +380,10 @@ try {
     old,
   );
   await page.getByText("NEW_GUI_HISTORY_SEND", { exact: true }).waitFor();
-  assert.equal(await page.getByText("HISTORY_GUI_DONE", { exact: true }).count(), 3);
+  await wait(
+    async () => (await page.getByText("HISTORY_GUI_DONE", { exact: true }).count()) === 3,
+    "new reply visible",
+  );
   mark("send-completed", {
     turnId: authoritative.turns.at(-1).id,
     requestCount: 1,
