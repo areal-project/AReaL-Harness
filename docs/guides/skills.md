@@ -15,6 +15,8 @@ CLI、TUI、serve 和直接 Core 共用发现规则；连接既有服务时使�
 
 同名按目录名精确覆盖整个 Skill，不合并资源、不用 frontmatter name 改身份。只发现直接子目录，不向父项目递归搜索；workspace 由可信启动参数决定，不随 RPC cwd 改变。主目录与 AREAL_HARNESS_HOME 分开。
 
+GUI 的“新建技能”和“保存技能”统一写入上表中的 `.agents/skills`：项目范围是 `<workspace>/.agents/skills/<name>/`，用户范围是 `~/.agents/skills/<name>/`。创建 Skill 的草稿会直接给出这个固定目录，不需要再次询问或确认路径。`.claude/skills` 与 `.codex/skills` 只作为兼容读取目录；旧版本 GUI 的私有 `resources/*/skills` 目录仍可读取，但不会覆盖标准目录，也不会再作为新 Skill 的写入位置。
+
 ## 启动时登记元信息
 
 每个目录含 SKILL.md，可带 references/scripts/assets。发现阶段只解析 SKILL.md 的有界 YAML frontmatter，提取 name/description；没有 frontmatter 时使用目录名和首行描述。文件头最多 32 KiB，名称最多 256 字节，描述按 UTF-8 边界截取前 4096 字节；元信息限制不用于附件或正文。模型初始提示包含名称和有界描述，不注入完整正文。

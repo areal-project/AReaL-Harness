@@ -54,6 +54,12 @@ fn codex_is_the_lowest_global_skill_precedence() {
     skill(user.path(), ".claude/skills", "review", "claude");
     skill(user.path(), ".agents/skills", "review", "agents");
     skill(project.path(), ".codex/skills", "project-codex", "project");
+    skill(
+        user.path(),
+        ".codex/skills",
+        "namespace:skill",
+        "namespaced compatibility",
+    );
     let found = discover(Some(project.path()), Some(user.path()))
         .unwrap()
         .skills;
@@ -63,6 +69,7 @@ fn codex_is_the_lowest_global_skill_precedence() {
         "agents"
     );
     assert!(found.iter().any(|s| s.id == "project-codex"));
+    assert!(found.iter().any(|s| s.id == "namespace:skill"));
 }
 
 #[test]

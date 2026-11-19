@@ -79,7 +79,7 @@ const model = createServer(async (request, response) => {
         assert.ok(skill, "scheduled agent sees the linked skill");
         skillTool = {
           id: "linked-schedule-read",
-          name: "skill_read",
+          name: "skill_load",
           args: { skill: { id: skill.id, revision: skill.revision } },
         };
       }

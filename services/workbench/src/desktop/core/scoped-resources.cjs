@@ -14,6 +14,8 @@ const { serverStatus } = require("./provider-contract.cjs");
 /** @typedef {Record<string,unknown> & {operation?:string,scope?:string,projectId?:string,id?:string,expectedRevision?:number,enabled?:boolean,content?:unknown,name?:unknown,description?:unknown,config?:unknown}} ResourceRequest */
 const MAX_REGISTERED_SKILLS = 512;
 const MAX_SKILL_DIRECTORY_ENTRIES = 512;
+// 新建位置与 Core 发现规则一致；兼容目录只读取，按高到低优先级选定同名 Skill。
+const STANDARD_SKILL_ROOTS = [".agents/skills", ".claude/skills", ".codex/skills"];
 /** @param {unknown} value */
 const digest = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 /** @param {string} root @param {string} path */
@@ -24,7 +26,7 @@ const within = (root, path) => {
 /** @param {unknown} id @returns {id is string} */
 const validId = (id) =>
   typeof id === "string" &&
-  /^[a-zA-Z0-9_.-]{1,128}$/.test(id) &&
+  /^[a-zA-Z0-9_.:-]{1,128}$/.test(id) &&
   !id.startsWith(".") &&
   !["__proto__", "constructor", "prototype"].includes(id);
 /** @param {string} path */
@@ -89,30 +91,57 @@ class ScopedResources {
     throw new Error("无效资源范围");
   }
   /** @param {string} scope */
-  async scan(scope) {
-    const rawBase =
-      scope === "user" ? this.backend.userHome || homedir() : this.project(scope).root;
-    const base = await realpath(rawBase);
-    const roots = [];
-    for (const rel of [".agents/skills", ".claude/skills"]) {
+  base(scope) {
+    return scope === "user" ? this.backend.userHome || homedir() : this.project(scope).root;
+  }
+  /** @param {string} scope */
+  managedRoot(scope) {
+    return join(this.backend.home, "resources", scope, "skills");
+  }
+  /** @param {string} scope */
+  async writableRoot(scope) {
+    const base = await realpath(this.base(scope));
+    let root = base;
+    // 分段检查后才创建下一层，避免通过项目 .agents 链接在工作区外创建 skills。
+    for (const name of [".agents", "skills"]) {
+      const path = join(root, name);
+      let exists = true;
       try {
-        const root = await realpath(join(base, rel));
-        if (scope !== "user" && !within(base, root)) throw new Error("项目技能目录超出工作区");
-        roots.push(root);
+        // 先解析现有目录/链接，不能先在链接目标中创建下一层再做范围检查。
+        await realpath(path);
+      } catch (e) {
+        if (!(e instanceof Error && "code" in e && e.code === "ENOENT")) throw e;
+        exists = false;
+      }
+      if (!exists) await mkdir(path, { mode: 0o700 });
+      root = await realpath(path);
+      if (scope !== "user" && !within(base, root)) throw new Error("项目 Skill 写入目录超出工作区");
+    }
+    return root;
+  }
+  /** @param {string} scope */
+  async scan(scope) {
+    const rawBase = this.base(scope);
+    const base = await realpath(rawBase);
+    /** @type {{root:string,managed:boolean}[]} */
+    const roots = [];
+    /** @param {string} path @param {boolean} managed */
+    const addRoot = async (path, managed) => {
+      try {
+        const root = await realpath(path);
+        if (!managed && scope !== "user" && !within(base, root))
+          throw new Error("项目技能目录超出工作区");
+        if (!roots.some((item) => item.root === root)) roots.push({ root, managed });
       } catch (e) {
         if (!(e instanceof Error && "code" in e && e.code === "ENOENT")) throw e;
       }
-    }
-    let managedRoot = join(this.backend.home, "resources", scope, "skills");
-    try {
-      managedRoot = await realpath(managedRoot);
-      roots.unshift(managedRoot);
-    } catch (e) {
-      if (!(e instanceof Error && "code" in e && e.code === "ENOENT")) throw e;
-    }
+    };
+    for (const rel of STANDARD_SKILL_ROOTS) await addRoot(join(base, rel), false);
+    // 保留旧 GUI 私有目录的读取，标准目录中的同名 Skill 始终优先。
+    await addRoot(this.managedRoot(scope), true);
     /** @type {Map<string,import('./resource-contract.cjs').Skill>} */
     const items = new Map();
-    for (const root of roots) {
+    for (const { root, managed } of roots) {
       let entries;
       try {
         entries = await readdir(root, { withFileTypes: true });
@@ -136,7 +165,7 @@ class ScopedResources {
         const item = {
           id,
           scope: scope === "user" ? "user" : "project",
-          managed: root === managedRoot,
+          managed,
           enabled: this.value.skills[scope]?.[id] !== false,
         };
         /** @type {string|undefined} */ let resolvedRoot;
@@ -145,7 +174,7 @@ class ScopedResources {
           resolvedRoot = directory;
           if (
             scope !== "user" &&
-            !roots.some((r) => within(r, directory)) &&
+            !roots.some((r) => within(r.root, directory)) &&
             !within(base, directory)
           )
             throw new Error("技能目录链接超出可信范围");
@@ -411,7 +440,7 @@ class ScopedResources {
         next.skills[scope][request.id] = request.enabled === true;
       } else if (operation === "skillSave") {
         if (request.id === BUILTIN_SKILL_ID || !validId(request.id))
-          throw new Error("技能 ID 仅支持字母、数字、连字符、下划线与点（最多 128 字符）");
+          throw new Error("技能 ID 仅支持字母、数字、连字符、下划线、点与冒号（最多 128 字符）");
         const meta = metadata(
           `---\n${YAML.stringify({ name: request.name, description: request.description })}---`,
           request.id,
@@ -424,8 +453,9 @@ class ScopedResources {
           throw new Error("请填写技能指令（最多 128 KiB）");
         const found = (await this.scan(scope)).find((s) => s.id === request.id);
         if (found) throw new Error("此范围已有同名技能，请使用其他 ID");
-        const directory = join(this.backend.home, "resources", scope, "skills", request.id);
-        await mkdir(directory, { recursive: true, mode: 0o700 });
+        const directory = join(await this.writableRoot(scope), request.id);
+        // 独占创建目录，已有目录或安装器链接不能被保存操作覆盖。
+        await mkdir(directory, { mode: 0o700 });
         await writeFile(
           join(directory, "SKILL.md"),
           `---\n${YAML.stringify(meta)}---\n${request.content.trim()}\n`,

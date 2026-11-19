@@ -15,6 +15,8 @@ CLI, TUI, serve and direct Core share discovery rules. Connections to an existin
 
 Exact directory names override whole Skills without merging resources or taking identity from frontmatter name. Discovery examines direct children only, not parent projects. Trusted launch parameters determine workspace; RPC cwd cannot change it. User home is separate from AREAL_HARNESS_HOME.
 
+The GUI's Create and Save Skill actions always write to the `.agents/skills` roots above: `<workspace>/.agents/skills/<name>/` for a project Skill and `~/.agents/skills/<name>/` for a user Skill. The Create Skill draft supplies this fixed destination directly, so it does not ask for another path or confirmation. `.claude/skills` and `.codex/skills` are read-only compatibility roots; private `resources/*/skills` directories from older GUI versions remain readable as a fallback, but never override a standard root or receive new Skills.
+
 ## Metadata registration at startup
 
 Each directory contains SKILL.md and may include references/scripts/assets. Discovery parses only bounded YAML frontmatter for name/description; without frontmatter, the directory name and first line provide these values. Headers allow 32 KiB and names 256 bytes; descriptions are truncated to 4096 bytes at a UTF-8 boundary. These limits do not apply to bodies or attachments. The initial model prompt includes names and bounded descriptions, not full instructions.

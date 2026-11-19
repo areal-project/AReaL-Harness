@@ -49,7 +49,7 @@ export async function prepareResourceDraft(
     resourceProfile = prepared.profile;
     skill = { ...prepared.skill, source: "官方 · OpenAI" };
     const destination = `${owner.root.replace(/[\\/]+$/, "")}/.agents/skills/<name>`;
-    text = `请使用 Skill Creator 帮我在当前所选项目中创建一个可复用的 Skill。目标目录是 ${destination}。请按 Skill Creator 的指导初始化并验证 Skill，不要写入个人或全局 Skill 目录。请先了解我希望复用的工作和具体需求。`;
+    text = `请使用 Skill Creator 帮我在当前所选项目中创建一个可复用的 Skill。安装位置已固定为 ${destination}；请直接使用此目录，不要询问、确认路径或改用个人/全局 Skill 目录。请按 Skill Creator 的指导初始化并验证 Skill，先了解我希望复用的工作和具体需求。`;
   } else {
     ({ text, skill } = seed);
     const importedProfile = seed.profile;
