@@ -499,6 +499,11 @@ button.composer-project:hover > svg,
 .active-composer {
   flex-shrink: 0;
 }
+.active-composer .composer-project-bar {
+  width: calc(100% - 2 * var(--spacing-field) - 26px);
+  max-width: calc(var(--reading-width, 768px) - 2 * var(--spacing-field) - 26px);
+  margin-inline: auto;
+}
 .composer-dock {
   margin: 0 auto;
   width: 100%;
