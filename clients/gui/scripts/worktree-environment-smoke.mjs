@@ -234,6 +234,31 @@ const project = (snapshot) => snapshot.projects.find((item) => item.root === wor
 const worktreeDirectory = () =>
   fixtureWorkbench(page, "worktree.read", { operation: "worktreeList" });
 
+function observeHostCapacity(page) {
+  page.on("websocket", (socket) => {
+    if (!new URL(socket.url()).pathname.endsWith("/host/socket")) return;
+    const pending = new Map();
+    socket.on("framesent", ({ payload }) => {
+      if (typeof payload !== "string") return;
+      const frame = JSON.parse(payload);
+      if (typeof frame.id !== "string" || typeof frame.method !== "string") return;
+      const operation = frame.params?.operation ?? frame.params?.request?.operation;
+      pending.set(frame.id, {
+        method: frame.method,
+        ...(typeof operation === "string" ? { operation } : {}),
+      });
+    });
+    socket.on("framereceived", ({ payload }) => {
+      if (typeof payload !== "string") return;
+      const frame = JSON.parse(payload);
+      const rejected = pending.get(frame.id);
+      pending.delete(frame.id);
+      if (rejected && frame.error?.code === "CAPACITY_EXCEEDED")
+        record("host-capacity-rejected", { rejected, pending: [...pending.values()] });
+    });
+  });
+}
+
 async function until(predicate, label, timeout = 45000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -388,6 +413,7 @@ try {
     logWrites.push(writeFile(join(evidence, "electron.stderr.log"), data, { flag: "a" }));
   });
   page = await app.firstWindow();
+  observeHostCapacity(page);
   page.setDefaultTimeout(20000);
   page.on("pageerror", (error) => errors.push(error.stack ?? error.message));
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
@@ -421,6 +447,7 @@ try {
       logWrites.push(writeFile(join(evidence, "electron.stderr.log"), data, { flag: "a" }));
     });
     page = await app.firstWindow();
+    observeHostCapacity(page);
     page.setDefaultTimeout(20000);
     page.on("pageerror", (error) => errors.push(error.stack ?? error.message));
     await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });

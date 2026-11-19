@@ -14,6 +14,7 @@ const object = (value: unknown): value is Record<string, unknown> =>
 // 目录读取是后台补全，不把暂时未就绪的项目变成可见的五秒空白。
 const RETRY_MS = 1000;
 const inspectionFlights = new WeakMap<HostClient, { connectionId: string; count: number }>();
+const catalogFlights = new WeakMap<HostClient, { connectionId: string; count: number }>();
 
 // 每个连接一份：模型服务设置变化后加一，同一代 Core 的目录重读，重读期间继续显示旧目录。
 const stalenessByClient = new WeakMap<
@@ -53,6 +54,12 @@ export function refreshModelCatalogs(
   stale.wake = publish;
   const connection = client.snapshot();
   if (connection.connection !== "ready") return;
+  let owner = catalogFlights.get(client);
+  if (!owner || owner.connectionId !== connection.identity.connectionId) {
+    owner = { connectionId: connection.identity.connectionId, count: 0 };
+    catalogFlights.set(client, owner);
+  }
+  const flights = owner;
   for (const project of projects) {
     // 过渡：到 0.1.21 删；旧 GUI 来源退役后移除未发布项目的目录例外。
     if (project.state === "legacyPending") continue;
@@ -60,6 +67,9 @@ export function refreshModelCatalogs(
     const identity = `${scope}#${stale.epoch}#${String(project.modelCatalogRevision ?? "")}#${providerRevision ?? ""}`;
     const previous = catalogs.get(project.projectId);
     if (previous?.identity === identity) continue;
+    // 后台目录逐批读取，让用户请求有连接容量。
+    if (flights.count >= 2) break;
+    flights.count++;
     const entry: NonNullable<ReturnType<Cache["get"]>> = {
       identity,
       scope,
@@ -72,7 +82,6 @@ export function refreshModelCatalogs(
         if (catalogs.get(project.projectId) !== entry) return;
         if (!object(value) || !Array.isArray(value.models)) throw new Error("INVALID_RESPONSE");
         entry.value = value;
-        publish();
       })
       .catch(() => {
         // 后台可能还在连接；这一代的条目先占着挡住重绘重读，过了退避再放开重试。
@@ -81,6 +90,10 @@ export function refreshModelCatalogs(
           catalogs.delete(project.projectId);
           publish();
         }, RETRY_MS);
+      })
+      .finally(() => {
+        flights.count--;
+        if (catalogFlights.get(client) === flights) publish();
       });
   }
 }
