@@ -901,6 +901,73 @@ async fn interrupted_schedule_explicit_resume_keeps_run_and_thread_with_a_fresh_
 }
 
 #[tokio::test]
+async fn foreground_task_advances_after_a_full_batch_of_future_schedules() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+    engine.task_modes.started.store(true, Ordering::Release);
+    let anchor = engine.create("/workspace".into()).await.unwrap();
+    let future = engine
+        .task_create(
+            "owner".into(),
+            serde_json::from_value(json!({
+                "requestId":"future","mode":"scheduled","objective":"wait for the next date",
+                "threadId":anchor.id,"schedule":{"at":now()+3600}
+            }))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let source = engine.create("/workspace".into()).await.unwrap();
+    let queued = engine
+        .task_create(
+            "owner".into(),
+            serde_json::from_value(json!({
+                "requestId":"foreground","mode":"foreground","objective":"inspect the workspace",
+                "threadId":source.id
+            }))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let task_id = queued["id"].as_str().unwrap();
+    {
+        let mut state = engine.task_modes.state.lock().await;
+        let future = state
+            .tasks
+            .get(future["id"].as_str().unwrap())
+            .unwrap()
+            .clone();
+        for i in 0..32 {
+            let id = format!("00000000-0000-4000-8000-{i:012x}");
+            assert!(id.as_str() < task_id);
+            let mut task = future.clone();
+            task.id = id.clone();
+            state.tasks.insert(id, task);
+        }
+    }
+    let (before, mut events) = engine.task_snapshot_and_subscribe(task_id).await.unwrap();
+    assert_eq!(before["runs"][0]["status"], "queued");
+    engine.task_modes.started.store(false, Ordering::Release);
+    engine.start_task_scheduler();
+    let observed = tokio::time::timeout(Duration::from_secs(4), async {
+        loop {
+            let event = events.recv().await.unwrap();
+            if event["params"]["taskId"] == task_id {
+                let run = &event["params"]["task"]["runs"][0];
+                if run["status"] != "queued" {
+                    return run.clone();
+                }
+            }
+        }
+    })
+    .await;
+    engine.shutdown().await;
+    let run = observed.expect("foreground dispatch after future tasks");
+    assert_eq!(run["status"], "running");
+    assert_eq!(run["id"], before["runs"][0]["id"]);
+}
+
+#[tokio::test]
 async fn next_trigger_cannot_supersede_resume_intent_active_runs_or_unsettled_workers() {
     for (status, reason, unsettled) in [
         (RunStatus::Paused, "resumeRequested", false),
