@@ -839,6 +839,14 @@
     "platformReason": "Runner explicitly asserts darwin and uses its existing macOS acceptance setup."
   },
   {
+    "script": "test:recovery-electron-reconnect",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "areas": ["recovery", "lifecycle"],
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
+    "platformReason": "Runner explicitly asserts darwin and uses its existing macOS acceptance setup."
+  },
+  {
     "script": "test:gen-ui",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
