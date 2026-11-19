@@ -34,7 +34,7 @@ Thread 快照和 Item 通知支持可选 `agentMessage.phase`，生命周期、�
 | `worktreeList` | 无 | 返回 `{settings,defaultRoot,revision,projects,worktrees}`。全局列表来自宿主登记，不为列举启动每个 Core。 |
 | `worktreeEnvironmentSave` | `environment,expectedRevision` | 保存当前逻辑项目的环境，以 revision 防止覆盖并发修改。 |
 | `worktreeEnvironmentDelete` | `environmentId,expectedRevision` | 删除环境配置，不改写已固定的创建环境。 |
-| `worktreeRead` | `requestId` | 读取原创建与绑定记录，可能为 `missing`。不重新创建或重跑未知脚本。 |
+| `worktreeRead` | `requestId,snapshotOnly?` | 读取原创建与绑定记录，可能为 `missing`。查询进度时传 `snapshotOnly: true`，Host 只读已保存记录，不查询 Core 或结算脚本。 |
 | `worktreeCancel` | `requestId` | 请求取消原创建并返回当前记录。`cancelling` 不能当作终止，`cancelled` 才能明确开始新的原目录请求。 |
 | `worktreeAction` | `requestId,worktreeRequestId,actionId` | 在原受管 Worktree 显式执行已固定环境的动作，使用独立请求回执和有界输出。 |
 | `worktreeDelete` | `requestId,worktreeRequestId` | 核对受管目录、清理与服务停止回执，非 force 删除，保留分支、历史和归属 tombstone。失败或未知保留目录。 |
@@ -43,7 +43,7 @@ Thread 快照和 Item 通知支持可选 `agentMessage.phase`，生命周期、�
 
 环境为 `{id,name,setup,cleanup,actions}`。`setup`、`cleanup` 和 action 的 `script` 使用 `{default,macos?,linux?}`，非空平台脚本覆盖 Default；`actions` 为 `{id,name,script}` 数组。创建时固定所选环境，之后的配置修改不改变旧目录。脚本经现有 Core 受管进程执行，cwd 为真实项目执行根，变量为 `AREAL_WORKTREE_PATH`、`AREAL_PROJECT_PATH`、`AREAL_WORKTREE_BRANCH`。
 
-宿主状态包括 `creating`、`created`、`binding`、`settingUp`、`cancelled`、`ready`、`failed` 和 `unknown`。取消期间保留原阶段和 `intent: "cancel"`，界面显示正在取消。空线程绑定不是发送门槛；环境就绪才允许普通执行。项目快照通过 `worktreeOperations` 投影原日志；线程 `worktree`、`worktreeEvents` 和 `executionProjectId` 描述实际目录及宿主。事件不加入 Core 消息历史。同一请求的参数变化拒绝，未知写入不重放，部分成功不回退来源。删除后的原归属保留，不允许重连创建空目录或改用来源。
+宿主状态包括 `creating`、`created`、`binding`、`settingUp`、`cancelled`、`ready`、`failed` 和 `unknown`。取消期间保留原阶段和 `intent: "cancel"`，界面显示正在取消。空线程绑定不是发送门槛；环境就绪才允许普通执行。创建进度通过 `worktree.read` 按原请求读取；线程 `worktree`、`worktreeEvents` 和 `executionProjectId` 描述实际目录及宿主。事件不加入 Core 消息历史。同一请求的参数变化拒绝，未知写入不重放，部分成功不回退来源。删除后的原归属保留，不允许重连创建空目录或改用来源。
 
 普通会话和 Fork 可共享当前目录，不再保留单一 Session 的永久独占作者。桌面仍核对线程身份、Side 只读限制和同 checkout 的定时任务目录；已预约的调度目录只允许原任务家庭执行。旧普通作者记录保留，不作为新会话自动创建 Worktree 或拒绝第二会话的依据。
 

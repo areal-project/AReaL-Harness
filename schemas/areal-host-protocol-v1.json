@@ -17872,6 +17872,9 @@
         },
         "requestId": {
           "type": "string"
+        },
+        "snapshotOnly": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -36889,6 +36892,9 @@
         },
         "requestId": {
           "type": "string"
+        },
+        "snapshotOnly": {
+          "type": "boolean"
         }
       },
       "required": [

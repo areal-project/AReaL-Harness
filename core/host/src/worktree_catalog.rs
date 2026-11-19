@@ -484,6 +484,9 @@ pub(super) async fn read(host: &Rc<Host>, source: &str, mut params: Value) -> Re
                 return Ok(json!({"state":"missing"}));
             }
             let mut value = record(&home, id, logical)?;
+            if params["snapshotOnly"] == true {
+                return Ok(value);
+            }
             if matches!(
                 value["setup"]["status"].as_str(),
                 Some("running" | "unknown")

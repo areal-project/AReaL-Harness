@@ -613,7 +613,7 @@ try {
   checks.push(
     "Selected branch creates on first Send, real shell setup gates submission, Core reads the resulting marker and the ready conversation shows a GitFork sidebar badge",
   );
-  await page.getByRole("button", { name: /^Worktree 分支 / }).click();
+  await page.getByRole("button", { name: /^工作树分支 / }).click();
   await button("Write acceptance marker").click();
   await until(
     async () => (await textFile(join(happyPath, "action.txt"))) === "ACTION_OK",

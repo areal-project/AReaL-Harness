@@ -701,11 +701,48 @@ export function DraftComposer({
       mode: "source",
     });
   }, [sourceRetry, busy, cancellingCreation]);
+  const readCreationProgress = useRef(readAction);
+  readCreationProgress.current = readAction;
+  const [observedCreation, setObservedCreation] = useState<Data>();
+  const progressRequest = busy && activeCreation?.worktree ? activeCreation.requestId : undefined;
+  const progressProject = project.id;
+  useEffect(() => {
+    if (!progressRequest) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = async () => {
+      try {
+        const record = await readCreationProgress.current("workspace", {
+          projectId: progressProject,
+          operation: "worktreeRead",
+          requestId: progressRequest,
+          snapshotOnly: true,
+        });
+        if (!active) return;
+        if (
+          "requestId" in record &&
+          record.requestId === progressRequest &&
+          record.projectId === progressProject
+        ) {
+          setObservedCreation(record);
+          if (["ready", "failed", "cancelled"].includes(record.state)) return;
+        }
+      } catch {
+        // 短暂断线保留最后一次观察，原提交独立结算。
+      }
+      if (active) timer = setTimeout(refresh, 500);
+    };
+    void refresh();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [progressProject, progressRequest]);
   const creationStatus =
-    activeCreation &&
-    project.worktreeOperations?.findLast(
-      (item: Data) => item.requestId === activeCreation.requestId,
-    );
+    observedCreation?.requestId === activeCreation?.requestId &&
+    observedCreation?.projectId === progressProject
+      ? observedCreation
+      : undefined;
   return (
     <div className="composer-dock" data-v4-composer-dock="true">
       {outgoing && (
@@ -721,6 +758,7 @@ export function DraftComposer({
             </div>
           </div>
           <WorktreeStatus
+            events={creationStatus?.events}
             current={{
               ...(creationStatus ?? {
                 requestId: activeCreation.requestId,

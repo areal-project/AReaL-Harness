@@ -361,6 +361,49 @@ fn inaccessible_model_configuration_is_not_hidden() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn worktree_progress_reads_the_original_record_without_reconciling_setup() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let root = root.path().canonicalize().unwrap();
+            let (host, input, source) = resumable_host(&root);
+            storage::private_dir(launch_record(&host).parent().unwrap()).unwrap();
+            storage::write(&launch_record(&host), &input).unwrap();
+            let requests = root.join("data/worktree-requests");
+            storage::private_dir(&requests).unwrap();
+            let id = uuid::Uuid::new_v4().to_string();
+            let path = requests.join(format!("{id}.json"));
+            let original = json!({
+                "requestId":id,"projectId":"logical","state":"settingUp","recordRevision":4,
+                "setup":{"status":"running","requestId":"original-setup"}
+            });
+            storage::write(&path, &original).unwrap();
+            let saved = std::fs::read(&path).unwrap();
+            let mut request = json!({"method":"worktree.read","params":{
+                "sourceId":source,"projectId":"logical","operation":"worktreeRead",
+                "requestId":id,"snapshotOnly":true,
+            }});
+            for _ in 0..2 {
+                assert_eq!(
+                    backend_read(&host, "web:fixture", &request).await.unwrap(),
+                    original
+                );
+                assert_eq!(std::fs::read(&path).unwrap(), saved);
+            }
+            request["params"]["projectId"] = json!("different");
+            assert_eq!(
+                backend_read(&host, "web:fixture", &request)
+                    .await
+                    .unwrap_err()
+                    .to_string(),
+                "FORBIDDEN"
+            );
+            assert_eq!(std::fs::read(&path).unwrap(), saved);
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn native_catalog_reads_restore_saved_source_without_starting_workbench() {
     tokio::task::LocalSet::new()
         .run_until(async {
