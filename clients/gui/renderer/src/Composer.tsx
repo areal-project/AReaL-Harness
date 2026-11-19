@@ -115,6 +115,8 @@ import {
 } from "./reviewComments.js";
 import type { LexicalChatInputHandle } from "./LexicalChatInput.js";
 import type { Data, Action } from "./services.js";
+import { isProjectHibernated } from "./state/userStates.js";
+import { useSilentHibernatePrewarm } from "./state/useSilentHibernatePrewarm.js";
 import {
   recoveredOutcome,
   recoveryMessage,
@@ -294,8 +296,18 @@ export function Composer({
     if (hadQuestion.current && !questions.length) api.current?.focus();
     hadQuestion.current = questions.length > 0;
   }, [questions.length]);
+  const hibernated = isProjectHibernated(project);
+  const silentWarming = useSilentHibernatePrewarm({
+    project,
+    threadId: thread.id,
+    text,
+    action: readAction,
+    enabled: !readOnly && !conversationSubmitReadOnly && !archived && !thread.cloud,
+  });
   const connectionUnavailable =
     (!project.state?.connected &&
+      !hibernated &&
+      !silentWarming &&
       !("persistedHistory" in thread && thread.persistedHistory === true)) ||
     !!project.observationErrors?.[thread.id];
   const baseDisabled = archived || (busy && !configuring) || !!reviewDraft.error;

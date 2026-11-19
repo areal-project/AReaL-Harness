@@ -654,3 +654,33 @@ it("keeps loaded persisted history when live open still reports Project Core una
   ]);
   expect(seed.restoration).toMatchObject({ pending: false, error: "" });
 });
+
+it("does not automatically wake Core when an open conversation enters idle hibernation", async () => {
+  seed.selectedProject = owner.projectId;
+  seed.snapshot = {
+    connection: { state: "ready" },
+    projects: [
+      {
+        id: owner.projectId,
+        root: "/fixture",
+        core: { connectionGeneration: "" },
+        scheduling: { suppressed: false, activationError: null },
+        state: {
+          connected: false,
+          hostState: "stopped",
+          threads: { [owner.threadId]: { id: owner.threadId, turns: [] } },
+        },
+      },
+    ],
+  };
+  const f = fixture(true, async () => {}, false, true);
+  // Simulate that the conversation was already opened under the previous live Core generation.
+  await f.navigation.restoreConversation({ ...owner, connectionGeneration: 1 }, "open");
+  f.events.length = 0;
+
+  // Now Host has hibernated the project (connected: false, hostState: "stopped", generation: "").
+  f.navigation.synchronizeRestoration();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(f.events).toEqual([]);
+});

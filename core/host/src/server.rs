@@ -2367,6 +2367,7 @@ impl Host {
     ) -> Value {
         self.slots.borrow_mut().get_mut(project_id).unwrap().state = "stopping".into();
         self.changed();
+        self.schedules.connections.changed.notify_waiters();
         let operation = areal_local_service::stop_operation(
             &self.home,
             &service.identity.service_id,
@@ -2405,6 +2406,7 @@ impl Host {
             slot.service = None;
         }
         self.changed();
+        self.schedules.connections.changed.notify_waiters();
         receipt
     }
     async fn stop_project(&self, input: Stop) -> Result<Value> {

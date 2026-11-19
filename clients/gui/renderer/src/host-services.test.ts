@@ -582,6 +582,110 @@ describe("Host renderer read authority", () => {
       }
     },
   );
+  it("routes remote silent connect prewarm through project.activate without desktop.command and wakes stopping sessions on send", async () => {
+    const page = new EventTarget();
+    vi.stubGlobal("window", page);
+    let phase: ShellProject["state"] = "stopped";
+    let blockedExplicitStop = false;
+    const events: string[] = [];
+    const liveObservation = {
+      ...observation,
+      thread: { ...observation.thread, desktop: { configuration: { revision: 9 } } },
+    };
+    const wire = transport(liveObservation);
+    const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+      const base = await wire.factory(lifecycle);
+      return {
+        ...base,
+        identity: {
+          ...base.identity,
+          persistedHistory: true,
+          writeMethods: ["project.activate", "session.send"],
+        },
+        transport: {
+          ...base.transport,
+          async request(method, params, context) {
+            if (method === "shell.subscribe")
+              return {
+                ...identity,
+                subscriptionId: "shell",
+                snapshot: {
+                  projects: [
+                    {
+                      ...project,
+                      state: phase,
+                      serviceGeneration: phase === "ready" ? "core-gen" : undefined,
+                    },
+                  ],
+                  navigation: [navigation],
+                },
+              };
+            if (method === "session.open") {
+              events.push("live-read");
+              return base.transport.request(method, params, context);
+            }
+            return base.transport.request(method, params, context);
+          },
+          async write(method, _params, _context, commandId) {
+            events.push(method);
+            if (method === "project.activate") {
+              if (blockedExplicitStop)
+                return { projectId: "canonical", state: "blocked", reason: "explicitlyStopped" };
+              phase = "ready";
+              return { projectId: "canonical", state: "ready", serviceGeneration: "core-gen" };
+            }
+            return {
+              admissionState: "accepted",
+              commandId,
+              method,
+              target: { threadId: "thread" },
+              nativeRequestId: commandId,
+            };
+          },
+        },
+      };
+    };
+    const services = createHostReadServices(undefined, options(factory));
+    try {
+      await until(services);
+      // 显式停止时，远端 connect 预热仍被 Host 拒绝。
+      blockedExplicitStop = true;
+      await expect(services.writes!.route("connect", { projectId: "alias" })).rejects.toMatchObject(
+        {
+          code: "ACTIVATION_BLOCKED",
+        },
+      );
+      // 空闲休眠时，远端静默 connect 通过 project.activate 唤醒并刷新 shell。
+      blockedExplicitStop = false;
+      const connected = await services.writes!.route("connect", { projectId: "alias" });
+      expect(connected?.routed).toBe(true);
+      expect((await services.snapshot()).projects[0].state.connected).toBe(true);
+
+      // 打开实时会话后进入 stopping（尚未切到 persistedHistory），直接发送仍按需激活。
+      await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
+      events.length = 0;
+      phase = "stopping";
+      wire.send({
+        ...identity,
+        subscriptionId: "shell",
+        event: "shell.invalidated",
+        sequence: 1,
+      });
+      await vi.waitFor(async () =>
+        expect((await services.snapshot()).projects[0].state.hostState).toBe("stopping"),
+      );
+      await services.writes!.route("send", {
+        projectId: "alias",
+        threadId: "thread",
+        text: "wake during stopping",
+        requestId: crypto.randomUUID(),
+      });
+      expect(events).toEqual(["project.activate", "live-read", "session.send"]);
+    } finally {
+      page.dispatchEvent(new Event("pagehide"));
+      vi.unstubAllGlobals();
+    }
+  });
   it("projects a stopped project's persisted history as read-only without marking it connected", async () => {
     const page = new EventTarget();
     vi.stubGlobal("window", page);

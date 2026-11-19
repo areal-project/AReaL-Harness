@@ -651,3 +651,105 @@ test(
     assert.deepEqual(errors, []);
   },
 );
+
+test(
+  "observe distinguishes idle hibernation from explicit stop and scheduleReconnect stays silent without error",
+  { timeout: 5000 },
+  async () => {
+    const {
+      GuiHostProjects,
+    } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
+    const {
+      ProjectConnections,
+    } = require("@areal/workbench-service/desktop/core/project-connections.cjs");
+
+    const idleStopped = Object.assign(Object.create(GuiHostProjects.prototype), {
+      status: async () => ({
+        state: "stopped",
+        service: null,
+        scheduleActivationSuppressed: false,
+      }),
+    });
+    await assert.rejects(
+      idleStopped.observe("project"),
+      (error) => error.code === "CORE_HIBERNATED",
+    );
+
+    const idleStopping = Object.assign(Object.create(GuiHostProjects.prototype), {
+      status: async () => ({
+        state: "stopping",
+        service: null,
+        scheduleActivationSuppressed: false,
+      }),
+    });
+    await assert.rejects(
+      idleStopping.observe("project"),
+      (error) => error.code === "CORE_HIBERNATED",
+    );
+
+    const explicitlyStopped = Object.assign(Object.create(GuiHostProjects.prototype), {
+      status: async () => ({
+        state: "stopped",
+        service: null,
+        scheduleActivationSuppressed: true,
+      }),
+    });
+    await assert.rejects(
+      explicitlyStopped.observe("project"),
+      (error) => error.code === "CORE_STOPPED",
+    );
+
+    const model = new CoreTaskModel();
+    const project = {
+      id: "project",
+      model,
+      service: { serviceId: "svc", generation: "gen-1", configFingerprint: "fp" },
+      error: "stale error",
+      reconnectAttempt: 0,
+      reconnectBlocked: false,
+      reconnectStarting: false,
+      hibernated: false,
+      reconnectTimer: null,
+      client: null,
+    };
+    const connectionCalls = [];
+    model.connection = (connected, message) => {
+      connectionCalls.push({ connected, message: message ?? null });
+    };
+    let attempts = 0;
+    let finishedResolve;
+    const finished = new Promise((resolve) => {
+      finishedResolve = resolve;
+    });
+    const host = Object.assign(fixture().backend, {
+      projects: new Map([[project.id, project]]),
+      closing: false,
+      providerUpdating: false,
+      resourcesUpdating: false,
+      starting: new Map(),
+      worktrees: { assertAvailable() {} },
+      lifecycleOperations: {
+        assertProject() {},
+        schedulingSuppressed: () => false,
+      },
+      async connectExisting() {
+        attempts++;
+        queueMicrotask(finishedResolve);
+        throw Object.assign(new Error("Core 服务已进入休眠"), {
+          code: "CORE_HIBERNATED",
+        });
+      },
+      async reconcile() {},
+    });
+    const connections = new ProjectConnections(host);
+    connections.scheduleReconnect(project);
+    await finished;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(attempts, 1);
+    assert.equal(project.reconnectBlocked, true);
+    assert.equal(project.hibernated, true);
+    assert.equal(project.error, null);
+    assert.equal(project.reconnectTimer, null);
+    assert.deepEqual(connectionCalls, [{ connected: false, message: null }]);
+  },
+);

@@ -13,6 +13,15 @@ export type ProjectUserState = {
   canAct: boolean;
 };
 
+/** 项目处于后台空闲休眠（或正在进入休眠）：既非用户显式停止，也无真实错误，下次交互按需唤醒即可。 */
+export function isProjectHibernated(project: Data | undefined): boolean {
+  if (!project || project.state?.connected === true) return false;
+  if (project.scheduling?.suppressed === true) return false;
+  if (project.error || project.state?.error) return false;
+  const hostState = project.state?.hostState;
+  return hostState === "stopped" || hostState === "stopping";
+}
+
 export function projectUserState(project: Data | undefined): ProjectUserState {
   const state = project?.state;
   const canAct = state?.connected === true;
@@ -22,9 +31,10 @@ export function projectUserState(project: Data | undefined): ProjectUserState {
       return { kind: "needsUpgrade", message: "userState.project.needsUpgrade", canAct };
     case "unavailable":
       return { kind: "unavailable", message: "userState.project.unavailable", canAct };
-    // 项目按需启动：已停止对用户来说就是可用，发起操作时自动打开。
+    // 项目按需启动：已停止或正在进入空闲休眠对用户来说就是可用，发起操作时自动打开。
     case "ready":
     case "stopped":
+    case "stopping":
       return { kind: "ready", message: "userState.project.ready", canAct };
     default:
       return { kind: "opening", message: "userState.project.opening", canAct };

@@ -10,6 +10,7 @@ import {
 import { call, type Action, type PlatformServices, type Snapshot } from "../services.js";
 import { conversationCatalog } from "./conversationCatalog.js";
 import { markRendererStartup } from "./startupTiming.js";
+import { isProjectHibernated } from "./userStates.js";
 type InitialLocation =
   | { kind: "automatic" | "projectless" }
   | { kind: "project"; projectId: string; threadId: string };
@@ -176,7 +177,8 @@ export function useSessionNavigation(
       resourceBrowsing.current ||
       !project?.id ||
       threadId ||
-      snapshot.connection?.state !== "ready"
+      snapshot.connection?.state !== "ready" ||
+      isProjectHibernated(project)
     )
       return;
     void resourceAction("connect", { projectId: project.id }).catch(() => {});
@@ -523,6 +525,17 @@ export function useSessionNavigation(
     const previous = restorationAttempt.current;
     const owner = restorationOwner;
     const sameOwner = sameRestorationOwner(previous, owner);
+    // 已打开的会话或草稿随后台空闲回收进入休眠时，不主动拉起 Core，保留省内存效果；等用户再次输入或发送时按需唤醒。
+    if (
+      isProjectHibernated(project) &&
+      previous &&
+      previous.projectId === owner.projectId &&
+      previous.threadId === owner.threadId &&
+      !previous.prewarmDeferred &&
+      !previous.failure &&
+      (!owner.threadId || Boolean(thread))
+    )
+      return;
     // 只补做等候交接的预热；运行中的持久化读取仍由 Host 客户端升级。
     if (thread && "persistedHistory" in thread && thread.persistedHistory === true) {
       if (

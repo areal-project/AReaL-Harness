@@ -523,6 +523,7 @@ class CoreBackend {
                 trace?.advance("worktree_apply");
                 await this.resources.worktrees.apply(project);
                 project.resourceInitializing = false;
+                project.hibernated = false;
                 project.error = null;
                 project.model.connection(true);
                 if (project.binaryUpdatePending) this.scheduleReconnect(project);

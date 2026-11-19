@@ -5,6 +5,7 @@ import {
   WorkspacePreparationStatus,
   type WorkspacePreparationState,
 } from "./WorkspacePreparationStatus.js";
+import { isProjectHibernated } from "./state/userStates.js";
 import { DraftComposer } from "./DraftComposer.js";
 import type { Action, Data, PlatformServices, Snapshot } from "./services.js";
 import { call } from "./services.js";
@@ -96,18 +97,30 @@ export function ProjectlessDraft({
     state: { connected: false },
     outcomes: {},
   };
+  const ownerHibernated = owner ? isProjectHibernated(owner) : false;
+  const ownerSuppressed = owner?.scheduling?.suppressed === true;
+  const ownerUnavailable =
+    ownerSuppressed ||
+    Boolean(error || owner?.error || owner?.state?.error) ||
+    owner?.state?.hostState === "unavailable";
   const preparation: WorkspacePreparationState =
-    ready && owner?.state?.connected
+    ready && owner?.state?.connected && !ownerSuppressed
       ? { kind: "ready" }
       : deferred && catalog && !preparing && !error
         ? { kind: "ready" }
-        : ready && (error || owner?.error || owner?.state?.error)
-          ? { kind: "unavailable", detail: error || owner?.error || owner?.state?.error }
-          : { kind: "preparing" };
+        : ready && ownerUnavailable
+          ? { kind: "unavailable", detail: error || owner?.error || owner?.state?.error || "" }
+          : ownerHibernated
+            ? { kind: "ready" }
+            : { kind: "preparing" };
   const retry = async () => {
     setError("");
     try {
-      if (ownerId) await readAction("connect", { projectId: ownerId });
+      if (ownerId)
+        await readAction("connect", {
+          projectId: ownerId,
+          ...(ownerSuppressed ? { resumeScheduling: true } : {}),
+        });
       else if (deferred) setCatalog(await call(services, "projectless", { operation: "catalog" }));
       else await prepare();
     } catch (cause) {

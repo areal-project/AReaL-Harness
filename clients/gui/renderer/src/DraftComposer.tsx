@@ -6,6 +6,7 @@ import {
   useConversationSubmitReadOnly,
   useConversationCreateReadOnly,
 } from "./PlatformReadContext.js";
+import { useSilentHibernatePrewarm } from "./state/useSilentHibernatePrewarm.js";
 import { snapShotCommandEntries } from "./snapshots/shortcut.js";
 import { useSnapShotCapture } from "./snapshots/captureContext.js";
 import { useSnapShotDraft } from "./snapshots/activeDraft.js";
@@ -183,6 +184,18 @@ export function DraftComposer({
   const [sourceRetry, setSourceRetry] = useState<string>();
   const busy = useSyncExternalStore(subscribeSending, () => sending.has(key));
   const outgoing = usePendingMessage(key);
+  useSilentHibernatePrewarm({
+    project,
+    threadId: draftKey ?? "new",
+    text,
+    action: readAction,
+    enabled:
+      !readOnly &&
+      !conversationSubmitReadOnly &&
+      !conversationCreateReadOnly &&
+      backendReady &&
+      project.id !== "projectless",
+  });
   const editLocked = busy || !!unknown || !!reviewDraft.error;
   const executionReady = backendReady && !!project.state?.connected;
   const modelReady = executionReady || (backendReady && !!prepareProject && modelCatalogReady);

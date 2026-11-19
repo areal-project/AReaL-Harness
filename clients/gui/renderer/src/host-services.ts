@@ -638,9 +638,42 @@ export function createHostReadServices(
       }
       if (
         project &&
-        typeof params.threadId === "string" &&
-        project.state.threads[params.threadId]?.persistedHistory === true &&
-        ["send", "configure", "media"].includes(name)
+        name === "connect" &&
+        !desktop &&
+        !client.writable("desktop.command") &&
+        client.writable("project.activate")
+      ) {
+        const activation = await client.query("project.activate", project.hostProjectId, {});
+        if (!object(activation) || activation.projectId !== project.hostProjectId)
+          throw new Error("Invalid project activation response");
+        if (activation.state !== "ready")
+          throw Object.assign(
+            new Error(
+              activation.reason === "explicitlyStopped"
+                ? "项目已停止，请先恢复项目。"
+                : "项目启动尚未完成，请稍候。",
+            ),
+            {
+              code: activation.state === "pending" ? "ACTIVATION_PENDING" : "ACTIVATION_BLOCKED",
+              activationId: activation.activationId,
+            },
+          );
+        await client.refreshShell();
+        return { routed: true, value: snapshot };
+      }
+      const threadId = typeof params.threadId === "string" ? params.threadId : undefined;
+      const threadDormant =
+        project &&
+        threadId !== undefined &&
+        (project.state.threads[threadId]?.persistedHistory === true ||
+          (client.writable("project.activate") &&
+            !project.state.connected &&
+            (project.state.hostState === "stopped" || project.state.hostState === "stopping")));
+      if (
+        project &&
+        threadId !== undefined &&
+        threadDormant &&
+        ["send", "configure", "media", "steer", "continue", "editMessage"].includes(name)
       ) {
         const original = readingWindow?.session;
         const connection = client.snapshot();
@@ -653,7 +686,7 @@ export function createHostReadServices(
             current.connection !== "ready" ||
             current.identity.connectionId !== connection.identity.connectionId ||
             selected?.projectId !== original.projectId ||
-            selected?.threadId !== params.threadId
+            selected?.threadId !== threadId
           )
             throw Object.assign(new Error("会话已切换，输入已保留。"), {
               code: "STALE_CONNECTION",
@@ -719,7 +752,7 @@ export function createHostReadServices(
         requireOriginal();
         await client.refreshShell();
         requireOriginal();
-        await reads.selectSession({ projectId: project.id, threadId: params.threadId });
+        await reads.selectSession({ projectId: project.id, threadId });
       }
       const target = hostTarget(params);
       if (!target) return undefined;

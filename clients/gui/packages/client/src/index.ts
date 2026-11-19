@@ -350,6 +350,8 @@ export class HostClient {
         b = find(value, id);
       return a?.serviceGeneration !== b?.serviceGeneration || a?.state !== b?.state;
     });
+    const canReadPersisted =
+      this.#state.connection === "ready" && this.#state.identity.persistedHistory === true;
     // 持久化快照在执行启动中仍可读；等 Core 就绪再切换，不能重开已经被执行占用的 Store。
     if (this.#target?.persisted && after?.state !== "ready") return;
     if (
@@ -360,6 +362,27 @@ export class HostClient {
     )
       return;
     if (this.#target.persisted && after?.state === "ready") this.#target.persisted = false;
+    if (
+      canReadPersisted &&
+      !this.#target.persisted &&
+      after?.state === "stopping" &&
+      previous(this.#reads.session)
+    ) {
+      // 项目进入停止过渡期时先保住上一份会话画面，等进入 stopped 再切到持久化历史，不闪现不可用错误。
+      this.#publishReads({
+        ...this.#reads,
+        session: stale(this.#reads.session),
+      });
+      return;
+    }
+    if (
+      canReadPersisted &&
+      !this.#target.persisted &&
+      after?.state === "stopped" &&
+      (previous(this.#reads.session) || before?.state === "ready" || before?.state === "stopping")
+    ) {
+      this.#target = { ...this.#target, persisted: true };
+    }
     this.#publishReads({
       ...this.#reads,
       session:
@@ -852,6 +875,17 @@ export class HostClient {
       event.event === "session.invalidated"
     ) {
       this.#publishReads({ ...this.#reads, session: stale(session) });
+      const selectedProject = previous(this.#reads.shell)?.snapshot.projects.find(
+        (project) => project.projectId === this.#target?.projectId,
+      );
+      const canReadPersisted =
+        this.#state.connection === "ready" && this.#state.identity.persistedHistory === true;
+      if (canReadPersisted && this.#target && !this.#target.persisted) {
+        if (selectedProject?.state === "stopping") return;
+        if (selectedProject?.state === "stopped") {
+          this.#target = { ...this.#target, persisted: true };
+        }
+      }
       void this.#openSession().catch(() => {});
       return;
     }

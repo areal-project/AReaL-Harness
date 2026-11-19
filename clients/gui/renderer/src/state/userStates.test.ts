@@ -1,5 +1,10 @@
 import { expect, test } from "vite-plus/test";
-import { conversationUserState, projectUserState, taskUserState } from "./userStates.js";
+import {
+  conversationUserState,
+  isProjectHibernated,
+  projectUserState,
+  taskUserState,
+} from "./userStates.js";
 
 test("project states collapse Host lifecycle into what the user can do", () => {
   const project = (state: Record<string, unknown>) => ({ state });
@@ -12,10 +17,38 @@ test("project states collapse Host lifecycle into what the user can do", () => {
     kind: "ready",
     canAct: false,
   });
+  expect(projectUserState(project({ connected: false, hostState: "stopping" }))).toMatchObject({
+    kind: "ready",
+    canAct: false,
+  });
   expect(projectUserState(project({ hostState: "starting" })).kind).toBe("opening");
   expect(projectUserState(project({})).kind).toBe("opening");
   expect(projectUserState(project({ hostState: "legacyPending" })).kind).toBe("needsUpgrade");
   expect(projectUserState(project({ hostState: "unavailable" })).kind).toBe("unavailable");
+});
+
+test("isProjectHibernated distinguishes idle hibernation from explicit stop and real errors", () => {
+  expect(isProjectHibernated({ state: { connected: false, hostState: "stopped" } })).toBe(true);
+  expect(isProjectHibernated({ state: { connected: false, hostState: "stopping" } })).toBe(true);
+  expect(isProjectHibernated({ state: { connected: true, hostState: "ready" } })).toBe(false);
+  expect(
+    isProjectHibernated({
+      scheduling: { suppressed: true },
+      state: { connected: false, hostState: "stopped" },
+    }),
+  ).toBe(false);
+  expect(
+    isProjectHibernated({
+      error: "boom",
+      state: { connected: false, hostState: "stopped" },
+    }),
+  ).toBe(false);
+  expect(
+    isProjectHibernated({
+      state: { connected: false, hostState: "stopped", error: "boom" },
+    }),
+  ).toBe(false);
+  expect(isProjectHibernated({ state: { connected: false, hostState: "starting" } })).toBe(false);
 });
 
 test("a conversation waiting on the user outranks one still working", () => {

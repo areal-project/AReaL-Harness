@@ -363,6 +363,7 @@ impl Connections {
     }
     pub async fn ready(&self, host: &Host, id: &str, generation: &str) -> Result<()> {
         tokio::time::timeout(Duration::from_secs(15), async {
+            let mut host_changes = host.changes.subscribe();
             loop {
                 let changed = self.changed.notified();
                 if self.sessions.borrow().get(id).is_some_and(|session| {
@@ -377,14 +378,19 @@ impl Connections {
                     return Ok(());
                 }
                 ensure!(
-                    host.slots
-                        .borrow()
-                        .get(id)
-                        .and_then(|slot| slot.service.as_ref())
-                        .is_some_and(|service| service.identity.generation == generation),
+                    host.slots.borrow().get(id).is_some_and(|slot| {
+                        !matches!(slot.state.as_str(), "stopping" | "stopped" | "unavailable")
+                            && slot
+                                .service
+                                .as_ref()
+                                .is_some_and(|service| service.identity.generation == generation)
+                    }),
                     unavailable()
                 );
-                changed.await;
+                tokio::select! {
+                    _ = changed => {}
+                    _ = host_changes.changed() => {}
+                }
             }
         })
         .await

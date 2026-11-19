@@ -116,6 +116,7 @@ class ProjectConnections {
       clearTimeout(project.reconnectTimer ?? undefined);
       project.reconnectTimer = null;
       project.reconnectBlocked = false;
+      project.hibernated = false;
     }
     const task = this.host
       .startProject(id, { resumeScheduling })
@@ -286,7 +287,19 @@ class ProjectConnections {
                 project.reconnectStarting = true;
                 throw error;
               }
+              if (code === "CORE_HIBERNATED") {
+                // 空闲回收休眠不是错误：阻止自动重连（保留后台回收效果），清空错误状态，等用户下次交互按需唤醒。
+                project.reconnectStarting = false;
+                project.reconnectBlocked = true;
+                project.hibernated = true;
+                this.host.stopReconciliation(project);
+                project.client?.close();
+                project.error = null;
+                project.model.connection(false, null);
+                throw error;
+              }
               project.reconnectStarting = false;
+              project.hibernated = false;
               project.reconnectBlocked =
                 [
                   "CORE_STOPPED",
@@ -533,7 +546,11 @@ class ProjectConnections {
           }
           project.model.connection(
             false,
-            project.reconnectBlocked ? project.error : "连接中断，正在恢复任务状态",
+            project.reconnectBlocked
+              ? project.error
+              : project.reconnectAttempt
+                ? "连接中断，正在恢复任务状态"
+                : null,
           );
           this.scheduleReconnect(project);
         }
@@ -546,6 +563,7 @@ class ProjectConnections {
           client,
           generation: correlation.connectionGeneration,
         });
+      project.hibernated = false;
       project.error = null;
       project.configurations ??= {};
       project.configurationChanges ??= new Map();

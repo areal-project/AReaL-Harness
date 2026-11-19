@@ -870,16 +870,7 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
             }
             _=changes.changed()=>{
                 if !host.loopback.current(device_id.as_deref()) { break; }
-                if let Some(active)=&reader
-                    && !active.current(&host) {
-                        let event=keys(&host,&connection_id,active.invalidated(&anyhow::anyhow!("RESYNC_REQUIRED")));
-                        reader=None;
-                        notify(&mut socket,event).await?;
-                    }
-                while let Some(index)=watched.iter().position(|value|!value.current(&host)) {
-                    let event=keys(&host,&connection_id,watched.remove(index).invalidated(&anyhow::anyhow!("RESYNC_REQUIRED")));
-                    notify(&mut socket,event).await?;
-                }
+                // 先送出最新目录状态，再发 session.invalidated，避免客户端在过期 ready 状态下误重开正在停止的会话。
                 if let Some(active)=shell.as_mut() {
                     let refreshed = active.refresh(&host).await;
                     ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
@@ -893,6 +884,16 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                             notify(&mut socket,event).await?;
                         }
                     }
+                }
+                if let Some(active)=&reader
+                    && !active.current(&host) {
+                        let event=keys(&host,&connection_id,active.invalidated(&anyhow::anyhow!("RESYNC_REQUIRED")));
+                        reader=None;
+                        notify(&mut socket,event).await?;
+                    }
+                while let Some(index)=watched.iter().position(|value|!value.current(&host)) {
+                    let event=keys(&host,&connection_id,watched.remove(index).invalidated(&anyhow::anyhow!("RESYNC_REQUIRED")));
+                    notify(&mut socket,event).await?;
                 }
             }
         }

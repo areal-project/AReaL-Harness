@@ -1303,3 +1303,175 @@ test("a queue-full rejection keeps its message readable and its method and reaso
   assert.match(failure.detail, /commandQueueFull/);
   assert.doesNotMatch(failure.message, /CAPACITY_EXCEEDED|session\.open|commandQueueFull/);
 });
+
+test("idle hibernation transitions an open live session through stopping to persisted history without errors", async (t) => {
+  let fixture;
+  let shellSequence = 0;
+  let openCount = 0;
+  let persistedCount = 0;
+  let currentServiceGeneration = project.serviceGeneration;
+  fixture = await readServer(t, ({ frame, reply, sessionIdentity }) => {
+    if (frame.method === "hello") {
+      reply({
+        version: 1,
+        hostId,
+        generation,
+        capabilities: [],
+        negotiatedCapabilities: ["gui-read-v1", "persistedHistoryV1"],
+        connectionId: "read-connection",
+        gatewayGeneration: generation,
+      });
+      return true;
+    }
+    if (frame.method === "session.open") {
+      openCount++;
+      reply({
+        ...sessionIdentity(frame.params.threadId),
+        serviceGeneration: currentServiceGeneration,
+        subscriptionId: `live-sub-${openCount}`,
+        sequence: 0,
+        snapshot: { thread: { id: frame.params.threadId, turns: [{ id: "t1", items: [] }] } },
+      });
+      return true;
+    }
+    if (frame.method === "session.openPersisted") {
+      persistedCount++;
+      reply({
+        ...sessionIdentity(frame.params.threadId),
+        serviceGeneration: project.serviceGeneration,
+        subscriptionId: `persisted-sub-${persistedCount}`,
+        sequence: 0,
+        access: { kind: "persisted", readOnly: true, snapshotId: "snap-1" },
+        snapshot: {
+          thread: { id: frame.params.threadId, turns: [{ id: "t1", items: [] }] },
+          access: { kind: "persisted", readOnly: true, snapshotId: "snap-1" },
+        },
+      });
+      return true;
+    }
+    return false;
+  });
+
+  await fixture.client.selectSession({ projectId: project.projectId, threadId: "thread" });
+  const observedSessions = [];
+  const off = fixture.client.subscribeReads(() => {
+    observedSessions.push(fixture.client.readsSnapshot().session);
+  });
+  t.after(off);
+
+  const socket = [...fixture.listener.clients][0];
+  const shellSub = fixture.client.readsSnapshot().shell.value.subscriptionId;
+  const liveSub = fixture.client.readsSnapshot().session.value.subscriptionId;
+
+  // 1) Host enters stopping: sends shell.updated first, then session.invalidated.
+  socket.send(
+    JSON.stringify({
+      version: 1,
+      method: "shell.updated",
+      params: {
+        connectionId: "read-connection",
+        gatewayGeneration: generation,
+        subscriptionId: shellSub,
+        sequence: ++shellSequence,
+        event: "shell.updated",
+        delta: {
+          projects: {
+            upsert: [{ ...project, state: "stopping" }],
+            remove: [],
+          },
+          navigation: { upsert: [], remove: [] },
+        },
+      },
+    }),
+  );
+  socket.send(
+    JSON.stringify({
+      version: 1,
+      method: "session.invalidated",
+      params: {
+        connectionId: "read-connection",
+        gatewayGeneration: generation,
+        subscriptionId: liveSub,
+        projectId: project.projectId,
+        serviceGeneration: project.serviceGeneration,
+        threadId: "thread",
+        view: "conversation",
+        sequence: 1,
+        event: "session.invalidated",
+        error: { code: "RESYNC_REQUIRED", message: "resync" },
+      },
+    }),
+  );
+
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(openCount, 1, "must not retry session.open while project is stopping");
+  assert.equal(persistedCount, 0, "must wait for stopped before opening persisted history");
+  assert.equal(fixture.client.readsSnapshot().session.state, "stale");
+  assert.equal(fixture.client.readsSnapshot().session.error, undefined);
+
+  // 2) Host finishes stopping -> state becomes stopped.
+  socket.send(
+    JSON.stringify({
+      version: 1,
+      method: "shell.updated",
+      params: {
+        connectionId: "read-connection",
+        gatewayGeneration: generation,
+        subscriptionId: shellSub,
+        sequence: ++shellSequence,
+        event: "shell.updated",
+        delta: {
+          projects: {
+            upsert: [{ ...project, state: "stopped", serviceGeneration: undefined }],
+            remove: [],
+          },
+          navigation: { upsert: [], remove: [] },
+        },
+      },
+    }),
+  );
+
+  await waitReads(
+    fixture.client,
+    (reads) => reads.session.state === "fresh" && reads.session.value.access?.kind === "persisted",
+  );
+  assert.equal(openCount, 1);
+  assert.equal(persistedCount, 1);
+
+  // 3) User wakes project -> state becomes ready with new generation.
+  currentServiceGeneration = "core-gen-2";
+  socket.send(
+    JSON.stringify({
+      version: 1,
+      method: "shell.updated",
+      params: {
+        connectionId: "read-connection",
+        gatewayGeneration: generation,
+        subscriptionId: shellSub,
+        sequence: ++shellSequence,
+        event: "shell.updated",
+        delta: {
+          projects: {
+            upsert: [{ ...project, state: "ready", serviceGeneration: "core-gen-2" }],
+            remove: [],
+          },
+          navigation: { upsert: [], remove: [] },
+        },
+      },
+    }),
+  );
+
+  await waitReads(
+    fixture.client,
+    (reads) =>
+      reads.session.state === "fresh" &&
+      reads.session.value.serviceGeneration === "core-gen-2" &&
+      reads.session.value.access === undefined,
+  );
+  assert.equal(openCount, 2);
+  assert.equal(
+    observedSessions.some((entry) => entry.state === "unavailable" || Boolean(entry.error)),
+    false,
+    `expected zero errors during hibernation lifecycle, observed: ${JSON.stringify(observedSessions)}`,
+  );
+});

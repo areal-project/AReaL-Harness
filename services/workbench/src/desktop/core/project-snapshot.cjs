@@ -38,7 +38,13 @@ function snapshotProject(backend, project) {
     scheduling: backend.host.scheduling(project.id),
     state: backend.cloudConversations.mergeSnapshot(
       project.id,
-      state && live?.resourceInitializing ? { ...state, connected: false } : state,
+      state && (live?.resourceInitializing || live?.hibernated)
+        ? {
+            ...state,
+            connected: false,
+            ...(live?.hibernated ? { hostState: "stopped" } : {}),
+          }
+        : state,
     ),
     pending: (live?.pending ?? [])
       .filter((entry) => !isRemoteControl(entry))

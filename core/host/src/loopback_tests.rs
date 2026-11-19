@@ -1202,3 +1202,275 @@ async fn authenticated_unix_ticket_connects_to_real_loopback_status() {
         assert_eq!(serde_json::to_value(typed).unwrap(), response["result"]);
     }).await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn ready_and_session_open_fail_immediately_when_project_is_stopping() {
+    tokio::task::LocalSet::new().run_until(async {
+        let fixture = Fixture::start().await;
+        storage::private_dir(&fixture.host.home.join("host/projects")).unwrap();
+        let client = fixture.client().await;
+        let workspace = fixture.host.home.join("stopping-workspace");
+        let data = fixture.host.home.join("stopping-data");
+        for path in [&workspace, &data] {
+            storage::private_dir(path).unwrap();
+        }
+        let registration = crate::ProjectRegistration {
+            project_id: "stopping".into(),
+            workspace: workspace.clone(),
+            data_dir: data.clone(),
+            source: crate::ProjectSource::Cli,
+            default_binding: false,
+        };
+        client
+            .register(&uuid::Uuid::new_v4().to_string(), registration.clone())
+            .await
+            .unwrap();
+        let generation = uuid::Uuid::new_v4().to_string();
+        let service: areal_protocol::service::Service = serde_json::from_value(json!({
+            "protocolVersion": 1,
+            "serviceId": Host::service_id(&registration),
+            "generation": generation,
+            "workspace": workspace,
+            "dataDir": data,
+            "configFingerprint": "fp",
+            "owner": {
+                "kind": "host",
+                "hostId": fixture.host.identity.host_id,
+                "generation": fixture.host.identity.generation
+            },
+            "endpoint": "http://127.0.0.1:1",
+            "webUrl": "http://127.0.0.1:1",
+            "authFile": data.join("auth.json"),
+            "logFile": data.join("host.log"),
+            "hostPid": 500000000,
+            "corePid": 500000001,
+            "state": "ready"
+        }))
+        .unwrap();
+        {
+            let mut slots = fixture.host.slots.borrow_mut();
+            let slot = slots.get_mut("stopping").unwrap();
+            slot.state = "stopping".into();
+            slot.service = Some(service.clone());
+        }
+        // Case A: ready() called when slot is already "stopping" with old service still attached.
+        let immediate = tokio::time::timeout(
+            Duration::from_secs(1),
+            fixture
+                .host
+                .schedules
+                .connections
+                .ready(&fixture.host, "stopping", &generation),
+        )
+        .await
+        .expect("ready() must fail immediately on stopping slot instead of hanging 15s");
+        assert!(immediate.is_err());
+
+        // Case B: ready() is waiting on a "starting" slot that transitions to "stopping" via host.changed().
+        {
+            let mut slots = fixture.host.slots.borrow_mut();
+            let slot = slots.get_mut("stopping").unwrap();
+            slot.state = "starting".into();
+            slot.service = Some(service);
+        }
+        let host = fixture.host.clone();
+        let gen_clone = generation.clone();
+        let waiter = tokio::task::spawn_local(async move {
+            host.schedules
+                .connections
+                .ready(&host, "stopping", &gen_clone)
+                .await
+        });
+        tokio::task::yield_now().await;
+        {
+            let mut slots = fixture.host.slots.borrow_mut();
+            let slot = slots.get_mut("stopping").unwrap();
+            slot.state = "stopping".into();
+        }
+        fixture.host.changed();
+        let woken = tokio::time::timeout(Duration::from_secs(1), waiter)
+            .await
+            .expect("ready() must wake immediately when host.changed() transitions slot to stopping")
+            .unwrap();
+        assert!(woken.is_err());
+
+        // Case C: loopback session.open on a stopping slot must return error immediately, not block 15s.
+        let ticket = client.web_ticket(ELECTRON_ORIGIN).await.unwrap();
+        let mut socket = connect(&ticket, ELECTRON_ORIGIN).await;
+        write(
+            &mut socket,
+            json!({
+                "version": 1,
+                "id": "hello",
+                "method": "hello",
+                "params": {
+                    "protocolVersions": [1],
+                    "capabilities": ["gui-read-v1", "persistedHistoryV1"],
+                    "ticket": ticket.ticket,
+                    "expectedGeneration": ticket.generation
+                }
+            }),
+        )
+        .await;
+        assert!(read(&mut socket).await.get("result").is_some());
+        write(
+            &mut socket,
+            json!({
+                "version": 1,
+                "id": "open-stopping",
+                "method": "session.open",
+                "context": { "projectId": "stopping", "serviceGeneration": generation },
+                "params": { "threadId": "thread-1", "view": "conversation" }
+            }),
+        )
+        .await;
+        let reply = tokio::time::timeout(Duration::from_secs(1), read(&mut socket))
+            .await
+            .expect("session.open must fail immediately when project is stopping");
+        assert!(reply.get("error").is_some(), "expected error reply, got {reply}");
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn shell_update_is_sent_before_session_invalidated_on_host_change() {
+    tokio::task::LocalSet::new().run_until(async {
+        let fixture = Fixture::start().await;
+        storage::private_dir(&fixture.host.home.join("host/projects")).unwrap();
+        let client = fixture.client().await;
+        let workspace = fixture.host.home.join("order-workspace");
+        let data = fixture.host.home.join("order-data");
+        for path in [&workspace, &data, &data.join("blobs")] {
+            storage::private_dir(path).unwrap();
+        }
+        let registration = crate::ProjectRegistration {
+            project_id: "ordered".into(),
+            workspace: workspace.clone(),
+            data_dir: data.clone(),
+            source: crate::ProjectSource::Cli,
+            default_binding: false,
+        };
+        client
+            .register(&uuid::Uuid::new_v4().to_string(), registration.clone())
+            .await
+            .unwrap();
+        let directory =
+            storage::registry(&fixture.host.home, &Host::service_id(&registration)).unwrap();
+        storage::private_dir(&directory).unwrap();
+        for path in [
+            directory.join("start.lock"),
+            data.join("service.lock"),
+            data.join("owner.lock"),
+        ] {
+            storage::open_private(&path, true).unwrap();
+        }
+        storage::write(&data.join("service-workspace"), &workspace).unwrap();
+        let generation = uuid::Uuid::new_v4().to_string();
+        let descriptor = json!({
+            "protocolVersion": 1,
+            "serviceId": Host::service_id(&registration),
+            "generation": generation,
+            "workspace": workspace,
+            "dataDir": data,
+            "configFingerprint": "old",
+            "owner": {
+                "kind": "host",
+                "hostId": fixture.host.identity.host_id,
+                "generation": uuid::Uuid::new_v4().to_string()
+            },
+            "endpoint": "http://127.0.0.1:1",
+            "webUrl": "http://127.0.0.1:1",
+            "authFile": directory.join("auth.json"),
+            "logFile": directory.join("host.log"),
+            "hostPid": 500000000,
+            "corePid": 500000001,
+            "state": "ready"
+        });
+        storage::write(&directory.join("service.json"), &descriptor).unwrap();
+        let thread = uuid::Uuid::new_v4().to_string();
+        let record = json!({
+            "version": 17,
+            "thread": {
+                "id": thread,
+                "sessionId": thread,
+                "parentThreadId": null,
+                "preview": "fixture",
+                "modelProvider": "fixture",
+                "createdAt": 1,
+                "updatedAt": 2,
+                "status": { "type": "idle" },
+                "cwd": workspace,
+                "cliVersion": "fixture",
+                "source": "cli",
+                "ephemeral": false,
+                "turns": []
+            }
+        });
+        storage::write(&data.join(format!("{thread}.json")), &record).unwrap();
+
+        let ticket = client.web_ticket(ELECTRON_ORIGIN).await.unwrap();
+        let mut socket = connect(&ticket, ELECTRON_ORIGIN).await;
+        write(
+            &mut socket,
+            json!({
+                "version": 1,
+                "id": "hello",
+                "method": "hello",
+                "params": {
+                    "protocolVersions": [1],
+                    "capabilities": ["gui-read-v1", "persistedHistoryV1"],
+                    "ticket": ticket.ticket,
+                    "expectedGeneration": ticket.generation
+                }
+            }),
+        )
+        .await;
+        assert!(read(&mut socket).await.get("result").is_some());
+
+        write(
+            &mut socket,
+            json!({
+                "version": 1,
+                "id": "shell",
+                "method": "shell.subscribe",
+                "params": {}
+            }),
+        )
+        .await;
+        assert!(read(&mut socket).await.get("result").is_some());
+
+        write(
+            &mut socket,
+            json!({
+                "version": 1,
+                "id": "open",
+                "method": "session.openPersisted",
+                "context": { "projectId": "ordered", "serviceGeneration": generation },
+                "params": { "threadId": thread, "view": "conversation" }
+            }),
+        )
+        .await;
+        assert!(read(&mut socket).await.get("result").is_some());
+
+        // Trigger a Host change that both updates shell project state and invalidates the reader.
+        {
+            let mut slots = fixture.host.slots.borrow_mut();
+            let slot = slots.get_mut("ordered").unwrap();
+            slot.state = "stopping".into();
+            slot.registration.workspace = fixture.host.home.join("rebound-order-workspace");
+        }
+        fixture.host.changed();
+
+        let first = read(&mut socket).await;
+        let second = read(&mut socket).await;
+        assert!(
+            matches!(
+                first["method"].as_str(),
+                Some("shell.updated" | "shell.snapshot")
+            ),
+            "expected shell update before session.invalidated, got first={first} second={second}"
+        );
+        assert_eq!(second["method"], "session.invalidated");
+    })
+    .await;
+}
