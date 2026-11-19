@@ -3026,6 +3026,31 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn oversized_git_diff_returns_an_error_and_allows_next_git_request() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(
+            root.path().join("large.txt"),
+            "large diff line\n".repeat(1_200_000),
+        )
+        .unwrap();
+        let error = run_git_raw(
+            root.path(),
+            &["diff", "--no-index", "--", "/dev/null", "large.txt"],
+            GIT_TIMEOUT_FAST,
+        )
+        .await
+        .err()
+        .expect("oversized diff must be refused");
+        assert!(error.to_string().contains("Git 输出过大"), "{error}");
+        assert!(
+            run_git(root.path(), &["--version"], GIT_TIMEOUT_FAST)
+                .await
+                .unwrap()
+                .starts_with("git version ")
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn workspace_git_review_and_mutations_run_without_node_backend() {
         tokio::task::LocalSet::new()
             .run_until(async {

@@ -1375,6 +1375,7 @@ try {
       scopeId: "fixture",
       operationId: "fixture",
       outcome: "unknown",
+      startedAtMs: null,
       hooks: [],
     },
   };
