@@ -908,7 +908,9 @@ fn request_lane(method: &str, params: &Value) -> Option<RemoteMethodLane> {
             params["request"]["operation"].as_str(),
         ) {
             (Some("reconcile"), _) => return Some(RemoteMethodLane::Control),
-            (Some("manage"), Some("inspect"))
+            (Some("manage"), Some("inspect" | "context" | "mcpForms"))
+            | (Some("workspace"), Some("info"))
+            | (Some("resources"), Some("skills"))
             | (Some("chatgpt"), Some("status"))
             | (Some("prediction"), Some("request" | "cancel")) => {
                 return Some(RemoteMethodLane::Query);

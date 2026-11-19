@@ -887,6 +887,13 @@ async fn pending_workbench_requests_do_not_block_queries_or_page_events() {
                     let inspect = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
                     assert_eq!(inspect["id"], "inspect-read");
                     assert!(inspect.get("error").is_none(), "manage inspect must use bounded query admission: {inspect}");
+                    for (command, operation) in [("manage", "mcpForms"), ("manage", "context"), ("workspace", "info"), ("resources", "skills")] {
+                        write(&mut socket, json!({"version":1,"id":operation,"method":"desktop.command",
+                            "params":{"command":command,"request":{"projectId":"queued","operation":operation}}})).await;
+                        let reply = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
+                        assert_eq!(reply["id"], operation);
+                        assert!(reply.get("error").is_none(), "reopening a chat must not consume mutation slots for {command}/{operation}: {reply}");
+                    }
                     write(&mut socket, json!({"version":1,"id":"activity-ping",
                         "method":"analytics.activity","params":{"focused":true,"idleSeconds":0}})).await;
                     let activity = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
