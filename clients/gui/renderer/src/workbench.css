@@ -500,8 +500,8 @@ button.composer-project:hover > svg,
   flex-shrink: 0;
 }
 .active-composer .composer-project-bar {
-  width: calc(100% - 2 * var(--spacing-field) - 26px);
-  max-width: calc(var(--reading-width, 768px) - 2 * var(--spacing-field) - 26px);
+  width: calc(100% - 2 * var(--spacing-field));
+  max-width: calc(var(--reading-width, 768px) - 2 * var(--spacing-field));
   margin-inline: auto;
 }
 .composer-dock {
