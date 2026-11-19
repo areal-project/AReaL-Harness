@@ -1,0 +1,32 @@
+docs/api/core.en.md
+  s_f12f82d708da68::t_b2db1d2d2d0942 587
+docs/api/core.md
+  s_f12f82d708da68::t_b2db1d2d2d0942 596
+docs/guides/programmatic-tools.md
+  s_f12f82d708da68::t_b2db1d2d2d0942 61
+core/engine/src/desktop/mcp_tools.rs
+  s_f12f82d708da68::t_72a0287b664461 106
+  s_f12f82d708da68::t_6bdb08887ffdbc 331-364,372,376-378,380,391-392
+  s_f12f82d708da68::t_325951940e83d4 72,81-83,88,91-105,107,365-371,373-375,379,382,385-390
+  s_f12f82d708da68::t_6893696236bf85 381,383-384
+core/engine/tests/skill_loading.rs
+  s_f12f82d708da68::t_325951940e83d4 711,911,929-936,938-939,945-946,957-968,972,977,1006-1012
+docs/guides/programmatic-tools.en.md
+  s_f12f82d708da68::t_b2db1d2d2d0942 61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2ac1d7d38222aa427567b58cdd5b30f3f86d20fb",
+  "prompts": {},
+  "sessions": {
+    "s_f12f82d708da68": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d39b-5e9e-71a0-b28d-b29ad3693a4b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
