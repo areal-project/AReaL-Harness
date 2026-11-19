@@ -31,7 +31,13 @@ pub(super) struct Catalog {
     pub(super) models: Vec<Value>,
     hints: BTreeMap<String, Value>,
     pub(super) expires: u64,
+    pub(super) refresh_failure: Option<Failure>,
     loading: Option<watch::Receiver<Option<Result<Vec<Value>>>>>,
+}
+impl Catalog {
+    pub(super) fn fresh(&self) -> bool {
+        self.refresh_failure.is_none() && self.expires > now_ms()
+    }
 }
 fn parse_catalog(data: Value, access: &str) -> Result<Catalog> {
     let models = data["models"]
@@ -82,7 +88,7 @@ impl SourceSubscription {
     pub(super) async fn discover(self: &Rc<Self>, force: bool) -> Result<Vec<Value>> {
         let (epoch, cancel) = self.epoch();
         self.check_epoch(epoch)?;
-        if !force && self.state.borrow().catalog.expires > now_ms() {
+        if !force && self.state.borrow().catalog.fresh() {
             return Ok(self.state.borrow().catalog.models.clone());
         }
         let loading = self.state.borrow().catalog.loading.clone();
@@ -98,7 +104,15 @@ impl SourceSubscription {
                 if source.state.borrow().epoch==epoch {
                     let mut state=source.state.borrow_mut();
                     state.catalog.loading=None;
-                    if let Err(failure)=&result {state.catalog=Catalog::default();state.failure=Some(failure.clone());}
+                    if let Err(failure) = &result {
+                        if failure.phase == "catalog" {
+                            // 同一账号的最后一份已验证目录仍可供已配置模型发送；推理时继续校验授权。
+                            state.catalog.refresh_failure = Some(failure.clone());
+                        } else {
+                            state.catalog = Catalog::default();
+                            state.failure = Some(failure.clone());
+                        }
+                    }
                 }
                 sender.send_replace(Some(result));
             }));
@@ -153,15 +167,6 @@ impl SourceSubscription {
         self.check_epoch(epoch)?;
         let models = catalog.models.clone();
         self.state.borrow_mut().catalog = catalog;
-        if self
-            .state
-            .borrow()
-            .failure
-            .as_ref()
-            .is_some_and(|f| f.phase == "catalog")
-        {
-            self.state.borrow_mut().failure = None;
-        }
         Ok(models)
     }
 }

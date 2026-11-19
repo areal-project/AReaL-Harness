@@ -505,6 +505,7 @@ async fn native_inference_completes_while_catalog_is_held_and_refresh_recovers()
             let rig = Rig::new(false).await;
             let state = &rig.server.state;
             rig.source.refresh_catalog(false).await.unwrap();
+            let original = rig.source.snapshot().unwrap();
             state.hold_catalog.set(true);
             state.fail_catalog.set(true);
             let source = rig.source.clone();
@@ -527,13 +528,56 @@ async fn native_inference_completes_while_catalog_is_held_and_refresh_recovers()
             state.hold_catalog.set(false);
             state.catalog_gate.add_permits(1);
             assert!(discovery.await.unwrap().is_err());
+            let rejected = rig.source.snapshot().unwrap();
+            assert_eq!(rejected["models"], original["models"]);
+            assert_eq!(
+                rejected["catalog"]["fetchedAt"],
+                original["catalog"]["fetchedAt"]
+            );
+            assert_eq!(rejected["catalog"]["fresh"], false);
+            assert!(rejected["modelError"].is_string());
+
+            let input = json!([
+                {"role":"user","content":"hello"},
+                {"role":"assistant","content":"first"},
+                {"role":"user","content":"continue after catalog failure"}
+            ]);
+            let continued = rig
+                .request()
+                .json(&json!({"model":"fixture","stream":true,"input":input}))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(continued.status(), 200);
+            assert_eq!(
+                continued.bytes().await.unwrap().as_ref(),
+                [FIRST, LAST].concat()
+            );
+            assert_eq!(state.posts.get(), 2);
+            assert_eq!(
+                state.catalogs.get(),
+                2,
+                "sending cannot start catalog discovery"
+            );
+            let received = state.received.borrow()[1]["input"].clone();
+            assert!(
+                received
+                    .to_string()
+                    .contains("continue after catalog failure")
+            );
+            assert!(received.to_string().contains("hello"));
+            assert!(rig.source.snapshot().unwrap()["modelError"].is_string());
+
             state.fail_catalog.set(false);
-            rig.source.refresh_catalog(true).await.unwrap();
+            rig.source.refresh_catalog(false).await.unwrap();
             let catalog = rig.source.discover(false).await.unwrap();
             assert_eq!(catalog.len(), 1);
             assert_eq!(catalog[0]["id"], "fixture");
             assert_eq!(state.catalogs.get(), 3);
-            assert_eq!(state.posts.get(), 1);
+            assert_eq!(state.posts.get(), 2);
+            let recovered = rig.source.snapshot().unwrap();
+            assert_eq!(recovered["catalog"]["fresh"], true);
+            assert!(recovered["modelError"].is_null());
             rig.close().await;
         })
         .await;
