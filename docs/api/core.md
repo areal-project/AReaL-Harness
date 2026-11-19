@@ -593,6 +593,8 @@ Turn 的 `trace` 增加 `startedAtMs`、`queuedAtMs`、`queueDurationMs` 和 `ac
 
 `ToolPolicy.compact_tools`（JSON `compactTools`，默认 false）投影常用原生入口及 `tool_search({query,limit?})`；发现的 schema 在下一次请求生效，每 Turn 重置，仍受现有 registry 和 allowlist 限制。`ResultViewPolicy.repeated_observations`（`repeatedObservations`，默认 false）对重新观察后相同的内容附持久原文引用。`environment_info({cwd?,executables?:[{name,kind}]})` 返回有来源与指纹的事实；`task_state.environmentFacts` 是有界历史观察，不自动证明当前状态。具体范围和失效条件见[工具](../guides/tools.md)。
 
+精确搜索当前已提供的常用原生工具名时，`tool_search` 返回该工具摘要并附 `schemaStatus:"already_available"` 与 `schemaLocation`，指向现有直接定义或 `tool_program` 中的 `tools.NAME` 定义。匹配忽略两端空白及 ASCII 大小写，不增加加载集或直接调用入口。原有 lazy 检索为空时，先识别句子中完整的常用工具名；仍为空时才匹配当前授权的完整延迟工具名。保持既有常用工具优先级，不因附带名称额外加载 schema。延迟结果按名称排序并遵守 `limit` / `truncated`；仅返回的工具进入加载集，下一请求生效，不返回 `already_available`。未授权、未知名称及 MCP 搜索沿用原行为。默认开关和执行预算不变。该反馈修复不构成实际模型轮次或 token 改善的证据。
+
 原生导航的 `read_file` 支持 `column` 与 `expectedSha256`，对超长行提供版本绑定的 `nextRead` 续读，不伪造完整行；详见[工具合同](../guides/tools.md)。程序调用 `tool_program` 增加可选 JSON 对象 `input`，与代码合计受原 64 KiB 限制，作为隔离解释器实参而非源码执行；无 input 的旧调用保持兼容。`verify_command` 对 Blender Python 验证要求显式非零异常退出码，收据包含 `exitContract`；详见[程序化工具](../guides/programmatic-tools.md)。
 
 `tool_program` 的执行前语法错误可附加 `phase:"parse"` 与有界 `guidance`；仅在 `executed=0` 且无子收据时声明未执行原生工具，原 `error` 不变。运行期错误保留已发生效果，不自动修补或重试。搜索正则语法错误也可附带有界用法提示。仅程序化模式的目录按工具分段展示说明与原参数 schema；工具可达性、授权与预算不变。
