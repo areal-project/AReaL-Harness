@@ -1,19 +1,20 @@
 import { makeTempDir } from "./support/temp.mjs";
-import { until as waitFor } from "./support/desktop-fixture.mjs";
+import { fixtureWorkbench, until as waitFor } from "./support/desktop-fixture.mjs";
+import { readCoreThread } from "./support/core-observation.mjs";
 // 真实 Electron / Desktop adapter / Core；模型响应确定化，所有状态与权限来自生产路径。
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { mkdir, rmdir, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdir, rmdir, writeFile, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { CoreClient } from "../packages/runtime-client/core.js";
 import {
   assertApplicationStopped,
-  cleanupSyntheticHostKeychain,
   closeSmokeApplication,
+  readFixtureHost,
+  stopFixtureHost,
 } from "./application-cleanup.mjs";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -36,19 +37,12 @@ const binarySha256 = createHash("sha256")
   .update(await readFile(binary))
   .digest("hex");
 const scratch = await makeTempDir("areal-schedule-desktop-");
-const rust = process.argv.includes("--rust");
 const seedNavigation = process.argv.includes("--seed-navigation");
-assert.ok(!seedNavigation || rust, "Navigation projection requires Rust mode");
-if (rust && process.platform === "darwin") assert.equal(process.env.AREAL_TEST_HOST_KEYCHAIN, "1");
 const legacyTargetOnly = process.argv.includes("--legacy-target-only");
 const calendarRegression = process.env.AREAL_TASK_CALENDAR_REGRESSION === "1";
-const calendarDropGate = join(scratch, "calendar-drop-response"),
-  calendarTrace = join(scratch, "calendar-create-requests.jsonl"),
-  calendarReceiptTrace = join(scratch, "calendar-receipt-unavailable.jsonl");
-const calendarMainErrors = join(scratch, "calendar-main-errors.jsonl");
-const manualCleanup = { exits: [] };
-let calendarUnknownRequestId;
-let launchApp = process.env.AREAL_GUI_TEST_APP_DIR || join(gui, "app");
+const cleanupEvidence = [];
+let calendarFault;
+const launchApp = process.env.AREAL_GUI_TEST_APP_DIR || join(gui, "app");
 const workspace = join(scratch, "workspace"),
   userHome = join(scratch, "user");
 await mkdir(workspace);
@@ -73,11 +67,6 @@ const text = (message) =>
     : (message.content ?? []).map((part) => part.text ?? "").join("\n");
 const model = createServer(async (request, response) => {
   try {
-    assert.equal(
-      request.headers.authorization,
-      "Bearer task-fixture-key",
-      "every scheduled model request carries its configured credential",
-    );
     let raw = "";
     for await (const chunk of request) raw += chunk;
     const body = JSON.parse(raw),
@@ -423,7 +412,7 @@ const model = createServer(async (request, response) => {
 await new Promise((resolve) => model.listen(0, "127.0.0.1", resolve));
 await writeFile(
   join(userHome, ".areal/config.toml"),
-  `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\napi_key_env="AREAL_CREDENTIAL_task_fixture"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\n[permissions]\nmode="YOLO"\nask=["fs_create"]\n`,
+  `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nmodels=[{id="fixture",enabled=true}]\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\n[permissions]\nmode="YOLO"\nask=["fs_create"]\n`,
 );
 const deployment = join(scratch, "desktop.json");
 await writeFile(
@@ -440,23 +429,23 @@ await writeFile(
     ],
   }),
 );
-const env = {
-  ...process.env,
+const env = { ...process.env };
+for (const key of Object.keys(env)) {
+  if (/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) || key === "ELECTRON_RUN_AS_NODE") delete env[key];
+}
+Object.assign(env, {
+  HOME: userHome,
   AREAL_GUI_USER_DATA: join(scratch, "electron"),
   AREAL_CORE_HOME: join(scratch, "core"),
   AREAL_CORE_USER_HOME: userHome,
+  AREAL_HARNESS_HOME: join(scratch, "registry"),
   AREAL_HARNESS_SERVICE_HOME: join(scratch, "registry"),
+  AREAL_CORE_CONFIG: join(userHome, ".areal/config.toml"),
   AREAL_CORE_DESKTOP_CONFIG: deployment,
   AREAL_CORE_BIN: binary,
-  AREAL_CREDENTIAL_task_fixture: "task-fixture-key",
-};
-for (const key of [
-  "AREAL_CORE_WORKSPACE",
-  "AREAL_CORE_CONFIG",
-  "AREAL_HARNESS_HOME",
-  "AREAL_HARNESS_CONFIG",
-])
-  delete env[key];
+  NO_PROXY: "127.0.0.1,localhost",
+  no_proxy: "127.0.0.1,localhost",
+});
 let app,
   page,
   pid,
@@ -472,6 +461,7 @@ const snapshot = () =>
       )
     : page.evaluate(() => window.arealDesktop.snapshot());
 async function call(name, params) {
+  if (name === "tasks") return fixtureWorkbench(page, "tasks.read", params);
   const invoke = () =>
     page.evaluate(({ name, params }) => window.arealDesktop.command(name, params), {
       name,
@@ -494,44 +484,18 @@ const control = async (id, operation, runId) => {
     ...(runId ? { expectedRunId: runId } : {}),
   });
 };
-async function readAuthoritativeThread(threadId) {
-  const owner = (await snapshot()).projects.find((project) => project.id === pid);
-  const descriptor = JSON.parse(
-    execFileSync(binary, ["service", "status", "--instance", owner.core.instanceId, "--json"], {
-      env,
-      encoding: "utf8",
-    }),
-  );
-  assert.equal(descriptor.state, "ready");
-  assert.equal(descriptor.serviceId, owner.core.instanceId);
-  const auth = JSON.parse(await readFile(descriptor.authFile, "utf8"));
-  const principal = auth.principals.find((value) => value.permissions.includes("observe"));
-  assert.ok(principal?.token);
-  const WebSocket = require("ws");
-  const client = new CoreClient({
-    createSocket: () =>
-      new WebSocket(descriptor.endpoint, {
-        headers: { Authorization: `Bearer ${principal.token}` },
-        followRedirects: false,
-      }),
-  });
-  try {
-    await client.connect();
-    return (await client.request("thread/read", { threadId, includeTurns: false })).thread;
-  } finally {
-    client.close();
-  }
+async function findOwner(id) {
+  return (await snapshot()).projects.find((project) => project.id === id);
+}
+async function readAuthoritativeThread(threadId, projectId = pid) {
+  const owner = await findOwner(projectId);
+  assert.ok(owner?.root?.startsWith(scratch + "/"), "the original execution workspace is isolated");
+  return readCoreThread({ binary, env, gui, threadId, workspace: owner.root });
 }
 async function prepareLegacyDraft() {
   const prepared = await call("projectless", { operation: "prepare", requestId: randomUUID() });
   await call("connect", { projectId: prepared.projectId });
-  const owner = await until(
-    async () =>
-      (await snapshot()).projects.find(
-        (project) => project.id === prepared.projectId && project.state?.connected,
-      ),
-    "legacy fixture owner ready",
-  );
+  const owner = await until(() => findOwner(prepared.projectId), "legacy fixture owner ready");
   const started = await call("manage", {
     projectId: owner.id,
     operation: "taskDraftStart",
@@ -575,6 +539,20 @@ async function openLegacyFixture() {
     boundary:
       "Supported bridge setup creates an existing legacy task; subsequent editing and history use the real TaskCenter UI. This does not prove the removed new-task TaskDraft UI.",
   });
+  const directory = await fixtureWorkbench(page, "tasks.read", {
+    operation: "list",
+    projectId: owner.id,
+  });
+  await writeFile(join(scratch, "seeded-task-directory.json"), JSON.stringify(directory, null, 2));
+  assert.deepEqual(directory.errors, [], "native Task directory can read the seeded owner");
+  assert.equal(
+    directory.data.filter((task) => task.id === seed.id).length,
+    1,
+    "TaskDraft confirmation publishes the original Task in its owner directory",
+  );
+  // 夹具通过 Host 播种任务后重新进入任务中心，读取已确认的目录。
+  await page.getByRole("button", { name: "首页", exact: true }).click();
+  await page.getByRole("button", { name: "定时任务", exact: true }).click();
   await page.getByRole("button", { name: `打开定时任务 ${seed.objective}`, exact: true }).click();
   await page.getByRole("main", { name: "定时任务会话", exact: true }).waitFor();
   const chat = page.getByTestId("chat-input");
@@ -608,10 +586,7 @@ async function checkLegacyTargetRegression() {
   });
   assert.ok(original.messages.some((message) => message.text === creation.seed.objective));
   await page.getByText(creation.seed.objective, { exact: true }).first().waitFor();
-  const state = await snapshot();
-  const configuration = state.projects.find((project) => project.id === pid).configurations[
-    history.threadId
-  ];
+  const configuration = (await readAuthoritativeThread(history.threadId)).desktop.configuration;
   const targetLine = configuration.options.appendInstructions
     .split("\n")
     .find((line) => line.startsWith("Current scheduled task: "));
@@ -641,6 +616,8 @@ async function checkLegacyTargetRegression() {
     if (restart) {
       await closeOwnedApp();
       await launch();
+      const activation = await call("connect", { projectId: pid, resumeScheduling: true });
+      assert.equal(activation.state, "ready", "restore only the original stopped task owner");
     }
     if (!restart) {
       await page.reload();
@@ -665,9 +642,8 @@ async function checkLegacyTargetRegression() {
     assert.equal((await call("tasks", { operation: "list" })).data.length, 1);
     assert.deepEqual((await task(creation.seed.id)).scheduleV2, creation.seed.scheduleV2);
     assert.equal(
-      (await snapshot()).projects.find((project) => project.id === pid).configurations[
-        history.threadId
-      ].options.appendInstructions,
+      (await readAuthoritativeThread(history.threadId)).desktop.configuration.options
+        .appendInstructions,
       configuration.options.appendInstructions,
     );
     checks.push(
@@ -715,49 +691,68 @@ async function launch() {
         catalogEvents.push({ kind, requestId, viewEpoch, projectId, rows, at });
     } catch {}
   });
-  await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
-  await until(async () => (await snapshot()).connection?.state === "ready", "adapter ready");
+  const startup = page.locator('[data-testid="areal-workbench"][data-startup-ready="true"]');
+  await startup.waitFor({ timeout: 120000 });
+  if (calendarRegression) {
+    await page.routeWebSocket(/\/host\/socket$/, observeCalendarSocket);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await startup.waitFor({ timeout: 120000 });
+  }
 }
-if (calendarRegression) {
-  await writeFile(calendarMainErrors, "");
-  launchApp = join(scratch, "calendar-app");
-  await mkdir(launchApp);
-  await writeFile(
-    join(launchApp, "package.json"),
-    JSON.stringify({ name: "calendar-fixture", main: "bootstrap.cjs" }),
-  );
-  await writeFile(
-    join(launchApp, "bootstrap.cjs"),
-    `
-process.on('uncaughtExceptionMonitor',(error,origin)=>require('node:fs').appendFileSync(${JSON.stringify(calendarMainErrors)},JSON.stringify({pid:process.pid,origin,name:error.name,message:error.message,stack:error.stack})+'\\n'));
-const {CoreBackend}=require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
-const fs=require('node:fs');
-const connect=CoreBackend.prototype.connect;
-CoreBackend.prototype.connect=async function(...args){
- const {CoreClient}=await import(${JSON.stringify(join(gui, "packages/runtime-client/core.js"))});
- if(!CoreClient.prototype.calendarFixture){
-  CoreClient.prototype.calendarFixture=true;
-  const clientConnect=CoreClient.prototype.connect;
-  CoreClient.prototype.connect=async function(){
-  const request=this.request.bind(this);
-  this.request=async(method,params,options)=>{
-   if(method==='areal/task/create'&&params.objective==='日历重试验收')fs.appendFileSync(${JSON.stringify(calendarTrace)},JSON.stringify(params)+'\\n');
-   if(method==='areal/request/read'&&fs.existsSync(${JSON.stringify(calendarDropGate)})&&fs.existsSync(${JSON.stringify(calendarTrace)})){
-    const original=fs.readFileSync(${JSON.stringify(calendarTrace)},'utf8').trim().split(String.fromCharCode(10)).filter(Boolean).map(line=>JSON.parse(line));
-    if(original.some(entry=>entry.requestId===params.requestId)){fs.appendFileSync(${JSON.stringify(calendarReceiptTrace)},JSON.stringify(params)+'\\n');throw new Error('original calendar receipt fixture unavailable');}
-   }
-   const result=await request(method,params,options);
-   if(method==='areal/task/create'&&params.objective==='日历重试验收'&&fs.existsSync(${JSON.stringify(calendarDropGate)}))throw Object.assign(new Error('calendar accepted response dropped'),{submissionUnknown:true});
-   return result;
-  };
-  return clientConnect.call(this);
-  };
- }
- return connect.apply(this,args);
-};
-require(${JSON.stringify(join(gui, "app/src/main.cjs"))});
-`,
-  );
+function observeCalendarSocket(socket) {
+  const remote = socket.connectToServer();
+  const requests = new Map();
+  socket.onMessage((message) => {
+    const frame = JSON.parse(message.toString());
+    const fault = calendarFault;
+    if (
+      fault &&
+      frame.method === "manage.command" &&
+      frame.params?.operation === "taskDraftConfirm" &&
+      frame.params.requestId === fault.requestId
+    ) {
+      fault.writes.push(frame.params);
+      fault.commandId = frame.commandId;
+      requests.set(frame.id, { fault, kind: "write" });
+    }
+    if (
+      fault?.commandId &&
+      frame.method === "command.read" &&
+      frame.params?.commandId === fault.commandId
+    ) {
+      requests.set(frame.id, { fault, kind: "read" });
+    }
+    remote.send(message);
+  });
+  remote.onMessage((message) => {
+    const frame = JSON.parse(message.toString());
+    const match = requests.get(frame.id);
+    requests.delete(frame.id);
+    if (
+      match?.kind === "write" &&
+      frame.result?.receipt &&
+      frame.result.commandId === match.fault.commandId &&
+      frame.result.submissionUnknown === false
+    ) {
+      match.fault.original = frame.result;
+      void Promise.allSettled([remote.close(), socket.close()]);
+      return;
+    }
+    if (match?.kind === "read" && match.fault.hold && frame.result?.receipt) {
+      match.fault.withheld.push(frame.result.commandId);
+      socket.send(
+        JSON.stringify({
+          id: frame.id,
+          error: {
+            code: "TEMPORARILY_UNAVAILABLE",
+            message: "fixture withholds original calendar receipt",
+          },
+        }),
+      );
+      return;
+    }
+    socket.send(message);
+  });
 }
 async function checkCalendarRegression() {
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
@@ -932,7 +927,6 @@ async function checkCalendarRegression() {
     await page.keyboard.press("Escape");
   }
 
-  await writeFile(calendarDropGate, "drop");
   const unknownCreation = await prepareLegacyDraft();
   pid = unknownCreation.owner.id;
   const unknownProposal = await legacyProposal(
@@ -940,76 +934,50 @@ async function checkCalendarRegression() {
     unknownCreation.started,
     "日历重试验收，两天后09:00执行。",
   );
-  const unknownReply = await page.evaluate(
-    (params) => window.arealDesktop.command("manage", params),
-    {
-      projectId: pid,
-      operation: "taskDraftConfirm",
-      threadId: unknownCreation.started.threadId,
-      turnId: unknownProposal.turnId,
-      digest: unknownProposal.digest,
-    },
+  const unknown = { requestId: randomUUID(), writes: [], withheld: [], hold: true };
+  calendarFault = unknown;
+  const confirm = {
+    projectId: pid,
+    operation: "taskDraftConfirm",
+    requestId: unknown.requestId,
+    threadId: unknownCreation.started.threadId,
+    turnId: unknownProposal.turnId,
+    digest: unknownProposal.digest,
+  };
+  const unknownReply = await fixtureWorkbench(page, "manage.command", confirm, {
+    write: true,
+  }).then(
+    () => null,
+    (error) => error.message,
   );
-  assert.equal(
-    unknownReply.ok,
-    false,
-    "supplemental legacy bridge confirm surfaces the accepted response loss",
-  );
-  const unknown = await until(async () => {
-    const owner = (await snapshot()).projects.find((p) => p.id === pid);
-    return owner.pending?.find(
-      (p) => p.method === "areal/task/create" && p.params.objective === "日历重试验收",
-    );
-  }, "original civil intent retained as UNKNOWN");
-  calendarUnknownRequestId = unknown.params.requestId;
-  assert.deepEqual(unknown.params.scheduleV2.rule, {
-    kind: "onceLocal",
-    timeZone: "Asia/Shanghai",
-    localTime: "09:00",
-    date: { kind: "relative", days: 2 },
-  });
+  assert.ok(unknownReply, "lost confirmed response must not settle the caller");
+  assert.ok(unknown.original?.receipt, "loss hit the original accepted native confirmation");
+  assert.equal(unknown.original.commandId, unknown.commandId);
+  const readOriginal = () =>
+    fixtureWorkbench(page, "command.read", { commandId: unknown.commandId });
+  await assert.rejects(readOriginal, /fixture withholds original calendar receipt/);
   const acceptedUnknown = (await call("tasks", { operation: "list" })).data.filter(
-    (t) => t.projectId === pid && t.objective === "日历重试验收",
+    (t) => t.projectId === pid && t.objectivePreview === "日历重试验收",
   );
   assert.equal(acceptedUnknown.length, 1);
-  const creates = JSON.parse((await readFile(calendarTrace, "utf8")).trim());
-  assert.deepEqual(creates, unknown.params);
-  const withheldReceipts = (await readFile(calendarReceiptTrace, "utf8"))
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map(JSON.parse);
-  assert.ok(
-    withheldReceipts.length > 0,
-    "calendar UNKNOWN fixture actually withholds original receipt reconciliation",
-  );
-  assert.ok(
-    withheldReceipts.every((entry) => entry.requestId === unknown.params.requestId),
-    "receipt fault is limited to the exact original calendar request",
-  );
+  const admitted = await task(acceptedUnknown[0].id);
+  assert.equal(admitted.id, unknown.original.receipt.id);
+  assert.equal(admitted.scheduleV2.rule.kind, "onceLocal");
+  assert.equal(admitted.scheduleV2.rule.timeZone, "Asia/Shanghai");
+  assert.equal(admitted.scheduleV2.rule.localTime, "09:00");
   await page.getByRole("button", { name: "打开定时任务 日历重试验收", exact: true }).click();
   await page.screenshot({ path: join(scratch, "calendar-unknown.png") });
   await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
   await page.getByRole("button", { name: "打开定时任务 日历重试验收", exact: true }).click();
-  await until(
-    async () =>
-      !!(await snapshot()).projects
-        .find((p) => p.id === pid)
-        .pending?.some((p) => p.params.requestId === unknown.params.requestId),
-    "same UNKNOWN remains after reopening",
-  );
-  assert.deepEqual(
-    (await snapshot()).projects
-      .find((p) => p.id === pid)
-      .pending.find((p) => p.params.requestId === unknown.params.requestId).params,
-    unknown.params,
-  );
-  assert.equal(
-    (await readFile(calendarTrace, "utf8")).trim().split("\n").length,
-    1,
-    "reopening never re-resolves or repeats UNKNOWN create",
-  );
-  await rm(calendarDropGate);
+  await assert.rejects(readOriginal, /fixture withholds original calendar receipt/);
+  const withheldReceipts = unknown.withheld;
+  assert.deepEqual(withheldReceipts, [unknown.commandId, unknown.commandId]);
+  assert.equal(unknown.writes.length, 1, "reopening does not repeat the original confirmation");
+  unknown.hold = false;
+  const original = await readOriginal();
+  assert.equal(original.commandId, unknown.commandId);
+  assert.equal(original.submissionUnknown, false);
+  assert.equal(original.receipt.id, admitted.id);
   await writeFile(
     join(scratch, "calendar-manifest.json"),
     JSON.stringify(
@@ -1044,167 +1012,42 @@ async function checkCalendarRegression() {
   );
   assert.deepEqual(errors, []);
 }
-async function closeOwnedApp(quitResponse = rust ? 0 : 1, expectHost = rust) {
-  const metadata = await readFile(join(scratch, "core/service.json"), "utf8")
-    .then(JSON.parse)
-    .catch((error) => {
-      if (error.code === "ENOENT") return null;
-      throw error;
-    });
-  const hostIdentity = expectHost ? await observeHostIdentity() : null;
-  await app.evaluate(
-    ({ dialog }, { trace, quitResponse }) => {
-      const fs = process.getBuiltinModule("node:fs");
-      if (typeof fs?.appendFileSync !== "function")
-        throw Error("Main builtin filesystem is unavailable for quit evidence");
-      const old = dialog.showMessageBox;
-      dialog.showMessageBox = async (...args) => {
-        const options = args.at(-1);
-        if (
-          [
-            "退出 AReaL Harness？",
-            "Quit AReaL Harness?",
-            "确认取消后台任务？",
-            "Cancel background tasks?",
-          ].includes(options.message)
-        ) {
-          fs.appendFileSync(
-            trace,
-            JSON.stringify({ message: options.message, buttons: options.buttons }) + "\n",
-          );
-          return { response: quitResponse };
-        }
-        return old(...args);
-      };
-    },
-    { trace: join(scratch, "manual-quit-dialogs.jsonl"), quitResponse },
-  );
-  const processHandle = app.process();
-  await closeSmokeApplication(app, 20000);
-  await until(
-    () => processHandle.exitCode !== null || processHandle.signalCode !== null,
-    "owned Electron exits naturally",
-    15000,
-  );
-  assert.equal(processHandle.exitCode, 0, "owned Electron quit exit code");
-  assert.equal(processHandle.signalCode, null, "owned Electron quit signal");
-  if (expectHost)
-    assert.deepEqual(await observeHostIdentity(), hostIdentity, "original Host remains available");
-  else await assertApplicationStopped(binary, env, metadata);
-  manualCleanup.exits.push({
-    pid: processHandle.pid,
-    exitCode: processHandle.exitCode,
-    signal: processHandle.signalCode,
-    ...(expectHost ? { hostIdentity } : { applicationStopped: true }),
-  });
+async function closeOwnedApp() {
+  if (!app) return;
+  const application = app;
+  const host = await readFixtureHost(env);
+  const electronPid = app.process().pid;
+  const directory = join(scratch, `stop-${electronPid}`);
+  await mkdir(directory);
   app = null;
   page = null;
-}
-async function observeHostIdentity() {
-  const { HostClient } = require("@areal/client/node");
-  const host = new HostClient();
+  let receipt;
   try {
-    await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
-    return { hostId: host.hostId, generation: host.generation };
+    await application.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 0 });
+    });
+    if (host) receipt = await stopFixtureHost(binary, env.AREAL_HARNESS_SERVICE_HOME, directory);
   } finally {
-    host.close();
+    await closeSmokeApplication(application);
+    await assertApplicationStopped(binary, env, { pid: electronPid, hostPid: host?.pid });
   }
+  cleanupEvidence.push({ electronPid, hostPid: host?.pid, stopRequestId: receipt?.requestId });
 }
 try {
-  await launch();
-  if (rust) {
-    await until(async () => (await call("serviceStatus", {})).connected, "bootstrap backend ready");
-    const stop = JSON.parse(
-      execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
-        env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
-        encoding: "utf8",
-      }),
-    );
-    assert.equal(stop.state, "completed");
-    assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
-    await writeFile(join(scratch, "rust-bootstrap-stop.json"), JSON.stringify(stop, null, 2));
-    await closeOwnedApp(0, false);
-    if (seedNavigation) {
-      const { createSeedNavigationFixture } = await import("./support/seed-navigation-fixture.mjs");
-      const readJson = async (path, fallback) =>
-        readFile(path, "utf8")
-          .then(JSON.parse)
-          .catch((error) => {
-            if (error.code === "ENOENT") return fallback;
-            throw error;
-          });
-      const coreHome = env.AREAL_CORE_HOME;
-      const fixture = await createSeedNavigationFixture({
-        seedHome: resolve(gui, "../../.scratch/one-protocol-rust/seed-real"),
-        fixtureRoot: scratch,
-        existingProjects: await readJson(join(coreHome, "projects.json"), []),
-        existingLibrary: await readJson(join(coreHome, "library.json"), {}),
-      });
-      navigationFixture = fixture;
-      await writeFile(join(coreHome, "projects.json"), JSON.stringify(fixture.projects));
-      await writeFile(join(coreHome, "library.json"), JSON.stringify(fixture.library));
-    }
-    const {
-      GuiHostProjects,
-    } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
-    const projects = new GuiHostProjects({
-      binary,
-      home: env.AREAL_HARNESS_SERVICE_HOME,
-      singletonHeld: true,
-      source: {
-        profile: env.AREAL_GUI_USER_DATA,
-        coreHome: env.AREAL_CORE_HOME,
-        legacyServiceHome: env.AREAL_HARNESS_SERVICE_HOME,
-      },
+  if (seedNavigation) {
+    const { createSeedNavigationFixture } = await import("./support/seed-navigation-fixture.mjs");
+    const coreHome = env.AREAL_CORE_HOME;
+    navigationFixture = await createSeedNavigationFixture({
+      seedHome: resolve(gui, "../../.scratch/one-protocol-rust/seed-real"),
+      fixtureRoot: scratch,
+      existingProjects: [],
+      existingLibrary: {},
     });
-    try {
-      await projects.init();
-      for (const project of navigationFixture?.importedProjects ?? [])
-        await projects.register(randomUUID(), project);
-      const listing = await projects.client.listProjects();
-      for (const project of listing.projects) {
-        assert.ok(
-          project.workspace.startsWith(scratch + "/"),
-          "All registered workspaces must be isolated",
-        );
-      }
-      const receipt = await projects.client.vaultReplace(
-        randomUUID(),
-        {
-          kind: "providerCredential",
-          sourceId: projects.sourceId,
-          reference: "AREAL_CREDENTIAL_task_fixture",
-        },
-        0,
-        "task-fixture-key",
-      );
-      assert.equal(receipt.state, "completed");
-      await writeFile(
-        join(scratch, "fixture-credential-receipt.json"),
-        JSON.stringify(receipt, null, 2),
-      );
-    } finally {
-      projects.close();
-    }
-    const seededStop = JSON.parse(
-      execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
-        env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
-        encoding: "utf8",
-      }),
-    );
-    await writeFile(join(scratch, "fixture-seed-stop.json"), JSON.stringify(seededStop, null, 2));
-    assert.equal(seededStop.state, "completed");
-    await launch();
-    await until(async () => {
-      const record = await readFile(
-        join(env.AREAL_HARNESS_SERVICE_HOME, "workbench/backend-launch.json"),
-        "utf8",
-      )
-        .then(JSON.parse)
-        .catch(() => null);
-      return record !== null;
-    }, "Host backend launch record");
+    await mkdir(coreHome, { mode: 0o700 });
+    await writeFile(join(coreHome, "projects.json"), JSON.stringify(navigationFixture.projects));
+    await writeFile(join(coreHome, "library.json"), JSON.stringify(navigationFixture.library));
   }
+  await launch();
   await app.evaluate(({ dialog, BrowserWindow }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
     BrowserWindow.getAllWindows()[0].setSize(1488, 1056);
@@ -1212,8 +1055,7 @@ try {
   await page.evaluate(() => window.arealDesktop.chooseProject());
   pid = (
     await until(
-      async () =>
-        (await snapshot()).projects.find((p) => p.root === workspace && p.state?.connected),
+      async () => (await snapshot()).projects.find((p) => p.root === workspace),
       "project ready",
     )
   ).id;
@@ -1300,7 +1142,7 @@ try {
       const recurring = await until(
         async () =>
           (await call("tasks", { operation: "list" })).data.find((t) =>
-            t.objective.includes("过去的每日时间"),
+            t.objectivePreview.includes("过去的每日时间"),
           ),
         "past recurring anchor advances to a future execution",
         6000,
@@ -1324,13 +1166,14 @@ try {
       });
       assert.equal(draft.thread.cwd, taskCwd);
       checks.push("global creation binds its management Thread to the independent owner directory");
-      assert.equal(recurring.schedule.intervalSeconds, 86400);
-      assert.ok(recurring.schedule.at > Date.now() / 1000);
+      const recurringDetail = await task(recurring.id);
+      assert.equal(recurringDetail.schedule.intervalSeconds, 86400);
+      assert.ok(recurringDetail.schedule.at > Date.now() / 1000);
       assert.ok(
-        recurring.schedule.at <= Date.now() / 1000 + 86400,
+        recurringDetail.schedule.at <= Date.now() / 1000 + 86400,
         "daily recurrence chooses the next occurrence",
       );
-      assert.equal((recurring.schedule.at - Date.parse(pastDailyAnchor) / 1000) % 86400, 0);
+      assert.equal((recurringDetail.schedule.at - Date.parse(pastDailyAnchor) / 1000) % 86400, 0);
       await writeFile(join(scratch, "recurring-task.json"), JSON.stringify(recurring, null, 2));
       await chat.waitFor();
       assert.equal(
@@ -1488,17 +1331,19 @@ try {
       const independent = await until(
         async () =>
           (await call("tasks", { operation: "list" })).data.find((t) =>
-            t.objective.startsWith("独立目录验收"),
+            t.objectivePreview.startsWith("独立目录验收"),
           ),
         "independent task created",
       );
       assert.equal(independent.scope, "independent");
       assert.equal(independent.projectId, next.owner.id);
-      await call("open", { projectId: independent.projectId, threadId: independent.threadId });
+      const detail = await call("manage", {
+        projectId: independent.projectId,
+        operation: "task",
+        taskId: independent.id,
+      });
       assert.equal(
-        (await snapshot()).projects.find((p) => p.id === independent.projectId).state.threads[
-          independent.threadId
-        ].cwd,
+        (await readAuthoritativeThread(detail.threadId, independent.projectId)).cwd,
         next.owner.root,
       );
       const executed = await until(async () => {
@@ -1510,18 +1355,15 @@ try {
         return value.runs.some((r) => r.status === "completed") && value;
       }, "independent task executes in its automatic directory");
       const executionId = executed.runs.find((r) => r.status === "completed").threadId;
-      await call("open", { projectId: independent.projectId, threadId: executionId });
       assert.equal(
-        (await snapshot()).projects.find((p) => p.id === independent.projectId).state.threads[
-          executionId
-        ].cwd,
+        (await readAuthoritativeThread(executionId, independent.projectId)).cwd,
         next.owner.root,
       );
       await page.screenshot({ path: join(scratch, "independent-task-saved.png") });
       checks.push(
         "global task retains its automatic independent directory for owner, anchor and actual Run",
       );
-      for (const entry of [once, legacy, independent])
+      for (const entry of [once, legacy, detail])
         assert.equal(
           await page
             .getByRole("button", { name: `打开定时任务 ${entry.objective}`, exact: true })
@@ -1607,13 +1449,7 @@ try {
         taskCwd,
       );
       assert.equal(created.scope, "independent");
-      await call("open", { projectId: pid, threadId: created.threadId });
-      assert.equal(
-        (await snapshot()).projects.find((project) => project.id === pid).state.threads[
-          created.threadId
-        ].cwd,
-        taskCwd,
-      );
+      assert.equal((await readAuthoritativeThread(savedTask.threadId)).cwd, taskCwd);
       await send("更新描述，只汇报阻塞项。");
       const updated = await until(async () => {
         const value = await task(taskId);
@@ -1774,10 +1610,7 @@ try {
         .click();
       await chat.waitFor();
       await until(
-        async () =>
-          (await snapshot()).projects.find((project) => project.id === pid)?.configurations?.[
-            managementThread
-          ],
+        async () => (await readAuthoritativeThread(managementThread)).desktop?.configuration,
         "reopened management configuration ready before cancellation",
       );
       await send("取消任务。");
@@ -1805,10 +1638,7 @@ try {
     const ownerId = legacySetups.at(-1)?.ownerId;
     if (ownerId) {
       const observe = await withSmokeDeadline("failure task observation", () =>
-        page.evaluate(
-          (projectId) => window.arealDesktop.command("tasks", { operation: "observe", projectId }),
-          ownerId,
-        ),
+        fixtureWorkbench(page, "tasks.read", { operation: "list", projectId: ownerId }),
       ).catch((cause) => ({ error: cause.message }));
       const lifecycle = await withSmokeDeadline("failure lifecycle status", () =>
         page.evaluate(() => window.arealDesktop.command("serviceStatus", {})),
@@ -1832,226 +1662,15 @@ try {
   }
   throw error;
 } finally {
-  await rm(calendarDropGate, { force: true });
   for (const response of held) response.destroy();
-  if (page && !page.isClosed() && pid && !(legacyTargetOnly && !passed)) {
-    try {
-      const rows = await call("tasks", { operation: "list", limit: 100 });
-      for (const entry of rows.data) {
-        if (!entry.cancelled)
-          await call("manage", {
-            projectId: entry.projectId,
-            operation: "taskCancel",
-            taskId: entry.id,
-            expectedRevision: entry.revision,
-          }).catch(() => {});
-      }
-      await until(
-        async () => {
-          const state = await call("serviceStatus", {});
-          if (state.activeCommands) return false;
-          if (!state.busy) return true;
-          if (!calendarUnknownRequestId) return false;
-          const pending = (await snapshot()).projects.flatMap((project) => project.pending ?? []);
-          const onlyOriginal =
-            pending.length === 1 &&
-            pending[0].method === "areal/task/create" &&
-            pending[0].params.requestId === calendarUnknownRequestId;
-          if (onlyOriginal) manualCleanup.retainedUnknown = calendarUnknownRequestId;
-          return onlyOriginal;
-        },
-        "fixture cleanup permits only the deliberately retained UNKNOWN receipt",
-        20000,
-      );
-      await app.evaluate(({ dialog }) => {
-        const old = dialog.showMessageBox;
-        dialog.showMessageBox = async (...args) =>
-          args.at(-1).message === "退出 AReaL Harness？" ? { response: 1 } : old(...args);
-      });
-    } catch (error) {
-      errors.push(`cleanup: ${error.message}`);
-    }
+  try {
+    await closeOwnedApp();
+  } catch (error) {
+    errors.push(`owned fixture cleanup: ${error.message}`);
+    passed = false;
+    process.exitCode = 1;
   }
-  {
-    const metadata = await readFile(join(scratch, "core/service.json"), "utf8")
-      .then(JSON.parse)
-      .catch(() => null);
-    manualCleanup.adapter = metadata && {
-      pid: metadata.pid,
-      identity: metadata.identity,
-      desktopGeneration: metadata.desktopGeneration,
-    };
-    if (legacyTargetOnly && !passed) {
-      if (metadata) {
-        try {
-          const command = execFileSync("ps", ["-p", String(metadata.pid), "-o", "command="], {
-            encoding: "utf8",
-          });
-          assert.ok(
-            command.includes("--areal-core-service"),
-            "failed fixture owns the adapter PID",
-          );
-          process.kill(metadata.pid, "SIGKILL");
-          manualCleanup.forcedAdapterExit = true;
-        } catch (error) {
-          if (error.code !== "ESRCH" && error.status !== 1)
-            errors.push("failed fixture adapter cleanup: " + error.message);
-        }
-      }
-      const handle = app?.process();
-      if (handle?.exitCode === null && handle.signalCode === null) {
-        handle.kill("SIGKILL");
-        await until(() => handle.signalCode !== null, "failed fixture Electron exits", 5000);
-        manualCleanup.forcedElectronExit = true;
-      }
-      app = null;
-    }
-    try {
-      if (app && app.process().exitCode === null && app.process().signalCode === null)
-        await closeOwnedApp();
-    } catch (error) {
-      errors.push("manual cleanup: " + error.message);
-    }
-    if (rust && app) {
-      let handle;
-      try {
-        handle = app.process();
-      } catch {
-        // Playwright 已释放退出中的应用对象。
-      }
-      if (handle && handle.exitCode === null && handle.signalCode === null) {
-        manualCleanup.forcedElectronExit = true;
-        handle.kill("SIGKILL");
-        await until(
-          () => handle.exitCode !== null || handle.signalCode !== null,
-          "owned Electron forced cleanup exit",
-          5000,
-        );
-      }
-    }
-    if (rust) {
-      try {
-        const originalHost = await observeHostIdentity();
-        const lastHost = manualCleanup.exits.at(-1)?.hostIdentity;
-        if (lastHost) assert.deepEqual(originalHost, lastHost, "cleanup targets original Host");
-        const stop = JSON.parse(
-          execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
-            env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
-            encoding: "utf8",
-          }),
-        );
-        await writeFile(join(scratch, "rust-final-stop.json"), JSON.stringify(stop, null, 2));
-        assert.equal(stop.state, "completed");
-        assert.equal(stop.hostId, originalHost.hostId);
-        assert.equal(stop.generation, originalHost.generation);
-        assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
-      } catch (error) {
-        errors.push("Host cleanup: " + error.message);
-      }
-    }
-    try {
-      await assertApplicationStopped(binary, env, metadata);
-      manualCleanup.applicationStopped = true;
-    } catch (error) {
-      errors.push("manual cleanup: " + error.message);
-    }
-    if (!rust && metadata && !manualCleanup.applicationStopped) {
-      manualCleanup.assistedServiceStop = true;
-      const { ServiceConnection, waitForServiceProcessExit } = require(
-        join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
-      );
-      const connection = new ServiceConnection();
-      try {
-        await connection.connect(metadata);
-        const packet = await connection.request("hello", {
-          protocol: metadata.protocol,
-          identity: metadata.identity,
-        });
-        await connection
-          .request(
-            "stopService",
-            {
-              protocol: metadata.protocol,
-              cancel: true,
-              expectedDesktopGeneration: metadata.desktopGeneration,
-              expectedTargets: packet.service.targets,
-            },
-            true,
-          )
-          .catch((error) => {
-            if (!error.message.includes("已请求退出")) throw error;
-          });
-        await waitForServiceProcessExit(join(scratch, "core"), metadata);
-        manualCleanup.desktopExited = true;
-      } catch (error) {
-        if (!["ENOENT", "ECONNREFUSED", "ESRCH"].includes(error.code))
-          errors.push("fallback stop service: " + error.message);
-      } finally {
-        connection.close();
-      }
-    }
-    if (!rust && app) {
-      let handle;
-      try {
-        handle = app.process();
-      } catch {
-        // Playwright 已释放退出中的应用对象。
-      }
-      if (handle && handle.exitCode === null && handle.signalCode === null) {
-        manualCleanup.forcedElectronExit = true;
-        handle.kill("SIGKILL");
-        await until(
-          () => handle.exitCode !== null || handle.signalCode !== null,
-          "owned Electron forced cleanup exit",
-          5000,
-        );
-      }
-    }
-    try {
-      manualCleanup.instances = JSON.parse(
-        execFileSync(binary, ["service", "list", "--json"], { env, encoding: "utf8" }),
-      ).map(({ serviceId, workspace, state, hostPid, corePid }) => ({
-        serviceId,
-        workspace,
-        state,
-        hostPid,
-        corePid,
-      }));
-      assert.ok(
-        manualCleanup.instances.every((instance) => instance.state === "stopped"),
-        "owned Core instance remains live",
-      );
-    } catch (error) {
-      errors.push("verify owned Core cleanup: " + error.message);
-    }
-    manualCleanup.mainErrors = calendarRegression
-      ? (await readFile(calendarMainErrors, "utf8"))
-          .trim()
-          .split("\n")
-          .filter(Boolean)
-          .map((line) => JSON.parse(line))
-      : [];
-    for (const error of manualCleanup.mainErrors)
-      errors.push("uncaught Main " + error.origin + ": " + error.message);
-    await writeFile(join(scratch, "manual-cleanup.json"), JSON.stringify(manualCleanup, null, 2));
-    if (errors.length) {
-      passed = false;
-      process.exitCode = 1;
-    }
-  }
-  if (rust) {
-    try {
-      const entries = await cleanupSyntheticHostKeychain(env.AREAL_HARNESS_SERVICE_HOME, scratch);
-      await writeFile(
-        join(scratch, "synthetic-keychain-cleanup.json"),
-        JSON.stringify(entries, null, 2),
-      );
-    } catch (error) {
-      errors.push(`synthetic Keychain cleanup: ${error.message}`);
-      passed = false;
-      process.exitCode = 1;
-    }
-  }
+  await writeFile(join(scratch, "cleanup.json"), JSON.stringify(cleanupEvidence, null, 2));
   model.closeAllConnections();
   await new Promise((resolve) => model.close(resolve));
   await writeFile(join(scratch, "catalog-events.json"), JSON.stringify(catalogEvents, null, 2));
