@@ -1992,3 +1992,62 @@ it("preserves safe Host rejection detail and reason for diagnosis", () => {
     }),
   ).toThrow("expectedRevision does not match");
 });
+
+it("keeps local execution unavailable until desktop and Host agree on the Core generation", () => {
+  const client = {
+    snapshot: () => ({ connection: "ready", identity: connection }),
+    readsSnapshot: () => ({ session: { state: "fresh" } }),
+  };
+  const projector = createHostSnapshotProjector(
+    client as never,
+    {} as never,
+    options(transport().factory),
+    new Map(),
+    new Map(),
+    new Map(),
+    new Map(),
+  );
+  const shell = { snapshot: { projects: [project], navigation: [navigation] } };
+  const extras = {
+    watched: new Map(),
+    tasks: new Map(),
+    historyVersion: 0,
+    commandOutcomes: new Map(),
+  };
+  const projectState = (desktopGeneration: string, connected: boolean, suppressed: boolean) =>
+    projector(shell as never, true, undefined, undefined, {
+      ...extras,
+      desktopSnapshot: {
+        connection: { state: "ready" },
+        verifiedDesktopHost: { hostId: connection.hostId, generation: connection.hostGeneration },
+        projects: [
+          {
+            id: "alias",
+            core: { serviceGeneration: desktopGeneration },
+            state: { connected },
+            scheduling: { suppressed },
+          },
+        ],
+      },
+    } as never).snapshot.projects[0];
+  expect(projectState("old", true, true)).toMatchObject({
+    localExecutionReady: false,
+    state: { connected: false },
+    scheduling: { suppressed: true },
+  });
+  expect(projectState("core-gen", false, true)).toMatchObject({
+    localExecutionReady: false,
+    state: { connected: false },
+    scheduling: { suppressed: true },
+  });
+  expect(projectState("core-gen", true, true)).toMatchObject({
+    localExecutionReady: false,
+    state: { connected: false },
+    scheduling: { suppressed: true },
+  });
+  expect(projectState("core-gen", true, false)).toMatchObject({
+    localExecutionReady: true,
+    state: { connected: true },
+    scheduling: { suppressed: false },
+  });
+});

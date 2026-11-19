@@ -74,6 +74,7 @@ export function createHostReadServices(
   const pages = createHostPages(client, desktop !== undefined);
   const listeners = new Set<(snapshot: Snapshot) => void>();
   let shellExtras: ShellSnapshot | undefined;
+  let desktopSnapshot: Snapshot | undefined;
   let verifiedDesktopHost: Snapshot["verifiedDesktopHost"];
   const { watchedThreads, resolveWatched, reservedBytes, watch } = createWatchedHistory(
     client,
@@ -244,6 +245,7 @@ export function createHostReadServices(
       observation,
       {
         shellExtras,
+        desktopSnapshot,
         watched: watchedThreads(),
         tasks: taskState.tasks,
         readingWindow,
@@ -531,6 +533,7 @@ export function createHostReadServices(
   if (desktop) {
     // 外壳只提供窗口、电源、菜单栏、生命周期和代理设置；项目、会话、任务与其余设置都从 Host 读。
     const accept = (value: Snapshot) => {
+      desktopSnapshot = value;
       verifiedDesktopHost = value.verifiedDesktopHost;
       shellExtras = shellSnapshot(value);
       publish();

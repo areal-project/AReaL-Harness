@@ -56,6 +56,7 @@ function fixture(
   web = false,
   persisted = false,
   disconnected = false,
+  localExecutionReady: boolean | undefined = undefined,
 ) {
   const projectId = crypto.randomUUID();
   const key = `areal-gui:draft:${projectId}:thread`;
@@ -88,6 +89,7 @@ function fixture(
       project: {
         id: projectId,
         root: "/preview",
+        localExecutionReady,
         ...(web ? { desktopCapabilities: { currentCommands: false } } : {}),
         models: [],
         pending: [],
@@ -116,7 +118,16 @@ function fixture(
     );
   };
   render();
-  return { key, owner, action, render, thread };
+  return {
+    key,
+    owner,
+    action,
+    render,
+    thread,
+    setLocalExecutionReady: (value: boolean) => {
+      localExecutionReady = value;
+    },
+  };
 }
 
 describe("Composer reading intent across unknown boundaries", () => {
@@ -147,6 +158,20 @@ describe("Composer reading intent across unknown boundaries", () => {
       readingViews.delete(f.owner);
     },
   );
+  it("preserves draft but blocks submit until the local execution owner is ready", async () => {
+    const f = fixture(false, false, false, false, false, true, false, false);
+    expect(observed.composer?.disabled).toBe(false);
+    expect(observed.composer?.submitDisabled).toBe(true);
+    observed.submit!("continue");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(f.action).not.toHaveBeenCalled();
+    f.setLocalExecutionReady(true);
+    f.render();
+    observed.submit!("continue");
+    await vi.waitFor(() => expect(f.action).toHaveBeenCalledOnce());
+    expect(f.action.mock.calls[0][0]).toBe("send");
+    readingViews.delete(f.owner);
+  });
   it("allows drafting and submitting from persisted history without claiming a live connection", async () => {
     const f = fixture(false, false, false, false, false, true);
     expect(observed.composer?.disabled).toBe(false);
