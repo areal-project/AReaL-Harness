@@ -258,16 +258,27 @@ try {
     mark("fixture-connect", { ok: reconnect.ok, error: reconnect.error });
     assert(reconnect.ok, JSON.stringify(reconnect.error));
   }
-  const refreshed = await wait(async () => {
-    const x = (await state()).projects.find((x) => x.id === project.id);
-    return x?.state?.connected && x.core?.serviceGeneration !== desc.generation && x;
-  }, "new Core generation");
-  mark("new-generation", { old: desc.generation, new: refreshed.core.serviceGeneration });
-  mark("reconnected-view", {
-    threadId: await page.getByTestId("areal-workbench").getAttribute("data-thread-id"),
+  const current = (await host.request("host.status", {})).projects.find(
+    (entry) => entry.registration.projectId === hostProject,
+  );
+  assert.equal(current.state, "ready");
+  assert.notEqual(current.service.generation, desc.generation);
+  const projected = (await state()).projects.find((entry) => entry.id === project.id);
+  const activeThread = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+  mark("new-generation", {
+    old: desc.generation,
+    host: current.service.generation,
+    projection: {
+      connected: projected?.state?.connected,
+      generation: projected?.core?.serviceGeneration,
+      error: projected?.error,
+    },
+    threadId: activeThread,
     inputVisible: await page.getByTestId("chat-input").isVisible(),
+    inputEditable: await page.getByTestId("chat-input").isEditable(),
   });
-  assert.equal(await page.getByTestId("areal-workbench").getAttribute("data-thread-id"), threadId);
+  assert.equal(activeThread, threadId);
+  await page.screenshot({ path: join(root, "before-send.png") });
   await page.getByText("HISTORY_GUI_DONE", { exact: true }).first().waitFor();
   await page.getByText("OLD_GUI_FIRST", { exact: true }).waitFor();
   await page.getByText("OLD_GUI_QUEUE", { exact: true }).waitFor();
@@ -284,7 +295,7 @@ try {
     execFileSync(binary, ["service", "list", "--json"], { env, encoding: "utf8" }),
   );
   const newDesc = newList.find(
-    (x) => x.workspace === workspace && x.generation === refreshed.core.serviceGeneration,
+    (x) => x.workspace === workspace && x.generation === current.service.generation,
   );
   assert(newDesc, "new Core descriptor must match the projected generation");
   core = await connect(newDesc.endpoint, newDesc.authFile);
