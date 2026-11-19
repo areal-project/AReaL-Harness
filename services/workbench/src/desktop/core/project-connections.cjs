@@ -107,10 +107,15 @@ class ProjectConnections {
     }
     if (this.host.closing) return Promise.reject(new Error("应用正在退出"));
     const starting = this.host.starting.get(id);
-    if (starting)
-      return resumeScheduling
-        ? starting.then(() => this.host.startProject(id, { resumeScheduling: true }))
-        : starting;
+    if (starting) {
+      if (!resumeScheduling) return starting;
+      // 被动连接必须尊重用户停机；其明确拒绝不能吃掉随后到达的主动恢复。
+      return starting
+        .catch((error) => {
+          if (error?.code !== "CORE_STOPPED") throw error;
+        })
+        .then(() => this.start(id, { resumeScheduling: true }));
+    }
     const project = this.host.projects.get(id);
     if (project) {
       clearTimeout(project.reconnectTimer ?? undefined);
