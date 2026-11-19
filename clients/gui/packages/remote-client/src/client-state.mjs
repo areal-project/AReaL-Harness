@@ -59,6 +59,9 @@ function locator(command) {
     commandId: command.commandId,
     method: command.method,
     params,
+    ...(command.method === "session.create" && (command.firstTurn || command.params?.firstMessage)
+      ? { firstTurn: true }
+      : {}),
     ...(command.method === "session.create" && command.detached === true ? { detached: true } : {}),
     admissionState: "unknown",
     submissionUnknown: true,

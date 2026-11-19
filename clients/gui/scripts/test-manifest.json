@@ -822,7 +822,24 @@
     "requires": ["electron", "core-binary", "git", "macos-tools", "gui-build"]
   },
   {
+    "script": "test:recovery-electron-history-steer",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "areas": ["recovery", "lifecycle"],
+    "requires": ["electron", "git", "python3", "signed-gui-package"],
+    "platformReason": "Requires a signed macOS application package.",
+    "notes": "Set AREAL_TEST_PACKAGE to the signed .app. Runs both user-requested stop and unexpected Core exit using isolated data and a deterministic local model."
+  },
+  {
     "script": "test:recovery-electron",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "areas": ["recovery", "lifecycle"],
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
+    "platformReason": "Runner explicitly asserts darwin and uses its existing macOS acceptance setup."
+  },
+  {
+    "script": "test:recovery-electron-reconnect",
     "layer": "e2e",
     "platforms": ["darwin"],
     "areas": ["recovery", "lifecycle"],
@@ -937,6 +954,13 @@
     "platforms": ["darwin", "linux", "win32"],
     "areas": ["remote", "mobile"],
     "requires": []
+  },
+  {
+    "script": "test:mobile-first-message-native",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["remote", "mobile"],
+    "requires": ["core-binary", "native-runtime", "node-24.22.1", "openssl"]
   },
   {
     "script": "test:mobile-commands",

@@ -42,6 +42,7 @@ import {
   desktopWindowCommand,
 } from "./host-workbench.js";
 import { createHostPages } from "./host-pages.js";
+import { createHostBots } from "./host-bots.js";
 import { createWatchedHistory } from "./host-watched-history.js";
 import {
   chooseHostProject,
@@ -72,8 +73,10 @@ export function createHostReadServices(
 ): PlatformServices {
   const client = new HostClient({ ...options, writes: true });
   const pages = createHostPages(client, desktop !== undefined);
+  const hostBots = createHostBots(client);
   const listeners = new Set<(snapshot: Snapshot) => void>();
   let shellExtras: ShellSnapshot | undefined;
+  let desktopSnapshot: Snapshot | undefined;
   let verifiedDesktopHost: Snapshot["verifiedDesktopHost"];
   const { watchedThreads, resolveWatched, reservedBytes, watch } = createWatchedHistory(
     client,
@@ -244,6 +247,7 @@ export function createHostReadServices(
       observation,
       {
         shellExtras,
+        desktopSnapshot,
         watched: watchedThreads(),
         tasks: taskState.tasks,
         readingWindow,
@@ -531,6 +535,7 @@ export function createHostReadServices(
   if (desktop) {
     // 外壳只提供窗口、电源、菜单栏、生命周期和代理设置；项目、会话、任务与其余设置都从 Host 读。
     const accept = (value: Snapshot) => {
+      desktopSnapshot = value;
       verifiedDesktopHost = value.verifiedDesktopHost;
       shellExtras = shellSnapshot(value);
       publish();
@@ -546,6 +551,7 @@ export function createHostReadServices(
     clearTimeout(cacheTimer);
     windows.clear();
     pages?.dispose();
+    hostBots.dispose();
     client.close();
   };
   if (typeof window !== "undefined")
@@ -941,6 +947,7 @@ export function createHostReadServices(
     reads,
     writes,
     workbench,
+    bots: hostBots.bots,
     mcpApp: pages.mcpApp,
     onMcpAppEvent: pages.onMcpAppEvent,
     snapshot: async () => snapshot,

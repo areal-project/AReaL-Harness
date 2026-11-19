@@ -53,4 +53,8 @@ export const settingsSearchMessages = {
     "zh-CN": "手机、配对、Relay、中继、设备",
     en: "Phone, Pairing, Relay, Devices",
   },
+  "settings.search.labs": {
+    "zh-CN": "Labs、实验功能、Bot",
+    en: "Labs, Experimental features, Bots",
+  },
 } as const;

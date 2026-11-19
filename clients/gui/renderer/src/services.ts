@@ -211,6 +211,7 @@ export interface PlatformServices {
     taskCatalog?: boolean;
     taskManage?: boolean;
     pages?: boolean;
+    bots?: boolean;
     settings?: readonly string[];
   };
   reads?: PlatformReadServices;
@@ -225,6 +226,8 @@ export interface PlatformServices {
   workbench?: {
     call(name: string, params: Record<string, unknown>): Promise<{ value: unknown } | undefined>;
   };
+  /** Personal Agent / Bot 服务（经由 Host 统一驱动，桌面与网页共享）。 */
+  bots?: import("./host-bots.js").BotServices;
   /** 默认桌面的受阻历史视图；null 关闭视图，不能恢复执行或重放原请求。 */
   recoverPersistedHistory?(target: { projectId: string; threadId: string } | null): Promise<void>;
   getHostTicket?(): Promise<unknown>;

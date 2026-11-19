@@ -58,6 +58,7 @@ class HostProtocolSchemaTests(unittest.TestCase):
                 "gateway/uploads.rs",
                 "workbench_route.rs",
                 "plugins.rs",
+                "bots.rs",
                 "loopback.rs",
             ):
                 target = root / "core/host/src" / name
@@ -127,6 +128,7 @@ class HostProtocolSchemaTests(unittest.TestCase):
                 Path("core/host/src/gateway/uploads.rs"),
                 Path("core/host/src/workbench_route.rs"),
                 Path("core/host/src/plugins.rs"),
+                Path("core/host/src/bots.rs"),
             ):
                 target = root / name
                 target.parent.mkdir(parents=True, exist_ok=True)

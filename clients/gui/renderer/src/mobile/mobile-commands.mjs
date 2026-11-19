@@ -140,12 +140,6 @@ export class MobileCommands {
         this.commands.unresolved(command),
     );
   }
-  visibleUnresolved(projectId, threadId = "") {
-    const pending = this.unresolved(projectId, threadId);
-    const latestDetached = pending.filter((value) => value.detached).at(-1);
-    // 同一项目只展示最近一条已另开会话的核对提示，避免多条相同横幅在 composer 上方堆叠。
-    return pending.filter((value) => !value.detached || value === latestDetached);
-  }
   blocksSend(projectId, threadId = "") {
     const snapshot = this.workspace.state.detail?.snapshot;
     return this.unresolved(projectId, threadId).some(
@@ -276,7 +270,7 @@ export class MobileCommands {
           continue;
         }
         if (existing?.commandId !== locator.commandId) this.commands.commands.set(key, locator);
-        await this.query(this.commands.commands.get(key));
+        await this.query(this.commands.commands.get(key), { reconnecting: true });
       }
     } catch {
       this.publish({ error: "RECOVERY_FAILED", errorTarget: null });
@@ -289,12 +283,30 @@ export class MobileCommands {
     if (this.commands.commands.get(key) !== command || this.client.identities.current() !== token)
       return undefined;
     if (value.commandId !== command.commandId) throw failure("RESYNC_REQUIRED");
+    if (
+      value.admissionState === "accepted" &&
+      (command.firstTurn || command.params.firstMessage) &&
+      !(
+        typeof value.threadId === "string" &&
+        value.threadId &&
+        typeof value.turnId === "string" &&
+        value.turnId
+      )
+    )
+      throw failure("SUBMISSION_UNKNOWN");
     try {
       await this.client.identities.settleLocator(token, command.commandId, value.admissionState);
     } catch {
       throw failure("SUBMISSION_UNKNOWN");
     }
+    if (this.commands.commands.get(key) !== command || this.client.identities.current() !== token)
+      return undefined;
+    const firstMessage = command.params.firstMessage;
     this.commands.receive(key, command, value);
+    if (firstMessage && !command.detached && value.admissionState === "accepted") {
+      if (this.commands.drafts.get(key) === firstMessage.text) this.commands.drafts.delete(key);
+      this.configuration.delete(key);
+    }
     if (value.admissionState === "rejected" && !command.detached)
       this.publish({
         error: String(value.error?.code ?? "COMMAND_REJECTED"),
@@ -407,7 +419,7 @@ export class MobileCommands {
       this.publish();
       if (
         command.dispatched &&
-        ["session.send", "interaction.respond"].includes(method) &&
+        (params.firstMessage || ["session.send", "interaction.respond"].includes(method)) &&
         this.commands.unresolved(command)
       ) {
         const receipt = await this.confirmReceipt(command, connection, token);
@@ -580,7 +592,7 @@ export class MobileCommands {
       this.configuration.delete(old);
     }
   }
-  async query(command) {
+  async query(command, { reconnecting = false } = {}) {
     if (
       !command ||
       command.checkingReceipt ||
@@ -594,7 +606,11 @@ export class MobileCommands {
     command.checkingReceipt = true;
     this.publish();
     try {
-      const received = await this.readReceipt(command, token);
+      const connection = this.client.connection;
+      const received =
+        reconnecting && (command.firstTurn || command.params.firstMessage)
+          ? await this.confirmReceipt(command, connection, token)
+          : await this.readReceipt(command, token);
       if (received?.admissionState !== "accepted" || command.detached) return;
       this.publish({ error: null });
       if (command.method === "session.create") {
@@ -614,7 +630,10 @@ export class MobileCommands {
         await this.workspace.refresh();
       }
     } catch {
-      this.commands.failed(key, command, failure("SUBMISSION_UNKNOWN"));
+      // 已核对的提交独立于后续页面读取；打开页面失败不能撤销回执。
+      if (this.commands.unresolved(command))
+        this.commands.failed(key, command, failure("SUBMISSION_UNKNOWN"));
+      else if (!command.detached) this.publish({ error: "RECOVERY_FAILED" });
     } finally {
       command.checkingReceipt = false;
       this.publish();
@@ -646,7 +665,7 @@ export class MobileCommands {
       this.commands.commands.delete(key);
       this.commands.commands.set(this.commandKey(command), command);
     } catch {
-      this.publish({ error: "START_SEPARATE_FAILED" });
+      this.publish({ error: "START_SEPARATE_FAILED", errorTarget: this.pageTarget(page) });
     } finally {
       this.detachingCreation = null;
       this.finish();
@@ -728,25 +747,40 @@ export class MobileCommands {
     let stage = "activate";
     try {
       if (!threadId) {
+        if (ready.sessionCreateFirstMessage !== true) throw failure("FIRST_MESSAGE_UNSUPPORTED");
         const catalog = this.workspace.state.catalog;
         if (!catalog) throw failure("CONFIGURATION_UNAVAILABLE");
         const serviceGeneration = await this.workspace.activate(projectId);
         if (this.workspace.state.page !== page || this.client.connection !== connection)
           throw failure("LOCAL_NOT_SENT");
         stage = "create";
-        // 配对设备创建后按实时配置版本提交设置；桌面创建选项在 Host 上仅限本机。
-        const result = await this.issue("session.create", projectId, {}, serviceGeneration);
+        const firstMessage = {
+          text,
+          ...(intent?.model ? { model: intent.model } : {}),
+          ...(intent?.parameters ? { parameters: intent.parameters } : {}),
+          ...(intent?.options?.permissionPreset
+            ? { options: { permissionPreset: intent.options.permissionPreset } }
+            : {}),
+        };
+        const result = await this.issue(
+          "session.create",
+          projectId,
+          { firstMessage },
+          serviceGeneration,
+        );
         if (result?.admissionState === "rejected")
           throw failure(String(result.error?.code ?? "COMMAND_REJECTED"));
         if (result?.admissionState !== "accepted") return;
         threadId = result.threadId;
         this.migrateDraft(projectId, threadId);
-        if (this.workspace.state.page !== page || this.client.connection !== connection)
-          throw failure("LOCAL_NOT_SENT");
         outgoing.key = this.key(projectId, threadId);
-        stage = "open";
-        const readError = await this.workspace.navigate({ kind: "session", projectId, threadId });
-        if (readError && this.client.connection === connection) throw failure(readError);
+        outgoing.turnId = result.turnId;
+        if (this.workspace.state.page === page && this.client.connection === connection) {
+          stage = "open";
+          const readError = await this.workspace.navigate({ kind: "session", projectId, threadId });
+          if (readError && this.client.connection === connection) throw failure(readError);
+        }
+        return;
       }
       const target = this.workspace.state.page;
       if (

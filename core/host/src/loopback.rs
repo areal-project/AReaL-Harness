@@ -84,6 +84,8 @@ const WRITE_METHODS: &[&str] = &[
     "providers.command",
     "plugins.read",
     "plugins.command",
+    "bots.read",
+    "bots.command",
     "worktree.command",
     "pages.command",
     "pages.resource",
@@ -268,8 +270,8 @@ impl Loopback {
             "library.command" | "analytics.import" | "worktree.read" | "worktree.command"
             | "tasks.read" | "trajectory.read" | "trajectory.command" | "feedback.read"
             | "feedback.command" | "manage.read" | "manage.command" | "providers.read"
-            | "providers.command" | "plugins.read" | "plugins.command" | "pages.command"
-            | "pages.resource" | "desktop.command" => "manage",
+            | "providers.command" | "plugins.read" | "plugins.command" | "bots.read"
+            | "bots.command" | "pages.command" | "pages.resource" | "desktop.command" => "manage",
             _ if WRITE_METHODS.contains(&method) => "observe",
             _ => return false,
         };
@@ -626,6 +628,7 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
     let mut tick = tokio::time::interval(Duration::from_millis(500));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let writable = writer.is_some();
+    let mut bot_events = host.bots.subscribe_events();
     let mut commands = VecDeque::new();
     let mut queries = JoinSet::new();
     let mut recovery = JoinSet::new();
@@ -679,6 +682,24 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                     "event":"pages.event","connectionId":connection_id,
                     "gatewayGeneration":host.identity.generation,
                     "token":event["token"],"notification":event["notification"]
+                }})).await?;
+            }
+            event = bot_events.recv(), if writable => {
+                let event = match event {
+                    Ok(event) => event,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(error) => return Err(error).context("bot event stream interrupted"),
+                };
+                ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
+                if let Some(device) = &device_id
+                    && !host.loopback.browser_permits(device, "manage")
+                {
+                    continue;
+                }
+                send(&mut socket, &json!({"version":VERSION,"method":"bots.event","params":{
+                    "event":"bots.event","connectionId":connection_id,
+                    "gatewayGeneration":host.identity.generation,
+                    "notification":event
                 }})).await?;
             }
             message = socket.next() => {
@@ -909,7 +930,9 @@ fn request_lane(method: &str, params: &Value) -> Option<RemoteMethodLane> {
             params["request"]["operation"].as_str(),
         ) {
             (Some("reconcile"), _) => return Some(RemoteMethodLane::Control),
-            (Some("manage"), Some("inspect"))
+            (Some("manage"), Some("inspect" | "context" | "mcpForms"))
+            | (Some("workspace"), Some("info"))
+            | (Some("resources"), Some("skills"))
             | (Some("chatgpt"), Some("status"))
             | (Some("prediction"), Some("request" | "cancel")) => {
                 return Some(RemoteMethodLane::Query);
@@ -1020,6 +1043,7 @@ fn loopback_error(request: &Value, error: &anyhow::Error) -> Value {
                 | "manage.command"
                 | "providers.command"
                 | "plugins.command"
+                | "bots.command"
                 | "analytics.import"
         )
     ) {
@@ -1027,7 +1051,10 @@ fn loopback_error(request: &Value, error: &anyhow::Error) -> Value {
         value["submissionUnknown"] = json!(
             !(super::gateway_owner::settled_failure(code) || code == "CAPABILITY_UNAVAILABLE")
         );
-    } else if request["method"] == "providers.read" {
+    } else if matches!(
+        request["method"].as_str(),
+        Some("providers.read" | "bots.read")
+    ) {
         value["submissionUnknown"] = json!(false);
     }
     value

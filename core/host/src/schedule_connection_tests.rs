@@ -627,12 +627,7 @@ async fn workbench_attach_waits_for_original_project_startup_before_leasing_shar
                 }
             });
             let primary = connect(host.clone(), "project", service).await.unwrap();
-            primary.ready.set(true);
-            host.schedules
-                .connections
-                .sessions
-                .borrow_mut()
-                .insert("project".into(), primary.clone());
+            host.schedules.suppress("project", true).unwrap();
             let gate = host.gate("project").unwrap();
             let startup = gate.write().await;
             {
@@ -655,6 +650,16 @@ async fn workbench_attach_waits_for_original_project_startup_before_leasing_shar
             assert!(primary.workbench_lease.borrow().is_none());
             host.slots.borrow_mut().get_mut("project").unwrap().state = "ready".into();
             drop(startup);
+            assert!(
+                futures_util::poll!(attach.as_mut()).is_pending(),
+                "调度暂停不代表新代次的共享连接已经可租用"
+            );
+            host.schedules
+                .connections
+                .sessions
+                .borrow_mut()
+                .insert("project".into(), primary.clone());
+            host.schedules.connections.changed.notify_waiters();
             let attached = attach.await.unwrap();
             assert_eq!(attached["connectionId"], primary.connection_id);
             assert_eq!(

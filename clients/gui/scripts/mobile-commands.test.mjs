@@ -23,6 +23,7 @@ async function fixture() {
     gatewayGeneration: "gateway",
     grantRevision: 1,
     capabilities: ["submit"],
+    sessionCreateFirstMessage: true,
   };
   const snapshot = {
     threadId: "thread",
@@ -84,7 +85,7 @@ async function fixture() {
       const result = {
         commandId: request.commandId,
         admissionState: "accepted",
-        ...(request.method === "session.create" ? { threadId: "thread" } : {}),
+        ...(request.method === "session.create" ? { threadId: "thread", turnId: "own-turn" } : {}),
       };
       receipts.set(request.commandId, result);
       return result;
@@ -278,7 +279,7 @@ test("keeps the draft while the conversation is stale and sends only after a fre
   assert.equal(f.requests[1].params.text, "继续修改这段草稿");
   assert.equal(f.commands.draft("project", "thread"), "");
 });
-test("first send applies an explicit model only after create and baseline, with durable locators", async () => {
+test("first send admits the selected configuration and text together, then opens its thread", async () => {
   const f = await fixture();
   f.commands.setDraft("project", "", "first message");
   f.commands.setIntent("project", "", {
@@ -290,36 +291,30 @@ test("first send applies an explicit model only after create and baseline, with 
   await f.commands.send();
   assert.deepEqual(
     f.requests.map((r) => r.method),
-    ["session.create", "session.open", "session.control", "session.send"],
+    ["session.create", "session.open"],
   );
-  assert.equal(f.requests[2].params.expectedRevision, 3);
-  assert.deepEqual(f.requests[0].params, {});
-  assert.equal(f.requests[3].params.expectedConfigRevision, 4);
+  assert.deepEqual(f.requests[0].params.firstMessage, {
+    text: "first message",
+    model: { providerId: "provider", modelId: "other" },
+    parameters: { reasoningEffort: "high" },
+  });
   assert.equal(f.commands.draft("project", "thread"), "");
   assert.deepEqual(f.record().locators, []);
 });
 test("shows the outgoing bubble before opening a new session and hands off by accepted turn ID", async () => {
   const f = await fixture();
   const create = Promise.withResolvers();
-  const send = Promise.withResolvers();
+
   const request = f.client.request;
   f.client.request = async (envelope) => {
     const result = await request(envelope);
     if (envelope.method === "session.create") await create.promise;
-    if (envelope.method === "session.send") {
-      await send.promise;
-      return { ...result, turnId: "own-turn" };
-    }
     return result;
   };
   f.commands.setDraft("project", "", "test from phone");
   const sending = f.commands.send();
   assert.equal(f.commands.outgoingFor("project", "").text, "test from phone");
   create.resolve();
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(f.commands.outgoingFor("project", "thread").text, "test from phone");
-  assert.equal(f.commands.outgoingFor("project", "thread").turnId, null);
-  send.resolve();
   await sending;
   const message = { type: "userMessage" };
   assert.equal(
@@ -343,9 +338,18 @@ test("first send uses the current generation even when the draft catalog is stal
   await f.commands.send();
   assert.deepEqual(
     f.requests.map((request) => request.method),
-    ["project.activate", "session.create", "session.open", "session.send"],
+    ["project.activate", "session.create", "session.open"],
   );
   assert.equal(f.requests[1].context.serviceGeneration, "new-service");
+});
+test("sending to an older Host keeps the new draft and does not create an empty thread", async () => {
+  const f = await fixture();
+  delete f.ready.sessionCreateFirstMessage;
+  f.commands.setDraft("project", "", "first message");
+  await f.commands.send();
+  assert.equal(f.commands.snapshot().error, "FIRST_MESSAGE_UNSUPPORTED");
+  assert.equal(f.commands.draft("project"), "first message");
+  assert.equal(f.requests.length, 0);
 });
 test("a definite create rejection retains the draft without a pending receipt", async () => {
   const f = await fixture();
@@ -401,11 +405,13 @@ test("a missing creation receipt leaves the original command and draft intact", 
   const [creation] = f.commands.unresolved("project");
   await f.commands.query(creation);
   await f.commands.send();
-  assert.deepEqual(
-    f.requests.map((request) => request.method),
-    ["session.create", "command.read"],
+  assert.equal(f.requests[0].method, "session.create");
+  assert.ok(f.requests.length > 1);
+  assert.ok(
+    f.requests
+      .slice(1)
+      .every((r) => r.method === "command.read" && r.params.commandId === f.requests[0].commandId),
   );
-  assert.equal(f.requests[1].params.commandId, f.requests[0].commandId);
   assert.equal(f.commands.unresolved("project")[0].admissionState, "notFound");
   assert.equal(f.record().locators.length, 1);
   assert.equal(f.commands.draft("project"), "retain me");
@@ -443,42 +449,60 @@ test("starting separately keeps the old creation recoverable without blocking a 
   const creates = f.requests.filter((envelope) => envelope.method === "session.create");
   assert.equal(creates.length, 2);
   assert.notEqual(creates[1].commandId, oldId);
-  assert.equal(f.requests.filter((envelope) => envelope.method === "session.send").length, 1);
+  assert.equal(f.requests.filter((envelope) => envelope.method === "session.send").length, 0);
   assert.equal(f.record().locators[0].commandId, oldId);
 
   await f.workspace.navigate({ kind: "new", projectId: "project" });
   restored.setDraft("project", "", "another draft");
-  oldReceipt = { admissionState: "accepted", threadId: "old-thread" };
+  oldReceipt = { admissionState: "accepted", threadId: "old-thread", turnId: "old-turn" };
   await restored.query(restored.unresolved("project")[0]);
   assert.equal(f.workspace.state.page.kind, "new");
   assert.equal(restored.draft("project"), "another draft");
   assert.equal(f.record().locators.length, 0);
 });
 
-test("lost create is queried, never automatically followed by a send, and preserves draft", async () => {
+test("lost first-send reply is recovered on reconnect without another create or send", async () => {
   const f = await fixture(),
-    request = f.client.request;
-  f.client.request = async (r) => {
-    const v = await request(r);
-    if (r.method === "session.create")
-      throw Object.assign(new Error("lost"), { submissionUnknown: true });
-    return v;
+    originalRequest = f.client.request;
+  const connection = f.client.connection;
+  let queries = 0;
+  const recovered = Promise.withResolvers();
+  const opened = f.workspace.navigate.bind(f.workspace);
+  f.workspace.navigate = async (page) => {
+    await opened(page);
+    recovered.resolve();
   };
-  f.commands.setDraft("project", "", "retain me");
+  f.client.request = async (request) => {
+    const receipt = await originalRequest(request);
+    if (request.method === "command.read" && ++queries === 1)
+      return {
+        commandId: request.params.commandId,
+        admissionState: "unknown",
+        submissionUnknown: true,
+      };
+    if (request.method === "session.create") {
+      f.client.connection = null;
+      f.client.update({ kind: "disconnected" });
+      throw Object.assign(new Error("lost reply"), { submissionUnknown: true });
+    }
+    return receipt;
+  };
+  f.commands.setDraft("project", "", "original first message");
   await f.commands.send();
-  await f.commands.send();
+  const [saved] = f.record().locators;
+  assert.equal(saved.firstTurn, true);
+  assert.equal(JSON.stringify(saved).includes("original first message"), false);
+  f.client.connection = { ...connection };
+  f.client.update({ kind: "connected", ready: f.ready });
+  await recovered.promise;
   assert.deepEqual(
     f.requests.map((r) => r.method),
-    ["session.create"],
+    ["session.create", "command.read", "command.read", "session.open"],
   );
-  assert.equal(f.record().locators.length, 1);
-  await f.commands.query(f.commands.unresolved("project")[0]);
-  assert.deepEqual(
-    f.requests.map((r) => r.method),
-    ["session.create", "command.read", "session.open"],
-  );
-  assert.equal(f.commands.draft("project", "thread"), "retain me");
-  assert.equal(f.record().locators.length, 0);
+  assert.equal(f.requests[1].params.commandId, saved.commandId);
+  assert.equal(f.workspace.state.page.threadId, "thread");
+  assert.equal(f.commands.draft("project", "thread"), "");
+  assert.deepEqual(f.record().locators, []);
 });
 test("relaunch restores only original locator and queries its receipt without payload replay", async () => {
   const f = await fixture();
@@ -578,27 +602,22 @@ test("navigation during device persistence cannot dispatch a stale write", async
   assert.equal(f.requests.length, 0);
   assert.equal(f.commands.draft("project"), "do not send");
 });
-test("unknown configure stops first-send pipeline until receipt query and an explicit later send", async () => {
-  const f = await fixture(),
-    request = f.client.request;
-  f.client.request = async (r) => {
-    const result = await request(r);
-    if (r.method === "session.control")
-      throw Object.assign(new Error("lost"), { submissionUnknown: true });
-    return result;
+test("an incomplete first-turn receipt cannot consume the draft or its locator", async () => {
+  const f = await fixture();
+  f.client.request = async (request) => {
+    f.requests.push(request);
+    return {
+      commandId: request.commandId ?? request.params.commandId,
+      admissionState: "accepted",
+      threadId: "thread",
+    };
   };
   f.commands.setDraft("project", "", "keep first draft");
-  f.commands.setIntent("project", "", { model: { providerId: "provider", modelId: "other" } });
   await f.commands.send();
-  assert.deepEqual(
-    f.requests.map((r) => r.method),
-    ["session.create", "session.open", "session.control"],
-  );
-  assert.equal(f.commands.draft("project", "thread"), "keep first draft");
-  await f.commands.query(f.commands.unresolved("project", "thread")[0]);
-  assert.equal(f.requests.filter((r) => r.method === "session.send").length, 0);
-  await f.commands.send();
-  assert.equal(f.requests.filter((r) => r.method === "session.send").length, 1);
+  assert.equal(f.commands.blocksSend("project"), true);
+  assert.equal(f.record().locators.length, 1);
+  assert.equal(f.commands.draft("project"), "keep first draft");
+  assert.equal(f.workspace.state.page.kind, "new");
 });
 test("device save failure preserves first draft and prevents all command dispatch", async () => {
   const f = await fixture();
@@ -638,7 +657,10 @@ for (const delayed of ["session.create", "session.control"])
     gate.resolve();
     await sending;
     assert.equal(
-      f.requests.find((r) => r.method === "session.send").params.text,
+      (delayed === "session.create"
+        ? f.requests[0].params.firstMessage
+        : f.requests.find((r) => r.method === "session.send").params
+      ).text,
       "clicked message",
     );
     assert.equal(f.commands.draft("project", "thread"), "new draft typed while waiting");
@@ -652,12 +674,8 @@ test("explicit service default is accepted independently of supported efforts an
     parameters: { reasoningEffort: "default" },
   });
   await f.commands.send();
-  assert.equal(
-    f.requests.find((request) => request.method === "session.control").params.values.parameters
-      .reasoningEffort,
-    "default",
-  );
-  assert.equal(f.requests.at(-1).method, "session.send");
+  assert.equal(f.requests[0].params.firstMessage.parameters.reasoningEffort, "default");
+  assert.equal(f.requests.at(-1).method, "session.open");
 });
 
 test("a missing send receipt cannot be detached or replayed", async () => {
@@ -771,7 +789,12 @@ test("remote timeouts and disconnects carry explicit unknown codes and longer wr
     context: { projectId: "project" },
     params: {},
   });
+  const pendingRead = connection.request({ method: "session.open", params: {} });
   connection.rejectPending();
+  await assert.rejects(
+    pendingRead,
+    (error) => error.code === "CONNECTION_CLOSED" && !error.submissionUnknown,
+  );
   await assert.rejects(
     pendingClose,
     (error) => error.code === "SUBMISSION_UNKNOWN" && error.submissionUnknown === true,
@@ -798,7 +821,7 @@ test("send errors are scoped to their target page and cleared when navigating el
   assert.equal(f.commands.snapshot().error, null);
 });
 
-test("visibleUnresolved collapses older detached creation locators for a project", async () => {
+test("each detached creation locator remains individually queryable", async () => {
   const f = await fixture();
   const request = f.client.request;
   f.client.request = async (envelope) => {
@@ -822,8 +845,18 @@ test("visibleUnresolved collapses older detached creation locators for a project
   }
 
   assert.equal(f.commands.unresolved("project").length, 2);
-  const visible = f.commands.visibleUnresolved("project");
-  assert.equal(visible.length, 1);
-  assert.equal(visible[0].commandId, f.record().locators[1].commandId);
-  assert.equal(visible[0].detached, true);
+  const checked = [];
+  f.client.request = async (envelope) => {
+    checked.push(envelope.params.commandId);
+    return {
+      commandId: envelope.params.commandId,
+      admissionState: "notFound",
+      submissionUnknown: true,
+    };
+  };
+  for (const command of f.commands.unresolved("project")) await f.commands.query(command);
+  assert.deepEqual(
+    checked,
+    f.record().locators.map((locator) => locator.commandId),
+  );
 });

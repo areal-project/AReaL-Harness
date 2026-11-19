@@ -219,6 +219,23 @@ describe("ComposerWorkspaceContext", () => {
     expect(unavailableHtml).toContain("重新连接项目");
   });
 
+  it.each([false, true])(
+    "offers explicit reconnect when scheduling is suppressed, connected=%s",
+    (connected) => {
+      const html = renderContext({
+        project: {
+          id: "p",
+          root: "/tmp/p",
+          scheduling: { suppressed: true },
+          state: { connected },
+        },
+        backendReady: true,
+        action: vi.fn() as unknown as Action,
+      });
+      expect(html).toContain("重新连接项目");
+    },
+  );
+
   it("still shows connecting during normal initial project startup", () => {
     const startingHtml = renderContext({
       project: {

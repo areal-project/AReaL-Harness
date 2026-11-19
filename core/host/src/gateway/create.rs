@@ -9,6 +9,22 @@ impl std::fmt::Display for OutcomeWrite {
 }
 impl std::error::Error for OutcomeWrite {}
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct FirstMessage {
+    text: String,
+    model: Option<areal_protocol::desktop::ModelRef>,
+    #[serde(default)]
+    parameters: areal_protocol::desktop::ModelParameters,
+    options: Option<FirstMessageOptions>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct FirstMessageOptions {
+    permission_preset: areal_protocol::desktop::PermissionPreset,
+}
+
 impl Session {
     pub(super) fn creation_command_scope(&self, project: &str) -> String {
         // 外层工作台命令不占项目原生请求的槽；同一 requestId 仍由后台提交到 Core。
@@ -28,9 +44,53 @@ impl Session {
         request: &Value,
     ) -> Result<Value> {
         let params = &request["params"];
-        // gui-write-v1 可选权限预设与 Agent Profile；已发布客户端仍只能用默认 ask 与项目远程 Profile。
+        let first: Option<FirstMessage> = params
+            .get("firstMessage")
+            .map(|value| serde_json::from_value(value.clone()).context("INVALID_PARAMS"))
+            .transpose()?;
+        if let Some(first) = &first {
+            if let Some(model) = &first.model {
+                ensure!(
+                    !model.provider_id.is_empty()
+                        && model.provider_id.len() <= 128
+                        && !model.model_id.is_empty()
+                        && model.model_id.len() <= 128,
+                    "INVALID_PARAMS"
+                );
+            }
+            ensure!(
+                !first.text.trim().is_empty() && first.text.len() <= self.command_text_bytes(),
+                "INVALID_PARAMS"
+            );
+            ensure!(
+                exact(&params["firstMessage"]["parameters"], &["reasoningEffort"])
+                    || params["firstMessage"].get("parameters").is_none(),
+                "INVALID_PARAMS"
+            );
+            if let Some(parameters) = params["firstMessage"].get("parameters") {
+                ensure!(
+                    matches!(
+                        parameters["reasoningEffort"].as_str(),
+                        Some(
+                            "default"
+                                | "none"
+                                | "minimal"
+                                | "low"
+                                | "medium"
+                                | "high"
+                                | "xhigh"
+                                | "max"
+                                | "ultra"
+                        )
+                    ),
+                    "INVALID_PARAMS"
+                );
+            }
+        }
+        // 首条输入随创建一起受理；桌面创建选项仍仅由本机工作台提供。
         ensure!(
             (exact(params, &[])
+                || (first.is_some() && exact(params, &["firstMessage"]))
                 || (self.gui_write
                     && exact(
                         params,
@@ -75,6 +135,7 @@ impl Session {
         self.authorize(Some(project), "submit")?;
         self.authorize_permission_options(project, params)?;
         self.authorize_permission_options(project, &params["options"])?;
+        self.authorize_permission_options(project, &params["firstMessage"]["options"])?;
         let digest =
             areal_local_service::storage::digest(&serde_json::to_vec(&if exact(params, &[]) {
                 json!({"method":"session.create"})
@@ -152,6 +213,7 @@ impl Session {
             }
             self.authorize(Some(project), "submit")?;
             self.authorize_permission_options(project, &params["options"])?;
+            self.authorize_permission_options(project, &params["firstMessage"]["options"])?;
             if let Some(record) = self.command_record(project, &command)? {
                 ensure!(
                     record["remote"]["semanticDigest"] == digest,
@@ -244,8 +306,13 @@ impl Session {
             );
         }
         ensure!(
-            params["permissionPreset"] != "fullAccess"
+            (params["permissionPreset"] != "fullAccess"
+                && params["firstMessage"]["options"]["permissionPreset"] != "fullAccess")
                 || caps["features"]["permissionFullAccess"] == true,
+            "CORE_INCOMPATIBLE"
+        );
+        ensure!(
+            first.is_none() || caps["features"]["threadStartFirstInput"] == true,
             "CORE_INCOMPATIBLE"
         );
         ensure!(
@@ -274,9 +341,19 @@ impl Session {
         );
         let operation = uuid::Uuid::new_v4().to_string();
         let workspace = self.host.slots.borrow()[&id].registration.workspace.clone();
-        let native: areal_protocol::desktop::ThreadStart = serde_json::from_value(
-            json!({"requestId":operation,"cwd":workspace,"options":{"permissionPreset":params.get("permissionPreset").cloned().unwrap_or(json!("ask"))},"agentProfile":profile,"admissionGuard":{"ordinarySession":true},"creationAdmission":caps["features"]["threadCreationJournal"]["binding"]}),
-        )?;
+        let mut native = json!({"requestId":operation,"cwd":workspace,"options":{"permissionPreset":params.get("permissionPreset").cloned().unwrap_or(json!("ask"))},"agentProfile":profile,"admissionGuard":{"ordinarySession":true},"creationAdmission":caps["features"]["threadCreationJournal"]["binding"]});
+        if let Some(first) = first {
+            native["firstInput"] = json!([{"type":"text","text":first.text}]);
+            native["model"] = serde_json::to_value(first.model)?;
+            native["parameters"] = serde_json::to_value(first.parameters)?;
+            if let Some(options) = first.options {
+                native["options"]["permissionPreset"] =
+                    serde_json::to_value(options.permission_preset)?;
+            }
+        }
+        self.authorize_permission_options(project, &native["options"])?;
+        let native: areal_protocol::desktop::ThreadStart = serde_json::from_value(native)?;
+
         let original = serde_json::to_value(native)?;
         let mut execution = if self.uses_workbench_execution() {
             self.host
@@ -297,8 +374,29 @@ impl Session {
             .as_ref()
             .map(|prepared| prepared.params.clone())
             .unwrap_or_else(|| original.clone());
-        for field in ["requestId", "cwd", "admissionGuard", "creationAdmission"] {
+        for field in [
+            "requestId",
+            "cwd",
+            "admissionGuard",
+            "creationAdmission",
+            "firstInput",
+        ] {
             ensure!(native[field] == original[field], "INVALID_RESPONSE");
+        }
+        if original.get("firstInput").is_some() {
+            if !params["firstMessage"]["model"].is_null() {
+                ensure!(native["model"] == original["model"], "INVALID_RESPONSE");
+            }
+            if params["firstMessage"]["parameters"]
+                .get("reasoningEffort")
+                .is_some()
+            {
+                ensure!(
+                    native["parameters"]["reasoningEffort"]
+                        == original["parameters"]["reasoningEffort"],
+                    "INVALID_RESPONSE"
+                );
+            }
         }
         ensure!(
             native["options"]["permissionPreset"] == original["options"]["permissionPreset"]
@@ -310,6 +408,7 @@ impl Session {
         self.authorize(Some(project), "submit")?;
         self.authorize_permission_options(project, params)?;
         self.authorize_permission_options(project, &params["options"])?;
+        self.authorize_permission_options(project, &params["firstMessage"]["options"])?;
         if let Some(record) = self.command_record(project, &command)? {
             ensure!(
                 record["remote"]["semanticDigest"] == digest,
@@ -317,7 +416,7 @@ impl Session {
             );
             return self.command_result(project, Some(&record), &command).await;
         }
-        let record = json!({"method":"areal/thread/start","operationId":operation,"params":native,"nativeDigest":native_digest,"coreScope":{"serviceId":scope.0,"generation":scope.1,"connectionId":scope.2},"remote":{"hostId":self.host_peer,"devicePeerId":self.peer,"projectId":project,"commandId":command,"method":"session.create","capability":"submit","admittedGrantRevision":self.grant["revision"],"semanticDigest":digest,"target":if exact(params, &[]) {json!({})} else {params.clone()}}});
+        let record = json!({"method":"areal/thread/start","operationId":operation,"params":native,"nativeDigest":native_digest,"coreScope":{"serviceId":scope.0,"generation":scope.1,"connectionId":scope.2},"remote":{"hostId":self.host_peer,"devicePeerId":self.peer,"projectId":project,"commandId":command,"method":"session.create","capability":"submit","admittedGrantRevision":self.grant["revision"],"semanticDigest":digest,"target":if exact(params, &[]) || params.get("firstMessage").is_some() {json!({})} else {params.clone()}}});
         ensure!(
             serde_json::to_vec(&record)?.len() <= self.command_pending_bytes(),
             "LIMIT_EXCEEDED"
@@ -365,7 +464,15 @@ impl Session {
                     return Ok(Self::command_view(Some(&record), &command));
                 };
                 settled["threadId"] = json!(thread);
+                if original.get("firstInput").is_some() {
+                    let Some(turn) = value["turn"]["id"].as_str().filter(|id| !id.is_empty())
+                    else {
+                        return Ok(Self::command_view(Some(&record), &command));
+                    };
+                    settled["turnId"] = json!(turn);
+                }
                 settled["receipt"] = Self::creation_receipt(&operation, thread);
+                Self::creation_turn_receipt(&mut settled);
                 settled["admissionState"] = json!("accepted");
             }
             Err(error) => {
@@ -411,6 +518,12 @@ impl Session {
     }
     fn creation_receipt(operation: &str, thread: &str) -> Value {
         json!({"requestId":operation,"method":"areal/thread/start","status":"completed","accepted":true,"threadId":thread,"result":{"threadId":thread},"operation":{"requestId":operation,"method":"areal/thread/start","target":{"kind":"thread","threadId":thread}}})
+    }
+    fn creation_turn_receipt(settled: &mut Value) {
+        if let Some(turn) = settled.get("turnId").cloned() {
+            settled["receipt"]["turnId"] = turn.clone();
+            settled["receipt"]["result"]["turnId"] = turn;
+        }
     }
     pub(super) fn settle_command(&self, id: &str, mut record: Value) -> Result<Value> {
         record["operationId"]
@@ -601,7 +714,17 @@ impl Session {
         }
         let mut settled = record.clone();
         settled["threadId"] = json!(thread);
+        if record["params"].get("firstInput").is_some() {
+            let turn = receipt["turnId"]
+                .as_str()
+                .or_else(|| receipt["result"]["turnId"].as_str());
+            let Some(turn) = turn.filter(|id| !id.is_empty()) else {
+                return Ok(record.clone());
+            };
+            settled["turnId"] = json!(turn);
+        }
         settled["receipt"] = Self::creation_receipt(operation, thread);
+        Self::creation_turn_receipt(&mut settled);
         settled["admissionState"] = json!("accepted");
         self.settle_command(&id, settled)
     }

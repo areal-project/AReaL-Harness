@@ -643,6 +643,7 @@ export function hostPlatformCapabilities(
     pages:
       desktop !== undefined ||
       (client.writable("pages.command") && client.writable("pages.resource")),
+    bots: client.writable("bots.read") && client.writable("bots.command"),
     library: desktop !== undefined || available("library.command"),
     ...(desktop === undefined && {
       taskCatalog: available("tasks.read"),

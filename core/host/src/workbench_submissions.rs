@@ -416,6 +416,9 @@ async fn original_receipt(
         &caps["features"]["threadCreationJournal"]["binding"],
         thread,
     );
+    if receipt.is_none() && method == "areal/queue/steer" {
+        return Ok(failed_queue_steer(&expected, &response["result"]));
+    }
     if matches!(
         method,
         "areal/process/write"
@@ -469,6 +472,38 @@ async fn original_receipt(
         return Ok(None);
     }
     Ok(receipt)
+}
+
+// 旧管理日志按不含 requestId 的参数计算摘要。仅结算与原请求完全匹配的终态错误。
+fn failed_queue_steer(expected: &ExpectedSubmission, result: &Value) -> Option<Value> {
+    let mut params = wire_params(&expected.method, &expected.params);
+    let original = digest::<areal_protocol::desktop::QueueSteer>(&params)?;
+    if expected.digest.as_ref() != Some(&original) || expected.identity.is_none() {
+        return None;
+    }
+    params.as_object_mut()?.remove("requestId");
+    let management = ExpectedSubmission {
+        digest: Some(areal_local_service::storage::digest(
+            &serde_json::to_vec(&params).ok()?,
+        )),
+        strict: true,
+        ..expected.clone()
+    };
+    let mut receipt =
+        areal_protocol::submissions::reconcile(&management, result, &Value::Null, None)?;
+    if receipt["status"] != "failed" || !receipt["error"].is_object() {
+        return None;
+    }
+    receipt["accepted"] = match receipt["error"]["data"]["outcome"]["kind"].as_str() {
+        Some("rejected") => json!(false),
+        Some("admitted")
+            if receipt["error"]["data"]["outcome"]["operation"] == expected.operation() =>
+        {
+            json!(true)
+        }
+        _ => return None,
+    };
+    Some(receipt)
 }
 
 fn error_from_receipt(receipt: &Value, operation: &Value) -> Value {
@@ -718,6 +753,43 @@ pub(super) async fn submit(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lost_steer_rejection_requires_original_identity_params_and_terminal_outcome() {
+        let params = json!({"threadId":"thread","requestId":"request","expectedTurnId":"turn",
+            "queueItemId":"item","expectedRevision":2});
+        let expected = ExpectedSubmission {
+            method: "areal/queue/steer".into(),
+            digest: digest::<areal_protocol::desktop::QueueSteer>(&params),
+            params: params.clone(),
+            operation: None,
+            identity: Some("owner".into()),
+            strict: false,
+        };
+        let mut raw = params;
+        raw.as_object_mut().unwrap().remove("requestId");
+        let mut rows = json!({"data":[{"operation":expected.operation(),"identity":"owner",
+            "method":expected.method,"requestId":"request","threadId":"thread","status":"failed",
+            "digest":areal_local_service::storage::digest(&serde_json::to_vec(&raw).unwrap()),
+            "error":{"data":{"outcome":{"kind":"rejected"}}}}]});
+        assert_eq!(
+            failed_queue_steer(&expected, &rows).unwrap()["accepted"],
+            false
+        );
+        rows["data"][0]["identity"] = json!("other");
+        assert!(failed_queue_steer(&expected, &rows).is_none());
+        rows["data"][0]["identity"] = json!("owner");
+        rows["data"][0]["error"]["data"]["outcome"]["kind"] = json!("admitted");
+        assert!(failed_queue_steer(&expected, &rows).is_none());
+        rows["data"][0]["error"]["data"]["outcome"]["operation"] = expected.operation();
+        assert_eq!(
+            failed_queue_steer(&expected, &rows).unwrap()["accepted"],
+            true
+        );
+        rows["data"][0]["error"]["data"]["outcome"]["kind"] = json!("rejected");
+        rows["data"][0]["digest"] = json!("different");
+        assert!(failed_queue_steer(&expected, &rows).is_none());
+    }
 
     #[test]
     fn journal_outcome_keeps_associations_without_result_or_error_body() {

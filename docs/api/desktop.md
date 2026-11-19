@@ -130,6 +130,8 @@ requestId 是持久业务键，RPC id 只关联响应。相同身份、方法、
 
 ### 新建会话的受理日志与负证明
 
+Core 声明 `features.threadStartFirstInput` 时，普通会话的 `areal/thread/start` 可携带 `firstInput`。Core 随 Thread 保存首个 Turn，并在响应中返回 `turn`。创建回执包含原始 `result.turnId`，客户端断线后可以据此核对结果。
+
 `features.threadCreationJournal = {version:1,binding:{identity,journalEpoch,coreInstanceId}}` 只覆盖 `areal/thread/start`。`identity` 绑定认证 principal；`journalEpoch` 标识同一 Store 连续保留的受理日志，`coreInstanceId` 标识这次 Engine 启动；它们不能由 Runtime epoch、服务 ID、进程号或时间推导。客户端在发送前将 `creationAdmission:binding`、原 requestId 和创建时间保存到 pending，并原样发送。Core 在创建入口校验绑定；原代际退出后，带旧绑定的迟到请求明确拒绝；客户端不得改绑或自动重发。
 
 Core 复用 `desktop/submissions.json`：在创建会话、运行 SessionStart 或启动 Profile Workflow 前，先原子替换受理日志并同步文件与目录，随后才进入副作用。Thread 与创建回执沿原路径同快照提交；结算日志只保存原 Thread ID，不复制完整历史。读取优先采用同请求的 Thread 创建回执，核对本身不补跑 Workflow、Hook 或创建。受理后的错误和中断保留为已受理但完成未知。

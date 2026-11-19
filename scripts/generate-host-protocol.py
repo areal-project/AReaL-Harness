@@ -314,6 +314,10 @@ def current_inventory(root):
     plugins_match = re.search(r"const METHODS: &\[&str\] = &\[(.*?)\];", plugins, re.S)
     if not plugins_match:
         raise ValueError("Plugin METHODS declaration moved; update inventory extractor")
+    bots = (root / "core/host/src/bots.rs").read_text()
+    bots_match = re.search(r"const METHODS: &\[&str\] = &\[(.*?)\];", bots, re.S)
+    if not bots_match:
+        raise ValueError("Bots METHODS declaration moved; update inventory extractor")
     backend = (root / "services/workbench/src/backend-main.cjs").read_text()
     private = re.search(r"const privateMethods = \[(.*?)\];", backend, re.S)
     if not private:
@@ -344,7 +348,12 @@ def current_inventory(root):
         "remote": set(
             re.findall(
                 r'"([A-Za-z][A-Za-z0-9_.:/-]*)"',
-                match[1] + read_match[1] + upload_match[1] + workbench_match[1] + plugins_match[1],
+                match[1]
+                + read_match[1]
+                + upload_match[1]
+                + workbench_match[1]
+                + plugins_match[1]
+                + bots_match[1],
             )
         ),
         "remoteLegacy": set(re.findall(r'"([A-Za-z][A-Za-z0-9_.:/-]*)"', match[1])),

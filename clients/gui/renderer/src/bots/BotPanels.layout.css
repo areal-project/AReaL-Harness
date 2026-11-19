@@ -1,0 +1,517 @@
+/* Right Bot Settings Inspector — aligned with AReaL Design System tokens & SettingsGroupCard */
+.bot-settings-pane {
+  width: 360px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--color-border-subtle);
+  background: var(--color-background);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.bot-settings-header {
+  height: var(--shell-bar-height, 48px);
+  padding: 0 12px 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--color-border-subtle);
+  flex-shrink: 0;
+}
+
+.bot-settings-header-title {
+  font-size: var(--text-ui-base, 13px);
+  font-weight: var(--font-weight-medium, 500);
+  color: var(--color-foreground);
+}
+
+.bot-settings-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.bot-settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.bot-inspector-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bot-settings-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.bot-settings-section-title {
+  margin: 0;
+  padding: 0 2px;
+  font-size: var(--text-ui-sm, 12px);
+  font-weight: var(--font-weight-medium, 500);
+  color: var(--color-settings-secondary, var(--color-foreground-subtle));
+}
+
+.bot-group-card {
+  border-radius: var(--radius-panel, 12px);
+}
+
+/* Identity Hero Card */
+.bot-identity-hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.bot-avatar-trigger {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-elevated, var(--color-surface));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast, 120ms) var(--ease-standard, ease),
+    border-color var(--motion-fast, 120ms) var(--ease-standard, ease);
+}
+
+.bot-avatar-trigger:hover {
+  background: var(--color-hover);
+  border-color: var(--color-border);
+}
+
+.bot-avatar-glyph {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.bot-identity-inputs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.bot-inline-title-input,
+.bot-inline-desc-input {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: var(--radius-compact, 6px);
+  background: transparent;
+  padding: 3px 6px;
+  margin: -3px -6px;
+  outline: none;
+  transition:
+    background-color var(--motion-fast, 120ms) var(--ease-standard, ease),
+    border-color var(--motion-fast, 120ms) var(--ease-standard, ease);
+}
+
+.bot-inline-title-input {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
+.bot-inline-desc-input {
+  font-size: 12px;
+  color: var(--color-foreground-subtle);
+}
+
+.bot-inline-title-input:hover,
+.bot-inline-desc-input:hover {
+  background: var(--color-hover);
+}
+
+.bot-inline-title-input:focus,
+.bot-inline-desc-input:focus {
+  background: var(--color-input-focused, var(--color-background));
+  border-color: var(--color-input-border-focused, var(--color-border));
+}
+
+.bot-inline-title-input::placeholder,
+.bot-inline-desc-input::placeholder {
+  color: var(--color-foreground-subtlest);
+}
+
+.bot-avatar-picker {
+  padding: 0 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bot-avatar-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+
+.bot-avatar-preset {
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-background);
+  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.bot-avatar-preset:hover {
+  background: var(--color-hover);
+}
+
+.bot-avatar-preset.is-selected {
+  border-color: var(--color-brand);
+  background: color-mix(in srgb, var(--color-brand) 14%, transparent);
+}
+
+.bot-avatar-custom-input {
+  height: 30px;
+  font-size: 12px;
+}
+
+/* Card rows & dividers */
+.bot-card-divider {
+  height: 1px;
+  margin: 0 14px;
+  background: var(--color-border-subtle);
+}
+
+.bot-card-row {
+  padding: 11px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.bot-card-row--wrap {
+  flex-wrap: wrap;
+}
+
+.bot-card-row-stack {
+  padding: 11px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bot-row-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bot-row-label {
+  font-size: var(--text-ui-caption, 13px);
+  font-weight: var(--font-weight-medium, 500);
+  color: var(--color-foreground);
+  line-height: 1.35;
+}
+
+.bot-row-sub {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--color-settings-secondary, var(--color-foreground-subtle));
+}
+
+.bot-row-disclosure {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.bot-row-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--color-foreground-subtle);
+}
+
+.bot-disclosure-body {
+  padding-top: 2px;
+}
+
+.bot-instructions-textarea {
+  font-size: 12.5px;
+  line-height: 1.55;
+  background: var(--color-background);
+}
+
+/* Status pills */
+.bot-sync-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 500;
+}
+
+.bot-sync-badge.is-synced {
+  background: color-mix(in srgb, var(--color-success) 13%, transparent);
+  color: var(--color-success);
+}
+
+.bot-sync-badge.is-dirty {
+  background: color-mix(in srgb, var(--color-status-attention) 16%, transparent);
+  color: var(--color-status-attention);
+}
+
+.bot-health-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 500;
+  background: var(--color-background);
+  border: 1px solid var(--color-border-subtle);
+  color: var(--color-foreground-subtle);
+}
+
+.bot-health-chip.is-ready {
+  color: var(--color-success);
+  border-color: color-mix(in srgb, var(--color-success) 30%, transparent);
+  background: color-mix(in srgb, var(--color-success) 10%, transparent);
+}
+
+.bot-health-chip.is-authFailed,
+.bot-health-chip.is-unavailable {
+  color: var(--color-status-attention);
+  border-color: color-mix(in srgb, var(--color-status-attention) 30%, transparent);
+  background: color-mix(in srgb, var(--color-status-attention) 10%, transparent);
+}
+
+.bot-capability-callout {
+  margin: 10px 14px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  border: 1px solid
+    color-mix(in srgb, var(--color-status-attention) 25%, var(--color-border-subtle));
+  background: color-mix(in srgb, var(--color-status-attention) 8%, var(--color-background));
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--color-foreground-subtle);
+}
+
+.bot-capability-callout-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--color-status-attention);
+}
+
+/* Custom provider sheet */
+.bot-provider-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 6px;
+}
+
+.bot-provider-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.bot-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--color-foreground-subtle);
+}
+
+.bot-endpoint-preview {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--color-foreground-subtlest);
+  word-break: break-all;
+}
+
+/* Workspace chip */
+.bot-workspace-chip-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.bot-workspace-code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: var(--color-background);
+  border: 1px solid var(--color-border-subtle);
+  color: var(--color-foreground);
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bot-mini-icon-btn {
+  width: 24px;
+  height: 24px;
+}
+
+.bot-settings-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--color-foreground-subtlest);
+}
+
+/* Danger zone */
+.bot-danger-zone {
+  padding-top: 4px;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.bot-danger-button {
+  color: var(--color-destructive);
+}
+
+.bot-danger-confirm {
+  display: flex;
+  gap: 8px;
+}
+
+/* Sticky Save Footer */
+.bot-settings-sticky-footer {
+  flex-shrink: 0;
+  padding: 10px 14px;
+  border-top: 1px solid var(--color-border-subtle);
+  background: var(--color-surface);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.bot-saved-label {
+  margin-right: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--color-success);
+}
+
+/* Dialogs */
+.bot-dialog {
+  max-width: 480px;
+}
+
+.bot-dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bot-settings-row-pair {
+  display: flex;
+  gap: 8px;
+}
+
+.bot-field-avatar {
+  width: 74px;
+  flex-shrink: 0;
+}
+
+.bot-field-grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.bot-template-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bot-template-label {
+  font-size: 11px;
+  color: var(--color-foreground-subtle);
+}
+
+.bot-template-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bot-template-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-foreground);
+  font-size: 12px;
+}
+
+.bot-template-chip:hover {
+  background: var(--color-hover);
+  border-color: var(--color-brand);
+}
+
+.bot-spin {
+  animation: bot-spin 1s linear infinite;
+}
+
+@keyframes bot-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes bot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}

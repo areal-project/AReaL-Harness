@@ -318,7 +318,7 @@ const nativeObservation = (threadId) => ({
   history: { snapshotId: "native-history", nextCursor: "opaque-core-cursor", complete: false },
   ownership: { sourceThreadId: "native-source" },
 });
-async function readServer(t, handler = () => false) {
+async function readServer(t, handler = () => false, options = {}) {
   let socket,
     shellSubscriptions = 0,
     sessionSubscriptions = 0,
@@ -405,6 +405,7 @@ async function readServer(t, handler = () => false) {
     }
   });
   const client = new HostClient({
+    ...options,
     origin,
     bootstrap: async () => ({
       version: 1,
@@ -1474,4 +1475,114 @@ test("idle hibernation transitions an open live session through stopping to pers
     false,
     `expected zero errors during hibernation lifecycle, observed: ${JSON.stringify(observedSessions)}`,
   );
+});
+
+test("history remains readable when a ready Core becomes stopped after selection", async (t) => {
+  let shellReads = 0;
+  const { client, frames } = await readServer(t, ({ frame, reply, sessionIdentity }) => {
+    if (frame.method === "hello") {
+      reply({
+        version: 1,
+        hostId,
+        generation,
+        capabilities: [],
+        negotiatedCapabilities: ["gui-read-v1", "persistedHistoryV1"],
+        connectionId: "read-connection",
+        gatewayGeneration: generation,
+      });
+      return true;
+    }
+    if (frame.method === "shell.subscribe") {
+      reply({
+        connectionId: "read-connection",
+        gatewayGeneration: generation,
+        subscriptionId: `shell-test-${++shellReads}`,
+        sequence: 0,
+        snapshot: {
+          projects: [
+            shellReads === 1
+              ? project
+              : { ...project, state: "stopped", serviceGeneration: undefined },
+          ],
+          navigation: [],
+        },
+      });
+      return true;
+    }
+    if (frame.method === "session.openPersisted") {
+      reply({
+        ...sessionIdentity(frame.params.threadId),
+        subscriptionId: "persisted-test",
+        sequence: 0,
+        access: { kind: "persisted", readOnly: true, snapshotId: "saved" },
+        snapshot: nativeObservation(frame.params.threadId),
+      });
+      return true;
+    }
+    return false;
+  });
+  await client.selectSession({ projectId: project.projectId, threadId: "thread" });
+  await client.refreshShell();
+  const result = await waitReads(
+    client,
+    (s) => s.session.state === "fresh" && s.session.value.access?.kind === "persisted",
+  );
+  assert.equal(result.session.value.threadId, "thread");
+  assert.equal(frames.filter((f) => f.method === "session.openPersisted").length, 1);
+});
+
+test("late cached history is scoped to the current selected thread", async (t) => {
+  let resolveCache, failOpen;
+  const cached = new Promise((resolve) => {
+    resolveCache = resolve;
+  });
+  const { client } = await readServer(
+    t,
+    ({ frame }) => {
+      if (frame.method === "session.open" && frame.params.threadId === "slow") {
+        failOpen = true;
+        return true;
+      }
+      return false;
+    },
+    { cache: { loadSession: () => cached } },
+  );
+  void client.selectSession({ projectId: project.projectId, threadId: "slow" }).catch(() => {});
+  while (!failOpen) await new Promise((resolve) => setImmediate(resolve));
+  await client.selectSession({ projectId: project.projectId, threadId: "current" });
+  const current = client.readsSnapshot().session.value;
+  resolveCache({ ...current, threadId: "slow" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(client.readsSnapshot().session.value.threadId, "current");
+});
+
+test("an asynchronous cache may restore only the selected conversation while its live read waits", async (t) => {
+  let resolveCache;
+  const pendingCache = new Promise((resolve) => {
+    resolveCache = resolve;
+  });
+  const { client } = await readServer(
+    t,
+    ({ frame }) => frame.method === "session.open" && frame.params.threadId === "slow",
+    { cache: { loadSession: () => pendingCache } },
+  );
+  await client.selectSession({ projectId: project.projectId, threadId: "baseline" });
+  const baseline = client.readsSnapshot().session.value;
+  void client.selectSession({ projectId: project.projectId, threadId: "slow" }).catch(() => {});
+  resolveCache({ ...baseline, threadId: "slow" });
+  const reads = await waitReads(
+    client,
+    (s) => s.session.state === "stale" && s.session.value.threadId === "slow",
+  );
+  assert.equal(reads.session.value.projectId, project.projectId);
+});
+
+test("persisted intent and live selection share the same ready Core subscription", async (t) => {
+  const { client, frames } = await readServer(t);
+  const target = { projectId: project.projectId, threadId: "thread" };
+  await client.selectSession({ ...target, persisted: true });
+  await client.selectSession(target);
+  await client.selectSession({ ...target, persisted: true });
+  assert.equal(frames.filter((frame) => frame.method === "session.open").length, 1);
+  assert.equal(frames.filter((frame) => frame.method === "subscription.close").length, 0);
 });

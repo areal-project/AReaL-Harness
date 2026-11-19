@@ -161,7 +161,7 @@ Project methods require context.projectId. The Host resolves the bound service; 
 | session.list | observe | cursor?, limit? | thread/list |
 | session.open | observe | threadId; bounded atomic baseline, ownership and subscription | areal/thread/observe |
 | session.history | observe | threadId, cursor?, limit? | Bounded projection pages over history actually available through thread/read; do not assume a native paging method |
-| session.create | submit | No path/model settings; regular Session only | areal/thread/start with Host default Profile |
+| session.create | submit | Ordinary session with optional firstMessage and its scoped settings | areal/thread/start with Host default Profile |
 | session.send | submit | threadId, expectedConfigRevision, text | areal/turn/start, idle-only with optional atomic admissionGuard extension |
 | turn.stop | interrupt | threadId, expectedTurnId | turn/interrupt with exact turnId |
 | interaction.respond | answer | threadId, turnId, interactionId; approval digest/decision or question answers; complete reviewToken for allowOnce/questions | areal/interaction/respond |

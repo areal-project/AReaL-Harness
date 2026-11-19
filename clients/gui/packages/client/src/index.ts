@@ -112,6 +112,7 @@ export class HostClient {
   #listeners = new Set<() => void>();
   #readListeners = new Set<() => void>();
   #pageListeners = new Set<(event: unknown) => void>();
+  #botListeners = new Set<(event: unknown) => void>();
   #epoch = 0;
   #selection = 0;
   #shellEpoch = 0;
@@ -167,6 +168,12 @@ export class HostClient {
     this.#pageListeners.add(listener);
     return () => {
       this.#pageListeners.delete(listener);
+    };
+  };
+  subscribeBotEvents = (listener: (event: unknown) => void) => {
+    this.#botListeners.add(listener);
+    return () => {
+      this.#botListeners.delete(listener);
     };
   };
   #publish(state: HostReadState) {
@@ -297,7 +304,8 @@ export class HostClient {
       });
       this.#publishReads({
         shell: stale(this.#reads.shell, "Host unavailable"),
-        session: stale(this.#reads.session, "Host unavailable"),
+        // 重连等待期仍由当前选择自动恢复；传输离线不是一次对话读取失败。
+        session: stale(this.#reads.session),
       });
       const delay = Math.min(30_000, 500 * 2 ** Math.min(this.#attempt++, 6));
       this.#timer = setTimeout(() => this.retry(), delay * (0.8 + Math.random() * 0.4));
@@ -353,21 +361,23 @@ export class HostClient {
     const canReadPersisted =
       this.#state.connection === "ready" && this.#state.identity.persistedHistory === true;
     // 持久化快照在执行启动中仍可读；等 Core 就绪再切换，不能重开已经被执行占用的 Store。
-    if (this.#target?.persisted && after?.state !== "ready") return;
+    if (
+      this.#target &&
+      after &&
+      before &&
+      after.state !== "ready" &&
+      before.serviceGeneration === after.serviceGeneration &&
+      previous(this.#reads.session)?.access?.kind === "persisted"
+    )
+      return;
     if (
       !this.#target ||
       (before?.serviceGeneration === after?.serviceGeneration &&
         before?.state === after?.state &&
-        !(this.#target.persisted && after?.state === "ready"))
+        !(previous(this.#reads.session)?.access?.kind === "persisted" && after?.state === "ready"))
     )
       return;
-    if (this.#target.persisted && after?.state === "ready") this.#target.persisted = false;
-    if (
-      canReadPersisted &&
-      !this.#target.persisted &&
-      after?.state === "stopping" &&
-      previous(this.#reads.session)
-    ) {
+    if (canReadPersisted && after?.state === "stopping" && previous(this.#reads.session)) {
       // 项目进入停止过渡期时先保住上一份会话画面，等进入 stopped 再切到持久化历史，不闪现不可用错误。
       this.#publishReads({
         ...this.#reads,
@@ -375,14 +385,7 @@ export class HostClient {
       });
       return;
     }
-    if (
-      canReadPersisted &&
-      !this.#target.persisted &&
-      after?.state === "stopped" &&
-      (previous(this.#reads.session) || before?.state === "ready" || before?.state === "stopping")
-    ) {
-      this.#target = { ...this.#target, persisted: true };
-    }
+    if (after && after.state !== "ready") this.#target = { ...this.#target, persisted: true };
     this.#publishReads({
       ...this.#reads,
       session:
@@ -517,19 +520,21 @@ export class HostClient {
     const project = previous(this.#reads.shell)?.snapshot.projects.find(
       (value) => value.projectId === target?.projectId,
     );
-    if (target?.persisted && project?.state === "ready") target = { ...target, persisted: false };
     const timing = target ? sessionLoadTiming(target.threadId) : undefined;
     if (
       target &&
       target.projectId === this.#target?.projectId &&
-      target.threadId === this.#target.threadId &&
-      (target.persisted === true) === (this.#target.persisted === true)
+      target.threadId === this.#target.threadId
     ) {
+      if (target.persisted && !this.#target.persisted)
+        this.#target = { ...this.#target, persisted: true };
       const session = this.#reads.session;
+      const persistedRead = project?.state !== "ready" && this.#target.persisted === true;
       if (
         session.state === "fresh" &&
         this.#state.connection === "ready" &&
-        session.value.connectionId === this.#state.identity.connectionId
+        session.value.connectionId === this.#state.identity.connectionId &&
+        (session.value.access?.kind === "persisted") === persistedRead
       ) {
         timing?.mark("cache", true);
         return;
@@ -565,8 +570,8 @@ export class HostClient {
         : undefined,
       session: cached ? { state: "stale", value: cached } : { state: "loading" },
     });
-    if (target && !cached && !target.persisted && this.options.cache?.loadSession) {
-      const loadSelection = this.#selection;
+    if (target && !cached && this.options.cache?.loadSession) {
+      const loadTarget = target;
       void Promise.resolve(
         this.options.cache.loadSession({
           projectId: target.projectId,
@@ -576,8 +581,10 @@ export class HostClient {
         .then((persistedSession) => {
           if (
             this.#closed ||
-            loadSelection !== this.#selection ||
+            this.#target !== loadTarget ||
             !persistedSession ||
+            persistedSession.projectId !== loadTarget.projectId ||
+            persistedSession.threadId !== loadTarget.threadId ||
             this.#reads.session.state === "fresh"
           )
             return;
@@ -615,9 +622,9 @@ export class HostClient {
     const timing = sessionLoadTiming(target.threadId);
     const shell = previous(this.#reads.shell);
     const project = shell?.snapshot.projects.find((p) => p.projectId === target.projectId);
-    if (target.persisted && project?.state === "ready") target.persisted = false;
     const persisted =
       target.persisted === true &&
+      project?.state !== "ready" &&
       this.#state.connection === "ready" &&
       this.#state.identity.persistedHistory === true;
     const previousSession = previous(this.#reads.session);
@@ -629,7 +636,7 @@ export class HostClient {
     if (!project || (!persisted && (!project.serviceGeneration || project.state !== "ready"))) {
       this.#publishReads({
         ...this.#reads,
-        session: { state: "unavailable", error: "Project Core unavailable" },
+        session: stale(this.#reads.session, "Project Core unavailable"),
       });
       throw new Error("Project Core unavailable");
     }
@@ -687,14 +694,20 @@ export class HostClient {
       this.#pruneSessionCache();
       void Promise.resolve(this.options.cache?.saveSession?.(session)).catch(() => {});
     } catch (error) {
-      if (selection === this.#selection)
-        this.#publishReads({
-          ...this.#reads,
-          session: stale(
-            this.#reads.session,
-            error instanceof Error ? error.message : "Conversation unavailable",
-          ),
-        });
+      // 已被换代或取消的读取不能把旧连接的失败交给当前对话。
+      if (selection !== this.#selection || transport !== this.#transport) return;
+      if (record(error) && ["DISCONNECTED", "TIMEOUT"].includes(String(error.clientCode))) {
+        // 只重建读取订阅。写命令仍通过原 commandId 核对。
+        void this.retry();
+        return;
+      }
+      this.#publishReads({
+        ...this.#reads,
+        session: stale(
+          this.#reads.session,
+          error instanceof Error ? error.message : "Conversation unavailable",
+        ),
+      });
       throw error;
     }
   }
@@ -824,6 +837,25 @@ export class HostClient {
       for (const listener of this.#pageListeners) listener(pageEvent);
       return;
     }
+    if (record(event) && event.event === "bots.event") {
+      const state = this.#state;
+      if (
+        this.#closed ||
+        state.connection !== "ready" ||
+        event.connectionId !== state.identity.connectionId ||
+        event.gatewayGeneration !== state.identity.gatewayGeneration ||
+        !record(event.notification)
+      )
+        return;
+      const botEvent = {
+        event: "bots.event",
+        connectionId: state.identity.connectionId,
+        gatewayGeneration: state.identity.gatewayGeneration,
+        notification: event.notification,
+      };
+      for (const listener of this.#botListeners) listener(botEvent);
+      return;
+    }
     if (!identity(event)) return;
     const shell = this.#reads.shell;
     if (
@@ -880,9 +912,9 @@ export class HostClient {
       );
       const canReadPersisted =
         this.#state.connection === "ready" && this.#state.identity.persistedHistory === true;
-      if (canReadPersisted && this.#target && !this.#target.persisted) {
+      if (canReadPersisted && this.#target) {
         if (selectedProject?.state === "stopping") return;
-        if (selectedProject?.state === "stopped") {
+        if (selectedProject?.state === "stopped" && !this.#target.persisted) {
           this.#target = { ...this.#target, persisted: true };
         }
       }

@@ -29,6 +29,8 @@ const { createProjectConversation } = await import(
   pathToFileURL(join(gui, "scripts/smoke-navigation.mjs"))
 );
 let binary;
+const packagePath = process.env.AREAL_TEST_PACKAGE;
+const packageExecutable = packagePath && join(packagePath, "Contents/MacOS/AReaL Harness GUI");
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 const json = (path, value) => writeFile(path, JSON.stringify(value, null, 2));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -62,7 +64,11 @@ async function until(read, label, timeout = 60000) {
 }
 async function preflight() {
   assert.equal(process.platform, "darwin", "This source Electron runner is prepared for macOS");
-  binary = await resolveAcceptanceBinary(root, process.env.AREAL_CORE_BIN);
+  binary = packagePath
+    ? join(packagePath, "Contents/Resources/areal-core/bin/areal")
+    : await resolveAcceptanceBinary(root, process.env.AREAL_CORE_BIN);
+  await access(binary);
+  if (packageExecutable) await access(packageExecutable);
   await access(join(gui, "renderer/dist/index.html"));
   await access(require("electron"));
   const renderer = join(gui, "renderer/dist");
@@ -75,6 +81,9 @@ async function preflight() {
   return {
     root,
     binary,
+    packagePath: packagePath ?? null,
+    packageExecutable: packageExecutable ?? null,
+    packageExecutableSHA256: packageExecutable ? sha(await readFile(packageExecutable)) : null,
     binarySHA256: sha(await readFile(binary)),
     rendererSHA256,
     node: process.version,
@@ -250,6 +259,14 @@ async function transportProxy(metadata, events) {
       armed = { name, dispatched: false, completed: false };
       return armed;
     },
+    disconnect() {
+      blocked = true;
+      events.push({ at: Date.now(), type: "idle-transport-cut", sessions: sessions.size });
+      for (const { down, up } of sessions) {
+        down.terminate();
+        up.terminate();
+      }
+    },
     release() {
       blocked = false;
       armed = null;
@@ -338,8 +355,8 @@ if (command === "doctor") {
   };
   async function launch() {
     app = await electron.launch({
-      executablePath: require("electron"),
-      args: [application.path],
+      executablePath: packageExecutable ?? require("electron"),
+      args: packageExecutable ? [] : [application.path],
       env,
       timeout: 120000,
     });
@@ -370,6 +387,7 @@ if (command === "doctor") {
       window.setSize(1440, 960);
       return {
         pid: process.pid,
+        executable: app.getPath("exe"),
         userData: app.getPath("userData"),
         sandbox: p.sandbox,
         contextIsolation: p.contextIsolation,
@@ -377,6 +395,8 @@ if (command === "doctor") {
       };
     });
     assert.equal(actual.userData, env.AREAL_GUI_USER_DATA);
+    if (packageExecutable)
+      assert.equal(await realpath(actual.executable), await realpath(packageExecutable));
     assert.equal(actual.sandbox, true);
     assert.equal(actual.contextIsolation, true);
     assert.equal(actual.nodeIntegration, false);
@@ -469,7 +489,7 @@ if (command === "doctor") {
         },
       ],
     });
-    application = await applicationFixture(gui, join(state, "app"));
+    if (!packageExecutable) application = await applicationFixture(gui, join(state, "app"));
     await launch();
     await capture("01-empty");
     await page.getByRole("button", { name: "不在项目中工作", exact: true }).click();
@@ -533,268 +553,418 @@ if (command === "doctor") {
       .getByText("RECOVERY_HISTORY_SENTINEL_1", { exact: true })
       .waitFor();
     assert.ok(proxy.connections > 0, "Renderer connected through the Host fault proxy");
-    await until(
-      () =>
-        events.some(
-          (event) =>
-            event.type === "workspace-review-response" && event.summaryOnly && !event.error,
-        ),
-      "summary workspace review response",
-    );
-    const review = events.find(
-      (event) => event.type === "workspace-review-response" && event.summaryOnly && !event.error,
-    );
-    assert.ok(review.bytes < 1024 * 1024, `Summary review response is ${review.bytes} bytes`);
-    const stableConnections = proxy.connections,
-      stableSkills = skillsBegins;
-    await sleep(6000);
-    assert.equal(
-      proxy.connections,
-      stableConnections,
-      "Large review must not cause spontaneous reconnect",
-    );
-    assert.ok(skillsBegins - stableSkills <= 1, "Skills must not reload repeatedly while idle");
-    checks.push({
-      name: "large-review-stable-connection",
-      responseBytes: review.bytes,
-      connections: stableConnections,
-      idleSkillsBegins: skillsBegins - stableSkills,
-    });
-    const before = structuredClone(thread(await snapshot())),
-      beforeModel = workRequests();
-    const send = proxy.arm("send");
-    await page.getByTestId("chat-input").fill("Accept exactly this original send once");
-    await page.getByTestId("chat-send-button").click();
-    await until(() => send.completed, "real accepted Host send response intercepted");
-    assert.equal(send.hadError, false, JSON.stringify(send.response));
-    assert.ok(send.requestId);
-    assert.equal(send.threadId, threadId);
-    const unknown = page.getByRole("button", { name: "检查操作状态", exact: true });
-    await unknown.waitFor();
-    assert.equal(await unknown.count(), 1, "one action represents the unresolved send");
-    assert.equal(
-      await page.getByTestId("chat-input").innerText(),
-      "Accept exactly this original send once",
-    );
-    assert.equal(
-      await page.evaluate(
-        (id) =>
-          Object.keys(localStorage).some(
-            (key) => key.endsWith(":pending") && localStorage.getItem(key) === id,
+    if (process.env.AREAL_IDLE_RECONNECT === "1") {
+      const draft = "IDLE_RECONNECT_DRAFT";
+      await page.getByTestId("chat-input").fill(draft);
+      const beforeConnections = proxy.connections;
+      await page.evaluate(() => {
+        window.__idleAlerts = [];
+        const check = () => {
+          for (const alert of document.querySelectorAll('[role="alert"]')) {
+            const text = alert.innerText;
+            if (text && !window.__idleAlerts.includes(text)) window.__idleAlerts.push(text);
+          }
+        };
+        window.__idleObserver = new MutationObserver(check);
+        window.__idleObserver.observe(document.body, {
+          subtree: true,
+          childList: true,
+          characterData: true,
+        });
+        check();
+      });
+      proxy.disconnect();
+      await page.getByTestId("workspace-preparation-status").waitFor({ timeout: 30000 });
+      await sleep(1500);
+      const during = {
+        history: await page
+          .getByTestId("chat-view")
+          .getByText("RECOVERY_HISTORY_SENTINEL_1", { exact: true })
+          .isVisible()
+          .catch(() => false),
+        draft: await page
+          .getByTestId("chat-input")
+          .textContent()
+          .catch(() => null),
+        alerts: await page.evaluate(() => window.__idleAlerts),
+        details: await page.locator("details").allTextContents(),
+      };
+      const bounds = await page.locator(".active-composer").evaluate((container) => {
+        const bar = container.querySelector(".composer-project-bar")?.getBoundingClientRect();
+        const input = container
+          .querySelector(".composer-input-stack > form")
+          ?.getBoundingClientRect();
+        return bar && input && { left: bar.left - input.left, right: bar.right - input.right };
+      });
+      await capture("idle-disconnected");
+      proxy.release();
+      await until(
+        async () =>
+          proxy.connections > beforeConnections &&
+          (await page.getByTestId("workspace-preparation-status").count()) === 0,
+        "automatic Host reconnection",
+        30000,
+      );
+      const after = {
+        history: await page
+          .getByTestId("chat-view")
+          .getByText("RECOVERY_HISTORY_SENTINEL_1", { exact: true })
+          .isVisible()
+          .catch(() => false),
+        draft: await page
+          .getByTestId("chat-input")
+          .textContent()
+          .catch(() => null),
+        alerts: await page.evaluate(() => {
+          window.__idleObserver.disconnect();
+          return window.__idleAlerts;
+        }),
+      };
+      await capture("idle-reconnected");
+      await json(join(evidence, "idle-reconnect.json"), {
+        during,
+        after,
+        bounds,
+        beforeConnections,
+        afterConnections: proxy.connections,
+      });
+      assert.ok(
+        bounds && Math.abs(bounds.left) <= 1 && Math.abs(bounds.right) <= 1,
+        `status bar aligns with composer: ${JSON.stringify(bounds)}`,
+      );
+      assert.equal(during.history, true, "history remains visible while disconnected");
+      assert.equal(during.draft, draft, "draft remains while disconnected");
+      assert.equal(after.history, true, "history remains visible after reconnect");
+      assert.equal(after.draft, draft, "draft remains after reconnect");
+      await page.getByTestId("chat-send-button").click();
+      await until(
+        async () =>
+          thread(await snapshot())?.turns.at(-1)?.status === "completed" && workRequests() === 2,
+        "draft sent after automatic reconnect",
+      );
+      await page
+        .getByTestId("chat-view")
+        .getByText("RECOVERY_HISTORY_SENTINEL_2", { exact: true })
+        .waitFor();
+      await capture("idle-sent");
+      await page.evaluate(() => {
+        window.__idleAlerts = [];
+        window.__idleObserver.observe(document.body, {
+          subtree: true,
+          childList: true,
+          characterData: true,
+        });
+      });
+      await createProjectConversation(page, "workspace");
+      const open = proxy.arm("open");
+      await page.getByTestId(`task-item-${threadId}`).click();
+      await until(() => open.completed, "session.open response intercepted");
+      assert.equal(open.hadError, false, "real session.open succeeded at Host");
+      assert.equal(open.threadId, threadId, "fault hit selected thread");
+      await page.getByTestId("workspace-preparation-status").waitFor({ timeout: 30000 });
+      await sleep(1500);
+      await capture("open-disconnected");
+      const openDetails = await page.locator("details").allTextContents();
+      proxy.release();
+      await until(
+        async () => (await page.getByTestId("workspace-preparation-status").count()) === 0,
+        "session.open reconnect",
+        30000,
+      );
+      await page
+        .getByTestId("chat-view")
+        .getByText("RECOVERY_HISTORY_SENTINEL_1", { exact: true })
+        .waitFor();
+      await page
+        .getByTestId("chat-view")
+        .getByText("RECOVERY_HISTORY_SENTINEL_2", { exact: true })
+        .waitFor();
+      const openAlerts = await page.evaluate(() => {
+        window.__idleObserver.disconnect();
+        return window.__idleAlerts;
+      });
+      await capture("open-reconnected");
+      await json(join(evidence, "open-reconnect.json"), {
+        open,
+        alerts: openAlerts,
+        details: openDetails,
+      });
+      assert.equal(after.alerts.length, 0, "idle disconnect must not show an error banner");
+      assert.equal(openAlerts.length, 0, "interrupted session.open must not show an error banner");
+      checks.push(
+        "idle disconnect preserves history and draft, reconnects and sends; interrupted session.open restores history without error banners",
+      );
+    } else {
+      await until(
+        () =>
+          events.some(
+            (event) =>
+              event.type === "workspace-review-response" && event.summaryOnly && !event.error,
           ),
-        send.requestId,
-      ),
-      true,
-      "pending send retains the original Host command ID",
-    );
-    await capture("03-send-response-lost");
-    await page.getByTestId("chat-input").fill("A new draft written during recovery");
-    assert.equal(await page.getByTestId("chat-send-button").isDisabled(), true);
-    const sendsWhileUnknown = events.filter(
-      (event) => event.type === "command" && event.name === "send",
-    ).length;
-    await page.getByTestId("chat-input").press("Enter");
-    const editedDraft = await page.getByTestId("chat-input").innerText();
-    assert.equal(
-      events.filter((event) => event.type === "command" && event.name === "send").length,
-      sendsWhileUnknown,
-    );
-    proxy.release();
-    await until(
-      async () =>
-        events.some(
-          (event) =>
-            event.type === "command-reconciled" &&
-            event.requestId === send.requestId &&
-            event.result?.admissionState === "accepted",
+        "summary workspace review response",
+      );
+      const review = events.find(
+        (event) => event.type === "workspace-review-response" && event.summaryOnly && !event.error,
+      );
+      assert.ok(review.bytes < 1024 * 1024, `Summary review response is ${review.bytes} bytes`);
+      const stableConnections = proxy.connections,
+        stableSkills = skillsBegins;
+      await sleep(6000);
+      assert.equal(
+        proxy.connections,
+        stableConnections,
+        "Large review must not cause spontaneous reconnect",
+      );
+      assert.ok(skillsBegins - stableSkills <= 1, "Skills must not reload repeatedly while idle");
+      checks.push({
+        name: "large-review-stable-connection",
+        responseBytes: review.bytes,
+        connections: stableConnections,
+        idleSkillsBegins: skillsBegins - stableSkills,
+      });
+      const before = structuredClone(thread(await snapshot())),
+        beforeModel = workRequests();
+      const send = proxy.arm("send");
+      await page.getByTestId("chat-input").fill("Accept exactly this original send once");
+      await page.getByTestId("chat-send-button").click();
+      await until(() => send.completed, "real accepted Host send response intercepted");
+      assert.equal(send.hadError, false, JSON.stringify(send.response));
+      assert.ok(send.requestId);
+      assert.equal(send.threadId, threadId);
+      const unknown = page.getByRole("button", { name: "检查操作状态", exact: true });
+      await unknown.waitFor();
+      assert.equal(await unknown.count(), 1, "one action represents the unresolved send");
+      assert.equal(
+        await page.getByTestId("chat-input").innerText(),
+        "Accept exactly this original send once",
+      );
+      assert.equal(
+        await page.evaluate(
+          (id) =>
+            Object.keys(localStorage).some(
+              (key) => key.endsWith(":pending") && localStorage.getItem(key) === id,
+            ),
+          send.requestId,
         ),
-      "original accepted outcome converges automatically",
-    );
-    await until(
-      async () => thread(await snapshot())?.turns.at(-1)?.status === "completed",
-      "accepted turn completed",
-    );
-    await unknown.waitFor({ state: "hidden" });
-    assert.equal(await page.getByTestId("chat-input").innerText(), editedDraft);
-    assert.equal(
-      await page.evaluate(
-        (id) =>
-          Object.keys(localStorage).some(
-            (key) => key.endsWith(":pending") && localStorage.getItem(key) === id,
+        true,
+        "pending send retains the original Host command ID",
+      );
+      await capture("03-send-response-lost");
+      await page.getByTestId("chat-input").fill("A new draft written during recovery");
+      assert.equal(await page.getByTestId("chat-send-button").isDisabled(), true);
+      const sendsWhileUnknown = events.filter(
+        (event) => event.type === "command" && event.name === "send",
+      ).length;
+      await page.getByTestId("chat-input").press("Enter");
+      const editedDraft = await page.getByTestId("chat-input").innerText();
+      assert.equal(
+        events.filter((event) => event.type === "command" && event.name === "send").length,
+        sendsWhileUnknown,
+      );
+      proxy.release();
+      await until(
+        async () =>
+          events.some(
+            (event) =>
+              event.type === "command-reconciled" &&
+              event.requestId === send.requestId &&
+              event.result?.admissionState === "accepted",
           ),
-        send.requestId,
-      ),
-      false,
-      "accepted receipt clears only the original pending send",
-    );
-    await page
-      .getByTestId("chat-view")
-      .getByText("RECOVERY_HISTORY_SENTINEL_2", { exact: true })
-      .waitFor();
-    const accepted = thread(await snapshot());
-    assert.equal(accepted.turns.length, before.turns.length + 1);
-    assert.equal(workRequests() - beforeModel, 1);
-    assert.equal(
-      events.filter((event) => event.type === "command" && event.name === "send").length,
-      sendsWhileUnknown,
-      "Enter during UNKNOWN never sends another command",
-    );
-    assert.deepEqual(
-      accepted.turns.slice(0, before.turns.length).map((value) => value.id),
-      before.turns.map((value) => value.id),
-    );
-    assert.equal(
-      events.filter(
-        (value) =>
-          value.type === "command" && value.name === "send" && value.requestId === send.requestId,
-      ).length,
-      1,
-      "Renderer never replays accepted send",
-    );
-    checks.push(
-      "real UI accepted send response lost across Renderer↔Host; original request converges and matching notices disappear; one additional Core Turn and non-title model request",
-    );
-    await json(join(evidence, "send-fault.json"), send);
-    await capture("04-send-converged");
-    const unchanged = proxy.arm("send");
-    await page.getByTestId("chat-input").fill("An unchanged recovery draft");
-    await page.getByTestId("chat-send-button").click();
-    await until(() => unchanged.completed, "unchanged draft send response intercepted");
-    assert.equal(unchanged.hadError, false, JSON.stringify(unchanged.response));
-    await unknown.waitFor();
-    const draftState = () =>
-      page.evaluate((requestId) => {
-        const pendingKey = Object.keys(localStorage).find(
-          (key) => key.endsWith(":pending") && localStorage.getItem(key) === requestId,
-        );
-        const key = pendingKey?.slice(0, -":pending".length);
-        return key
-          ? {
-              key,
-              text: localStorage.getItem(key),
-              version: localStorage.getItem(`${key}:version`),
-              pendingVersion: localStorage.getItem(`${key}:pending-draft-version`),
-            }
-          : null;
-      }, unchanged.requestId);
-    const draftBefore = await draftState();
-    proxy.release();
-    await unknown.waitFor({ state: "hidden" });
-    const draftAfter = await page.evaluate(
-      (key) => ({
-        text: localStorage.getItem(key),
-        version: localStorage.getItem(`${key}:version`),
-        pendingVersion: localStorage.getItem(`${key}:pending-draft-version`),
-      }),
-      draftBefore.key,
-    );
-    const reconciliation = events.find(
-      (event) => event.type === "command-reconciled" && event.requestId === unchanged.requestId,
-    );
-    await json(join(evidence, "unchanged-draft.json"), {
-      before: draftBefore,
-      after: draftAfter,
-      outcome: {
-        status: reconciliation?.result?.status,
-        accepted: reconciliation?.result?.accepted,
-        admissionState: reconciliation?.result?.admissionState,
-      },
-    });
-    await until(
-      async () => (await page.getByTestId("chat-input").textContent()) === "",
-      "unchanged accepted draft clears",
-    );
-    await until(
-      async () => thread(await snapshot())?.turns.at(-1)?.status === "completed",
-      "unchanged draft turn completed",
-    );
-    assert.equal(thread(await snapshot()).turns.length, accepted.turns.length + 1);
-    assert.equal(workRequests(), beforeModel + 2);
-    assert.equal(
-      events.filter(
-        (event) =>
-          event.type === "command" &&
-          event.name === "send" &&
-          event.requestId === unchanged.requestId,
-      ).length,
-      1,
-    );
-    checks.push(
-      "UNKNOWN allows editing but blocks resubmission; accepted recovery preserves edited text and clears an unchanged draft",
-    );
-    const history = displayTurns(thread(await snapshot()).turns),
-      readModel = workRequests();
-    await createProjectConversation(page, "workspace");
-    const read = proxy.arm("open");
-    await page.getByTestId(`task-item-${threadId}`).click();
-    await until(() => read.completed, "real Host history-open response intercepted");
-    assert.equal(read.hadError, false, JSON.stringify(read.response));
-    assert.equal(read.threadId, threadId);
-    await until(
-      async () => page.getByTestId("chat-send-button").isDisabled(),
-      "read interruption is observed",
-    );
-    await capture("05-read-response-lost");
-    proxy.release();
-    await until(
-      async () =>
-        (await snapshot()).connection?.state === "ready" &&
-        project(await snapshot())?.state?.connected,
-      "history connection restores",
-    );
-    await until(
-      async () =>
-        (await page.getByTestId("areal-workbench").getAttribute("data-thread-id")) === threadId,
-      "original conversation remains selected",
-    );
-    await page
-      .getByTestId("chat-view")
-      .getByText("RECOVERY_HISTORY_SENTINEL_1", { exact: true })
-      .waitFor();
-    await page
-      .getByTestId("chat-view")
-      .getByText("RECOVERY_HISTORY_SENTINEL_2", { exact: true })
-      .waitFor();
-    assert.deepEqual(displayTurns(thread(await snapshot()).turns), history);
-    assert.equal(workRequests(), readModel);
-    assert.equal(await unknown.count(), 0, "A read interruption must not invent a pending send");
-    checks.push(
-      "real UI history-open read response interrupted; reconnect retains visible original history and starts no model work",
-    );
-    await json(join(evidence, "read-fault.json"), read);
-    await capture("06-history-restored");
-    const readAuthoritativeThread = async () =>
-      readCoreThread({ binary, env, gui, threadId, workspace, project: project(await snapshot()) });
-    const persistedHistory = displayTurns((await readAuthoritativeThread()).turns);
-    assert.deepEqual(
-      persistedHistory.map((turn) => turn.id),
-      history.map((turn) => turn.id),
-    );
-    await stopGUI();
-    await cleanup(run);
-    await proxy.close();
-    proxy = null;
-    await launch();
-    await until(
-      async () => project(await snapshot())?.state?.connected,
-      "same private project restored after fresh Main launch",
-    );
-    await createProjectConversation(page, "workspace");
-    await page.getByTestId(`task-item-${threadId}`).click();
-    await page
-      .getByTestId("chat-view")
-      .getByText("RECOVERY_HISTORY_SENTINEL_2", { exact: true })
-      .waitFor();
-    assert.deepEqual(displayTurns((await readAuthoritativeThread()).turns), persistedHistory);
-    assert.equal(workRequests(), readModel);
-    checks.push(
-      "fresh source Electron process opens original history from a new draft by sidebar click without replay",
-    );
-    await capture("07-fresh-process-history");
-    await stopGUI();
-    manifest.threadId = threadId;
-    manifest.projectId = projectId;
-    manifest.modelWorkRequests = workRequests();
+        "original accepted outcome converges automatically",
+      );
+      await until(
+        async () => thread(await snapshot())?.turns.at(-1)?.status === "completed",
+        "accepted turn completed",
+      );
+      await unknown.waitFor({ state: "hidden" });
+      assert.equal(await page.getByTestId("chat-input").innerText(), editedDraft);
+      assert.equal(
+        await page.evaluate(
+          (id) =>
+            Object.keys(localStorage).some(
+              (key) => key.endsWith(":pending") && localStorage.getItem(key) === id,
+            ),
+          send.requestId,
+        ),
+        false,
+        "accepted receipt clears only the original pending send",
+      );
+      await page
+        .getByTestId("chat-view")
+        .getByText("RECOVERY_HISTORY_SENTINEL_2", { exact: true })
+        .waitFor();
+      const accepted = thread(await snapshot());
+      assert.equal(accepted.turns.length, before.turns.length + 1);
+      assert.equal(workRequests() - beforeModel, 1);
+      assert.equal(
+        events.filter((event) => event.type === "command" && event.name === "send").length,
+        sendsWhileUnknown,
+        "Enter during UNKNOWN never sends another command",
+      );
+      assert.deepEqual(
+        accepted.turns.slice(0, before.turns.length).map((value) => value.id),
+        before.turns.map((value) => value.id),
+      );
+      assert.equal(
+        events.filter(
+          (value) =>
+            value.type === "command" && value.name === "send" && value.requestId === send.requestId,
+        ).length,
+        1,
+        "Renderer never replays accepted send",
+      );
+      checks.push(
+        "real UI accepted send response lost across Renderer↔Host; original request converges and matching notices disappear; one additional Core Turn and non-title model request",
+      );
+      await json(join(evidence, "send-fault.json"), send);
+      await capture("04-send-converged");
+      const unchanged = proxy.arm("send");
+      await page.getByTestId("chat-input").fill("An unchanged recovery draft");
+      await page.getByTestId("chat-send-button").click();
+      await until(() => unchanged.completed, "unchanged draft send response intercepted");
+      assert.equal(unchanged.hadError, false, JSON.stringify(unchanged.response));
+      await unknown.waitFor();
+      const draftState = () =>
+        page.evaluate((requestId) => {
+          const pendingKey = Object.keys(localStorage).find(
+            (key) => key.endsWith(":pending") && localStorage.getItem(key) === requestId,
+          );
+          const key = pendingKey?.slice(0, -":pending".length);
+          return key
+            ? {
+                key,
+                text: localStorage.getItem(key),
+                version: localStorage.getItem(`${key}:version`),
+                pendingVersion: localStorage.getItem(`${key}:pending-draft-version`),
+              }
+            : null;
+        }, unchanged.requestId);
+      const draftBefore = await draftState();
+      proxy.release();
+      await unknown.waitFor({ state: "hidden" });
+      const draftAfter = await page.evaluate(
+        (key) => ({
+          text: localStorage.getItem(key),
+          version: localStorage.getItem(`${key}:version`),
+          pendingVersion: localStorage.getItem(`${key}:pending-draft-version`),
+        }),
+        draftBefore.key,
+      );
+      const reconciliation = events.find(
+        (event) => event.type === "command-reconciled" && event.requestId === unchanged.requestId,
+      );
+      await json(join(evidence, "unchanged-draft.json"), {
+        before: draftBefore,
+        after: draftAfter,
+        outcome: {
+          status: reconciliation?.result?.status,
+          accepted: reconciliation?.result?.accepted,
+          admissionState: reconciliation?.result?.admissionState,
+        },
+      });
+      await until(
+        async () => (await page.getByTestId("chat-input").textContent()) === "",
+        "unchanged accepted draft clears",
+      );
+      await until(
+        async () => thread(await snapshot())?.turns.at(-1)?.status === "completed",
+        "unchanged draft turn completed",
+      );
+      assert.equal(thread(await snapshot()).turns.length, accepted.turns.length + 1);
+      assert.equal(workRequests(), beforeModel + 2);
+      assert.equal(
+        events.filter(
+          (event) =>
+            event.type === "command" &&
+            event.name === "send" &&
+            event.requestId === unchanged.requestId,
+        ).length,
+        1,
+      );
+      checks.push(
+        "UNKNOWN allows editing but blocks resubmission; accepted recovery preserves edited text and clears an unchanged draft",
+      );
+      const history = displayTurns(thread(await snapshot()).turns),
+        readModel = workRequests();
+      await createProjectConversation(page, "workspace");
+      const read = proxy.arm("open");
+      await page.getByTestId(`task-item-${threadId}`).click();
+      await until(() => read.completed, "real Host history-open response intercepted");
+      assert.equal(read.hadError, false, JSON.stringify(read.response));
+      assert.equal(read.threadId, threadId);
+      await until(
+        async () => page.getByTestId("chat-send-button").isDisabled(),
+        "read interruption is observed",
+      );
+      await capture("05-read-response-lost");
+      proxy.release();
+      await until(
+        async () =>
+          (await snapshot()).connection?.state === "ready" &&
+          project(await snapshot())?.state?.connected,
+        "history connection restores",
+      );
+      await until(
+        async () =>
+          (await page.getByTestId("areal-workbench").getAttribute("data-thread-id")) === threadId,
+        "original conversation remains selected",
+      );
+      await page
+        .getByTestId("chat-view")
+        .getByText("RECOVERY_HISTORY_SENTINEL_1", { exact: true })
+        .waitFor();
+      await page
+        .getByTestId("chat-view")
+        .getByText("RECOVERY_HISTORY_SENTINEL_2", { exact: true })
+        .waitFor();
+      assert.deepEqual(displayTurns(thread(await snapshot()).turns), history);
+      assert.equal(workRequests(), readModel);
+      assert.equal(await unknown.count(), 0, "A read interruption must not invent a pending send");
+      checks.push(
+        "real UI history-open read response interrupted; reconnect retains visible original history and starts no model work",
+      );
+      await json(join(evidence, "read-fault.json"), read);
+      await capture("06-history-restored");
+      const readAuthoritativeThread = async () =>
+        readCoreThread({
+          binary,
+          env,
+          gui,
+          threadId,
+          workspace,
+          project: project(await snapshot()),
+        });
+      const persistedHistory = displayTurns((await readAuthoritativeThread()).turns);
+      assert.deepEqual(
+        persistedHistory.map((turn) => turn.id),
+        history.map((turn) => turn.id),
+      );
+      await stopGUI();
+      await cleanup(run);
+      await proxy.close();
+      proxy = null;
+      await launch();
+      await until(
+        async () => project(await snapshot())?.state?.connected,
+        "same private project restored after fresh Main launch",
+      );
+      await createProjectConversation(page, "workspace");
+      await page.getByTestId(`task-item-${threadId}`).click();
+      await page
+        .getByTestId("chat-view")
+        .getByText("RECOVERY_HISTORY_SENTINEL_2", { exact: true })
+        .waitFor();
+      assert.deepEqual(displayTurns((await readAuthoritativeThread()).turns), persistedHistory);
+      assert.equal(workRequests(), readModel);
+      checks.push(
+        "fresh source Electron process opens original history from a new draft by sidebar click without replay",
+      );
+      await capture("07-fresh-process-history");
+      await stopGUI();
+      manifest.threadId = threadId;
+      manifest.projectId = projectId;
+      manifest.modelWorkRequests = workRequests();
+    }
   } catch (error) {
     failure = error.stack ?? String(error);
     if (page && app)

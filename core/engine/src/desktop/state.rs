@@ -660,6 +660,11 @@ impl Engine {
                 .profile
                 .as_ref()
                 .and_then(|profile| profile.workflow.clone());
+            if request.first_input.is_some() && workflow.is_some() {
+                return Err(Error::Rejected(Box::new(invalid(
+                    "UNSUPPORTED_PROFILE: first input requires an ordinary session",
+                ))));
+            }
             if let Some(reference) = &workflow {
                 let definition = engine.workflow(reference)?;
                 let start = profile_workgroup_start(&hash, definition.plan);
@@ -700,7 +705,7 @@ impl Engine {
                 .create_inner(
                     request.cwd.unwrap_or_else(|| engine.default_cwd()),
                     None,
-                    None,
+                    request.first_input.map(|input| (input, engine.shutdown.child_token())),
                     request.dynamic_tools,
                     Some(host),
                     Some(data),
@@ -720,7 +725,7 @@ impl Engine {
                 engine.creation_unconfirmed(&request.request_id)
             })?;
             engine
-                .complete_creation(&identity, &request.request_id, &thread.id)
+                .complete_creation(&identity, &request.request_id, &thread)
                 .await?;
             #[cfg(test)]
             engine
@@ -1490,6 +1495,9 @@ fn profile_workgroup_start(
 fn normalize_thread_receipt(value: &mut Value, thread_id: &str) -> Result<()> {
     value["operation"] = json!({"requestId":value["requestId"],"method":value["method"],"target":{"kind":"thread","threadId":thread_id}});
     value["status"] = json!("completed");
+    if value["method"] == "areal/thread/start" && value["result"]["turnId"].is_string() {
+        value["turnId"] = value["result"]["turnId"].clone();
+    }
     if value["method"] == "areal/thread/configure" {
         value["configurationHash"] = json!(digest(&value["result"])?);
         value["expectedRevision"] = json!(

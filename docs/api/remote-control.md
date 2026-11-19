@@ -185,7 +185,7 @@ Host 的远程管理、配对批准、配置、终端与权限记忆不属于这
 | session.list | observe | cursor?, limit? | thread/list |
 | session.open | observe | threadId | areal/thread/observe；返回有界原子基线、归属并订阅 |
 | session.history | observe | threadId, cursor?, limit? | thread/read 可取得历史的有界投影分页；不假定已有原生分页方法 |
-| session.create | submit | 无路径/模型设置参数；仅普通 Session | areal/thread/start + Host 默认 Profile |
+| session.create | submit | 普通会话，可携带 firstMessage 及其授权范围内的设置 | areal/thread/start + Host 默认 Profile |
 | session.send | submit | threadId, expectedConfigRevision, text | areal/turn/start；仅空闲准入，新增可选 admissionGuard 原子条件 |
 | turn.stop | interrupt | threadId, expectedTurnId | turn/interrupt 指定 turnId |
 | interaction.respond | answer | threadId, turnId, interactionId，审批还需 argumentsDigest + decision；allowOnce/问题还需完整 reviewToken，问题需 answers | areal/interaction/respond |

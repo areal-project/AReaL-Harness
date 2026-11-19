@@ -611,6 +611,38 @@ test("credential authorization failures stop the reconnect storm until explicit 
   assert.equal(project.client.ready, true);
 });
 
+test("explicit resume proceeds after a passive attachment discovers the user's stop", async () => {
+  const {
+    ProjectConnections,
+  } = require("@areal/workbench-service/desktop/core/project-connections.cjs");
+  let finishPassive;
+  const passive = new Promise((_, reject) => {
+    finishPassive = reject;
+  });
+  const project = { id: "stopped" };
+  const starts = [];
+  const host = {
+    projects: new Map([[project.id, project]]),
+    starting: new Map(),
+    lifecycleOperations: { assertProject() {}, schedulingSuppressed: () => true },
+    async startProject(id, options) {
+      starts.push([id, options]);
+      return project;
+    },
+  };
+  const connections = new ProjectConnections(host);
+  host.starting.set(
+    project.id,
+    passive.finally(() => host.starting.delete(project.id)),
+  );
+  const resume = connections.start(project.id, { resumeScheduling: true });
+  await assert.rejects(connections.start(project.id), { code: "CORE_STOPPED" });
+  assert.deepEqual(starts, []);
+  finishPassive(Object.assign(new Error("stopped"), { code: "CORE_STOPPED" }));
+  assert.equal(await resume, project);
+  assert.deepEqual(starts, [[project.id, { resumeScheduling: true }]]);
+});
+
 test("a recovering connection fast-fails business commands but admits recovery entry points", async (t) => {
   const {
     ProjectConnections,

@@ -219,6 +219,12 @@ pub(crate) fn error_code(message: &str) -> &str {
         | "remoteCredentialUnreadable"
         | "localRelayAddressUnavailable"
         | "RECONNECTING"
+        | "NOT_FOUND"
+        | "SUBMISSION_PENDING"
+        | "ARENA_NOT_CONFIGURED"
+        | "REMOTE_CREDENTIAL_UNSUPPORTED"
+        | "BOT_MODEL_AUTH_REQUIRED"
+        | "PROVIDER_MANAGED"
         | "SUBMISSION_UNKNOWN" => message,
         _ => "CORE_UNAVAILABLE",
     }
@@ -760,7 +766,7 @@ impl Session {
                 .map(|(key, value)| (key.to_owned(), json!(value)))
                 .collect(),
         );
-        let mut value = json!({"apiVersion":"areal.remote.v2","hostId":self.host_peer,"gatewayGeneration":self.generation,"connectionId":self.connection,"grantRevision":self.grant["revision"],"capabilities":self.grant["capabilities"],"methods":METHODS,"limits":limits});
+        let mut value = json!({"apiVersion":"areal.remote.v2","hostId":self.host_peer,"gatewayGeneration":self.generation,"connectionId":self.connection,"grantRevision":self.grant["revision"],"capabilities":self.grant["capabilities"],"methods":METHODS,"limits":limits,"sessionCreateFirstMessage":true});
         if self.gui_write {
             value["writeLimits"] = write_limits();
         }
@@ -1194,7 +1200,10 @@ impl Session {
             }
             return workbench_route::backend_command(&self.host, &self.peer, &request).await;
         }
-        if method == "desktop.command" || crate::server::plugins::METHODS.contains(&method) {
+        if method == "desktop.command"
+            || crate::server::plugins::METHODS.contains(&method)
+            || crate::server::bots::METHODS.contains(&method)
+        {
             ensure!(self.local && self.gui_write, "FORBIDDEN");
             self.authorize(None, "manage")?;
             ensure!(request.get("context").is_none(), "INVALID_PARAMS");
@@ -1202,6 +1211,9 @@ impl Session {
             if method == "desktop.command" {
                 return workbench_route::desktop_command(host, peer, &self.connection, request)
                     .await;
+            }
+            if crate::server::bots::METHODS.contains(&method) {
+                return crate::server::bots::gateway(host, method, request).await;
             }
             return crate::server::plugins::gateway(host, method, request).await;
         }

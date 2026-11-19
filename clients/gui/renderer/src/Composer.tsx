@@ -331,7 +331,11 @@ export function Composer({
   // 配置写入仍占用提交锁，但不把草稿编辑和模型浮层切成消息发送态。
   const draftDisabled = baseDisabled || (queueEditor.busy && !configuring) || queueEditor.locked;
   const editorDisabled = draftDisabled || connectionUnavailable || pending || !!unknown;
-  const disabled = editorDisabled || executionBlocked || configuring;
+  const localExecutionBlocked =
+    (thread.executionLocalReady ?? project.localExecutionReady) === false &&
+    !hibernated &&
+    !silentWarming;
+  const disabled = editorDisabled || executionBlocked || configuring || localExecutionBlocked;
   const compatibilityDescription = useId();
   const desktopUnsupported =
     conversationSubmitReadOnly ||

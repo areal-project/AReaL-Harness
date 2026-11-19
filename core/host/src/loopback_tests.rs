@@ -109,6 +109,7 @@ impl Fixture {
             gateway: super::super::gateway_owner::Gateway::default(),
             subscriptions: super::super::subscriptions::Subscriptions::default(),
             schedules: super::super::schedules::Schedules::load(&home).unwrap(),
+            bots: super::super::bots::Bots::load(&home).unwrap(),
             power: super::super::power::Power::default(),
             read_models: Default::default(),
             loopback: Loopback::default(),
@@ -887,6 +888,13 @@ async fn pending_workbench_requests_do_not_block_queries_or_page_events() {
                     let inspect = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
                     assert_eq!(inspect["id"], "inspect-read");
                     assert!(inspect.get("error").is_none(), "manage inspect must use bounded query admission: {inspect}");
+                    for (command, operation) in [("manage", "mcpForms"), ("manage", "context"), ("workspace", "info"), ("resources", "skills")] {
+                        write(&mut socket, json!({"version":1,"id":operation,"method":"desktop.command",
+                            "params":{"command":command,"request":{"projectId":"queued","operation":operation}}})).await;
+                        let reply = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
+                        assert_eq!(reply["id"], operation);
+                        assert!(reply.get("error").is_none(), "reopening a chat must not consume mutation slots for {command}/{operation}: {reply}");
+                    }
                     write(&mut socket, json!({"version":1,"id":"activity-ping",
                         "method":"analytics.activity","params":{"focused":true,"idleSeconds":0}})).await;
                     let activity = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
@@ -958,7 +966,7 @@ async fn browser_write_scopes_are_explicit_enforced_and_revocable() {
             assert_eq!(hello["scopes"], json!(["observe", scope]));
             let methods = hello["writeMethods"].as_array().unwrap();
             assert_eq!(methods.contains(&json!("library.command")), scope == "manage");
-            for method in ["worktree.read", "tasks.read", "trajectory.read", "trajectory.command", "feedback.read", "feedback.command", "manage.read", "manage.command", "providers.read", "providers.command"] {
+            for method in ["worktree.read", "tasks.read", "trajectory.read", "trajectory.command", "feedback.read", "feedback.command", "manage.read", "manage.command", "providers.read", "providers.command", "bots.read", "bots.command"] {
                 assert_eq!(methods.contains(&json!(method)), scope == "manage");
             }
             assert_eq!(methods.contains(&json!("session.send")), scope == "submit");
@@ -1473,4 +1481,108 @@ async fn shell_update_is_sent_before_session_invalidated_on_host_change() {
         assert_eq!(second["method"], "session.invalidated");
     })
     .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn loopback_bots_command_read_and_event_push() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let fixture = Fixture::start().await;
+            let ticket = fixture
+                .client()
+                .await
+                .web_ticket(ELECTRON_ORIGIN)
+                .await
+                .unwrap();
+            let mut socket = connect(&ticket, ELECTRON_ORIGIN).await;
+            write(
+                &mut socket,
+                json!({
+                    "version": 1,
+                    "id": "hello",
+                    "method": "hello",
+                    "params": {
+                        "protocolVersions": [1],
+                        "capabilities": ["gui-read-v1", "gui-write-v1"],
+                        "ticket": ticket.ticket,
+                        "expectedGeneration": ticket.generation
+                    }
+                }),
+            )
+            .await;
+            let hello = read(&mut socket).await["result"].clone();
+            let methods = hello["writeMethods"].as_array().unwrap();
+            assert!(methods.contains(&json!("bots.read")));
+            assert!(methods.contains(&json!("bots.command")));
+
+            // 1. bots.command create -> 产生注册表更新并推送 bots.event (registryChanged)
+            write(
+                &mut socket,
+                json!({
+                    "version": 1,
+                    "id": "bot-create",
+                    "method": "bots.command",
+                    "commandId": uuid::Uuid::new_v4().to_string(),
+                    "params": {
+                        "operation": "create",
+                        "name": "Loopback Bot",
+                        "workspace": "loopback-bot-1"
+                    }
+                }),
+            )
+            .await;
+
+            let mut saw_create_reply = false;
+            let mut saw_event = false;
+            for _ in 0..4 {
+                let msg = read(&mut socket).await;
+                if msg.get("id") == Some(&json!("bot-create")) {
+                    assert_eq!(msg["result"]["admissionState"], "accepted");
+                    assert_eq!(
+                        msg["result"]["receipt"]["bot"]["workspace"],
+                        "loopback-bot-1"
+                    );
+                    saw_create_reply = true;
+                } else if msg.get("method") == Some(&json!("bots.event")) {
+                    assert_eq!(msg["params"]["event"], "bots.event");
+                    assert_eq!(msg["params"]["notification"]["kind"], "registryChanged");
+                    saw_event = true;
+                }
+                if saw_create_reply && saw_event {
+                    break;
+                }
+            }
+            assert!(saw_create_reply && saw_event);
+
+            // 2. bots.read list -> 读回刚创建的 Bot
+            write(
+                &mut socket,
+                json!({
+                    "version": 1,
+                    "id": "bot-list",
+                    "method": "bots.read",
+                    "params": { "operation": "list" }
+                }),
+            )
+            .await;
+            let list_reply = read(&mut socket).await;
+            assert_eq!(list_reply["id"], "bot-list");
+            assert_eq!(list_reply["result"]["bots"][0]["name"], "Loopback Bot");
+
+            // 3. 查询不存在的 Bot -> 返回 NOT_FOUND 且 submissionUnknown == false
+            write(
+                &mut socket,
+                json!({
+                    "version": 1,
+                    "id": "bot-missing",
+                    "method": "bots.read",
+                    "params": { "operation": "get", "id": "non-existent" }
+                }),
+            )
+            .await;
+            let missing = read(&mut socket).await;
+            assert_eq!(missing["error"]["code"], "NOT_FOUND");
+            assert_eq!(missing["error"]["submissionUnknown"], false);
+        })
+        .await;
 }

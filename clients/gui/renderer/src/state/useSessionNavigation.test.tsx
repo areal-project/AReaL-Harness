@@ -558,9 +558,7 @@ it.each([
     scenario.history,
   );
   await f.navigation.restoreConversation(owner, "connect", { resumeScheduling: scenario.manual });
-  expect(f.events).toEqual(
-    scenario.history && !scenario.manual ? ["read", "connect"] : ["connect"],
-  );
+  expect(f.events).toEqual(scenario.history ? ["read", "connect"] : ["connect"]);
   expect(seed.restoration?.pending).toBe(false);
   expect(seed.restoration?.failure).toBe(scenario.expectedError ? failure : undefined);
 });
@@ -683,4 +681,63 @@ it("does not automatically wake Core when an open conversation enters idle hiber
   await Promise.resolve();
   await Promise.resolve();
   expect(f.events).toEqual([]);
+});
+
+it.each(["sidebar", "startup", "retry"])(
+  "reads saved history from %s before verifying execution",
+  async (entry) => {
+    seed.selectedProject = owner.projectId;
+    seed.snapshot = {
+      connection: { state: "ready" },
+      projects: [
+        { id: owner.projectId, root: "/fixture", state: { connected: true, threads: {} } },
+      ],
+    };
+    const f = fixture(true, async () => {}, false, true);
+    f.services.reads!.canPrewarm = () => false;
+    const refreshed = vi.fn(async () => {});
+    f.services.reads!.refreshProjects = refreshed;
+    f.selectSession.mockImplementation(async (target) => {
+      if (!target?.persisted) throw new Error("Project Core unavailable");
+    });
+    if (entry === "sidebar") await f.navigation.selectConversation(owner.projectId, owner.threadId);
+    if (entry === "startup") {
+      f.navigation.synchronizeRestoration();
+      await f.navigation.pendingRestoration();
+    }
+    if (entry === "retry") {
+      await f.navigation.restoreConversation(owner, "connect");
+      expect(seed.restoration?.failure?.message).toBe("Project Core unavailable");
+      await f.navigation.retryRestoration();
+    }
+    if (entry !== "retry") expect(refreshed).toHaveBeenCalledOnce();
+    expect(f.selectSession).toHaveBeenLastCalledWith({
+      projectId: owner.projectId,
+      threadId: owner.threadId,
+      persisted: true,
+    });
+    expect(seed.restoration).toMatchObject({ pending: false, error: "" });
+    expect(f.command).not.toHaveBeenCalled();
+  },
+);
+
+it("opens the new live generation when Core acquires the store during a saved read", async () => {
+  const f = fixture(
+    true,
+    async () => {
+      throw new Error("duplicate activation");
+    },
+    false,
+    true,
+  );
+  f.services.reads!.refreshProjects = async () => {
+    f.events.push("refresh");
+  };
+  f.selectSession.mockImplementation(async (target) => {
+    if (target?.persisted) throw Object.assign(new Error("busy"), { code: "RESOURCE_BUSY" });
+    f.events.push("live");
+  });
+  await f.navigation.selectConversation(owner.projectId, owner.threadId);
+  expect(f.events.filter((event) => event !== "library")).toEqual(["refresh", "live"]);
+  expect(seed.restoration).toMatchObject({ pending: false, error: "" });
 });

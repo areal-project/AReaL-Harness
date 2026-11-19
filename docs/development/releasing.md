@@ -61,6 +61,8 @@ Homebrew formula 安装 `bin`、`libexec`、LICENSE 和 manifest，避免改变 
 
 本机 GUI 打包固定 Mac arm64，统一从 `pnpm --dir clients/gui run dist --help` 选择三档：`adhoc`（默认本地测试）、`developer-id`（Developer ID Application 签名、不公证）、`notarized`（正式签名公证）。具体参数见 [GUI 构建指南](../../clients/gui/README.md)。本地打包不要求改版本；Developer ID 两档可显式 `--skip-tests` 跳过功能测试，签名与完整性检查保留，正式档仍执行公证、stapling 与 Gatekeeper。跳过测试的产物不能宣称功能验收通过；公开发行导出的模型验收要求见下文。
 
+涉及对话恢复或发送准入时，在替换安装版前用签名候选运行 `AREAL_TEST_PACKAGE="/绝对路径/AReaL Harness GUI.app" pnpm --dir clients/gui run test:recovery-electron-history-steer`。验收在隔离数据中保留浏览器工具和旧的未决队列请求，分别主动停机和模拟 Core 意外退出。从侧栏打开旧对话后，核对原对话只新增一轮、模型只收到一次请求，并在桌面看到回复。
+
 准备版本号和 PR 前，先按[并行修改与终验](README.md#并行修改与终验)选定任务独占 worktree；不等到打包或推送检查发现并发修改后才隔离。版本准备在该目录完成，正式构建继续使用已合并的固定提交和独占输出目录。
 
 本机无需新增签名时可使用 `AREAL_GUI_UNSIGNED_LOCAL=1 AREAL_GUI_PACKAGE_DIR=/绝对路径/新目录 pnpm --dir clients/gui package`，CLI bundle 对应 `python3 scripts/package.py --unsigned-local --profile debug --output /绝对路径/新目录`。该显式模式跳过 Core 副本和整个 app 的签名，builder 继续使用 `identity: null`；保留输入字节及已有签名，记录真实 bundle 签名核验结果，不移除签名或改变系统策略。它与 `AREAL_GUI_RELEASE=1` 互斥；默认流程仍创建本机 ad-hoc 签名。已生成 ZIP 不证明能启动，须从 ZIP 复制到新隔离目录验收，系统拒绝时保留首次失败并停止该启动路径。

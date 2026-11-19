@@ -29,20 +29,27 @@ type RestorationAttempt = RestorationOwner & {
 };
 
 function isProjectCoreUnavailable(failure: unknown) {
+  const error = failure as RecoveryFailure | null;
   return (
-    typeof failure === "object" &&
-    failure !== null &&
-    (failure as { message?: unknown }).message === "Project Core unavailable" // raw-error-ok: 仅用于识别项目 Core 未就绪以触发刷新或重连
+    error?.code === "CORE_UNAVAILABLE" ||
+    error?.code === "scheduleHostUnavailable" ||
+    error?.message === "Project Core unavailable" // raw-error-ok: 旧读客户端在本地目录缺代次时返回此错误
   );
 }
 
-function readHostGeneration(reads: PlatformServices["reads"]) {
+function readHostOwner(reads: PlatformServices["reads"]) {
   const connection = reads?.status();
   return connection?.connection === "ready" &&
     connection.identity.hostId &&
     connection.identity.hostGeneration
-    ? JSON.stringify([connection.identity.hostId, connection.identity.hostGeneration])
-    : undefined;
+    ? {
+        hostGeneration: JSON.stringify([
+          connection.identity.hostId,
+          connection.identity.hostGeneration,
+        ]),
+        connectionId: connection.identity.connectionId,
+      }
+    : { hostGeneration: undefined, connectionId: undefined };
 }
 
 function conversationProject(project: Snapshot["projects"][number] | undefined, threadId: string) {
@@ -140,13 +147,13 @@ export function useSessionNavigation(
       (snapshot.connection?.state === "ready" ? projects.find((p) => !p.projectless) : undefined));
   const project = conversationProject(logicalProject, threadId);
   const thread = project?.state?.threads[threadId];
-  const hostGeneration = readHostGeneration(services.reads);
+  const hostOwner = readHostOwner(services.reads);
   const prewarmReady = services.reads?.canPrewarm?.() !== false;
   const restorationOwner: RestorationOwner = {
     projectId: project?.id ?? "",
     threadId,
     connectionGeneration: project?.core?.connectionGeneration ?? 0,
-    hostGeneration,
+    ...hostOwner,
   };
   const selectedRestoration = useRef(restorationOwner);
   selectedRestoration.current = restorationOwner;
@@ -255,7 +262,7 @@ export function useSessionNavigation(
       const current = () =>
         restorationAttempt.current === attempt &&
         sameRestorationOwner(selectedRestoration.current, owner) &&
-        readHostGeneration(services.reads) === owner.hostGeneration;
+        sameRestorationOwner({ ...owner, ...readHostOwner(services.reads) }, owner);
       attempt.promise = (async () => {
         markRendererStartup("restore_start", { operation });
         try {
@@ -276,13 +283,40 @@ export function useSessionNavigation(
             let persisted = false;
             let persistedRead = false;
             let connectError: unknown;
-            if (operation === "connect" && (!target?.state?.connected || options.forceConnect)) {
-              const connection = services.reads.status();
-              const canReadPersisted =
-                !!owner.threadId &&
-                !options.resumeScheduling &&
-                connection.connection === "ready" &&
-                connection.identity.persistedHistory === true;
+            const targetSession = owner.threadId
+              ? { projectId: owner.projectId, threadId: owner.threadId }
+              : null;
+            let needsConnect =
+              operation === "connect" && (!target?.state?.connected || options.forceConnect);
+            let opened = false;
+            let liveReadFailure: unknown;
+            const connection = services.reads.status();
+            const canReadPersisted =
+              !!targetSession &&
+              connection.connection === "ready" &&
+              connection.identity.persistedHistory === true;
+            const reads = services.reads;
+            const tryLiveRead = async () => {
+              try {
+                await reads.selectSession(targetSession);
+                opened = true;
+              } catch (error) {
+                if (!isProjectCoreUnavailable(error)) throw error;
+                liveReadFailure = error;
+              }
+            };
+            if (!needsConnect && targetSession && operation === "open") {
+              await tryLiveRead();
+              if (!current()) return;
+              if (!opened) {
+                await reads.refreshProjects?.();
+                if (!current()) return;
+                if (!canReadPersisted) await tryLiveRead();
+                if (!current()) return;
+                needsConnect = !opened;
+              }
+            }
+            if (needsConnect) {
               if (canReadPersisted) {
                 try {
                   await services.reads.selectSession({
@@ -293,12 +327,15 @@ export function useSessionNavigation(
                   persisted = true;
                   persistedRead = true;
                 } catch (error) {
-                  if (
-                    !["PERSISTED_HISTORY_UNAVAILABLE", "RESOURCE_BUSY"].includes(
-                      String((error as RecoveryFailure)?.code),
-                    )
-                  )
+                  const code = (error as RecoveryFailure)?.code;
+                  if (code !== "PERSISTED_HISTORY_UNAVAILABLE" && code !== "RESOURCE_BUSY")
                     throw error;
+                  if (code === "RESOURCE_BUSY" && current()) {
+                    // Core 可能已重新持有 Store，先核对实时读取，避免重复启动。
+                    await reads.refreshProjects?.();
+                    if (!current()) return;
+                    await tryLiveRead();
+                  }
                 }
                 if (!current()) return;
                 // 本机桌面显示历史后继续恢复执行，避免发送入口又等待实时配置。
@@ -318,6 +355,14 @@ export function useSessionNavigation(
                   }
                 }
               }
+            }
+            if (needsConnect && (!opened || options.resumeScheduling)) {
+              if (
+                liveReadFailure &&
+                (services.capabilities?.mutations === false ||
+                  services.reads.canPrewarm?.() === false)
+              )
+                throw liveReadFailure;
               try {
                 await resourceAction("connect", {
                   projectId: owner.projectId,
@@ -337,6 +382,7 @@ export function useSessionNavigation(
                 // 已读到历史时，Host 停止只挡住后台预启动。主动恢复与未知结果仍按原路径处理。
                 if (
                   persisted &&
+                  !options.resumeScheduling &&
                   failure?.code === "stopInProgress" &&
                   failure.recovery?.kind !== "needsUser" &&
                   !unresolved
@@ -346,6 +392,7 @@ export function useSessionNavigation(
                 }
                 if (
                   !canReadPersisted ||
+                  options.resumeScheduling ||
                   unresolved ||
                   !["migrationBlocked", "MIGRATION_PENDING"].includes(String(failure?.code))
                 )
@@ -359,52 +406,19 @@ export function useSessionNavigation(
                 if (!current()) return;
               }
             }
-            const targetSession = owner.threadId
-              ? {
-                  projectId: owner.projectId,
-                  threadId: owner.threadId,
-                  ...(persisted ? { persisted: true } : {}),
-                }
-              : null;
-            try {
-              await services.reads.selectSession(targetSession);
-            } catch (error) {
-              if (!connectError && owner.threadId && isProjectCoreUnavailable(error)) {
-                if (operation === "open") {
-                  await services.reads.refreshProjects?.();
-                  if (!current()) return;
-                  try {
-                    await services.reads.selectSession(targetSession);
-                  } catch (retryError) {
-                    if (
-                      !isProjectCoreUnavailable(retryError) ||
-                      services.capabilities?.mutations === false ||
-                      services.reads.canPrewarm?.() === false
-                    )
-                      throw retryError;
-                    await resourceAction("connect", {
-                      projectId: owner.projectId,
-                      threadId: owner.threadId,
-                      ...(options.resumeScheduling ? { resumeScheduling: true } : {}),
-                    });
-                    if (!current()) return;
-                    await services.reads.refreshProjects?.();
-                    if (!current()) return;
-                    await services.reads.selectSession(targetSession);
-                  }
-                } else if (persistedRead && !options.resumeScheduling) {
-                  // 实时执行仍在启动或未就绪时保留已读出的持久化历史，避免退回整页报错。
-                  persisted = true;
-                  await services.reads.selectSession({
-                    projectId: owner.projectId,
-                    threadId: owner.threadId,
-                    persisted: true,
-                  });
-                } else {
-                  throw error;
-                }
-              } else {
-                throw connectError ?? error;
+            if (!opened && !(persistedRead && persisted)) {
+              try {
+                await services.reads.selectSession(
+                  targetSession && persisted
+                    ? { ...targetSession, persisted: true }
+                    : targetSession,
+                );
+              } catch (error) {
+                if (!targetSession || !persistedRead || !isProjectCoreUnavailable(error))
+                  throw connectError ?? error;
+                if (!current()) return;
+                persisted = true;
+                await services.reads.selectSession({ ...targetSession, persisted: true });
               }
             }
             if (current()) {
@@ -581,9 +595,11 @@ export function useSessionNavigation(
       projectId: pid,
       threadId: id,
       connectionGeneration: target?.core?.connectionGeneration ?? 0,
-      hostGeneration: readHostGeneration(services.reads),
+      ...readHostOwner(services.reads),
     };
     selectedRestoration.current = owner;
+    // 选择保留到下次握手；离线时不向旧 Host 发起打开或预热。
+    if (services.reads && services.reads.status().connection !== "ready") return;
     await restoreConversation(owner, target?.state?.connected ? "open" : "connect");
   };
   const selectDraft = (pid: string | undefined) => {
