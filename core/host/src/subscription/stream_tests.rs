@@ -584,6 +584,127 @@ async fn native_inference_completes_while_catalog_is_held_and_refresh_recovers()
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn core_sends_once_on_the_original_thread_across_subscription_catalog_failure() {
+    use areal_engine::{
+        Engine, Limits,
+        model::{HttpModel, ModelProtocol},
+    };
+    use areal_protocol::{Input, Item, TurnStatus};
+    use std::sync::Arc;
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let rig = Rig::new(false).await;
+            let state = &rig.server.state;
+            let workspace = tempfile::tempdir().unwrap();
+            let core = tempfile::tempdir().unwrap();
+            let open = || {
+                let model = HttpModel::with_protocol(
+                    rig.transport.endpoint.clone(),
+                    "fixture".into(),
+                    Some("fixture-loopback".into()),
+                    ModelProtocol::Responses,
+                )
+                .unwrap();
+                Engine::open(core.path(), Arc::new(model), Limits::default()).unwrap()
+            };
+            rig.source.refresh_catalog(false).await.unwrap();
+            let engine = open();
+            let thread = engine
+                .create(workspace.path().to_str().unwrap().into())
+                .await
+                .unwrap();
+
+            state.hold_catalog.set(true);
+            state.fail_catalog.set(true);
+            let source = rig.source.clone();
+            let discovery =
+                tokio::task::spawn_local(async move { source.refresh_catalog(true).await });
+            state.count(&state.catalogs, 2).await;
+
+            let first = engine
+                .start(
+                    &thread.id,
+                    vec![Input::text("Original subscription question")],
+                )
+                .await
+                .unwrap();
+            let finished = tokio::time::timeout(Duration::from_secs(5), engine.wait(&thread.id))
+                .await
+                .expect("Core completes before catalog release")
+                .unwrap();
+            assert_eq!(finished.turns[0].id, first.id);
+            assert_eq!(finished.turns[0].status, TurnStatus::Completed);
+            assert_eq!(state.posts.get(), 1);
+            assert!(!discovery.is_finished());
+            engine.shutdown().await;
+            drop(engine);
+
+            state.hold_catalog.set(false);
+            state.catalog_gate.add_permits(1);
+            assert!(discovery.await.unwrap().is_err());
+
+            let restored = open();
+            let history = restored.read(&thread.id, true).await.unwrap();
+            assert_eq!(history.turns.len(), 1);
+            assert_eq!(history.turns[0].id, first.id);
+            assert_eq!(
+                state.posts.get(),
+                1,
+                "reading History cannot replay inference"
+            );
+            let follow_up = restored
+                .start(
+                    &thread.id,
+                    vec![Input::text("Continue the original question")],
+                )
+                .await
+                .unwrap();
+            let finished = tokio::time::timeout(Duration::from_secs(5), restored.wait(&thread.id))
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(finished.turns.len(), 2);
+            assert_eq!(finished.turns[1].id, follow_up.id);
+            for turn in &finished.turns {
+                assert_eq!(turn.status, TurnStatus::Completed);
+                assert!(turn.items.iter().any(
+                    |item| matches!(item, Item::AgentMessage { text, .. } if text == "first")
+                ));
+            }
+            assert_eq!(
+                state.catalogs.get(),
+                2,
+                "inference cannot discover a catalog"
+            );
+            assert_eq!(
+                state.posts.get(),
+                2,
+                "each original Turn posts exactly once"
+            );
+            {
+                let requests = state.received.borrow();
+                let input = requests[1]["input"].as_array().unwrap();
+                let users: Vec<_> = input
+                    .iter()
+                    .filter(|message| message["role"] == "user")
+                    .filter_map(|message| message["content"][0]["text"].as_str())
+                    .collect();
+                assert_eq!(
+                    users,
+                    [
+                        "Original subscription question",
+                        "Continue the original question"
+                    ]
+                );
+            }
+            restored.shutdown().await;
+            rig.close().await;
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn catalog_401_get_can_refresh_but_inference_401_never_replays_and_redacts() {
     tokio::task::LocalSet::new()
         .run_until(async {
