@@ -1,0 +1,29 @@
+Cargo.lock
+  s_2fddb1b3d848e5::t_a70e1ab693e11e 5647,5649
+core/plugins/Cargo.toml
+  s_f12f82d708da68::t_0f179f77f28688 27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "750cd9370045f1feb6bf0e3b87ebde49df933963",
+  "prompts": {},
+  "sessions": {
+    "s_2fddb1b3d848e5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1e04c-597d-7242-8e5c-8ba98c795bd9",
+        "model": "gpt-6.2-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    },
+    "s_f12f82d708da68": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d39b-5e9e-71a0-b28d-b29ad3693a4b",
+        "model": "gpt-6.2-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
