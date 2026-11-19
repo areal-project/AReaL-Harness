@@ -297,7 +297,8 @@ export class HostClient {
       });
       this.#publishReads({
         shell: stale(this.#reads.shell, "Host unavailable"),
-        session: stale(this.#reads.session, "Host unavailable"),
+        // 重连等待期仍由当前选择自动恢复；传输离线不是一次对话读取失败。
+        session: stale(this.#reads.session),
       });
       const delay = Math.min(30_000, 500 * 2 ** Math.min(this.#attempt++, 6));
       this.#timer = setTimeout(() => this.retry(), delay * (0.8 + Math.random() * 0.4));
@@ -676,14 +677,20 @@ export class HostClient {
       this.#pruneSessionCache();
       void Promise.resolve(this.options.cache?.saveSession?.(session)).catch(() => {});
     } catch (error) {
-      if (selection === this.#selection)
-        this.#publishReads({
-          ...this.#reads,
-          session: stale(
-            this.#reads.session,
-            error instanceof Error ? error.message : "Conversation unavailable",
-          ),
-        });
+      // 已被换代或取消的读取不能把旧连接的失败交给当前对话。
+      if (selection !== this.#selection || transport !== this.#transport) return;
+      if (record(error) && ["DISCONNECTED", "TIMEOUT"].includes(String(error.clientCode))) {
+        // 只重建读取订阅。写命令仍通过原 commandId 核对。
+        void this.retry();
+        return;
+      }
+      this.#publishReads({
+        ...this.#reads,
+        session: stale(
+          this.#reads.session,
+          error instanceof Error ? error.message : "Conversation unavailable",
+        ),
+      });
       throw error;
     }
   }

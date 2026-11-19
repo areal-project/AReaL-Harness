@@ -9,7 +9,7 @@ export type RecoveryOperation = Extract<
   { operation: unknown }
 >["operation"];
 export type RecoveryOwner = { projectId: string; threadId: string; connectionGeneration: number };
-export type RestorationOwner = RecoveryOwner & { hostGeneration?: string };
+export type RestorationOwner = RecoveryOwner & { hostGeneration?: string; connectionId?: string };
 export type RecoveryNotice = RecoveryOwner & {
   id: string;
   message: string;
@@ -50,7 +50,11 @@ export function sameRecoveryOwner(left: RecoveryOwner | undefined, right: Recove
   );
 }
 export function sameRestorationOwner(left: RestorationOwner | undefined, right: RestorationOwner) {
-  return sameRecoveryOwner(left, right) && left?.hostGeneration === right.hostGeneration;
+  return (
+    sameRecoveryOwner(left, right) &&
+    left?.hostGeneration === right.hostGeneration &&
+    left?.connectionId === right.connectionId
+  );
 }
 export function sameRecoveryOperation(left: RecoveryOperation, right: RecoveryOperation) {
   return (

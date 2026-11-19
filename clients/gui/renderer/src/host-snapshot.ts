@@ -289,6 +289,7 @@ export function createHostSnapshotProjector(
   > = new Map(),
 ) {
   let revision = 0;
+  let lastSourceId: string | undefined;
   const projectViews = new Map<
     string,
     {
@@ -343,9 +344,9 @@ export function createHostSnapshotProjector(
     threadTargets.clear();
     for (const [target, execution] of creationTargets) threadTargets.set(target, execution);
     const connection = client.snapshot();
-    const preferredSourceId =
-      options.preferredSourceId ??
-      (connection.connection === "ready" ? connection.identity.preferredSourceId : undefined);
+    if (connection.connection === "ready") lastSourceId = connection.identity.preferredSourceId;
+    const preferredSourceId = options.preferredSourceId ?? lastSourceId;
+    fresh = fresh && connection.connection === "ready";
     const sources = shell?.snapshot.navigation ?? [];
     const navigation = preferredSourceId
       ? sources.find((source) => source.sourceId === preferredSourceId)
@@ -745,7 +746,8 @@ export function createHostSnapshotProjector(
         connection: {
           state: fresh
             ? "ready"
-            : client.snapshot().connection === "connecting"
+            : connection.connection === "connecting" ||
+                (shell && connection.connection === "offline")
               ? "connecting"
               : "unavailable",
           ...(fresh ? {} : connectionStage ? { stage: connectionStage } : {}),

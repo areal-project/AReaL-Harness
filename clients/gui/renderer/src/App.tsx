@@ -346,6 +346,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     project?.state?.connected,
     project?.core?.connectionGeneration,
     restorationOwner.hostGeneration,
+    restorationOwner.connectionId,
     prewarmReady,
     snapshot.connection?.state,
     restoreConversation,

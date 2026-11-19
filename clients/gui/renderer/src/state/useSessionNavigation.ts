@@ -36,13 +36,19 @@ function isProjectCoreUnavailable(failure: unknown) {
   );
 }
 
-function readHostGeneration(reads: PlatformServices["reads"]) {
+function readHostOwner(reads: PlatformServices["reads"]) {
   const connection = reads?.status();
   return connection?.connection === "ready" &&
     connection.identity.hostId &&
     connection.identity.hostGeneration
-    ? JSON.stringify([connection.identity.hostId, connection.identity.hostGeneration])
-    : undefined;
+    ? {
+        hostGeneration: JSON.stringify([
+          connection.identity.hostId,
+          connection.identity.hostGeneration,
+        ]),
+        connectionId: connection.identity.connectionId,
+      }
+    : { hostGeneration: undefined, connectionId: undefined };
 }
 
 function conversationProject(project: Snapshot["projects"][number] | undefined, threadId: string) {
@@ -140,13 +146,13 @@ export function useSessionNavigation(
       (snapshot.connection?.state === "ready" ? projects.find((p) => !p.projectless) : undefined));
   const project = conversationProject(logicalProject, threadId);
   const thread = project?.state?.threads[threadId];
-  const hostGeneration = readHostGeneration(services.reads);
+  const hostOwner = readHostOwner(services.reads);
   const prewarmReady = services.reads?.canPrewarm?.() !== false;
   const restorationOwner: RestorationOwner = {
     projectId: project?.id ?? "",
     threadId,
     connectionGeneration: project?.core?.connectionGeneration ?? 0,
-    hostGeneration,
+    ...hostOwner,
   };
   const selectedRestoration = useRef(restorationOwner);
   selectedRestoration.current = restorationOwner;
@@ -254,7 +260,7 @@ export function useSessionNavigation(
       const current = () =>
         restorationAttempt.current === attempt &&
         sameRestorationOwner(selectedRestoration.current, owner) &&
-        readHostGeneration(services.reads) === owner.hostGeneration;
+        sameRestorationOwner({ ...owner, ...readHostOwner(services.reads) }, owner);
       attempt.promise = (async () => {
         markRendererStartup("restore_start", { operation });
         try {
@@ -576,9 +582,11 @@ export function useSessionNavigation(
       projectId: pid,
       threadId: id,
       connectionGeneration: target?.core?.connectionGeneration ?? 0,
-      hostGeneration: readHostGeneration(services.reads),
+      ...readHostOwner(services.reads),
     };
     selectedRestoration.current = owner;
+    // 选择保留到下次握手；离线时不向旧 Host 发起打开或预热。
+    if (services.reads && services.reads.status().connection !== "ready") return;
     await restoreConversation(owner, target?.state?.connected ? "open" : "connect");
   };
   const selectDraft = (pid: string | undefined) => {
