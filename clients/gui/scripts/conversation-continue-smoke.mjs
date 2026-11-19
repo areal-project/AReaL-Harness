@@ -76,6 +76,7 @@ const saveRun = () => writeFile(join(scratch, "run.json"), JSON.stringify(run, n
 await saveRun();
 const requests = [],
   checks = [],
+  layoutFailures = [],
   pageErrors = [],
   stderr = [],
   commands = [];
@@ -909,15 +910,14 @@ try {
       `Composer reference acceptance ${marker}`,
       "pasted text shows the first nonempty line",
     );
-    assert.ok(
-      layout.image.x < layout.comments.x && layout.comments.x < layout.text.x,
-      `image, comments and text share the reference order: ${JSON.stringify(layout)}`,
-    );
-    assert.ok(
-      Math.abs(layout.image.bottom - layout.comments.bottom) <= 1 &&
-        Math.abs(layout.image.bottom - layout.text.bottom) <= 1,
-      "wide attachment row aligns card bottoms",
-    );
+    // Keep layout failures visible while exercising the original edit and its receipt.
+    if (!(layout.image.x < layout.comments.x && layout.comments.x < layout.text.x))
+      layoutFailures.push(`${colorScheme}: expected image, comments and text in that order`);
+    if (
+      Math.abs(layout.image.bottom - layout.comments.bottom) > 1 ||
+      Math.abs(layout.image.bottom - layout.text.bottom) > 1
+    )
+      layoutFailures.push(`${colorScheme}: wide attachment row should align card bottoms`);
     await shot(`02-editing-${colorScheme}-wide.png`);
     layoutEvidence.push({ colorScheme, viewport: "wide", ...layout });
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(860, 960));
@@ -938,14 +938,10 @@ try {
         }),
       };
     });
-    assert.ok(
-      narrow.scrollWidth <= narrow.clientWidth + 1,
-      "narrow attachment row has no horizontal overflow",
-    );
-    assert.ok(
-      narrow.children.some((child) => child.y > narrow.children[0].bottom),
-      "narrow attachment row wraps",
-    );
+    if (narrow.scrollWidth > narrow.clientWidth + 1)
+      layoutFailures.push(`${colorScheme}: narrow attachment row overflows horizontally`);
+    if (!narrow.children.some((child) => child.y > narrow.children[0].bottom))
+      layoutFailures.push(`${colorScheme}: narrow attachment row should wrap`);
     await shot(`02-editing-${colorScheme}-narrow.png`);
     layoutEvidence.push({ colorScheme, viewport: "narrow", ...narrow });
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 960));
@@ -1161,8 +1157,9 @@ try {
     "edit Cancel preserves history; Send atomically replaces the last prompt/reply in GUI, Core and model context; attachments/drafts survive lost replies; receipts deduplicate and stale edits reject; reload preserves replacement",
   );
   checks.push(
-    "inline edit has text actions and keyboard focus; actual screenshot, seeded review comments and pasted text align, wrap and render in both themes; expansion and removal preserve exact draft content",
+    "inline edit has text actions and keyboard focus; screenshot and pasted text render, expand and detach without disturbing the other draft items",
   );
+  if (layoutFailures.length === 0) checks.push("attachment row aligns and wraps in both themes");
   await checkpoint(checks.at(-1));
   await page.reload();
   await until((s) => s?.turns?.at(-1)?.status === "completed", "edited history after reload");
@@ -1511,6 +1508,7 @@ try {
   );
   await checkpoint(checks.at(-1));
   assert.deepEqual(pageErrors, []);
+  assert.deepEqual(layoutFailures, [], "attachment row layout");
   passed = true;
 } catch (error) {
   failure = error.stack || String(error);
@@ -1561,6 +1559,7 @@ try {
         passed,
         failure,
         checks,
+        layoutFailures,
         requests,
         commands,
         pageErrors,
