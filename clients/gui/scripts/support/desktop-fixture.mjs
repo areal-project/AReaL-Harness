@@ -19,7 +19,7 @@ async function fixtureHostRequest(page, request) {
     })
     .then(({ outputFiles }) => outputFiles[0].text);
   await page.evaluate(await hostClientModule);
-  return page.evaluate(async ({ method, params, projectId, write }) => {
+  return page.evaluate(async ({ method, params, projectId, write, approvalCommandId }) => {
     let client;
     try {
       // Playwright 的求值上下文加载生产客户端，保持页面 CSP 和传输实现不变。
@@ -40,6 +40,28 @@ async function fixtureHostRequest(page, request) {
             entry.alias.projectId === projectId,
         );
         if (matches.length !== 1) throw new Error("Expected exactly one original source project");
+        if (method === "interaction.respond") {
+          const { threadId, turnId, interactionId, argumentsDigest } = params;
+          const target = { threadId, turnId, interactionId };
+          const hostProjectId = matches[0].projectId;
+          const review = await client.query("attention.read", hostProjectId, target);
+          if (typeof review.reviewToken !== "string" || review.argumentsDigest !== argumentsDigest)
+            throw new Error("Fixture approval review does not match the original request");
+          const result = await client.command(
+            method,
+            hostProjectId,
+            {
+              ...target,
+              decision: "allowOnce",
+              argumentsDigest,
+              reviewToken: review.reviewToken,
+            },
+            approvalCommandId,
+          );
+          if (result.admissionState !== "accepted" || result.submissionUnknown)
+            throw new Error(`Original approval ${approvalCommandId}: ${result.admissionState}`);
+          return result;
+        }
         const commandId = params.requestId ?? crypto.randomUUID();
         const result = await client.command(
           method,
@@ -84,6 +106,15 @@ export function fixtureWorkbench(page, method, params, { write = false } = {}) {
 
 export function createFixtureThread(page, projectId, params) {
   return fixtureHostRequest(page, { method: "session.create", projectId, params });
+}
+
+export function approveFixtureInteraction(page, projectId, params, approvalCommandId) {
+  return fixtureHostRequest(page, {
+    method: "interaction.respond",
+    projectId,
+    params,
+    approvalCommandId,
+  });
 }
 
 // 冒烟脚本共用的等待与桌面桥。等的是权威快照、回执或观测值满足条件，不是固定时长。

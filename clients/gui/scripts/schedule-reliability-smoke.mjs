@@ -18,6 +18,7 @@ import {
   stopFixtureHost,
 } from "./application-cleanup.mjs";
 import {
+  approveFixtureInteraction,
   createFixtureThread,
   fixtureWorkbench,
   libraryCommand,
@@ -945,12 +946,19 @@ try {
         "foreground approval reaches native publish",
         15000,
       );
-      await call("respond", {
-        projectId: owner.projectId,
+      const approvalCommandId = randomUUID();
+      const approvalTarget = {
         threadId: approvalThread.threadId,
-        requestId: pendingApproval.requestId,
-        decision: "allowOnce",
+        turnId: pendingApproval.turnId,
+        interactionId: pendingApproval.requestId,
+        argumentsDigest: pendingApproval.argumentsDigest,
+      };
+      await saveScheduleEvidence(evidence, "foreground-approval-command", {
+        projectId: owner.projectId,
+        commandId: approvalCommandId,
+        ...approvalTarget,
       });
+      await approveFixtureInteraction(page, owner.projectId, approvalTarget, approvalCommandId);
       await until(
         async () => {
           const task = await call("manage", {
