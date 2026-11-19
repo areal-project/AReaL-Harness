@@ -896,7 +896,10 @@ class SharedCoreBackend {
       if (semantics.effect === "mutation" && record(error)) {
         if (semantics.requestId) error.requestId ??= params[semantics.requestId];
         // 无Host拒绝证据的传输错误保留原提交，不能重新发送。
-        if (
+        if (error.code === "TASK_REJECTED") {
+          error.submissionUnknown = false;
+          error.outcome = { kind: "rejected" };
+        } else if (
           !error.outcome &&
           !["COMMAND_FAILED", "INVALID_PARAMS", "FORBIDDEN", "CORE_INCOMPATIBLE"].includes(
             String(error.code ?? ""),

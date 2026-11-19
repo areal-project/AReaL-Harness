@@ -1343,6 +1343,12 @@ try {
   assert.equal(requests.length, recoveryRequests);
   await closeGeneration("recovered-generation");
   const unknownRecord = JSON.parse(await readFile(recordPath, "utf8"));
+  // 此处注入 Runtime 调用的旧 UNKNOWN。直连 Core 的断言使用不需要浏览器工具主人的会话。
+  assert.deepEqual(
+    unknownRecord.thread.dynamicTools.map((tool) => tool.name),
+    ["browser_v1"],
+  );
+  unknownRecord.thread.dynamicTools = [];
   const unknownTurn = unknownRecord.thread.turns.at(-1);
   unknownTurn.status = "failed";
   delete unknownTurn.interruption;

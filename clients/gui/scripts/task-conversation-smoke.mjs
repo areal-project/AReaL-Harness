@@ -1,5 +1,9 @@
 import { makeTempDir } from "./support/temp.mjs";
-import { fixtureWorkbench, until as waitFor } from "./support/desktop-fixture.mjs";
+import {
+  createFixtureThread,
+  fixtureWorkbench,
+  until as waitFor,
+} from "./support/desktop-fixture.mjs";
 import { readCoreThread } from "./support/core-observation.mjs";
 // 真实 Electron / Desktop adapter / Core；模型响应确定化，所有状态与权限来自生产路径。
 import assert from "node:assert/strict";
@@ -850,23 +854,31 @@ async function checkCalendarRegression() {
     history.threadId,
   );
   await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
+  const source = await createFixtureThread(page, pid, {});
   const context = await call("manage", {
     projectId: pid,
     operation: "taskScheduleContext",
     timeZone: "Asia/Shanghai",
   });
+  const dueAt = context.coreNow + 30;
   const missed = await call("manage", {
     projectId: pid,
     operation: "taskCreate",
     mode: "scheduled",
+    sourceThreadId: source.threadId,
     objective: "日历错过验收 HOLD",
     scheduleV2: {
       version: 1,
-      rule: { kind: "once", at: context.coreNow - 301 },
-      misfire: { kind: "skip", maxLatenessSeconds: 300 },
+      rule: { kind: "once", at: dueAt },
+      misfire: { kind: "skip", maxLatenessSeconds: 0 },
       overlap: "skip",
     },
   });
+  await closeOwnedApp();
+  assert.ok(Date.now() < dueAt * 1000, "Host exited before the scheduled occurrence");
+  await until(() => Date.now() > (dueAt + 1) * 1000, "occurrence elapsed while Host was stopped");
+  await launch();
+  await page.getByRole("button", { name: "定时任务", exact: true }).click();
   const missedState = await until(async () => {
     const t = await task(missed.id);
     return t.lastTriggerDecision?.outcome.kind === "missedWindow" && t;
@@ -898,17 +910,10 @@ async function checkCalendarRegression() {
     async () => (await activeRow.isVisible()) && (await activeRow.innerText()).includes("运行中"),
     "manual run after a missed once displays its active status",
   );
-  for (const [label, checked] of [
-    ["已开启", true],
-    ["已暂停", false],
-    ["已完成", false],
-  ]) {
-    await page.getByRole("button", { name: "筛选任务", exact: true }).click();
-    const item = page.getByRole("menuitemcheckbox", { name: label, exact: true });
-    if (((await item.getAttribute("aria-checked")) === "true") !== checked) await item.click();
-    await page.keyboard.press("Escape");
-  }
-  await activeRow.waitFor();
+  await page
+    .getByRole("group", { name: "已开启", exact: true })
+    .getByRole("button", { name: "打开定时任务 日历错过验收 HOLD", exact: true })
+    .waitFor();
   await page.screenshot({ path: join(scratch, "calendar-missed-manual-running.png") });
   await control(missed.id, "taskStopRun", manualAfterMissed.runs.at(-1).id);
   await until(
@@ -916,12 +921,6 @@ async function checkCalendarRegression() {
       ["cancelled", "completed", "failed"].includes((await task(missed.id)).runs.at(-1)?.status),
     "held manual run stops through the ordinary control",
   );
-  for (const label of ["已暂停", "已完成"]) {
-    await page.getByRole("button", { name: "筛选任务", exact: true }).click();
-    const item = page.getByRole("menuitemcheckbox", { name: label, exact: true });
-    if ((await item.getAttribute("aria-checked")) !== "true") await item.click();
-    await page.keyboard.press("Escape");
-  }
 
   const unknownCreation = await prepareLegacyDraft();
   pid = unknownCreation.owner.id;
@@ -1624,8 +1623,11 @@ try {
         .filter({ hasText: /^已结束$/ })
         .waitFor();
       await page
-        .getByRole("button", { name: `打开自动化 ${(await task(taskId)).objective}`, exact: true })
-        .getByText("已取消", { exact: true })
+        .getByRole("button", {
+          name: `打开定时任务 ${(await task(taskId)).objective}`,
+          exact: true,
+        })
+        .getByText("已结束", { exact: true })
         .waitFor();
       assert.ok((await task(taskId)).runs.length >= 2);
       checks.push("Agent cancellation preserves execution history");

@@ -1227,6 +1227,36 @@ test("native command late replies cannot settle a replacement source or replay a
   assert.equal(f.calls.filter((frame) => frame.method === "desktop.command").length, 1);
 });
 
+test("a native Core rejection keeps its original ID and no-mutation outcome", async (t) => {
+  const f = await fixture(t);
+  const requestId = randomUUID();
+  f.backend.nativeBrowserSource = "source";
+  f.backend.nativeBrowserEpoch = {};
+  f.backend.nativeBrowser = {
+    closed: false,
+    async command() {
+      throw Object.assign(new Error("Core rejected task request"), { code: "TASK_REJECTED" });
+    },
+  };
+  f.backend.status.connected = true;
+  await assert.rejects(
+    f.backend.command("manage", {
+      operation: "taskDraftSend",
+      projectId: "project",
+      threadId: "thread",
+      requestId,
+      text: "Adjust weekdays",
+      timeZone: "Asia/Shanghai",
+    }),
+    {
+      code: "TASK_REJECTED",
+      requestId,
+      submissionUnknown: false,
+      outcome: { kind: "rejected" },
+    },
+  );
+});
+
 for (const replaced of [false, true])
   test(`native lifecycle recovery reads the original Host receipt (replacement=${replaced})`, async (t) => {
     const f = await fixture(t);
