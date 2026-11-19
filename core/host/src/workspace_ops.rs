@@ -14,9 +14,13 @@ use std::{
     path::{Component, Path, PathBuf},
     process::Stdio,
     rc::Rc,
+    sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio::process::Command;
+use tokio::{
+    io::{AsyncRead, AsyncReadExt},
+    process::Command,
+};
 
 const FILE_LIMIT: usize = 2 * 1024 * 1024;
 const BLOB_LIMIT: usize = 8 * 1024 * 1024;
@@ -54,6 +58,7 @@ const SCOPE_FIELDS: &[&str] = &[
 #[derive(Default)]
 pub(super) struct WorkspaceOps {
     busy_repos: RefCell<BTreeSet<PathBuf>>,
+    file_save_commit: Arc<Mutex<()>>,
 }
 
 struct BusyRepoGuard<'a> {
@@ -294,7 +299,9 @@ impl WorkspaceOps {
                 let text = required_str(request, "text")?.to_owned();
                 let rev = required_str(request, "revision")?.to_owned();
                 let ws = scope.workspace.clone();
-                tokio::task::spawn_blocking(move || save_text(&ws, &rel, &text, &rev)).await?
+                let commit = self.file_save_commit.clone();
+                tokio::task::spawn_blocking(move || save_text(&ws, &rel, &text, &rev, &commit))
+                    .await?
             }
             "status" => file_status(&scope.workspace).await,
             "info" => workspace_info(&scope.workspace, &scope.home).await,
@@ -716,7 +723,13 @@ fn read_text(root: &Path, relative: &str) -> Result<Value> {
     }))
 }
 
-fn save_text(root: &Path, relative: &str, text: &str, expected_revision: &str) -> Result<Value> {
+fn save_text(
+    root: &Path,
+    relative: &str,
+    text: &str,
+    expected_revision: &str,
+    commit: &Mutex<()>,
+) -> Result<Value> {
     if text.len() > FILE_LIMIT {
         return Err(cmd_err("文件内容过大"));
     }
@@ -740,6 +753,8 @@ fn save_text(root: &Path, relative: &str, text: &str, expected_revision: &str) -
             .open(&temporary)?;
         out.write_all(text.as_bytes())?;
     }
+    // 同一个 Host 的保存共享最终复核与替换；写临时文件仍可并行。
+    let _commit = commit.lock().map_err(|_| cmd_err("无法完成文本保存"))?;
     let rechecked = resolve_file(root, relative)?;
     let latest_bytes = std::fs::read(&file).map_err(|e| cmd_err(format!("读取文件失败：{e}")))?;
     if rechecked != file || sha256_hex(&latest_bytes) != expected_revision {
@@ -762,6 +777,13 @@ struct GitOutput {
     stderr: String,
 }
 
+async fn read_git_pipe(pipe: impl AsyncRead + Unpin, limit: usize) -> Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    pipe.take(limit as u64 + 1).read_to_end(&mut bytes).await?;
+    ensure!(bytes.len() <= limit, cmd_err("Git 输出过大"));
+    Ok(bytes)
+}
+
 async fn run_git_raw(root: &Path, args: &[&str], timeout: Duration) -> Result<GitOutput> {
     let mut cmd = Command::new("git");
     cmd.arg("-C")
@@ -774,18 +796,30 @@ async fn run_git_raw(root: &Path, args: &[&str], timeout: Duration) -> Result<Gi
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    let output = tokio::time::timeout(timeout, cmd.output())
-        .await
-        .map_err(|_| cmd_err("Git 操作超时"))?
+    let mut child = cmd
+        .spawn()
         .map_err(|e| cmd_err(format!("无法启动 Git：{e}")))?;
-    ensure!(
-        output.stdout.len() <= DIFF_LIMIT * 2,
-        cmd_err("Git 输出过大")
-    );
+    let stdout = child.stdout.take().context("missing Git stdout")?;
+    let stderr = child.stderr.take().context("missing Git stderr")?;
+    let capture = async {
+        tokio::try_join!(
+            read_git_pipe(stdout, DIFF_LIMIT * 2),
+            read_git_pipe(stderr, DIFF_LIMIT * 2),
+            async { Ok(child.wait().await?) },
+        )
+    };
+    let result = tokio::time::timeout(timeout, capture)
+        .await
+        .map_err(|_| cmd_err("Git 操作超时"))
+        .and_then(|output| output);
+    if result.is_err() {
+        let _ = child.kill().await;
+    }
+    let (stdout, stderr, status) = result?;
     Ok(GitOutput {
-        status: output.status,
-        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        status,
+        stdout: String::from_utf8_lossy(&stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&stderr).into_owned(),
     })
 }
 
@@ -2943,10 +2977,52 @@ mod tests {
                     "export const x = 2;\n"
                 );
 
+                let file = workspace.join("src/concurrent.txt");
+                let base = "0".repeat(FILE_LIMIT);
+                std::fs::write(&file, &base).unwrap();
+                let revision = sha256_hex(base.as_bytes());
+                let drafts: Vec<_> = (1..=8).map(|n| n.to_string().repeat(FILE_LIMIT)).collect();
+                let results = futures_util::future::join_all(drafts.iter().map(|draft| {
+                    run_cmd(
+                        &host,
+                        json!({
+                            "projectId": alias,
+                            "threadId": "thread-1",
+                            "operation": "save",
+                            "path": "src/concurrent.txt",
+                            "text": draft,
+                            "revision": revision,
+                        }),
+                    )
+                }))
+                .await;
+                let results: Vec<_> = results.into_iter().map(Result::unwrap).collect();
+                let winners: Vec<_> = results
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, result)| result["saved"] == true)
+                    .collect();
+                assert_eq!(winners.len(), 1, "{results:?}");
+                assert_eq!(results.iter().filter(|value| value["conflict"] == true).count(), 7);
+                assert_eq!(std::fs::read_to_string(&file).unwrap(), drafts[winners[0].0]);
+
                 close_core();
                 server.abort();
             })
             .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn git_pipe_stops_reading_on_overflow_before_eof() {
+        let (reader, mut writer) = tokio::io::duplex(16);
+        tokio::io::AsyncWriteExt::write_all(&mut writer, b"too much output")
+            .await
+            .unwrap();
+        let error = tokio::time::timeout(Duration::from_secs(1), read_git_pipe(reader, 8))
+            .await
+            .unwrap()
+            .unwrap_err();
+        assert!(error.to_string().contains("Git 输出过大"));
     }
 
     #[tokio::test(flavor = "current_thread")]
