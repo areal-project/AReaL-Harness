@@ -1,0 +1,21 @@
+core/plugins/Cargo.toml
+  s_f9fad336940d7a::t_2cb3627f83b638 27
+Cargo.lock
+  s_f9fad336940d7a::t_37ac55133d86a1 1485,3339,3800,3858,4408,4411,5196,5647,5649
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7712c54d2513e14fb02d79ab5aa4247e3d89d859",
+  "prompts": {},
+  "sessions": {
+    "s_f9fad336940d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1f2b3-c54f-7f92-a60a-ee46af3d4d62",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
