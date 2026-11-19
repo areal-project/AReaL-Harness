@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { once } from "node:events";
+import { on, once } from "node:events";
+import { createRequire } from "node:module";
 import { test } from "node:test";
 import { nativeHostFixture, nativeCoreProject } from "./remote-native-host-fixture.mjs";
 import { phone, pushRelay, runWithIsolatedCA, until } from "./remote-native-push-fixture.mjs";
@@ -85,6 +86,112 @@ if (!process.env.RC12_TLS_HOME) {
       assert.deepEqual(
         (await project.core.call("thread/list", { limit: 10 })).data.map((row) => row.id),
         [original.threadId],
+      );
+    },
+  );
+  test(
+    "phone opens the original turn after the desktop disconnects during send",
+    {
+      timeout: 120000,
+    },
+    async (t) => {
+      const relay = await pushRelay(t);
+      const host = await nativeHostFixture(t);
+      const project = await nativeCoreProject(t, host, { holdModel: true });
+      await host.remote.control({
+        operation: "enable",
+        relay: relay.origin,
+        code: relay.enrollment(),
+        confirmed: true,
+      });
+      await until(async () => (await host.remote.refresh()).connected, "relay ready");
+      const device = await phone(t, host.remote, project.alias, undefined, true);
+      const created = await project.core.call("areal/thread/start", {
+        requestId: randomUUID(),
+        cwd: project.workspace,
+        agentProfile: { id: "fixture", revision: "v1" },
+      });
+      const threadId = created.thread.id;
+      const endpoint = await host.client.request("web.endpoint", {});
+      const ticket = await host.client.request("web.ticket", {
+        origin: "areal-ui://app",
+        expectedGeneration: endpoint.generation,
+      });
+      const require = createRequire(new URL("../app/package.json", import.meta.url));
+      const Socket = require("ws");
+      const desktop = new Socket(ticket.websocketUrl, { origin: ticket.origin });
+      t.after(() => desktop.terminate());
+      const messages = on(desktop, "message");
+      await once(desktop, "open");
+      desktop.send(
+        JSON.stringify({
+          version: 1,
+          id: "hello",
+          method: "hello",
+          params: {
+            protocolVersions: [1],
+            capabilities: ["gui-read-v1", "gui-write-v1"],
+            ticket: ticket.ticket,
+            expectedGeneration: ticket.generation,
+          },
+        }),
+      );
+      const hello = JSON.parse((await messages.next()).value[0]);
+      assert.ok(hello.result?.writeMethods.includes("session.send"), JSON.stringify(hello.error));
+      const text = "Desktop handoff " + randomUUID();
+      desktop.send(
+        JSON.stringify({
+          version: 1,
+          id: "send",
+          method: "session.send",
+          commandId: randomUUID(),
+          context: {
+            projectId: project.projectId,
+            serviceGeneration: project.service.generation,
+            gatewayGeneration: ticket.generation,
+            grantRevision: 0,
+          },
+          params: { threadId, text, expectedConfigRevision: 1 },
+        }),
+      );
+      const held = await project.waitForModel(text);
+      const disconnected = once(desktop, "close");
+      desktop.terminate();
+      await disconnected;
+      const openPhone = async () => {
+        const reply = await device.rpc("session.open", { threadId }, undefined, {
+          projectId: project.alias,
+        });
+        assert.equal(reply.error, undefined, JSON.stringify(reply.error));
+        return reply.result.snapshot;
+      };
+      const active = await openPhone();
+      assert.equal(active.threadId, threadId);
+      assert.equal(active.turns.length, 1);
+      assert.ok(active.activeTurnId);
+      held.release();
+      const completed = await until(async () => {
+        const { thread } = await project.core.call("thread/read", { threadId, includeTurns: true });
+        return thread.turns[0]?.status === "completed" && thread.turns;
+      }, "original desktop turn completed once");
+      const snapshot = await openPhone();
+      assert.deepEqual(
+        completed.map((turn) => turn.id),
+        [active.activeTurnId],
+      );
+      assert.deepEqual(
+        snapshot.turns.map((turn) => turn.id),
+        [active.activeTurnId],
+      );
+      assert.equal(snapshot.turns[0].status, "completed");
+      const items = snapshot.turns[0].items;
+      assert.deepEqual(
+        items.filter((item) => item.type === "userMessage").map((item) => item.preview),
+        [text],
+      );
+      assert.deepEqual(
+        items.filter((item) => item.type === "agentMessage").map((item) => item.preview),
+        ["NATIVE_REMOTE_FIXTURE"],
       );
     },
   );
