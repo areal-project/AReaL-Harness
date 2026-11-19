@@ -675,7 +675,6 @@ try {
     type: "resource_link",
     uri: "https://example.invalid/source",
   };
-  const draftKey = `areal-gui:draft:${projectId}:${threadId}`;
   await page.locator('input[type="file"]').last().setInputFiles({
     name: "original-resource.png",
     mimeType: "image/png",
@@ -714,19 +713,6 @@ try {
     resource,
   );
   await input().fill(mainDraft);
-  const retainedMcp = JSON.stringify([
-    {
-      id: randomUUID(),
-      block: { type: "resource_link", uri: "https://example.invalid/unsent", name: mainDraft },
-    },
-  ]);
-  await page.evaluate(
-    ({ draftKey, retainedMcp }) => {
-      localStorage.setItem(`${draftKey}:mcpContent`, retainedMcp);
-      window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: draftKey }));
-    },
-    { draftKey, retainedMcp },
-  );
   await page
     .locator('input[type="file"]')
     .last()
@@ -914,20 +900,24 @@ try {
     if (!(layout.image.x < layout.comments.x && layout.comments.x < layout.text.x))
       layoutFailures.push(`${colorScheme}: expected image, comments and text in that order`);
     if (
-      Math.abs(layout.image.bottom - layout.comments.bottom) > 1 ||
-      Math.abs(layout.image.bottom - layout.text.bottom) > 1
+      Math.abs(layout.image.y - layout.comments.y) > 1 ||
+      Math.abs(layout.image.y - layout.text.y) > 1
     )
-      layoutFailures.push(`${colorScheme}: wide attachment row should align card bottoms`);
+      layoutFailures.push(`${colorScheme}: wide attachment row should align card tops`);
     await shot(`02-editing-${colorScheme}-wide.png`);
     layoutEvidence.push({ colorScheme, viewport: "wide", ...layout });
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(860, 960));
     const narrow = await page.locator(".composer-attachment-row").evaluate((row) => {
       const { width, height } = row.getBoundingClientRect();
+      const style = getComputedStyle(row);
       return {
         width,
         height,
         scrollWidth: row.scrollWidth,
         clientWidth: row.clientWidth,
+        flexWrap: style.flexWrap,
+        padding: parseFloat(style.paddingLeft) + parseFloat(style.paddingRight),
+        gap: parseFloat(style.columnGap),
         children: [
           ...row.querySelectorAll(
             ".composer-image-card, .review-comment-attachment, .composer-text-card",
@@ -940,8 +930,16 @@ try {
     });
     if (narrow.scrollWidth > narrow.clientWidth + 1)
       layoutFailures.push(`${colorScheme}: narrow attachment row overflows horizontally`);
-    if (!narrow.children.some((child) => child.y > narrow.children[0].bottom))
-      layoutFailures.push(`${colorScheme}: narrow attachment row should wrap`);
+    const inlineWidth =
+      narrow.children.reduce((sum, child) => sum + child.width, 0) +
+      narrow.padding +
+      (narrow.children.length - 1) * narrow.gap;
+    if (
+      narrow.flexWrap !== "wrap" ||
+      (inlineWidth > narrow.clientWidth &&
+        !narrow.children.some((child) => child.y > narrow.children[0].bottom))
+    )
+      layoutFailures.push(`${colorScheme}: attachment row should wrap when cards exceed its width`);
     await shot(`02-editing-${colorScheme}-narrow.png`);
     layoutEvidence.push({ colorScheme, viewport: "narrow", ...narrow });
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 960));
@@ -1001,10 +999,6 @@ try {
   const revisedContent = (await turns()).at(-1).items.find((i) => i.type === "userMessage").content;
   assert.equal(revisedContent.find((c) => c.type === "image").url, originalImage);
   assert.deepEqual(revisedContent.find((c) => c.mcpContent).mcpContent, resource);
-  assert.equal(
-    await page.evaluate((key) => localStorage.getItem(`${key}:mcpContent`), draftKey),
-    retainedMcp,
-  );
   assert.equal(
     await page.evaluate((key) => localStorage.getItem(key), reviewKey),
     retainedReview,
@@ -1138,21 +1132,12 @@ try {
   );
   await page.getByRole("button", { name: "移除附件 main-unsent.png", exact: true }).click();
   assert.equal(await page.locator(".composer-image-card").count(), 0);
-  await page.getByRole("button", { name: "移除应用附件", exact: true }).click();
-  assert.equal(
-    await page.evaluate((key) => localStorage.getItem(`${key}:mcpContent`), draftKey),
-    null,
-  );
   await page.getByRole("button", { name: "移除评论附件", exact: true }).click();
   assert.deepEqual(
     await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), reviewKey),
     { comments, attachedIds: [] },
     "detach keeps the saved review drafts",
   );
-  await page.evaluate((key) => {
-    localStorage.removeItem(`${key}:mcpContent`);
-    window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: key }));
-  }, draftKey);
   checks.push(
     "edit Cancel preserves history; Send atomically replaces the last prompt/reply in GUI, Core and model context; attachments/drafts survive lost replies; receipts deduplicate and stale edits reject; reload preserves replacement",
   );

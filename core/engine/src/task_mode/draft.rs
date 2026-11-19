@@ -849,14 +849,14 @@ mod tests {
     }
 
     #[test]
-    fn legacy_time_only_edit_cannot_replace_a_saved_calendar_rule() {
+    fn time_only_edit_cannot_replace_a_saved_calendar_rule() {
         let target = json!({
             "taskId":"task","expectedRevision":7,"interactionMode":"interactive",
             "scheduleV2":{"version":1,"rule":{"kind":"calendar","frequency":"weekly"}}
         });
-        let legacy = json!({"kind":"proposal","schedule":{"at":"2040-01-02T10:00:00+08:00"}});
+        let timestamp = json!({"kind":"proposal","schedule":{"at":"2040-01-02T10:00:00+08:00"}});
         assert!(
-            proposal(&legacy, &[], Some(&target), "Asia/Shanghai")
+            proposal(&timestamp, &[], Some(&target), "Asia/Shanghai")
                 .unwrap_err()
                 .to_string()
                 .contains("完整日历计划")
