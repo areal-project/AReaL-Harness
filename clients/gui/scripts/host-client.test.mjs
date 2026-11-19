@@ -1404,3 +1404,13 @@ test("an asynchronous cache may restore only the selected conversation while its
   );
   assert.equal(reads.session.value.projectId, project.projectId);
 });
+
+test("persisted intent and live selection share the same ready Core subscription", async (t) => {
+  const { client, frames } = await readServer(t);
+  const target = { projectId: project.projectId, threadId: "thread" };
+  await client.selectSession({ ...target, persisted: true });
+  await client.selectSession(target);
+  await client.selectSession({ ...target, persisted: true });
+  assert.equal(frames.filter((frame) => frame.method === "session.open").length, 1);
+  assert.equal(frames.filter((frame) => frame.method === "subscription.close").length, 0);
+});

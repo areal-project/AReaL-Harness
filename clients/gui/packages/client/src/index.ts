@@ -506,14 +506,17 @@ export class HostClient {
     if (
       target &&
       target.projectId === this.#target?.projectId &&
-      target.threadId === this.#target.threadId &&
-      (target.persisted === true) === (this.#target.persisted === true)
+      target.threadId === this.#target.threadId
     ) {
+      if (target.persisted && !this.#target.persisted)
+        this.#target = { ...this.#target, persisted: true };
       const session = this.#reads.session;
+      const persistedRead = project?.state !== "ready" && this.#target.persisted === true;
       if (
         session.state === "fresh" &&
         this.#state.connection === "ready" &&
-        session.value.connectionId === this.#state.identity.connectionId
+        session.value.connectionId === this.#state.identity.connectionId &&
+        (session.value.access?.kind === "persisted") === persistedRead
       ) {
         timing?.mark("cache", true);
         return;
