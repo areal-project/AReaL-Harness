@@ -308,7 +308,7 @@ try {
             timing.visibleWallAt = Date.now();
             timing.disabled = row.disabled;
             timing.statuses = [...document.querySelectorAll('[role="status"]')].map(
-              (el) => el.textContent,
+              (el) => el.getAttribute("aria-label") ?? el.textContent,
             );
             timing.rowText = row.textContent;
             observer.disconnect();
@@ -346,6 +346,9 @@ try {
   await page.locator(".task-conversation").waitFor();
   previewDetail = await page.evaluate(() => ({
     text: document.querySelector(".task-conversation")?.textContent,
+    statuses: [...document.querySelectorAll('.task-conversation [role="status"]')].map(
+      (el) => el.getAttribute("aria-label") ?? el.textContent,
+    ),
     mutations: [...document.querySelectorAll(".task-conversation button")]
       .filter((button) =>
         ["暂停", "开启", "立即运行", "停止本次运行", "删除"].includes(button.textContent?.trim()),
@@ -354,7 +357,7 @@ try {
   }));
   assert.equal(ready(taskOwner), false, "opening preview does not start the owner");
   assert.ok(
-    /连接|更新任务状态|尚未确认/.test(previewDetail.text),
+    /连接|更新任务状态|尚未确认/.test([previewDetail.text, ...previewDetail.statuses].join(" ")),
     "Published task opens a connecting placeholder",
   );
   assert.ok(
@@ -373,7 +376,10 @@ try {
   const passive = generations(allColdOwners);
   assert.deepEqual(passive, beforeSelection, "catalog and selection never start any cold owner");
   await writeFile(join(evidence, "passive-generations.json"), JSON.stringify(passive, null, 2));
-  await page.getByRole("button", { name: "刷新这个项目", exact: true }).last().click();
+  await page
+    .locator(`main[data-task-id="${task.id}"]`)
+    .getByRole("button", { name: "打开项目以更新", exact: true })
+    .click();
   if (startup) {
     const held = await until(() => pendingActivation, "original native activation intercepted");
     if (process.env.AREAL_TASK_CATALOG_SLOW_HANDSHAKE === "1")
@@ -456,14 +462,25 @@ try {
   }
   if ((await row.getAttribute("aria-pressed")) !== "true") await row.click();
   const currentTask = (await readTasks(taskOwner)).data.find((value) => value.id === task.id);
+  const taskMenu = page.locator(`[data-scheduled-task-menu="${task.id}"]`);
+  const manageTask = async (label) => {
+    if (!(await taskMenu.isVisible())) {
+      await page
+        .locator(`main[data-task-id="${task.id}"]`)
+        .getByRole("button", { name: "任务资源", exact: true })
+        .click();
+    }
+    await taskMenu.click();
+    await page.getByRole("menuitem", { name: label, exact: true }).click();
+  };
   if (currentTask.paused) {
-    await page.getByRole("button", { name: "开启", exact: true }).click();
+    await manageTask("开启");
     await until(
       async () => !(await readTasks(taskOwner)).data.find((value) => value.id === task.id).paused,
       "reused task enabled before pause acceptance",
     );
   }
-  await page.getByRole("button", { name: "暂停", exact: true }).click();
+  await manageTask("暂停");
   const readback = await until(async () => {
     const r = await readTasks(taskOwner);
     assert.equal(r.errors.length, 0);
@@ -478,7 +495,7 @@ try {
     "Persisted task must be visible before owner execution ready",
   );
   assert.ok(
-    observation.statuses.some((text) =>
+    [...observation.statuses, observation.rowText].some((text) =>
       /状态.*刷新|刷新.*状态|正在更新任务状态|尚未确认最新状态|上次记录|本次读取/.test(text),
     ),
     "Persisted preview explicitly identifies status refresh",
@@ -487,7 +504,14 @@ try {
 } catch (e) {
   failure = e.stack;
   console.error(failure);
-  if (page) await page.screenshot({ path: join(evidence, "failure.png") }).catch(() => {});
+  if (page) {
+    await page.screenshot({ path: join(evidence, "failure.png") }).catch(() => {});
+    await page
+      .locator("body")
+      .ariaSnapshot()
+      .then((tree) => writeFile(join(evidence, "failure.aria.txt"), tree))
+      .catch(() => {});
+  }
 } finally {
   try {
     await close();

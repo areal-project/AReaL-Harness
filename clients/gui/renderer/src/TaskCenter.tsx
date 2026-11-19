@@ -756,9 +756,9 @@ export function TaskCenter({
   const focusedTarget = useRef<string | undefined>(undefined);
   const sequence = useRef(0),
     mutation = useRef(false);
-  const refreshRead = useRef<(more?: boolean, retryProjectId?: string) => Promise<void>>(
-    async () => {},
-  );
+  const refreshRead = useRef<
+    (more?: boolean, retryProjectId?: string, executionProjectId?: string) => Promise<void>
+  >(async () => {});
   // 后台变化只做静默重读：已有行的项目不回到读取中，失败时保留上一版。
   const quietRead = useRef<(projectIds?: string[]) => Promise<void>>(async () => {});
   const pages = useRef(1);
@@ -1052,7 +1052,8 @@ export function TaskCenter({
     [action],
   );
   const refresh = useCallback(
-    (more = false, retryProjectId?: string) => refreshRead.current(more, retryProjectId),
+    (more = false, retryProjectId?: string, executionProjectId?: string) =>
+      refreshRead.current(more, retryProjectId, executionProjectId),
     [],
   );
   const projectIds = projects.map((project) => project.id).join(":");
@@ -1064,7 +1065,7 @@ export function TaskCenter({
     const batches = new Set<CatalogIdentity>();
     let active = true,
       reading = false;
-    const queued = new Set<string>();
+    const queued = new Map<string, string | undefined>();
     const quietQueued = new Set<string>();
     const owners = selection.current.projects;
     setCatalog((previous) =>
@@ -1077,11 +1078,12 @@ export function TaskCenter({
       retryProjectId?: string,
       explicitRefresh = false,
       quietOwners?: string[],
+      executionTarget?: string,
     ) => {
       if (!active || !connected || !catalogSupported) return;
       if (reading) {
         if (quietOwners) for (const id of quietOwners) quietQueued.add(id);
-        else queued.add(retryProjectId ?? "");
+        else queued.set(retryProjectId ?? "", executionTarget);
         return;
       }
       if (more) pages.current++;
@@ -1124,7 +1126,10 @@ export function TaskCenter({
               }));
             try {
               if (retryProjectId)
-                await action("connect", { projectId: owner.id, resumeScheduling: true });
+                await action("connect", {
+                  projectId: executionTarget ?? owner.id,
+                  resumeScheduling: true,
+                });
               const result = explicit
                 ? await action("tasks", {
                     operation: "list",
@@ -1217,15 +1222,16 @@ export function TaskCenter({
       if (active && queued.size) {
         const pending = [...queued];
         queued.clear();
-        if (pending.includes("")) void read();
-        else for (const id of pending) void read(false, id);
+        for (const [id, target] of pending)
+          void read(false, id || undefined, !!id, undefined, target);
       } else if (active && quietQueued.size) {
         const pending = [...quietQueued];
         quietQueued.clear();
         void read(false, undefined, false, pending);
       }
     };
-    refreshRead.current = (more, retryProjectId) => read(more, retryProjectId, true);
+    refreshRead.current = (more, retryProjectId, executionTarget) =>
+      read(more, retryProjectId, true, undefined, executionTarget);
     quietRead.current = (projectIds) =>
       read(false, undefined, false, projectIds ?? owners.map((owner) => owner.id));
     void read();
@@ -2220,6 +2226,20 @@ export function TaskCenter({
                 <Spinner label={t("operations.schedules.updatingStatus")} className="size-5" />
               </div>
             ) : null}
+            {!taskConnected && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={!connected || catalog[project.id]?.status === "pending"}
+                onClick={() => {
+                  setError("");
+                  void refresh(false, project.id, executionProjectId);
+                }}
+              >
+                {t("operations.schedules.refreshProject")}
+              </Button>
+            )}
             {error && (
               <p role="alert" className="task-plan-note">
                 {error}
