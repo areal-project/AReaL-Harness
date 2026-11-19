@@ -662,12 +662,12 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                                 send(&mut socket, &json!({"version":VERSION,"id":id,
                                     "error":loopback_error(&raw, &anyhow::anyhow!("CAPACITY_EXCEEDED"))
                                 })).await?;
-                            } else if independent_query(&raw) {
+                            } else if independent_request(&raw) {
                                 let host = host.clone();
                                 let device = device_id.clone();
                                 let connection = connection_id.clone();
                                 queries.spawn_local(async move {
-                                    // 这些查询不消费上传、分页令牌或选中会话；沿原工厂绑定同一主体与连接。
+                                    // 独立请求不消费会话状态；沿原工厂绑定同一主体与连接。
                                     let local = match &device {
                                         Some(device) => super::gateway_owner::LocalSession::browser(host.clone(), connection, device.clone()),
                                         None => super::gateway_owner::LocalSession::new(host.clone(), connection),
@@ -846,7 +846,7 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
     Ok(())
 }
 
-fn independent_query(raw: &Value) -> bool {
+fn independent_request(raw: &Value) -> bool {
     matches!(
         raw["method"].as_str(),
         Some(
@@ -860,9 +860,10 @@ fn independent_query(raw: &Value) -> bool {
                 | "feedback.read"
                 | "plugins.read"
         )
-    ) || (raw["method"] == "desktop.command"
-        && raw["params"]["command"] == "chatgpt"
-        && raw["params"]["request"]["operation"] == "status")
+    ) || (raw["method"] == "worktree.command" && raw["params"]["operation"] == "worktreeCancel")
+        || (raw["method"] == "desktop.command"
+            && raw["params"]["command"] == "chatgpt"
+            && raw["params"]["request"]["operation"] == "status")
 }
 
 async fn local_request(

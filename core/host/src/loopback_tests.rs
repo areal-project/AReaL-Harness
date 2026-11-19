@@ -605,6 +605,7 @@ async fn pending_workbench_requests_do_not_block_queries() {
                 let mock_control_server: Option<tokio::task::JoinHandle<()>>;
                 let mock_core_close: Option<Box<dyn Fn()>>;
                 let mock_service_lock: Option<std::fs::File>;
+                let creation_id = uuid::Uuid::new_v4().to_string();
                 let slow_params;
                 {
                     let base = fixture.host.home.parent().unwrap().canonicalize().unwrap();
@@ -660,6 +661,12 @@ async fn pending_workbench_requests_do_not_block_queries() {
                         &json!([{ "id": alias, "root": workspace }]),
                     )
                     .unwrap();
+                    storage::private_dir(&core_home.join("worktree-requests")).unwrap();
+                    storage::write(
+                        &core_home.join("worktree-requests").join(format!("{creation_id}.json")),
+                        &json!({"kind":"checkout","requestId":creation_id,"projectId":alias,
+                            "parameters":{},"state":"created","intent":"continue","events":[]}),
+                    ).unwrap();
                     fixture.host.gateway.workbench.test_source(&source_id);
 
                     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -893,10 +900,18 @@ async fn pending_workbench_requests_do_not_block_queries() {
                     json!({"version":1,"id":"catalog","method":"analytics.read","params":{}}),
                 )
                 .await;
+                if blocked_method == "desktop.command" {
+                    write(&mut socket, json!({"version":1,"id":"cancel","method":"worktree.command",
+                        "commandId":uuid::Uuid::new_v4().to_string(),
+                        "params":{"sourceId":slow_params["sourceId"],"projectId":slow_params["request"]["projectId"],
+                            "operation":"worktreeCancel","requestId":uuid::Uuid::new_v4().to_string(),"worktreeRequestId":creation_id}
+                    })).await;
+                }
                 let progress = tokio::time::timeout(Duration::from_secs(1), async {
                     let mut status = false;
                     let mut catalog = false;
-                    while !status || !catalog {
+                    let mut cancelled = blocked_method != "desktop.command";
+                    while !status || !catalog || !cancelled {
                         let packet = read(&mut socket).await;
                         assert_ne!(packet["id"], "slow");
                         assert_ne!(
@@ -907,6 +922,11 @@ async fn pending_workbench_requests_do_not_block_queries() {
                             packet["id"] == "fast" && packet["result"]["hostId"] == ticket.host_id;
                         catalog |=
                             packet["id"] == "catalog" && packet["result"]["tokens"] == 0;
+                        if packet["id"] == "cancel" {
+                            assert_eq!(packet["result"]["receipt"]["requestId"], creation_id, "{packet}");
+                            assert_eq!(packet["result"]["receipt"]["state"], "cancelled", "{packet}");
+                            cancelled = true;
+                        }
                     }
                 })
                 .await;

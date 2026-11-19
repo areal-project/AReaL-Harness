@@ -428,15 +428,105 @@ fn begin_cancel(value: &mut Value) -> bool {
         return false;
     }
     value["intent"] = json!("cancel");
-    if value["state"] != "failed"
-        || !matches!(
-            value["setup"]["status"].as_str(),
-            Some("running" | "unknown")
-        )
-    {
+    if !setup_unsettled(value) {
         cancel_transition(value);
     }
     true
+}
+fn setup_unsettled(value: &Value) -> bool {
+    matches!(
+        value["setup"]["status"].as_str(),
+        Some("running" | "unknown")
+    )
+}
+
+async fn cancel_setup(
+    host: &Rc<Host>,
+    source: &str,
+    home: &Path,
+    mut value: Value,
+    id: &str,
+) -> Result<Value> {
+    let creation = required(&value, "requestId")?.to_owned();
+    let logical = required(&value, "projectId")?.to_owned();
+    let thread = required(&value, "threadId")?.to_owned();
+    let target = project(host, source, required(&value, "executionProjectId")?)?;
+    ensure!(
+        value["setup"]["terminateRequestId"].is_null(),
+        "SUBMISSION_UNKNOWN"
+    );
+    value["setup"]["terminateRequestId"] = json!(id);
+    persist_and_notify(host, home, &mut value)?;
+    if value["setup"]["processId"].is_null() {
+        // 取消可能早于 start 的答复，只核对原启动回执。
+        let start = required(&value["setup"], "requestId")?.to_owned();
+        let receipt = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                let receipts = request(
+                    host,
+                    &target.project_id,
+                    "areal/request/read",
+                    json!({"threadId":thread,"requestId":start}),
+                )
+                .await?;
+                if let Some(receipt) =
+                    receipt_result(&receipts, &start, "areal/process/start", Some(&thread))
+                    && receipt["id"].is_string()
+                {
+                    return Ok::<_, anyhow::Error>(receipt);
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        })
+        .await
+        .context("SUBMISSION_UNKNOWN")??;
+        value = record(home, &creation, &logical)?;
+        if value["state"] == "cancelled" {
+            return Ok(value);
+        }
+        value["setup"]["processId"] = receipt["id"].clone();
+        value["setup"]["receipt"] = receipt;
+        persist_and_notify(host, home, &mut value)?;
+    }
+    let process = required(&value["setup"], "processId")?.to_owned();
+    let _ = request(
+        host,
+        &target.project_id,
+        "areal/process/terminate",
+        json!({"requestId":id,"threadId":thread,"id":process}),
+    )
+    .await;
+    // 回执可以丢失，只有原进程退出和两层清理证据才结束取消。
+    let observed = request(
+        host,
+        &target.project_id,
+        "areal/process/get",
+        json!({"threadId":thread,"id":process}),
+    )
+    .await?;
+    ensure!(
+        observed["runtime"]["state"] == "exited"
+            && observed["runtime"]["cleanupConfirmed"] == true
+            && observed["process"]["cleanupConfirmed"] == true,
+        "SUBMISSION_UNKNOWN"
+    );
+    value = record(home, &creation, &logical)?;
+    ensure!(
+        value["intent"] == "cancel"
+            && value["setup"]["processId"] == process
+            && value["setup"]["terminateRequestId"] == id,
+        "SUBMISSION_UNKNOWN"
+    );
+    if value["state"] != "cancelled" {
+        value["setup"]["runtime"] = observed["runtime"].clone();
+        value["setup"]["managed"] = observed["process"].clone();
+        value["setup"]["exitCode"] = observed["runtime"]["exitCode"].clone();
+        value["setup"]["finishedAt"] = json!(timestamp());
+        value["setup"]["status"] = json!("cancelled");
+        cancel_transition(&mut value);
+        persist_and_notify(host, home, &mut value)?;
+    }
+    Ok(value)
 }
 fn open_record(value: &mut Value, execution: &str) {
     value["executionProjectId"] = json!(execution);
@@ -710,26 +800,10 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
             if !begin_cancel(&mut value) {
                 return Ok(value);
             }
-            if (value["setup"]["status"] == "running" || value["setup"]["status"] == "unknown")
-                && let (Some(execution), Some(thread), Some(process)) = (
-                    value["executionProjectId"].as_str().map(str::to_owned),
-                    value["threadId"].as_str().map(str::to_owned),
-                    value["setup"]["processId"].as_str().map(str::to_owned),
-                )
-            {
-                let target = project(host, source, &execution)?;
-                value["setup"]["terminateRequestId"] = json!(id);
-                persist_and_notify(host, &home, &mut value)?;
-                let _ = request(
-                    host,
-                    &target.project_id,
-                    "areal/process/terminate",
-                    json!({"requestId":id,"threadId":thread,"id":process}),
-                )
-                .await;
+            if setup_unsettled(&value) {
+                return cancel_setup(host, source, &home, value, &id).await;
             }
             persist_and_notify(host, &home, &mut value)?;
-            host.changed();
             Ok(value)
         }
         "worktreeOpen" => {
@@ -2132,10 +2206,12 @@ mod tests {
         let mut cancelled = original.clone();
         assert!(!begin_cancel(&mut cancelled));
         assert_eq!(cancelled, original);
-        let mut active = json!({"state":"failed","setup":{"status":"running"},"events":[]});
-        assert!(begin_cancel(&mut active));
-        assert_eq!(active["state"], "failed", "活动 setup 仍须走原进程终止确认");
-        assert_eq!(active["events"], json!([]));
+        for state in ["settingUp", "failed"] {
+            let mut active = json!({"state":state,"setup":{"status":"running"},"events":[]});
+            assert!(begin_cancel(&mut active));
+            assert_eq!(active["state"], state, "活动 setup 仍须走原进程终止确认");
+            assert_eq!(active["events"], json!([]));
+        }
     }
     #[test]
     fn deletion_receipt_survives_desktop_restart_and_keeps_unknown_phase() {

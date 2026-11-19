@@ -35,7 +35,7 @@ This section describes the authenticated desktop host `command` contract in `cli
 | `worktreeEnvironmentSave` | `environment,expectedRevision` | Saves an environment for the logical project with revision conflict detection. |
 | `worktreeEnvironmentDelete` | `environmentId,expectedRevision` | Deletes configuration without changing frozen creation environments. |
 | `worktreeRead` | `requestId,snapshotOnly?` | Reads the original creation and binding record, or `missing`. Progress reads use `snapshotOnly: true` to read the saved record without querying Core or settling script execution. |
-| `worktreeCancel` | `requestId` | Requests cancellation and returns the current record. `cancelling` does not confirm termination. Only `cancelled` allows a new explicit source request. |
+| `worktreeCancel` | `requestId,worktreeRequestId?` | Uses a separate cancellation request ID to target the original creation record. When `worktreeRequestId` is absent, `requestId` identifies the original creation. For running setup, Host confirms process exit and cleanup before returning `cancelled` and allowing a new explicit source request. |
 | `worktreeAction` | `requestId,worktreeRequestId,actionId` | Runs a frozen environment action in its managed checkout with an independent receipt and bounded output. |
 | `worktreeDelete` | `requestId,worktreeRequestId` | Checks the managed checkout, cleanup, and service-stop receipts before non-force removal. Branches, history, and ownership tombstones remain. Failure or uncertainty preserves the directory. |
 | `worktreeCreate` | `requestId,source?,sourceRoot?,ref?,worktreeRoot?,branch?,branchPrefix?` | Retained explicit checkout entry using the original Git lifecycle. The `working-tree` source is rejected. |

@@ -9,7 +9,7 @@ const {
   environmentAttempt,
 } = require("./workspace-worktrees.cjs");
 /** @typedef {{projectId:string} & ({operation:'list',path:string,showAll?:boolean}|{operation:'search',query:string}|{operation:'localDirectoryReference',path:string}|{operation:'read',path:string}|{operation:'save',path:string,text:string,revision:string}|{operation:'review',scope?:'task'|'uncommitted'|'unstaged'|'staged'|'branch'|'commit',ref?:string}|{operation:'reviewCommits'|'reviewBranches'|'status'|'info'|'gitState'}|{operation:'turnReview',threadId:string,turnId:string,itemId?:string}|{operation:'gitStage'|'gitUnstage',token:string}|{operation:'gitCommit',token:string,message:string}|{operation:'gitPush',token:string,remote:string,targetBranch:string})} FileRequest */
-/** @typedef {{operation:'worktreeList',projectId?:string}|{operation:'worktreeSettings',projectId?:string,worktreeRoot:string,branchPrefix:string,fetchBeforeCreate?:boolean,autoCleanup?:boolean,keepCount?:number,expectedRevision?:number}|({projectId:string}&({operation:'worktreeOptions',sourceRoot?:string}|{operation:'worktreeEnvironmentSave',environment:import('./workspace-worktrees.cjs').EnvironmentDefinition,expectedRevision:number}|{operation:'worktreeEnvironmentDelete',environmentId:string,expectedRevision:number}|{operation:'worktreeRead',requestId:string,snapshotOnly?:boolean}|{operation:'worktreeCancel'|'worktreeOpen',requestId:string}|{operation:'worktreeAction',requestId:string,worktreeRequestId:string,actionId:string}|{operation:'worktreeDelete',requestId:string,worktreeRequestId:string}|{operation:'worktreeCreate',requestId:string,source?:'head'|'branch',sourceRoot?:string,ref?:string,worktreeRoot?:string,branch?:string,branchPrefix?:string}))} WorktreeCommandRequest */
+/** @typedef {{operation:'worktreeList',projectId?:string}|{operation:'worktreeSettings',projectId?:string,worktreeRoot:string,branchPrefix:string,fetchBeforeCreate?:boolean,autoCleanup?:boolean,keepCount?:number,expectedRevision?:number}|({projectId:string}&({operation:'worktreeOptions',sourceRoot?:string}|{operation:'worktreeEnvironmentSave',environment:import('./workspace-worktrees.cjs').EnvironmentDefinition,expectedRevision:number}|{operation:'worktreeEnvironmentDelete',environmentId:string,expectedRevision:number}|{operation:'worktreeRead',requestId:string,snapshotOnly?:boolean}|{operation:'worktreeCancel',requestId:string,worktreeRequestId?:string}|{operation:'worktreeOpen',requestId:string}|{operation:'worktreeAction',requestId:string,worktreeRequestId:string,actionId:string}|{operation:'worktreeDelete',requestId:string,worktreeRequestId:string}|{operation:'worktreeCreate',requestId:string,source?:'head'|'branch',sourceRoot?:string,ref?:string,worktreeRoot?:string,branch?:string,branchPrefix?:string}))} WorktreeCommandRequest */
 /** @typedef {FileRequest|WorktreeCommandRequest} WorkspaceRequest */
 /** @typedef {{kind:'add'|'del'|'context'|'meta',text:string,oldLine:number|null,newLine:number|null}} ReviewLine */
 /** @typedef {{oldStart:number,oldLines:number,newStart:number,newLines:number,lines:ReviewLine[]}} ReviewHunk */
@@ -170,9 +170,13 @@ function isWorkspaceRequest(value) {
           (value.source === undefined || value.source === "head" || value.source === "branch")
         );
       case "worktreeRead":
-      case "worktreeCancel":
       case "worktreeOpen":
         return typeof value.requestId === "string";
+      case "worktreeCancel":
+        return (
+          typeof value.requestId === "string" &&
+          (value.worktreeRequestId === undefined || typeof value.worktreeRequestId === "string")
+        );
       case "worktreeAction":
         return (
           typeof value.requestId === "string" &&

@@ -35,7 +35,7 @@ Thread 快照和 Item 通知支持可选 `agentMessage.phase`，生命周期、�
 | `worktreeEnvironmentSave` | `environment,expectedRevision` | 保存当前逻辑项目的环境，以 revision 防止覆盖并发修改。 |
 | `worktreeEnvironmentDelete` | `environmentId,expectedRevision` | 删除环境配置，不改写已固定的创建环境。 |
 | `worktreeRead` | `requestId,snapshotOnly?` | 读取原创建与绑定记录，可能为 `missing`。查询进度时传 `snapshotOnly: true`，Host 只读已保存记录，不查询 Core 或结算脚本。 |
-| `worktreeCancel` | `requestId` | 请求取消原创建并返回当前记录。`cancelling` 不能当作终止，`cancelled` 才能明确开始新的原目录请求。 |
+| `worktreeCancel` | `requestId,worktreeRequestId?` | 用独立取消请求 ID 指向原创建记录。若省略 `worktreeRequestId`，按 `requestId` 查原创建。运行中的 setup 需要确认进程退出和清理后才能返回 `cancelled`，此时才可明确发起新的原目录请求。 |
 | `worktreeAction` | `requestId,worktreeRequestId,actionId` | 在原受管 Worktree 显式执行已固定环境的动作，使用独立请求回执和有界输出。 |
 | `worktreeDelete` | `requestId,worktreeRequestId` | 核对受管目录、清理与服务停止回执，非 force 删除，保留分支、历史和归属 tombstone。失败或未知保留目录。 |
 | `worktreeCreate` | `requestId,source?,sourceRoot?,ref?,worktreeRoot?,branch?,branchPrefix?` | 兼容的显式 checkout 入口，共用原 Git 生命周期，`working-tree` 来源拒绝。 |

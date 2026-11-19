@@ -666,9 +666,13 @@ export function DraftComposer({
       const result = await readAction("workspace", {
         projectId: project.id,
         operation: "worktreeCancel",
-        requestId: current.requestId,
+        requestId: crypto.randomUUID(),
+        worktreeRequestId: current.requestId,
       });
       const record = result;
+      if (record.requestId !== current.requestId || record.projectId !== project.id)
+        throw new Error(t("recovery.createUnconfirmed"));
+      setObservedCreation(record);
       if (record.state !== "cancelled") {
         localStorage.setItem(`${key}:pending-create`, current.requestId);
         setUnknown(current.requestId);
@@ -724,7 +728,13 @@ export function DraftComposer({
           record.requestId === progressRequest &&
           record.projectId === progressProject
         ) {
-          setObservedCreation(record);
+          setObservedCreation((previous) =>
+            previous?.requestId === record.requestId &&
+            previous?.projectId === record.projectId &&
+            previous.recordRevision > (("recordRevision" in record && record.recordRevision) || 0)
+              ? previous
+              : record,
+          );
           if (["ready", "failed", "cancelled"].includes(record.state)) return;
         }
       } catch {
