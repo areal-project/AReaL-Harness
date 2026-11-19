@@ -981,9 +981,10 @@ async function checkCalendarRegression() {
   assert.equal(acceptedUnknown.length, 1);
   const admitted = await task(acceptedUnknown[0].id);
   assert.equal(admitted.id, unknown.original.id);
-  assert.equal(admitted.scheduleV2.rule.kind, "onceLocal");
-  assert.equal(admitted.scheduleV2.rule.timeZone, "Asia/Shanghai");
-  assert.equal(admitted.scheduleV2.rule.localTime, "09:00");
+  const planned = unknownProposal.preview.occurrences[0];
+  assert.equal(unknownProposal.preview.timeZone, "Asia/Shanghai");
+  assert.match(planned.localTime, /T09:00:00\+08:00$/);
+  assert.deepEqual(admitted.scheduleV2.rule, { kind: "once", at: planned.at });
   await page.getByRole("button", { name: "打开定时任务 日历重试验收", exact: true }).click();
   await page.screenshot({ path: join(scratch, "calendar-unknown.png") });
   await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
@@ -997,6 +998,7 @@ async function checkCalendarRegression() {
   assert.equal(original.requestId, requestId);
   assert.equal(original.submissionUnknown, false);
   assert.equal(original.receipt.id, admitted.id);
+  assert.deepEqual(original.receipt.scheduleV2, admitted.scheduleV2);
   await writeFile(
     join(scratch, "calendar-manifest.json"),
     JSON.stringify(
