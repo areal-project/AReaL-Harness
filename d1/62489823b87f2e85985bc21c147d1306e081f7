@@ -1,0 +1,28 @@
+docs/guides/programmatic-tools.en.md
+  s_f12f82d708da68::t_72b9b6558823db 61
+docs/guides/programmatic-tools.md
+  s_f12f82d708da68::t_72b9b6558823db 61
+docs/api/core.en.md
+  s_f12f82d708da68::t_72b9b6558823db 587
+docs/api/core.md
+  s_f12f82d708da68::t_72b9b6558823db 596
+core/engine/src/desktop/mcp_tools.rs
+  s_f12f82d708da68::t_72b9b6558823db 94-99,102-104,360,376-377,381-382,386-392
+  s_f12f82d708da68::t_5ec84e96bc6a5d 81,83-90,92-93
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d162489823b87f2e85985bc21c147d1306e081f7",
+  "prompts": {},
+  "sessions": {
+    "s_f12f82d708da68": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d39b-5e9e-71a0-b28d-b29ad3693a4b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
