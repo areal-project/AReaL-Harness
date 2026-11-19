@@ -2,9 +2,35 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { HostClient, ShellProject } from "@areal/client";
 import { refreshTaskDirectory, type TaskDirectoryState } from "./host-task-directory.js";
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 describe("task directory refresh", () => {
+  it("refreshes the logical project when its execution worktree changes", async () => {
+    const window = new EventTarget();
+    vi.stubGlobal("window", window);
+    const refreshed: unknown[] = [];
+    window.addEventListener("areal-scheduled-tasks-changed", (event) => {
+      refreshed.push((event as CustomEvent).detail);
+    });
+    const client = {
+      workbench: async () => ({ data: [{ id: "task", projectId: "execution-alias" }] }),
+    } as unknown as HostClient;
+    const state: TaskDirectoryState = { tasks: new Map(), reads: new Map([["execution", "c:1"]]) };
+    const projects = [
+      { projectId: "execution", logicalProjectId: "logical", state: "ready", taskRevision: "c:2" },
+    ] as unknown as ShellProject[];
+    const ids = new Map([
+      ["execution", "execution-alias"],
+      ["logical", "logical-alias"],
+    ]);
+    refreshTaskDirectory(client, projects, ids, state, () => {});
+    await vi.waitFor(() => expect(refreshed).toEqual(["logical-alias"]));
+    expect(state.tasks.get("execution")).toMatchObject({ task: { id: "task" } });
+  });
+
   it("backs off after a failed read instead of re-reading on every publish", async () => {
     vi.useFakeTimers();
     let calls = 0;

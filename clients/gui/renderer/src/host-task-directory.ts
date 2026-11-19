@@ -76,13 +76,15 @@ export function refreshTaskDirectory(
         tasks.set(projectId, taskDirectory(rows.get(projectId) ?? []));
       publish();
       if (typeof window === "undefined") return;
-      for (const project of changed)
-        if (previous.has(project.projectId))
-          window.dispatchEvent(
-            new CustomEvent("areal-scheduled-tasks-changed", {
-              detail: ids.get(project.projectId) ?? project.projectId,
-            }),
-          );
+      const changedOwners = new Set(
+        changed
+          .filter((project) => previous.has(project.projectId))
+          .map((project) => project.logicalProjectId ?? project.projectId),
+      );
+      for (const owner of changedOwners)
+        window.dispatchEvent(
+          new CustomEvent("areal-scheduled-tasks-changed", { detail: ids.get(owner) ?? owner }),
+        );
     })
     .catch(() => {
       if (!current()) return;
