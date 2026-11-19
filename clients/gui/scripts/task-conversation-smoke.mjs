@@ -755,6 +755,7 @@ function observeCalendarSocket(socket) {
       match.fault.withheld.push(frame.result.requestId);
       socket.send(
         JSON.stringify({
+          version: frame.version,
           id: frame.id,
           error: {
             code: "TEMPORARILY_UNAVAILABLE",

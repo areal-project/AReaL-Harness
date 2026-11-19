@@ -602,7 +602,10 @@ async fn core_sends_once_on_the_original_thread_across_subscription_catalog_fail
         Engine, Limits,
         model::{HttpModel, ModelProtocol},
     };
-    use areal_protocol::{Input, Item, TurnStatus};
+    use areal_protocol::{
+        Input, Item, TurnStatus,
+        desktop::{ClientOptions, ConfigureThread, EffectiveConfig},
+    };
     use std::sync::Arc;
 
     tokio::task::LocalSet::new()
@@ -625,6 +628,27 @@ async fn core_sends_once_on_the_original_thread_across_subscription_catalog_fail
             let engine = open();
             let thread = engine
                 .create(workspace.path().to_str().unwrap().into())
+                .await
+                .unwrap();
+            // 只统计原会话的两次执行，不发起独立的标题推理。
+            engine
+                .configure_thread(ConfigureThread {
+                    thread_id: thread.id.clone(),
+                    expected_revision: thread.desktop.as_ref().map_or_else(
+                        || EffectiveConfig::default().revision,
+                        |desktop| desktop.configuration.revision,
+                    ),
+                    options: Some(ClientOptions {
+                        automatic_session_name: Some(false),
+                        ..Default::default()
+                    }),
+                    request_id: None,
+                    agent_profile: None,
+                    model: None,
+                    reset_model: false,
+                    parameters: None,
+                    selected_skills: None,
+                })
                 .await
                 .unwrap();
 
