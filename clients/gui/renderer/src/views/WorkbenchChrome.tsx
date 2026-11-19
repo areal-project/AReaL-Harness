@@ -1,7 +1,7 @@
 import { useReadOnly } from "../PlatformReadContext.js";
 import React, { useState } from "react";
 import { BugReportDialog } from "../BugReportDialog.js";
-import { Bug, Route } from "lucide-react";
+import { Bot, Bug, Route } from "lucide-react";
 import { ApplicationRail } from "../app-shell/ApplicationNavigation.js";
 import { WorkspaceHeader } from "../app-shell/WorkbenchShell.js";
 import { Button } from "../components/ui/button.js";
@@ -24,6 +24,7 @@ import {
 } from "../interfaceIcons.js";
 import { type PlatformServices } from "../services.js";
 import { SettingsPluginIcon } from "../settings/settingsNavIcons.js";
+import { useLabsFeature } from "../settings/labsFeatures.js";
 import { useGuardedNavigation } from "../settings/UnsavedChanges.js";
 import { useTaskWorkspace } from "../state/taskWorkspace.js";
 import { useSessionNavigation } from "../state/useSessionNavigation.js";
@@ -58,22 +59,32 @@ export function WorkbenchRail({
 }) {
   const { t } = useI18n();
   const { project, threadId, recordWorkspaceLocation } = session;
-  const { settingsOpen, pluginsOpen, trajectoryAttention, rememberPluginTask } = surfaces;
+  const { settingsOpen, pluginsOpen, botsOpen, trajectoryAttention, rememberPluginTask } = surfaces;
   const readOnly = useReadOnly();
+  const botsEnabled = useLabsFeature("bots");
   const taskCenterOpen = taskSurface !== null;
   return (
     <ApplicationRail
-      activeId={settingsOpen ? "settings" : pluginsOpen ? "plugins" : (taskSurface ?? "home")}
+      activeId={
+        settingsOpen
+          ? "settings"
+          : pluginsOpen
+            ? "plugins"
+            : botsOpen
+              ? "bots"
+              : (taskSurface ?? "home")
+      }
       items={[
         {
           id: "home",
           label: t("common.navigation.home"),
-          icon: <Home active={!pluginsOpen && !settingsOpen && !taskCenterOpen} />,
+          icon: <Home active={!pluginsOpen && !botsOpen && !settingsOpen && !taskCenterOpen} />,
           onSelect: () =>
             requestNavigation(() => {
               if (taskCenterOpen)
                 recordWorkspaceLocation({ projectId: project?.id ?? "", threadId });
               surfaces.leavePlugins();
+              surfaces.leaveBots();
               tasks.close();
               surfaces.leaveSettings();
             }),
@@ -87,6 +98,7 @@ export function WorkbenchRail({
           onSelect: () =>
             requestNavigation(() => {
               surfaces.leavePlugins();
+              surfaces.leaveBots();
               surfaces.leaveSettings();
               tasks.openCatalog();
               if (matchMedia("(max-width: 640px)").matches) setSidebar(false);
@@ -99,16 +111,31 @@ export function WorkbenchRail({
           onSelect: () =>
             requestNavigation(() => {
               rememberPluginTask();
+              surfaces.leaveBots();
               surfaces.leaveSettings();
               tasks.close();
               surfaces.openMarketplace();
+            }),
+        },
+        {
+          id: "bots",
+          label: t("bots.title"),
+          icon: <Bot strokeWidth={1.6} />,
+          onSelect: () =>
+            requestNavigation(() => {
+              surfaces.leavePlugins();
+              surfaces.leaveSettings();
+              tasks.close();
+              surfaces.openBots();
+              if (matchMedia("(max-width: 640px)").matches) setSidebar(false);
             }),
         },
       ].filter(
         (item) =>
           !readOnly ||
           item.id === "home" ||
-          (item.id === "tasks" && services.capabilities?.taskCatalog),
+          (item.id === "tasks" && services.capabilities?.taskCatalog) ||
+          (item.id === "bots" && services.capabilities?.bots && botsEnabled),
       )}
       footer={
         readOnly && !services.capabilities?.settings?.length ? null : (

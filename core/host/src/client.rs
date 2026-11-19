@@ -37,6 +37,12 @@ impl Client {
         )
         .await
     }
+    pub async fn bots_read(&self, params: Value) -> Result<Value> {
+        self.call("bots.read", params).await
+    }
+    pub async fn bots_command(&self, params: Value) -> Result<Value> {
+        self.call("bots.command", params).await
+    }
 
     pub fn identity(&self) -> &HostIdentity {
         &self.identity

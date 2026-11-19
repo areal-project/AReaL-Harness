@@ -25,12 +25,13 @@ export function useWorkbenchSurfaces(
     if (next !== settingsTab) requestNavigation(() => updateSettingsTab(next));
   };
   const [pluginsOpen, setPluginsOpen] = useState(false);
+  const [botsOpen, setBotsOpen] = useState(false);
   const [pluginTaskOrigin, setPluginTaskOrigin] = useState<PluginTaskOrigin | null>(null);
   const pluginTaskFocus = useRef<PluginTaskOrigin | null>(null);
   const [pluginMarketRequest, setPluginMarketRequest] = useState(0);
   const [settingsOpen, updateSettingsOpen] = useState(false);
   const rememberPluginTask = () => {
-    if (!pluginsOpen && !settingsOpen) {
+    if (!pluginsOpen && !settingsOpen && !botsOpen) {
       setPluginTaskOrigin(
         !taskCenterOpen && projectId && threadId ? { projectId, threadId } : null,
       );
@@ -47,6 +48,7 @@ export function useWorkbenchSurfaces(
           route: `${projectId}:${threadId}`,
         };
       setPluginsOpen(false);
+      setBotsOpen(false);
       tasks.close();
       updateSettingsOpen(true);
     } else requestNavigation(() => updateSettingsOpen(false));
@@ -83,6 +85,7 @@ export function useWorkbenchSurfaces(
     void requestNavigation(() => {
       pluginTaskFocus.current = origin;
       updateSettingsOpen(false);
+      setBotsOpen(false);
       if (projectId === origin.projectId && threadId === origin.threadId) {
         setPluginsOpen(false);
         tasks.close();
@@ -94,6 +97,7 @@ export function useWorkbenchSurfaces(
     if (!target) return;
     if (
       pluginsOpen ||
+      botsOpen ||
       settingsOpen ||
       taskCenterOpen ||
       projectId !== target.projectId ||
@@ -122,6 +126,7 @@ export function useWorkbenchSurfaces(
     settingsTab,
     settingsOpen,
     pluginsOpen,
+    botsOpen,
     pluginTaskOrigin,
     pluginMarketRequest,
     setSettingsTab,
@@ -132,13 +137,21 @@ export function useWorkbenchSurfaces(
     restorePluginFocus,
     leaveSettings: () => updateSettingsOpen(false),
     leavePlugins: () => setPluginsOpen(false),
+    leaveBots: () => setBotsOpen(false),
+    openBots() {
+      updateSettingsOpen(false);
+      setPluginsOpen(false);
+      setBotsOpen(true);
+    },
     openMarketplace(preserveDetail = false) {
       updateSettingsOpen(false);
+      setBotsOpen(false);
       if (!preserveDetail) setPluginMarketRequest((value) => value + 1);
       setPluginsOpen(true);
     },
     openPluginSettings() {
       setPluginsOpen(false);
+      setBotsOpen(false);
       updateSettingsTab("插件");
       updateSettingsOpen(true);
     },

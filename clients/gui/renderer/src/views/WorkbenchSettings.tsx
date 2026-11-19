@@ -21,6 +21,7 @@ import { AppearanceSettings, GeneralSettings } from "../settings/DisplaySettings
 import { HooksSettings } from "../settings/HooksSettings.js";
 import { MobileSettings } from "../settings/MobileSettings.js";
 import { ModelSettings } from "../settings/ModelSettings.js";
+import { LabsSettings } from "../settings/LabsSettings.js";
 import { SessionSettings } from "../settings/ResourceSettings.js";
 import { ServiceStatusSettings } from "../settings/ServiceStatusSettings.js";
 import { SettingsPage } from "../settings/SettingsWorkspace.js";
@@ -191,6 +192,8 @@ export function WorkbenchSettings({
           connected={snapshot.connection?.state === "ready"}
           onStatus={onTrajectoryStatus}
         />
+      ) : settingsTab === "Labs" ? (
+        <LabsSettings />
       ) : ["高级诊断", "后台服务"].includes(settingsTab) ? (
         <>
           <Button variant="ghost" onClick={() => setSettingsTab("常规")}>

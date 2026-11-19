@@ -12,6 +12,8 @@ mod vault_liveness_tests;
 pub(crate) use gateway_owner::error_code;
 #[path = "analytics.rs"]
 mod analytics;
+#[path = "bots.rs"]
+pub(crate) mod bots;
 #[path = "idle.rs"]
 mod idle;
 #[path = "library_commands.rs"]
@@ -138,6 +140,7 @@ struct Host {
     gateway: gateway_owner::Gateway,
     subscriptions: subscriptions::Subscriptions,
     schedules: schedules::Schedules,
+    bots: bots::Bots,
     power: power::Power,
     loopback: loopback::Loopback,
     read_models: shell_subscription::ReadModels,
@@ -387,6 +390,7 @@ pub(crate) async fn run_local_mode(
     let (changes, _) = watch::channel(0);
     let host = Rc::new(Host {
         schedules: schedules::Schedules::load(&home)?,
+        bots: bots::Bots::load(&home)?,
         home,
         bin: options.bin_dir.canonicalize()?,
         identity,
@@ -1306,6 +1310,9 @@ impl Host {
                 params.clone(),
             )?;
             return workbench_route::backend_command(self,"local",&json!({"method":method,"commandId":params["commandId"],"params":params["request"]})).await;
+        }
+        if bots::METHODS.contains(&method) {
+            return bots::request(self, method, &params).await;
         }
         if method == "backend.credentialNames" {
             serde_json::from_value::<areal_protocol::host::LocalBackendEnsureParams>(

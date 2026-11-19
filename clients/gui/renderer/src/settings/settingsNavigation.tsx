@@ -1,4 +1,4 @@
-import { Camera, Cpu, Database, GitFork, Monitor, Server, Smartphone } from "lucide-react";
+import { Beaker, Camera, Cpu, Database, GitFork, Monitor, Server, Smartphone } from "lucide-react";
 import type { useI18n } from "../i18n/IntlProvider.js";
 import {
   SettingsAppearanceIcon,
@@ -107,6 +107,12 @@ export const settingsNavigationGroups = [
         label: "settings.mobile.title",
         icon: <Smartphone strokeWidth={1.5} />,
       },
+      {
+        id: "Labs",
+        keywords: "settings.search.labs",
+        label: "settings.labs.title",
+        icon: <Beaker strokeWidth={1.5} />,
+      },
     ],
   },
 ] as const satisfies readonly SettingsNavigationGroup[];
@@ -116,6 +122,7 @@ const settingsSubtitles = {
   Worktrees: "worktree.settings.description",
   手机连接: "settings.mobileConnect.intro",
   钩子: "settings.hooksSettings.runToolEventCommandsInOrderRestart",
+  Labs: "settings.labs.description",
 } as const;
 
 /** 页面说明放在标题下面，和标题算一组，不和第一个分区挤在一起。 */

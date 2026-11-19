@@ -64,6 +64,7 @@ pub const CAPABILITIES: &[&str] = &[
     "powerV1",
     "updates",
     "workbenchUtilities",
+    "botsV1",
 ];
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

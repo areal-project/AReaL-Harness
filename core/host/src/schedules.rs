@@ -502,6 +502,7 @@ pub(super) mod tests {
             journal: crate::journal::Journal::new(&home).unwrap(),
             remote: crate::remote_state::RemoteState::new(&home),
             schedules: Schedules::load(&home).unwrap(),
+            bots: super::bots::Bots::load(&home).unwrap(),
         }
     }
     fn input(host: &Host, resume: bool) -> Ensure {

@@ -112,6 +112,7 @@ export class HostClient {
   #listeners = new Set<() => void>();
   #readListeners = new Set<() => void>();
   #pageListeners = new Set<(event: unknown) => void>();
+  #botListeners = new Set<(event: unknown) => void>();
   #epoch = 0;
   #selection = 0;
   #shellEpoch = 0;
@@ -167,6 +168,12 @@ export class HostClient {
     this.#pageListeners.add(listener);
     return () => {
       this.#pageListeners.delete(listener);
+    };
+  };
+  subscribeBotEvents = (listener: (event: unknown) => void) => {
+    this.#botListeners.add(listener);
+    return () => {
+      this.#botListeners.delete(listener);
     };
   };
   #publish(state: HostReadState) {
@@ -818,6 +825,25 @@ export class HostClient {
         notification: event.notification,
       };
       for (const listener of this.#pageListeners) listener(pageEvent);
+      return;
+    }
+    if (record(event) && event.event === "bots.event") {
+      const state = this.#state;
+      if (
+        this.#closed ||
+        state.connection !== "ready" ||
+        event.connectionId !== state.identity.connectionId ||
+        event.gatewayGeneration !== state.identity.gatewayGeneration ||
+        !record(event.notification)
+      )
+        return;
+      const botEvent = {
+        event: "bots.event",
+        connectionId: state.identity.connectionId,
+        gatewayGeneration: state.identity.gatewayGeneration,
+        notification: event.notification,
+      };
+      for (const listener of this.#botListeners) listener(botEvent);
       return;
     }
     if (!identity(event)) return;

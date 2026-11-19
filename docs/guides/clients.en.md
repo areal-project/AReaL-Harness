@@ -189,6 +189,12 @@ Credentials use the native security/auth.json shape, with `principals[0].token`.
 
 Remote CLI and GUI Cloud resume select `areal/thread/observe` when advertised. With older Core versions they read state through `thread/read` (GUI explicitly requests complete Turn history) and subscribe when submitting the next turn, without taking over an existing desktop tool host through `thread/resume`. The legacy read and subscription are not atomic; permission and network failures do not trigger fallback retries.
 
+## Bot model services
+
+Bot settings can select enabled models from Harness Model Services. The Host checks the sandbox provider, endpoint, protocol, and model ID, then probes the model from the sandbox when the selection is saved. The Bot stores only the model reference. Selecting a shared model leaves local credentials on the Host.
+
+If the sandbox lacks the matching provider or usable credentials, the Bot offers a link to Model Services. Check the local model configuration and enable the same model service in the EnvArena deployment before saving the Bot selection again.
+
 ## Cloud
 
 `areal cloud` connects to a generic HTTP backend and submits stateless Tasks without starting local Core, mounting the local project, using UPFS, or selecting or synchronizing a Harness. Persistent GUI Sessions are described in the [GUI guide](../../clients/gui/README.en.md#cloud-backend-configuration). The backend must accept `{ "prompt": "..." }` on `POST /harness-tasks` and choose runtime, model, and task environment through server-side defaults. The client does not guess a Harness or stream; backends without this default contract reject submission.

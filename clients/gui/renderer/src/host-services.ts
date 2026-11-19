@@ -42,6 +42,7 @@ import {
   desktopWindowCommand,
 } from "./host-workbench.js";
 import { createHostPages } from "./host-pages.js";
+import { createHostBots } from "./host-bots.js";
 import { createWatchedHistory } from "./host-watched-history.js";
 import {
   chooseHostProject,
@@ -72,6 +73,7 @@ export function createHostReadServices(
 ): PlatformServices {
   const client = new HostClient({ ...options, writes: true });
   const pages = createHostPages(client, desktop !== undefined);
+  const hostBots = createHostBots(client);
   const listeners = new Set<(snapshot: Snapshot) => void>();
   let shellExtras: ShellSnapshot | undefined;
   let desktopSnapshot: Snapshot | undefined;
@@ -549,6 +551,7 @@ export function createHostReadServices(
     clearTimeout(cacheTimer);
     windows.clear();
     pages?.dispose();
+    hostBots.dispose();
     client.close();
   };
   if (typeof window !== "undefined")
@@ -911,6 +914,7 @@ export function createHostReadServices(
     reads,
     writes,
     workbench,
+    bots: hostBots.bots,
     mcpApp: pages.mcpApp,
     onMcpAppEvent: pages.onMcpAppEvent,
     snapshot: async () => snapshot,

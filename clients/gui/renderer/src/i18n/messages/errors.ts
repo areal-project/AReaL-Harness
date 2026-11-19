@@ -93,6 +93,28 @@ export const errorMessages = {
     "zh-CN": "还不确定这次操作是否完成。请先查看结果再决定是否重试，以免重复。",
     en: "We're not sure whether that finished. Check the result before trying again to avoid doing it twice.",
   },
+  "errors.SUBMISSION_PENDING": {
+    "zh-CN": "上一条消息状态尚未确认，已暂停新的写入以免重复执行。请先检查最新状态。",
+    en: "The previous message status is still unconfirmed. New sends are paused to avoid duplicates—check the latest status first.",
+  },
+  "errors.ARENA_NOT_CONFIGURED": {
+    "zh-CN": "尚未配置 EnvArena 网关地址或访问令牌，请先完成连接配置。",
+    en: "EnvArena gateway URL or access token is not configured yet. Configure the connection first.",
+  },
+  "errors.BOT_MODEL_AUTH_REQUIRED": {
+    "zh-CN": "远端沙箱无法使用这个模型。请检查模型服务和沙箱授权。",
+    en: "The sandbox cannot use this model. Check the model service and sandbox access.",
+  },
+  "errors.REMOTE_CREDENTIAL_UNSUPPORTED": {
+    "zh-CN":
+      "当前远端 EnvArena 沙箱版本暂不支持运行时写入自定义 API Key。可留空 API Key 使用无鉴权网关或沙箱预置凭据，或升级远端沙箱后再试。",
+    en: "This EnvArena sandbox version does not support registering custom API keys at runtime yet. Leave API Key blank for a keyless or preconfigured gateway, or upgrade the sandbox.",
+  },
+  "errors.PROVIDER_MANAGED": {
+    "zh-CN":
+      "内置 Provider（如 arena）由远端沙箱托管，不能直接覆盖。请改用新的 Provider ID（例如 custom）。",
+    en: "Built-in providers (such as arena) are managed by the sandbox and cannot be overwritten. Use a different Provider ID (e.g. custom).",
+  },
   "errors.REVIEW_INCOMPLETE": {
     "zh-CN": "还有待确认的内容没有处理，请先处理完再继续。",
     en: "Some items still need your review. Finish them first.",

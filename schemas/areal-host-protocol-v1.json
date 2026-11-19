@@ -13352,6 +13352,8 @@
               "providers.command",
               "plugins.read",
               "plugins.command",
+              "bots.read",
+              "bots.command",
               "pages.command",
               "pages.resource",
               "desktop.command"
@@ -14988,6 +14990,28 @@
             },
             "params": {
               "$ref": "#/$defs/WorkbenchPageEvent"
+            }
+          },
+          "required": [
+            "version",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "integer",
+              "const": 1
+            },
+            "method": {
+              "type": "string",
+              "const": "bots.event"
+            },
+            "params": {
+              "$ref": "#/$defs/BotsEvent"
             }
           },
           "required": [
@@ -34467,6 +34491,48 @@
           "notification": {
             "jsonrpc": "2.0",
             "method": "ui/notifications/closed"
+          }
+        }
+      ]
+    },
+    "BotsEvent": {
+      "type": "object",
+      "properties": {
+        "event": {
+          "type": "string",
+          "const": "bots.event"
+        },
+        "connectionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gatewayGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "notification": {
+          "$ref": "#/$defs/OpaquePayload"
+        }
+      },
+      "required": [
+        "event",
+        "connectionId",
+        "gatewayGeneration",
+        "notification"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "event": "bots.event",
+          "connectionId": "fixture-connection",
+          "gatewayGeneration": "fixture-generation",
+          "notification": {
+            "kind": "stateChanged",
+            "botId": "bot-fixture",
+            "workspace": "bot-fixture",
+            "state": {
+              "status": "ready"
+            }
           }
         }
       ]
@@ -65691,6 +65757,308 @@
         }
       ]
     },
+    "BotModelRef": {
+      "type": "object",
+      "properties": {
+        "providerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "modelId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "modelId"
+      ],
+      "additionalProperties": false
+    },
+    "BotsReadParams": {
+      "type": "object",
+      "description": "Personal Agent (Bot) read operations owned by the Host.",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": [
+            "list",
+            "get",
+            "settings",
+            "observe",
+            "models",
+            "reconcile"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "operation"
+      ],
+      "additionalProperties": false
+    },
+    "BotsCommandParams": {
+      "type": "object",
+      "description": "Personal Agent (Bot) mutation and remote EnvArena sandbox control operations owned by the Host.",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": [
+            "configureArena",
+            "create",
+            "update",
+            "remove",
+            "connect",
+            "disconnect",
+            "send",
+            "interrupt",
+            "respondInteraction",
+            "compact",
+            "resetConversation",
+            "upsertProvider"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedRevision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "baseUrl": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "profile": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "token": {
+          "type": "string"
+        },
+        "clearToken": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "avatar": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "workspace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "starterPrompts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "systemPromptMode": {
+          "type": "string",
+          "enum": [
+            "personalAgent",
+            "default"
+          ]
+        },
+        "preferences": {
+          "type": "string"
+        },
+        "modelOverride": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/BotModelRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "providerSyncMode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "arenaOnly",
+            "hostSync"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OpaquePayload"
+          }
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "interactionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "response": {
+          "$ref": "#/$defs/OpaquePayload"
+        },
+        "provider": {
+          "$ref": "#/$defs/OpaquePayload"
+        }
+      },
+      "required": [
+        "operation"
+      ],
+      "additionalProperties": false,
+      "x-sensitive": true
+    },
+    "BotsReadRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "bots.read"
+        },
+        "params": {
+          "$ref": "#/$defs/BotsReadParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "bots",
+          "method": "bots.read",
+          "params": {
+            "operation": "list"
+          }
+        }
+      ]
+    },
+    "BotsReadResult": {
+      "x-opaque": true,
+      "x-source": "core/host/src/bots/pool.rs",
+      "description": "Operation-specific Bot registry view, public Arena settings, observed remote CoreThread snapshot, remote model/provider catalog, or pending-submission reconciliation result.",
+      "examples": [
+        {
+          "revision": 0,
+          "arena": {
+            "ready": false,
+            "hasToken": false,
+            "source": "unconfigured"
+          },
+          "bots": []
+        }
+      ]
+    },
+    "BotsCommandRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "bots.command"
+        },
+        "params": {
+          "$ref": "#/$defs/BotsCommandParams"
+        },
+        "commandId": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params",
+        "commandId"
+      ],
+      "additionalProperties": false,
+      "x-sensitive": true,
+      "examples": [
+        {
+          "id": "bots",
+          "method": "bots.command",
+          "params": {
+            "operation": "create",
+            "name": "Weekly Digest Bot"
+          },
+          "commandId": "01234567-89ab-cdef-0123-456789abcdef"
+        }
+      ]
+    },
+    "BotsCommandResult": {
+      "type": "object",
+      "properties": {
+        "commandId": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string",
+          "const": "bots.command"
+        },
+        "admissionState": {
+          "type": "string",
+          "enum": [
+            "accepted",
+            "unknown"
+          ]
+        },
+        "submissionUnknown": {
+          "type": "boolean"
+        },
+        "receipt": {
+          "$ref": "#/$defs/OpaquePayload"
+        }
+      },
+      "required": [
+        "commandId",
+        "method",
+        "admissionState",
+        "submissionUnknown"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "commandId": "01234567-89ab-cdef-0123-456789abcdef",
+          "method": "bots.command",
+          "admissionState": "accepted",
+          "submissionUnknown": false
+        }
+      ]
+    },
     "WorkbenchLocalMcpList": {
       "type": "object",
       "description": "Directly added MCP servers, each stored as a single-server plugin.",
@@ -66763,6 +67131,22 @@
           "capability": "gui-write-v1",
           "x-owner": "host"
         },
+        "bots.read": {
+          "x-lane": "query",
+          "request": "#/$defs/BotsReadRequest",
+          "result": "#/$defs/BotsReadResult",
+          "source": "core/host/src/bots.rs",
+          "capability": "gui-write-v1",
+          "x-owner": "host"
+        },
+        "bots.command": {
+          "x-lane": "mutation",
+          "request": "#/$defs/BotsCommandRequest",
+          "result": "#/$defs/BotsCommandResult",
+          "source": "core/host/src/bots.rs",
+          "capability": "gui-write-v1",
+          "x-owner": "host"
+        },
         "pages.command": {
           "x-lane": "mutation",
           "request": "#/$defs/WorkbenchPageCommandRequest",
@@ -66933,7 +67317,8 @@
         "shell.invalidated": "#/$defs/LoopbackNotification",
         "session.updated": "#/$defs/LoopbackNotification",
         "session.invalidated": "#/$defs/LoopbackNotification",
-        "pages.event": "#/$defs/LoopbackNotification"
+        "pages.event": "#/$defs/LoopbackNotification",
+        "bots.event": "#/$defs/LoopbackNotification"
       }
     },
     "workbench": {

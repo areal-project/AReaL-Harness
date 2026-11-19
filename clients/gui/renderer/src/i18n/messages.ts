@@ -20,6 +20,8 @@ import { worktreeMessages } from "./messages/worktrees.js";
 import { settingsSearchMessages } from "./messages/settingsSearch.js";
 import { errorMessages } from "./messages/errors.js";
 import { userStateMessages } from "./messages/userStates.js";
+import { botMessages } from "./messages/bots.js";
+import { labsMessages } from "./messages/labs.js";
 
 export type AppLocale = "zh-CN" | "en";
 export type MessagePair = Record<AppLocale, string>;
@@ -46,6 +48,8 @@ export const messages = {
   ...settingsSearchMessages,
   ...errorMessages,
   ...userStateMessages,
+  ...botMessages,
+  ...labsMessages,
 } as const satisfies Record<string, MessagePair>;
 export type MessageId = keyof typeof messages;
 export const catalogs = Object.fromEntries(

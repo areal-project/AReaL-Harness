@@ -11,6 +11,7 @@ import { recoverySettings } from "./recoveryPresentation.js";
 import { type Data, type PlatformServices } from "./services.js";
 import { useApplicationPreferences } from "./settings/applicationPreferences.js";
 import { settingsNavigationGroups } from "./settings/settingsNavigation.js";
+import { labsAvailable } from "./settings/labsFeatures.js";
 import { SettingsNavigation } from "./settings/SettingsWorkspace.js";
 import { useGuardedQuit } from "./settings/UnsavedChanges.js";
 import { useTrajectoryPolling } from "./settings/useTrajectoryPolling.js";
@@ -52,6 +53,7 @@ import {
 } from "./views/WorkbenchChrome.js";
 import { WorkbenchPlugins } from "./views/WorkbenchPlugins.js";
 import { WorkbenchSettings } from "./views/LazyWorkbenchSettings.js";
+import { LazyBotsWorkspace } from "./bots/LazyBotsWorkspace.js";
 import { WorkspacePanelContent } from "./views/LazyWorkspacePanelContent.js";
 import { WorkspacePanels } from "./views/WorkspacePanels.js";
 import { WorkspaceFileTree } from "./workspace-file-tree/WorkspaceFileTree.js";
@@ -98,6 +100,7 @@ function AppContent({ services }: { services: PlatformServices }) {
   const { annotationTarget, annotationVisible } = annotation;
   const documents = useWorkspaceDocuments(project, workspacePanels, () => rememberPanelTrigger());
   const { requestReview: setReviewRequest, openFile } = documents;
+  const botDrafts = React.useRef(new Map<string, string>());
   const contextReturn = React.useRef<(() => void) | null>(null);
   useEffect(() => {
     workspacePanels.retainSelectedTab(panel);
@@ -119,6 +122,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     settingsTab,
     settingsOpen,
     pluginsOpen,
+    botsOpen,
     setSettingsTab,
     setSettingsOpen,
     trajectoryAttention,
@@ -233,6 +237,7 @@ function AppContent({ services }: { services: PlatformServices }) {
       !settingsOpen &&
       !taskCenterOpen &&
       !pluginsOpen &&
+      !botsOpen &&
       workspaceView !== "panel" &&
       !!project?.state?.connected &&
       !projectExecutionBlocked(snapshot.lifecycle, project?.id ?? ""),
@@ -293,6 +298,7 @@ function AppContent({ services }: { services: PlatformServices }) {
   const { choose, open, newTask, traverseWorkspaceHistory } = navigationCommands;
   useEffect(surfaces.restorePluginFocus, [
     pluginsOpen,
+    botsOpen,
     settingsOpen,
     taskCenterOpen,
     projectId,
@@ -307,6 +313,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     activeTab:
       !annotationVisible &&
       !pluginsOpen &&
+      !botsOpen &&
       !settingsOpen &&
       !taskCenterOpen &&
       workspaceView !== "conversation"
@@ -316,6 +323,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     action: resourceAction,
     onOpenThread: async (pid, tid) => {
       surfaces.leaveSettings();
+      surfaces.leaveBots();
       await open(pid, tid);
     },
     onReveal: (tab, owner) => {
@@ -484,9 +492,11 @@ function AppContent({ services }: { services: PlatformServices }) {
             ? "settings"
             : pluginsOpen
               ? "plugins"
-              : taskCenterOpen
-                ? "tasks"
-                : "workspace"
+              : botsOpen
+                ? "bots"
+                : taskCenterOpen
+                  ? "tasks"
+                  : "workspace"
         }
         data-testid="areal-workbench"
         data-project-id={project?.id ?? projectId}
@@ -572,7 +582,7 @@ function AppContent({ services }: { services: PlatformServices }) {
           />
         ) : (
           <>
-            {!sidebar && !settingsOpen && (
+            {!sidebar && !settingsOpen && !botsOpen && (
               <div className="areal-update-floating">
                 <UpdateIndicator services={services} />
               </div>
@@ -589,10 +599,11 @@ function AppContent({ services }: { services: PlatformServices }) {
                     ...group,
                     label: t(group.label),
                     items: group.items
-                      .filter(
-                        (item) =>
-                          services.capabilities?.settings === undefined ||
-                          services.capabilities.settings.includes(item.id),
+                      .filter((item) =>
+                        item.id === "Labs"
+                          ? labsAvailable
+                          : services.capabilities?.settings === undefined ||
+                            services.capabilities.settings.includes(item.id),
                       )
                       .map((item) => ({
                         ...item,
@@ -618,7 +629,7 @@ function AppContent({ services }: { services: PlatformServices }) {
               taskCenterOpen={taskCenterOpen}
               pluginsOpen={pluginsOpen}
               sidebar={sidebar}
-              visible={!settingsOpen}
+              visible={!settingsOpen && !botsOpen}
               appearance={{
                 sidebarWidth,
                 setSidebarWidth,
@@ -640,153 +651,170 @@ function AppContent({ services }: { services: PlatformServices }) {
               closePanels={() => workspacePanels.selectPanel("")}
               onOpenProjectTasks={(pid) => {
                 surfaces.leaveSettings();
+                surfaces.leaveBots();
                 tasks.openCatalog(pid);
               }}
             />
-            <main
-              className={`work-area ${settingsOpen ? "settings-open" : ""}`}
-              data-workspace-view={
-                !annotationVisible &&
-                panel &&
-                !pluginsOpen &&
-                !settingsOpen &&
-                !taskCenterOpen &&
-                workspaceView !== "split"
-                  ? workspaceView
-                  : undefined
-              }
-            >
-              <WorkSurface
-                panelOpen={Boolean(
-                  (annotationVisible || (panel && project)) &&
+            {botsOpen ? (
+              <LazyBotsWorkspace
+                service={services.bots}
+                drafts={botDrafts.current}
+                chrome={workspaceNavigation}
+                rail={applicationRail}
+                sidebarWidth={sidebarWidth}
+                onSidebarWidthChange={setSidebarWidth}
+                active={botsOpen}
+                onOpenModelServices={() => {
+                  setSettingsTab("模型服务");
+                  setSettingsOpen(true);
+                }}
+              />
+            ) : (
+              <main
+                className={`work-area ${settingsOpen ? "settings-open" : ""}`}
+                data-workspace-view={
+                  !annotationVisible &&
+                  panel &&
                   !pluginsOpen &&
                   !settingsOpen &&
-                  !taskCenterOpen,
-                )}
-                split={
-                  workspaceView === "split" && !pluginsOpen && !settingsOpen && !taskCenterOpen
+                  !taskCenterOpen &&
+                  workspaceView !== "split"
+                    ? workspaceView
+                    : undefined
                 }
               >
-                {!taskCenterOpen && (
-                  <ConversationHeader
-                    session={session}
-                    surfaces={surfaces}
-                    workspacePanels={workspacePanels}
-                    documents={documents}
-                    tasks={tasks}
-                    sidebar={sidebar}
-                    empty={empty}
-                    currentTitle={currentTitle}
-                    mainPane={mainPane}
-                    contextReturn={contextReturn}
-                    onLink={onLink}
-                    showPanel={showPanel}
-                    hidePanel={hidePanel}
-                    rememberPanelTrigger={rememberPanelTrigger}
-                    workspaceNavigation={workspaceNavigation}
-                    taskActions={taskActions}
-                  />
-                )}
-                <RecoveryNotices
-                  recovery={recovery}
-                  startup={startup}
-                  session={session}
-                  surfaces={surfaces}
-                />
-                {
-                  <WorkbenchPlugins
-                    session={session}
-                    surfaces={surfaces}
-                    navigationCommands={navigationCommands}
-                    mcpWorkspace={mcpWorkspace}
-                  />
-                }
-                {pluginCenterActive ? null : settingsOpen ? (
-                  settingsPage
-                ) : taskSurface === "inbox" ? (
-                  <Inbox
-                    projects={snapshot.projects}
-                    connected={snapshot.connection?.state === "ready"}
-                    action={resourceAction}
-                    onClose={() => tasks.close()}
-                  />
-                ) : taskCenterOpen ? (
-                  <TaskWorkspace
-                    fileOpen={services.fileOpen}
-                    workspace={tasks}
-                    snapshot={snapshot}
-                    action={resourceAction}
-                    dark={dark}
-                    sidebar={sidebar}
-                    onShowSidebar={() => setSidebar(true)}
-                    onOpenThread={open}
-                    onNewTask={newTask}
-                    onPanel={showPanel}
-                    onFile={openFile}
-                    onLink={onLink}
-                    onReview={(pid, tid, turnId) => {
-                      setReviewRequest({ owner: `${pid}:${tid}`, turnId });
-                      workspacePanels.selectPanel("改动");
-                    }}
-                  />
-                ) : (
-                  <ConversationWorkspace
-                    session={session}
-                    services={services}
-                    action={action}
-                    dark={dark}
-                    empty={empty}
-                    admitting={admitting}
-                    mainPane={mainPane}
-                    workspacePanels={workspacePanels}
-                    mcpWorkspace={mcpWorkspace}
-                    side={side}
-                    fork={fork}
-                    preview={preview}
-                    documents={documents}
-                    panelNavigation={panelNavigation}
-                    composerWorkspace={composerWorkspace}
-                    annotation={annotation}
-                    surfaces={surfaces}
-                    tasks={tasks}
+                <WorkSurface
+                  panelOpen={Boolean(
+                    (annotationVisible || (panel && project)) &&
+                    !pluginsOpen &&
+                    !settingsOpen &&
+                    !taskCenterOpen,
+                  )}
+                  split={
+                    workspaceView === "split" && !pluginsOpen && !settingsOpen && !taskCenterOpen
+                  }
+                >
+                  {!taskCenterOpen && (
+                    <ConversationHeader
+                      session={session}
+                      surfaces={surfaces}
+                      workspacePanels={workspacePanels}
+                      documents={documents}
+                      tasks={tasks}
+                      sidebar={sidebar}
+                      empty={empty}
+                      currentTitle={currentTitle}
+                      mainPane={mainPane}
+                      contextReturn={contextReturn}
+                      onLink={onLink}
+                      showPanel={showPanel}
+                      hidePanel={hidePanel}
+                      rememberPanelTrigger={rememberPanelTrigger}
+                      workspaceNavigation={workspaceNavigation}
+                      taskActions={taskActions}
+                    />
+                  )}
+                  <RecoveryNotices
+                    recovery={recovery}
                     startup={startup}
-                    navigationCommands={navigationCommands}
-                    conversationReferences={conversationReferences}
-                    readTurnReview={readTurnReview}
-                    pending={pending}
-                    setError={setError}
+                    session={session}
+                    surfaces={surfaces}
                   />
-                )}
-              </WorkSurface>
-              {mcpWorkspace.pages}
-              <WorkspacePanels
-                session={session}
-                workspacePanels={workspacePanels}
-                side={side}
-                documents={documents}
-                annotation={annotation}
-                surfaces={surfaces}
-                browserWorkspace={browserWorkspace}
-                mcpWorkspace={mcpWorkspace}
-                taskCenterOpen={taskCenterOpen}
-                services={services}
-                dark={dark}
-                empty={empty}
-                currentTitle={currentTitle}
-                sidebar={sidebar}
-                setSidebar={setSidebar}
-                taskActions={taskActions}
-                workspaceFileTree={workspaceFileTree}
-                panelBody={panelBody}
-                hidePanel={hidePanel}
-                showFiles={showFiles}
-                openTerminal={openTerminal}
-                openBrowser={openBrowser}
-                setTerminalOpen={setTerminalOpen}
-                previewOwner={previewOwner}
-                setError={setError}
-              />
-            </main>
+                  {
+                    <WorkbenchPlugins
+                      session={session}
+                      surfaces={surfaces}
+                      navigationCommands={navigationCommands}
+                      mcpWorkspace={mcpWorkspace}
+                    />
+                  }
+                  {pluginCenterActive ? null : settingsOpen ? (
+                    settingsPage
+                  ) : taskSurface === "inbox" ? (
+                    <Inbox
+                      projects={snapshot.projects}
+                      connected={snapshot.connection?.state === "ready"}
+                      action={resourceAction}
+                      onClose={() => tasks.close()}
+                    />
+                  ) : taskCenterOpen ? (
+                    <TaskWorkspace
+                      fileOpen={services.fileOpen}
+                      workspace={tasks}
+                      snapshot={snapshot}
+                      action={resourceAction}
+                      dark={dark}
+                      sidebar={sidebar}
+                      onShowSidebar={() => setSidebar(true)}
+                      onOpenThread={open}
+                      onNewTask={newTask}
+                      onPanel={showPanel}
+                      onFile={openFile}
+                      onLink={onLink}
+                      onReview={(pid, tid, turnId) => {
+                        setReviewRequest({ owner: `${pid}:${tid}`, turnId });
+                        workspacePanels.selectPanel("改动");
+                      }}
+                    />
+                  ) : (
+                    <ConversationWorkspace
+                      session={session}
+                      services={services}
+                      action={action}
+                      dark={dark}
+                      empty={empty}
+                      admitting={admitting}
+                      mainPane={mainPane}
+                      workspacePanels={workspacePanels}
+                      mcpWorkspace={mcpWorkspace}
+                      side={side}
+                      fork={fork}
+                      preview={preview}
+                      documents={documents}
+                      panelNavigation={panelNavigation}
+                      composerWorkspace={composerWorkspace}
+                      annotation={annotation}
+                      surfaces={surfaces}
+                      tasks={tasks}
+                      startup={startup}
+                      navigationCommands={navigationCommands}
+                      conversationReferences={conversationReferences}
+                      readTurnReview={readTurnReview}
+                      pending={pending}
+                      setError={setError}
+                    />
+                  )}
+                </WorkSurface>
+                {mcpWorkspace.pages}
+                <WorkspacePanels
+                  session={session}
+                  workspacePanels={workspacePanels}
+                  side={side}
+                  documents={documents}
+                  annotation={annotation}
+                  surfaces={surfaces}
+                  browserWorkspace={browserWorkspace}
+                  mcpWorkspace={mcpWorkspace}
+                  taskCenterOpen={taskCenterOpen}
+                  services={services}
+                  dark={dark}
+                  empty={empty}
+                  currentTitle={currentTitle}
+                  sidebar={sidebar}
+                  setSidebar={setSidebar}
+                  taskActions={taskActions}
+                  workspaceFileTree={workspaceFileTree}
+                  panelBody={panelBody}
+                  hidePanel={hidePanel}
+                  showFiles={showFiles}
+                  openTerminal={openTerminal}
+                  openBrowser={openBrowser}
+                  setTerminalOpen={setTerminalOpen}
+                  previewOwner={previewOwner}
+                  setError={setError}
+                />
+              </main>
+            )}
             {fork.dialog}
           </>
         )}

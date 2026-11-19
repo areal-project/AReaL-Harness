@@ -772,6 +772,8 @@ describe("Host renderer read authority", () => {
                   "providers.read",
                   "pages.command",
                   "pages.resource",
+                  "bots.read",
+                  "bots.command",
                 ]
               : [],
             writeLimits: {},
@@ -789,6 +791,7 @@ describe("Host renderer read authority", () => {
           taskCatalog: permitted,
           taskManage: permitted,
           pages: permitted,
+          bots: permitted,
           settings: permitted ? ["模型服务"] : [],
           mutations: false,
           conversationSubmit: false,
@@ -1367,6 +1370,7 @@ describe("Host renderer read authority", () => {
       taskCatalog: false,
       taskManage: false,
       pages: false,
+      bots: false,
       settings: [],
     });
     expect(wire.requests.map((request) => request.method)).toEqual([
