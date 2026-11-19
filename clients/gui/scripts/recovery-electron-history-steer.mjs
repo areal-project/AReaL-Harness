@@ -271,19 +271,17 @@ try {
     mode === "intent" &&
     (serviceState.scheduleActivationSuppressed || !beforeResumeProjection?.state?.connected)
   ) {
-    const reconnect = await page.evaluate(
-      async (id) =>
-        window.arealDesktop.command("connect", { projectId: id, resumeScheduling: true }),
-      project.id,
-    );
-    mark("fixture-connect", { ok: reconnect.ok, error: reconnect.error });
-    assert(reconnect.ok, JSON.stringify(reconnect.error));
+    const reconnect = page.getByRole("button", { name: "重新连接项目", exact: true });
+    assert(await reconnect.isVisible(), "explicit reconnect button must be visible");
+    await reconnect.click();
+    mark("user-reconnect-clicked", {});
   }
-  const current = (await host.request("host.status", {})).projects.find(
-    (entry) => entry.registration.projectId === hostProject,
-  );
-  assert.equal(current.state, "ready");
-  assert.notEqual(current.service.generation, desc.generation);
+  const current = await wait(async () => {
+    const value = (await host.request("host.status", {})).projects.find(
+      (entry) => entry.registration.projectId === hostProject,
+    );
+    return value?.state === "ready" && value.service?.generation !== desc.generation && value;
+  }, "new Host Core generation");
   const projected = (await state()).projects.find((entry) => entry.id === project.id);
   const activeThread = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
   mark("new-generation", {
@@ -308,19 +306,29 @@ try {
   await page.getByTestId("chat-send-button").click();
   mark("clicked-send", {});
   await page.screenshot({ path: join(root, "after-send.png") });
-  await wait(async () => {
-    const x = (await state()).projects.find((x) => x.id === project.id)?.state?.threads?.[threadId];
-    return x?.turns?.length >= 3 && x.turns.at(-1).status === "completed" && x;
-  }, "new GUI send completed");
   const newList = JSON.parse(
     execFileSync(binary, ["service", "list", "--json"], { env, encoding: "utf8" }),
   );
   const newDesc = newList.find(
     (x) => x.workspace === workspace && x.generation === current.service.generation,
   );
-  assert(newDesc, "new Core descriptor must match the projected generation");
+  assert(newDesc, "new Core descriptor must match the Host generation");
   core = await connect(newDesc.endpoint, newDesc.authFile);
-  const authoritative = (await core.call("thread/read", { threadId, includeTurns: true })).thread;
+  let authoritative;
+  try {
+    authoritative = await wait(async () => {
+      const thread = (await core.call("thread/read", { threadId, includeTurns: true })).thread;
+      return thread.turns.length === 3 && thread.turns.at(-1).status === "completed" && thread;
+    }, "authoritative new GUI send completed");
+  } catch (error) {
+    const thread = (await core.call("thread/read", { threadId, includeTurns: true })).thread;
+    const journal = (await host.journal(hostProject).read()).snapshot;
+    mark("send-failure-observation", {
+      turns: thread.turns.map(({ id, status }) => ({ id, status })),
+      journal,
+    });
+    throw error;
+  }
   assert.equal(authoritative.turns.length, 3);
   assert.equal(authoritative.turns.at(-1).status, "completed");
   assert.equal(requests.filter((x) => x.text.includes("NEW_GUI_HISTORY_SEND")).length, 1);
