@@ -136,6 +136,10 @@ pub(super) async fn prepare_core(
 }
 
 impl PreparedCore {
+    pub(super) fn browser_lease(&self) -> Option<&str> {
+        self.browser.as_ref().map(|(lease, _)| lease.as_str())
+    }
+
     pub(super) async fn dispatch(&self, source: &str, params: &Value) -> Result<Value> {
         let host = self.host.upgrade().context("CAPABILITY_UNAVAILABLE")?;
         host.admission()?;

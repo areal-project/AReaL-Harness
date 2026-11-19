@@ -662,35 +662,60 @@ pub(super) async fn submit_shared(
     params: Value,
     remember: bool,
 ) -> Result<Value> {
+    submit_result(host, project, Channel::Shared, method, params, remember).await
+}
+
+pub(super) async fn submit_desktop_turn(
+    host: &Rc<Host>,
+    source: &str,
+    project: &str,
+    mut params: Value,
+) -> Result<Value> {
+    let method = "areal/turn/submit";
+    // 旧请求只用原回执核对，不为读取旧请求重新绑定浏览器。
+    let prepared = if find(host, project, request_id(&params)?)?.is_none() {
+        Some(
+            super::execution_preparation::prepare_core(host, source, project, method, &mut params)
+                .await?,
+        )
+    } else {
+        None
+    };
+    let channel = prepared
+        .as_ref()
+        .and_then(|core| core.browser_lease())
+        .map_or(Channel::Shared, Channel::Lease);
+    submit_result(host, project, channel, method, params, true).await
+}
+
+async fn submit_result(
+    host: &Rc<Host>,
+    project: &str,
+    channel: Channel<'_>,
+    method: &str,
+    params: Value,
+    remember: bool,
+) -> Result<Value> {
     let id = request_id(&params)?.to_owned();
-    let response = match submit_channel(
-        host,
-        project,
-        Channel::Shared,
-        method,
-        params,
-        remember,
-        true,
-    )
-    .await
-    {
-        Ok(response) => response,
-        Err(error) => {
-            if error.downcast_ref::<crate::wire::Error>().is_some()
-                || super::gateway_owner::settled_failure(&error.to_string())
-            {
+    let response =
+        match submit_channel(host, project, channel, method, params, remember, true).await {
+            Ok(response) => response,
+            Err(error) => {
+                if error.downcast_ref::<crate::wire::Error>().is_some()
+                    || super::gateway_owner::settled_failure(&error.to_string())
+                {
+                    return Err(error);
+                }
+                if find(host, project, &id)
+                    .ok()
+                    .flatten()
+                    .is_some_and(|entry| entry.get("status").is_none())
+                {
+                    anyhow::bail!("SUBMISSION_UNKNOWN");
+                }
                 return Err(error);
             }
-            if find(host, project, &id)
-                .ok()
-                .flatten()
-                .is_some_and(|entry| entry.get("status").is_none())
-            {
-                anyhow::bail!("SUBMISSION_UNKNOWN");
-            }
-            return Err(error);
-        }
-    };
+        };
     if let Some(error) = response.get("error") {
         let kind = error["data"]["outcome"]["kind"].as_str();
         if matches!(kind, Some("rejected" | "noMutation")) {

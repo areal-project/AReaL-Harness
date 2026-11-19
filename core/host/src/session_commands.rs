@@ -747,12 +747,11 @@ async fn edit_message(host: &Rc<Host>, source: &str, request: &Value) -> Result<
         "intent": intent,
     }))
     .context("INVALID_PARAMS")?;
-    workbench_submissions::submit_shared(
+    workbench_submissions::submit_desktop_turn(
         host,
+        source,
         &scope.canonical_id,
-        "areal/turn/submit",
         serde_json::to_value(typed)?,
-        true,
     )
     .await
 }
@@ -817,12 +816,11 @@ async fn continue_turn(host: &Rc<Host>, source: &str, request: &Value) -> Result
         },
     }))
     .context("INVALID_PARAMS")?;
-    workbench_submissions::submit_shared(
+    workbench_submissions::submit_desktop_turn(
         host,
+        source,
         &scope.canonical_id,
-        "areal/turn/submit",
         serde_json::to_value(typed)?,
-        true,
     )
     .await
 }
