@@ -9,6 +9,7 @@ const buildRequire = createRequire(
   new URL("../packages/browser-data/package.json", import.meta.url),
 );
 const { WebSocketServer } = appRequire("ws");
+const { HostClient: NativeHostClient } = appRequire("@areal/client/node");
 const { outputFiles } = await buildRequire("esbuild").build({
   entryPoints: [fileURLToPath(new URL("../packages/client/src/index.ts", import.meta.url))],
   bundle: true,
@@ -19,6 +20,33 @@ const { outputFiles } = await buildRequire("esbuild").build({
 const { HostClient, readHostBootstrap, beginSessionLoad, sessionLoadTiming } = await import(
   `data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString("base64")}`
 );
+
+test("native desktop negotiated frames accept fragmented history while ordinary Host frames stay bounded", () => {
+  const result = "x".repeat(1024 * 1024 + 256);
+  const bytes = Buffer.from(JSON.stringify({ version: 1, id: "large", result }) + "\n");
+  const native = new NativeHostClient({ desktopCore: true });
+  let received;
+  native.pending.set("large", {
+    resolve: (value) => {
+      received = value;
+    },
+    reject: assert.fail,
+  });
+  native.receive(bytes.subarray(0, bytes.length - 1));
+  assert.equal(native.pending.has("large"), true);
+  native.receive(bytes.subarray(bytes.length - 1));
+  assert.equal(received, result);
+  const ordinary = new NativeHostClient();
+  let rejected;
+  ordinary.pending.set("large", {
+    resolve: assert.fail,
+    reject: (error) => {
+      rejected = error;
+    },
+  });
+  ordinary.receive(bytes.subarray(0, bytes.length - 1));
+  assert.match(rejected.message, /exceeds/);
+});
 
 test("session latency ignores superseded reads and records each milestone once", () => {
   performance.clearMeasures("areal.session-load");

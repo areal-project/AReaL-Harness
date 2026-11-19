@@ -285,11 +285,11 @@ class VerificationTests(unittest.TestCase):
         )
         (self.root / "clients/gui/renderer/input.ts").write_text("source")
 
-    def test_node_test_fixture_does_not_invalidate_renderer_build(self):
-        service = self.root / "services/workbench/src/host-core-client.mts"
+    def test_relay_source_does_not_invalidate_renderer_build(self):
+        service = self.root / "services/remote-relay/src/server.ts"
         service.parent.mkdir(parents=True)
         service.write_text("export const revision = 1;\n")
-        self.doctor("workbench-test-only.json")
+        self.doctor("relay-only.json")
 
     def test_shared_provider_metadata_invalidates_both_build_inputs(self):
         core_before = verification.source_input_hash(self.root)

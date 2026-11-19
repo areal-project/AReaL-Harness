@@ -43,6 +43,7 @@ struct Upstream {
     refreshes: Cell<usize>,
     catalogs: Cell<usize>,
     posts: Cell<usize>,
+    ordinary_requests: RefCell<Vec<Value>>,
     changed: Notify,
     hold_refresh: Cell<bool>,
     refresh_gate: Semaphore,
@@ -69,6 +70,7 @@ impl Upstream {
             refreshes: Cell::new(0),
             catalogs: Cell::new(0),
             posts: Cell::new(0),
+            ordinary_requests: RefCell::new(Vec::new()),
             changed: Notify::new(),
             hold_refresh: Cell::new(false),
             refresh_gate: Semaphore::new(0),
@@ -155,6 +157,17 @@ async fn upstream(
                     json!({"models":[{"slug":"fixture","visibility":"list","use_responses_lite":true,"support_verbosity":true,"default_verbosity":"low"}]}),
                 )
             }
+        }
+        ("POST", "/ordinary/responses") => {
+            state
+                .ordinary_requests
+                .borrow_mut()
+                .push(serde_json::from_slice(&body).unwrap());
+            bytes_response(
+                200,
+                Bytes::from([FIRST, LAST].concat()),
+                Some("text/event-stream"),
+            )
         }
         ("POST", "/api.openai.com/v1/responses") => {
             state.posts.set(state.posts.get() + 1);
@@ -699,6 +712,159 @@ async fn core_sends_once_on_the_original_thread_across_subscription_catalog_fail
                 );
             }
             restored.shutdown().await;
+            rig.close().await;
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn worktree_first_turns_keep_ordinary_and_subscription_models_independent() {
+    use areal_engine::{
+        Engine, Limits,
+        model::{HttpModel, ModelProtocol},
+    };
+    use areal_protocol::{Input, Item, TurnStatus};
+    use std::{path::Path, process::Command, sync::Arc};
+
+    fn git(repository: &Path, args: &[&str]) {
+        let result = Command::new("git")
+            .args(args)
+            .current_dir(repository)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let rig = Rig::new(false).await;
+            let state = &rig.server.state;
+            let root = tempfile::tempdir().unwrap();
+            let repository = root.path().join("repository");
+            std::fs::create_dir(&repository).unwrap();
+            git(&repository, &["init", "-b", "main"]);
+            git(
+                &repository,
+                &[
+                    "-c",
+                    "user.email=fixture@example.invalid",
+                    "-c",
+                    "user.name=Fixture",
+                    "commit",
+                    "--allow-empty",
+                    "-m",
+                    "Seed worktree commit",
+                ],
+            );
+            let ordinary_workspace = root.path().join("ordinary");
+            let subscription_workspace = root.path().join("subscription");
+            for workspace in [&ordinary_workspace, &subscription_workspace] {
+                git(
+                    &repository,
+                    &["worktree", "add", "--detach", workspace.to_str().unwrap()],
+                );
+            }
+
+            state.hold_catalog.set(true);
+            let source = rig.source.clone();
+            let discovery =
+                tokio::task::spawn_local(async move { source.refresh_catalog(true).await });
+            state.count(&state.catalogs, 1).await;
+
+            for (workspace, model, prompt, endpoint, key) in [
+                (
+                    &ordinary_workspace,
+                    "ordinary",
+                    "first ordinary worktree turn",
+                    rig.server
+                        .route
+                        .join("/ordinary/responses")
+                        .unwrap()
+                        .to_string(),
+                    None,
+                ),
+                (
+                    &subscription_workspace,
+                    "fixture",
+                    "first subscription worktree turn",
+                    rig.transport.endpoint.clone(),
+                    Some("fixture-loopback".into()),
+                ),
+            ] {
+                if model == "fixture" {
+                    assert!(!discovery.is_finished());
+                    assert_eq!(state.ordinary_requests.borrow().len(), 1);
+                    assert_eq!(state.posts.get(), 0);
+                    state.hold_catalog.set(false);
+                    state.catalog_gate.add_permits(1);
+                }
+                let http =
+                    HttpModel::with_protocol(endpoint, model.into(), key, ModelProtocol::Responses)
+                        .unwrap();
+                let engine = Engine::open(
+                    &root.path().join(format!("{model}-store")),
+                    Arc::new(http),
+                    Limits::default(),
+                )
+                .unwrap();
+                if model == "fixture" {
+                    // 用源的权威读取等首份目录完成；共享同一个已经发出的 GET。
+                    let models = rig.source.discover(false).await.unwrap();
+                    assert_eq!(models[0]["id"], model);
+                }
+                let target = workspace.canonicalize().unwrap();
+                let thread = engine
+                    .create(target.to_str().unwrap().into())
+                    .await
+                    .unwrap();
+                let turn = engine
+                    .start(&thread.id, vec![Input::text(prompt)])
+                    .await
+                    .unwrap();
+                let saved = tokio::time::timeout(Duration::from_secs(10), engine.wait(&thread.id))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(saved.cwd, target.to_str().unwrap());
+                assert_eq!(saved.turns.len(), 1);
+                assert_eq!(saved.turns[0].id, turn.id);
+                assert_eq!(saved.turns[0].status, TurnStatus::Completed);
+                assert!(saved.turns[0].items.iter().any(
+                    |item| matches!(item, Item::AgentMessage { text, .. } if text == "first")
+                ));
+                engine.shutdown().await;
+            }
+            discovery.await.unwrap().unwrap();
+            assert_eq!(state.catalogs.get(), 1);
+            assert_eq!(state.posts.get(), 1);
+            let check_request = |requests: &[Value], model: &str, prompt: &str| {
+                assert_eq!(requests.len(), 1);
+                assert_eq!(requests[0]["model"], model);
+                let users: Vec<_> = requests[0]["input"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|message| message["role"] == "user")
+                    .map(|message| message["content"][0]["text"].as_str().unwrap())
+                    .collect();
+                assert_eq!(users, [prompt]);
+            };
+            check_request(
+                &state.ordinary_requests.borrow(),
+                "ordinary",
+                "first ordinary worktree turn",
+            );
+            check_request(
+                &state.received.borrow(),
+                "fixture",
+                "first subscription worktree turn",
+            );
             rig.close().await;
         })
         .await;

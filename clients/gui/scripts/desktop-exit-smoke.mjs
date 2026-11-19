@@ -294,7 +294,7 @@ const sourceHashes = Object.fromEntries(
       "app/src/core/startup-recovery.cjs",
       "app/src/core/native-host-transport.ts",
       "app/src/core/service-client.cjs",
-      "../../services/workbench/src/desktop/core/backend.cjs",
+      "../../core/host/src/workbench_lifecycle.rs",
       "scripts/support/core-process-fixture.cjs",
       "scripts/desktop-exit-smoke.mjs",
       "renderer/dist/index.html",

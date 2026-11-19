@@ -1,18 +1,17 @@
-# Core、Host 与桌面后台
+# Core、Host 与 Runtime
 
-适用：`core/`（Host、Core、Runtime、协议）、`services/workbench/`（桌面后台与领域）、`schemas/`。
+适用：`core/`（Host、Core、Runtime、协议）、`schemas/`。
 
 ## 准备
 
 - `make build`：产出 `target/debug/areal`、`areal-runtime` 等。冒烟和后台都依赖它。
-- `pnpm --dir clients/gui install --frozen-lockfile`：旧 Node 测试夹具使用 `@areal/workbench-service`。Node 直接加载夹具的 TypeScript，测试不依赖 GUI 生成物。
+- `pnpm --dir clients/gui install --frozen-lockfile`：准备 Host 契约与客户端测试依赖。
 
 ## 由小到大
 
 1. 单元测试，改什么跑什么：
    - `cargo test -p areal-host --lib <名字片段>`
    - `cargo test -p areal-app-server --test <名字>`、`make test-core`、`make test-protocol`
-   - `node --test services/workbench/test/<文件>.test.cjs`
 2. 协议生成物：`python3 scripts/generate-host-protocol.py --check`。改了 Host 方法或 schema 必跑。
 3. 契约：`pnpm --dir clients/gui test:host-protocol-conformance`、`test:host-client`。
 4. 真实进程冒烟（隔离 home，确定性模型）：

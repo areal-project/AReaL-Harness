@@ -16,7 +16,6 @@ export default defineConfig({
     jsPlugins: ["./oxlint-plugin-areal/index.ts"],
     rules: {
       "areal/require-suppression-reason": "error",
-      "areal/no-workbench-core-owner": "error",
     },
     overrides: [
       {

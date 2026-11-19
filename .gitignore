@@ -30,7 +30,3 @@ __pycache__/
 out
 .claude/*
 !.claude/skills
-
-/services/workbench/node_modules/
-
-/services/workbench/src/generated/

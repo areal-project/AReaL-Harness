@@ -100,7 +100,7 @@ def references(path, files):
     for token in tokens:
         result |= matches(token, files, base)
         # package.json 的命令在包目录下运行；工作流和 Makefile 也常写 --dir 后的相对路径。
-        for prefix in ("clients/gui/", "clients/gui/app/", "services/workbench/"):
+        for prefix in ("clients/gui/", "clients/gui/app/"):
             result |= matches(prefix + token.lstrip("./"), files, None)
     return result
 

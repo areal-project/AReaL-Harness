@@ -112,13 +112,5 @@
   "examples/desktop-api/calendar-storage.mjs": 16,
   "examples/desktop-api/cli.mjs": 2,
   "examples/desktop-api/schedule-host.mjs": 15,
-  "examples/desktop-api/task-controls.mjs": 1,
-  "services/workbench/src/desktop/core/backend.cjs": 1,
-  "services/workbench/src/desktop/core/gui-host-projects.cjs": 5,
-  "services/workbench/src/desktop/core/lifecycle.cjs": 3,
-  "services/workbench/src/desktop/core/model-config.cjs": 4,
-  "services/workbench/src/desktop/core/native-subscription.cjs": 3,
-  "services/workbench/src/desktop/core/providers.cjs": 4,
-  "services/workbench/src/desktop/core/submission-recovery.cjs": 1,
-  "services/workbench/src/desktop/core/task-draft-target.cjs": 2
+  "examples/desktop-api/task-controls.mjs": 1
 }

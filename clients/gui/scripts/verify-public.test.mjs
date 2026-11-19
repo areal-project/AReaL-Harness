@@ -19,7 +19,6 @@ test("public UI Skills retain content scanning and do not admit private Skills",
     });
   try {
     await mkdir(join(root, "design/tokens"), { recursive: true });
-    await mkdir(join(root, "services/workbench/src"), { recursive: true });
     await put(
       "scripts/verify-public.mjs",
       await readFile(new URL("./verify-public.mjs", import.meta.url)),

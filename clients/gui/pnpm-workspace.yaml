@@ -1,6 +1,5 @@
 packages:
   - app
-  - ../../services/workbench
   - ../../schemas/provider-config
   - ../mobile
   - renderer

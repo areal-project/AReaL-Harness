@@ -73,7 +73,7 @@ class ArchitectureAndJourneys(unittest.TestCase):
                 "core/host/src/gateway/session.rs",
                 {"conversation-submit", "unknown-receipt-recovery"},
             ),
-            ("services/workbench/src/desktop/core/providers.cjs", {"conversation-submit"}),
+            ("core/host/src/model_application.rs", {"conversation-submit"}),
             (
                 "clients/gui/app/src/core/service-client.cjs",
                 {"unknown-receipt-recovery", "host-stop-reopen"},

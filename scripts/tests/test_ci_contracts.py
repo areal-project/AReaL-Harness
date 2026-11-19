@@ -656,7 +656,7 @@ class CiContracts(unittest.TestCase):
                     gate.validate(plan, reports, scope.WORKFLOW_GROUPS["gui"], ("run", "2")),
                 )
 
-    def test_workbench_source_changes_require_the_core_boundary_check(self):
+    def test_retired_workbench_paths_require_the_absence_check(self):
         for path in (
             "services/workbench/src/desktop/core/project-connections.cjs",
             "services/workbench/src/new-owner.ts",

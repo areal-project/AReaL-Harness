@@ -12,7 +12,11 @@ import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { arch, cpus, loadavg, platform, release } from "node:os";
 import { selectCreatedConversation, captureSmokeFailure } from "./smoke-navigation.mjs";
-import { assertApplicationStopped, closeRecordedSmokeApplication } from "./application-cleanup.mjs";
+import {
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
+  closeRecordedSmokeApplication,
+} from "./application-cleanup.mjs";
 import { checkBrowserStartup } from "./browser-startup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 
@@ -893,13 +897,16 @@ async function installEcosystem() {
     (id) => localStorage.getItem(`areal-gui:draft:${id}:new:skills`),
     projectId,
   );
-  const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
+  const host = await readFixtureHost(env);
+  const pid = app.process().pid;
   await app.evaluate(({ dialog }) => {
     dialog.showMessageBox = async () => ({ response: 1 });
   });
   await closeRecordedSmokeApplication(app);
   app = undefined;
-  await assertApplicationStopped(binary, env, metadata);
+  const evidence = join(scratch, `quit-${pid}`);
+  await mkdir(evidence);
+  await settleFixtureHostAfterQuit(binary, env, evidence, { host, pid });
   await launch();
   const restored = (await command("manage", { projectId, operation: "plugins" })).data.find(
     (plugin) => plugin.id === ecosystem.pluginId,
@@ -1510,13 +1517,8 @@ try {
   process.exitCode = 1;
 } finally {
   const teardownStarted = performance.now();
-  const metadata = await readFile(join(scratch, "core/service.json"), "utf8").then(
-    JSON.parse,
-    (error) => {
-      if (error.code !== "ENOENT") errors.push(error.message);
-      return null;
-    },
-  );
+  const host = await readFixtureHost(env);
+  const pid = app?.process().pid;
   if (app) {
     events.nativeDialogs = await app
       .evaluate(() => globalThis.__automationDialogs)
@@ -1543,44 +1545,11 @@ try {
       errors.push(`Electron cleanup ${error.message}`);
     }
   }
-  if (metadata) {
-    try {
-      await assertApplicationStopped(binary, env, metadata);
-      events.cleanup.applicationStopped = true;
-    } catch (error) {
-      errors.push(`Application cleanup ${error.message}`);
-      const { ServiceConnection, waitForServiceProcessExit } = require(
-        join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
-      );
-      const connection = new ServiceConnection();
-      try {
-        await connection.connect(metadata);
-        const packet = await connection.request("hello", {
-          protocol: metadata.protocol,
-          identity: metadata.identity,
-        });
-        await connection
-          .request(
-            "stopService",
-            {
-              protocol: metadata.protocol,
-              cancel: true,
-              expectedDesktopGeneration: metadata.desktopGeneration,
-              expectedTargets: packet.service.targets,
-            },
-            true,
-          )
-          .catch((error) => {
-            if (!error.message.includes("已请求退出")) throw error;
-          });
-        await waitForServiceProcessExit(join(scratch, "core"), metadata);
-        events.cleanup.assistedServiceStop = true;
-      } catch (cleanupError) {
-        errors.push(`Assisted cleanup ${cleanupError.message}`);
-      } finally {
-        connection.close();
-      }
-    }
+  try {
+    events.cleanup.hostStop = await settleFixtureHostAfterQuit(binary, env, scratch, { host, pid });
+    events.cleanup.applicationStopped = true;
+  } catch (error) {
+    errors.push(`Application cleanup ${error.message}`);
   }
   site.closeAllConnections();
   model.closeAllConnections();

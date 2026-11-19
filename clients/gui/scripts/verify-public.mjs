@@ -72,7 +72,6 @@ async function scan(dir) {
   }
 }
 await scan(root);
-await scan(join(root, "../../services/workbench/src"));
 await scan(join(root, "../../design/tokens"));
 assert.deepEqual(
   rendererBridgeBypasses,

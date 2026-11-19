@@ -1,4 +1,10 @@
-import { readFixtureHost, settleFixtureHostAfterQuit } from "./application-cleanup.mjs";
+import {
+  closeSmokeApplication,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
+} from "./application-cleanup.mjs";
+import { openProjectInDesktop } from "./support/journey-fixture.mjs";
+import { fixtureWorkbench, until as waitFor } from "./support/desktop-fixture.mjs";
 import { readTurnToolDetails } from "./support/tool-history.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
@@ -28,8 +34,8 @@ const scratch = await trackedMkdtemp(join(root, ".scratch/gui-evidence/conversat
 const desktop = join(scratch, "application/app");
 const renderer = join(scratch, "application/renderer/dist");
 const registry = await makeTempDir("continue-svc-");
-const workspace = join(scratch, "workspace");
-const projectId = createHash("sha256").update(workspace).digest("hex").slice(0, 24);
+const workspace = join(scratch, "demo");
+let projectId;
 await mkdir(workspace);
 await mkdir(join(scratch, "user-home"));
 execFileSync("git", ["init", "-b", "main"], { cwd: workspace, stdio: "ignore" });
@@ -40,8 +46,12 @@ execFileSync(
   ["-c", "user.name=Smoke", "-c", "user.email=smoke@example.invalid", "commit", "-m", "fixture"],
   { cwd: workspace, stdio: "ignore" },
 );
-const env = {
-  ...process.env,
+const env = { ...process.env };
+for (const key of Object.keys(env)) {
+  if (/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) || key === "ELECTRON_RUN_AS_NODE") delete env[key];
+}
+Object.assign(env, {
+  HOME: join(scratch, "user-home"),
   AREAL_GUI: "workbench",
   AREAL_BACKEND: "areal",
   AREAL_CORE_BIN: binary,
@@ -49,9 +59,10 @@ const env = {
   AREAL_CORE_USER_HOME: join(scratch, "user-home"),
   AREAL_HARNESS_SERVICE_HOME: registry,
   AREAL_GUI_USER_DATA: join(scratch, "electron"),
-  AREAL_CORE_WORKSPACE: workspace,
-};
-delete env.AREAL_HARNESS_HOME;
+  AREAL_HARNESS_HOME: registry,
+  NO_PROXY: "127.0.0.1,localhost",
+  no_proxy: "127.0.0.1,localhost",
+});
 const run = {
   evidence: scratch,
   workspace,
@@ -59,7 +70,7 @@ const run = {
   desktopHome: env.AREAL_CORE_HOME,
   binary,
   coreServices: [],
-  desktopServices: [],
+  hostGenerations: [],
 };
 const saveRun = () => writeFile(join(scratch, "run.json"), JSON.stringify(run, null, 2));
 await saveRun();
@@ -109,16 +120,71 @@ async function artifactFiles(directory) {
   return files;
 }
 async function until(predicate, label) {
-  const end = Date.now() + 45000;
-  while (Date.now() < end) {
-    const value = await snapshot();
-    if (await predicate(value)) return value;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw Error(`Timed out waiting for ${label}`);
+  return waitFor(
+    async () => {
+      const value = await readThread();
+      return (await predicate(value)) ? value : null;
+    },
+    label,
+    { timeout: 45000 },
+  );
 }
-const thread = (s) => s.projects.find((p) => p.id === projectId)?.state?.threads?.[threadId];
-const turns = async () => thread(await snapshot()).turns;
+async function readThread() {
+  const response = await rpc("thread/read", { threadId, includeTurns: true }, false);
+  assert.ok(response.result?.thread, JSON.stringify(response));
+  assert.equal(response.result.thread.id, threadId);
+  return response.result.thread;
+}
+const turns = async () => (await readThread()).turns;
+let editLoss;
+function observeEditSocket(socket) {
+  const remote = socket.connectToServer();
+  let replyId;
+  const continuations = new Map();
+  socket.onMessage((message) => {
+    const { id, method, params } = JSON.parse(message.toString());
+    if (method === "desktop.command" && params.command === "continue") {
+      const { projectId, threadId, expectedTurnId, expectedConfigRevision, requestId } =
+        params.request;
+      const command = {
+        name: "continue",
+        request: { projectId, threadId, expectedTurnId, expectedConfigRevision, requestId },
+      };
+      continuations.set(id, command);
+      commands.push(command);
+    }
+    if (method === "desktop.command" && params.command === "editMessage") {
+      commands.push({ name: params.command, request: params.request });
+      if (editLoss && !editLoss.requestId && params.request.threadId === threadId) {
+        editLoss.requestId = params.request.requestId;
+        replyId = id;
+      }
+    }
+    remote.send(message);
+  });
+  remote.onMessage((message) => {
+    const { id, result, error } = JSON.parse(message.toString());
+    const continuation = continuations.get(id);
+    if (continuation) {
+      continuation.reply = {
+        code: error?.code,
+        message: error?.message,
+        turnId: result?.turn?.id,
+      };
+      continuations.delete(id);
+    }
+    if (replyId !== undefined && id === replyId) {
+      replyId = undefined;
+      if (result?.turn?.id && !error) {
+        editLoss.turnId = result.turn.id;
+        void Promise.allSettled([socket.close(), remote.close()]);
+        return;
+      }
+      editLoss.failure = error?.code ?? "INVALID_RESPONSE";
+    }
+    socket.send(message);
+  });
+}
 const input = () => page.getByTestId("chat-input");
 const shot = (name) => page.screenshot({ path: join(scratch, name), animations: "disabled" });
 async function launch() {
@@ -145,66 +211,50 @@ async function launch() {
     1,
     `workbench loaded from frozen renderer: ${await page.locator("body").innerText()}`,
   );
-  await desktopMetadata();
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 960));
-  await app.evaluate(
-    ({ app, dialog }, path) => {
-      // 本夹具验证暂停与重启后的会话，退出确认由独立场景覆盖。
-      dialog.showMessageBox = async () => ({ response: 1 });
-      const read = process
-        .getBuiltinModule("module")
-        .createRequire(app.getAppPath() + "/package.json");
-      const { ServiceConnection } = read(path);
-      const original = ServiceConnection.prototype.request;
-      globalThis.__continueCommands = [];
-      ServiceConnection.prototype.request = async function (method, parameters, mutation) {
-        globalThis.__continueConnection = this;
-        if (method === "command") globalThis.__continueCommands.push(structuredClone(parameters));
-        const result = await original.call(this, method, parameters, mutation);
-        if (
-          method === "command" &&
-          parameters.name === "editMessage" &&
-          globalThis.__continueLoseNext
-        ) {
-          globalThis.__continueLoseNext = false;
-          throw Object.assign(new Error("fixture: committed GUI response lost"), {
-            submissionUnknown: true,
-          });
-        }
-        return result;
-      };
-    },
-    join(gui, "scripts/support/desktop-service-fixture.cjs"),
+  await app.evaluate(({ BrowserWindow, dialog }) => {
+    BrowserWindow.getAllWindows()[0].setSize(1440, 960);
+    // 本夹具验证暂停与重启后的会话，退出确认由独立场景覆盖。
+    dialog.showMessageBox = async () => ({ response: 1 });
+  });
+  const ready = page.locator('[data-testid="areal-workbench"][data-startup-ready="true"]');
+  await ready.waitFor({ timeout: 120000 });
+  await page.routeWebSocket(/\/host\/socket$/, observeEditSocket);
+  await page.evaluate(() =>
+    localStorage.setItem(
+      "areal-gui:application-preferences",
+      JSON.stringify({ locale: "zh-CN", nextPromptSuggestions: false }),
+    ),
   );
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await ready.waitFor({ timeout: 120000 });
+  const host = await waitFor(() => readFixtureHost(env), "isolated Host published");
+  run.hostGenerations.push({ hostId: host.hostId, generation: host.generation, pid: host.pid });
+  await saveRun();
 }
 async function command(name, request) {
-  commands.push({ name, request });
-  return app.evaluate(
-    async (_, { name, request }) => {
-      try {
-        return {
-          result: await globalThis.__continueConnection.request("command", { name, request }, true),
-        };
-      } catch (error) {
-        return {
-          error: error.message,
-          code: error.code,
-          submissionUnknown: error.submissionUnknown,
-        };
-      }
-    },
-    { name, request: { projectId, threadId, ...request } },
+  const params = { projectId, threadId, ...request };
+  commands.push({ name, request: params });
+  const response = await page.evaluate(
+    ({ name, params }) => window.arealDesktop.command(name, params),
+    { name, params },
   );
+  return response.ok
+    ? { result: response.value }
+    : { error: response.error?.message, code: response.error?.code };
 }
 async function reconnectCore() {
-  // stopService is an explicit stop; reopening alone need not restart it.
   const result = await page.evaluate(
     (projectId) => window.arealDesktop.command("connect", { projectId }),
     projectId,
   );
   assert.equal(result.ok, true, JSON.stringify(result));
+  await waitFor(
+    async () =>
+      (await coreInstances()).find((row) => row.workspace === workspace && row.state === "ready"),
+    "original workspace has a ready Core generation",
+  );
 }
-async function rpc(method, params) {
+async function rpc(method, params, capture = true) {
   if (!rpcClient) {
     const instances = JSON.parse(
       execFileSync(binary, ["service", "list", "--json"], {
@@ -235,7 +285,7 @@ async function rpc(method, params) {
     });
     await rpcClient.connect();
   }
-  commands.push({ method, params });
+  if (capture) commands.push({ method, params });
   try {
     return { result: await rpcClient.request(method, params) };
   } catch (error) {
@@ -255,65 +305,40 @@ async function send(text) {
   }
   await until(
     (s) =>
-      thread(s)?.turns?.length > before &&
+      s?.turns?.length > before &&
       requests.length > beforeRequests &&
-      thread(s).turns.at(-1).status === (text.startsWith("HOLD_") ? "inProgress" : "completed"),
+      s.turns.at(-1).status === (text.startsWith("HOLD_") ? "inProgress" : "completed"),
     `send ${text}`,
   );
 }
 async function pause() {
   await page.getByRole("button", { name: "暂停执行", exact: true }).click();
-  await until((s) => thread(s)?.turns?.at(-1)?.status === "interrupted", "pause settled");
+  await until((s) => s?.turns?.at(-1)?.status === "interrupted", "pause settled");
   await page.getByRole("button", { name: "继续执行", exact: true }).waitFor();
 }
-async function stopService() {
+async function closeGeneration(label) {
+  const host = await readFixtureHost(env);
+  const pid = app.process().pid;
+  const evidence = join(scratch, label);
+  await mkdir(evidence);
+  const inventory = await coreInstances();
   rpcClient?.close();
   rpcClient = null;
-  const instances = await coreInstances();
-  for (const item of instances) {
-    if (item.state !== "stopped")
-      execFileSync(
-        binary,
-        [
-          "service",
-          "stop",
-          "--instance",
-          item.serviceId,
-          "--expected-generation",
-          item.generation,
-          "--cancel",
-          "--json",
-        ],
-        { env, timeout: 60000, stdio: "pipe" },
-      );
-    for (const pid of new Set([item.hostPid, item.corePid])) {
-      assert.ok(Number.isSafeInteger(pid) && pid > 1, "owned Core process identity is complete");
-      const deadline = Date.now() + 15000;
-      for (;;) {
-        try {
-          process.kill(pid, 0);
-        } catch (error) {
-          if (error.code === "ESRCH") break;
-          throw error;
-        }
-        assert.ok(Date.now() < deadline, `owned Core process ${pid} exited`);
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-    }
-  }
-  const remaining = await coreInstances();
-  assert.ok(
-    remaining.every((item) => item.state === "stopped"),
-    "all owned Core services stopped",
-  );
-  return remaining;
+  await closeSmokeApplication(app);
+  app = null;
+  const receipt = await settleFixtureHostAfterQuit(binary, env, evidence, { host, pid });
+  assert.equal(receipt?.state, "completed");
+  return inventory.find(({ workspace: root }) => root === workspace)?.dataDir;
 }
 async function coreInstances() {
   const instances = JSON.parse(
     execFileSync(binary, ["service", "list", "--json"], { env, encoding: "utf8", timeout: 30000 }),
   );
   for (const item of instances) {
-    assert.equal(item.workspace, workspace, "private registry contains only this workspace");
+    assert.ok(
+      item.workspace.startsWith(scratch + "/"),
+      "private registry contains only isolated fixture workspaces",
+    );
     const {
       serviceId,
       generation,
@@ -343,30 +368,11 @@ async function coreInstances() {
   await saveRun();
   return instances;
 }
-async function desktopMetadata() {
-  const metadataPath = join(run.desktopHome, "service.json");
-  let metadata;
-  try {
-    metadata = JSON.parse(await readFile(metadataPath, "utf8"));
-  } catch (error) {
-    if (error.code === "ENOENT") return null;
-    throw error;
-  }
-  const { protocol, identity, endpoint, pid } = metadata;
-  if (
-    !run.desktopServices.some((service) => service.identity === identity && service.pid === pid)
-  ) {
-    run.desktopServices.push({ metadataPath, protocol, identity, endpoint, pid });
-    await saveRun();
-  }
-  return metadata;
-}
 async function cleanup(host, pid) {
   const result = { passed: false, coreStopped: false, desktopExited: false, errors: [] };
   try {
     rpcClient?.close();
     rpcClient = null;
-    await coreInstances();
     result.hostStop = await settleFixtureHostAfterQuit(binary, env, scratch, { host, pid });
     result.desktopExited = true;
     result.coreServices = await coreInstances();
@@ -421,12 +427,7 @@ try {
       .update(await readFile(fileURLToPath(import.meta.url)))
       .digest("hex"),
   };
-  await mkdir(env.AREAL_CORE_HOME, { recursive: true });
-  await writeFile(
-    join(env.AREAL_CORE_HOME, "projects.json"),
-    JSON.stringify([{ id: projectId, root: workspace }]),
-  );
-  await checkpoint("isolated existing project fixture ready");
+  await checkpoint("isolated workspace fixture ready");
   server = createServer(async (req, res) => {
     try {
       let raw = "";
@@ -497,31 +498,13 @@ try {
   );
   env.AREAL_CORE_CONFIG = config;
   await launch();
-  await until(
-    (s) => s.projects.find((project) => project.id === projectId)?.state?.connected,
-    "project connected",
-  );
-  assert.deepEqual(
-    (await snapshot()).projects.map((project) => project.root),
-    [workspace],
-    "only the isolated fixture workspace is registered",
-  );
-  const modelReady = await until(
-    (s) => s.projects.find((p) => p.id === projectId)?.models?.some((model) => model.isDefault),
-    "configured default model",
-  );
-  const defaultModel = modelReady.projects
-    .find((p) => p.id === projectId)
-    .models.find((model) => model.isDefault);
-  assert.deepEqual(
-    {
-      providerId: defaultModel.providerId,
-      modelId: defaultModel.modelId,
-      available: defaultModel.available,
-    },
-    { providerId: "fixture", modelId: "fixture", available: true },
-    "configured fixture is the available default model",
-  );
+  await openProjectInDesktop(app, page, workspace);
+  projectId = await page.getByTestId("areal-workbench").getAttribute("data-project-id");
+  assert.ok(projectId, "project picker selected the isolated project");
+  await page.getByTestId("composer-model-trigger").click();
+  await page.getByRole("tab", { name: "fixture", exact: true }).click();
+  await page.getByRole("radio", { name: "fixture", exact: true }).click();
+  await page.keyboard.press("Escape");
   await checkpoint("pause a running Runtime command");
   await input().fill(`RUNTIME_PAUSE_${marker}`);
   await page.getByTestId("chat-send-button").click();
@@ -529,7 +512,7 @@ try {
     () => !!document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId,
   );
   threadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
-  await until(async () => {
+  await waitFor(async () => {
     try {
       return (await readFile(join(workspace, "pause-started.txt"), "utf8")) === "started";
     } catch (error) {
@@ -538,7 +521,7 @@ try {
     }
   }, "Runtime command actually started");
   await page.getByRole("button", { name: "暂停执行", exact: true }).click();
-  await until((s) => thread(s)?.turns?.at(-1)?.status !== "inProgress", "Runtime pause settled");
+  await until((s) => s?.turns?.at(-1)?.status !== "inProgress", "Runtime pause settled");
   const runtimePaused = await readTurnToolDetails({
     command: async (name, params) => {
       const result = await page.evaluate(
@@ -548,7 +531,7 @@ try {
       assert.equal(result.ok, true, JSON.stringify(result));
       return result.value;
     },
-    readThread: async () => thread(await snapshot()),
+    readThread,
     projectId,
     threadId,
     turnId: (await turns()).at(-1).id,
@@ -586,7 +569,7 @@ try {
   const beforeContinue = requests.length;
   await page.getByRole("button", { name: "继续执行", exact: true }).click();
   await until(
-    (s) => thread(s)?.turns?.at(-1)?.status === "completed",
+    (s) => s?.turns?.at(-1)?.status === "completed",
     "Runtime pause continuation completed",
   );
   const runtimeContinued = (await turns()).at(-1);
@@ -617,10 +600,7 @@ try {
 
   await send(pausePrompt);
   await until(
-    (s) =>
-      thread(s)
-        ?.turns?.at(-1)
-        ?.items?.some((i) => i.type === "agentMessage"),
+    (s) => s?.turns?.at(-1)?.items?.some((i) => i.type === "agentMessage"),
     "recorded progress",
   );
   await pause();
@@ -628,26 +608,34 @@ try {
   assert.equal(original.interruption, "userPause");
   await shot("01-paused.png");
   const beforeRestart = requests.length;
-  commands.push(...(await app.evaluate(() => globalThis.__continueCommands)));
-  await app.close();
-  app = null;
-  await stopService();
+  await closeGeneration("paused-generation");
   await launch();
-  await until(
-    (s) => s.projects.find((p) => p.id === projectId)?.state?.connected,
-    "restart connected",
-  );
+  await reconnectCore();
   await selectConversation(page, threadId);
   await page.getByRole("button", { name: "继续执行", exact: true }).waitFor();
   assert.equal(requests.length, beforeRestart, "restart must not submit to model");
   await page.getByRole("button", { name: "继续执行", exact: true }).click();
-  await until((s) => thread(s)?.turns?.at(-1)?.status === "completed", "continue complete");
+  const resumeReply = await waitFor(
+    () =>
+      commands.find(
+        (command) =>
+          command.name === "continue" &&
+          command.request.expectedTurnId === original.id &&
+          command.reply,
+      )?.reply,
+    "Host replies to the original resumed Turn",
+  );
+  assert.ok(resumeReply.turnId, JSON.stringify(resumeReply));
+  await until(
+    (s) => s?.turns?.at(-1)?.id === resumeReply.turnId && s.turns.at(-1).status === "completed",
+    "continue complete",
+  );
   const continued = (await turns()).at(-1);
   assert.equal(continued.continuedFromTurnId, original.id);
   assert.notEqual(continued.id, original.id);
   assert.ok(JSON.stringify(requests.at(-1).body).includes(pausePrompt));
   assert.ok(JSON.stringify(requests.at(-1).body).includes("CONFIRMED_PROGRESS_"));
-  assert.equal(thread(await snapshot()).goals?.goal ?? null, null);
+  assert.equal((await readThread()).goals?.goal ?? null, null);
   await shot("02-continued.png");
   checks.push(
     "pause/play creates one new Turn in the same Thread after restart, preserving history and confirmed progress without an automatic Goal",
@@ -664,7 +652,7 @@ try {
   await input().fill(`PLAIN_${marker}`);
   assert.equal(await page.getByRole("button", { name: "继续执行", exact: true }).count(), 0);
   await page.getByTestId("chat-send-button").click();
-  await until((s) => thread(s)?.turns?.at(-1)?.status === "completed", "plain message complete");
+  await until((s) => s?.turns?.at(-1)?.status === "completed", "plain message complete");
   const plain = requests
     .at(-1)
     .body.messages.findLast(
@@ -681,29 +669,50 @@ try {
     animations: "disabled",
   });
   const png = screenshot.toString("base64");
-  const uploaded = await command("media", { operation: "upload", mime: "image/png", bytes: png });
-  assert.ok(uploaded.result?.uri, JSON.stringify(uploaded));
   const resource = {
+    name: `SOURCE_REF_${marker}`,
     type: "resource_link",
     uri: "https://example.invalid/source",
-    name: `SOURCE_REF_${marker}`,
   };
-  const resourceSend = await command("send", {
-    text: `RESOURCE_PROMPT_${marker}`,
-    attachments: [{ type: "image", url: uploaded.result.uri }],
-    mcpContent: [resource],
+  const draftKey = `areal-gui:draft:${projectId}:${threadId}`;
+  await page.locator('input[type="file"]').last().setInputFiles({
+    name: "original-resource.png",
+    mimeType: "image/png",
+    buffer: screenshot,
   });
-  assert.ok(!resourceSend.error, JSON.stringify(resourceSend));
+  await page.locator(".composer-image-card").waitFor();
+  await send(`ATTACHMENT_UPLOAD_${marker}`);
+  const uploadedMessage = (await turns()).at(-1).items.find((item) => item.type === "userMessage");
+  const originalImage = uploadedMessage.content.find((part) => part.type === "image")?.url;
+  assert.match(originalImage, /^areal:\/\/blob\//);
+
+  // 旧消息仍可能包含 MCP 附件。用 Core 构造该历史记录，再通过界面编辑。
+  const thread = await readThread();
+  const seed = await rpc("areal/turn/start", {
+    threadId,
+    requestId: randomUUID(),
+    expectedConfigRevision: thread.desktop.configuration.revision,
+    input: [
+      { type: "text", text: `RESOURCE_PROMPT_${marker}` },
+      { type: "image", url: originalImage },
+      { type: "text", text: JSON.stringify(resource), mcpContent: resource },
+    ],
+  });
+  assert.ok(seed.result?.turn?.id, JSON.stringify(seed));
   await until(
-    (s) =>
-      thread(s)?.turns?.at(-1)?.status === "completed" &&
-      thread(s)
-        .turns.at(-1)
-        .items.some((i) => i.content?.some((c) => c.mcpContent)),
-    "resource prompt complete",
+    (current) =>
+      current.turns.at(-1)?.id === seed.result.turn.id &&
+      current.turns.at(-1)?.status === "completed",
+    "legacy resource message completed",
+  );
+  const originalUserMessage = (await turns())
+    .at(-1)
+    .items.find((item) => item.type === "userMessage");
+  assert.deepEqual(
+    originalUserMessage.content.find((part) => part.mcpContent)?.mcpContent,
+    resource,
   );
   await input().fill(mainDraft);
-  const draftKey = `areal-gui:draft:${projectId}:${threadId}`;
   const retainedMcp = JSON.stringify([
     {
       id: randomUUID(),
@@ -902,7 +911,7 @@ try {
     );
     assert.ok(
       layout.image.x < layout.comments.x && layout.comments.x < layout.text.x,
-      "image, comments and text share the reference order",
+      `image, comments and text share the reference order: ${JSON.stringify(layout)}`,
     );
     assert.ok(
       Math.abs(layout.image.bottom - layout.comments.bottom) <= 1 &&
@@ -949,13 +958,10 @@ try {
   );
   await writeFile(join(scratch, "composer-layout.json"), JSON.stringify(layoutEvidence, null, 2));
   await shot("02-editing-prompt.png");
-  await app.evaluate(() => {
-    globalThis.__continueLoseNext = true;
-  });
+  editLoss = {};
   await edit.getByRole("button", { name: "发送", exact: true }).click();
   await until(
-    (s) =>
-      thread(s)?.turns?.at(-1)?.status === "completed" && thread(s).turns.at(-1).id !== replaced.id,
+    (s) => s?.turns?.at(-1)?.status === "completed" && s.turns.at(-1).id !== replaced.id,
     "revised prompt complete",
   );
   assert.equal((await turns()).length, beforeEdit.length, "edit replaces the last turn");
@@ -981,11 +987,13 @@ try {
     );
   }
   const authoritative = await rpc("thread/read", { threadId, includeTurns: true });
-  assert.deepEqual(
-    authoritative.result.thread.turns.map((t) => t.id),
-    (await turns()).map((t) => t.id),
-    "Core and live GUI agree on replaced history",
-  );
+  await page.getByText(`REVISED_${marker}`, { exact: true }).waitFor();
+  assert.equal(await page.getByText(`RESOURCE_PROMPT_${marker}`, { exact: true }).count(), 0);
+  await page
+    .locator(
+      `[data-turn-id="${authoritative.result.thread.turns.at(-1).id}"][data-turn-status="completed"]`,
+    )
+    .waitFor();
   assert.equal(await input().innerText(), mainDraft);
   assert.equal(
     (await turns())
@@ -995,7 +1003,7 @@ try {
     `REVISED_${marker}`,
   );
   const revisedContent = (await turns()).at(-1).items.find((i) => i.type === "userMessage").content;
-  assert.equal(revisedContent.find((c) => c.type === "image").url, uploaded.result.uri);
+  assert.equal(revisedContent.find((c) => c.type === "image").url, originalImage);
   assert.deepEqual(revisedContent.find((c) => c.mcpContent).mcpContent, resource);
   assert.equal(
     await page.evaluate((key) => localStorage.getItem(`${key}:mcpContent`), draftKey),
@@ -1008,9 +1016,15 @@ try {
   );
   assert.equal(await page.locator(".composer-image-card").count(), 1);
   await shot("03-edited-message.png");
-  const editCommand = (await app.evaluate(() => globalThis.__continueCommands)).findLast(
-    (c) => c.name === "editMessage",
-  );
+  assert.equal(editLoss.failure, undefined);
+  assert.equal(editLoss.turnId, authoritative.result.thread.turns.at(-1).id);
+  assert.ok(editLoss.requestId, "the accepted response for the original edit was lost");
+  const editCommand = commands.find((c) => c.request?.requestId === editLoss.requestId);
+  const reconciliation = await fixtureWorkbench(page, "desktop.command", {
+    command: "reconcile",
+    request: { projectId, requestId: editLoss.requestId },
+  });
+  assert.equal(reconciliation.outcomes[editLoss.requestId]?.status, "completed");
   const editSubmission = {
     requestId: editCommand.request.requestId,
     threadId,
@@ -1151,10 +1165,7 @@ try {
   );
   await checkpoint(checks.at(-1));
   await page.reload();
-  await until(
-    (s) => thread(s)?.turns?.at(-1)?.status === "completed",
-    "edited history after reload",
-  );
+  await until((s) => s?.turns?.at(-1)?.status === "completed", "edited history after reload");
   assert.deepEqual(
     (await turns()).map((t) => t.id),
     authoritative.result.thread.turns.map((t) => t.id),
@@ -1170,13 +1181,19 @@ try {
   const steerBase = (await turns()).at(-1);
   const steerText = `HOLD_STEER_${marker}`;
   assert.ok(
-    (await command("steer", { expectedTurnId: steerBase.id, text: steerText })).result !==
-      undefined,
+    (
+      await rpc("turn/steer", {
+        requestId: randomUUID(),
+        threadId,
+        expectedTurnId: steerBase.id,
+        input: [{ type: "text", text: steerText }],
+      })
+    ).result !== undefined,
   );
   await until(
     (s) =>
-      thread(s)
-        .turns.at(-1)
+      s.turns
+        .at(-1)
         .items.some((i) => i.type === "userMessage" && i.content.some((c) => c.text === steerText)),
     "steer accepted",
   );
@@ -1184,8 +1201,7 @@ try {
   await page.getByRole("button", { name: "继续执行", exact: true }).click();
   await until(
     (s) =>
-      thread(s).turns.at(-1).status === "completed" &&
-      thread(s).turns.at(-1).continuedFromTurnId === steerBase.id,
+      s.turns.at(-1).status === "completed" && s.turns.at(-1).continuedFromTurnId === steerBase.id,
     "steer continuation",
   );
   const beforeSteerEdit = await turns();
@@ -1221,9 +1237,7 @@ try {
   await edit.getByRole("textbox").fill(`REVISED_STEER_${marker}`);
   await edit.getByRole("button", { name: "发送", exact: true }).click();
   await until(
-    (s) =>
-      thread(s).turns.at(-1).status === "completed" &&
-      thread(s).turns.at(-1).id !== beforeSteerEdit.at(-1).id,
+    (s) => s.turns.at(-1).status === "completed" && s.turns.at(-1).id !== beforeSteerEdit.at(-1).id,
     "steered edit complete",
   );
   const afterSteerEdit = await turns();
@@ -1268,9 +1282,9 @@ try {
   for (const text of [`QUEUE_FIRST_${marker}`, `QUEUE_SECOND_${marker}`]) {
     await input().fill(text);
     await page.getByTestId("chat-send-button").click();
-    await until(
-      (s) =>
-        s.projects[0].state.queues?.[threadId]?.items?.some(
+    await waitFor(
+      async () =>
+        (await rpc("areal/queue/list", { threadId }, false)).result?.items?.some(
           (i) => i.input?.some((c) => c.text === text) && i.status === "pending",
         ),
       "pending input",
@@ -1287,7 +1301,7 @@ try {
   const submit = {
     requestId,
     threadId,
-    expectedConfigRevision: (await snapshot()).projects[0].configurations[threadId].revision,
+    expectedConfigRevision: (await readThread()).desktop.configuration.revision,
     intent: { type: "continue", expectedTurnId: anchor },
   };
   const first = await rpc("areal/turn/submit", submit);
@@ -1295,7 +1309,7 @@ try {
   const duplicate = await rpc("areal/turn/submit", submit);
   assert.deepEqual(duplicate, first);
   await until(
-    (s) => thread(s)?.turns?.at(-1)?.status === "completed" && requests.length >= queueStart + 2,
+    (s) => s?.turns?.at(-1)?.status === "completed" && requests.length >= queueStart + 2,
     "FIFO queue complete",
   );
   const delivered = requests
@@ -1329,10 +1343,9 @@ try {
 
   await send(`HOLD_${marker} recovery`);
   const interruptedId = (await turns()).at(-1).id;
-  await app.close();
-  app = null;
-  await stopService();
-  const recordPath = join(scratch, "core", projectId, "state", `${threadId}.json`);
+  const coreData = await closeGeneration("interrupted-generation");
+  assert.ok(coreData?.startsWith(`${env.AREAL_CORE_HOME}/`), "the original Core data is isolated");
+  const recordPath = join(coreData, `${threadId}.json`);
   const record = JSON.parse(await readFile(recordPath, "utf8"));
   const recovery = record.thread.turns.find((t) => t.id === interruptedId);
   recovery.status = "inProgress";
@@ -1341,18 +1354,12 @@ try {
   await checkpoint("stopped-Core recovery fixture written");
   await launch();
   await reconnectCore();
-  await until((s) => s.projects[0]?.state?.connected, "recovery connected");
   await selectConversation(page, threadId);
-  await until(
-    (s) => thread(s)?.turns?.at(-1)?.interruption === "coreRecovery",
-    "Core recovery fact",
-  );
+  await until((s) => s?.turns?.at(-1)?.interruption === "coreRecovery", "Core recovery fact");
   const recoveryRequests = requests.length;
   await page.getByRole("button", { name: "继续执行", exact: true }).waitFor();
   assert.equal(requests.length, recoveryRequests);
-  await app.close();
-  app = null;
-  await stopService();
+  await closeGeneration("recovered-generation");
   const unknownRecord = JSON.parse(await readFile(recordPath, "utf8"));
   const unknownTurn = unknownRecord.thread.turns.at(-1);
   unknownTurn.status = "failed";
@@ -1395,11 +1402,12 @@ try {
   await checkpoint("stopped-Core legacy UNKNOWN fixture written");
   await launch();
   await reconnectCore();
-  await until((s) => s.projects[0]?.state?.connected, "unknown fixture connected");
   await selectConversation(page, threadId);
-  const blocked = await command("continue", {
+  const blocked = await rpc("areal/turn/submit", {
     requestId: randomUUID(),
-    expectedTurnId: interruptedId,
+    threadId,
+    expectedConfigRevision: (await readThread()).desktop.configuration.revision,
+    intent: { type: "continue", expectedTurnId: interruptedId },
   });
   assert.ok(blocked.error?.includes("UNKNOWN"), JSON.stringify(blocked));
   const unknownEdit = editAttempt();
@@ -1473,8 +1481,8 @@ try {
   await page.getByRole("button", { name: "继续执行", exact: true }).click();
   await until(
     (s) =>
-      thread(s)?.turns?.at(-1)?.continuedFromTurnId === interruptedId &&
-      thread(s).turns.at(-1).status === "completed",
+      s?.turns?.at(-1)?.continuedFromTurnId === interruptedId &&
+      s.turns.at(-1).status === "completed",
     "inspected legacy recovery continuation",
   );
   assert.equal(await page.getByTestId("areal-workbench").getAttribute("data-thread-id"), threadId);
@@ -1520,16 +1528,11 @@ try {
   }
   await checkpoint("capture final evidence and clean up owned services");
   if (app) {
-    commands.push(
-      ...(await withSmokeDeadline("final command capture", () =>
-        app.evaluate(() => globalThis.__continueCommands || []),
-      ).catch(() => [])),
-    );
     await writeFile(
       join(scratch, "final-snapshot.json"),
       JSON.stringify(await snapshot().catch(() => null), null, 2),
     );
-    await app.close().catch((error) => {
+    await closeSmokeApplication(app).catch((error) => {
       passed = false;
       failure ||= error.stack || String(error);
     });

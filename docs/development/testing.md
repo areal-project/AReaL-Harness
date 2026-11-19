@@ -584,13 +584,10 @@ TUI 与共享服务 PTY 检查共用终端画面解析器，处理增量重绘�
 
 ## CI 门禁与冷启动
 
-PR #111 在初始 G0 快照后整合历史恢复与定时任务所有权。以下六个存量文件上限按集成提交 `9297968c` 的实测值明确修订；指标方向、新文件 800 行上限和 CI 阻断继续生效。这些例外接受模块增长，不代表结构已经改善。
+PR #111 在初始 G0 快照后整合历史恢复与定时任务所有权。以下三个 Renderer 文件上限按集成提交 `9297968c` 的实测值明确修订；指标方向、新文件 800 行上限和 CI 阻断继续生效。这些例外接受模块增长，不代表结构已经改善。
 
 | 所有者 | 原行数 → 当前行数 | 原因 |
 | --- | --- | --- |
-| `services/workbench/src/desktop/core/backend.cjs` | 2270 → 2284 | 连接任务目录与定时 owner 生命周期 |
-| `services/workbench/src/desktop/core/history-observation.cjs` | 1072 → 1175 | 协调有界历史读取、owner 任务与恢复 |
-| `services/workbench/src/desktop/core/lifecycle-operations.cjs` | 845 → 878 | 持久化调度抑制并支持显式恢复 |
 | `renderer/src/Composer.tsx` | 1564 → 1580 | 通过 owner 任务目录定位 worker 的原任务运行 |
 | `renderer/src/Messages.tsx` | 1561 → 1718 | 加载早期历史时保持阅读锚点 |
 | `renderer/src/TaskCenter.tsx` | 2356 → 2380 | 观察任务目录修订与共享 owner 激活 |
@@ -607,7 +604,7 @@ PR #111 在初始 G0 快照后整合历史恢复与定时任务所有权。以�
 
 `gui-health.mjs --check --base=<ref>` 会标记基线源码已存在的超限，硬检查仍以已审核的 `health-baseline.json` 判定失败。继承分类用于归因，不是自动豁免；显式例外与基准变更继续经过既有审查。模型菜单 smoke 通过稳定的 `composer-model-trigger` 打开入口，在对应服务商标签内选择原生 radio，并以选中模型和后续行为验证结果。 架构迁移需要整体换基线时，在 `health-baseline.json` 写一条 `$rebaseline`（基点提交、原因、放行的 IPC 名字）：只有以该提交为基点的比较免去“相对基点只降不升”和 IPC 冻结，合入后自动失效，下次写基线时删除。
 
-规模信号包括 Main 总量/业务量、工作台迁移规模、App 行数和 hooks、Renderer CSS 行数、设计文档字节数、已检查文件数、单测文件数及逐文件大小。保留基线和实际 PR 基点对照供职责审查，不通过提高阈值或无关删改消除信号。类型覆盖、能力清单、preload/transport 一致性和依赖边界继续硬检查。数组风险规则 `areal/no-unchecked-array-method` 保持 warning；现有 lint correctness 规则设为 error，提交和 push 入口不再把该信号升级为失败，其他 lint、格式和类型错误仍阻断。
+规模信号包括 Main 总量/业务量、App 行数和 hooks、Renderer CSS 行数、设计文档字节数、已检查文件数、单测文件数及逐文件大小。保留基线和实际 PR 基点对照供职责审查，不通过提高阈值或无关删改消除信号。类型覆盖、能力清单、preload/transport 一致性和依赖边界继续硬检查。数组风险规则 `areal/no-unchecked-array-method` 保持 warning；现有 lint correctness 规则设为 error，提交和 push 入口不再把该信号升级为失败，其他 lint、格式和类型错误仍阻断。
 
 `Track red main` 工作流跟踪 main 上 `Verify` 和 `GUI checks` 的 push 结果。写 issue 前核对当前 main 提交、该 workflow 最新 run/attempt 及终态；过期通知与未完成的新 attempt 不修改告警。当前失败创建或更新对应 issue，当前成功关闭；仓库保护规则拥有必需检查设置。`python3 -m unittest scripts.tests.test_ci_contracts` 在 GitHub CLI 边界使用离线响应，覆盖乱序完成、旧 attempt、新运行未完成和 API 读取失败，测试不会写入真实 issue。
 

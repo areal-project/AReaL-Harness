@@ -584,13 +584,10 @@ Run the separate Relay protocol-client mode with `AREAL_RC13_MODE=relay-protocol
 
 ## CI gates and cold starts
 
-PR #111 integrates history recovery and scheduled-task ownership after the initial G0 snapshot. The following six existing source caps are explicitly revised to the measured integration at `9297968c`; metric directions, the 800-line cap for new files, and CI enforcement remain active. These exceptions accept module growth; they do not establish a structural improvement.
+PR #111 integrates history recovery and scheduled-task ownership after the initial G0 snapshot. The following three existing source caps are explicitly revised to the measured integration at `9297968c`; metric directions, the 800-line cap for new files, and CI enforcement remain active. These exceptions accept module growth; they do not establish a structural improvement.
 
 | Owner | Previous → current lines | Reason |
 | --- | --- | --- |
-| `services/workbench/src/desktop/core/backend.cjs` | 2270 → 2284 | Connect task catalog and scheduled-owner lifecycle |
-| `services/workbench/src/desktop/core/history-observation.cjs` | 1072 → 1175 | Coordinate bounded-history reads, owner tasks and restoration |
-| `services/workbench/src/desktop/core/lifecycle-operations.cjs` | 845 → 878 | Persist scheduling suppression and explicit resume |
 | `renderer/src/Composer.tsx` | 1564 → 1580 | Locate a worker's original TaskRun through the owner task catalog |
 | `renderer/src/Messages.tsx` | 1561 → 1718 | Preserve reading anchors while loading earlier history |
 | `renderer/src/TaskCenter.tsx` | 2356 → 2380 | Observe task-directory revisions and shared owner activation |
@@ -607,7 +604,7 @@ Local execution and CI run the same plan through `scripts/ci-preflight.py --grou
 
 `gui-health.mjs --check --base=<ref>` identifies overruns already present in the base source while retaining hard-check failures against the reviewed `health-baseline.json`. Inherited classification provides attribution, not an automatic waiver; explicit exceptions and baseline changes retain their existing review requirements. Model-menu smokes open the stable `composer-model-trigger`, select the native radio in its provider tab, and verify the selected model and subsequent behavior. When an architecture move needs a full re-baseline, record one `$rebaseline` entry in `health-baseline.json` (base commit, reason, permitted IPC names): only a comparison against that exact commit skips the base-relative ratchet and the IPC freeze, so it expires once merged and is dropped the next time the baseline is written.
 
-Size signals cover Main totals/business lines, workbench convergence size, App lines/hooks, Renderer CSS lines, design-document bytes, checked-file and unit-test-file counts, and per-file sizes. Keep baseline and actual PR-base comparisons for responsibility review; do not erase signals by raising limits or unrelated deletions. Type coverage, shell capabilities, preload/transport consistency, and dependency boundaries remain hard checks. `areal/no-unchecked-array-method` remains a warning; existing lint correctness rules use error severity. Commit and push checks preserve this signal while other lint, formatting, and type errors still block.
+Size signals cover Main totals/business lines, App lines/hooks, Renderer CSS lines, design-document bytes, checked-file and unit-test-file counts, and per-file sizes. Keep baseline and actual PR-base comparisons for responsibility review; do not erase signals by raising limits or unrelated deletions. Type coverage, shell capabilities, preload/transport consistency, and dependency boundaries remain hard checks. `areal/no-unchecked-array-method` remains a warning; existing lint correctness rules use error severity. Commit and push checks preserve this signal while other lint, formatting, and type errors still block.
 
 The `Track red main` workflow tracks push results for `Verify` and `GUI checks` on main. Before mutating an issue, it checks the current main commit, the workflow's latest run/attempt, and its terminal state. Stale notifications and unfinished newer attempts do not change alerts. Current failures create or update the workflow issue; current successes close it. Repository protection rules own required-check settings. `python3 -m unittest scripts.tests.test_ci_contracts` uses offline responses at the GitHub CLI boundary to cover out-of-order completion, stale attempts, unfinished runs, and API read failures without modifying real issues.
 

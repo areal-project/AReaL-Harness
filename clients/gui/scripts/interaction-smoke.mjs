@@ -1,3 +1,4 @@
+import { readFixtureHost, settleFixtureHostAfterQuit } from "./application-cleanup.mjs";
 import { readTurnToolDetails } from "./support/tool-history.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
@@ -1135,43 +1136,15 @@ try {
     process.off("SIGINT", onInterrupt);
     process.off("SIGTERM", onTerminate);
   }
-  const serviceMetadata = await readFile(join(scratch, "core/service.json"), "utf8")
-    .then(JSON.parse)
-    .catch((error) => {
-      if (error.code !== "ENOENT") throw error;
-      return null;
-    });
+  const host = await readFixtureHost(env);
+  const pid = app?.process().pid;
   await quit().catch((error) => {
     process.exitCode = 1;
     passed = false;
     errors.push(`Electron cleanup failed: ${error.message}`);
   });
   try {
-    const alive = () => {
-      if (!serviceMetadata) return false;
-      try {
-        process.kill(serviceMetadata.pid, 0);
-        return true;
-      } catch (error) {
-        if (error.code === "ESRCH") return false;
-        throw error;
-      }
-    };
-    if (alive()) {
-      const { ServiceConnection } = require(
-        join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
-      );
-      const connection = new ServiceConnection();
-      try {
-        await connection.connect(serviceMetadata);
-        await connection.request("stopService", { protocol: "areal.desktop-service.v1" }, true);
-      } finally {
-        connection.close();
-      }
-    }
-    for (let index = 0; alive() && index < 100; index++)
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    assert.equal(alive(), false, "owned Desktop service exits");
+    await settleFixtureHostAfterQuit(binary, env, scratch, { host, pid });
     const instances = JSON.parse(
       execFileSync(binary, ["service", "list", "--json"], {
         env,
@@ -1185,9 +1158,7 @@ try {
       ),
       "all private fixture Core instances stopped",
     );
-    checks.push(
-      "owned Desktop service exits and private Core registry contains no running instances",
-    );
+    checks.push("owned Host exits and private Core registry contains no running instances");
   } catch (error) {
     console.error("Adapter fixture cleanup:", error.message);
     if (passed || manualReady) {
@@ -1211,10 +1182,6 @@ try {
     } catch (failure) {
       console.error("Core fixture cleanup:", failure.message);
     }
-    try {
-      const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-      process.kill(metadata.pid, "SIGTERM");
-    } catch {}
   }
   await writeFile(join(scratch, "received.json"), JSON.stringify(received, null, 2));
   server.closeAllConnections();

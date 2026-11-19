@@ -1,3 +1,6 @@
+import { createFixtureThread, fixtureWorkbench } from "./support/desktop-fixture.mjs";
+import { readCoreThread, withCore } from "./support/core-observation.mjs";
+import { openProjectInDesktop } from "./support/journey-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -13,7 +16,11 @@ import {
   selectConversation,
   captureSmokeFailure,
 } from "./smoke-navigation.mjs";
-import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
+import {
+  closeSmokeApplication,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
+} from "./application-cleanup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 import { CoreClient } from "../packages/runtime-client/core.js";
 
@@ -22,9 +29,6 @@ const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
 const WebSocket = require("ws");
-const { ServiceConnection, waitForServiceExit } = require(
-  join(import.meta.dirname, "support/desktop-service-fixture.cjs"),
-);
 const binary = process.env.AREAL_CORE_BIN || join(root, ".local/dev-bin/areal");
 assert.ok(isAbsolute(binary), "AREAL_CORE_BIN must identify an absolute Core path");
 assert.equal(
@@ -40,7 +44,7 @@ const evidence = await trackedMkdtemp(join(evidenceRoot, "run-"));
 const stateRoot = await makeTempDir("ts-");
 const owner = randomUUID();
 await writeFile(join(stateRoot, ".owner"), owner);
-const workspace = join(stateRoot, "workspace");
+const workspace = join(stateRoot, "demo");
 const userHome = join(stateRoot, "user");
 await mkdir(workspace);
 await mkdir(join(userHome, ".areal"), { recursive: true });
@@ -352,7 +356,7 @@ async function call(name, params) {
 }
 const task = (taskId, ownerId = projectId) =>
   call("manage", { projectId: ownerId, operation: "task", taskId });
-const tasks = () => call("tasks", { operation: "list", limit: 100 });
+const tasks = () => fixtureWorkbench(page, "tasks.read", { operation: "list", limit: 100 });
 async function findTask(objective) {
   const row = (await tasks()).data.find((entry) => entry.objectivePreview === objective);
   return row ? { ...(await task(row.id, row.projectId)), projectId: row.projectId } : null;
@@ -366,13 +370,22 @@ async function shot(name) {
   await writeFile(join(evidence, `${name}.aria.txt`), await page.locator("body").ariaSnapshot());
   frames.push(`${name}.png`);
 }
+const activeProjectId = () => page.getByTestId("areal-workbench").getAttribute("data-project-id");
+const activeThreadId = () => page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+async function ownerOptions(projectId, threadId) {
+  const owner = (await snapshot()).projects.find((item) => item.id === projectId);
+  if (!owner) return null;
+  return { binary, env, gui, workspace: owner.root, threadId };
+}
+async function observeThread(projectId, threadId) {
+  const options = await ownerOptions(projectId, threadId);
+  return options ? readCoreThread(options) : null;
+}
 async function send(prompt) {
-  const before = await snapshot();
-  const previousThreadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
-  const previousTurnId = before.projects
-    .flatMap((project) => Object.values(project.state?.threads ?? {}))
-    .find((thread) => thread.id === previousThreadId)
-    ?.turns?.at(-1)?.id;
+  const previous = await activeThreadId();
+  const previousTurnId = previous
+    ? (await observeThread(await activeProjectId(), previous))?.turns.at(-1)?.id
+    : null;
   await page.getByTestId("chat-input").fill(prompt);
   if (facts.ui.draftTiming && !facts.ui.draftTiming.sendAt && prompt.includes("CREATE_C"))
     facts.ui.draftTiming.sendAt = await page.evaluate(
@@ -380,39 +393,31 @@ async function send(prompt) {
     );
   await page.getByTestId("chat-send-button").click();
   return until(async () => {
-    const id = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
-    const state = await snapshot();
+    const id = await activeThreadId();
+    const ownerId = await activeProjectId();
+    if (!id || !ownerId) return null;
+    const options = await ownerOptions(ownerId, id);
+    if (!options) return null;
+    const thread = await readCoreThread(options);
     if (
       facts.ui.draftTiming?.sendAt &&
       !facts.ui.draftTiming.environmentReadyAt &&
-      state.projects.some(
-        (project) =>
-          project.projectless &&
-          !facts.ui.independentOwnerIdsBefore.includes(project.id) &&
-          project.state?.connected,
-      )
-    )
+      !facts.ui.independentOwnerIdsBefore.includes(ownerId)
+    ) {
       facts.ui.draftTiming.environmentReadyAt = await page.evaluate(
         () => performance.timeOrigin + performance.now(),
       );
-    if (facts.ui.draftTiming?.sendAt && !facts.ui.preparedModels)
-      facts.ui.preparedModels = state.projects.find(
-        (project) =>
-          project.projectless &&
-          !facts.ui.independentOwnerIdsBefore.includes(project.id) &&
-          project.state?.connected,
-      )?.models;
-    const thread = state.projects
-      .flatMap((project) => Object.values(project.state?.threads ?? {}))
-      .find((thread) => thread.id === id);
-    return thread?.turns?.at(-1)?.id && thread.turns.at(-1).id !== previousTurnId && id;
+      facts.ui.preparedModels = await withCore(options, (client) =>
+        client.request("areal/model/list", {}),
+      );
+    }
+    return thread.turns.at(-1)?.id && thread.turns.at(-1).id !== previousTurnId && id;
   }, "ordinary Composer admits a Core Thread");
 }
 async function completed(threadId, ownerId = projectId) {
   return until(async () => {
-    const thread = (await snapshot()).projects.find((project) => project.id === ownerId)?.state
-      ?.threads?.[threadId];
-    return thread?.turns?.at(-1)?.status === "completed" && thread;
+    const thread = await observeThread(ownerId, threadId);
+    return thread?.turns.at(-1)?.status === "completed" && thread;
   }, `source Turn ${threadId} completed`);
 }
 const card = (id) =>
@@ -440,15 +445,11 @@ async function resources() {
   await page.getByLabel("本会话定时任务", { exact: true }).waitFor();
 }
 async function coreClient(drop = null) {
-  const instance = (await snapshot()).projects.find((project) => project.id === projectId).core
-    .instanceId;
-  const descriptor = JSON.parse(
-    execFileSync(binary, ["service", "status", "--instance", instance, "--json"], {
-      env,
-      encoding: "utf8",
-      timeout: 20000,
-    }),
-  );
+  const instances = JSON.parse(
+    execFileSync(binary, ["service", "list", "--json"], { env, encoding: "utf8", timeout: 20000 }),
+  ).filter((instance) => instance.workspace === workspace && instance.state === "ready");
+  assert.equal(instances.length, 1, "one Core owns the scheduled workspace");
+  const [descriptor] = instances;
   assert.equal(descriptor.workspace, workspace);
   const auth = JSON.parse(await readFile(descriptor.authFile, "utf8"));
   const principal = auth.principals.find((item) =>
@@ -636,46 +637,45 @@ async function recoverScheduledCreation() {
     );
     return;
   }
-  await app.evaluate(
-    ({ app }, fixturePath) => {
-      const require = process
-        .getBuiltinModule("module")
-        .createRequire(app.getAppPath() + "/package.json");
-      const { ServiceConnection } = require(fixturePath);
-      const request = ServiceConnection.prototype.request;
-      ServiceConnection.prototype.request = async function (method, params, ...rest) {
-        const result = await request.call(this, method, params, ...rest);
-        if (method === "command" && params.name === "create")
-          globalThis.__scheduleCreateCalls = (globalThis.__scheduleCreateCalls ?? 0) + 1;
-        if (
-          method === "command" &&
-          params.name === "create" &&
-          !globalThis.__scheduleLostCreation
-        ) {
-          globalThis.__scheduleLostCreation = {
-            requestId: params.request.requestId,
-            projectId: params.request.projectId,
-            threadId: result.threadId,
-            calls: 1,
-          };
-          throw Object.assign(new Error("Fixture lost committed creation reply"), {
-            submissionUnknown: true,
-            requestId: params.request.requestId,
-          });
-        }
-        return result;
-      };
-    },
-    join(gui, "scripts/support/desktop-service-fixture.cjs"),
-  );
-  const prepareId = randomUUID(),
-    requestId = randomUUID();
+  const prepareId = randomUUID();
+  const requestId = randomUUID();
   const prepared = await call("projectless", { operation: "prepare", requestId: prepareId });
-  const lost = await page.evaluate(
-    ({ projectId, requestId }) => window.arealDesktop.command("create", { projectId, requestId }),
-    { projectId: prepared.projectId, requestId },
+  await call("connect", { projectId: prepared.projectId });
+  let accepted;
+  let sent = 0;
+  await page.routeWebSocket(/\/host\/socket$/, (socket) => {
+    const remote = socket.connectToServer();
+    let wireId;
+    socket.onMessage((message) => {
+      const frame = JSON.parse(message.toString());
+      if (frame.method === "session.create" && frame.commandId === requestId) {
+        sent++;
+        wireId = frame.id;
+      }
+      remote.send(message);
+    });
+    remote.onMessage((message) => {
+      const frame = JSON.parse(message.toString());
+      if (
+        wireId !== undefined &&
+        frame.id === wireId &&
+        frame.result?.admissionState === "accepted"
+      ) {
+        accepted = frame.result;
+        void Promise.allSettled([socket.close(), remote.close()]);
+        return;
+      }
+      socket.send(message);
+    });
+  });
+  await assert.rejects(
+    createFixtureThread(page, prepared.projectId, {
+      requestId,
+      model: { providerId: "fixture", modelId: "fixture" },
+    }),
+    /original thread creation.*unknown/i,
   );
-  assert.equal(lost.ok, false, "fixture discards an accepted legacy creation response");
+  assert.ok(accepted?.threadId, "the lost response was the accepted original native create");
   await page.evaluate(
     (record) =>
       localStorage.setItem("areal-gui:ordinary-schedule-creation", JSON.stringify(record)),
@@ -693,13 +693,12 @@ async function recoverScheduledCreation() {
     async () => !(await page.locator(".task-conversation-pending").count()),
     "known committed creation opens without duplicate create",
   );
-  const recoveredCreation = await app.evaluate(() => globalThis.__scheduleLostCreation);
-  assert.ok(recoveredCreation?.threadId && recoveredCreation.requestId);
-  assert.equal(
-    await app.evaluate(() => globalThis.__scheduleCreateCalls),
-    1,
-    "read-only recovery never repeats create",
-  );
+  const recoveredCreation = {
+    threadId: accepted.threadId,
+    requestId,
+    projectId: prepared.projectId,
+  };
+  assert.equal(sent, 1, "read-only recovery never repeats create");
   assert.equal(
     await page.evaluate(() => localStorage.getItem("areal-gui:ordinary-schedule-creation")),
     null,
@@ -707,14 +706,13 @@ async function recoverScheduledCreation() {
   checks.push(
     "a lost committed Scheduled creation reply recovers from its original ready record without another create",
   );
-  const owner = (await snapshot()).projects.find(
-    (project) => project.id === recoveredCreation.projectId,
-  );
-  assert.equal(
-    owner.worktreeOperations.find((record) => record.requestId === recoveredCreation.requestId)
-      .state,
-    "ready",
-  );
+  const record = await call("workspace", {
+    operation: "worktreeRead",
+    projectId: recoveredCreation.projectId,
+    requestId,
+  });
+  assert.equal(record.state, "ready");
+  assert.equal(record.threadId, recoveredCreation.threadId);
   assert.equal(
     await page.getByTestId("areal-workbench").getAttribute("data-thread-id"),
     recoveredCreation.threadId,
@@ -758,9 +756,11 @@ async function verifyGlobalDraftAndRun(existingTasks = []) {
   );
   const approval = await until(
     async () =>
-      (await snapshot()).projects
-        .flatMap((project) => project.state?.interactions?.[independentThread]?.data ?? [])
-        .find((item) => item.kind === "approval" && item.status === "pending"),
+      (
+        await observeThread(await activeProjectId(), independentThread)
+      )?.desktop?.interactions?.find(
+        (item) => item.kind === "approval" && item.status === "pending",
+      ),
     "independent source asks for exact schedule creation approval",
   );
   assert.equal(approval.tool, "scheduled_task_create");
@@ -782,11 +782,9 @@ async function verifyGlobalDraftAndRun(existingTasks = []) {
     "global add saves through ordinary tool path",
   );
   await completed(independentThread, C.projectId);
-  const answered = (await snapshot()).projects
-    .find((project) => project.id === C.projectId)
-    .state.interactions[independentThread].data.find(
-      (item) => item.requestId === approval.requestId,
-    );
+  const answered = (await observeThread(C.projectId, independentThread)).desktop.interactions.find(
+    (item) => item.requestId === approval.requestId,
+  );
   assert.equal(answered.response.decision, "allowOnce");
   const independent = (await snapshot()).projects.find((project) => project.id === C.projectId);
   assert.equal(independent.projectless, true);
@@ -874,18 +872,10 @@ try {
   assert.equal(facts.runtime.preferences.sandbox, true);
   assert.equal(facts.runtime.preferences.contextIsolation, true);
   assert.equal(facts.runtime.preferences.nodeIntegration, false);
-  await app.evaluate(({ dialog }, path) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
-  }, workspace);
-  await page.evaluate(() => window.arealDesktop.chooseProject());
-  const project = await until(
-    async () =>
-      (await snapshot()).projects.find(
-        (project) => project.root === workspace && project.state?.connected,
-      ),
-    "isolated project ready",
-  );
-  projectId = project.id;
+  await openProjectInDesktop(app, page, workspace);
+  await page.getByTestId("chat-input").waitFor();
+  projectId = await activeProjectId();
+  assert.ok(projectId);
   if (process.argv.includes("--creation-recovery-only")) {
     await page.getByRole("button", { name: "定时任务", exact: true }).click();
     await recoverScheduledCreation();
@@ -900,7 +890,9 @@ try {
     assert.deepEqual(errors, []);
     passed = true;
   } else {
-    await createProjectConversation(page, "workspace");
+    await createProjectConversation(page, "demo");
+    await page.getByTestId("composer-model-trigger").click();
+    await page.getByRole("radio", { name: "fixture", exact: true }).click();
     await page.getByRole("button", { name: "更改权限", exact: true }).click();
     await page.getByRole("menuitemradio", { name: /^完全访问/ }).click();
     sourceThreadId = await send(
@@ -929,7 +921,7 @@ try {
       runningRequests,
       "Add while the source Turn runs only changes its draft",
     );
-    await createProjectConversation(page, "workspace");
+    await createProjectConversation(page, "demo");
     assert.notEqual(
       await page.getByTestId("areal-workbench").getAttribute("data-thread-id"),
       sourceThreadId,
@@ -1043,7 +1035,7 @@ try {
 
     forbiddenTarget = await task(A.id);
     const scheduleCount = (await tasks()).data.length;
-    await createProjectConversation(page, "workspace");
+    await createProjectConversation(page, "demo");
     const otherSource = await send(
       "THREAD_SCHEDULE_FORBIDDEN 检查本会话安排，并尝试修改已知的其他会话任务。",
     );
@@ -1076,15 +1068,11 @@ try {
     assert.equal(await resourceRow(B.id).count(), 1);
     count = requests.length;
     await rowMenu(B.id, "立即运行");
-    const busyB = await until(async () => {
+    await until(async () => {
       const value = await task(B.id);
       return value.runs.some((run) => run.status === "running") && held.size && value;
     }, "second task is running at model response barrier");
     assert.ok(requests.length > count);
-    await until(async () => {
-      const view = (await snapshot()).projects.find((project) => project.id === projectId);
-      return view?.state?.tasks?.[B.id]?.revision >= busyB.revision;
-    }, "running task revision reaches the controls projection");
     await rowMenuHas(B.id, "停止本次");
     count = requests.length;
     await rowMenu(B.id, "删除…");
@@ -1150,12 +1138,8 @@ try {
   }
   process.exitCode = 1;
 } finally {
-  const metadata = await readFile(join(stateRoot, "core/service.json"), "utf8")
-    .then(JSON.parse)
-    .catch((error) => {
-      if (error.code === "ENOENT") return null;
-      throw error;
-    });
+  const host = await readFixtureHost(env);
+  const pid = app?.process().pid;
   const cleanupFailure = (label, error) => {
     errors.push(`${label}: ${error.stack ?? error}`);
     passed = false;
@@ -1218,34 +1202,7 @@ try {
     }
   }
   try {
-    try {
-      await assertApplicationStopped(binary, env, metadata);
-    } catch {
-      assert.ok(metadata, "fallback stop targets only owned service metadata");
-      facts.cleanupAssisted = true;
-      const connection = new ServiceConnection();
-      try {
-        await connection.connect(metadata);
-        const hello = await connection.request("hello", {
-          protocol: metadata.protocol,
-          identity: metadata.identity,
-        });
-        await connection.request(
-          "stopService",
-          {
-            protocol: metadata.protocol,
-            cancel: true,
-            expectedDesktopGeneration: metadata.desktopGeneration,
-            expectedTargets: hello.service.targets,
-          },
-          true,
-        );
-        await waitForServiceExit(join(stateRoot, "core"), metadata);
-      } finally {
-        connection.close();
-      }
-      await assertApplicationStopped(binary, env, metadata);
-    }
+    facts.hostStop = await settleFixtureHostAfterQuit(binary, env, evidence, { host, pid });
     facts.applicationStopped = true;
   } catch (error) {
     cleanupFailure("Service cleanup", error);

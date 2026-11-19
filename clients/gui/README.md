@@ -107,7 +107,7 @@ macOS GUI 后台自动读取系统静态 HTTP、HTTPS 和 SOCKS 代理，供 Cor
 
 新一次发送或调整方向会清除上一操作的界面错误提示；本次失败仍显示原因并保留草稿，受理结果未知的消息不会自动重发。
 
-已配置的 ChatGPT 订阅消息在受理和首次回复前不刷新模型目录。启动、登录完成和模型设置刷新负责更新目录；目录请求失败后，请在模型设置中刷新再重试消息。认证仍由实际模型传输检查。`pnpm --dir clients/gui run test:subscription-send` 使用隔离 Electron/Core 与合成订阅服务验证发送和目录恢复，不替代真实供应商验收。
+已配置的 ChatGPT 订阅消息在受理和首次回复前不刷新模型目录。启动、登录完成和模型设置刷新负责更新目录；目录请求失败后，请在模型设置中刷新再重试消息。认证仍由实际模型传输检查。`pnpm --dir clients/gui run test:subscription-send` 先运行 Rust Host/Core 的合成订阅测试，再运行隔离 Electron 的恢复和工作树旅程。真实账号验收需另行执行。
 
 图片显示缩略图。主聊天与新草稿可从文件选择器、剪贴板文件或拖放附加非空 UTF-8 文本和源码，包括 Markdown、JSON、YAML、CSV 与日志。Core 根据原始字节校验内容，将文本 MIME 规范为 `text/plain`；历史保留原文件名与可下载字节，Chat Completions 和 Responses 收到带文件名的完整文本。无 MIME 的文本同样支持。二进制、无效 UTF-8、控制字符和伪造媒体类型被拒绝。单件上传上限仍为 16 MiB；每次提交的正文与文本附件合计上限为 1 MiB，包含文件名标签，不截断，拒绝时保留草稿。图片与 PDF 沿用原模型支持范围。
 
@@ -209,7 +209,7 @@ App 运行期间，共享 Desktop 后端独立发现启用安排，并连接其�
 
 `pnpm --dir clients/gui run test:schedule-reliability` 默认使用隔离 Electron/Core、5 个逻辑项目、每项目 10 个定时 Task 和合成历史前置，检查完整目录、被动读取、摘要边界、新增删除和周期性全量读取，并记录原始时间样本及源码、产物身份。暖缓存完整列表的 p95 门槛为 300ms，清空 Desktop 目录缓存后的完整加载门槛为 1 秒；首行和修改耗时另列。设置 `AREAL_SCHEDULE_PROJECTS=20 AREAL_SCHEDULE_TASKS=200 AREAL_SCHEDULE_SCHEDULED=5` 可运行原大规模验收，不能以小规模结果替代。`test:schedule-reliability-lifecycle` 使用本地确定性模型检查未打开项目的到期受理、显式停止、退出和重开后的漏执行处理。测试使用 `scripts/support/temp.mjs` 分配目录；需要较短本机 socket 路径时在调用环境设置 `TMPDIR=/tmp`。它们不替代真实供应商、签名安装包或其他平台验收。
 
-`pnpm --dir clients/gui run test:task-catalog-cold` 使用 30 个无安排的独立聊天和 3 个安排 owner，记录点击到可读任务行的时间并检查冷 Core 没有被列表启动。`pnpm --dir clients/gui run test:task-catalog-startup` 使用隔离 Electron/Core，在认证握手后延迟供应商初始化，验证目录先显示、完整启动前管理入口仍禁用，以及启动完成后的恢复。
+`pnpm --dir clients/gui run test:task-catalog-cold` 使用 30 个无安排的独立聊天和 3 个安排 owner，记录点击到可读任务行的时间并检查冷 Core 没有被列表启动。`pnpm --dir clients/gui run test:task-catalog-startup` 使用隔离 Electron/Core，在 Host 传输处暂缓原项目激活请求，验证冷目录仍可读、完整启动前管理入口仍禁用，以及原请求释放后恢复实时目录。
 
 已保存的定时任务在任务资源浮层提供“立即运行”。暂停计划和已自然完成的一次性计划也能执行一次，原计划保持不变。有未结束 Run 时按钮禁用。任务详情中的开启、暂停、立即运行和编辑统一放在任务资源浮层的“⋯”菜单中，顶部不重复展示。浮层不展示运行记录。旧版配置会话保留“查看当前运行”入口；报告和未读沿用既有任务流程。受理响应丢失时只核对原请求收据，不重新提交。
 
@@ -297,11 +297,11 @@ Renderer 的 `[composer-skills]` JSON 将 Skills 读取分为 `core` 与可选�
 
 订阅状态从 Desktop 的共享公开快照读取。首次快照先读取活动账号的本地授权事实，设置页据此分组，不以模型数量判断登录。`chatgpt.status` 立即返回上次状态并在后台刷新；刷新图标表示进度，结果通过快照推送。成功目录以 `subscription-catalog.json` 缓存公开模型元数据，并绑定当前账号与注册身份。退出、切换和重新授权使不匹配缓存失效，文件不含令牌。缓存只供展示，不能授权发送。
 
-Composer 保留所选及最后受理模型，目录确认中不显示不可用警报，也不因 `available=false` 禁用发送。仅已确认失效的模型在标签中标记。首次订阅提交在写操作之前等待必要的目录与项目配置准备，之后由 Core 校验；明确拒绝显示原因并保留草稿。依赖写入或提交结果未知时沿用原请求核查。项目共享同一次账号检查，同项目同步串行，不同项目并行。本地转发端口与传输令牌仍先准备，再启动 Core。Rust Host 的订阅与模型配置测试覆盖被动读取、账号并发和 Core 代际隔离；`AREAL_CORE_BIN=/absolute/path/to/areal node clients/gui/scripts/subscription-send-smoke.mjs --startup` 覆盖隔离 Electron/Core 的目录等待与恢复，不代替真实供应商或安装包验收。
+Composer 保留所选及最后受理模型，目录确认中不显示不可用警报，也不因 `available=false` 禁用发送。仅已确认失效的模型在标签中标记。首次订阅提交在写操作之前等待必要的目录与项目配置准备，之后由 Core 校验；明确拒绝显示原因并保留草稿。依赖写入或提交结果未知时沿用原请求核查。项目共享同一次账号检查，同项目同步串行，不同项目并行。本地转发端口与传输令牌仍先准备，再启动 Core。Rust Host 的订阅与模型配置测试覆盖被动读取、账号并发和 Core 代际隔离；`AREAL_CORE_BIN=/absolute/path/to/areal node clients/gui/scripts/subscription-send-smoke.mjs --startup` 运行 Rust 的目录等待与原会话续发测试，并在隔离 Electron 中验证历史和草稿恢复。使用订阅模型的桌面冷启动需在 Mac 验收。
 
 新会话显式选择 ChatGPT 订阅模型时，创建会等待该模型在目标 Core 完成同步与就绪校验。新 Worktree 的独立 Core 也遵循此规则；普通模型不等待订阅同步，已就绪模型不重复查询账号。
 
-从 `clients/gui` 运行 `AREAL_CORE_BIN=/absolute/path/to/areal node scripts/subscription-send-smoke.mjs --worktree`，验证订阅同步延迟期间的普通模型首发，以及同步完成后的订阅模型 Worktree 首发。测试使用隔离 Electron/Core、真实 Git Worktree 和合成订阅服务，检查创建与首发各发生一次；不代替真实供应商或安装包验收。
+从 `clients/gui` 运行 `AREAL_CORE_BIN=/absolute/path/to/areal node scripts/subscription-send-smoke.mjs --worktree`，验证 Rust Core 在目录等待时的普通模型工作树首发、目录就绪后的订阅工作树首发，以及 Electron 的工作树创建与首发。使用订阅账号从桌面选择工作树并首发需在 Mac 验收。
 
 经验证的本机 HTTP 服务探测不加载未使用的 TLS 根证书；远端 HTTPS 的证书验证保持原样。
 
