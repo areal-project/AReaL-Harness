@@ -124,6 +124,26 @@ const state = () => page.evaluate(() => window.arealDesktop.snapshot());
 try {
   app = await electron.launch({ executablePath: exe, args: [], env, timeout: 120000 });
   page = await app.firstWindow();
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Network.enable");
+  const frames = [];
+  cdp.on("Network.webSocketFrameSent", ({ timestamp, response }) => {
+    try {
+      const frame = JSON.parse(response.payloadData);
+      if (typeof frame.method !== "string") return;
+      frames.push({
+        timestamp,
+        method: frame.method,
+        ...(frame.method === "desktop.command"
+          ? {
+              command: frame.params?.command,
+              operation: frame.params?.request?.operation,
+            }
+          : {}),
+      });
+    } catch {}
+  });
+  record.outboundMethods = frames;
   page.setDefaultTimeout(20000);
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
   await wait(async () => (await state()).connection?.state === "ready", "gui ready");
@@ -272,7 +292,7 @@ try {
     (serviceState.scheduleActivationSuppressed || !beforeResumeProjection?.state?.connected)
   ) {
     const reconnect = page.getByRole("button", { name: "重新连接项目", exact: true });
-    assert(await reconnect.isVisible(), "explicit reconnect button must be visible");
+    await reconnect.waitFor({ state: "visible", timeout: 15000 });
     await reconnect.click();
     mark("user-reconnect-clicked", {});
   }
@@ -303,7 +323,14 @@ try {
   await page.getByText("OLD_GUI_QUEUE", { exact: true }).waitFor();
   mark("history-visible", {});
   await page.getByTestId("chat-input").fill("NEW_GUI_HISTORY_SEND");
-  await page.getByTestId("chat-send-button").click();
+  const sendButton = page.getByTestId("chat-send-button");
+  mark("before-send-control", {
+    disabled: await sendButton.isDisabled(),
+    title: await sendButton.getAttribute("title"),
+    ariaLabel: await sendButton.getAttribute("aria-label"),
+    body: (await page.locator("body").innerText()).slice(0, 12000),
+  });
+  await sendButton.click();
   mark("clicked-send", {});
   await page.screenshot({ path: join(root, "after-send.png") });
   const newList = JSON.parse(
@@ -323,7 +350,22 @@ try {
   } catch (error) {
     const thread = (await core.call("thread/read", { threadId, includeTurns: true })).thread;
     const journal = (await host.journal(hostProject).read()).snapshot;
+    const failureProject = (await state()).projects.find((entry) => entry.id === project.id);
+    const failureHost = (await host.request("host.status", {})).projects.find(
+      (entry) => entry.registration.projectId === hostProject,
+    );
     mark("send-failure-observation", {
+      body: (await page.locator("body").innerText()).slice(0, 12000),
+      projection: {
+        connected: failureProject?.state?.connected,
+        generation: failureProject?.core?.serviceGeneration,
+        error: failureProject?.error,
+      },
+      host: {
+        state: failureHost?.state,
+        generation: failureHost?.service?.generation,
+        schedulingSuppressed: failureHost?.scheduleActivationSuppressed,
+      },
       turns: thread.turns.map(({ id, status }) => ({ id, status })),
       journal,
     });
