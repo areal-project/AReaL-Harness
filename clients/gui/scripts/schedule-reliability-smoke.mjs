@@ -283,18 +283,37 @@ async function observeHostWire() {
         rendererSocket ??= socket;
         if (socket === rendererSocket) pending.set(frame.id, frame.method);
       }
-      if (socket === rendererSocket)
-        requests.push({ method: frame.method, operation: frame.params?.operation });
+      if (socket === rendererSocket) {
+        const input = frame.params?.request ?? frame.params;
+        requests.push({ method: frame.method, operation: input?.operation });
+        if (input?.operation === "taskWatch") {
+          pending.set(frame.id, {
+            operation: input.operation,
+            projectId: input.projectId,
+            executionProjectId: input.executionProjectId,
+            taskId: input.taskId,
+          });
+        }
+      }
       remote.send(message);
     });
     remote.onMessage((message) => {
       const frame = JSON.parse(message.toString());
-      if (pending.delete(frame.id) && frame.result?.subscriptionId) {
+      const original = pending.get(frame.id);
+      pending.delete(frame.id);
+      if (original === "shell.subscribe" && frame.result?.subscriptionId) {
         const shell = frame.result;
         subscriptions.set(
           shell.subscriptionId,
           new Map(shell.snapshot.projects.map((row) => [row.projectId, row.taskRevision])),
         );
+      }
+      if (original?.operation === "taskWatch") {
+        requests.push({
+          ...original,
+          observedTaskId: frame.result?.id ?? frame.result?.task?.id,
+          errorCode: frame.error?.code,
+        });
       }
       const event = frame.params;
       const seen = event && subscriptions.get(event.subscriptionId);
@@ -786,12 +805,22 @@ try {
       await page
         .getByRole("button", { name: `打开定时任务 ${listed.objectivePreview}`, exact: true })
         .click();
-      await page.waitForFunction(
-        ({ taskId, objective }) =>
-          document.querySelector(`main[data-task-id="${taskId}"] h2`)?.textContent === objective,
-        { taskId: task.id, objective },
-        { timeout: 15000 },
-      );
+      try {
+        await page.waitForFunction(
+          ({ taskId, objective }) =>
+            document
+              .querySelector(`main[data-task-id="${taskId}"] h2`)
+              ?.getAttribute("aria-description") === objective,
+          { taskId: task.id, objective },
+          { timeout: 15000 },
+        );
+      } finally {
+        await saveScheduleEvidence(
+          evidence,
+          "unicode-task-observation",
+          wire.requests.filter(({ taskId }) => taskId === task.id),
+        );
+      }
       task = await call("manage", {
         operation: "taskUpdate",
         projectId: owner.projectId,

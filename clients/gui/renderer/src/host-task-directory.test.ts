@@ -16,7 +16,9 @@ describe("task directory refresh", () => {
       refreshed.push((event as CustomEvent).detail);
     });
     const client = {
-      workbench: async () => ({ data: [{ id: "task", projectId: "execution-alias" }] }),
+      workbench: async () => ({
+        data: [{ id: "task", projectId: "logical-alias", executionProjectId: "execution-alias" }],
+      }),
     } as unknown as HostClient;
     const state: TaskDirectoryState = { tasks: new Map(), reads: new Map([["execution", "c:1"]]) };
     const projects = [
@@ -28,7 +30,9 @@ describe("task directory refresh", () => {
     ]);
     refreshTaskDirectory(client, projects, ids, state, () => {});
     await vi.waitFor(() => expect(refreshed).toEqual(["logical-alias"]));
-    expect(state.tasks.get("execution")).toMatchObject({ task: { id: "task" } });
+    expect(state.tasks.get("execution")).toMatchObject({
+      task: { id: "task", projectId: "logical-alias", executionProjectId: "execution-alias" },
+    });
   });
 
   it("backs off after a failed read instead of re-reading on every publish", async () => {

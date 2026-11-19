@@ -501,7 +501,19 @@ export function createHostSnapshotProjector(
           instanceId: project.serviceGeneration ?? "",
         },
         state: {
-          ...(projectTasks ? { tasks: projectTasks } : {}),
+          ...(projectTasks
+            ? {
+                tasks: Object.fromEntries(
+                  Object.entries(projectTasks).map(([id, task]) => [
+                    id,
+                    Object.assign({}, task, {
+                      executionConnected: execution.executionConnected,
+                      executionCore,
+                    }),
+                  ]),
+                ),
+              }
+            : {}),
           connected: fresh && project.state === "ready",
           hostState: fresh ? project.state : undefined,
           error: null,

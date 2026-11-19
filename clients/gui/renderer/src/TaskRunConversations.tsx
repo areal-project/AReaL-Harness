@@ -64,13 +64,14 @@ export function TaskRunConversations({
   const threadIds = [
     ...new Set<string>(runs.flatMap((run) => (run.threadId ? [run.threadId] : []))),
   ];
-  const connected = !!project.state?.connected;
+  const connected = task.executionConnected ?? !!project.state?.connected;
   const [historyView, setHistoryView] = useState<{
     key: string;
     threadId: string;
     error?: string;
   }>();
-  const historyKey = JSON.stringify([project.id, task.id, project.core?.connectionGeneration]);
+  const generation = task.executionCore?.connectionGeneration ?? project.core?.connectionGeneration;
+  const historyKey = JSON.stringify([project.id, task.id, generation]);
   const historyThreadId = historyView?.key === historyKey ? historyView.threadId : undefined;
   // 历史 Run 保留单次快照，避免长任务占满附加会话的订阅名额。
   const liveThreadId = runs.findLast(

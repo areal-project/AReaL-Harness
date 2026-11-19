@@ -68,7 +68,9 @@ export function refreshTaskDirectory(
       const rows = new Map<string, unknown[]>();
       for (const row of value.data) {
         if (!object(row) || typeof row.projectId !== "string") continue;
-        const projectId = hostIds.get(row.projectId) ?? row.projectId;
+        const owner =
+          typeof row.executionProjectId === "string" ? row.executionProjectId : row.projectId;
+        const projectId = hostIds.get(owner) ?? owner;
         rows.set(projectId, [...(rows.get(projectId) ?? []), row]);
       }
       tasks.clear();

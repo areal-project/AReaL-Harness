@@ -294,7 +294,7 @@ function WorkerParticipant({
         className="justify-self-start"
         size="sm"
         variant="ghost"
-        disabled={!project.state?.connected}
+        disabled={!(task.executionConnected ?? project.state?.connected)}
         onClick={() => onOpenThread(project.id, worker.threadId)}
       >
         打开 worker 会话
@@ -329,7 +329,12 @@ function ChannelRecord({
   if (message.kind === "question" && message.status === "pending") {
     return (
       <ChannelQuestion
-        row={{ taskId: task.id, objective: task.objective, message }}
+        row={{
+          taskId: task.id,
+          executionProjectId: task.executionProjectId,
+          objective: task.objective,
+          message,
+        }}
         projectId={projectId}
         action={action}
         disabled={disabled}
@@ -449,6 +454,7 @@ export function ChannelQuestion({
       localStorage.setItem(pendingKey, JSON.stringify({ row: { ...row, projectId }, answers }));
       const result = await action("manage", {
         projectId,
+        executionProjectId: row.executionProjectId,
         operation: "taskReply",
         taskId: row.taskId,
         runId: message.runId,
@@ -488,6 +494,7 @@ export function ChannelQuestion({
       for (;;) {
         const page = await action("manage", {
           projectId,
+          executionProjectId: pending.row.executionProjectId,
           operation: "taskChannel",
           taskId: row.taskId,
           afterSequence,
@@ -756,6 +763,7 @@ export function TaskCenter({
   const [channelError, setChannelError] = useState("");
   const [confirmedWatch, setConfirmedWatch] = useState<{
     owner: string;
+    executionProjectId?: string;
     generation: number | string;
     task?: Data;
   } | null>(null);
@@ -798,12 +806,19 @@ export function TaskCenter({
   // visible until the following read returns, including when a newer snapshot
   // has already settled the same workers.
   const watchedProject = projects.find((owner) => owner.id === listedTask?.projectId);
-  const watchedTask =
-    watchedProject?.state?.tasks?.[listedTask?.id] ??
-    (confirmedWatch?.owner === selected &&
-    confirmedWatch?.generation === (watchedProject?.core?.connectionGeneration ?? 0)
-      ? confirmedWatch?.task
-      : undefined);
+  const liveTask = watchedProject?.state?.tasks?.[listedTask?.id];
+  const executionProjectId = listedTask?.executionProjectId;
+  const taskConnected =
+    liveTask?.executionConnected ?? (!executionProjectId && !!watchedProject?.state?.connected);
+  const taskGeneration =
+    liveTask?.executionCore?.connectionGeneration ??
+    watchedProject?.core?.connectionGeneration ??
+    0;
+  const watchConfirmed =
+    confirmedWatch?.owner === selected &&
+    confirmedWatch?.executionProjectId === executionProjectId &&
+    confirmedWatch?.generation === taskGeneration;
+  const watchedTask = watchConfirmed ? confirmedWatch?.task : undefined;
   const task =
     controlView && taskKey(controlView) === selected
       ? controlView
@@ -812,28 +827,21 @@ export function TaskCenter({
             ...watchedTask,
             projectId: listedTask.projectId,
             executionProjectId: listedTask.executionProjectId,
+            executionConnected: taskConnected,
+            executionCore: liveTask?.executionCore,
             projectName: listedTask.projectName,
             scope: listedTask.scope,
           }
         : listedTask;
   const project = projects.find((p) => p.id === task?.projectId);
   const ownerFailed = !!project && failedProjects.includes(project.id);
-  const watchConfirmed =
-    confirmedWatch?.owner === selected &&
-    confirmedWatch?.generation === (project?.core?.connectionGeneration ?? 0);
-  const detailsReady =
-    !!task &&
-    Boolean(project?.state?.tasks?.[task.id] || (watchConfirmed && confirmedWatch?.task)) &&
-    watchConfirmed &&
-    connected &&
-    !!project?.state?.connected &&
-    !ownerFailed;
+  const detailsReady = !!task && !!watchedTask && connected && taskConnected && !ownerFailed;
   useEffect(() => {
     const epoch = ++historyEpoch.current;
     const owner = task && project ? `${project.id}:${task.id}` : "";
     setHistory(emptyRunHistory(owner));
     readRuns.current = async () => {};
-    if (!task || !detailsReady) return;
+    if (!task || !project || !detailsReady) return;
     const projectId = project.id,
       taskId = task.id;
     let enabled: boolean | null = null,
@@ -851,6 +859,7 @@ export function TaskCenter({
         if (enabled === null) {
           const capabilities = await action("manage", {
             projectId,
+            executionProjectId,
             operation: "taskHistoryCapabilities",
           });
           if (!current()) return;
@@ -864,6 +873,7 @@ export function TaskCenter({
         if (!enabled) return;
         const page = await action("manage", {
           projectId,
+          executionProjectId,
           operation: "taskRuns",
           taskId,
           ...(more ? { cursor } : {}),
@@ -911,15 +921,7 @@ export function TaskCenter({
     return () => {
       historyEpoch.current++;
     };
-  }, [
-    action,
-    connected,
-    detailsReady,
-    project?.id,
-    project?.state?.connected,
-    project?.core?.connectionGeneration,
-    task?.id,
-  ]);
+  }, [action, connected, detailsReady, project?.id, executionProjectId, taskGeneration, task?.id]);
   useEffect(() => {
     if (
       history.owner === selected &&
@@ -962,6 +964,7 @@ export function TaskCenter({
     setTargetRead({ target, epoch, status: "pending", error: "" });
     void action("manage", {
       projectId: target.projectId,
+      executionProjectId,
       operation: "taskRun",
       taskId: target.taskId,
       runId: target.runId,
@@ -985,12 +988,22 @@ export function TaskCenter({
         )
           setTargetRead({ target, epoch, status: "error", error: currentErrorText(cause) });
       });
-  }, [action, target, targetRead, selected, history.enabled, history.owner, displayedRuns]);
+  }, [
+    action,
+    target,
+    targetRead,
+    selected,
+    executionProjectId,
+    history.enabled,
+    history.owner,
+    displayedRuns,
+  ]);
   const pending =
     project?.pending?.filter(
       (p: Data) => p.method.startsWith("areal/task/") || p.method === "areal/channel/reply",
     ) ?? [];
-  const disabled = !detailsReady || busy || pending.length > 0;
+  const disabled =
+    !detailsReady || busy || pending.length > 0 || listedTask?.revision > task?.revision;
   useEffect(() => {
     sessionStorage.setItem("areal-gui:selected-global-task", selected);
   }, [selected]);
@@ -999,7 +1012,7 @@ export function TaskCenter({
   // 失败或迟到的读取不能替换已经显示的频道记录。
   // 只有这次分页完整结束、且该任务仍是当前选择时，才用新结果替换。
   const readChannel = useCallback(
-    async (projectId: string, taskId: string) => {
+    async (projectId: string, taskId: string, executionProjectId?: string) => {
       const epoch = ++channelEpoch.current;
       const owner = `${projectId}:${taskId}`;
       try {
@@ -1008,6 +1021,7 @@ export function TaskCenter({
         for (;;) {
           const page = await action("manage", {
             projectId,
+            executionProjectId,
             operation: "taskChannel",
             taskId,
             afterSequence,
@@ -1230,15 +1244,16 @@ export function TaskCenter({
     // projects 每次渲染都是新数组；只看各项目的目录版本。
   }, [directoryRevision]);
   useEffect(() => {
-    setConfirmedWatch(null);
-    if (!task || !connected || !project?.state?.connected || ownerFailed) return;
+    if (!task || !connected || !project || !taskConnected || ownerFailed) return;
     let live = true;
     const confirmation = {
       owner: taskKey(task),
-      generation: project.core?.connectionGeneration ?? 0,
+      executionProjectId,
+      generation: taskGeneration,
     };
     void action("manage", {
       projectId: project.id,
+      executionProjectId,
       operation: "taskWatch",
       taskId: task.id,
       viewId,
@@ -1251,8 +1266,10 @@ export function TaskCenter({
               ? (watched.task as Data)
               : "id" in watched
                 ? (watched as Data)
-                : task
-            : task;
+                : undefined
+            : undefined;
+        if (!watchedRecord || watchedRecord.id !== task.id)
+          throw new Error("任务观察结果与所选任务不符");
         setConfirmedWatch({ ...confirmation, task: watchedRecord });
       })
       .catch((cause) => {
@@ -1263,9 +1280,9 @@ export function TaskCenter({
       });
     return () => {
       live = false;
-      setConfirmedWatch(null);
       void action("manage", {
         projectId: project.id,
+        executionProjectId,
         operation: "taskUnwatch",
         taskId: task.id,
         viewId,
@@ -1276,8 +1293,11 @@ export function TaskCenter({
     connected,
     ownerFailed,
     project?.id,
-    project?.state?.connected,
-    project?.core?.connectionGeneration,
+    executionProjectId,
+    taskConnected,
+    taskGeneration,
+    listedTask?.revision,
+    listedTask?.channelSequence,
     task?.id,
     viewId,
   ]);
@@ -1291,18 +1311,11 @@ export function TaskCenter({
   }, [project?.id, task?.id]);
   useEffect(() => {
     if (!task || !project || !detailsReady) return;
-    void readChannel(project.id, task.id);
+    void readChannel(project.id, task.id, executionProjectId);
     return () => {
       channelEpoch.current++;
     };
-  }, [
-    detailsReady,
-    project?.id,
-    project?.state?.connected,
-    readChannel,
-    task?.channelSequence,
-    task?.id,
-  ]);
+  }, [detailsReady, project?.id, executionProjectId, readChannel, task?.channelSequence, task?.id]);
   const revealKey =
     target && selected === `${target.projectId}:${target.taskId}` ? target.eventId : undefined;
   useEffect(() => {
@@ -1364,6 +1377,7 @@ export function TaskCenter({
     try {
       const receipt = await action("manage", {
         projectId: project.id,
+        executionProjectId,
         taskId: task.id,
         expectedRevision: task.revision,
         ...(request.operation === "taskRunNow"
@@ -1390,9 +1404,12 @@ export function TaskCenter({
     } catch (cause) {
       setControlView(null);
       if (current()) setError((cause as Error).message);
-      await action("manage", { projectId: project.id, operation: "task", taskId: task.id }).catch(
-        () => {},
-      );
+      await action("manage", {
+        projectId: project.id,
+        executionProjectId,
+        operation: "task",
+        taskId: task.id,
+      }).catch(() => {});
     } finally {
       mutation.current = false;
       setBusy(false);
@@ -1660,7 +1677,7 @@ export function TaskCenter({
           <Button
             size="sm"
             variant="ghost"
-            disabled={!connected || !project.state?.connected}
+            disabled={!connected || !taskConnected}
             onClick={() =>
               activeRun.threadId
                 ? onOpenThread(project.id, activeRun.threadId)
@@ -1702,7 +1719,7 @@ export function TaskCenter({
                 <Button
                   size="sm"
                   variant="ghost"
-                  disabled={!connected || !project.state?.connected}
+                  disabled={!connected || !taskConnected}
                   onClick={() => setTargetRead(null)}
                 >
                   {t("operations.retryNotification")}
@@ -1728,7 +1745,7 @@ export function TaskCenter({
               <Button
                 size="sm"
                 variant="ghost"
-                disabled={history.pending || !connected || !project.state?.connected}
+                disabled={history.pending || !connected || !taskConnected}
                 onClick={() => void readRuns.current("refresh")}
               >
                 {t("operations.refreshHistory")}
@@ -1863,7 +1880,7 @@ export function TaskCenter({
             <Button
               size="sm"
               variant="ghost"
-              disabled={history.pending || !connected || !project.state?.connected}
+              disabled={history.pending || !connected || !taskConnected}
               onClick={() => {
                 setAllRunsShown(true);
                 void readRuns.current("more");
