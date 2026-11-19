@@ -24,4 +24,4 @@ node-semver = "2.2"
 libc.workspace = true
 regex = "1.12.3"
 toml_edit.workspace = true
-zip = { version = "9.0.3", default-features = false, features = ["deflate-flate2"] }
+zip = { version = "9.0.5", default-features = false, features = ["deflate-flate2"] }
