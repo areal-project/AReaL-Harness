@@ -107,9 +107,12 @@ type CatalogIdentity = { requestId: string; viewEpoch: number };
 type OwnerRows = {
   data: Data[];
   hasMore: boolean;
-  readAt: number;
   coverage: { kind: string; reason?: string };
-} & ({ source: "published" } | { source: "live"; connectionGeneration: number });
+} & (
+  | { source: "published"; readAt: number }
+  | { source: "live"; readAt: number; connectionGeneration: number }
+  | { source: "retained" }
+);
 type OwnerRead =
   | { status: "pending"; identity: CatalogIdentity; previous?: OwnerRows; explicit?: boolean }
   | { status: "ready"; identity: CatalogIdentity; value: OwnerRows }
@@ -779,7 +782,7 @@ export function TaskCenter({
       if (!previous && !ownerRows(catalog[owner.id])?.hasMore) continue;
       if (
         previous &&
-        ownerRows(catalog[owner.id])?.source !== "published" &&
+        ownerRows(catalog[owner.id])?.source === "live" &&
         (live.revision < previous.revision ||
           (live.channelSequence ?? 0) < (previous.channelSequence ?? 0))
       )
@@ -1167,7 +1170,14 @@ export function TaskCenter({
                     status: "error",
                     identity,
                     message: result.errors.map((error) => currentErrorText(error)).join("\n"),
-                    previous: ownerRows(previous[owner.id]),
+                    previous: result.data.length
+                      ? {
+                          source: "retained",
+                          coverage: { kind: "retained" },
+                          data: result.data,
+                          hasMore: result.hasMore,
+                        }
+                      : ownerRows(previous[owner.id]),
                     explicit,
                   },
                 }));
