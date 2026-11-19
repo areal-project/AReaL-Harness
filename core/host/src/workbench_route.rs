@@ -994,7 +994,7 @@ pub(super) async fn backend_read(
         .context("INVALID_PARAMS")?
         .to_owned();
     if method == "tasks.read" && host.gateway.workbench.backend_has_source(&source) {
-        return super::task_catalog::read(host, &params).await;
+        return super::task_catalog::read(host, principal, &params).await;
     }
     if method == "providers.read" {
         return host.gateway.workbench.providers.read(host, &source);
@@ -1036,7 +1036,6 @@ pub(super) async fn backend_read(
         validate_backend_result(method, &value)?;
         return Ok(value);
     }
-    let _ = principal;
     bail!("methodNotFound")
 }
 

@@ -74,6 +74,8 @@ areal service task-catalog --workspace /absolute/workspace \
 
 实时有界目录和 owner watch 的参数、分页、断流恢复及通知基线见 [Task API](tasks.md#轻量目录与-owner-更新)。摘要包与 Task、收据和归属引用由同一个根提交，发布失败不能转成空目录或推翻已经确认的原操作。
 
+可信本机 GUI 可以用 `tasks.read` 的 `receipt` 操作，带原 `projectId` 和 `requestId` 查询同一调用身份的任务回执。Host 只读取原提交，结果尚不明确时返回 `submissionUnknown: true`。
+
 ## 可核查的停止操作
 
 共享 Host 在 Runtime Scope、operation 或累计输出容量达到 80% 时执行[空闲容量轮换](../guides/runtime.md#生命周期)。轮换沿用原 Host generation、owner 和实例锁，仅在旧 Core/Runtime 正常清理后发布新的 Core PID、endpoint 与 Runtime epoch；服务描述格式不变。控制查询与轮换串行，客户端通过原发现入口重连，不重放已受理请求。二进制、权限、部署或非模型配置漂移阻止自动轮换；模型文件版本须已由原 Core 热应用确认。该维护不属于 `ensure --no-auto-restart` 的配置替换，也不生成或覆盖用户的停止回执。

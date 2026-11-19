@@ -325,10 +325,10 @@ fn scoped(mut row: Value, owner: &Owner) -> Value {
     row
 }
 /// list/preview/observe 从不唤醒停止的 Core；已连接项目在 observe 时注册目录观察。
-pub(super) async fn read(host: &Rc<Host>, params: &Value) -> Result<Value> {
+pub(super) async fn read(host: &Rc<Host>, principal: &str, params: &Value) -> Result<Value> {
     let operation = params["operation"].as_str().unwrap_or("list");
     if operation == "receipt" {
-        return native_receipt(host, "local", params).await;
+        return native_receipt(host, principal, params).await;
     }
     if !matches!(operation, "list" | "preview" | "observe" | "inbox") {
         return manage_read(host, params).await;
@@ -1256,6 +1256,7 @@ mod tests {
         host.slots.borrow_mut().get_mut("project").unwrap().state = "stopped".into();
         let result = read(
             &host,
+            "local",
             &json!({"sourceId":"host","projectId":"project","operation":"observe"}),
         )
         .await

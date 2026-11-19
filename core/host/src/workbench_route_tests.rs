@@ -459,6 +459,47 @@ async fn native_catalog_reads_restore_saved_source_without_starting_workbench() 
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn gui_task_receipt_read_uses_original_desktop_principal() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let root = root.path().canonicalize().unwrap();
+            let (host, input, source) = resumable_host(&root);
+            frontend_options(&host, &source, input.options, None).unwrap();
+            let request_id = uuid::Uuid::new_v4().to_string();
+            let scope = format!("tasks-{}", storage::digest(b"local-desktop"));
+            let (revision, mut journal) = host.journal.native_snapshot(&scope).unwrap();
+            journal["outcomes"][&request_id] = json!({
+                "method":"tasks.command",
+                "receipt":{"threadId":"task-draft-thread","turnId":"accepted-turn"}
+            });
+            host.journal
+                .native_replace(&scope, revision, journal)
+                .unwrap();
+            let request = json!({"method":"tasks.read","params":{
+                "sourceId":source,"operation":"receipt","projectId":"project","requestId":request_id
+            }});
+            let result = backend_read(&host, "local-desktop", &request)
+                .await
+                .unwrap();
+            assert_eq!(
+                result,
+                json!({
+                    "requestId":request_id,"submissionUnknown":false,
+                    "receipt":{"threadId":"task-draft-thread","turnId":"accepted-turn"}
+                })
+            );
+            assert_eq!(
+                backend_read(&host, "different-local-principal", &request)
+                    .await
+                    .unwrap()["submissionUnknown"],
+                true
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn cold_native_provider_read_restores_the_persisted_launch() {
     tokio::task::LocalSet::new()
         .run_until(async {

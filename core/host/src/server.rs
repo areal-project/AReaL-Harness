@@ -1333,7 +1333,7 @@ impl Host {
         }
         if method == "tasks.read" {
             serde_json::from_value::<areal_protocol::host::LocalTasksReadParams>(params.clone())?;
-            return task_catalog::read(self, &params).await;
+            return task_catalog::read(self, "local", &params).await;
         }
         if method == "tasks.command" {
             serde_json::from_value::<areal_protocol::host::LocalTasksCommandParams>(

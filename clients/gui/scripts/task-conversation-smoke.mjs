@@ -1,9 +1,5 @@
 import { makeTempDir } from "./support/temp.mjs";
-import {
-  createFixtureThread,
-  fixtureWorkbench,
-  until as waitFor,
-} from "./support/desktop-fixture.mjs";
+import { fixtureWorkbench, until as waitFor } from "./support/desktop-fixture.mjs";
 import { readCoreThread } from "./support/core-observation.mjs";
 // 真实 Electron / Desktop adapter / Core；模型响应确定化，所有状态与权限来自生产路径。
 import assert from "node:assert/strict";
@@ -145,6 +141,23 @@ const model = createServer(async (request, response) => {
         .filter((m) => m.role === "user" && !text(m).startsWith("AReaL runtime context"))
         .at(-1);
       const requestText = text(last ?? {});
+      const missed = calendarRegression && /^MISFIRE_DUE_AT=(\d+)$/.exec(requestText);
+      if (missed) {
+        finish(
+          JSON.stringify({
+            kind: "proposal",
+            message: "保存一次性验收任务。",
+            objective: "日历错过验收 HOLD",
+            scheduleV2: {
+              version: 1,
+              rule: { kind: "once", at: Number(missed[1]) },
+              misfire: { kind: "skip", maxLatenessSeconds: 0 },
+              overlap: "skip",
+            },
+          }),
+        );
+        return;
+      }
       if (requestText.startsWith("LEGACY_EDITOR_SEED")) {
         finish(
           JSON.stringify({
@@ -854,26 +867,28 @@ async function checkCalendarRegression() {
     history.threadId,
   );
   await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
-  const source = await createFixtureThread(page, pid, {});
+  const missedCreation = await prepareLegacyDraft();
+  pid = missedCreation.owner.id;
   const context = await call("manage", {
     projectId: pid,
     operation: "taskScheduleContext",
     timeZone: "Asia/Shanghai",
   });
   const dueAt = context.coreNow + 30;
+  assert.ok(Number.isSafeInteger(dueAt) && dueAt * 1000 > Date.now());
+  const missedProposal = await legacyProposal(
+    missedCreation.owner,
+    missedCreation.started,
+    `MISFIRE_DUE_AT=${dueAt}`,
+  );
   const missed = await call("manage", {
     projectId: pid,
-    operation: "taskCreate",
-    mode: "scheduled",
-    sourceThreadId: source.threadId,
-    objective: "日历错过验收 HOLD",
-    scheduleV2: {
-      version: 1,
-      rule: { kind: "once", at: dueAt },
-      misfire: { kind: "skip", maxLatenessSeconds: 0 },
-      overlap: "skip",
-    },
+    operation: "taskDraftConfirm",
+    threadId: missedCreation.started.threadId,
+    turnId: missedProposal.turnId,
+    digest: missedProposal.digest,
   });
+  assert.equal(missed.nextRunAt, dueAt);
   await closeOwnedApp();
   assert.ok(Date.now() < dueAt * 1000, "Host exited before the scheduled occurrence");
   await until(() => Date.now() > (dueAt + 1) * 1000, "occurrence elapsed while Host was stopped");
@@ -889,9 +904,11 @@ async function checkCalendarRegression() {
   await page.screenshot({ path: join(scratch, "calendar-missed-once.png") });
   if (!(await page.getByLabel("任务资源面板", { exact: true }).isVisible()))
     await page.getByRole("button", { name: "任务资源", exact: true }).click();
-  const immediate = page
+  await page
     .getByLabel("定时任务安排", { exact: true })
-    .getByRole("button", { name: "立即运行", exact: true });
+    .locator(`[data-scheduled-task-menu="${missed.id}"]`)
+    .click();
+  const immediate = page.getByRole("menuitem", { name: "立即运行", exact: true });
   await until(() => immediate.isEnabled(), "missed schedule permits explicit manual admission");
   await immediate.click();
   const manualAfterMissed = await until(async () => {
