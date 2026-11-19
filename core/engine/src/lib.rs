@@ -486,7 +486,8 @@ fn restore_sessions(
         .map(|(id, session)| {
             let deferred = session.is_deferred();
             let activity_at = session.deferred_activity_at();
-            let thread = session.into_thread()?;
+            let mut thread = session.into_thread()?;
+            desktop::retire_removed_desktop_tools(&mut thread);
             let mut bindings = tools::Bindings {
                 registry: if thread.is_read_only_side() {
                     registry.clone().side_only(thread.side_workspace_read())
@@ -918,6 +919,7 @@ impl Engine {
             }
         };
         thread.status = ThreadStatus::Idle;
+        desktop::retire_removed_desktop_tools(&mut thread);
         if let Some(desktop) = &mut thread.desktop {
             for hook in &mut desktop.hook_runs {
                 if hook.outcome == "running" {

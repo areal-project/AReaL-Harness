@@ -1,6 +1,6 @@
 use areal_app_server::auth::{Authentication, Permission, Principal};
 use areal_engine::{
-    Engine, Limits,
+    Engine, Limits, SessionCatalog,
     model::{AgentStream, Message, Model, ModelEvent, ModelStream, ToolCall},
 };
 use areal_protocol::Input;
@@ -112,6 +112,111 @@ impl Model for ModelFixture {
             )
         };
         Ok(Box::pin(futures_util::stream::iter([Ok(event)])))
+    }
+}
+
+#[tokio::test]
+async fn restored_desktop_session_rebinds_browser_without_retired_computer() {
+    for (catalog, external) in [
+        (SessionCatalog::Memory, false),
+        (SessionCatalog::MemoryLazy, false),
+        (SessionCatalog::MemoryLazy, true),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), Arc::new(ModelFixture), Limits::default()).unwrap();
+        let thread = engine.create("/workspace".into()).await.unwrap();
+        engine
+            .configure_thread(
+                serde_json::from_value(json!({"threadId":thread.id,"expectedRevision":1})).unwrap(),
+            )
+            .await
+            .unwrap();
+        engine
+            .start(&thread.id, vec![Input::text("before upgrade")])
+            .await
+            .unwrap();
+        let old = engine.wait(&thread.id).await.unwrap().turns[0].id.clone();
+        engine.shutdown().await;
+        drop(engine);
+
+        let path = dir.path().join(format!("{}.json", thread.id));
+        let mut saved: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        saved["thread"]["dynamicTools"] = json!([
+            areal_protocol::desktop::browser_v1_tool(),
+            {
+                "name":"computer_v1",
+                "description":"Control authorized local desktop applications. Call describe first. Get fresh app state before acting. OS permissions must be granted by the user in Computer control settings. Never replay an action whose dispatch is unknown.",
+                "inputSchema":{
+                    "type":"object",
+                    "properties":{"operation":{"type":"string"},"parameters":{"type":"object"}},
+                    "required":["operation","parameters"],
+                    "additionalProperties":false
+                }
+            }
+        ]);
+        saved["thread"]["toolsetRevision"] = json!(1);
+        if external {
+            saved["thread"]["desktop"]["configuration"]["options"]["externalCua"] = json!(true);
+            saved["thread"]["dynamicTools"] = json!([
+                areal_protocol::desktop::browser_v1_tool(),
+                {"name":"js","description":"External desktop fixture","inputSchema":{"type":"object"}},
+                {"name":"js_reset","description":"External desktop reset fixture","inputSchema":{"type":"object"}}
+            ]);
+        }
+        std::fs::write(&path, serde_json::to_vec(&saved).unwrap()).unwrap();
+
+        let engine = Engine::open(
+            dir.path(),
+            Arc::new(ModelFixture),
+            Limits {
+                session_catalog: catalog,
+                ..Limits::default()
+            },
+        )
+        .unwrap();
+        let (url, stop, task) = server(engine.clone()).await;
+        let mut owner = connected(&url).await;
+        let restored = engine.read(&thread.id, true).await.unwrap();
+        let attached = call(
+            &mut owner,
+            "areal/thread/tools/attach",
+            attach(
+                &thread.id,
+                "attach-after-upgrade",
+                restored.toolset_revision,
+            ),
+        )
+        .await;
+        assert_eq!(attached["result"]["threadId"], thread.id, "{attached}");
+        assert_eq!(restored.toolset_revision, 2);
+        assert_eq!(restored.dynamic_tools.len(), 1);
+        assert_eq!(restored.dynamic_tools[0].name, "browser_v1");
+        assert_eq!(restored.turns[0].id, old);
+
+        let resumed = call(&mut owner, "thread/resume", json!({"threadId":thread.id})).await;
+        assert_eq!(resumed["result"]["thread"]["id"], thread.id, "{resumed}");
+        let sent = call(
+            &mut owner,
+            "turn/start",
+            json!({"threadId":thread.id,"input":[{"type":"text","text":"after upgrade"}]}),
+        )
+        .await;
+        assert!(sent["result"]["turn"]["id"].is_string(), "{sent}");
+        let request = approved_browser_call(&mut owner).await;
+        assert_eq!(request["params"]["tool"], "browser_v1");
+        owner.send(Wire::Text(json!({"id":request["id"],"result":{"success":true,"contentItems":[{"type":"inputText","text":"original browser callback"}]}}).to_string().into())).await.unwrap();
+        let completed = engine.wait(&thread.id).await.unwrap();
+        assert_eq!(completed.turns.len(), 2);
+        assert_eq!(completed.turns[0].id, old);
+        assert_eq!(sent["result"]["turn"]["id"], completed.turns[1].id);
+        assert_eq!(
+            completed.turns[1].status,
+            areal_protocol::TurnStatus::Completed
+        );
+        owner.close(None).await.unwrap();
+        stop.cancel();
+        task.await.unwrap().unwrap();
+        engine.shutdown().await;
     }
 }
 
