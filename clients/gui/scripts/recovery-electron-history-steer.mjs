@@ -39,14 +39,17 @@ const model = createServer(async (req, res) => {
   for await (const c of req) raw += c;
   const body = JSON.parse(raw);
   if (respondToSessionName(body, res)) return;
-  const text = JSON.stringify(
-    (body.messages ?? []).findLast(
-      (x) =>
-        x.role === "user" &&
-        /OLD_GUI_FIRST|OLD_GUI_QUEUE|NEW_GUI_HISTORY_SEND/.test(JSON.stringify(x.content)) &&
-        !JSON.stringify(x.content).includes("AReaL runtime context"),
-    )?.content ?? null,
+  const lastUser = (body.messages ?? []).findLast(
+    (message) =>
+      message.role === "user" && !JSON.stringify(message.content).includes("AReaL runtime context"),
   );
+  const content = lastUser?.content;
+  const text =
+    typeof content === "string"
+      ? content
+      : Array.isArray(content) && content.length === 1 && content[0]?.type === "text"
+        ? content[0].text
+        : null;
   requests.push({ text, tools: (body.tools ?? []).map((x) => x.function?.name) });
   const complete = () => {
     res.writeHead(200, { "content-type": "text/event-stream" });
@@ -58,8 +61,7 @@ const model = createServer(async (req, res) => {
         "\n\ndata: [DONE]\n\n",
     );
   };
-  if (text.includes("OLD_GUI_FIRST") || text.includes("OLD_GUI_QUEUE"))
-    held.push({ text, complete });
+  if (text === "OLD_GUI_FIRST" || text === "OLD_GUI_QUEUE") held.push({ text, complete });
   else complete();
 });
 await new Promise((r) => model.listen(0, "127.0.0.1", r));
@@ -170,7 +172,7 @@ try {
   mark("created", { threadId });
   await page.getByTestId("chat-input").fill("OLD_GUI_FIRST");
   await page.getByTestId("chat-send-button").click();
-  await wait(() => held.find((x) => x.text.includes("OLD_GUI_FIRST")), "first model");
+  await wait(() => held.find((x) => x.text === "OLD_GUI_FIRST"), "first model");
   const snapshot = await state();
   const pr = snapshot.projects.find((x) => x.id === project.id);
   mark("started", { threadId, serviceGeneration: pr.core.serviceGeneration });
@@ -193,9 +195,9 @@ try {
   });
   const q = await core.call("areal/queue/list", { threadId });
   assert(q.items.some((x) => x.id === queued.queueItemId && x.status === "pending"));
-  held.find((x) => x.text.includes("OLD_GUI_FIRST")).complete();
-  await wait(() => held.find((x) => x.text.includes("OLD_GUI_QUEUE")), "queued model");
-  held.find((x) => x.text.includes("OLD_GUI_QUEUE")).complete();
+  held.find((x) => x.text === "OLD_GUI_FIRST").complete();
+  await wait(() => held.find((x) => x.text === "OLD_GUI_QUEUE"), "queued model");
+  held.find((x) => x.text === "OLD_GUI_QUEUE").complete();
   await wait(async () => {
     const x = (await core.call("thread/read", { threadId, includeTurns: true })).thread;
     const queue = await core.call("areal/queue/list", { threadId });
@@ -373,7 +375,7 @@ try {
   }
   assert.equal(authoritative.turns.length, 3);
   assert.equal(authoritative.turns.at(-1).status, "completed");
-  assert.equal(requests.filter((x) => x.text.includes("NEW_GUI_HISTORY_SEND")).length, 1);
+  assert.equal(requests.filter((x) => x.text === "NEW_GUI_HISTORY_SEND").length, 1);
   const pending = (await host.journal(hostProject).read()).snapshot.pending;
   assert.deepEqual(
     pending.find((x) => x.params.requestId === old.params.requestId),
