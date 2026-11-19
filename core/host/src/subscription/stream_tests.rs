@@ -50,6 +50,9 @@ struct Upstream {
     stream_gate: Semaphore,
     unauthorized: Cell<bool>,
     catalog_unauthorized: Cell<bool>,
+    hold_catalog: Cell<bool>,
+    fail_catalog: Cell<bool>,
+    catalog_gate: Semaphore,
     terminal: Cell<bool>,
     missing_type: Cell<bool>,
     invalid_stream: Cell<bool>,
@@ -73,6 +76,9 @@ impl Upstream {
             stream_gate: Semaphore::new(0),
             unauthorized: Cell::new(false),
             catalog_unauthorized: Cell::new(false),
+            hold_catalog: Cell::new(false),
+            fail_catalog: Cell::new(false),
+            catalog_gate: Semaphore::new(0),
             terminal: Cell::new(false),
             missing_type: Cell::new(false),
             invalid_stream: Cell::new(false),
@@ -136,8 +142,13 @@ async fn upstream(
         ("GET", "/api.openai.com/v1/models") => {
             state.catalogs.set(state.catalogs.get() + 1);
             state.changed.notify_waiters();
+            if state.hold_catalog.get() {
+                state.catalog_gate.acquire().await.unwrap().forget();
+            }
             if state.catalog_unauthorized.replace(false) {
                 json_response(401, json!({"error":{"code":"invalid_token"}}))
+            } else if state.fail_catalog.get() {
+                json_response(503, json!({"error":{"code":"fixture_catalog_unavailable"}}))
             } else {
                 json_response(
                     200,
@@ -249,6 +260,7 @@ impl Server {
     }
     async fn close(self) {
         self.state.refresh_gate.add_permits(100);
+        self.state.catalog_gate.add_permits(100);
         self.state.stream_gate.add_permits(100);
         self.cancel.cancel();
         self.task.await.unwrap();
@@ -481,6 +493,47 @@ async fn logout_cancels_old_epoch_and_late_refresh_cannot_resurrect_account() {
                     .is_err()
             );
             assert_eq!(rig.server.state.refreshes.get(), 1);
+            rig.close().await;
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn native_inference_completes_while_catalog_is_held_and_refresh_recovers() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let rig = Rig::new(false).await;
+            let state = &rig.server.state;
+            rig.source.refresh_catalog(false).await.unwrap();
+            state.hold_catalog.set(true);
+            state.fail_catalog.set(true);
+            let source = rig.source.clone();
+            let discovery =
+                tokio::task::spawn_local(async move { source.refresh_catalog(true).await });
+            state.count(&state.catalogs, 2).await;
+
+            let response = tokio::time::timeout(Duration::from_secs(5), async {
+                let response = rig.request().send().await.unwrap();
+                assert_eq!(response.status(), 200);
+                response.bytes().await.unwrap()
+            })
+            .await
+            .expect("configured inference completes before catalog release");
+            assert_eq!(response.as_ref(), [FIRST, LAST].concat());
+            assert_eq!(state.posts.get(), 1);
+            assert_eq!(state.catalogs.get(), 2);
+            assert!(!discovery.is_finished());
+
+            state.hold_catalog.set(false);
+            state.catalog_gate.add_permits(1);
+            assert!(discovery.await.unwrap().is_err());
+            state.fail_catalog.set(false);
+            rig.source.refresh_catalog(true).await.unwrap();
+            let catalog = rig.source.discover(false).await.unwrap();
+            assert_eq!(catalog.len(), 1);
+            assert_eq!(catalog[0]["id"], "fixture");
+            assert_eq!(state.catalogs.get(), 3);
+            assert_eq!(state.posts.get(), 1);
             rig.close().await;
         })
         .await;
