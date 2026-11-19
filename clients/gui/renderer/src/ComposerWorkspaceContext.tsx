@@ -24,7 +24,8 @@ export function ComposerWorkspaceContext({
   cloud?: boolean;
 }) {
   const { t } = useI18n();
-  const connected = !cloud && backendReady && !!project.state?.connected;
+  const suppressed = project.scheduling?.suppressed === true;
+  const connected = !cloud && backendReady && !!project.state?.connected && !suppressed;
   const owner = JSON.stringify([project.id, threadId, project.root, connected, cloud]);
   const request = useRef(action);
   request.current = action;
@@ -54,8 +55,8 @@ export function ComposerWorkspaceContext({
   const error = project.error || project.state?.error;
   const preparation: WorkspacePreparationState = connected
     ? { kind: "ready" }
-    : backendReady && error
-      ? { kind: "unavailable", detail: error }
+    : backendReady && (error || suppressed)
+      ? { kind: "unavailable", detail: error || "" }
       : { kind: "preparing" };
   return (
     <div className="composer-workspace-context" role="group" aria-label={t("workspace.context")}>

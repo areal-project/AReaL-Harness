@@ -828,7 +828,7 @@
     "areas": ["recovery", "lifecycle"],
     "requires": ["electron", "git", "python3", "signed-gui-package"],
     "platformReason": "Requires a signed macOS application package.",
-    "notes": "Set AREAL_TEST_PACKAGE to the signed .app; uses isolated data and a deterministic local model."
+    "notes": "Set AREAL_TEST_PACKAGE to the signed .app; AREAL_HISTORY_STOP_MODE selects intent (default) or crash. Uses isolated data and a deterministic local model."
   },
   {
     "script": "test:recovery-electron",

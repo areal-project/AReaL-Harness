@@ -26,6 +26,8 @@ const workspace = join(root, "workspace"),
 for (const d of [workspace, user, electronData, coreHome, config, registry])
   await mkdir(d, { mode: 0o700 });
 execFileSync("git", ["init", "-b", "main"], { cwd: workspace, stdio: "ignore" });
+const mode = process.env.AREAL_HISTORY_STOP_MODE ?? "intent";
+assert(["intent", "crash"].includes(mode));
 const pkg = process.env.AREAL_TEST_PACKAGE;
 assert(pkg, "Set AREAL_TEST_PACKAGE to an isolated signed .app path");
 const binary = join(pkg, "Contents/Resources/areal-core/bin/areal"),
@@ -105,6 +107,7 @@ let app,
     root,
     pkg,
     binary,
+    mode,
     binarySha256: createHash("sha256")
       .update(await readFile(binary))
       .digest("hex"),
@@ -216,16 +219,25 @@ try {
   mark("navigated-away", {});
   core.close();
   core = null;
-  const stopId = randomUUID();
-  const stopped = await host.request("project.stop", {
-    requestId: stopId,
-    expectedGeneration: host.generation,
-    projectId: hostProject,
-    serviceGeneration: desc.generation,
-    strategy: "ifIdle",
-  });
-  mark("stop-receipt", stopped);
-  assert.equal(stopped.state, "completed", JSON.stringify(stopped));
+  if (mode === "intent") {
+    const stopped = await host.request("project.stop", {
+      requestId: randomUUID(),
+      expectedGeneration: host.generation,
+      projectId: hostProject,
+      serviceGeneration: desc.generation,
+      strategy: "ifIdle",
+    });
+    mark("stop-receipt", stopped);
+    assert.equal(stopped.state, "completed", JSON.stringify(stopped));
+  } else {
+    assert.equal(desc.owner.hostId, host.hostId);
+    assert.equal(desc.owner.generation, host.generation);
+    assert.equal(desc.workspace, workspace);
+    assert(desc.dataDir.startsWith(coreHome + "/"));
+    assert(Number.isSafeInteger(desc.corePid) && desc.corePid > 1);
+    process.kill(desc.corePid, "SIGKILL");
+    mark("injected-core-exit", { pid: desc.corePid, generation: desc.generation });
+  }
   const stoppedStatus = (await host.request("host.status", {})).projects.find(
     (entry) => entry.registration.projectId === hostProject,
   );
@@ -248,8 +260,17 @@ try {
   mark("before-resume", {
     state: serviceState.state,
     generation: serviceState.service?.generation,
+    schedulingSuppressed: serviceState.scheduleActivationSuppressed,
   });
-  if (serviceState.state === "stopped") {
+  const beforeResumeProjection = (await state()).projects.find((x) => x.id === project.id);
+  mark("before-resume-projection", {
+    connected: beforeResumeProjection?.state?.connected,
+    error: beforeResumeProjection?.error,
+  });
+  if (
+    mode === "intent" &&
+    (serviceState.scheduleActivationSuppressed || !beforeResumeProjection?.state?.connected)
+  ) {
     const reconnect = await page.evaluate(
       async (id) =>
         window.arealDesktop.command("connect", { projectId: id, resumeScheduling: true }),

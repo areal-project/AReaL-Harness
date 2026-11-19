@@ -137,6 +137,7 @@ it.each(["draft", "saved history"] as const)("renders a disconnected project's %
   );
   if (thread) {
     expect(html).toContain("Saved conversation");
+    expect(html).toContain('data-testid="workspace-context"');
     expect(html).toContain("<button>Send follow-up</button>");
     expect(html).not.toContain("当前显示已保存的历史");
   } else {

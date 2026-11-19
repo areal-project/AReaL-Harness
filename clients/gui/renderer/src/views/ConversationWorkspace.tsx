@@ -380,7 +380,8 @@ function ActiveConversation() {
             thread.persistedHistory === true)) &&
         (!thread.cloud || !readOnly) && (
           <div className={empty ? "draft-composer" : "active-composer"}>
-            {empty && (
+            {(empty ||
+              (!thread.cloud && (!project.state?.connected || project.scheduling?.suppressed))) && (
               <div className="composer-project-bar">
                 <div className="composer-project-leading">
                   <div className="composer-project">
@@ -392,7 +393,7 @@ function ActiveConversation() {
                           : project.root.split("/").pop())}
                     </span>
                   </div>
-                  {!readOnly && (
+                  {!platformReadOnly && (
                     <ComposerWorkspaceContext
                       project={project}
                       threadId={thread?.id}
