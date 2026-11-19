@@ -559,7 +559,29 @@ fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
             shared.model_revision.set(shared.model_revision.get() + 1);
         }
     }
-    if value["method"] == "areal/task/updated" {
+    let method = value["method"].as_str();
+    let notice_event = matches!(
+        method,
+        Some("areal/owner/invalidated" | "areal/owner/resetRequired")
+    );
+    let turn_event = matches!(method, Some("turn/started" | "turn/completed"));
+    let current_shared = (notice_event || turn_event)
+        && connection.shared_current(host)
+        && host
+            .schedules
+            .connections
+            .sessions
+            .borrow()
+            .get(&connection.project_id)
+            .is_some_and(|current| Rc::ptr_eq(current, connection));
+    // 目录观察覆盖所有任务，逐任务订阅只覆盖已打开的任务。
+    let task_directory_changed = current_shared
+        && (method == Some("areal/owner/resetRequired")
+            || (method == Some("areal/owner/invalidated")
+                && value["params"]["changedTasks"]
+                    .as_array()
+                    .is_some_and(|tasks| !tasks.is_empty())));
+    if method == Some("areal/task/updated") || task_directory_changed {
         connection
             .task_revision
             .set(connection.task_revision.get() + 1);
@@ -574,7 +596,7 @@ fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
             shared.task_revision.set(shared.task_revision.get() + 1);
         }
     }
-    if changes_shell(&value) {
+    if changes_shell(&value) || task_directory_changed {
         connection
             .shell_revision
             .set(connection.shell_revision.get() + 1);
@@ -604,23 +626,6 @@ fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
         }
         return;
     }
-    let notice_event = matches!(
-        value["method"].as_str(),
-        Some("areal/owner/invalidated" | "areal/owner/resetRequired")
-    );
-    let turn_event = matches!(
-        value["method"].as_str(),
-        Some("turn/started" | "turn/completed")
-    );
-    let current_shared = (notice_event || turn_event)
-        && connection.shared_current(host)
-        && host
-            .schedules
-            .connections
-            .sessions
-            .borrow()
-            .get(&connection.project_id)
-            .is_some_and(|current| Rc::ptr_eq(current, connection));
     let current_turn = current_shared && turn_event;
     if current_turn
         && value["method"] == "turn/started"

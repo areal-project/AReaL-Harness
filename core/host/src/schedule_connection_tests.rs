@@ -65,6 +65,59 @@ fn service(host: &Host, endpoint: String) -> Service {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn owner_task_invalidations_advance_the_shared_shell_revision() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let host = Rc::new(super::super::schedules::tests::fixture(root.path()));
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let service = service(&host, format!("ws://{}/", listener.local_addr().unwrap()));
+            let core = tokio::task::spawn_local(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut socket = tokio_tungstenite::accept_hdr_async(stream, ScheduleHeaders)
+                    .await
+                    .unwrap();
+                let initialize = receive(&mut socket).await;
+                send(&mut socket, json!({"id":initialize["id"],"result":{}})).await;
+                std::future::pending::<()>().await;
+            });
+            let session = connect(host.clone(), "project", service).await.unwrap();
+            session.ready.set(true);
+            let connections = &host.schedules.connections;
+            connections
+                .sessions
+                .borrow_mut()
+                .insert("project".into(), session.clone());
+            let invalidation = |tasks: Value| {
+                json!({"method":"areal/owner/invalidated",
+            "params":{"generation":"directory","sequence":1,"changedTasks":tasks,
+                      "changedThreads":["thread"],"facts":[]}})
+            };
+            let changes = host.changes.subscribe();
+            let task_revision = connections.task_revision(&host, "project").unwrap();
+            let shell_revision = connections.shell_revision(&host, "project").unwrap();
+            publish_event(&host, &session, invalidation(json!([])));
+            assert_eq!(
+                connections.task_revision(&host, "project").unwrap(),
+                task_revision
+            );
+            assert!(!changes.has_changed().unwrap());
+            publish_event(&host, &session, invalidation(json!(["task"])));
+            assert_ne!(
+                connections.task_revision(&host, "project").unwrap(),
+                task_revision
+            );
+            assert_ne!(
+                connections.shell_revision(&host, "project").unwrap(),
+                shell_revision
+            );
+            assert!(changes.has_changed().unwrap());
+            core.abort();
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn status_deadline_does_not_revoke_current_core_connection() {
     tokio::task::LocalSet::new()
         .run_until(async {
