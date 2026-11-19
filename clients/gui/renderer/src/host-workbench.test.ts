@@ -13,6 +13,48 @@ import { hostCommandError } from "./desktop-response.js";
 import type { PlatformServices } from "./services.js";
 import { refreshModelCatalogs } from "./host-auxiliary-reads.js";
 
+it("coalesces identical workspace and context reads while preserving distinct targets", async () => {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const command = vi.fn(async () => {
+    await released;
+    return { ok: false, error: { code: "CAPACITY_EXCEEDED", message: "busy" } };
+  });
+  const services = { command } as unknown as PlatformServices;
+  const context = {
+    projectId: "project",
+    threadId: "thread",
+    operation: "context" as const,
+    offset: 0,
+    limit: 1,
+  };
+  const info = { projectId: "project", threadId: "thread", operation: "info" as const };
+  const outcome = Promise.allSettled([
+    call(services, "manage", context),
+    call(services, "manage", { ...context }),
+    call(services, "manage", { ...context, threadId: "other" }),
+    call(services, "workspace", info),
+    call(services, "workspace", { ...info }),
+  ]);
+  try {
+    await vi.waitFor(() => expect(command).toHaveBeenCalledTimes(3));
+    expect(command.mock.calls).toEqual([
+      ["manage", context],
+      ["manage", { ...context, threadId: "other" }],
+      ["workspace", info],
+    ]);
+  } finally {
+    release();
+    await outcome;
+  }
+  await expect(call(services, "workspace", info)).rejects.toMatchObject({
+    code: "CAPACITY_EXCEEDED",
+  });
+  expect(command).toHaveBeenCalledTimes(4);
+});
+
 function setup(answer: (method: string, params: unknown) => unknown) {
   const calls: Array<[string, unknown]> = [];
   const client = {

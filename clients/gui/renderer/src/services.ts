@@ -275,8 +275,8 @@ const READ_OPERATIONS: Readonly<Record<string, ReadonlySet<string>>> = {
     "taskHistoryCapabilities",
   ]),
   providers: new Set(["list"]),
-  manage: new Set(["inspect", "list"]),
-  workspace: new Set(["list", "read", "status", "worktreeList", "worktreeStatus"]),
+  manage: new Set(["inspect", "list", "context"]),
+  workspace: new Set(["list", "read", "info", "status", "worktreeList", "worktreeStatus"]),
 };
 type ServiceReadGuard = {
   inFlightExact: Map<string, Promise<unknown>>;
