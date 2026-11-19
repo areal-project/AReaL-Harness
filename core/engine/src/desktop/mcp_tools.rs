@@ -22,6 +22,10 @@ struct ToolSummary {
 }
 
 impl ToolExposure {
+    pub(crate) fn remove_common(&mut self, name: &str) {
+        self.common_catalog.retain(|tool| tool.name != name);
+    }
+
     pub(crate) fn admits(&self, name: &str) -> bool {
         self.offered
             .as_ref()
@@ -62,7 +66,46 @@ impl ToolExposure {
                 "schemaLocation": "Use the existing tool definition, or its tools.NAME schema in tool_program when provided there."
             });
         }
-        self.search(query, limit)
+        let result = self.search(query, limit);
+        if result["tools"]
+            .as_array()
+            .is_some_and(|tools| !tools.is_empty())
+        {
+            return result;
+        }
+        // 只在原检索为空时匹配完整名称；两类目录均来自当前 Turn 的授权投影。
+        let terms: BTreeSet<_> = query
+            .split(|c: char| !c.is_alphanumeric() && c != '_' && c != '-')
+            .filter(|term| !term.is_empty())
+            .map(str::to_lowercase)
+            .collect();
+        let mut matches: Vec<_> = self
+            .common_catalog
+            .iter()
+            .filter(|tool| terms.contains(&tool.name.to_lowercase()))
+            .collect();
+        if !matches.is_empty() {
+            matches.sort_by(|a, b| a.name.cmp(&b.name));
+            let truncated = matches.len() > limit;
+            matches.truncate(limit);
+            return json!({
+                "tools": matches, "truncated": truncated, "schemaStatus": "already_available",
+                "schemaLocation": "Use the existing tool definition, or its tools.NAME schema in tool_program when provided there."
+            });
+        }
+        // 常用入口也没有命中时，才发现完整 lazy 工具名，避免一句话中的
+        // 附带名称改变原有常用工具优先级或额外加载 schema。
+        let mut matches: Vec<_> = self
+            .catalog
+            .iter()
+            .filter(|tool| terms.contains(&tool.name.to_lowercase()))
+            .collect();
+        matches.sort_by(|a, b| a.name.cmp(&b.name));
+        let truncated = matches.len() > limit;
+        matches.truncate(limit);
+        self.loaded
+            .extend(matches.iter().map(|tool| tool.name.clone()));
+        json!({"tools": matches, "truncated": truncated})
     }
 }
 
@@ -288,19 +331,86 @@ mod tests {
     use super::*;
 
     #[test]
+    fn sentence_names_discover_only_authorized_lazy_tools() {
+        for name in ["read_history", "inspect_record", "inspect-record"] {
+            let entry = ToolSummary {
+                name: name.into(),
+                server_id: "native".into(),
+                description: "Inspect a resource".into(),
+            };
+            let mut exposure = ToolExposure {
+                catalog: vec![entry],
+                ..Default::default()
+            };
+            let query = format!("Use tools.{}: read attached data", name.to_uppercase());
+            assert_eq!(exposure.search(&query, 1)["tools"], json!([]));
+            let result = exposure.search_native(&query, 1);
+            assert_eq!(result["tools"][0]["name"], name);
+            assert!(result.get("schemaStatus").is_none());
+            assert_eq!(exposure.loaded, BTreeSet::from([name.into()]));
+            for query in [
+                format!("other_{name}"),
+                format!("{name}2"),
+                format!("{name}-extra"),
+                "unavailable_resource please".into(),
+            ] {
+                assert_eq!(exposure.search_native(&query, 1)["tools"], json!([]));
+            }
+            exposure.catalog.clear();
+            assert_eq!(exposure.search_native(&query, 1)["tools"], json!([]));
+        }
+    }
+
+    #[test]
+    fn sentence_name_limit_preserves_common_priority_and_bounds_lazy_loading() {
+        let mut exposure = ToolExposure {
+            catalog: ["z_record", "b_record"]
+                .map(|name| ToolSummary {
+                    name: name.into(),
+                    server_id: "native".into(),
+                    description: "Read data".into(),
+                })
+                .to_vec(),
+            common_catalog: vec![ToolSummary {
+                name: "a_common".into(),
+                server_id: "native".into(),
+                description: "Already provided".into(),
+            }],
+            ..Default::default()
+        };
+        let result = exposure.search_native("a_common, b_record, z_record please", 2);
+        assert_eq!(result["tools"].as_array().unwrap().len(), 1);
+        assert_eq!(result["tools"][0]["name"], "a_common");
+        assert_eq!(result["schemaStatus"], "already_available");
+        assert!(exposure.loaded.is_empty());
+        let result = exposure.search_native("b_record, z_record please", 1);
+        assert_eq!(result["tools"][0]["name"], "b_record");
+        assert_eq!(result["truncated"], true);
+        assert!(result.get("schemaStatus").is_none());
+        assert_eq!(exposure.loaded, BTreeSet::from(["b_record".into()]));
+        let result = exposure.search_native("b_record, z_record please", 2);
+        assert_eq!(result["tools"].as_array().unwrap().len(), 2);
+        assert_eq!(result["truncated"], false);
+        assert_eq!(
+            exposure.loaded,
+            BTreeSet::from(["b_record".into(), "z_record".into()])
+        );
+    }
+
+    #[test]
     fn exact_common_search_reports_the_existing_schema() {
         let mut exposure = ToolExposure {
             common_catalog: vec![ToolSummary {
-                name: "edit_files".into(),
+                name: "skill_load".into(),
                 server_id: "native".into(),
-                description: "Edit authorized files".into(),
+                description: "Load the complete skill".into(),
             }],
             ..Default::default()
         };
 
-        let result = exposure.search_native(" edit_files ", 1);
+        let result = exposure.search_native(" Skill_Load ", 1);
         assert_eq!(result["schemaStatus"], "already_available");
-        assert_eq!(result["tools"][0]["name"], "edit_files");
+        assert_eq!(result["tools"][0]["name"], "skill_load");
         assert!(exposure.loaded.is_empty());
     }
 
@@ -318,5 +428,53 @@ mod tests {
         let result = exposure.search_native("missing_tool", 1);
         assert_eq!(result["tools"].as_array().unwrap().len(), 0);
         assert!(result.get("schemaStatus").is_none());
+    }
+
+    #[test]
+    fn common_tool_names_in_a_sentence_report_the_existing_schema() {
+        let mut exposure = ToolExposure {
+            common_catalog: vec![
+                ToolSummary {
+                    name: "image_read".into(),
+                    server_id: "native".into(),
+                    description: "Read an image".into(),
+                },
+                ToolSummary {
+                    name: "read_file".into(),
+                    server_id: "native".into(),
+                    description: "Read a file".into(),
+                },
+            ],
+            ..Default::default()
+        };
+
+        let result = exposure.search_native("Use tools.IMAGE_READ to inspect the preview", 1);
+        assert_eq!(result["schemaStatus"], "already_available");
+        assert_eq!(result["tools"][0]["name"], "image_read");
+        assert!(exposure.loaded.is_empty());
+
+        let result = exposure.search_native("read_file, image_read", 1);
+        assert_eq!(result["tools"].as_array().unwrap().len(), 1);
+        assert_eq!(result["truncated"], true);
+        assert!(exposure.loaded.is_empty());
+
+        for query in ["other_image_read", "image_read2", "image_read-extra"] {
+            assert_eq!(
+                exposure.search_native(query, 1)["tools"],
+                json!([]),
+                "{query} must not match a different tool name"
+            );
+        }
+        // MCP 搜索和按说明匹配的 lazy 命中不受 common 回退影响。
+        assert_eq!(exposure.search("image_read preview", 1)["tools"], json!([]));
+        exposure.catalog.push(ToolSummary {
+            name: "read_history".into(),
+            server_id: "native".into(),
+            description: "Read image_read history".into(),
+        });
+        let result = exposure.search_native("image_read history", 1);
+        assert_eq!(result["tools"][0]["name"], "read_history");
+        assert!(result.get("schemaStatus").is_none());
+        assert_eq!(exposure.loaded, BTreeSet::from(["read_history".into()]));
     }
 }

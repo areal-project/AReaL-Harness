@@ -416,7 +416,11 @@ impl Model for SurfaceModel {
                 // 完整示例集中在工具定义；基础说明只保留决策边界，避免重复输入。
                 assert!(catalog.contains("```json\n"));
                 assert!(catalog.contains("await collect(await tools.verify_command(input.check))"));
-                call("tool_search", json!({"query":"read_history","limit":1}), 0)
+                call(
+                    "tool_search",
+                    json!({"query":"Inspect tools.READ_HISTORY: earlier actions","limit":1}),
+                    0,
+                )
             }
             1 if self.direct_edit => call(
                 "edit_files",
@@ -543,20 +547,12 @@ impl Model for CommonSearchModel {
     }
 
     async fn chat(&self, messages: Vec<Message>, tools: Vec<Value>) -> anyhow::Result<ModelStream> {
-        use sha2::{Digest, Sha256};
-        let round = self.round.fetch_add(1, Ordering::SeqCst) % if self.denied { 2 } else { 3 };
+        let round = self.round.fetch_add(1, Ordering::SeqCst) % 3;
         let mut initial = self.initial_tools.lock().await;
         if let Some(expected) = initial.as_ref() {
             // 搜索已提供工具不应扩展后续工具菜单，新 Turn 也应保持相同投影。
             assert_eq!(&tools, expected);
         } else {
-            println!(
-                "common-search-schema program={} direct_edit={} denied={} sha256={:x}",
-                self.program_only,
-                self.direct_edit,
-                self.denied,
-                Sha256::digest(serde_json::to_vec(&tools)?)
-            );
             *initial = Some(tools.clone());
         }
         drop(initial);
@@ -576,8 +572,8 @@ impl Model for CommonSearchModel {
                 if self.denied {
                     assert_eq!(receipt["tools"], json!([]));
                     assert!(receipt.get("schemaStatus").is_none());
-                    // 拒绝分支验证搜索不泄漏；不引入与发现契约无关的读文件进程。
-                    ModelEvent::text("denied tool remains hidden")
+                    assert!(!names.contains(&"tool_program"));
+                    call("tool_search", json!({"query":"tool_program","limit":1}), 1)
                 } else {
                     assert_eq!(receipt["tools"][0]["name"], "edit_files");
                     assert_eq!(receipt["schemaStatus"], "already_available");
@@ -607,8 +603,15 @@ impl Model for CommonSearchModel {
                 }
             }
             _ => {
-                assert!(messages.last().unwrap().text_content().contains("APPLIED"));
-                ModelEvent::text("authorized tool executed")
+                if self.denied {
+                    let receipt: Value =
+                        serde_json::from_str(&messages.last().unwrap().text_content())?;
+                    assert_eq!(receipt["tools"], json!([]), "no callable program leaves");
+                    assert!(receipt.get("schemaStatus").is_none());
+                } else {
+                    assert!(messages.last().unwrap().text_content().contains("APPLIED"));
+                }
+                ModelEvent::text("finished checking the available tools")
             }
         };
         Ok(Box::pin(futures_util::stream::iter([Ok(event)])))
@@ -662,7 +665,7 @@ async fn common_search(program_only: bool, direct_edit: bool, denied: bool) {
         .unwrap();
     if denied {
         let deployment = dir.path().join("deployment.json");
-        std::fs::write(&deployment, json!({"profiles":[{"id":"reader","revision":"v1","displayName":"Reader","instructions":"","toolAllowlist":["tool_search","read_file"]}]}).to_string()).unwrap();
+        std::fs::write(&deployment, json!({"profiles":[{"id":"reader","revision":"v1","displayName":"Reader","instructions":"","toolAllowlist":["tool_search","tool_program"]}]}).to_string()).unwrap();
         engine.install_deployment(&deployment).unwrap();
         engine.configure_thread(serde_json::from_value(json!({"threadId":thread.id,"expectedRevision":1,"agentProfile":{"id":"reader","revision":"v1"}})).unwrap()).await.unwrap();
     }
@@ -698,10 +701,7 @@ async fn common_search(program_only: bool, direct_edit: bool, denied: bool) {
             std::fs::remove_file(workspace.join("created")).unwrap();
         }
     }
-    assert_eq!(
-        model.round.load(Ordering::SeqCst),
-        if denied { 4 } else { 6 }
-    );
+    assert_eq!(model.round.load(Ordering::SeqCst), 6);
     if denied {
         assert!(operations.lock().await.is_empty());
     }
