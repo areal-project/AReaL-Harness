@@ -43,6 +43,7 @@ import {
   jsonObject,
   object,
   openInBrowser,
+  outcomeUnknown,
   hostPlatformCapabilities,
   desktopWindowCommand,
 } from "./host-workbench.js";
@@ -59,6 +60,15 @@ export type Observation = ReturnType<typeof readObservationResult>;
 export type HostHistoryPage = ReturnType<typeof readInheritedHistoryPage>;
 export type HistoryEntry = ReturnType<typeof readHistoryEntry>;
 export type HistoryPage = ReturnType<typeof readHistoryPage> & { pageId: string; cursor: string };
+
+function taskDraftTimeZone(configuration: unknown) {
+  if (!object(configuration) || !object(configuration.options)) return;
+  const instructions = configuration.options.appendInstructions;
+  if (typeof instructions !== "string") return;
+  const [kind, zone] = instructions.split("\n", 2);
+  if (kind === "AREAL_TASK_DRAFT_V1" && zone?.startsWith("Time zone: "))
+    return zone.slice("Time zone: ".length);
+}
 export type PageRecord = { id: string; cursor: string; items: ReturnType<typeof pageTopology> };
 
 export function createHostReadServices(
@@ -697,6 +707,40 @@ export function createHostReadServices(
         const result = await client.commandStatus(owner, requestId);
         if (client.snapshot() !== connection) throw new Error("Host command read cancelled");
         let outcome = hostCommandOutcome(result, requestId);
+        const draftThreads = Object.entries(project.configurations)
+          .filter(([, configuration]) => taskDraftTimeZone(configuration))
+          .map(([id]) => id);
+        if (
+          outcome.admissionState === "notFound" &&
+          draftThreads.length &&
+          client.writable("tasks.read")
+        ) {
+          const draft = await client.workbench("tasks.read", {
+            operation: "receipt",
+            projectId: project.id,
+            requestId,
+          });
+          if (client.snapshot() !== connection) throw new Error("Host command read cancelled");
+          if (
+            object(draft) &&
+            draft.requestId === requestId &&
+            draft.submissionUnknown === false &&
+            object(draft.receipt) &&
+            typeof draft.receipt.threadId === "string" &&
+            draftThreads.includes(draft.receipt.threadId) &&
+            typeof draft.receipt.turnId === "string"
+          ) {
+            outcome = hostCommandOutcome(
+              {
+                ...draft.receipt,
+                method: "session.send",
+                commandId: requestId,
+                admissionState: "accepted",
+              },
+              requestId,
+            );
+          }
+        }
         if (
           outcome.admissionState === "notFound" &&
           !gatewayOwner &&
@@ -819,6 +863,52 @@ export function createHostReadServices(
             typeof params.requestId === "string" ? params.requestId : crypto.randomUUID();
           const owner = client.snapshot();
           if (owner.connection !== "ready") throw new Error("Host unavailable");
+          const timeZone = taskDraftTimeZone(config);
+          if (name === "send" && timeZone) {
+            if (params.command !== undefined) throw new Error("定时任务配置草稿不支持插件命令");
+            if (!client.writable("desktop.command")) throw new Error("Host unavailable");
+            const operation = {
+              method: "turn/start",
+              requestId: commandId,
+              target: { kind: "thread", threadId: target.threadId },
+            } as const;
+            let result;
+            try {
+              result = await client.workbench("desktop.command", {
+                command: "manage",
+                request: {
+                  ...input,
+                  operation: "taskDraftSend",
+                  projectId: target.project.id,
+                  threadId: target.threadId,
+                  timeZone,
+                  requestId: commandId,
+                },
+              });
+            } catch (error) {
+              if (!outcomeUnknown(error)) throw error;
+              return {
+                routed: true,
+                value: admitted(
+                  { admissionState: "unknown", commandId, transportError: "" },
+                  operation,
+                ),
+              };
+            }
+            if (
+              !object(result) ||
+              result.threadId !== target.threadId ||
+              typeof result.turnId !== "string"
+            )
+              return {
+                routed: true,
+                value: admitted(
+                  { admissionState: "unknown", commandId, transportError: "" },
+                  operation,
+                ),
+              };
+            return { routed: true, value: result };
+          }
           const command = await client.command(
             name === "send" ? "session.send" : "session.control",
             target.hostProjectId,

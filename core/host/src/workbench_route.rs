@@ -40,6 +40,7 @@ const MANAGE_SUBMIT_OPERATIONS: &[&str] = &[
     "processStart",
     "processTerminate",
     "processWrite",
+    "taskDraftSend",
     "taskRunNow",
     "taskResumeRun",
 ];

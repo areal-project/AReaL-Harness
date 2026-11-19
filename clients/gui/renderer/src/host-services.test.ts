@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { HostClientOptions, ShellProject, SourceNavigation } from "@areal/client";
+import type { HostClientOptions, JsonObject, ShellProject, SourceNavigation } from "@areal/client";
 import { createHostReadServices } from "./host-services.js";
 import {
   configurationIdentity,
@@ -1853,6 +1853,91 @@ describe("Host renderer read authority", () => {
     const next = await services.snapshot();
     expect(next.projects[1]).toBe(previous);
     expect(next.projects[0].state.threads.thread.turns[0].items[0].text).toBe("changed");
+  });
+  it("sends a saved task draft through its Host task owner", async () => {
+    const wire = transport({
+      ...observation,
+      thread: {
+        ...observation.thread,
+        desktop: {
+          configuration: {
+            revision: 7,
+            options: { appendInstructions: "AREAL_TASK_DRAFT_V1\nTime zone: Asia/Shanghai\n" },
+          },
+        },
+      },
+    });
+    let loseReply = false;
+    const write = vi.fn(async (method: string, params: JsonObject, ..._binding: unknown[]) => {
+      if (method === "command.read")
+        return { commandId: params.commandId, admissionState: "notFound" };
+      if (method === "tasks.read")
+        return {
+          requestId: params.requestId,
+          submissionUnknown: false,
+          receipt: { threadId: "thread", turnId: "turn" },
+        };
+      if (loseReply) throw new Error("connection closed");
+      return { threadId: "thread", turnId: "turn" };
+    });
+    const services = createHostReadServices(
+      undefined,
+      options(async (lifecycle) => {
+        const opened = await wire.factory(lifecycle);
+        return {
+          ...opened,
+          identity: {
+            ...opened.identity,
+            writeMethods: ["desktop.command", "session.send", "command.read", "tasks.read"],
+          },
+          transport: {
+            ...opened.transport,
+            async write(method, params, context, commandId) {
+              if (
+                method === "desktop.command" &&
+                (params.request as JsonObject)?.operation === "inspect"
+              )
+                return {};
+              return write(method, params, context, commandId);
+            },
+          },
+        };
+      }),
+    );
+    await until(services);
+    await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
+    const { call } = await import("./services.js");
+    const requestId = "11111111-1111-4111-8111-111111111111";
+    const message = { projectId: "alias", threadId: "thread", requestId, text: "Adjust weekdays" };
+    expect(await call(services, "send", message)).toEqual({ threadId: "thread", turnId: "turn" });
+    expect(write).toHaveBeenCalledExactlyOnceWith(
+      "desktop.command",
+      {
+        command: "manage",
+        request: { ...message, operation: "taskDraftSend", timeZone: "Asia/Shanghai" },
+      },
+      null,
+      undefined,
+    );
+    loseReply = true;
+    const original = "22222222-2222-4222-8222-222222222222";
+    await expect(call(services, "send", { ...message, requestId: original })).rejects.toMatchObject(
+      {
+        requestId: original,
+        submissionUnknown: true,
+      },
+    );
+    expect(
+      await call(services, "reconcile", { projectId: "alias", requestId: original }),
+    ).toMatchObject({
+      outcomes: { [original]: { accepted: true, threadId: "thread", turnId: "turn" } },
+    });
+    expect(write.mock.calls.map(([method]) => method)).toEqual([
+      "desktop.command",
+      "desktop.command",
+      "command.read",
+      "tasks.read",
+    ]);
   });
   it("routes complete conversation inputs and preserves unknown drafts without replay", async () => {
     const wire = transport({

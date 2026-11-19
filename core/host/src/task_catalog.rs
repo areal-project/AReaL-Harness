@@ -433,6 +433,23 @@ pub(super) fn mutation(operation: &str) -> Option<&'static str> {
     })
 }
 fn mutation_params(operation: &str, mut params: Value) -> Result<Value> {
+    if operation == "taskDraftSend" && params.get("input").is_none() {
+        let text = params["text"].as_str().unwrap_or("");
+        let input = super::gateway_owner::rich_message_input_with_command(text, &params, false)
+            .context("INVALID_PARAMS")?;
+        params["input"] = serde_json::to_value(input)?;
+        if let Some(fields) = params.as_object_mut() {
+            for field in [
+                "text",
+                "attachments",
+                "mcpContent",
+                "conversationQuotes",
+                "contextParts",
+            ] {
+                fields.remove(field);
+            }
+        }
+    }
     let object = params.as_object_mut().context("INVALID_PARAMS")?;
     for field in [
         "sourceId",

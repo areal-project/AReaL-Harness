@@ -2,9 +2,7 @@
 //! 所有操作直接复用工作区归属、Core 共享通道、Host 提交日志、插件库与产物安全校验。
 
 use super::{
-    Host,
-    gateway_owner::rich_message_input_with_command,
-    library_store,
+    Host, library_store,
     session_commands::{
         ResolvedScope, core_capabilities, has_method, record_thread_owner, resolve_project_scope,
         shared_rpc,
@@ -1754,17 +1752,6 @@ async fn run_task_operation(
             super::session_commands::ensure_project(host, &scope.canonical_id).await?;
             model_notice =
                 populate_task_draft_start_model(host, source, &scope, &mut payload).await?;
-        }
-        if operation == "taskDraftSend" && payload.get("input").is_none() {
-            let text = request.get("text").and_then(Value::as_str).unwrap_or("");
-            let input =
-                rich_message_input_with_command(text, request, false).context("INVALID_PARAMS")?;
-            if let Some(obj) = payload.as_object_mut() {
-                obj.insert("input".into(), serde_json::to_value(input)?);
-                for key in ["text", "attachments", "mcpContent", "conversationQuotes"] {
-                    obj.remove(key);
-                }
-            }
         }
     }
     if reading {
