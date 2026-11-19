@@ -128,6 +128,8 @@ Core 从持久 Thread、Turn 和 tool-call ID 派生写入 requestId，模型不
 
 历史 task-draft 的绝对时间和间隔预览使用草稿开始时保存的 `timeZone`；日历规则仍优先使用规则自身的时区。公开 `task/schedule/preview` 的非日历预览继续使用 UTC。显示时区不改变执行时点。
 
+修改已保存的日历任务时，新的时间安排必须使用完整的 `scheduleV2`。只有旧格式 `schedule.at` 的提案会被拒绝，原计划保留。
+
 ChannelMessage 包含 `id, sequence, runId, author, kind, status, createdAt, expiresAt, questions, required, inReplyTo, answers, text`。kind 为 question/reply/workerReport/report；问题 status 为 pending/answered/expired/cancelled，其他消息为 published。`questionId` 引用 question 消息的 id；answers 是题 ID 到答案字符串的映射，必须恰好覆盖全部问题，非自由文本题须选择给定选项，每个答案非空且最多 4096 字节。
 
 问题必须属于指定 Task/Run，处于 pending 且未过期；已取消 Task、已完成/失败/预算停止 Goal 或已替换 Goal 拒绝新回复。暂停期间可接受有效回复，但不因此解除暂停。相同 requestId 的成功重试仍返回原收据。错误沿用 Core：`-32602` 参数非法、`-32009` 状态或 revision 冲突、`-32003` 权限不足、`-32004` 未找到、`-32001` 容量不足；存储错误以返回的实际 Core 错误为准。

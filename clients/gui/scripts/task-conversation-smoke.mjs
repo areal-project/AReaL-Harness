@@ -707,18 +707,19 @@ function observeCalendarSocket(socket) {
     const fault = calendarFault;
     if (
       fault &&
-      frame.method === "manage.command" &&
-      frame.params?.operation === "taskDraftConfirm" &&
-      frame.params.requestId === fault.requestId
+      frame.method === "desktop.command" &&
+      frame.params?.command === "manage" &&
+      frame.params.request?.operation === "taskDraftConfirm" &&
+      frame.params.request.requestId === fault.requestId
     ) {
-      fault.writes.push(frame.params);
-      fault.commandId = frame.commandId;
+      fault.writes.push(frame.params.request);
       requests.set(frame.id, { fault, kind: "write" });
     }
     if (
-      fault?.commandId &&
-      frame.method === "command.read" &&
-      frame.params?.commandId === fault.commandId
+      fault &&
+      frame.method === "tasks.read" &&
+      frame.params?.operation === "receipt" &&
+      frame.params.requestId === fault.requestId
     ) {
       requests.set(frame.id, { fault, kind: "read" });
     }
@@ -728,18 +729,13 @@ function observeCalendarSocket(socket) {
     const frame = JSON.parse(message.toString());
     const match = requests.get(frame.id);
     requests.delete(frame.id);
-    if (
-      match?.kind === "write" &&
-      frame.result?.receipt &&
-      frame.result.commandId === match.fault.commandId &&
-      frame.result.submissionUnknown === false
-    ) {
+    if (match?.kind === "write" && frame.result?.id && frame.result?.scheduleV2) {
       match.fault.original = frame.result;
       void Promise.allSettled([remote.close(), socket.close()]);
       return;
     }
     if (match?.kind === "read" && match.fault.hold && frame.result?.receipt) {
-      match.fault.withheld.push(frame.result.commandId);
+      match.fault.withheld.push(frame.result.requestId);
       socket.send(
         JSON.stringify({
           id: frame.id,
@@ -934,7 +930,13 @@ async function checkCalendarRegression() {
     unknownCreation.started,
     "日历重试验收，两天后09:00执行。",
   );
-  const unknown = { requestId: randomUUID(), writes: [], withheld: [], hold: true };
+  const digest = createHash("sha256")
+    .update(
+      `AREAL_TASK_DRAFT_V1:${unknownCreation.started.threadId}:draft-confirm:${unknownProposal.turnId}`,
+    )
+    .digest("hex");
+  const requestId = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-4${digest.slice(13, 16)}-a${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
+  const unknown = { requestId, writes: [], withheld: [], hold: true };
   calendarFault = unknown;
   const confirm = {
     projectId: pid,
@@ -944,24 +946,24 @@ async function checkCalendarRegression() {
     turnId: unknownProposal.turnId,
     digest: unknownProposal.digest,
   };
-  const unknownReply = await fixtureWorkbench(page, "manage.command", confirm, {
-    write: true,
+  const unknownReply = await fixtureWorkbench(page, "desktop.command", {
+    command: "manage",
+    request: confirm,
   }).then(
     () => null,
     (error) => error.message,
   );
   assert.ok(unknownReply, "lost confirmed response must not settle the caller");
-  assert.ok(unknown.original?.receipt, "loss hit the original accepted native confirmation");
-  assert.equal(unknown.original.commandId, unknown.commandId);
+  assert.ok(unknown.original?.id, "loss hit the original accepted native confirmation");
   const readOriginal = () =>
-    fixtureWorkbench(page, "command.read", { commandId: unknown.commandId });
+    fixtureWorkbench(page, "tasks.read", { operation: "receipt", projectId: pid, requestId });
   await assert.rejects(readOriginal, /fixture withholds original calendar receipt/);
   const acceptedUnknown = (await call("tasks", { operation: "list" })).data.filter(
     (t) => t.projectId === pid && t.objectivePreview === "日历重试验收",
   );
   assert.equal(acceptedUnknown.length, 1);
   const admitted = await task(acceptedUnknown[0].id);
-  assert.equal(admitted.id, unknown.original.receipt.id);
+  assert.equal(admitted.id, unknown.original.id);
   assert.equal(admitted.scheduleV2.rule.kind, "onceLocal");
   assert.equal(admitted.scheduleV2.rule.timeZone, "Asia/Shanghai");
   assert.equal(admitted.scheduleV2.rule.localTime, "09:00");
@@ -971,11 +973,11 @@ async function checkCalendarRegression() {
   await page.getByRole("button", { name: "打开定时任务 日历重试验收", exact: true }).click();
   await assert.rejects(readOriginal, /fixture withholds original calendar receipt/);
   const withheldReceipts = unknown.withheld;
-  assert.deepEqual(withheldReceipts, [unknown.commandId, unknown.commandId]);
+  assert.deepEqual(withheldReceipts, [requestId, requestId]);
   assert.equal(unknown.writes.length, 1, "reopening does not repeat the original confirmation");
   unknown.hold = false;
   const original = await readOriginal();
-  assert.equal(original.commandId, unknown.commandId);
+  assert.equal(original.requestId, requestId);
   assert.equal(original.submissionUnknown, false);
   assert.equal(original.receipt.id, admitted.id);
   await writeFile(

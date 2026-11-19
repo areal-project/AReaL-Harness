@@ -1799,16 +1799,20 @@ export function TaskCenter({
                   打开执行会话，在“编辑目标”中调整预算后恢复。
                 </p>
               )}
-              <p className="text-foreground-subtle">
-                {run.usage.tokensUsed.toLocaleString()} Token · {run.usage.turnsStarted} 轮 ·{" "}
-                {run.usage.timeUsedSeconds.toLocaleString(undefined, {
-                  maximumFractionDigits: 1,
-                })}{" "}
-                秒{!run.usage.accountingComplete && " · 用量尚未结算完整"}
-              </p>
-              <SettingsDisclosure title={t("common.schedules.usageDetails")}>
-                <GoalUsageSummary usage={run.usage} label="运行用量" />
-              </SettingsDisclosure>
+              {run.usage && (
+                <>
+                  <p className="text-foreground-subtle">
+                    {run.usage.tokensUsed.toLocaleString()} Token · {run.usage.turnsStarted} 轮 ·{" "}
+                    {run.usage.timeUsedSeconds.toLocaleString(undefined, {
+                      maximumFractionDigits: 1,
+                    })}{" "}
+                    秒{!run.usage.accountingComplete && " · 用量尚未结算完整"}
+                  </p>
+                  <SettingsDisclosure title={t("common.schedules.usageDetails")}>
+                    <GoalUsageSummary usage={run.usage} label="运行用量" />
+                  </SettingsDisclosure>
+                </>
+              )}
               {messages
                 .filter((message) => message.runId === run.id && message.kind === "report")
                 .at(-1)?.text && (
