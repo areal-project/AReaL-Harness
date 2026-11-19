@@ -723,6 +723,7 @@ async fn worktree_first_turns_keep_ordinary_and_subscription_models_independent(
         Engine, Limits,
         model::{HttpModel, ModelProtocol},
     };
+    use areal_protocol::desktop::{ClientOptions, ConfigureThread, EffectiveConfig};
     use areal_protocol::{Input, Item, TurnStatus};
     use std::{path::Path, process::Command, sync::Arc};
 
@@ -821,6 +822,27 @@ async fn worktree_first_turns_keep_ordinary_and_subscription_models_independent(
                 let target = workspace.canonicalize().unwrap();
                 let thread = engine
                     .create(target.to_str().unwrap().into())
+                    .await
+                    .unwrap();
+                // 这个夹具仅计执行轮次的请求，关闭独立的自动命名推理。
+                engine
+                    .configure_thread(ConfigureThread {
+                        thread_id: thread.id.clone(),
+                        expected_revision: thread.desktop.as_ref().map_or_else(
+                            || EffectiveConfig::default().revision,
+                            |desktop| desktop.configuration.revision,
+                        ),
+                        options: Some(ClientOptions {
+                            automatic_session_name: Some(false),
+                            ..Default::default()
+                        }),
+                        request_id: None,
+                        agent_profile: None,
+                        model: None,
+                        reset_model: false,
+                        parameters: None,
+                        selected_skills: None,
+                    })
                     .await
                     .unwrap();
                 let turn = engine
