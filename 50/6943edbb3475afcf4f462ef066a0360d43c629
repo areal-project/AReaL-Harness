@@ -1,0 +1,46 @@
+docs/guides/programmatic-tools.md
+  s_f9fad336940d7a::t_4fe9dbb1b28c24 61-62
+core/engine/src/desktop/skill_loading.rs
+  s_f9fad336940d7a::t_4fe9dbb1b28c24 4,19-42
+core/engine/src/tools/program.rs
+  s_f9fad336940d7a::t_4fe9dbb1b28c24 227,230-235
+core/engine/tests/skill_loading.rs
+  s_f9fad336940d7a::t_4fe9dbb1b28c24 709-894,911-933,935,946,949
+docs/guides/skills.en.md
+  s_f9fad336940d7a::t_4fe9dbb1b28c24 36-37
+core/engine/tests/operation_composition.rs
+  s_f9fad336940d7a::t_4fe9dbb1b28c24 419-423,530-731
+core/engine/src/desktop/state.rs
+  s_f9fad336940d7a::t_4fe9dbb1b28c24 1297
+docs/api/core.en.md
+  s_f9fad336940d7a::t_4fe9dbb1b28c24 587-588
+core/engine/src/desktop/mcp_tools.rs
+  s_f9fad336940d7a::t_4fe9dbb1b28c24 11,25-28,55-109,126,137,151,159,205,328-479
+  s_f9fad336940d7a::t_c3b009336ff556 480
+docs/api/core.md
+  s_f9fad336940d7a::t_4fe9dbb1b28c24 596-597
+docs/guides/programmatic-tools.en.md
+  s_f9fad336940d7a::t_4fe9dbb1b28c24 61-62
+core/engine/src/context.rs
+  s_f9fad336940d7a::t_4fe9dbb1b28c24 636-646
+docs/guides/skills.md
+  s_f9fad336940d7a::t_4fe9dbb1b28c24 36-37
+Cargo.lock
+  s_f9fad336940d7a::t_655851d31c1ddc 1485,3339,3800,3858,4408,4411,5196
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "506943edbb3475afcf4f462ef066a0360d43c629",
+  "prompts": {},
+  "sessions": {
+    "s_f9fad336940d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1f2b3-c54f-7f92-a60a-ee46af3d4d62",
+        "model": "gpt-6.2-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
