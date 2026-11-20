@@ -279,10 +279,8 @@ class CoreWorktrees {
       ...this.backend.library.value.settings.worktrees,
     };
   }
-  /** 只读原始创建记录；未知状态不能触发创建或环境脚本重放。
-   * @param {string} projectId @param {WorktreeRequest} request */
-  readThreadCreation(projectId, request) {
-    const requestId = requireId(request.requestId);
+  /** @param {string} requestId */
+  originalRequest(requestId) {
     try {
       const value = readOperation(
         JSON.parse(
@@ -293,7 +291,13 @@ class CoreWorktrees {
     } catch (error) {
       if (!modelRecord(error) || error.code !== "ENOENT") throw error;
     }
-    const value = this.records.get(requestId);
+    return this.records.get(requestId);
+  }
+  /** 只读原始创建记录；未知状态不能触发创建或环境脚本重放。
+   * @param {string} projectId @param {WorktreeRequest} request */
+  readThreadCreation(projectId, request) {
+    const requestId = requireId(request.requestId);
+    const value = this.originalRequest(requestId);
     if (
       !value ||
       value.kind !== "thread" ||
@@ -312,8 +316,16 @@ class CoreWorktrees {
       return { state: "rejected", requestId, message: value.message ?? "Creation rejected" };
     return { state: "unknown" };
   }
-  /** @param {SavedProject} project @param {WorktreeRequest} request */
+  /** @param {Project} project @param {WorktreeRequest} request */
   async createThread(project, request) {
+    // 只有首次在来源目录新建的默认会话能刷新部署；重入请求必须沿用 Host 已冻结的代际。
+    if (
+      request.profile === undefined &&
+      request.worktree?.mode !== "worktree" &&
+      request.worktree?.environmentId === undefined &&
+      !this.originalRequest(requireId(request.requestId))
+    )
+      await this.backend.resources.beforeCreate(project);
     const target = await this.backend.hostCall("worktree.thread.prepare", {
       projectId: project.id,
       request,

@@ -590,6 +590,8 @@ GUI 服务的窄命令 `trajectory` 支持 `{operation:"status"}`、`{operation:
 
 ## Desktop 后台命令兼容
 
+项目范围的 `resources.skills` 可选传入 `includeDefaultSelection:true`。本客户端管理的默认部署会额外返回 `defaultSelection`，列出新默认会话可用的独立 Skill 和内置 Creator 的精确 `id`、`revision`；目录条目还包含 `name` 和 `description`。该读取不写部署文件、不重启 Core，也不改变现有任务或固定 Profile。旧后台和自定义部署可省略此字段；发送给模型的 Skill 正文仍按实际会话的权限读取。
+
 共享 Desktop 的 `areal.desktop-service.v1` 认证快照新增 `service.commandContract: "areal.desktop-commands.v2"`。这项声明来自驻留 Desktop 代码，与 Rust Core 的能力独立。Main 将精确匹配结果投影为顶层及每个项目的 `desktopCapabilities.currentCommands`，不采用旧快照自行声明的同名投影。
 
 缺失或未知命令声明不阻止只读接入；停止原后台另需独立的 lifecycle version 2 能力。Main 对需要当前语义的 `send`、`continue`、`prepareCreator`、`feedback`、携带 MCP 内容的 steer/队列更新、新增插件管理操作、`providers.defaultAndApply` 和 `trajectory.setEnabled` 在发出前返回 `SERVICE_COMMAND_UNSUPPORTED`。这是已知未提交，不带未知提交标记或伪造的请求 ID。兼容的队列操作继续使用原业务请求键；不退回另一种写操作。评价草稿读取、偏好及 MCP Apps/表单轮询按这项可用性降级，保留本地草稿。

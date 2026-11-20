@@ -17,6 +17,54 @@ export interface ComposerSkill {
   source: string;
 }
 const identity = (skill: Pick<ComposerSkill, "id" | "revision">) => `${skill.id}/${skill.revision}`;
+type DefaultSkill = Pick<ComposerSkill, "id" | "revision"> &
+  Partial<Pick<ComposerSkill, "name" | "description">>;
+// 插件仍从 Core 授权目录获取；独立 Skill 按普通新会话将绑定的目录选取。
+function defaultCatalog(
+  rows: (DefaultSkill & { pluginId?: string | null })[],
+  selected: DefaultSkill[] | undefined,
+) {
+  if (!selected) return rows;
+  const active = new Map(rows.map((row) => [identity(row), row]));
+  const result = rows.filter((row) => row.pluginId);
+  for (const ref of selected) {
+    const row = active.get(identity(ref));
+    if (row && !row.pluginId) result.push(row);
+    else if (ref.name) result.push(ref);
+  }
+  return result;
+}
+export async function draftSkillsAvailable(
+  action: Action,
+  projectId: string,
+  profile: Data | undefined,
+  skills: Pick<ComposerSkill, "id" | "revision">[],
+  useDefaultSelection: boolean,
+) {
+  const active = profile
+    ? await action("manage", {
+        projectId,
+        operation: "skills",
+        agentProfile: { id: profile.id, revision: profile.revision },
+      })
+    : null;
+  const preview = useDefaultSelection
+    ? await action("resources", {
+        operation: "skills",
+        scope: "project",
+        projectId,
+        includeDefaultSelection: true,
+      })
+    : undefined;
+  const available = defaultCatalog(
+    (active?.data ?? []).filter((item: Data) => item.available),
+    preview?.defaultSelection,
+  );
+  return skills.every((skill) =>
+    available.some((item) => item.id === skill.id && item.revision === skill.revision),
+  );
+}
+
 export function readComposerSkills(key: string): ComposerSkill[] {
   const value: unknown = JSON.parse(composerDraftStorage.getItem(`${key}:skills`) ?? "[]");
   if (
@@ -44,6 +92,7 @@ export function useComposerSkills({
   draftKey,
   action,
   disabled,
+  useDefaultSelection = false,
 }: {
   project: Data;
   threadId?: string;
@@ -51,6 +100,7 @@ export function useComposerSkills({
   draftKey: string;
   action: Action;
   disabled?: boolean;
+  useDefaultSelection?: boolean;
 }) {
   const [selected, setSelected] = useState<ComposerSkill[]>([]);
   const [catalog, setCatalog] = useState<ComposerSkill[]>([]);
@@ -115,29 +165,38 @@ export function useComposerSkills({
       .then((result) => {
         if (!active) return;
         const rows = (result.data ?? []).filter((row: Data) => row.available);
-        // 来源只是展示信息；可选技能始终来自 Core 的当前 Profile/Thread。
-        setCatalog(
-          rows.map((row: Data) => ({
-            id: row.id,
-            revision: row.revision,
-            name: row.name ?? row.id,
-            description: row.description ?? "",
-            source: row.pluginId ? "插件 · " + row.pluginId : `任务配置 · ${row.id}`,
-          })),
-        );
+        const show = (items: Data[]) =>
+          setCatalog(
+            items.map((row) => ({
+              id: row.id,
+              revision: row.revision,
+              name: row.name ?? row.id,
+              description: row.description ?? "",
+              source: row.pluginId ? "插件 · " + row.pluginId : `任务配置 · ${row.id}`,
+            })),
+          );
+        show(rows);
         setError("");
         setLoading(false);
         trace("ready", rows.length);
         stage = "labels";
         startedAt = performance.now();
-        void Promise.allSettled(
-          (["project", "user"] satisfies Array<"project" | "user">).map((scope) =>
-            action("resources", { operation: "skills", scope, projectId: project.id }),
-          ),
-        ).then((sources) => {
+        void Promise.allSettled([
+          action("resources", {
+            operation: "skills",
+            scope: "project",
+            projectId: project.id,
+            ...(useDefaultSelection ? { includeDefaultSelection: true } : {}),
+          }),
+          action("resources", { operation: "skills", scope: "user", projectId: project.id }),
+        ]).then((sources) => {
           if (!active) return;
           const labels = new Map<string, string>();
-          for (const row of rows) {
+          const projected =
+            sources[0].status === "fulfilled" ? sources[0].value.defaultSelection : undefined;
+          const available = useDefaultSelection ? defaultCatalog(rows, projected) : rows;
+          if (useDefaultSelection && projected) show(available);
+          for (const row of available) {
             if ("pluginId" in row && row.pluginId) continue;
             const scope = sources.findIndex(
               (value) =>
@@ -179,6 +238,7 @@ export function useComposerSkills({
     profile?.revision,
     project.configurations?.[threadId ?? ""]?.revision,
     revision,
+    useDefaultSelection,
   ]);
   const update = (next: ComposerSkill[]) => {
     composerDraftStorage.setItem(`${draftKey}:skills`, JSON.stringify(next));

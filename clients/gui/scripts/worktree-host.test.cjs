@@ -114,14 +114,15 @@ test("native Worktree binds the Host-prepared Core without recalculating its dep
     },
   };
   const owner = new CoreWorktrees(backend);
-  assert.deepEqual(await owner.createThread(source, { requestId }), {
+  const isolated = { requestId, worktree: { mode: "worktree" } };
+  assert.deepEqual(await owner.createThread(source, isolated), {
     threadId: "thread",
     requestId,
   });
   for (const state of ["failed", "cancelled"]) {
     bindState = state;
     await assert.rejects(
-      owner.createThread(source, { requestId }),
+      owner.createThread(source, isolated),
       (error) => error.requestId === requestId && error.submissionUnknown === false,
     );
     assert.equal(opened, 1, `${state} must not open the thread`);
@@ -129,7 +130,7 @@ test("native Worktree binds the Host-prepared Core without recalculating its dep
   bindState = "failed";
   bindThread = false;
   await assert.rejects(
-    owner.createThread(source, { requestId }),
+    owner.createThread(source, isolated),
     (error) => error.requestId === requestId && error.submissionUnknown === false,
   );
   bindError = {
@@ -138,7 +139,7 @@ test("native Worktree binds the Host-prepared Core without recalculating its dep
     data: { reason: "CREDENTIAL_UNAVAILABLE", outcome: { kind: "rejected" } },
   };
   await assert.rejects(
-    owner.createThread(source, { requestId }),
+    owner.createThread(source, isolated),
     (error) =>
       error.message.startsWith("CREDENTIAL_UNAVAILABLE:") && error.submissionUnknown === false,
     "Core 的拒绝原文要带到界面，才能提示检查凭据",
@@ -146,17 +147,72 @@ test("native Worktree binds the Host-prepared Core without recalculating its dep
   bindError = undefined;
   bindRequestId = randomUUID();
   await assert.rejects(
-    owner.createThread(source, { requestId }),
+    owner.createThread(source, isolated),
     (error) => error.submissionUnknown === true,
   );
   bindThread = true;
   bindRequestId = requestId;
   bindState = "unknown";
   await assert.rejects(
-    owner.createThread(source, { requestId }),
+    owner.createThread(source, isolated),
     (error) => error.requestId === requestId && error.submissionUnknown === true,
   );
   assert.equal(opened, 1, "unknown must not open the thread");
   backend.host.resolve = () => ({ projectId: "foreign", sourceId: "source" });
-  await assert.rejects(owner.createThread(source, { requestId }), /执行归属已变化/);
+  await assert.rejects(owner.createThread(source, isolated), /执行归属已变化/);
+});
+
+test("only a fresh default source request may refresh resources before Host freezes its Core", async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "areal-source-request-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const { CoreWorktrees } = requireApp("@areal/workbench-service/desktop/core/worktrees.cjs");
+  const { mkdir, writeFile } = require("node:fs/promises");
+  const source = { id: "source" };
+  let refreshes = 0,
+    freezes = 0,
+    busy = false;
+  const backend = {
+    home,
+    resources: {
+      async beforeCreate(project) {
+        assert.equal(project, source);
+        if (busy) throw new Error("busy");
+        ++refreshes;
+      },
+    },
+    async hostCall(method, { request }) {
+      assert.equal(method, "worktree.thread.prepare");
+      ++freezes;
+      if (request.requestId === fresh) assert.equal(refreshes, 1);
+      return { alias: source.id, projectId: source.id, threadId: "thread" };
+    },
+  };
+  const owner = new CoreWorktrees(backend);
+  const fresh = randomUUID();
+  await owner.createThread(source, { requestId: fresh });
+  await mkdir(join(home, "worktree-requests"));
+  await writeFile(
+    join(home, "worktree-requests", fresh + ".json"),
+    JSON.stringify({
+      requestId: fresh,
+      projectId: source.id,
+      kind: "thread",
+      parameters: {},
+      state: "unknown",
+    }),
+  );
+  busy = true;
+  await owner.createThread(source, { requestId: fresh });
+  await owner.createThread(source, {
+    requestId: randomUUID(),
+    profile: { id: "p", revision: "v1" },
+  });
+  await owner.createThread(source, { requestId: randomUUID(), worktree: { mode: "worktree" } });
+  assert.equal(refreshes, 1);
+  assert.equal(freezes, 4);
+  await assert.rejects(
+    owner.createThread(source, { requestId: randomUUID(), worktree: { mode: "source" } }),
+    /busy/,
+  );
+  assert.equal(freezes, 4);
 });

@@ -15,6 +15,10 @@ CLI、TUI、serve 和直接 Core 共用发现规则；连接既有服务时使�
 
 同名按目录名精确覆盖整个 Skill，不合并资源、不用 frontmatter name 改身份。只发现直接子目录，不向父项目递归搜索；workspace 由可信启动参数决定，不随 RPC cwd 改变。主目录与 AREAL_HARNESS_HOME 分开。
 
+直接在会话中要求安装或创建独立 Skill 时，默认使用 `<workspace>/.agents/skills/<name>/`；明确要求个人范围时使用 `~/.agents/skills/<name>/`。Core 提供本次启动实际扫描的绝对目录，首次安装也不用指定路径；显式指定的位置和已有写入权限仍然有效。GUI 的“新建技能”和“保存技能”使用同样的目录。缺少搜索目录时会跳过，不影响使用其他 Skill。`.claude/skills` 与 `.codex/skills` 只作为兼容读取目录；GUI 及其后台仍能读取旧版本的私有 `resources/*/skills` 目录，但不会覆盖同一范围的标准目录，也不会再作为新 Skill 的写入位置。
+
+从「设置 → 插件 → Skills」管理已安装的 Skill。项目已打开时安装的独立 Skill 也可以从详情页直接“试用”。试用时核对所选版本并保留已有输入；点击发送后，新会话才会在可安全更新时刷新默认配置，并按该会话的权限读取正文。已打开的任务与显式固定的配置不会因此获得新的 Skill。 普通新会话的 Skill 选择器也会读取当前目录。若发送前禁用了已选 Skill，草稿会保留，不创建会话。
+
 ## 启动时登记元信息
 
 每个目录含 SKILL.md，可带 references/scripts/assets。发现阶段只解析 SKILL.md 的有界 YAML frontmatter，提取 name/description；没有 frontmatter 时使用目录名和首行描述。文件头最多 32 KiB，名称最多 256 字节，描述按 UTF-8 边界截取前 4096 字节；元信息限制不用于附件或正文。模型初始提示包含名称和有界描述，不注入完整正文。

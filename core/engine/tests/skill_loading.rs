@@ -846,6 +846,59 @@ async fn empty_skill_catalog_omits_read_schemas_and_loading_rules() {
 }
 
 #[tokio::test]
+async fn first_install_uses_launcher_roots_even_from_a_nested_cwd() {
+    for compact in [false, true] {
+        let data = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let nested = root.path().join("nested");
+        fs::create_dir(&nested).unwrap();
+        let project_skills = root.path().join(".agents/skills");
+        let user_skills = home.path().join(".agents/skills");
+        let expected = json!({"project": project_skills, "user": user_skills}).to_string();
+        let model = Script::new(move |_, messages| {
+            assert!(
+                messages
+                    .iter()
+                    .any(|m| m.role == "system" && m.text_content().contains(&expected))
+            );
+            done()
+        });
+        let engine = Engine::open_with_extensions(
+            data.path(),
+            model,
+            Limits::default(),
+            None,
+            areal_engine::tools::ToolExtensions {
+                policy: areal_engine::tools::ToolPolicy {
+                    compact_tools: compact,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        engine
+            .install_discovered_skill_sources(root.path().into(), Some(home.path().into()))
+            .unwrap();
+        let thread = engine
+            .create(nested.to_string_lossy().into_owned())
+            .await
+            .unwrap();
+        engine
+            .start(&thread.id, vec![Input::text("Install a reusable Skill")])
+            .await
+            .unwrap();
+        completed(&engine.wait(&thread.id).await.unwrap());
+        assert!(
+            !project_skills.exists() && !user_skills.exists(),
+            "discovery must not create missing roots"
+        );
+        engine.shutdown().await;
+    }
+}
+
+#[tokio::test]
 async fn empty_explicit_profile_does_not_expose_other_catalog_skills() {
     let state = tempfile::tempdir().unwrap();
     let root = tempfile::tempdir().unwrap();

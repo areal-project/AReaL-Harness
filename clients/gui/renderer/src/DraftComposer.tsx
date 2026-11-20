@@ -46,6 +46,7 @@ import {
 } from "./ComposerPlugins.js";
 import {
   useComposerSkills,
+  draftSkillsAvailable,
   transferComposerSkills,
   clearComposerSkills,
   readComposerSkills,
@@ -211,6 +212,7 @@ export function DraftComposer({
       ? project
       : { ...project, state: { ...project.state, connected: false } },
     profile: chosenProfile,
+    useDefaultSelection: !profileSelection && worktree?.mode !== "worktree",
     draftKey: key,
     action: readAction,
     disabled: editLocked || !executionReady,
@@ -528,24 +530,17 @@ export function DraftComposer({
         t("chat.composer.pluginReferenceUnavailable"),
       );
       const selectedSkills = readComposerSkills(key);
-      if (selectedSkills.length) {
-        if (!profile) throw new Error("当前任务配置不可用，技能草稿已保留。");
-        const available = await readAction("manage", {
-          projectId: owner.id,
-          operation: "skills",
-          agentProfile: { id: profile.id, revision: profile.revision },
-        });
-        if (
-          selectedSkills.some(
-            (skill) =>
-              !(available.data ?? []).some(
-                (item: Data) =>
-                  item.available && item.id === skill.id && item.revision === skill.revision,
-              ),
-          )
-        )
-          throw new Error("当前任务配置未提供所选 Skill 的确切版本，草稿已保留。");
-      }
+      if (
+        selectedSkills.length &&
+        !(await draftSkillsAvailable(
+          readAction,
+          owner.id,
+          profile,
+          selectedSkills,
+          !profileSelection && selection?.mode !== "worktree",
+        ))
+      )
+        throw new Error("当前任务配置未提供所选 Skill 的确切版本，草稿已保留。");
       creationAttempted = true;
       const creationRequest = makeCreationRequest(owner, selection, creationRequestId);
       localStorage.setItem(`${key}:pending-create-request`, JSON.stringify(creationRequest));

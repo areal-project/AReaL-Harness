@@ -1,5 +1,6 @@
 // @ts-check
 "use strict";
+const { resourceRef } = require("./shared.cjs");
 /** @typedef {Record<string,unknown>} Fields */
 /** @typedef {{revision:number,skills:Record<string,Record<string,boolean>>}} ResourceState */
 /** @typedef {{id:string,scope:string,managed:boolean,enabled:boolean,root:string,name:string,description:string,revision:string,error?:undefined}} AvailableSkill */
@@ -113,10 +114,11 @@ function availableSkills(value) {
 
 /** @typedef {{scope:'user',projectId?:string}|{scope:'project',projectId:string}} Scope */
 /** @typedef {{name:string,event:'PreToolUse'|'PostToolUse'|'PostToolUseFailure',matcher:string,argv:string[],timeoutMs:number}} Hook */
-/** @typedef {{operation:'hooks'}|{operation:'hooksSave',expectedRevision:string,hooks:Hook[]}|{operation:'builtinSkill',id:'openai-skill-creator'}| (Scope & ({operation:'skills'}|{operation:'skillRead',id:string}|{operation:'skillToggle',id:string,enabled:boolean,expectedRevision:number}|{operation:'skillSave',id:string,name?:string|null,description?:string|null,content:string,expectedRevision:number}))} ResourceRequest */
+/** @typedef {{operation:'hooks'}|{operation:'hooksSave',expectedRevision:string,hooks:Hook[]}|{operation:'builtinSkill',id:'openai-skill-creator'}|{scope:'project',projectId:string,operation:'skills',includeDefaultSelection:boolean}| (Scope & ({operation:'skills'}|{operation:'skillRead',id:string}|{operation:'skillToggle',id:string,enabled:boolean,expectedRevision:number}|{operation:'skillSave',id:string,name?:string|null,description?:string|null,content:string,expectedRevision:number}))} ResourceRequest */
 /** @typedef {{path:string,external:boolean,revision:string,hooks:Hook[],projects:Array<{projectId:string,root:string,connected:boolean,applied:boolean}>}} HooksStatus */
 /** @typedef {{skill:{id:string,revision:string,name:string,description:string},provenance:{upstream:string,revision:string,contentDigest:string}}} BuiltinSkill */
-/** @typedef {{revision:number,data:Array<Skill & {overridden:boolean}>,customDeployment:boolean}} SkillsStatus */
+/** @typedef {{id:string,revision:string,name?:string,description?:string}} DefaultSkill */
+/** @typedef {{revision:number,data:Array<Skill & {overridden:boolean}>,customDeployment:boolean,defaultSelection?:DefaultSkill[]}} SkillsStatus */
 /** @typedef {{revision:number,warning:string|null}} ResourceSaved */
 /** @template {string} N @typedef {N extends 'resources' ? ResourceRequest : never} Request */
 /** @template {string} N @template P @typedef {N extends 'resources' ? P extends {operation:'hooks'|'hooksSave'} ? HooksStatus : P extends {operation:'builtinSkill'} ? BuiltinSkill : P extends {operation:'skills'} ? SkillsStatus : P extends {operation:'skillRead'} ? {content:string,truncated:boolean} : P extends {operation:'skillToggle'|'skillSave'} ? ResourceSaved : never : never} Response */
@@ -156,7 +158,11 @@ function isRequest(name, value) {
     (value.scope === "project" && !text(value.projectId))
   )
     return false;
-  if (value.operation === "skills") return true;
+  if (value.operation === "skills")
+    return (
+      value.includeDefaultSelection === undefined ||
+      (value.scope === "project" && typeof value.includeDefaultSelection === "boolean")
+    );
   if (!text(value.id)) return false;
   if (value.operation === "skillRead") return true;
   if (!integer(value.expectedRevision)) return false;
@@ -232,7 +238,16 @@ function isResponse(name, request, value) {
       value.data.every(
         (item) => record(item) && typeof item.overridden === "boolean" && skill(item),
       ) &&
-      typeof value.customDeployment === "boolean"
+      typeof value.customDeployment === "boolean" &&
+      (value.defaultSelection === undefined ||
+        (Array.isArray(value.defaultSelection) &&
+          value.defaultSelection.every(
+            (item) =>
+              record(item) &&
+              resourceRef(item) &&
+              (item.name === undefined || text(item.name)) &&
+              (item.description === undefined || text(item.description)),
+          )))
     );
   if (request.operation === "skillRead")
     return text(value.content) && typeof value.truncated === "boolean";

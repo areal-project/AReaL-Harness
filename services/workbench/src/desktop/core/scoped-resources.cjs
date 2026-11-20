@@ -6,14 +6,24 @@ const { join, relative, isAbsolute } = require("node:path");
 const { homedir } = require("node:os");
 const { createHash } = require("node:crypto");
 const YAML = require("yaml");
-const { builtinSkill, BUILTIN_SKILL_ID } = require("./builtin-skills.cjs");
+const { builtinSkill, BUILTIN_SKILL_ID, BUILTIN_SKILL_REF } = require("./builtin-skills.cjs");
 const { WorktreeResources } = require("./worktree-resources.cjs");
 const resourceContract = require("./resource-contract.cjs");
 const { serverStatus } = require("./provider-contract.cjs");
 /** @typedef {import('./project-state.cjs').CoreProject} CoreProject */
-/** @typedef {Record<string,unknown> & {operation?:string,scope?:string,projectId?:string,id?:string,expectedRevision?:number,enabled?:boolean,content?:unknown,name?:unknown,description?:unknown,config?:unknown}} ResourceRequest */
+/** @typedef {Record<string,unknown> & {operation?:string,scope?:string,projectId?:string,id?:string,expectedRevision?:number,includeDefaultSelection?:boolean,enabled?:boolean,content?:unknown,name?:unknown,description?:unknown,config?:unknown}} ResourceRequest */
 const MAX_REGISTERED_SKILLS = 512;
 const MAX_SKILL_DIRECTORY_ENTRIES = 512;
+// 新建位置与 Core 发现规则一致；兼容目录只读取，按高到低优先级选定同名 Skill。
+const DEFAULT_SKILL_DIRECTORY = ".agents/skills";
+const STANDARD_SKILL_ROOTS = [DEFAULT_SKILL_DIRECTORY, ".claude/skills", ".codex/skills"];
+// 仅用于 drain 之前已确定拒绝的创建请求；已派发的操作仍保留原来的未知状态。
+/** @param {string} message */
+const refreshBusy = (message) =>
+  Object.assign(new Error(message), {
+    code: -32000,
+    data: { reason: "RESOURCE_REFRESH_BUSY", outcome: { kind: "noMutation" } },
+  });
 /** @param {unknown} value */
 const digest = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 /** @param {string} root @param {string} path */
@@ -24,7 +34,7 @@ const within = (root, path) => {
 /** @param {unknown} id @returns {id is string} */
 const validId = (id) =>
   typeof id === "string" &&
-  /^[a-zA-Z0-9_.-]{1,128}$/.test(id) &&
+  /^[a-zA-Z0-9_.:-]{1,128}$/.test(id) &&
   !id.startsWith(".") &&
   !["__proto__", "constructor", "prototype"].includes(id);
 /** @param {string} path */
@@ -58,6 +68,23 @@ function metadata(text, id) {
   if (Buffer.byteLength(name) > 256) throw new Error("技能名称过长");
   return { name, description: (data.description ?? "").slice(0, 2048) };
 }
+// 草稿预览和实际部署都按相同的覆盖顺序选取独立 Skill；禁用或无效的项目项也遮住个人项。
+/** @param {import('./resource-contract.cjs').Skill[]} user @param {import('./resource-contract.cjs').Skill[]} local */
+function selectedStandaloneSkills(user, local) {
+  const selected = new Map(user.map((s) => [s.id, s]));
+  for (const s of local) selected.set(s.id, s);
+  return [...selected.values()]
+    .filter(
+      /** @returns {s is import('./resource-contract.cjs').AvailableSkill} */ (s) =>
+        s.enabled && s.error === undefined,
+    )
+    .map(({ id, revision, root, name, description }) => ({
+      id,
+      revision,
+      root,
+      metadata: { name, description },
+    }));
+}
 // Desktop 管理资源配置，Runtime 仍拥有任务绑定、资源读取和 MCP 实时连接。
 class ScopedResources {
   /** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend */
@@ -89,30 +116,53 @@ class ScopedResources {
     throw new Error("无效资源范围");
   }
   /** @param {string} scope */
-  async scan(scope) {
-    const rawBase =
-      scope === "user" ? this.backend.userHome || homedir() : this.project(scope).root;
-    const base = await realpath(rawBase);
-    const roots = [];
-    for (const rel of [".agents/skills", ".claude/skills"]) {
+  base(scope) {
+    return scope === "user" ? this.backend.userHome || homedir() : this.project(scope).root;
+  }
+  /** @param {string} scope */
+  managedRoot(scope) {
+    return join(this.backend.home, "resources", scope, "skills");
+  }
+  /** @param {string} scope */
+  async writableRoot(scope) {
+    const base = await realpath(this.base(scope));
+    let root = base;
+    // 分段检查后才创建下一层，避免通过项目 .agents 链接在工作区外创建 skills。
+    for (const name of DEFAULT_SKILL_DIRECTORY.split("/")) {
+      const path = join(root, name);
       try {
-        const root = await realpath(join(base, rel));
-        if (scope !== "user" && !within(base, root)) throw new Error("项目技能目录超出工作区");
-        roots.push(root);
+        await mkdir(path, { mode: 0o700 });
+      } catch (e) {
+        if (!(e instanceof Error && "code" in e && e.code === "EEXIST")) throw e;
+      }
+      root = await realpath(path);
+      if (scope !== "user" && !within(base, root)) throw new Error("项目 Skill 写入目录超出工作区");
+    }
+    return root;
+  }
+  /** @param {string} scope */
+  async scan(scope) {
+    const rawBase = this.base(scope);
+    const base = await realpath(rawBase);
+    /** @type {{root:string,managed:boolean}[]} */
+    const roots = [];
+    /** @param {string} path @param {boolean} managed */
+    const addRoot = async (path, managed) => {
+      try {
+        const root = await realpath(path);
+        if (!managed && scope !== "user" && !within(base, root))
+          throw new Error("项目技能目录超出工作区");
+        if (!roots.some((item) => item.root === root)) roots.push({ root, managed });
       } catch (e) {
         if (!(e instanceof Error && "code" in e && e.code === "ENOENT")) throw e;
       }
-    }
-    let managedRoot = join(this.backend.home, "resources", scope, "skills");
-    try {
-      managedRoot = await realpath(managedRoot);
-      roots.unshift(managedRoot);
-    } catch (e) {
-      if (!(e instanceof Error && "code" in e && e.code === "ENOENT")) throw e;
-    }
+    };
+    for (const rel of STANDARD_SKILL_ROOTS) await addRoot(join(base, rel), false);
+    // 保留旧 GUI 私有目录的读取，标准目录中的同名 Skill 始终优先。
+    await addRoot(this.managedRoot(scope), true);
     /** @type {Map<string,import('./resource-contract.cjs').Skill>} */
     const items = new Map();
-    for (const root of roots) {
+    for (const { root, managed } of roots) {
       let entries;
       try {
         entries = await readdir(root, { withFileTypes: true });
@@ -136,7 +186,7 @@ class ScopedResources {
         const item = {
           id,
           scope: scope === "user" ? "user" : "project",
-          managed: root === managedRoot,
+          managed,
           enabled: this.value.skills[scope]?.[id] !== false,
         };
         /** @type {string|undefined} */ let resolvedRoot;
@@ -145,7 +195,7 @@ class ScopedResources {
           resolvedRoot = directory;
           if (
             scope !== "user" &&
-            !roots.some((r) => within(r, directory)) &&
+            !roots.some((r) => within(r.root, directory)) &&
             !within(base, directory)
           )
             throw new Error("技能目录链接超出可信范围");
@@ -177,8 +227,24 @@ class ScopedResources {
       scope === "user" && request.projectId
         ? await this.scan(this.project(request.projectId).id)
         : [];
+    const owner =
+      request.includeDefaultSelection === true && request.scope === "project"
+        ? this.backend.projects.get(scope)
+        : undefined;
+    const defaultSelection =
+      owner &&
+      this.backend.desktopConfig === join(__dirname, "desktop-profile.json") &&
+      this.backend.providers.manages(owner)
+        ? [
+            ...selectedStandaloneSkills(await this.scan("user"), data).map(
+              ({ id, revision, metadata }) => ({ id, revision, ...metadata }),
+            ),
+            BUILTIN_SKILL_REF,
+          ]
+        : undefined;
     return {
       revision: this.value.revision,
+      ...(defaultSelection !== undefined ? { defaultSelection } : {}),
       data: data.map((item) => ({
         ...item,
         overridden: scope === "user" && projectSkills.some((p) => p.id === item.id),
@@ -199,22 +265,15 @@ class ScopedResources {
       };
     const user = await this.scan("user"),
       local = await this.scan(project.id);
-    const selected = new Map(user.map((s) => [s.id, s]));
-    for (const s of local) selected.set(s.id, s);
-    const skills = [...selected.values()]
-      .filter(
-        /** @returns {s is import('./resource-contract.cjs').AvailableSkill} */ (s) =>
-          s.enabled && s.error === undefined,
-      )
-      .map(({ id, revision, root, name, description }) => ({
-        id,
-        revision,
-        root,
-        metadata: { name, description },
-      }));
+    const skills = selectedStandaloneSkills(user, local);
     const builtin = await builtinSkill(this.backend.home, BUILTIN_SKILL_ID);
     const { id, revision, name: builtinName, description } = builtin.skill;
-    skills.push({ id, revision, root: builtin.root, metadata: { name: builtinName, description } });
+    skills.push({
+      id,
+      revision,
+      root: builtin.root,
+      metadata: { name: builtinName, description },
+    });
     const base = resourceContract.deployment(
       JSON.parse(await readFile(this.backend.desktopConfig, "utf8")),
     );
@@ -275,14 +334,14 @@ class ScopedResources {
       this.backend.starting.size ||
       project.pending.length
     )
-      throw new Error("技能配置正在更新，请稍后创建任务");
+      throw refreshBusy("技能配置正在更新，请稍后创建任务");
     this.backend.resourcesUpdating = true;
     try {
       if (
         !(await project.client.request("areal/server/status", {}, { decode: serverStatus }))
           .restartSafe
       )
-        throw new Error("技能配置已保存，请在当前任务和终端结束后创建新任务");
+        throw refreshBusy("技能配置已保存，请在当前任务和终端结束后创建新任务");
       const connectedPlugins = ["areal/plugin/mcp/list", "areal/plugin/connection"].every(
         (method) => requireClient(project).capabilities?.methods?.includes(method),
       )
@@ -411,7 +470,7 @@ class ScopedResources {
         next.skills[scope][request.id] = request.enabled === true;
       } else if (operation === "skillSave") {
         if (request.id === BUILTIN_SKILL_ID || !validId(request.id))
-          throw new Error("技能 ID 仅支持字母、数字、连字符、下划线与点（最多 128 字符）");
+          throw new Error("技能 ID 仅支持字母、数字、连字符、下划线、点与冒号（最多 128 字符）");
         const meta = metadata(
           `---\n${YAML.stringify({ name: request.name, description: request.description })}---`,
           request.id,
@@ -424,8 +483,9 @@ class ScopedResources {
           throw new Error("请填写技能指令（最多 128 KiB）");
         const found = (await this.scan(scope)).find((s) => s.id === request.id);
         if (found) throw new Error("此范围已有同名技能，请使用其他 ID");
-        const directory = join(this.backend.home, "resources", scope, "skills", request.id);
-        await mkdir(directory, { recursive: true, mode: 0o700 });
+        const directory = join(await this.writableRoot(scope), request.id);
+        // 独占创建目录，已有目录或安装器链接不能被保存操作覆盖。
+        await mkdir(directory, { mode: 0o700 });
         await writeFile(
           join(directory, "SKILL.md"),
           `---\n${YAML.stringify(meta)}---\n${request.content.trim()}\n`,
