@@ -42,7 +42,6 @@ results.push(
     metafile: true,
     absWorkingDir: gui,
     entryPoints: [
-      "../../services/workbench/src/host-library-store.ts",
       "../../services/workbench/src/host-core-client.ts",
       "../../services/workbench/src/native-host-transport.ts",
     ],

@@ -15,12 +15,37 @@ test("Side model modes reject malformed references and ambiguous default selecti
     text: "question",
     workspaceAccess: "none",
   };
-  for (const extra of [{}, { resetModel: true }, { model: { providerId: "p", modelId: "C" } }])
+  const reviewComments = [
+    {
+      id: "comment",
+      path: "src/app.ts",
+      root: "/workspace",
+      scope: "branch",
+      ref: "main",
+      token: "token",
+      head: "head",
+      base: "base",
+      side: "additions",
+      start: 3,
+      end: 3,
+      snippet: "const value = 1;",
+      body: "Please extract this value.",
+    },
+  ];
+  for (const extra of [
+    {},
+    { resetModel: true },
+    { model: { providerId: "p", modelId: "C" } },
+    { contextParts: [{ type: "reviewComment", comment: reviewComments[0] }] },
+  ])
     assert.doesNotThrow(() => validateCommand("side", { ...start, ...extra }));
   for (const extra of [
     { resetModel: true, model: { providerId: "p", modelId: "C" } },
     { model: {} },
     { workspaceAccess: "write" },
+    {
+      contextParts: [{ type: "reviewComment", comment: { ...reviewComments[0], side: "invalid" } }],
+    },
   ])
     assert.throws(() => validateCommand("side", { ...start, ...extra }));
 });

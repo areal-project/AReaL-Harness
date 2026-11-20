@@ -156,7 +156,6 @@ export function DraftComposer({
   const chosenProfile = resolveDraftProfile(project, profileSelection);
   const [menuAnchor, setMenuAnchor] = useState<HTMLDivElement | null>(null);
   const [mcpOpen, setMcpOpen] = useState(false);
-  const unavailableProfile = !!(profileSelection || project.defaultProfile) && !chosenProfile;
   const setPlanMode = (enabled: boolean) => {
     setPlan(enabled);
     localStorage.setItem(`${key}:plan`, String(enabled));
@@ -187,7 +186,7 @@ export function DraftComposer({
   const editLocked = busy || !!unknown || !!reviewDraft.error;
   const executionReady = backendReady && !!project.state?.connected;
   const modelReady = executionReady || (backendReady && !!prepareProject && modelCatalogReady);
-  const modelSelectionDisabled = editLocked || !modelReady || unavailableProfile;
+  const modelSelectionDisabled = editLocked || !modelReady;
   const submitDisabled = modelSelectionDisabled || !effectiveModel;
   const models = draftModelChoices(project, effectiveModel, currentModel);
   const desktopUnsupported =
@@ -352,8 +351,6 @@ export function DraftComposer({
   };
   const makeCreationRequest = (owner: Data, selection: typeof worktree, requestId: string) => {
     const profile = resolveDraftProfile(owner, profileSelection);
-    if ((profileSelection || owner.defaultProfile) && !profile)
-      throw new Error("当前任务配置不可用，输入已保留。");
     const separator = effectiveModel.indexOf("/");
     const chosen = owner.models.find((item: Data) => modelValue(item) === effectiveModel) ??
       currentModel ?? {
@@ -504,8 +501,6 @@ export function DraftComposer({
       if (!readOnly && owner.desktopCapabilities?.currentCommands === false && !goalMode)
         throw new Error("更新后台后可发送消息，草稿已保留。");
       const profile = resolveDraftProfile(owner, profileSelection);
-      if ((profileSelection || owner.defaultProfile) && !profile)
-        throw new Error("当前任务配置不可用，输入已保留。");
       await revalidateComposerPlugins(
         readAction,
         {
@@ -587,7 +582,10 @@ export function DraftComposer({
       } else {
         const attachmentOwner = submittedInput.files.length
           ? (
-              await readAction("open", { projectId: owner.id, threadId: result.threadId })
+              await readAction("open", {
+                projectId: owner.id,
+                threadId: result.threadId,
+              })
             ).projects.find((project) => project.id === owner.id)
           : owner;
         if (!attachmentOwner) throw new Error("无法确认附件所属的执行会话，草稿已保留。");
@@ -726,7 +724,10 @@ export function DraftComposer({
           </div>
           <WorktreeStatus
             current={{
-              ...(creationStatus ?? { requestId: activeCreation.requestId, state: "creating" }),
+              ...(creationStatus ?? {
+                requestId: activeCreation.requestId,
+                state: "creating",
+              }),
               ...(cancellingCreation ? { state: "cancelling" } : {}),
             }}
             controls={
@@ -798,31 +799,7 @@ export function DraftComposer({
           }
         />
       )}
-      {backendReady && project.state?.connected && unavailableProfile && (
-        <FeedbackNotice
-          tone="warning"
-          message={t("recovery.profileUnavailable")}
-          actions={
-            <>
-              {profileSelection && resolveDraftProfile(project) && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setProfileSelection("");
-                    localStorage.removeItem(`${key}:profile`);
-                  }}
-                >
-                  {t("recovery.resetProfile")}
-                </Button>
-              )}
-              <Button variant="ghost" size="sm" onClick={() => onPanel("会话配置")}>
-                {t("recovery.checkSessionSettings")}
-              </Button>
-            </>
-          }
-        />
-      )}
+
       {draftError && (
         <FeedbackNotice
           tone="error"
@@ -978,7 +955,11 @@ export function DraftComposer({
                   onAnnotate={
                     onAnnotate &&
                     ((file) =>
-                      onAnnotate({ draftKey: key, file, returnFocus: () => api.current?.focus() }))
+                      onAnnotate({
+                        draftKey: key,
+                        file,
+                        returnFocus: () => api.current?.focus(),
+                      }))
                   }
                 />
                 <ReviewCommentAttachment
@@ -1035,7 +1016,9 @@ export function DraftComposer({
                   onChange={(value) => {
                     setPermission(value);
                     localStorage.setItem(`${key}:permission`, value);
-                    setApplicationPreferences({ defaultPermissionPreset: value });
+                    setApplicationPreferences({
+                      defaultPermissionPreset: value,
+                    });
                   }}
                   onClose={() => api.current?.focus()}
                 />

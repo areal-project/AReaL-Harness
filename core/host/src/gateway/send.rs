@@ -17,6 +17,8 @@ struct Message {
     conversation_quotes: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     mcp_content: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    context_parts: Option<Vec<areal_protocol::ContextPart>>,
 }
 #[derive(Serialize)]
 struct Semantic<'a> {
@@ -487,13 +489,44 @@ pub(super) fn rich_message_input(text: &str, values: &Value) -> Result<Vec<areal
         attachments: values.get("attachments").cloned(),
         conversation_quotes: values.get("conversationQuotes").cloned(),
         mcp_content: values.get("mcpContent").cloned(),
+        context_parts: values
+            .get("contextParts")
+            .cloned()
+            .map(serde_json::from_value)
+            .transpose()?,
     })
 }
 fn message_input(params: &Message) -> Result<Vec<areal_protocol::Input>> {
     use areal_protocol::Input;
+    if let Some(parts) = &params.context_parts {
+        ensure!(parts.len() <= 32, "contextParts");
+        ensure!(
+            parts.iter().all(|part| match part {
+                areal_protocol::ContextPart::ReviewComment { comment } => {
+                    comment.start > 0
+                        && comment.end >= comment.start
+                        && comment.end - comment.start <= 999
+                        && (comment.side == "additions" || comment.side == "deletions")
+                }
+            }),
+            "contextParts"
+        );
+        ensure!(
+            serde_json::to_vec(parts)
+                .map(|value| value.len() <= 2 * 1024 * 1024)
+                .unwrap_or(false),
+            "contextParts"
+        );
+    }
     let mut input = Vec::new();
     if !params.text.trim().is_empty() {
-        input.push(Input::text(params.text.clone()));
+        let text = Input::text(params.text.clone());
+        input.push(match &params.context_parts {
+            Some(parts) => text.with_context_parts(parts.clone()),
+            None => text,
+        });
+    } else if let Some(parts) = &params.context_parts {
+        input.push(Input::text("").with_context_parts(parts.clone()));
     }
     let quotes = match &params.conversation_quotes {
         None => Vec::new(),

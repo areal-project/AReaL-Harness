@@ -165,7 +165,10 @@ pub(crate) fn execute(
     match response.status {
         0 => Ok(response.value),
         -25300 => Ok(None),
-        _ => Err(error("storageLocked", "Host Keychain access failed")),
+        status => Err(error(
+            "storageLocked",
+            format!("Host Keychain access failed (OSStatus {status})"),
+        )),
     }
 }
 

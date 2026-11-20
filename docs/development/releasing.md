@@ -86,7 +86,7 @@ macOS `dir` 目标不会自动生成原生更新配置。正式打包在签名�
 
 ```sh
 make release
-AREAL_GUI_RELEASE=1 AREAL_GUI_PACKAGE_DIR=/absolute/new-package make gui-package
+AREAL_GUI_RELEASE=1 pnpm --dir clients/gui dist --signing adhoc --output /absolute/new-package
 pnpm --dir clients/gui run sign:mac --app "/absolute/new-package/package/mac-arm64/AReaL Harness GUI.app" \
   --output /absolute/new-signed-directory --identity "Developer ID Application: Name (TEAMID)" \
   --keychain-profile areal-harness
@@ -94,6 +94,8 @@ node clients/gui/scripts/release-assets.mjs /absolute/new-signed-directory /abso
 ```
 
 签名脚本先签 Core 可执行文件并更新完整性摘要，再签 Electron 应用；后台服务的共享资源链接按物理文件身份识别，外层签名不得重复签 Core；外层签名完成后、Apple 上传前再次校验 Core 摘要。Apple Accepted 回执、stapler、Gatekeeper、签名后隔离 GUI/Core/Runtime smoke、模型配置与 Composer 专项以及只读 DMG 内签名验证均通过才完成。`notarization.json` 与脱敏 `release.json` 记录 `packagedModelSelection: "passed"`；导出脚本拒绝没有该项验收的旧候选，需要使用当前签名脚本生成新候选。Apple 仍在处理时退出 2，使用同脚本的 `--resume --output` 恢复；不可修改已签名应用。
+
+签名耗时诊断：`package-timings.json` 区分构建、打包与 ad-hoc 签名；`signed/notarization-timings.jsonl` 追加记录复制、Core 签名、Electron 签名、压缩、公证及 DMG 制作的起止和耗时，失败也保留，恢复时用新的 `runId` 区分执行，不把人工等待算入执行耗时。阶段可能嵌套，不能直接相加；公证阶段返回 `result: false` 表示本次等待结束但仍需恢复。`commands.log` 记录外部命令的起止、耗时及退出码；`sign-target` 是 Electron 签名目标的开始点，不是内部命令的精确计时。Electron 只单独签原生代码和 bundle，软链接别名与普通二进制资源跳过，资源完整性仍由外层签名及严格验证保证。
 
 签名前先执行 `history-copy-smoke.mjs`：默认只读安装版的 `~/Library/Application Support/AReaL Harness GUI/areal-core`，`--history-source /absolute/areal-core` 可指定另一份历史。脚本将项目索引、会话、历史归档、附件和 Goal 计量日志复制到权限受限的隔离目录，受控样本的占位工作区在副本中填充；私有副本保留原始会话字节和工作区路径，以满足 Core 的归属校验，只观察、不执行任务。不复制凭据、锁或部署配置，不写原始历史。没有活动轮次且未在结算的 `paused`、`blocked` Goal 可以保留原状进行只读验证；不自动续跑或清除 Goal。已结算的 `completed`、`failed`、`steered`、`cancelled`、`removed` 队列历史可以保留。仅接受空闲、没有待执行队列或未结算执行状态的历史；其他输入会阻断签名。 已完成的子会话执行引用仅在同项目副本中存在对应终态轮次时接受；已关闭且 `cleanupConfirmed=true` 的受管进程历史记录可以保留；未结算引用、工作组、其他受管进程及工作流状态仍阻断签名。候选包必须能连接 Core、逐个打开并确认每个会话的投影（不要求全部会话同时保留在有界缓存中），且打开期间副本字节不变、全过程来源字节不变、没有模型请求。停止测试后台导致的副本队列版本变化单独处理。失败发生在签名身份检查及 Apple 请求之前；成功证据绑定候选 Core 哈希并写入 `notarization.json.historyPreflight`。没有该预检记录的旧签名运行不能通过 `--resume` 绕过，需启动新运行。
 

@@ -1288,6 +1288,7 @@ impl Engine {
             let Input::Text {
                 text,
                 mcp_content: None,
+                context_parts: None,
                 ..
             } = item
             else {

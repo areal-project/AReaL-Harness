@@ -78,9 +78,14 @@ test("active macOS settings map HTTP, HTTPS CONNECT and SOCKS with explicit envi
   assert.equal(overridden.http_proxy, overridden.HTTP_PROXY);
   assert.equal(overridden.HTTPS_PROXY, "socks5h://override:1080");
   assert.match(overridden.NO_PROXY, /^existing\.test,/);
-  const hooks = new AppHooks({ proxyEnvironment: env, harnessHome: "/isolated/service" });
+  const hooks = new AppHooks({
+    proxyEnvironment: env,
+    harnessHome: "/isolated/service",
+    configHome: "/isolated/config",
+  });
   assert.equal(hooks.environment().HTTPS_PROXY, parsed.https);
   assert.equal(hooks.environment().AREAL_HARNESS_SERVICE_HOME, "/isolated/service");
+  assert.equal(hooks.environment().AREAL_HARNESS_HOME, "/isolated/config");
   await systemProxyEnvironment({}, "linux", () =>
     assert.fail("other platforms must not invoke scutil"),
   );

@@ -117,11 +117,16 @@ class HostClient {
     if (!stat.isSocket() || stat.uid !== process.getuid?.() || (stat.mode & 0o077) !== 0)
       throw new Error("Host socket must be private and owned by this user");
     const socket = (this.socket = connect(descriptor.socketPath));
-    socket.on("data", (bytes) => this.receive(bytes));
-    socket.on("error", (error) => this.fail(error));
-    socket.on("close", () =>
-      this.fail(new Error("Host connection closed; mutation outcome may be unknown")),
-    );
+    socket.on("data", (bytes) => {
+      if (this.socket === socket) this.receive(bytes);
+    });
+    socket.on("error", (error) => {
+      if (this.socket === socket) this.fail(error);
+    });
+    socket.on("close", () => {
+      if (this.socket === socket)
+        this.fail(new Error("Host connection closed; mutation outcome may be unknown"));
+    });
     const hello = await this.request("hello", {
       protocolVersions: [1],
       capabilities: this.desktopCore ? ["desktopCore"] : [],

@@ -226,7 +226,6 @@ const desktopCommands = new Set([
   "feedback",
   "fork",
   "history",
-  "library",
   "list",
   "manage",
   "media",

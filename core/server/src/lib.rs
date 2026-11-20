@@ -65,6 +65,8 @@ fn engine_limits(config: &ResolvedCoreConfig) -> Limits {
 
 #[derive(clap::Args, Default)]
 struct ConfigArgs {
+    #[arg(long, global = true, hide = true)]
+    history_only: bool,
     #[arg(long, global = true)]
     permissions: Option<String>,
     #[arg(long, global = true)]
@@ -254,9 +256,25 @@ async fn run_configured(mut args: Args, diagnostic: Option<ConfigCommand>) -> Re
         }
         other => other,
     };
-    let (resolved, model_document) = if args.service_info.is_some() {
-        let (document, config) = areal_config::models::read_resolved(&inputs, &[])?;
-        (config, Some(document))
+    let (mut resolved, model_document, mut execution_error) = if cli.history_only {
+        anyhow::ensure!(
+            args.service_info.is_some(),
+            "history-only startup requires a registered service"
+        );
+        (
+            areal_config::load_read_config(&inputs)?,
+            None,
+            Some("Execution configuration is unavailable; history remains readable".into()),
+        )
+    } else if args.service_info.is_some() {
+        match areal_config::models::read_resolved(&inputs, &[]) {
+            Ok((document, config)) => (config, Some(document), None),
+            Err(cause) => (
+                areal_config::load_read_config(&inputs)?,
+                None,
+                Some(cause.to_string()),
+            ),
+        }
     } else {
         (
             if management {
@@ -265,10 +283,29 @@ async fn run_configured(mut args: Args, diagnostic: Option<ConfigCommand>) -> Re
                 load_config(&inputs)?
             },
             None,
+            None,
         )
     };
+    // 单模型配置依赖默认模型；托管目录由每个模型检查凭据，保留配置和其他模型的入口。
+    if args.service_info.is_some() && !resolved.model_catalog_managed && execution_error.is_none() {
+        if resolved.model.name.is_empty() || resolved.model.endpoint.is_empty() {
+            execution_error = Some("Select an available model; history remains readable".into());
+        } else if resolved.model.credential(&inputs).is_err() {
+            execution_error =
+                Some("Model credentials are unavailable; history remains readable".into());
+        }
+    }
+    let mut extensions = match tool_extensions::load(resolved.tool_extensions_file.as_deref()) {
+        Ok(extensions) => extensions,
+        Err(_) if args.service_info.is_some() => {
+            resolved = areal_config::load_read_config(&inputs)?;
+            execution_error =
+                Some("Tool configuration is unavailable; history remains readable".into());
+            Default::default()
+        }
+        Err(cause) => return Err(cause),
+    };
     let config = Arc::new(resolved);
-    let mut extensions = tool_extensions::load(config.tool_extensions_file.as_deref())?;
     if no_deployment_mcp {
         extensions.mcp_servers.clear();
     }
@@ -318,7 +355,25 @@ async fn run_configured(mut args: Args, diagnostic: Option<ConfigCommand>) -> Re
             "Core executable must be outside command scratch"
         );
     }
-    let model = reload::model(&config.model, &inputs, &config.data_dir, management)?;
+    let model = if execution_error.is_some() {
+        Arc::new(areal_engine::model::UnconfiguredModel) as Arc<dyn areal_engine::model::Model>
+    } else {
+        // 缺少所选模型或凭据仍需初始化目录和配置入口；执行准入由具体模型拒绝。
+        match reload::model(
+            &config.model,
+            &inputs,
+            &config.data_dir,
+            management || args.service_info.is_some(),
+        ) {
+            Ok(model) => model,
+            Err(_) if args.service_info.is_some() => {
+                execution_error =
+                    Some("Model configuration is unavailable; history remains readable".into());
+                Arc::new(areal_engine::model::UnconfiguredModel)
+            }
+            Err(cause) => return Err(cause),
+        }
+    };
     let telemetry =
         telemetry::TelemetryGuard::init(telemetry_config, &config.log_filter, &config.trajectory)?;
     let stopping = tokio_util::sync::CancellationToken::new();
@@ -378,11 +433,14 @@ async fn run_configured(mut args: Args, diagnostic: Option<ConfigCommand>) -> Re
     let result = serve(
         args,
         config,
-        model,
+        ExecutionSetup {
+            model,
+            model_document,
+            execution_error,
+        },
         stopping.clone(),
         extensions,
         inputs,
-        model_document,
     )
     .await;
     stopping.cancel();
@@ -417,20 +475,31 @@ fn canonicalize_pending(path: &std::path::Path) -> Result<PathBuf> {
     }
 }
 
+struct ExecutionSetup {
+    model: Arc<dyn areal_engine::model::Model>,
+    model_document: Option<areal_config::models::ModelConfiguration>,
+    execution_error: Option<String>,
+}
+
 async fn serve(
     args: Args,
     config: Arc<ResolvedCoreConfig>,
-    model: Arc<dyn areal_engine::model::Model>,
+    execution: ExecutionSetup,
     stopping: tokio_util::sync::CancellationToken,
-    extensions: areal_engine::tools::ToolExtensions,
+    mut extensions: areal_engine::tools::ToolExtensions,
     inputs: ConfigInputs,
-    model_document: Option<areal_config::models::ModelConfiguration>,
 ) -> Result<()> {
+    let ExecutionSetup {
+        model,
+        model_document,
+        mut execution_error,
+    } = execution;
     let mcp_env = inputs.env.clone();
     let homedir = inputs.homedir.clone();
     let model: Arc<dyn areal_engine::model::Model> =
         areal_engine::workgroup::native::SharedModel::pool(model, config.model_concurrency)?;
-    let limits = engine_limits(&config);
+    let mut limits = engine_limits(&config);
+    limits.execution_enabled = execution_error.is_none();
     let runtime = if let Some(binary) = &args.runtime {
         let binary = binary.canonicalize()?;
         let helper = args
@@ -474,6 +543,9 @@ async fn serve(
     };
     let mut mcp = None;
     let mut plugins = Vec::new();
+    if execution_error.is_some() {
+        extensions = Default::default();
+    }
     let result: Result<()> = async {
         let base = config
             .tool_extensions_file
@@ -481,24 +553,33 @@ async fn serve(
             .and_then(|p| p.parent())
             .map(std::path::Path::to_owned)
             .unwrap_or(std::env::current_dir()?);
-        mcp = Some(
-            areal_mcp::Connections::connect(
-                &extensions.mcp_servers,
-                &mcp_env,
-                &base,
-                stopping.clone(),
-            )
-            .await?,
-        );
-        anyhow::ensure!(
-            runtime.is_some() || extensions.plugins.is_empty(),
-            "plugins require a Runtime"
-        );
-        for (id, plugin) in &extensions.plugins {
-            plugins.push(
-                areal_engine::tools::plugins::PluginHost::launch(id, plugin, &base, &mcp_env)
-                    .await?,
-            );
+        let connected = areal_mcp::Connections::connect(
+            &extensions.mcp_servers, &mcp_env, &base, stopping.clone(),
+        ).await;
+        mcp = Some(match connected {
+            Ok(connected) => connected,
+            Err(_) if args.service_info.is_some() => {
+                execution_error = Some("MCP configuration is unavailable; history remains readable".into());
+                areal_mcp::Connections::connect(&Default::default(), &mcp_env, &base, stopping.clone()).await?
+            }
+            Err(cause) => return Err(cause),
+        });
+        if execution_error.is_none() {
+            anyhow::ensure!(runtime.is_some() || extensions.plugins.is_empty(), "plugins require a Runtime");
+            for (id, plugin) in &extensions.plugins {
+                match areal_engine::tools::plugins::PluginHost::launch(id, plugin, &base, &mcp_env).await {
+                    Ok(host) => plugins.push(host),
+                    Err(_) if args.service_info.is_some() => {
+                        execution_error = Some("Plugin configuration is unavailable; history remains readable".into());
+                        break;
+                    }
+                    Err(cause) => return Err(cause),
+                }
+            }
+        }
+        if execution_error.is_some() {
+            limits.execution_enabled = false;
+            extensions = Default::default();
         }
         let command_scope = if let (Some((client, _)), Some(timeout)) = (&runtime, args.command_timeout_ms) {
             Some(client.create_scope(areal_runtime_protocol::CreateScope {
@@ -527,10 +608,13 @@ async fn serve(
             plugins.iter().flat_map(|host| host.tools()).collect(),
         );
         let engine = opened?;
-        engine.set_permissions(config.permissions.clone(), config.sources.get("permissions.mode").cloned())?;
-        let reload = if args.service_info.is_some() { Some(reload::Reload::open(inputs.clone(), &config, &engine)?) } else { None };
-        if let Some(path) = &args.desktop_config { engine.install_deployment(path)?; }
         let workspace = PathBuf::from(engine.default_cwd());
+        engine.set_permissions(config.permissions.clone(), config.sources.get("permissions.mode").cloned())?;
+        let mut reload = None;
+        let preparation: Result<()> = async {
+        if execution_error.is_none() {
+        if args.service_info.is_some() { reload = Some(reload::Reload::open(inputs.clone(), &config, &engine)?); }
+        if let Some(path) = &args.desktop_config { engine.install_deployment(path)?; }
         engine.install_discovered_skill_sources(workspace.clone(), homedir.clone())?;
         // Trusted launcher paths determine plugin discovery and shared installation state.
         engine.install_hook_configuration(config.home.clone(), config.config_file.clone())?;
@@ -549,7 +633,8 @@ async fn serve(
             config.home.join("plugins"), args.workspace.clone().unwrap_or(workspace.clone()).canonicalize()?, homedir.clone(),
         )?))?;
         engine.recover_desktop_default_models().await?;
-        if let Some(policy_path) = &args.workgroup_policy {
+        }
+        if let Some(policy_path) = &args.workgroup_policy && execution_error.is_none() {
             use areal_engine::workgroup::service::{NativeFactory, Policy, Service};
             let policy: Policy = serde_json::from_slice(&std::fs::read(policy_path)?)?;
             // launcher 的主 Runtime 使用私有管道；工作组还需自行启动隔离
@@ -595,7 +680,7 @@ async fn serve(
             )?)?;
         }
         // 自动隔离沿用宿主的工作区写授权；没有部署验收时只报告候选和实际检查证据。
-        if args.allow_write && runtime.is_some() && limits.max_children_per_turn > 0 {
+        if execution_error.is_none() && args.allow_write && runtime.is_some() && limits.max_children_per_turn > 0 {
             use areal_engine::workgroup::service::{NativeFactory, Service};
             let executable = std::env::current_exe()?;
             let bin = executable.parent().context("executable directory missing")?;
@@ -613,6 +698,24 @@ async fn serve(
                     engine.attach_automatic_workgroups(Service::open_automatic(&config.data_dir.join("executions"), &workspace, factory, limits.model_concurrency)?)?;
                 }
             }
+        }
+        Ok(())
+        }.await;
+        match preparation {
+            Ok(()) => {},
+            Err(_) if args.service_info.is_some() => {
+                reload = None;
+                execution_error = Some("Execution deployment is unavailable; history remains readable".into());
+            }
+            Err(cause) => return Err(cause),
+        }
+        if let Some(message) = &execution_error {
+            engine.disable_execution();
+            engine.set_configuration_status(serde_json::json!({
+                "restartRequired": true, "pendingApply": false,
+                "error": message, "modelRevision": "",
+                "readReady": true, "executionReady": false
+            })).await;
         }
         let auth_path = args.auth_file.clone().unwrap_or_else(|| config.data_dir.join("security/auth.json"));
         if args.auth_file.is_none() && !auth_path.exists() {

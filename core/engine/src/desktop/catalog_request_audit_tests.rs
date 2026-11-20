@@ -2,6 +2,42 @@ use super::*;
 use futures_util::StreamExt;
 
 #[tokio::test]
+async fn read_only_startup_preserves_history_and_rejects_execution() {
+    let data = tempfile::tempdir().unwrap();
+    let engine = Engine::open(
+        data.path(),
+        Arc::new(model::UnconfiguredModel),
+        Limits::default(),
+    )
+    .unwrap();
+    let thread = engine.create("/tmp".into()).await.unwrap();
+    engine.shutdown().await;
+    drop(engine);
+    let engine = Engine::open(
+        data.path(),
+        Arc::new(model::UnconfiguredModel),
+        Limits {
+            execution_enabled: false,
+            ..Limits::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(engine.read(&thread.id, true).await.unwrap().id, thread.id);
+    assert!(!engine.accepting_work());
+    assert!(!engine.is_closed());
+    assert!(engine.start(&thread.id, vec![]).await.is_err());
+    assert!(
+        engine
+            .read(&thread.id, true)
+            .await
+            .unwrap()
+            .turns
+            .is_empty()
+    );
+    engine.shutdown().await;
+}
+
+#[tokio::test]
 async fn unavailable_default_provider_reports_model_configuration_error() {
     let data = tempfile::tempdir().unwrap();
     let model = Arc::new(

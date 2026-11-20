@@ -34,6 +34,18 @@ impl ContextView {
             .collect()
     }
 }
+pub(super) fn navigation_setting(key: &str) -> bool {
+    [
+        "sidebarSort",
+        "sidebarSortChats",
+        "sidebarSortProjects",
+        "sidebarSortPinned",
+        "showPinned",
+        "showCompleted",
+    ]
+    .contains(&key)
+}
+
 fn text<'a>(value: &'a Value, field: &str) -> Result<&'a str> {
     value[field].as_str().context("INVALID_PARAMS")
 }
@@ -288,18 +300,7 @@ pub(super) fn apply(state: &mut Value, request: &Value, view: &ContextView) -> R
         }
         "settings" => {
             let key = text(request, "key")?;
-            ensure!(
-                [
-                    "sidebarSort",
-                    "sidebarSortChats",
-                    "sidebarSortProjects",
-                    "sidebarSortPinned",
-                    "showPinned",
-                    "showCompleted"
-                ]
-                .contains(&key),
-                "无效偏好设置"
-            );
+            ensure!(navigation_setting(key), "无效偏好设置");
             let value = &request["value"];
             ensure!(
                 if key.starts_with("sidebarSort") {

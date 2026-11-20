@@ -5,7 +5,7 @@ const { constants } = require("node:fs");
 const { join, dirname } = require("node:path");
 const { createHash, randomUUID } = require("node:crypto");
 const resourceContract = require("@areal/workbench/desktop-contract/resource");
-/** @typedef {{binary:string,home:string,harnessHome:string,config?:string,userHome?:string,toolExtensions?:string,proxyEnvironment:NodeJS.ProcessEnv,providers:{redact:(value:string)=>string},saved:import('./project-index.cjs').SavedProject[],projects:Map<string,{client?:{ready:boolean}|null,hookRevision?:string|null}>,starting:Map<string,unknown>,resourcesUpdating?:boolean,providerUpdating?:boolean,onChange:()=>void,hostCall?:((method:string,params?:Record<string,unknown>)=>Promise<unknown>)}} HookHost */
+/** @typedef {{binary:string,home:string,harnessHome:string,configHome:string,config?:string,userHome?:string,toolExtensions?:string,proxyEnvironment:NodeJS.ProcessEnv,providers:{redact:(value:string)=>string},saved:import('./project-index.cjs').SavedProject[],projects:Map<string,{client?:{ready:boolean}|null,hookRevision?:string|null}>,starting:Map<string,unknown>,resourcesUpdating?:boolean,providerUpdating?:boolean,onChange:()=>void,hostCall?:((method:string,params?:Record<string,unknown>)=>Promise<unknown>)}} HookHost */
 /** @typedef {{text:string,mode:number,missing?:boolean,path:string,value:Record<string,unknown>&{hooks:import("@areal/workbench/desktop-contract/resource").Hook[]},external:boolean,revision:string}} HookDocument */
 /** @param {string} value */
 const hash = (value) => createHash("sha256").update(value).digest("hex");
@@ -21,7 +21,8 @@ class AppHooks {
       ...require("./application-owner.cjs").scrubOwnerEnvironment(),
       ...this.backend.proxyEnvironment,
       ...(this.backend.userHome ? { HOME: this.backend.userHome } : {}),
-      // 只覆盖服务登记目录，Core 配置沿用用户 home 与显式配置的解析规则。
+      // 管理命令与 Host 启动 Core 使用同一配置根，服务登记目录保持独立。
+      AREAL_HARNESS_HOME: this.backend.configHome,
       AREAL_HARNESS_SERVICE_HOME: this.backend.harnessHome,
       ...(this.backend.toolExtensions
         ? { AREAL_HARNESS_TOOL_EXTENSIONS: this.backend.toolExtensions }

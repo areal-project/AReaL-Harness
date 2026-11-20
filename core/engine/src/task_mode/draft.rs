@@ -669,6 +669,7 @@ impl Engine {
                         text,
                         text_elements: vec![],
                         mcp_content: None,
+                        context_parts: None,
                     });
                 }
                 if input.is_empty() {

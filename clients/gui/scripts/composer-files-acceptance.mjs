@@ -1001,14 +1001,100 @@ export async function runComposerFilesAcceptance({
   });
   try {
     await createProjectConversation(page, "workspace");
-    // 执行工作树使用同一启动配置；此前直接写入源 Core 的测试供应商不会随之复制。
-    await configureModel({ providerId: "fixture", modelId: "fixture" });
-    await button("新会话工作区").click();
     const worktreeToggle = page.getByRole("switch", {
       name: "在新工作树中工作",
       exact: true,
     });
-    await until(async () => !(await worktreeToggle.isDisabled()), "upload worktree options ready");
+    await page.evaluate(() => {
+      const selector = 'button[aria-label="新会话工作区"]';
+      const ids = new WeakMap();
+      let nextId = 0;
+      const id = (element) => {
+        if (!element) return null;
+        if (!ids.has(element)) ids.set(element, ++nextId);
+        return ids.get(element);
+      };
+      const identify = (element) => {
+        if (!(element instanceof Element)) return null;
+        if (element.closest(selector)) return "worktree-trigger";
+        if (element.closest(".worktree-picker")) return "worktree-picker";
+        if (element.closest('[data-testid="composer-model-trigger"]')) return "model-trigger";
+        if (element.closest(".composer-model-menu")) return "model-menu";
+        if (element.closest('[data-testid="chat-input"]')) return "chat-input";
+        return element.tagName;
+      };
+      const events = [];
+      const record = (type, target, extra = {}) => {
+        const trigger = document.querySelector(selector);
+        if (events.length < 200)
+          events.push({
+            time: performance.now(),
+            type,
+            target: identify(target),
+            triggerId: id(trigger),
+            expanded: trigger?.getAttribute("aria-expanded") ?? null,
+            focus: identify(document.activeElement),
+            ...extra,
+          });
+      };
+      const listener = (event) => record(event.type, event.target);
+      const types = ["focusin", "focusout", "pointerdown", "click", "keydown"];
+      for (const type of types) document.addEventListener(type, listener, true);
+      const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          if (mutation.type === "attributes" && mutation.target.matches(selector))
+            record("expanded", mutation.target, {
+              changedTriggerId: id(mutation.target),
+              previousExpanded: mutation.oldValue,
+            });
+          for (const [kind, nodes] of [
+            ["removed", mutation.removedNodes],
+            ["added", mutation.addedNodes],
+          ])
+            for (const node of nodes) {
+              if (!(node instanceof Element)) continue;
+              const trigger = node.matches(selector) ? node : node.querySelector(selector);
+              if (trigger) record(kind, trigger, { changedTriggerId: id(trigger) });
+            }
+        }
+      });
+      observer.observe(document.body, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeOldValue: true,
+        attributeFilter: ["aria-expanded"],
+      });
+      record("start", document.activeElement);
+      globalThis.worktreePickerDiagnostic = {
+        events,
+        stop: () => {
+          observer.disconnect();
+          for (const type of types) document.removeEventListener(type, listener, true);
+        },
+      };
+    });
+    try {
+      // 执行工作树使用同一启动配置；此前直接写入源 Core 的测试供应商不会随之复制。
+      await configureModel({ providerId: "fixture", modelId: "fixture" });
+      await button("新会话工作区").click();
+      await until(
+        async () => !(await worktreeToggle.isDisabled()),
+        "upload worktree options ready",
+      );
+    } catch (error) {
+      const events = await page
+        .evaluate(() => globalThis.worktreePickerDiagnostic.events)
+        .catch(() => null);
+      if (events)
+        await writeFile(
+          join(scratch, "files-worktree-picker-events.json"),
+          JSON.stringify(events, null, 2),
+        ).catch((cause) => console.error("worktree picker diagnostic write failed", cause));
+      throw error;
+    } finally {
+      await page.evaluate(() => globalThis.worktreePickerDiagnostic.stop()).catch(() => {});
+    }
     if ((await worktreeToggle.getAttribute("aria-checked")) !== "true")
       await worktreeToggle.click();
     await page.keyboard.press("Escape");

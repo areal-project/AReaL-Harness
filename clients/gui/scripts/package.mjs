@@ -7,7 +7,7 @@ import {
 } from "./package-build.mjs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { join, resolve } from "node:path";
+import { join, resolve, relative } from "node:path";
 import { cp, lstat, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
@@ -51,7 +51,7 @@ assert.ok(
   "Supported GUI target: mac/arm64 only; Linux/Windows and cross-compilation are not implemented",
 );
 const signing =
-  options.signing || (process.env.AREAL_GUI_UNSIGNED_LOCAL === "1" ? "none" : "adhoc");
+  options.signing || (process.env.AREAL_GUI_UNSIGNED_LOCAL === "1" ? "none" : "developer-id");
 assert.ok(["none", "adhoc", "developer-id"].includes(signing), "Invalid --signing mode");
 assert.ok(!options.formats || !options["dmg-only"], "Choose --formats or --dmg-only");
 const formats = (options.formats || (options["dmg-only"] ? "dmg" : "dmg,zip")).split(",");
@@ -337,8 +337,12 @@ try {
       // 本机无新增签名模式保留输入签名；不能把拼装后的 bundle 宣称为签名有效。
       let signatureVerification;
       if (!unsignedLocal) {
-        await signLocalMacOSApp(app, (command, args) =>
-          execFileSync(command, args, { stdio: "inherit" }),
+        await timings.measure("sign-adhoc", () =>
+          signLocalMacOSApp(app, (command, args) =>
+            timings.measureSync("sign-adhoc:" + args[0] + ":" + relative(app, args.at(-1)), () =>
+              execFileSync(command, args, { stdio: "inherit" }),
+            ),
+          ),
         );
         signatureVerification = { valid: true };
       } else {

@@ -7,6 +7,7 @@ import {
   hostPlatformCapabilities,
   openingAuthorization,
   outcomeUnknown,
+  routeDesktopCommand,
 } from "./host-workbench.js";
 import { hostCommandError } from "./desktop-response.js";
 import type { PlatformServices } from "./services.js";
@@ -126,7 +127,7 @@ describe("library routes without a desktop adapter", () => {
         title: "Inbox",
       }),
     ).toEqual(state);
-    expect(await routes.call("library", { operation: "settings" })).toBeUndefined();
+    expect(await routes.call("serviceStatus", {})).toBeUndefined();
     expect(commands).toHaveLength(1);
   });
 
@@ -802,4 +803,126 @@ describe("local web desktop commands", () => {
       error: { code: "MIGRATION_PENDING", message: "blocked" },
     });
   });
+});
+
+it.each([true, false])(
+  "reconnect restores the owning transports before returning on desktop=%s",
+  async (native) => {
+    const events: string[] = [];
+    const client = {
+      retry: async () => {
+        events.push("host");
+      },
+      snapshot: () => ({ connection: "ready" }),
+    } as unknown as HostClient;
+    const desktop = native
+      ? ({
+          command: async () => {
+            events.push("desktop");
+            return { ok: true, value: null };
+          },
+        } as unknown as PlatformServices)
+      : undefined;
+    const routes = createWorkbenchRoutes(client, desktop, undefined, undefined, () => "fixture");
+    expect(await routes.call("connectService", {})).toEqual({ value: null });
+    expect(events).toEqual(native ? ["desktop", "host"] : ["host"]);
+  },
+);
+
+describe("library Host-only routing", () => {
+  it("uses the same confirmed Host receipt for non-native preferences", async () => {
+    const state = {
+      projects: {},
+      threads: {},
+      projectOrder: [],
+      sections: [],
+      sidebarThreadOrder: [],
+      sidebarRevision: 0,
+      settings: {},
+    };
+    const workbench = vi.fn(async (method: string, _params: unknown, commandId: string) => ({
+      commandId,
+      method,
+      admissionState: "accepted",
+      submissionUnknown: false,
+      receipt: state,
+    }));
+    const client = { writable: () => true, workbench } as unknown as HostClient;
+    const native = vi.fn();
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => "fixture");
+    expect(
+      await call({ command: native, workbench: routes } as unknown as PlatformServices, "library", {
+        operation: "settings",
+        key: "terminalFontFamily",
+        value: "monospace",
+      }),
+    ).toEqual(state);
+    expect(workbench).toHaveBeenCalledWith(
+      "library.command",
+      {
+        operation: "settings",
+        key: "terminalFontFamily",
+        value: "monospace",
+      },
+      expect.any(String),
+    );
+    expect(native).not.toHaveBeenCalled();
+  });
+
+  it("rejects bypassing the library receipt route without dispatching either transport", async () => {
+    const native = vi.fn();
+    const host = vi.fn();
+    const route = routeDesktopCommand(
+      { command: native } as Pick<PlatformServices, "command">,
+      host,
+      () => true,
+    );
+    await expect(
+      route("library", { operation: "settings", key: "terminalFontFamily", value: "monospace" }),
+    ).rejects.toMatchObject({ code: "CAPABILITY_UNAVAILABLE", submissionUnknown: false });
+    expect(native).not.toHaveBeenCalled();
+    expect(host).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { operation: "createSection", title: "Inbox" },
+    { operation: "settings", key: "terminalFontFamily", value: "monospace" },
+  ] as const)(
+    "rejects unavailable library writes before reaching a fallback transport: $operation",
+    async (params) => {
+      const native = vi.fn();
+      const client = { writable: () => false } as unknown as HostClient;
+      const routes = createWorkbenchRoutes(
+        client,
+        undefined,
+        undefined,
+        undefined,
+        () => "fixture",
+      );
+      await expect(
+        call(
+          { workbench: routes, command: native } as unknown as PlatformServices,
+          "library",
+          params,
+        ),
+      ).rejects.toMatchObject({ code: "CAPABILITY_UNAVAILABLE", submissionUnknown: false });
+      expect(native).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["computerControlEnabled", "computerControlProvider", "computerControlExecutable"])(
+    "keeps %s with the native permission owner",
+    async (key) => {
+      const native = vi.fn(async () => ({ ok: true, value: null }));
+      const host = vi.fn();
+      const route = routeDesktopCommand(
+        { command: native } as Pick<PlatformServices, "command">,
+        host,
+        () => true,
+      );
+      await route("library", { operation: "settings", key });
+      expect(native).toHaveBeenCalledTimes(1);
+      expect(host).not.toHaveBeenCalled();
+    },
+  );
 });

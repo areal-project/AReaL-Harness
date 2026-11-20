@@ -23,14 +23,16 @@ const { modelRef, parameters, strings } = require("./provider.cjs");
 /** @typedef {{type:'image'|'audio'|'file',url:string,name?:string,mimeType?:string,_meta?:Record<string,unknown>}} Attachment */
 /** @typedef {{type:'text',text:string,_meta?:Record<string,unknown>}|{type:'resource_link',uri:string,name:string,mimeType?:string,_meta?:Record<string,unknown>}|{type:'resource',resource:{uri:string,text?:string,blob?:string,mimeType?:string},_meta?:Record<string,unknown>}} MessageContent */
 /** @typedef {{pluginId:string,componentId:string,installedDigest:string,arguments:string}} PluginCommandRef */
-/** @typedef {{command?:PluginCommandRef,text?:string,attachments?:Attachment[],mcpContent?:MessageContent[],conversationQuotes?:Array<{text:string}>}} Message */
+/** @typedef {{command?:PluginCommandRef,text?:string,attachments?:Attachment[],mcpContent?:MessageContent[],conversationQuotes?:Array<{text:string}>,contextParts?:ContextPart[]}} Message */
+/** @typedef {{id:string,path:string,root:string,scope:string,ref:string,token:string,head:string,base:string,side:'additions'|'deletions',start:number,end:number,snippet:string,body:string}} ReviewComment */
+/** @typedef {{type:'reviewComment',comment:ReviewComment}} ContextPart */
 /** @typedef {{sourceRoot?:string,ref?:string,worktreeRoot?:string,branch?:string,branchPrefix?:string,environmentId?:string,environmentRevision?:number,mode?:'source'|'worktree'}} WorktreeSpec */
 /** @typedef {ProjectRequest & {requestId?:string,browserEnabled?:boolean,options?:ClientOptions,model?:import('./provider.cjs').ModelRef|null,parameters?:import('./provider.cjs').ModelParameters,profile?:ResourceRef,worktree?:WorktreeSpec}} CreateRequest */
 /** @typedef {ThreadRequest & {requestId?:string,expectedRevision?:number,model?:import('./provider.cjs').ModelRef|null,profile?:ResourceRef,options?:ClientOptions,parameters?:import('./provider.cjs').ModelParameters,selectedSkills?:ResourceRef[]}} ConfigureRequest */
 /** @typedef {ProjectRequest & {sourceThreadId:string,requestId?:string,workspaceMode:'sharedCurrent',anchor:{turnId:string,boundary:'before'|'after'},target?:{agentProfile?:ResourceRef|null,model?:import('./provider.cjs').ModelRef|null,parameters?:import('./provider.cjs').ModelParameters|null}}} ForkRequest */
 /** @typedef {{kind:'itemRange',turnId:string,itemId:string,startUtf8:number,endUtf8:number,textSha256:string}|{kind:'userQuote',text:string,claimedTurnId?:string|null,claimedItemId?:string|null}} SideSelection */
 /** @typedef {{kind:string,turnId?:string|null,boundary?:string|null}} SideAnchor */
-/** @typedef {ProjectRequest & ({operation:'start',sourceThreadId:string,requestId?:string,text:string,workspaceAccess?:'none'|'readOnly',model?:import('./provider.cjs').ModelRef,resetModel?:boolean,anchor?:SideAnchor,selection?:SideSelection,parameters?:import('./provider.cjs').ModelParameters}|{operation:'create',sourceThreadId:string,requestId:string,firstInput?:{text:string}}|{operation:'close',threadId:string,requestId:string}|{operation:'recover',requestId:string,sourceThreadId?:string,threadId?:string,method?:'areal/side/start'|'areal/side/create'|'areal/side/close'}|{operation:'send',threadId:string,text:string,requestId?:string}|{operation:'context',threadId:string,cursor?:string,evidenceRef?:string,maxBytes?:number}|{operation:'list',sourceThreadId:string,includeArchived?:boolean,cursor?:string})} SideRequest */
+/** @typedef {ProjectRequest & ({operation:'start',sourceThreadId:string,requestId?:string,text:string,workspaceAccess?:'none'|'readOnly',model?:import('./provider.cjs').ModelRef,resetModel?:boolean,anchor?:SideAnchor,selection?:SideSelection,parameters?:import('./provider.cjs').ModelParameters,contextParts?:ContextPart[]}|{operation:'create',sourceThreadId:string,requestId:string,firstInput?:{text:string}}|{operation:'close',threadId:string,requestId:string}|{operation:'recover',requestId:string,sourceThreadId?:string,threadId?:string,method?:'areal/side/start'|'areal/side/create'|'areal/side/close'}|{operation:'send',threadId:string,text:string,requestId?:string,contextParts?:ContextPart[]}|{operation:'context',threadId:string,cursor?:string,evidenceRef?:string,maxBytes?:number}|{operation:'list',sourceThreadId:string,includeArchived?:boolean,cursor?:string})} SideRequest */
 /** @typedef {{turnId:string,itemId:string}} HistoryAnchor */
 /** @typedef {{supported:true,revision:number,viewGeneration:string} & ({kind:'ready'|'missing'|'cancelled'}|{kind:'limited',reason:'scanBudget'|'cacheBudget'|'deferred'|'unavailable'})} AnchorResult */
 /** @typedef {ThreadRequest & {viewId:string} & ({operation:'acquire'}|{operation:'loadOlder',pageId?:string}|{operation:'release'}|{operation:'loadItem',itemId:string}|{operation:'retain',revision:number,anchor:HistoryAnchor|null}|{operation:'ensureAnchor',revision:number,anchor:HistoryAnchor})} HistoryRequest */
@@ -82,6 +84,47 @@ function messageContent(value) {
     (value.resource.mimeType === undefined || typeof value.resource.mimeType === "string")
   );
 }
+/** @param {unknown} value @returns {value is ReviewComment} */
+function reviewComment(value) {
+  const start = modelRecord(value) ? Number(value.start) : NaN;
+  const end = modelRecord(value) ? Number(value.end) : NaN;
+  return (
+    modelRecord(value) &&
+    only(value, [
+      "id",
+      "path",
+      "root",
+      "scope",
+      "ref",
+      "token",
+      "head",
+      "base",
+      "side",
+      "start",
+      "end",
+      "snippet",
+      "body",
+    ]) &&
+    ["id", "path", "root", "scope", "ref", "token", "head", "base", "snippet", "body"].every(
+      (key) => typeof value[key] === "string" && value[key].length <= 64 * 1024,
+    ) &&
+    (value.side === "additions" || value.side === "deletions") &&
+    Number.isSafeInteger(value.start) &&
+    Number.isSafeInteger(value.end) &&
+    start > 0 &&
+    end >= start &&
+    end - start <= 999
+  );
+}
+/** @param {unknown} value @returns {value is ContextPart} */
+function contextPart(value) {
+  return (
+    modelRecord(value) &&
+    only(value, ["type", "comment"]) &&
+    value.type === "reviewComment" &&
+    reviewComment(value.comment)
+  );
+}
 /** @param {unknown} value @returns {value is Message & Record<string,unknown>} */
 function message(value) {
   return (
@@ -117,7 +160,12 @@ function message(value) {
             !!quote.text.trim() &&
             quote.text.length <= 8000,
         ) &&
-        value.conversationQuotes.reduce((total, quote) => total + quote.text.length, 0) <= 16000))
+        value.conversationQuotes.reduce((total, quote) => total + quote.text.length, 0) <=
+          16000)) &&
+    (value.contextParts === undefined ||
+      (Array.isArray(value.contextParts) &&
+        value.contextParts.length <= 32 &&
+        value.contextParts.every(contextPart)))
   );
 }
 /** @param {unknown} value @returns {value is WorktreeSpec} */
@@ -392,6 +440,13 @@ function sideRequest(value) {
     (value.resetModel === true && value.model !== undefined) ||
     (value.model !== undefined && !modelRef(value.model)) ||
     (value.parameters !== undefined && !parameters(value.parameters))
+  )
+    return false;
+  if (
+    value.contextParts !== undefined &&
+    (!Array.isArray(value.contextParts) ||
+      value.contextParts.length > 32 ||
+      !value.contextParts.every(contextPart))
   )
     return false;
   switch (value.operation) {

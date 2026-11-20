@@ -708,8 +708,16 @@ export const generalMessages = {
     en: "Disabled",
   },
   "settings.modelSettings.keychainLocked": {
-    "zh-CN": "钥匙串访问受限，请重新输入并保存密钥",
-    en: "Keychain access restricted; re-enter and save API key",
+    "zh-CN": "系统凭据访问受限，可点击显示密钥按钮授权读取",
+    en: "System credential access is restricted. Use Show API key to authorize access.",
+  },
+  "settings.modelSettings.storedCredentialMissing": {
+    "zh-CN": "未找到已保存的密钥，请重新输入并保存",
+    en: "The saved credential entry was not found. Re-enter and save the API key.",
+  },
+  "settings.modelSettings.checkingCredentials": {
+    "zh-CN": "正在检查凭据…",
+    en: "Checking credentials…",
   },
   "settings.modelSettings.credentialMigrating": {
     "zh-CN": "正在恢复凭据",

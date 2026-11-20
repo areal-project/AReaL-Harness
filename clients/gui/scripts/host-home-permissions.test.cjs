@@ -6,6 +6,7 @@ const {
   chmod,
   lstat,
   readFile,
+  realpath,
   writeFile,
   symlink,
   unlink,
@@ -13,9 +14,72 @@ const {
 } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
+const { createServer } = require("node:net");
+const { once } = require("node:events");
 const { HostClient } = require("node:module").createRequire(
   require("node:path").resolve(__dirname, "../app/package.json"),
 )("@areal/client/node");
+
+test("a late event from an old Host socket does not close the new connection", async (t) => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "host-reconnect-")));
+  const home = join(root, "home");
+  const directory = join(home, "host");
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const socketPath = join(directory, "socket");
+  const listener = createServer((socket) => {
+    let bytes = "";
+    socket.on("data", (chunk) => {
+      bytes += chunk;
+      while (bytes.includes("\n")) {
+        const index = bytes.indexOf("\n");
+        const request = JSON.parse(bytes.slice(0, index));
+        bytes = bytes.slice(index + 1);
+        socket.write(
+          JSON.stringify({
+            version: 1,
+            id: request.id,
+            result:
+              request.method === "hello"
+                ? { version: 1, hostId: "host", generation: "generation", capabilities: [] }
+                : { state: "ready" },
+          }) + "\n",
+        );
+      }
+    });
+  });
+  listener.listen(socketPath);
+  await once(listener, "listening");
+  await chmod(socketPath, 0o600);
+  await writeFile(
+    join(directory, "host.json"),
+    JSON.stringify({
+      version: 1,
+      hostId: "host",
+      generation: "generation",
+      socketPath,
+      authFile: join(directory, "auth.json"),
+    }),
+    { mode: 0o600 },
+  );
+  await writeFile(join(directory, "auth.json"), JSON.stringify("token"), { mode: 0o600 });
+  const client = new HostClient();
+  t.after(async () => {
+    client.close();
+    await new Promise((resolve) => listener.close(resolve));
+    await rm(root, { recursive: true, force: true });
+  });
+  await client.connect(home);
+  const old = client.socket;
+  const oldClose = old.listeners("close")[0];
+  const oldError = old.listeners("error")[0];
+  const oldData = old.listeners("data")[0];
+  client.close();
+  await client.connect(home);
+  oldClose();
+  oldError(new Error("late socket error"));
+  oldData(Buffer.from("invalid old frame\n"));
+  assert.deepEqual(await client.status(), { state: "ready" });
+});
 
 test("legacy Host home is restricted before opening its private log", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "host-home-"));

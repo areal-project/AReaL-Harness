@@ -12,12 +12,10 @@ export function useProviderDiscovery(action: Action, connection: DiscoveryConnec
   const current = useRef({ action, connection });
   current.current = { action, connection };
   const epoch = useRef(0);
-  const [automatic, setAutomatic] = useState(0);
   const [state, setState] = useState<DiscoveryState>({ kind: "idle" });
-  const invalidate = (fetch = false) => {
+  const invalidate = () => {
     epoch.current++;
     setState({ kind: "idle" });
-    if (fetch) setAutomatic(epoch.current);
   };
   const fetch = async (request: number) => {
     const input = current.current.connection;
@@ -39,11 +37,6 @@ export function useProviderDiscovery(action: Action, connection: DiscoveryConnec
         setState({ kind: "failed", message: (error as Error).message });
     }
   };
-  useEffect(() => {
-    if (!automatic) return;
-    const timer = setTimeout(() => void fetch(automatic), 500);
-    return () => clearTimeout(timer);
-  }, [automatic]);
   useEffect(
     () => () => {
       epoch.current++;

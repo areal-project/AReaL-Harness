@@ -1,7 +1,7 @@
 import type { MediaOwner } from "./PlatformReadContext.js";
 import type { Data, Action } from "./services.js";
 import { isSnapShotDecoration, sentSnapShots } from "./snapshots/source.js";
-import { sentReviewFeedback } from "./reviewComments.js";
+import { sentReviewFeedback, reviewCommentsFromContextParts } from "./reviewComments.js";
 import { SentReviewComments } from "./ReviewCommentViews.js";
 import { McpContentLabel } from "./McpComposerAttachments.js";
 import { SentBrowserAnnotations } from "./BrowserAnnotationAttachments.js";
@@ -56,7 +56,12 @@ export function SentUserMessage({
     .filter((part: Data) => part.type === "text" && !part.mcpContent)
     .map((part: Data) => part.text ?? "")
     .join("\n");
-  const feedback = sentReviewFeedback(text);
+  const structuredComments = content.flatMap((part: Data) =>
+    part.type === "text" ? reviewCommentsFromContextParts(part.contextParts) : [],
+  );
+  const feedback = structuredComments.length
+    ? { text, comments: structuredComments }
+    : sentReviewFeedback(text);
   const attachments: Data[] = content.filter((part: Data) => part.type !== "text");
   const browserFeedback = sentBrowserAnnotations(feedback.text, attachments);
   const snapshotFeedback = sentSnapShots(browserFeedback.text, attachments, decorations);

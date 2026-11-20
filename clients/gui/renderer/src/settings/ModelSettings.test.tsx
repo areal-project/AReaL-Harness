@@ -1,15 +1,16 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+
+const credential = vi.hoisted(() => ({ state: "unavailable", selected: false }));
 
 vi.mock("react", async (importOriginal) => {
   const react = await importOriginal<typeof import("react")>();
-  let selected = false;
   return {
     ...react,
     useState: (initial: unknown) => {
-      if (initial === null && !selected) {
-        selected = true;
+      if (initial === null && !credential.selected) {
+        credential.selected = true;
         return react.useState("provider");
       }
       return react.useState(initial);
@@ -50,7 +51,7 @@ vi.mock("./common.js", async (importOriginal) => {
             baseUrl: "https://example.com",
           },
         ],
-        credentialStates: { provider: "unavailable" },
+        credentialStates: { provider: credential.state },
         credentialErrors: { provider: "storageLocked" },
       },
       loading: false,
@@ -61,10 +62,28 @@ vi.mock("./common.js", async (importOriginal) => {
 });
 import { ModelSettings } from "./ModelSettings.js";
 
+beforeEach(() => {
+  credential.selected = false;
+});
+
 describe("locked provider credential", () => {
   it("shows the recovery status in the provider and API key area", () => {
     const markup = renderToStaticMarkup(createElement(ModelSettings, { action: vi.fn() }));
     expect(markup.match(/settings\.modelSettings\.keychainLocked/g)).toHaveLength(2);
     expect(markup).not.toContain("settings.modelSettings.missingCredentials");
+  });
+});
+
+describe("unchecked provider credential", () => {
+  it("keeps configuration usable while showing checking instead of an old lock error", () => {
+    credential.state = "checking";
+    try {
+      const markup = renderToStaticMarkup(createElement(ModelSettings, { action: vi.fn() }));
+      expect(markup).toContain("settings.modelSettings.checkingCredentials");
+      expect(markup).not.toContain("settings.modelSettings.keychainLocked");
+      expect(markup).toContain("settings.modelSettings.addProvider");
+    } finally {
+      credential.state = "unavailable";
+    }
   });
 });

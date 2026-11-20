@@ -16,7 +16,7 @@ GUI 只由 Host 监督后台，没有界面开关。现有 GUI 须正常退出�
 
 GUI 升级先等待来源和安全项目发布，再启动后台；原生凭据适配器用独立连接继续原槽导入和清理，不占用后台就绪门。一个项目或槽待确认时，其余已确认资源可用；未确认项保留迁移状态。解锁后重新打开 GUI 会核对原迁移，项目重新连接也只推进原项目交接，不恢复旧写者或重放 UNKNOWN。 项目启动用同一规范配置解析确认模型依赖：未依赖的在途或迁移中槽仅从本次启动延后，不清除缓存；选中槽或依赖不明时仍等待原操作。
 
-`CoreBackend`、`DesktopService` 与运行时依赖闭包位于 `services/workbench/src/desktop`；轨迹与反馈位于 `src/domains`，资料库暂存写入器从 `src/host-library-store.ts` 构建为 CommonJS。后台通过 `@areal/workbench-service` 加载，Host 接管与 Main 回退共用唯一实现。Main 保留应用配置、连接客户端和原生生命周期客户端；部署身份包含服务源码、拆分协议与生成的写入器。服务包是 GUI 的显式 workspace 依赖，由现有依赖分发器连同资源和依赖闭包装入 `app.asar`，不依赖 `Resources/areal-workbench` 向兄弟归档隐式解析模块。
+`CoreBackend`、`DesktopService` 与运行时依赖闭包位于 `services/workbench/src/desktop`；轨迹与反馈位于 `src/domains`。资料库修改统一使用 Host 命令与 patch，后台不再装配可切换的暂存写入器。后台通过 `@areal/workbench-service` 加载，Host 接管与 Main 回退共用唯一实现。Main 保留应用配置、连接客户端和原生生命周期客户端；部署身份包含服务源码、拆分协议与生成的 Host 客户端。服务包是 GUI 的显式 workspace 依赖，由现有依赖分发器连同资源和依赖闭包装入 `app.asar`，不依赖 `Resources/areal-workbench` 向兄弟归档隐式解析模块。
 
 ## 进程监督
 
@@ -90,6 +90,8 @@ CLI 打开带环境脚本的 Worktree 时，通过 `worktree open --agent id@rev
 Host 是 `library.json` 的唯一写者，导航整理直接在 Host 事务中执行；后台需要改设置时经 `library.patch` 提交补丁，冲突后重读重算。
 
 统计方法为 `analytics.read`、`analytics.sync`、`analytics.activity`、`analytics.import`。同步通过 Host 的共享 Core 连接白名单读取 `thread/list` 与 `thread/read`；Host 转发轮次事件但不为事件单独启动服务。客户端每 5 秒上报活跃状态，服务取并集；Main 旧活跃时间按天取较大值合并。未启用领域时保留旧统计路径。
+
+GUI 非原生资料库操作统一调用 `library.command`，保留原 `commandId` 经 `command.read` 核对结果；缺少回执保持 UNKNOWN，不重发。Host 拥有准入和回执：导航整理直接执行，其他偏好交给工作台保留原有校验，再经 Host `library.patch` 写入。回执沿用公开导航投影，偏好值从现有状态订阅读取，不把私有配置写入回执。新增非原生偏好只扩展该契约与现有校验，不新增客户端路由。旧的整份资料库替换接口 `library.write` 已移除。`desktop.command` 不接受资料库操作，Host 不可用时不回退 IPC。只有电脑控制的 enabled、provider、executable 三项设置保留 Main 权限所有者。
 
 ## 原生能力与凭据
 

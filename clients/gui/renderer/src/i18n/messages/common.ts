@@ -273,6 +273,11 @@ export const commonMessages = {
     "zh-CN": "模型凭据不可用。请在模型设置中补充 API Key 后重试。",
     en: "Model credentials are unavailable. Add an API key in model settings, then retry.",
   },
+  "recovery.executionUnavailable": {
+    "zh-CN": "当前执行配置不可用，历史仍可查看。请检查模型设置。",
+    en: "Execution configuration is unavailable. History remains readable. Check model settings.",
+  },
+  "recovery.openModelSettings": { "zh-CN": "前往模型设置", en: "Open model settings" },
   "common.tools.rawRecord": { "zh-CN": "查看工具原始记录", en: "View raw tool record" },
   "common.turn.failed": { "zh-CN": "回合失败", en: "Turn failed" },
   "common.turn.reasoning": { "zh-CN": "思考过程", en: "Reasoning" },

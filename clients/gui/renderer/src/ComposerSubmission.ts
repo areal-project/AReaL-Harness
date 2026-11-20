@@ -30,11 +30,16 @@ import {
   reviewCommentKey,
   attachedReviewComments,
   readReviewComments,
-  reviewCommentText,
   recordUnknownReviewSubmission,
   consumeReviewComments,
+  reviewContextParts,
 } from "./reviewComments.js";
-import type { Action, Data } from "./services.js";
+import type { Action, CommandParams, Data } from "./services.js";
+import {
+  commandForSubmission,
+  conversationQuotes,
+  type ComposerCommand,
+} from "./composerCommand.js";
 
 // Both the first message and later turns use the same attachment and admission path.
 export async function submitMessage(
@@ -52,6 +57,11 @@ export async function submitMessage(
   const key = `areal-gui:draft:${projectId}:${threadId}`;
   const selectionScope = conversationSelectionScope(projectId, threadId);
   const capturedReferences = options.appMessage ? [] : readConversationSelections(selectionScope);
+  const command: ComposerCommand =
+    options.command ??
+    (options.steer
+      ? { kind: "steer", threadId, expectedTurnId: options.expectedTurnId }
+      : { kind: "send", threadId, enqueue: options.enqueue === true });
   const capturedMcp = options.appMessage ? [] : readMcpDraft(key);
   const blocks = options.appMessage
     ? (options.mcpContent ?? [])
@@ -113,7 +123,6 @@ export async function submitMessage(
       annotationFeedback,
       snapShotContext(input.files, attachments),
       serializeImageAnnotations(imageSnapshot, attachments),
-      comments.map(reviewCommentText).join("\n\n"),
       pluginIntent,
       skillContent,
     ]
@@ -122,13 +131,22 @@ export async function submitMessage(
     let sent: unknown;
     try {
       options.onSendStart?.();
-      sent = await action(options.steer ? "steer" : "send", {
+      const submission = commandForSubmission(command, {
         projectId,
-        threadId,
         text: feedback ? (input.text ? `${input.text}\n\n${feedback}` : feedback) : input.text,
         attachments,
+        ...(comments.length ? { contextParts: reviewContextParts(comments) } : {}),
         ...(capturedReferences.length
-          ? { conversationQuotes: capturedReferences.map(({ text }) => ({ text })) }
+          ? {
+              conversationQuotes: conversationQuotes(
+                capturedReferences.map((reference) => ({
+                  kind: "conversationQuote" as const,
+                  text: reference.text,
+                  sourceSessionId: reference.sourceSessionId,
+                  sourceRowId: reference.sourceRowId,
+                })),
+              ),
+            }
           : {}),
         ...(blocks.some((block: Data) => block.type !== "image")
           ? { mcpContent: blocks.filter((block: Data) => block.type !== "image") }
@@ -136,6 +154,10 @@ export async function submitMessage(
         expectedTurnId: options.expectedTurnId,
         enqueue: options.enqueue === true,
       });
+      sent =
+        submission.action === "send"
+          ? await action("send", submission.params as CommandParams<"send">)
+          : await action("steer", submission.params as CommandParams<"steer">);
     } catch (cause) {
       const error = cause as Error & { submissionUnknown?: boolean; requestId?: string };
       if (error.submissionUnknown && error.requestId && comments.length) {

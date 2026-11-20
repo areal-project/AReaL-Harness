@@ -30,6 +30,7 @@ impl Engine {
         input: Vec<Input>,
         cancel: CancellationToken,
     ) -> Result<Turn> {
+        self.require_execution_configuration()?;
         self.refresh_plugins().await?;
         let _admission = self.tasks.token();
         let _gate = self.desktop.lifecycle.gate.lock().await;

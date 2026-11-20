@@ -164,6 +164,8 @@ class DesktopService {
     /** @type {number|null} */ this.idleSince = Date.now();
     this.closed = false;
     /** @type {InstanceType<typeof NativeRemote>|undefined} */ this.remote = undefined;
+    /** @type {Promise<InstanceType<typeof NativeRemote>>|undefined} */ this.remoteInitialization =
+      undefined;
     /** @type {ServiceSocket|null|undefined} */ this.computerSocket = undefined;
     backend.desktopToolOwner = () =>
       !this.closed && connected(this.computerSocket) ? this.computerSocket : null;
@@ -851,7 +853,11 @@ class DesktopService {
     await this.lifecycle?.init();
     await this.lifecycle?.reconcileLoaded();
     this.backend.host.client.requireCapability("remoteGatewayV1");
-    await this.initRemote();
+    // 手机身份可能等待安全存储；它只阻塞手机命令，不阻塞普通设置与供应商目录。
+    this.remoteInitialization = this.initRemote();
+    void this.remoteInitialization.catch(() => {
+      if (!this.closed) this.schedule();
+    });
     this.startObservers();
   }
   startObservers() {
@@ -1266,6 +1272,7 @@ class DesktopService {
         return response;
       }
       if (method === "remoteControl") {
+        await this.remoteInitialization;
         if (!this.remote) throw new Error("手机连接未初始化");
         this.inflight++;
         try {
@@ -1552,7 +1559,8 @@ class DesktopService {
       if (this.closed || this.exitRequested || this.backend.closing)
         throw new Error("Desktop is closing");
       if (this.remote?.closed) {
-        const remote = await this.initRemote();
+        this.remoteInitialization = this.initRemote();
+        const remote = await this.remoteInitialization;
         if (remote.closed || !remote.storageAvailable())
           throw new Error(remote.directError || remote.relayError || "Remote recovery failed");
       }

@@ -169,3 +169,40 @@ test("marked test roots cannot redirect preflight to a real user profile", async
     /Invalid isolated upgrade test root/,
   );
 });
+
+test("development defaults never share installed Host or configuration homes", (t) => {
+  const { serviceOptions } = require("../app/src/core/service-config.cjs");
+  const variables = [
+    "AREAL_HARNESS_SERVICE_HOME",
+    "AREAL_HARNESS_HOME",
+    "AREAL_CORE_USER_HOME",
+    "AREAL_CORE_BIN",
+  ];
+  const previous = Object.fromEntries(variables.map((key) => [key, process.env[key]]));
+  for (const key of variables) delete process.env[key];
+  t.after(() => {
+    for (const key of variables) {
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+    }
+  });
+  process.env.AREAL_CORE_BIN = "/tmp/areal-fixture";
+  const app = (profile, isPackaged) => ({
+    isPackaged,
+    getPath: (name) => (name === "userData" ? profile : "/tmp/areal-user"),
+  });
+  const installed = serviceOptions(app("/tmp/installed-profile", true));
+  const first = serviceOptions(app("/tmp/dev-profile-one", false));
+  const second = serviceOptions(app("/tmp/dev-profile-two", false));
+  assert.notEqual(first.hostHome, installed.hostHome);
+  assert.notEqual(first.configHome, installed.configHome);
+  assert.notEqual(first.hostHome, second.hostHome);
+  assert.equal(first.harnessHome, first.hostHome);
+  assert.equal(first.configHome, first.hostHome);
+  assert.equal(serviceOptions(app("/tmp/dev-profile-one", false)).hostHome, first.hostHome);
+  process.env.AREAL_HARNESS_HOME = "/tmp/explicit-isolated-host";
+  assert.equal(
+    serviceOptions(app("/tmp/dev-profile-one", false)).hostHome,
+    "/tmp/explicit-isolated-host",
+  );
+});

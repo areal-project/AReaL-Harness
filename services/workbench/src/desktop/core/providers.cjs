@@ -28,7 +28,7 @@ const { NativeSubscription } = require("./native-subscription.cjs");
 /** @typedef {import('./provider-contract.cjs').ModelSnapshot} ModelSnapshot */
 /** @typedef {import('./provider-contract.cjs').ConfigurationProof} ConfigurationProof */
 /** @typedef {import('./project-state.cjs').CoreProject} CoreProject */
-/** @typedef {{project:CoreProject,client:import('@areal/runtime-client/core').CoreClient,serviceId?:string,generation?:string,proof?:ConfigurationProof}} ProviderTarget */
+/** @typedef {{project:CoreProject,client:import('@areal/runtime-client/core').CoreClient,serviceId?:string,generation?:string,proof?:ConfigurationProof,readOnly?:boolean}} ProviderTarget */
 /** @typedef {{target:ProviderTarget,connectionGeneration?:number,service:SubscriptionService|null,accountRevision?:number,accountLifetime?:AbortController,observeOnly?:boolean}} SubscriptionScope */
 /** @typedef {{requestId:string,serviceId?:string,generation?:string,expectedApplied:import('./provider-contract.cjs').AppliedConfiguration,targetRevision:string,snapshot:ModelSnapshot}} PendingApplication */
 /** @typedef {{operation:string,id?:string,model?:import('./provider-contract.cjs').ModelRef|string|null,expectedRevision?:string,provider?:unknown,authentication?:unknown,apiKey?:unknown,discoverModels?:boolean,connection?:unknown}} ProviderRequest */
@@ -957,9 +957,9 @@ class AppProviders {
       if (this.networkPromise) (await this.networkPromise).close();
     }
   }
-  /** @returns {import("@areal/workbench/desktop-contract/provider").ProviderStatus} */
-  public() {
-    const value = this.config.public();
+  /** @param {ModelSnapshot} [snapshot] @returns {import("@areal/workbench/desktop-contract/provider").ProviderStatus} */
+  public(snapshot) {
+    const value = this.config.public(snapshot);
     const projects = value.projects.map((item) => ({
       ...item,
       application: this.applicationState(this.backend.projects.get(item.projectId), value.revision),
@@ -1000,7 +1000,9 @@ class AppProviders {
         : { kind: "failed", revision, message: failure.message };
     return project.providerRevision === revision &&
       !project.providerError &&
-      (!project.providerProof || this.credentialsReady(project.providerProof, this.snapshot()))
+      (!project.providerProof ||
+        (this.config.value?.revision === revision &&
+          this.credentialsReady(project.providerProof, this.config.value)))
       ? { kind: "applied", revision }
       : { kind: "deferred", revision, reason: "busy" };
   }
@@ -1056,8 +1058,11 @@ class AppProviders {
           if (!this.manages(project)) continue;
           if (this.closed || this.backend.closing) break;
           const state = this.applicationState(project);
-          if (project.client?.ready && ["deferred", "unknown"].includes(state.kind))
-            await this.reconcileProject(project);
+          if (project.client?.ready && ["deferred", "unknown"].includes(state.kind)) {
+            if (!this.supportsConfiguration(project))
+              await this.restoreConfigurationService(project);
+            else await this.reconcileProject(project);
+          }
         }
       })()
         .catch(() => {})
@@ -1163,13 +1168,20 @@ class AppProviders {
   async command(rawRequest) {
     const request = providerContract.readRequest("providers", rawRequest);
     if (request.operation === "list") {
+      const snapshot = await this.config.catalog();
       if (!this.saving && !this.backend.providerUpdating) {
-        await this.config.current();
-        for (const project of this.backend.projects.values())
-          if (project.client?.ready && this.pendingApplications.has(project.id))
-            await this.reconcilePending(this.target(project));
+        // 目录展示不等待钥匙串或项目对账；后台继续核对原回执，不重放提交。
+        void this.config
+          .current()
+          .then(() => {
+            if (!this.closed) {
+              this.requestReconciliation();
+              this.backend.onChange();
+            }
+          })
+          .catch(() => {});
       }
-      return this.public();
+      return this.public(snapshot);
     }
     if (this.saving || this.backend.providerUpdating)
       throw new Error("模型配置正在保存，请稍后重试");
@@ -1593,18 +1605,6 @@ class AppProviders {
       const target = this.target(project);
       await this.inProject(project, async () => {
         this.requireTarget(target);
-        if (
-          !["areal/server/modelConfiguration/read", "areal/server/modelConfiguration/apply"].every(
-            (method) => target.client.capabilities?.methods?.includes(method),
-          )
-        ) {
-          project.providerError = "请更新 Core 后再应用模型配置。";
-          throw new Error(project.providerError);
-        }
-        const reconciled = await this.inspectPending(target);
-        if (reconciled?.pending) throw reconciled.error;
-        target.proof = await this.readProof(target);
-        this.rememberProof(target, target.proof, this.snapshot());
         const status = await target.client.request(
           "areal/server/status",
           {},
@@ -1612,6 +1612,26 @@ class AppProviders {
         );
         this.requireTarget(target);
         if (!status.restartSafe) throw new Error("任务或终端正在运行，完成后再保存；修改仍保留。");
+        if (status.executionReady === false) {
+          if (this.pendingApplications.has(project.id))
+            throw new Error("原模型配置操作结果尚未确认，请先核对原回执。");
+          target.readOnly = true;
+          return;
+        }
+        if (
+          !["areal/server/modelConfiguration/read", "areal/server/modelConfiguration/apply"].every(
+            (method) => target.client.capabilities?.methods?.includes(method),
+          )
+        ) {
+          if (this.pendingApplications.has(project.id))
+            throw new Error("原模型配置操作结果尚未确认，请先核对原回执。");
+          target.readOnly = true;
+          return;
+        }
+        const reconciled = await this.inspectPending(target);
+        if (reconciled?.pending) throw reconciled.error;
+        target.proof = await this.readProof(target);
+        this.rememberProof(target, target.proof, this.snapshot());
       });
       targets.push(target);
     }
@@ -1620,10 +1640,27 @@ class AppProviders {
   /** @param {ModelSnapshot} snapshot @param {ProviderTarget[]} [targets] */
   async applyProjects(snapshot, targets) {
     const outcomes = [];
-    for (const target of targets ?? (await this.prepareProjects()))
-      outcomes.push(
-        await this.inProject(target.project, () => this.applyProject(snapshot, target)),
-      );
+    for (const target of targets ?? (await this.prepareProjects())) {
+      if (target.readOnly) {
+        try {
+          this.requireTarget(target);
+          // 基础读取服务没有执行部署。沿既有生命周期回执安全重建，不能重放旧 apply。
+          await this.backend.restartProject(target.project, {
+            expectedRevision: snapshot.revision,
+          });
+          const restored = this.target(target.project);
+          const proof = await this.readProof(restored);
+          await this.confirmProof(restored, proof, snapshot);
+          outcomes.push({ target: restored, applied: true });
+        } catch (error) {
+          outcomes.push({ target, applied: false, error });
+        }
+      } else {
+        outcomes.push(
+          await this.inProject(target.project, () => this.applyProject(snapshot, target)),
+        );
+      }
+    }
     return outcomes;
   }
   /** @param {ModelSnapshot} snapshot @param {ProviderTarget} target @returns {Promise<ApplyOutcome>} */
@@ -1718,6 +1755,50 @@ class AppProviders {
     }
   }
   /** @param {CoreProject} project */
+  supportsConfiguration(project) {
+    return ["areal/server/modelConfiguration/read", "areal/server/modelConfiguration/apply"].every(
+      (method) => project.client?.capabilities?.methods?.includes(method),
+    );
+  }
+  /** @param {CoreProject} project */
+  async restoreConfigurationService(project) {
+    if (this.closed || this.backend.closing || this.pendingApplications.has(project.id)) return;
+    if (
+      this.backend.providerUpdating ||
+      this.backend.resourcesUpdating ||
+      this.backend.activeCommands ||
+      this.backend.starting.size ||
+      this.backend.hasWork()
+    )
+      return;
+    const target = this.target(project);
+    const snapshot = await this.config.current();
+    try {
+      const status = await target.client.request(
+        "areal/server/status",
+        {},
+        {
+          decode: providerContract.serverStatus,
+        },
+      );
+      this.requireTarget(target);
+      if (!status.restartSafe || this.closed || this.backend.closing) return;
+      await this.acquireUpdate("正在完成当前操作。");
+      try {
+        this.requireTarget(target);
+        if (this.closed || this.backend.closing) return;
+        // 通过现有停止回执切换后台；在项目应用队列外执行，避免重连等待自己。
+        await this.backend.restartProject(project, { expectedRevision: snapshot.revision });
+        if (!this.supportsConfiguration(project))
+          throw new Error("应用暂时无法完成连接，请重启应用后重试。");
+      } finally {
+        this.backend.providerUpdating = false;
+      }
+    } catch (error) {
+      this.applicationFailed(this.target(project), snapshot.revision, error);
+    }
+  }
+  /** @param {CoreProject} project */
   reconcileProject(project, { refreshModels = true } = {}) {
     if (!this.manages(project)) return Promise.resolve();
     const target = this.target(project);
@@ -1733,13 +1814,12 @@ class AppProviders {
           try {
             if (this.closed || this.backend.closing) return;
             this.requireTarget(target);
-            if (
-              ![
-                "areal/server/modelConfiguration/read",
-                "areal/server/modelConfiguration/apply",
-              ].every((method) => target.client.capabilities?.methods?.includes(method))
-            )
-              throw new Error("请更新 Core 后再应用模型配置。");
+            if (!this.supportsConfiguration(project)) {
+              project.providerRevision = undefined;
+              project.providerError = null;
+              this.requestReconciliation();
+              return;
+            }
             const reconciled = await this.inspectPending(target, undefined, {
               refreshModels,
             });
@@ -1811,7 +1891,7 @@ class AppProviders {
               this.backend.providerUpdating = false;
             }
           } catch (error) {
-            this.applicationFailed(target, this.snapshot().revision, error);
+            this.applicationFailed(target, this.config.value?.revision ?? "unavailable", error);
           } finally {
             this.backend.onChange();
             if (

@@ -162,7 +162,9 @@ class ProjectConnections {
             throw new Error("任务所有者已移除");
           this.requireConnection(project, client);
           if (!client.ready || (project.connectionGeneration ?? 0) !== generation)
-            throw Object.assign(new Error("连接已换代，请重试"), { code: "STALE_CONNECTION" });
+            throw Object.assign(new Error("连接已换代，请重试"), {
+              code: "STALE_CONNECTION",
+            });
           resolve({ ...connection, client });
         } catch (failure) {
           reject(failure);
@@ -215,8 +217,10 @@ class ProjectConnections {
       project.resourceInitializing ||
       !project.service ||
       project.reconnectBlocked ||
+      (project.binaryUpdatePending &&
+        this.host.lifecycleOperations.schedulingSuppressed(project.id)) ||
       project.reconnectTimer ||
-      project.client?.ready
+      (project.client?.ready && !project.binaryUpdatePending)
     )
       return;
     const delay = project.reconnectAttempt
@@ -226,9 +230,12 @@ class ProjectConnections {
       project.reconnectTimer = null;
       if (
         this.host.closing ||
+        (project.binaryUpdatePending && this.host.projects.get(project.id) !== project) ||
         !project.service ||
         project.reconnectBlocked ||
-        project.client?.ready
+        (project.binaryUpdatePending &&
+          this.host.lifecycleOperations.schedulingSuppressed(project.id)) ||
+        (project.client?.ready && !project.binaryUpdatePending)
       )
         return;
       if (
@@ -239,7 +246,11 @@ class ProjectConnections {
         this.scheduleReconnect(project);
         return;
       }
-      const task = this.reconnectProject(project)
+      const task = (
+        project.binaryUpdatePending
+          ? this.host.startProject(project.id)
+          : this.reconnectProject(project)
+      )
         .catch(
           /** @param {unknown} error */ (error) => {
             if (!this.host.closing) {
@@ -504,9 +515,20 @@ class ProjectConnections {
         this.requireConnection(project, client);
       }
       trace.advance("provider_configuration");
+      const execution = await client.request(
+        "areal/server/status",
+        {},
+        {
+          decode: require("./provider-contract.cjs").serverStatus,
+        },
+      );
+      this.requireConnection(project, client);
+      project.executionError = execution.executionReady
+        ? null
+        : (execution.executionError ?? "执行配置不可用，历史仍可查看。");
       await this.host.providers.reconcileProject(project, { refreshModels: false });
       this.requireConnection(project, client);
-      if (!observeOnly) {
+      if (!observeOnly && !project.executionError) {
         trace.advance("providers");
         await this.host.providers.syncLocal(project);
         this.requireConnection(project, client);

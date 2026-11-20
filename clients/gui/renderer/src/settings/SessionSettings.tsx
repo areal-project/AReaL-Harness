@@ -11,18 +11,11 @@ import { Switch } from "../components/ui/switch.js";
 import type { Action, Data } from "../services.js";
 import { EmptySettings, Feedback } from "./common.js";
 
-import { NewSessionModelSetting } from "./NewSessionModelSetting.js";
 import { useDraftBlocker } from "./UnsavedChanges.js";
 
 const storageKeyFor = (projectId?: string, threadId?: string) =>
   `areal-gui:thread-config:${projectId}:${threadId}`;
 const skillKey = (skill: Data) => `${skill.id}/${skill.revision}`;
-const modelValue = (model: Data | null | undefined) =>
-  model?.providerId && model?.modelId ? `${model.providerId}/${model.modelId}` : "";
-const parseModel = (value: string) => {
-  const slash = value.indexOf("/");
-  return slash > 0 ? { providerId: value.slice(0, slash), modelId: value.slice(slash + 1) } : null;
-};
 const parseSkill = (value: string) => {
   const slash = value.indexOf("/");
   return { id: value.slice(0, slash), revision: value.slice(slash + 1) };
@@ -97,7 +90,6 @@ export function SessionSettings({
   const [readback, setReadback] = useState<Data | null>(null);
   const [rereadRevision, setRereadRevision] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
-  const [defaultBusy, setDefaultBusy] = useState(false);
   const [error, setError] = useState<string | UiMessage>("");
   const [message, setMessage] = useState<string | UiMessage>("");
   const threadPending = (project?.pending ?? []).filter(
@@ -108,8 +100,7 @@ export function SessionSettings({
   );
   const unknown = !!draft?.unknown || pendingConfig;
   const running = !!thread?.turns?.some((turn: Data) => turn.status === "inProgress");
-  const fieldsDisabled =
-    busy || defaultBusy || !!thread?.desktop?.archived || running || threadPending.length > 0;
+  const fieldsDisabled = busy || !!thread?.desktop?.archived || running || threadPending.length > 0;
   useEffect(() => {
     if (ready.current || !configuration) return;
     ready.current = true;
@@ -133,7 +124,7 @@ export function SessionSettings({
   useDraftBlocker({
     label: { id: "settings.sessionSettings.sessionSettings" },
     dirty,
-    busy: busy || defaultBusy,
+    busy: busy,
     discard: () => {
       localStorage.removeItem(storageKey);
       if (configuration) {
@@ -159,33 +150,12 @@ export function SessionSettings({
       await saveRef.current(draft?.baseRevision);
     },
   });
-  const newSessionSetting = (
-    <NewSessionModelSetting
-      action={action}
-      disabled={busy || dirty}
-      onBusyChange={setDefaultBusy}
-    />
-  );
   if (!project || !thread || !configuration || !draft)
     return (
-      <>
-        {newSessionSetting}
-        <EmptySettings>{t("settings.sessionSettings.selectATaskToEditItsSession")}</EmptySettings>
-      </>
+      <EmptySettings>{t("settings.sessionSettings.selectATaskToEditItsSession")}</EmptySettings>
     );
   const profileLocked = configuration.profile?.readOnly === true;
   const profileSkills: Data[] = configuration.profile?.skills ?? [];
-  const models = (project.models ?? []).filter(
-    (model: Data) => model.providerId && model.modelId && model.available !== false,
-  );
-  if (
-    draft.model &&
-    !models.some(
-      (model: Data) =>
-        model.providerId === draft.model.providerId && model.modelId === draft.model.modelId,
-    )
-  )
-    models.unshift(draft.model);
   const selectedSkills =
     draft.skillMode === "profile" ? [] : (draft.skills as string[]).map(parseSkill);
   const applyLatest = (latest: Data, notice: UiMessage) => {
@@ -230,7 +200,9 @@ export function SessionSettings({
         throw new UiMessageError({
           id: "settings.sessionSettings.sessionSettingsWereSavedButCouldNot",
         });
-      applyLatest(latest.configuration, { id: "settings.sessionSettings.sessionSettingsSaved" });
+      applyLatest(latest.configuration, {
+        id: "settings.sessionSettings.sessionSettingsSaved",
+      });
     } catch (cause) {
       const failure = cause as Error & { submissionUnknown?: boolean };
       if (failure.submissionUnknown) {
@@ -264,7 +236,9 @@ export function SessionSettings({
       });
       setReadback(latest.configuration);
       setRereadRevision(latest.configuration.revision);
-      setMessage({ id: "settings.sessionSettings.currentSessionSettingsReloadedYourDraftIs" });
+      setMessage({
+        id: "settings.sessionSettings.currentSessionSettingsReloadedYourDraftIs",
+      });
     } catch (cause) {
       setError(cause instanceof UiMessageError ? cause.descriptor : (cause as Error).message);
     } finally {
@@ -293,7 +267,6 @@ export function SessionSettings({
   };
   return (
     <>
-      {newSessionSetting}
       <form
         className="settings-form"
         noValidate
@@ -303,30 +276,6 @@ export function SessionSettings({
         }}
       >
         <fieldset disabled={fieldsDisabled} className="m-0 space-y-6 border-0 p-0">
-          <SettingsSection
-            title={t("settings.sessionSettings.sessionModel")}
-            description={t("settings.sessionSettings.newMessagesUseThisModelQueuedMessages")}
-          >
-            <SettingsGroupCard>
-              <SettingsRow
-                label={t("settings.sessionSettings.model")}
-                control={
-                  <SettingsSelect
-                    aria-label={t("settings.sessionSettings.sessionModel")}
-                    value={modelValue(draft.model)}
-                    onValueChange={(selectedValue) => update({ model: parseModel(selectedValue) })}
-                  >
-                    <option value="">{t("settings.sessionSettings.presetOrServiceDefault")}</option>
-                    {models.map((model: Data) => (
-                      <option key={modelValue(model)} value={modelValue(model)}>
-                        {model.displayName || model.modelId}
-                      </option>
-                    ))}
-                  </SettingsSelect>
-                }
-              />
-            </SettingsGroupCard>
-          </SettingsSection>
           <SettingsSection
             title={t("settings.sessionSettings.sessionPermissionsAndSafety")}
             description={t("settings.sessionSettings.appliesToNewMessagesWithinDeploymentAnd")}
@@ -397,7 +346,10 @@ export function SessionSettings({
                   value={draft.options.appendInstructions ?? ""}
                   onChange={(event) =>
                     update({
-                      options: { ...draft.options, appendInstructions: event.target.value },
+                      options: {
+                        ...draft.options,
+                        appendInstructions: event.target.value,
+                      },
                     })
                   }
                 />

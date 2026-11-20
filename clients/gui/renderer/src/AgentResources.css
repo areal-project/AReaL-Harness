@@ -280,12 +280,6 @@
   font-size: var(--text-ui-base);
   font-variant-numeric: tabular-nums;
 }
-/* 有改动时按钮常驻显示 +x −y，不必点开才知道。 */
-.task-resources-trigger .diff-count {
-  margin-left: 0;
-  font-size: var(--text-ui-xs);
-  font-variant-numeric: tabular-nums;
-}
 .task-resources-footer {
   display: flex;
   flex-wrap: wrap;

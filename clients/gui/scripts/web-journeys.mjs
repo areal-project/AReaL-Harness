@@ -6,7 +6,7 @@
 // Linux 没有显示服务时用 xvfb-run 包一层；浏览器下载不到时设 AREAL_CHROMIUM 指向已装好的 Chromium。
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -18,6 +18,11 @@ import {
   startModel,
 } from "./support/journey-fixture.mjs";
 import { expectFeedback, inspectPage, recordToasts } from "./ux-checks.mjs";
+import {
+  cleanupSyntheticHostKeychain,
+  closeSmokeApplication,
+  stopAndAssertFixtureHost,
+} from "./application-cleanup.mjs";
 
 const outIndex = process.argv.indexOf("--out");
 const shots = resolve(
@@ -34,17 +39,51 @@ const model = await startModel();
 const scene = await createScene("areal-web-");
 let browser;
 let page;
+let desktop;
+let cleanupFailure;
 const shot = (step) => page.screenshot({ path: join(shots, `web-${step}.png`) });
+const unknownSend = { armed: false, dropped: false, requestId: null };
+
+// The browser talks to the real Host loopback socket.  For one explicit
+// acceptance case, discard only the response to a send that Host has already
+// accepted, then close the owned proxy pair.  This produces the same UNKNOWN
+// boundary as a lost browser response without replaying the command.
+function dropOneAcceptedSend(socket) {
+  const server = socket.connectToServer();
+  const pending = new Set();
+  socket.onMessage((message) => {
+    const envelope = JSON.parse(message.toString());
+    if (
+      unknownSend.armed &&
+      envelope.method === "session.send" &&
+      envelope.params?.text === "触发 UNKNOWN 核对"
+    ) {
+      unknownSend.armed = false;
+      unknownSend.requestId = envelope.params?.requestId ?? null;
+      pending.add(envelope.id);
+    }
+    server.send(message);
+  });
+  server.onMessage((message) => {
+    const envelope = JSON.parse(message.toString());
+    if (pending.has(envelope.id) && envelope.result && !envelope.error) {
+      pending.delete(envelope.id);
+      unknownSend.dropped = true;
+      void Promise.allSettled([socket.close(), server.close()]);
+      return;
+    }
+    socket.send(message);
+  });
+}
 
 try {
   // 引导：桌面第一次启动时登记资料库来源并让 Host 记住后台启动参数，然后关闭。
-  const desktop = await scene.launchDesktop("web", model.port);
+  desktop = await scene.launchDesktop("web", model.port);
   const env = desktop.env;
   const { port } = JSON.parse(
     await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/web-bind.json"), "utf8"),
   );
-  await desktop.close();
-  console.log(`… Host 网页在 127.0.0.1:${port}，桌面窗口已关闭`);
+  console.log(`… Host 网页在 127.0.0.1:${port}，保留 Electron owner 直到网页旅程结束`);
 
   browser = await playwright.chromium.launch({
     executablePath: process.env.AREAL_CHROMIUM || undefined,
@@ -54,6 +93,7 @@ try {
     viewport: { width: 1440, height: 900 },
     locale: "zh-CN",
   });
+  await context.routeWebSocket(/\/host\/socket$/, dropOneAcceptedSend);
   await context.addInitScript(recordToasts);
   page = await context.newPage();
   page.setDefaultTimeout(20_000);
@@ -85,9 +125,54 @@ try {
   if (await choice.isVisible().catch(() => false)) await choice.click();
   const create = page.locator('button[aria-label="在项目 demo 中新建对话"]');
   await create.waitFor({ timeout: 60_000 });
+  await page.waitForFunction(
+    () => {
+      const button = document.querySelector('button[aria-label="在项目 demo 中新建对话"]');
+      return button instanceof HTMLButtonElement && !button.disabled;
+    },
+    { timeout: 60_000 },
+  );
   await shot("project");
   record(await inspectPage(page, "W1 网页打开项目"));
   await create.click({ force: true });
+
+  const workbench = page.getByTestId("areal-workbench");
+  await page.waitForFunction(
+    () => {
+      const element = document.querySelector('[data-testid="areal-workbench"]');
+      return (
+        !!element?.getAttribute("data-project-id") && !!element?.getAttribute("data-thread-id")
+      );
+    },
+    { timeout: 60_000 },
+  );
+  const projectId = await workbench.getAttribute("data-project-id");
+  const threadId = await workbench.getAttribute("data-thread-id");
+  assert.ok(projectId && threadId, "网页工作台暴露项目和会话身份");
+  const mainComment = {
+    id: "web-main-review-comment",
+    path: "src/math.ts",
+    root: scene.project,
+    scope: "working-tree",
+    ref: "",
+    token: "web-journey-review",
+    head: "head",
+    base: "base",
+    side: "additions",
+    start: 1,
+    end: 1,
+    snippet: "export const add = (a: number, b: number) => a + b;",
+    body: "网页主会话结构化评论",
+  };
+  const mainReviewKey = `areal-gui:review-comments:${projectId}:${threadId}`;
+  await page.evaluate(
+    ({ key, comment }) => {
+      localStorage.setItem(key, JSON.stringify({ comments: [comment], attachedIds: [comment.id] }));
+      window.dispatchEvent(new CustomEvent("areal-review-comments-change", { detail: key }));
+    },
+    { key: mainReviewKey, comment: mainComment },
+  );
+  await page.getByRole("button", { name: "1 个评论", exact: true }).waitFor();
 
   // 旅程 W2：发送 → 审批卡出现、输入框仍在 → 审批中继续排队 → 允许 → 本轮完成。
   const input = page.getByTestId("chat-input").first();
@@ -117,15 +202,71 @@ try {
     .getByText(reply.split("\n")[0].replace("## ", ""))
     .first()
     .waitFor({ timeout: 60_000 });
+  const sentMainComment = page.getByRole("button", { name: "已发送的 1 个评论", exact: true });
+  await sentMainComment.waitFor();
+  await sentMainComment.click();
+  await page.getByText(mainComment.body, { exact: true }).waitFor();
+
+  // 旅程 W2b：真实 Host 已受理但浏览器丢失回执。自动核对原 requestId
+  // 后只消费该评论，历史里的结构化 part 仍来自 Core 的权威快照。
+  const unknownComment = {
+    ...mainComment,
+    id: "web-unknown-review-comment",
+    body: "网页 UNKNOWN 后核对的评论",
+  };
+  await page.evaluate(
+    ({ key, comment }) => {
+      localStorage.setItem(key, JSON.stringify({ comments: [comment], attachedIds: [comment.id] }));
+      window.dispatchEvent(new CustomEvent("areal-review-comments-change", { detail: key }));
+    },
+    { key: mainReviewKey, comment: unknownComment },
+  );
+  unknownSend.armed = true;
+  await input.fill("触发 UNKNOWN 核对");
+  await sendReady(page);
+  await input.press("Enter");
+  await page.waitForFunction(
+    (key) => JSON.parse(localStorage.getItem(key) || "{}").submission?.requestId,
+    mainReviewKey,
+    { timeout: 60_000 },
+  );
+  await page.reload();
+  await page.getByTestId("chat-input").first().waitFor({ timeout: 60_000 });
+  await page.getByText("网页 UNKNOWN 后核对的评论", { exact: true }).waitFor({ timeout: 60_000 });
+  assert.equal(unknownSend.dropped, true, "真实 Host send 回执被丢失并进入 UNKNOWN 旅程");
+  await page.waitForFunction(
+    (key) => {
+      const value = JSON.parse(localStorage.getItem(key) || '{"comments":[]}');
+      return value.comments.length === 0 && value.submission === undefined;
+    },
+    mainReviewKey,
+    { timeout: 60_000 },
+  );
+  record(await inspectPage(page, "W2b UNKNOWN 原请求核对"));
   await shot("done");
   record(await inspectPage(page, "W2 本轮完成"));
 
   // 旅程 W3：刷新后对话还在（Host 是唯一真相，不靠页面内存）。
   await page.reload();
   await page.getByText("已添加 clamp").first().waitFor({ timeout: 60_000 });
+  await page.getByRole("button", { name: "已发送的 1 个评论", exact: true }).click();
+  await page.getByText(mainComment.body, { exact: true }).waitFor();
   record(await inspectPage(page, "W3 刷新后对话仍在"));
 
   // 旅程 W6：侧边聊天经 Host 附加观察显示：打开、发送后右侧能看到自己的问题和回复进度，不依赖桌面后台快照。
+  const sideComment = {
+    ...mainComment,
+    id: "web-side-review-comment",
+    body: "网页 Side 结构化评论",
+  };
+  const newReviewKey = `areal-gui:review-comments:${projectId}:new`;
+  await page.evaluate(
+    ({ key, comment }) => {
+      localStorage.setItem(key, JSON.stringify({ comments: [comment], attachedIds: [comment.id] }));
+      window.dispatchEvent(new CustomEvent("areal-review-comments-change", { detail: key }));
+    },
+    { key: newReviewKey, comment: sideComment },
+  );
   await input.fill("/side");
   await page
     .getByRole("option", { name: /\/side/ })
@@ -134,6 +275,7 @@ try {
   const sidePane = page.getByTestId("side-chat-pane");
   const sideInput = sidePane.getByTestId("side-chat-input");
   await sideInput.waitFor({ timeout: 60_000 });
+  await sidePane.getByRole("button", { name: "1 个评论", exact: true }).waitFor();
   await sideInput.fill("侧边：这个函数叫什么");
   await sidePane.getByTestId("side-chat-send").click();
   await sidePane.getByText("侧边：这个函数叫什么").first().waitFor({ timeout: 60_000 });
@@ -141,6 +283,23 @@ try {
     .locator('.decision-card, :text("添加 clamp")')
     .first()
     .waitFor({ timeout: 60_000 });
+  const sentSideComment = sidePane.getByRole("button", { name: "已发送的 1 个评论", exact: true });
+  await sentSideComment.waitFor();
+  await sentSideComment.click();
+  await sidePane.getByText(sideComment.body, { exact: true }).waitFor();
+  // Side 页面重载再打开，评论从 Host/Core 投影的历史重新回显。
+  await page.reload();
+  await page.getByTestId("chat-input").first().waitFor({ timeout: 60_000 });
+  await input.fill("/side");
+  await page
+    .getByRole("option", { name: /\/side/ })
+    .first()
+    .click();
+  await page
+    .getByTestId("side-chat-pane")
+    .getByRole("button", { name: "已发送的 1 个评论", exact: true })
+    .click();
+  await page.getByTestId("side-chat-pane").getByText(sideComment.body, { exact: true }).waitFor();
   await shot("side-chat");
   record(await inspectPage(page, "W6 侧边聊天"));
   const sideApproval = sidePane.locator('.decision-card[data-interaction="approval"]');
@@ -188,6 +347,7 @@ try {
 
   assert.deepEqual(pageErrors, [], "页面没有未捕获异常");
 } catch (error) {
+  console.error("旅程失败：", error);
   if (page) {
     await page.screenshot({ path: join(shots, "web-failure.png") }).catch(() => {});
     const text = await page
@@ -199,9 +359,29 @@ try {
   throw error;
 } finally {
   await browser?.close();
-  await scene.dispose();
-  model.close();
+  try {
+    if (desktop) {
+      const pid = desktop.app.process().pid;
+      await closeSmokeApplication(desktop.app);
+      await stopAndAssertFixtureHost(coreBin, desktop.env, shots, { pid });
+      await cleanupSyntheticHostKeychain(desktop.env.AREAL_HARNESS_SERVICE_HOME, scene.scratch);
+      await writeFile(
+        join(shots, "cleanup.json"),
+        JSON.stringify({ electronPid: pid, stopped: true }),
+      );
+      await rm(scene.scratch, { recursive: true, force: true, maxRetries: 5 });
+    } else {
+      await scene.dispose();
+    }
+  } catch (error) {
+    await writeFile(join(shots, "cleanup-error.txt"), String(error)).catch(() => {});
+    cleanupFailure = error;
+    console.error("旅程清理失败：", error);
+  } finally {
+    model.close();
+  }
 }
+if (cleanupFailure) throw cleanupFailure;
 const failed = results.filter((result) => result.problems.length);
 console.log(`${results.length - failed.length}/${results.length} 步通过；截图在 ${shots}`);
 process.exit(failed.length ? 1 : 0);

@@ -17,10 +17,6 @@
     "./feedback-context": "./src/domains/feedback-context.cjs",
     "./desktop/*": "./src/desktop/*",
     "./package.json": "./package.json",
-    "./host-library-store": {
-      "types": "./src/host-library-store.ts",
-      "default": "./src/generated/host-library-store.cjs"
-    },
     "./native-host-transport": { "types": "./src/native-host-transport.ts", "default": "./src/generated/native-host-transport.cjs" },
     "./host-core-client": {
       "types": "./src/host-core-client.ts",

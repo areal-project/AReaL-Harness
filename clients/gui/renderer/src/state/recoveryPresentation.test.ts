@@ -124,3 +124,18 @@ test("migration blocks explain the original stop boundary without releasing unkn
     expect(failure.message).toBe("internal lifecycle detail");
   }
 });
+
+test("service upgrade failures explain recovery instead of suggesting model settings", () => {
+  expect(
+    recoveryMessage(
+      {
+        code: "internalError",
+        message: "service configuration conflict (binaries) for instance fixture",
+      },
+      "view",
+    ),
+  ).toContain("更新");
+  expect(recoveryMessage({ code: "LIFECYCLE_INCOMPLETE", message: "pending" }, "view")).toContain(
+    "连接详情",
+  );
+});

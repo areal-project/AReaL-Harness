@@ -40,7 +40,7 @@ async function check(options, expectedPath, label, explicitSpool = false) {
   const backend = new CoreBackend(options);
   const environment = backend.hooks.environment();
   assert.equal(environment.HOME, options.userHome || process.env.HOME);
-  assert.equal(environment.AREAL_HARNESS_HOME, process.env.AREAL_HARNESS_HOME);
+  assert.equal(environment.AREAL_HARNESS_HOME, options.configHome);
   assert.equal(environment.AREAL_HARNESS_SERVICE_HOME, options.harnessHome);
   const configurationHome = options.configHome;
   const sourceID = createHash("sha256")
@@ -77,24 +77,25 @@ async function check(options, expectedPath, label, explicitSpool = false) {
 }
 const options = serviceOptions(app);
 const initialIdentity = await serviceIdentity(options);
-const defaultFile = await config(join(process.env.HOME, ".areal", "config.toml"), "shared-default");
+// 开发配置与安装版隔离，CLI 读管理配置时仍须遵循同一配置根。
+const installedFile = await config(join(process.env.HOME, ".areal", "config.toml"), "installed");
+const defaultFile = await config(join(options.configHome, "config.toml"), "shared-default");
+assert.notEqual(defaultFile, installedFile);
 assert.equal(
   await serviceIdentity(options),
   initialIdentity,
   "first default configuration save preserves the background identity",
 );
 const sharedSpool = await check(options, defaultFile, "shared-default");
-assert.notEqual(options.harnessHome, options.configHome);
+assert.equal(options.harnessHome, options.configHome);
 process.env.AREAL_HARNESS_SERVICE_HOME = join(scratch, "fixed-registry");
 const registryOptions = serviceOptions(app);
+assert.notEqual(registryOptions.harnessHome, registryOptions.configHome);
 assert.equal(await check(registryOptions, defaultFile, "shared-default"), sharedSpool);
 const defaultIdentity = await serviceIdentity(registryOptions);
 process.env.AREAL_CORE_USER_HOME = join(scratch, "core-user-home");
 const userOptions = serviceOptions(app);
-const userFile = await config(
-  join(process.env.AREAL_CORE_USER_HOME, ".areal", "config.toml"),
-  "core-user-home",
-);
+const userFile = await config(join(userOptions.configHome, "config.toml"), "core-user-home");
 await check(userOptions, userFile, "core-user-home");
 assert.notEqual(await serviceIdentity(userOptions), defaultIdentity);
 process.env.AREAL_HARNESS_HOME = join(scratch, "explicit-home");

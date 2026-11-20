@@ -78,6 +78,42 @@ async fn lost_backend_reply_keeps_the_original_library_command_unknown() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn lost_library_preference_reply_is_not_replayed() {
+    tokio::task::LocalSet::new().run_until(async {
+        let root = tempfile::tempdir().unwrap();
+        let host = Rc::new(crate::server::schedules::tests::fixture(root.path()));
+        let runtime = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+            .map(|path| path.join("node")).find(|path| path.is_file()).expect("Node is required for the workbench boundary test");
+        let runner = root.path().join("lost-reply.cjs");
+        std::fs::write(&runner, r#"
+            const fs = require('node:fs');
+            console.log(JSON.stringify({version:1,event:'ready',methods:['library.command']}));
+            require('node:readline').createInterface({input:process.stdin}).on('line', () => {
+              fs.appendFileSync(process.env.AREAL_WORKBENCH_DATA + '/effects', 'once\n');
+              process.exit(0);
+            });
+        "#).unwrap();
+        let reverse: Reverse = Rc::new(|_, _| Box::pin(async { bail!("FORBIDDEN") }));
+        let backend = Workbench::start(&runtime, &runner, root.path(), reverse).await.unwrap();
+        *host.gateway.workbench.backend.running.borrow_mut() = Some(Rc::new(backend));
+        *host.gateway.workbench.backend.source.borrow_mut() = Some("fixture".into());
+        let command = uuid::Uuid::new_v4().to_string();
+        let request = json!({"method":"library.command","commandId":command,"params":{"sourceId":"fixture","operation":"settings","key":"terminalFontFamily","value":"monospace"}});
+        let first = backend_command(&host, "local", &request).await.unwrap();
+        assert_eq!(first["submissionUnknown"], true);
+        assert_eq!(backend_command(&host, "local", &request).await.unwrap(), first);
+        assert_eq!(std::fs::read_to_string(root.path().join("effects")).unwrap(), "once\n");
+        let mut conflict = request.clone();
+        conflict["params"]["value"] = json!("serif");
+        assert_eq!(backend_command(&host, "local", &conflict).await.unwrap_err().to_string(), "COMMAND_CONFLICT");
+        assert_eq!(backend_receipt(&host, "local", &command).unwrap().unwrap()["submissionUnknown"], true);
+        let other_method = json!({"method":"worktree.command","commandId":command,"params":{"sourceId":"fixture","operation":"worktreeSettings","worktreeRoot":"/isolated","branchPrefix":"fixture"}});
+        assert_eq!(backend_command(&host, "local", &other_method).await.unwrap_err().to_string(), "COMMAND_CONFLICT");
+        host.gateway.workbench.stop_backend().await;
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn lost_provider_reply_keeps_receipt_without_persisting_credentials() {
     tokio::task::LocalSet::new().run_until(async {
         let root = tempfile::tempdir().unwrap();

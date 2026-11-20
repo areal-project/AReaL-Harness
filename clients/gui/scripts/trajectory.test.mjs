@@ -100,6 +100,7 @@ test("capture restart fences configuration changes during original Host cleanup"
     const project = { id: "project", service: { serviceId: "service", generation: "original" } };
     let current = "capture-revision";
     const backend = {
+      stopProjectForUpdate: CoreBackend.prototype.stopProjectForUpdate,
       lifecycleOperations: {
         generation: "desktop",
         assertProject: (id) => assert.equal(id, project.id),
@@ -293,8 +294,8 @@ test(
     releaseApply.resolve();
     const applied = await applying;
     assert.deepEqual(stages, [
-      "areal/server/modelConfiguration/read",
       "areal/server/status",
+      "areal/server/modelConfiguration/read",
       "areal/server/modelConfiguration/apply",
       "areal/model/list",
     ]);

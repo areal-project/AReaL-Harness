@@ -105,7 +105,6 @@ class CoreBackend {
     });
     this.configHome = configHome ?? join(userHome || require("node:os").homedir(), ".areal");
     this.home = home;
-    this.hostLibrary = { home: hostHome, profile: guiProfile };
     this.genUiState = createGenUiState(home);
     this.harnessHome = harnessHome;
     this.config = config;
@@ -408,16 +407,6 @@ class CoreBackend {
     return { hostId: this.host.client.hostId, generation: this.host.client.generation };
   }
 
-  /** 资料库改由 Host 单写（一套协议过渡开关），关掉即回到这里自己写。 @param {boolean} enabled @param {boolean} [required] */
-  useHostLibrary(enabled, required = false) {
-    if (!enabled) return this.library.useStore(null);
-    /** @type {typeof import("@areal/workbench-service/host-library-store")} */
-    const { createHostLibraryStore } = require("@areal/workbench-service/host-library-store");
-    return this.library.useStore({
-      ...createHostLibraryStore({ ...this.hostLibrary, binary: this.binary, library: this.home }),
-      required,
-    });
-  }
   /** @param {string} name @param {unknown} value */
   save(name, value) {
     const contents = JSON.stringify(value);
@@ -521,7 +510,13 @@ class CoreBackend {
       await this.host.resumeMigration(id);
       const project = await this.loadProjectJournal(id);
       if (project.client?.ready && !project.resourceInitializing) {
-        if (resumeScheduling) await this.launch(project, { resumeScheduling: true });
+        if (resumeScheduling || project.binaryUpdatePending)
+          await this.launch(project, { resumeScheduling });
+        if (!project.client?.ready) {
+          await this.connect(project);
+          await this.reconcile(project);
+        }
+        if (project.binaryUpdatePending) this.scheduleReconnect(project);
         trace?.finish("skipped");
         return project;
       }
@@ -541,6 +536,7 @@ class CoreBackend {
         project.resourceInitializing = false;
         project.error = null;
         project.model.connection(true);
+        if (project.binaryUpdatePending) this.scheduleReconnect(project);
         this.onChange();
         trace?.finish("ok");
         return project;
@@ -572,27 +568,41 @@ class CoreBackend {
     const scratch = binding.scratchDir;
     await mkdir(scratch, { recursive: true, mode: 0o700 });
     trace.advance("resources");
-    const resourceDeployment = await this.resources.deployment(project);
+    let historyOnly = false;
+    const resourceDeployment = await this.resources.deployment(project).catch(() => {
+      historyOnly = true;
+      return { path: undefined, profile: undefined, fingerprint: "unavailable" };
+    });
     project.resourceProfile = resourceDeployment.profile;
     project.resourceFingerprint = resourceDeployment.fingerprint;
     trace.advance("provider_prepare");
-    await this.providers.prepare();
-    trace.advance("provider_config");
-    await this.providers.config.current();
+    let providerReady = false;
+    try {
+      await this.providers.prepare();
+      trace.advance("provider_config");
+      await this.providers.config.current();
+      providerReady = true;
+    } catch (error) {
+      // 执行配置失败留在设置诊断中；Core 用已登记的数据目录提供历史读取。
+      project.providerError = desktopError(error).message;
+    }
     project.providerRevision = null;
     delete project.providerSnapshot;
     trace.advance("hooks");
-    const hookDeployment = await this.hooks.launch();
+    const hookDeployment = await this.hooks.launch().catch(() => {
+      historyOnly = true;
+      return { value: {}, revision: "unavailable" };
+    });
     project.hookRevision = null;
     const genUiExtensions = join(directory, "desktop-tool-extensions.json");
     await writeFile(genUiExtensions, JSON.stringify({ ...hookDeployment.value, genUi: true }), {
       mode: 0o600,
     });
-    const providerEnvironment = this.providers.environment();
+    const providerEnvironment = providerReady ? this.providers.environment() : {};
     /** @type {NodeJS.ProcessEnv} */
     const hookEnvironment = this.hooks.environment();
     const credentials = Object.fromEntries(
-      this.providers.snapshot().data.flatMap(({ apiKeyEnv }) => {
+      (providerReady ? this.providers.snapshot().data : []).flatMap(({ apiKeyEnv }) => {
         const value = apiKeyEnv ? hookEnvironment[apiKeyEnv] : undefined;
         return apiKeyEnv && !apiKeyEnv.startsWith("AREAL_CREDENTIAL_") && value
           ? [[apiKeyEnv, value]]
@@ -647,6 +657,7 @@ class CoreBackend {
         read_only_path: [],
         task_credential_command: [],
         no_deployment_mcp: false,
+        history_only: historyOnly,
       },
     };
     return { launchInputs, credentials, dataDir, hookDeployment };
@@ -662,18 +673,43 @@ class CoreBackend {
           ? await this.prepareServiceLaunch(project, trace)
           : undefined;
       trace.advance("service_ensure");
-      const { descriptor, token } = await this.host.ensure(
-        randomUUID(),
-        project.id,
-        launch?.launchInputs,
-        launch?.credentials,
-        resumeScheduling,
-      );
+      const ensure = () =>
+        this.host.ensure(
+          randomUUID(),
+          project.id,
+          launch?.launchInputs,
+          launch?.credentials,
+          resumeScheduling,
+        );
+      let connection;
+      try {
+        connection = await ensure();
+        project.binaryUpdatePending = false;
+      } catch (error) {
+        // 仅升级本工作台管理的二进制；其它配置冲突和未知受理不能通过重启绕过。
+        if (!launch || desktopError(error).code !== "CORE_BINARY_UPDATE_REQUIRED") throw error;
+        const current = await this.host.observe(project.id);
+        project.service = current.descriptor;
+        if (await this.stopProjectForUpdate(project, { deferBusy: true })) {
+          connection = await ensure();
+          project.binaryUpdatePending = false;
+        } else {
+          connection = current;
+          project.binaryUpdatePending = true;
+          project.reconnectAttempt = (project.reconnectAttempt ?? 0) + 1;
+        }
+      }
+      const { descriptor, token } = connection;
       project.service = descriptor;
       project.endpoint = descriptor.endpoint;
       project.token = token;
       trace.advance("configuration_recheck");
-      if (launch && (await this.hooks.current()).revision === launch.hookDeployment.revision)
+      if (
+        launch &&
+        !launch.launchInputs.options.history_only &&
+        !project.binaryUpdatePending &&
+        (await this.hooks.current()).revision === launch.hookDeployment.revision
+      )
         project.hookRevision = launch.hookDeployment.revision;
       trace.finish("ok");
       const attached = startupTrace("core.service_ready", {
@@ -716,8 +752,8 @@ class CoreBackend {
     }
   }
 
-  /** @param {Project} project @param {{expectedRevision?:string}} [options] */
-  async restartProject(project, { expectedRevision } = {}) {
+  /** @param {Project} project @param {{deferBusy?:boolean}} [options] */
+  async stopProjectForUpdate(project, { deferBusy = false } = {}) {
     this.lifecycleOperations.assertProject(project.id);
     if (project.service) {
       const receipt = await this.lifecycleOperations.request({
@@ -733,13 +769,27 @@ class CoreBackend {
           },
         ],
       });
+      // 确定拒绝空闲停止时继续观察原实例；未知或未清理完的停止不能重发。
+      if (
+        deferBusy &&
+        receipt.phase === "blocked" &&
+        !!receipt.targets?.length &&
+        receipt.targets.every((target) => target.phase === "blocked")
+      )
+        return false;
       if (receipt.phase !== "completed")
-        throw Object.assign(new Error("原 Core 尚未停止，不能更新配置"), {
+        throw Object.assign(new Error("服务更新尚未完成，当前对话和草稿已保留。请查看连接详情。"), {
           code: "LIFECYCLE_INCOMPLETE",
           requestId: receipt.requestId,
           lifecycle: receipt,
         });
     }
+    return true;
+  }
+
+  /** @param {Project} project @param {{expectedRevision?:string}} [options] */
+  async restartProject(project, { expectedRevision } = {}) {
+    await this.stopProjectForUpdate(project);
     if (
       expectedRevision !== undefined &&
       (await this.providers.config.current()).revision !== expectedRevision

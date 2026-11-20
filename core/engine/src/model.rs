@@ -1980,7 +1980,7 @@ fn path_extension(path: &str) -> &str {
 pub fn content_from_input(input: &areal_protocol::Input) -> ContentPart {
     use areal_protocol::Input;
     match input {
-        Input::Text { text, .. } => ContentPart::Text(text.clone()),
+        Input::Text { .. } => ContentPart::Text(input.model_text()),
         Input::Image { url, detail } => ContentPart::Image {
             source: MediaSource::Url(url.clone()),
             detail: *detail,

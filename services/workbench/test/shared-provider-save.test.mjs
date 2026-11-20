@@ -15,6 +15,7 @@ function fixture({
   unsupported = false,
   unacceptedError,
   credentials = {},
+  readOnly = false,
 } = {}) {
   const calls = [];
   const original = {
@@ -53,7 +54,10 @@ function fixture({
       capabilities: { methods: unsupported ? [] : [readMethod, applyMethod] },
       async request(method, params) {
         calls.push([method, structuredClone(params)]);
-        if (method === "areal/server/status") return { restartSafe: true };
+        if (method === "areal/server/status")
+          return { restartSafe: true, executionReady: !readOnly };
+        if (method === readMethod && readOnly)
+          throw new Error("execution configuration is unavailable");
         if (method === readMethod)
           return {
             ...structuredClone(proof),
@@ -116,8 +120,16 @@ function fixture({
     resourcesUpdating: false,
     providerUpdating: false,
     onChange() {},
-    async restartProject() {
-      throw new Error("configuration must never restart Core");
+    async restartProject(target, { expectedRevision } = {}) {
+      if (!readOnly && !unsupported)
+        throw new Error("configuration must never restart healthy Core");
+      calls.push(["restart"]);
+      project.client.capabilities.methods = [readMethod, applyMethod];
+      unsupported = false;
+      assert.equal(target, project);
+      assert.equal(expectedRevision, service.config.value.revision);
+      readOnly = false;
+      proof = { ...proof, applied: { revision: expectedRevision, sequence: 0 } };
     },
   };
   const service = new AppProviders(backend, {});
@@ -172,6 +184,14 @@ function fixture({
     },
   };
 }
+
+test("saving configuration restores execution from a history-only service", async () => {
+  const f = fixture({ readOnly: true });
+  const result = await f.service.saveAndApply(f.request);
+  assert.equal(result.pendingApply, false);
+  assert.equal(f.project.providerRevision, result.revision);
+  assert.equal(f.operations.size, 0, "no apply is replayed against the unavailable controller");
+});
 
 test("provider apply fences new commands while an admitted read and its own startup finish", async () => {
   const f = fixture();
@@ -287,4 +307,78 @@ test("shared CLI project applies the saved model configuration", async () => {
   f.backend.host.resolve = () => ({ sourceId: "cli", usesSharedModelConfig: true });
   await f.service.command(f.request);
   assert(f.calls.some(([method]) => method === applyMethod));
+});
+
+test("provider list returns the current catalog without waiting for credentials or project reconciliation", async () => {
+  const f = fixture();
+  const blocked = Promise.withResolvers();
+  f.service.config.current = () => blocked.promise;
+  f.service.config.catalog = async () => f.service.config.value;
+  f.service.pendingApplications.set("p", {});
+  f.service.reconcilePending = () => blocked.promise;
+  try {
+    const result = await Promise.race([
+      f.service.command({ operation: "list" }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("catalog exceeded 300 ms")), 300),
+      ),
+    ]);
+    assert.equal(result.data[0].name, "Original");
+    assert.equal(result.application.kind, "unknown");
+  } finally {
+    blocked.resolve(f.service.config.value);
+    f.service.closed = true;
+    clearTimeout(f.service.reconciliationTimer);
+  }
+});
+
+test("an idle older service is replaced automatically without replaying model commands", async () => {
+  const f = fixture({ unsupported: true });
+  await f.service.restoreConfigurationService(f.project);
+  assert.equal(f.calls.filter(([method]) => method === "restart").length, 1);
+  assert.equal(f.service.supportsConfiguration(f.project), true);
+  assert.equal(f.operations.size, 0);
+  assert.equal(f.backend.providerUpdating, false);
+});
+
+test("automatic service replacement waits for work and unresolved applications", async () => {
+  for (const options of [{ busy: true }, {}]) {
+    const f = fixture({ unsupported: true, ...options });
+    if (!options.busy) f.service.pendingApplications.set("p", { requestId: "unresolved" });
+    await f.service.restoreConfigurationService(f.project);
+    assert.equal(f.calls.filter(([method]) => method === "restart").length, 0);
+    assert.equal(f.service.supportsConfiguration(f.project), false);
+  }
+});
+
+test("connection reconciliation schedules idle replacement outside its own application queue", async (t) => {
+  const f = fixture({ unsupported: true });
+  t.after(() => f.service.close());
+  const replaced = Promise.withResolvers();
+  const restart = f.backend.restartProject;
+  f.backend.restartProject = async (...args) => {
+    assert.equal(f.service.projectApplications.size, 0);
+    await restart(...args);
+    replaced.resolve();
+  };
+  await f.service.reconcileProject(f.project);
+  assert.equal(f.project.providerError, null);
+  assert.equal(f.service.applicationState(f.project).kind, "deferred");
+  await Promise.race([
+    replaced.promise,
+    new Promise((_, reject) => {
+      const timer = setTimeout(() => reject(new Error("replacement was not scheduled")), 1000);
+      t.after(() => clearTimeout(timer));
+    }),
+  ]);
+  assert.equal(f.service.supportsConfiguration(f.project), true);
+});
+
+test("a replacement that still lacks capabilities fails once instead of restarting repeatedly", async () => {
+  const f = fixture({ unsupported: true });
+  f.backend.restartProject = async () => f.calls.push(["restart"]);
+  await f.service.restoreConfigurationService(f.project);
+  assert.equal(f.service.applicationState(f.project).kind, "failed");
+  assert.doesNotMatch(f.project.providerError, /Core/);
+  assert.equal(f.backend.providerUpdating, false);
 });

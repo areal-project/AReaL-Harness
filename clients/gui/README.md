@@ -391,6 +391,8 @@ Relay 的 `node_modules` 通过独立资源映射打包，避免 electron-builde
 
 内部 Relay 测试包可在打包时设置 `AREAL_GUI_RELAY_CA_CERT=/absolute/ca.pem`，将自签名 CA 公共证书内置到应用。仅 Relay 的 HTTPS 登记与 WSS 连接额外信任该 CA，仍校验证书链、有效期和主机名；登记码由用户在客户端填写。CA 私钥不得进入包。手机端仍需自行安装并信任同一 CA，再扫码并在电脑确认设备授权。
 
+`dist` 和 `make gui-package` 默认要求 Developer ID 签名与公证（`CSC_NAME`、`APPLE_KEYCHAIN_PROFILE`）；本地候选需显式指定 `--signing adhoc` 或 `--signing none`，不能作为正式升级包。内置 Host 的签名标识跨构建保持稳定，以保留钥匙串授权身份。从旧 ad-hoc 或不同标识的包切换时仍可能需要一次钥匙串授权，不要删除已有凭据条目。开发 GUI 默认使用按资料目录隔离的 `~/.areal-dev/<hash>` Host 与配置目录；显式环境变量仍优先，测试须指定隔离路径。
+
 `--formats` 可选 `dmg`、`zip` 或 `dmg,zip`；`--output` 指定全新目录，默认生成独立时间戳目录，拒绝覆盖。`none` 不做分发签名，保留输入已有签名；原生 Helper 构建仍使用 ad-hoc 签名，不保证应用签名有效或可启动；DMG 仅对字节完全一致的双份 Framework 去重。`adhoc` 是本地签名，不做公证。`developer-id` 复用现有签名、公证及安装包验收，要求两种格式；最终产物位于输出的 `signed/`，Apple 尚在处理时退出 2，使用 `pnpm --dir clients/gui run sign:mac --resume --output /absolute/output/signed` 恢复，不能重新提交未知状态的请求。此命令不发布。
 
 仅需签名、公证和归档时，Developer ID 命令可加 `--skip-tests`；恢复同一公证时也可用 `sign:mac --resume --skip-tests --output ...`。它跳过签名后的桌面 smoke 与模型专项，回执标记为 `skipped-by-request`；签名、Apple 公证、stapling、Gatekeeper、Core 完整性及 DMG 体积检查仍执行。签名前的历史输入预检保留。此模式不能宣称功能验收通过，正式发布整理仍要求测试通过。
@@ -401,13 +403,13 @@ Relay 的 `node_modules` 通过独立资源映射打包，避免 electron-builde
 
 ```sh
 make release
-AREAL_CORE_PROFILE=release AREAL_GUI_PACKAGE_DIR=/absolute/new-package make gui-package
+AREAL_CORE_PROFILE=release pnpm --dir clients/gui dist --signing adhoc --output /absolute/new-package
 pnpm --dir clients/gui run sign:mac --app "/absolute/new-package/package/mac-arm64/AReaL Harness GUI.app" \
   --output /absolute/new-signed-directory --identity "Developer ID Application: Name (TEAMID)" \
   --keychain-profile areal-harness
 ```
 
-`gui-package` 只构建 macOS arm64 候选应用，默认使用已构建的 debug Core；安装包使用上面的 release Core。候选输出包含 `.app`、ad-hoc ZIP 和 DMG、依赖清单与 Core 完整性清单，不能作为安装包验收完成结果。`sign:mac` 在独立副本中完成 Developer ID 签名、app/DMG Apple 公证、stapling、Gatekeeper 和通用桌面及模型专项验收；通过后交付其最终 ZIP/DMG。使用全新输出目录，并将包内 Core revision 与最终修复提交绑定。候选包不配置自动更新，签名和公证不执行发布。正式发布与更新频道见[发行流程](../../docs/development/releasing.md#gui-发布)。
+显式 `--signing adhoc` 只构建 macOS arm64 候选应用；安装包要求 release Core 与 Developer ID 签名。候选输出包含 `.app`、ad-hoc ZIP 和 DMG、依赖清单与 Core 完整性清单，不能作为安装包验收完成结果。`sign:mac` 在独立副本中完成 Developer ID 签名、app/DMG Apple 公证、stapling、Gatekeeper 和通用桌面及模型专项验收；通过后交付其最终 ZIP/DMG。使用全新输出目录，并将包内 Core revision 与最终修复提交绑定。候选包不配置自动更新，签名和公证不执行发布。正式发布与更新频道见[发行流程](../../docs/development/releasing.md#gui-发布)。
 
 构建候选包时，可用 `AREAL_GUI_CORE_BUNDLE=/absolute/core-bundle` 复用已冻结的 Core bundle；打包仍校验内嵌组件哈希，正式发布只接受 `release` Core。该设置仅影响打包输入。
 

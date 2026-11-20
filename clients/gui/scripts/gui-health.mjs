@@ -151,9 +151,7 @@ export async function collectHealth({ root = gui, nativeSources, retainedWorkben
   const serviceSources = await Promise.all(
     servicePaths
       .filter((path) =>
-        /\/src\/(?:desktop\/core\/|domains\/|desktop\/workspace-files\.js$|host-library-store\.ts$)/.test(
-          path,
-        ),
+        /\/src\/(?:desktop\/core\/|domains\/|desktop\/workspace-files\.js$)/.test(path),
       )
       .map(async (path) => ({
         path,
@@ -213,7 +211,7 @@ export async function collectHealth({ root = gui, nativeSources, retainedWorkben
       checkedMainFiles,
       "up",
       "app/src",
-      "Main and migrated workbench desktop/core, domains, workspace-files and host-library-store files with @ts-check or TypeScript extension; retains the historical metric name",
+      "Main and migrated workbench desktop/core, domains and workspace-files files with @ts-check or TypeScript extension; retains the historical metric name",
     ),
     mainTypeCoverage: row(
       checkedSources.length ? checkedMainFiles / checkedSources.length : null,

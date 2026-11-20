@@ -110,6 +110,17 @@ function fixture({
     release;
   const backend = {
     host: { sourceId: "fixture", resolve: () => ({ sourceId: "fixture" }) },
+    async hostCall(method, params) {
+      assert.equal(method, "workbench.utility");
+      assert.deepEqual(params, { operation: "modelsCatalog" });
+      return {
+        ...structuredClone(service.config.value),
+        path: "/fixture/models.json",
+        credentialStates: { demo: "notRequired" },
+        credentialSources: { demo: "none" },
+        effective: {},
+      };
+    },
     projects: new Map([["p", project]]),
     starting: new Set(),
     hasWork: () => busy,
@@ -241,7 +252,7 @@ test("one save returns only after the same Core proves the revision and its cata
   assert.equal(response.data[0].parameters.contextWindowTokens, 64000);
   assert.deepEqual(
     f.calls.map((v) => v[0]),
-    [readMethod, "areal/server/status", "write", applyMethod, "areal/model/list"],
+    ["areal/server/status", readMethod, "write", applyMethod, "areal/model/list"],
   );
   assert.equal(f.project.service.generation, "generation-p");
 });
@@ -590,16 +601,22 @@ test("a lost apply receipt reads the original operation and does not submit twic
   assert.equal(f.calls.findLast((v) => v[0] === readMethod)[1].requestId, apply.requestId);
 });
 
-test("a pending apply retains the written revision and reconciles by the original request id", async () => {
+test("a pending apply retains the written revision and reconciles by the original request id", async (t) => {
   const f = fixture({ running: true });
+  t.after(() => f.service.close());
   await assert.rejects(f.service.command(f.request), /确认|等待|应用/);
   assert.equal(f.service.config.value.revision, "revision-1");
   assert.equal(f.project.providerRevision, "old");
   assert.equal(f.service.public().pendingApply, true);
-  await f.service.command({ operation: "list" });
+  const catalog = await f.service.command({ operation: "list" });
+  assert.equal(catalog.revision, "revision-1");
+  assert.equal(catalog.pendingApply, true);
+  await f.service.settled();
   assert.equal(f.calls.filter((v) => v[0] === applyMethod).length, 1);
   assert.equal(f.calls.filter((v) => v[0] === "write").length, 1);
   assert.equal(f.operations.size, 1);
+  const apply = f.calls.find((v) => v[0] === applyMethod)[1];
+  assert.equal(f.calls.findLast((v) => v[0] === readMethod)[1].requestId, apply.requestId);
 });
 
 test("a mismatched receipt cannot report success or overwrite the confirmed Core revision", async () => {

@@ -20,6 +20,7 @@ impl Engine {
                 return Ok(result);
             }
         }
+        self.require_execution_configuration()?;
         self.refresh_plugins().await?;
         self.mutate(move |engine| async move {
             let _gate = engine.desktop.lifecycle.gate.lock().await;
@@ -181,6 +182,7 @@ impl Engine {
         enqueue: bool,
         skill: Option<VersionRef>,
     ) -> Result<Value> {
+        self.require_execution_configuration()?;
         self.refresh_plugins().await?;
         self.mutate(move |engine| async move {
             let _gate = engine.desktop.lifecycle.gate.lock().await;

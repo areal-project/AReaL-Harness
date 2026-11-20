@@ -11,10 +11,11 @@ function fixture(
   connect: (resume: boolean) => Promise<void>,
   recoveryOnly = false,
 ) {
-  vi.stubGlobal("localStorage", { getItem: () => null });
+  vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   const events: string[] = [];
   const command = vi.fn(async (name: string, params: Record<string, unknown>) => {
     events.push(name);
+    if (name === "connectService") return { value: null };
     if (name === "connect") await connect(params.resumeScheduling === true);
     return {
       value: {
@@ -187,4 +188,16 @@ it("default desktop keeps normal opening and explicit scheduling resume on deskt
     resumeScheduling: true,
   });
   expect(f.recoverPersistedHistory.mock.calls.every(([target]) => target === null)).toBe(true);
+});
+
+it.each([true, false])("restores the backend before Host reads on native=%s", async (native) => {
+  const f = fixture(native, async () => {});
+  await f.navigation.selectConversation(owner.projectId, owner.threadId);
+  f.events.length = 0;
+  await f.navigation.restoreConversation(owner, "connect", { connectService: true });
+  expect(f.events.filter((name) => name !== "library")).toEqual([
+    "connectService",
+    "connect",
+    "read",
+  ]);
 });

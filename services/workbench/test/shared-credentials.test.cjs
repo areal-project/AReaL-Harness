@@ -5,6 +5,38 @@ const { ModelConfiguration } = require("../src/desktop/core/model-config.cjs");
 const { catalog } = require("../src/desktop/core/provider-model-catalog.cjs");
 const { configurePluginValues } = require("../src/desktop/core/plugin-configuration.cjs");
 
+test("missing saved entry remains distinct from an unconfigured key and can be recovered", async () => {
+  const reference = "AREAL_CREDENTIAL_saved";
+  let missing = true;
+  const config = new ModelConfiguration(
+    { host: { sourceId: "source" }, projects: new Map() },
+    {
+      read: async () => {
+        if (missing) throw Object.assign(new Error("entry missing"), { code: "storageMissing" });
+        return { value: "synthetic-restored" };
+      },
+    },
+  );
+  config.value = {
+    data: [
+      {
+        id: "saved",
+        apiKeyEnv: reference,
+        endpoint: "https://example.invalid/v1/responses",
+        protocol: "responses",
+      },
+    ],
+  };
+  await config.refreshCredentials([reference]);
+  assert.deepEqual(config.public().credentialErrors, { saved: "storageMissing" });
+  assert.equal(config.references.has(reference), true);
+  assert.equal(config.key(config.value.data[0]), "");
+  missing = false;
+  await config.refreshCredentials([reference]);
+  assert.deepEqual(config.public().credentialErrors, {});
+  assert.equal(config.key(config.value.data[0]), "synthetic-restored");
+});
+
 test("locked orphan does not appear in current providers, active lock appears in catalog", async () => {
   const names = ["AREAL_CREDENTIAL_old", "AREAL_CREDENTIAL_active"];
   const state = { sourceId: "source", credentials: { references: names } };
@@ -174,4 +206,36 @@ test("projectless catalog exposes the active locked provider", async () => {
   };
   const result = await new ProjectlessWorkspaces({ providers }).command({ operation: "catalog" });
   assert.equal(result.models[0].unavailableReason, "storageLocked");
+});
+
+test("catalog uses fresh configuration without waiting for credential reads or replacing the execution snapshot", async () => {
+  const snapshot = {
+    path: "/fixture/config.toml",
+    revision: "new",
+    data: [],
+    defaultModel: null,
+    credentialStates: { active: "checking" },
+    credentialSources: { active: "stored" },
+    effective: {},
+  };
+  const config = new ModelConfiguration(
+    {
+      hostCall: async (method, request) => {
+        assert.equal(method, "workbench.utility");
+        assert.deepEqual(request, { operation: "modelsCatalog" });
+        return structuredClone(snapshot);
+      },
+    },
+    {
+      read: () => {
+        throw new Error("catalog must not open the vault");
+      },
+    },
+  );
+  const prior = { ...snapshot, revision: "old", credentialStates: { active: "available" } };
+  config.value = prior;
+  assert.equal((await config.catalog()).credentialStates.active, "checking");
+  assert.equal(config.value, prior);
+  config.value = { ...prior, revision: "new" };
+  assert.equal((await config.catalog()).credentialStates.active, "available");
 });

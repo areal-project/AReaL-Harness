@@ -27,6 +27,13 @@ import { composerDraftStorage } from "./composerDraftStorage.js";
 import { sideStartConfiguration } from "./side-model-intent.js";
 import { createSideRestore, type SideRestoreState } from "./side-restore.js";
 import type { Action, Data } from "./services.js";
+import {
+  attachedReviewComments,
+  consumeReviewComments,
+  reviewContextParts,
+  reviewCommentKey,
+  useReviewComments,
+} from "./reviewComments.js";
 
 // 编辑器按服务、来源和具体草稿或 Side 隔离；切换目标会卸载旧编辑器。
 export function SideChatPane({
@@ -195,6 +202,9 @@ function SideChatEditor({
   const previewKey = `${owner}:selection-preview`;
   const workspaceAccessKey = `${owner}:workspace-access`;
   const sideId = selected.kind === "side" ? selected.id : "";
+  const reviewKey = reviewCommentKey(project.id, sideId || "new");
+  const reviewDraft = useReviewComments(reviewKey);
+  const reviewComments = attachedReviewComments(reviewDraft.draft);
   const generation = project.core?.connectionGeneration ?? 0;
   const configKey = `${owner}:configuration`;
   const [draftConfig, setDraftConfig] = useState<Data | null>(() => {
@@ -533,6 +543,7 @@ function SideChatEditor({
           operation: "send",
           threadId: sideId,
           text: question,
+          ...(reviewComments.length ? { contextParts: reviewContextParts(reviewComments) } : {}),
         });
       } else {
         const requestId = crypto.randomUUID();
@@ -547,6 +558,7 @@ function SideChatEditor({
           requestId,
           ...(selection ? { selection } : {}),
           ...(anchor ? { anchor } : {}),
+          ...(reviewComments.length ? { contextParts: reviewContextParts(reviewComments) } : {}),
           ...sideStartConfiguration(draftConfig),
         });
         if (!mounted.current || !workspace.isCurrent(token, generation)) return;
@@ -557,6 +569,7 @@ function SideChatEditor({
       }
       if (!mounted.current || !workspace.isCurrent(token, generation)) return;
       plugins.clear();
+      consumeReviewComments(reviewKey, reviewComments);
       workspace.clearAfterSend(token, generation);
       localStorage.removeItem(selectionKey);
       localStorage.removeItem(anchorKey);

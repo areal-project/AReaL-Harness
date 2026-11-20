@@ -704,7 +704,25 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
       app.focus({ steal: true });
       BrowserWindow.getAllWindows()[0].focus();
     });
-    await call("send", { projectId, threadId, text: prompt });
+    const remoteContextPart = {
+      type: "reviewComment",
+      comment: {
+        id: "remote-review-comment",
+        path: "approved.txt",
+        root: workspace,
+        scope: "working-tree",
+        ref: "",
+        token: "remote-review",
+        head: "head",
+        base: "base",
+        side: "additions",
+        start: 1,
+        end: 1,
+        snippet: "approved fixture output",
+        body: "Remote structured review comment",
+      },
+    };
+    await call("send", { projectId, threadId, text: prompt, contextParts: [remoteContextPart] });
     const interaction = await until(
       async () =>
         project(await state())?.state?.interactions[threadId]?.data?.find(
@@ -877,6 +895,13 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
         protocolSnapshot.turns.map((turn) => turn.id),
         [turnId],
       );
+      const remoteUserMessage = protocolSnapshot.turns[0].items.find(
+        (item) => item.type === "userMessage",
+      );
+      assert.equal(
+        remoteUserMessage.content.find((part) => part.type === "text").contextParts[0].comment.body,
+        "Remote structured review comment",
+      );
     } else {
       await remote.locator("#attention-refresh").click();
       await until(
@@ -894,6 +919,8 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
         "original remote turn completed",
       );
       assert.equal(await remote.locator("#remote-session-ui [data-turn-id]").count(), 1);
+      await remote.getByRole("button", { name: "已发送的 1 个评论", exact: true }).click();
+      await remote.getByText("Remote structured review comment", { exact: true }).waitFor();
     }
     assert.equal(await readFile(join(workspace, "approved.txt"), "utf8"), effect);
     assert.deepEqual(stages, ["approval", "completion"]);
@@ -925,6 +952,12 @@ require("electron").dialog.showMessageBox=async (...args)=>{const options=args.a
     assert.deepEqual(
       restored.turns.map((turn) => turn.id),
       [turnId],
+    );
+    const restoredUserMessage = restored.turns[0].items.find((item) => item.type === "userMessage");
+    assert.equal(
+      restoredUserMessage.content.find((part) => part.type === "text").contextParts[0].comment.body,
+      "Remote structured review comment",
+      "Remote 重开历史保留结构化 contextParts",
     );
     const originalDetails = await readTurnToolDetails({
       command: call,

@@ -37,6 +37,7 @@ class ModelConfiguration {
     /** @type {{keys:Record<string,string>,migrated:string[],locked:Set<string>,pending:Set<string>}} */
     this.vault = { keys: {}, migrated: [], locked: new Set(), pending: new Set() };
     /** @type {Set<string>} */ this.references = new Set();
+    /** @type {Map<string, string>} */ this.credentialErrors = new Map();
     /** @type {{data:Array<{id:string,name:string,baseUrl:string,protocol:string,enabled:boolean,models:import('./provider-contract.cjs').ModelConfig[],parameters:import('./provider-contract.cjs').ModelParameters,apiKeyEnv?:string}>,retired?:string[]}|undefined} */
     this.legacy = undefined;
     /** @type {import('./provider-contract.cjs').ModelSnapshot|undefined} */
@@ -75,6 +76,7 @@ class ModelConfiguration {
     if (!strings(names)) throw new Error("Host 凭据来源元数据无效");
     const locked = new Set();
     const pending = new Set();
+    const errors = new Map();
     const keys = Object.fromEntries(
       await Promise.all(
         names.map(async (reference) => {
@@ -94,6 +96,7 @@ class ModelConfiguration {
               throw error;
             if (code === "storageLocked") locked.add(reference);
             if (code === "migrationPending") pending.add(reference);
+            errors.set(reference, code);
             diagnostics.record({
               type: "operation",
               name: "model-configuration",
@@ -110,6 +113,7 @@ class ModelConfiguration {
     );
     this.vault.locked = locked;
     this.vault.pending = pending;
+    this.credentialErrors = errors;
     this.references = new Set(names);
     this.vault.keys = Object.fromEntries(
       Object.entries(keys).filter(([, value]) => value !== null),
@@ -152,6 +156,22 @@ class ModelConfiguration {
     } catch {
       throw new Error("Core 返回了无效的模型配置");
     }
+  }
+  async catalog() {
+    const snapshot = modelSnapshot(
+      await this.backend.hostCall("workbench.utility", {
+        operation: "modelsCatalog",
+      }),
+    );
+    snapshot.refreshing = this.value?.revision !== snapshot.revision;
+    // 只有同一目录版本的诊断可以复用；未检查的凭据不能投影为可用或丢失。
+    if (this.value?.revision === snapshot.revision) {
+      for (const [id, state] of Object.entries(snapshot.credentialStates)) {
+        if (state === "checking" && this.value.credentialStates[id])
+          snapshot.credentialStates[id] = this.value.credentialStates[id];
+      }
+    }
+    return snapshot;
   }
   /** @returns {Promise<import('./provider-contract.cjs').ModelSnapshot>} */
   current() {
@@ -237,6 +257,7 @@ class ModelConfiguration {
     // 用户已明确请求查看，成功的交互读取应立即清除本地的 locked 投影。
     this.vault.keys[reference] = secret;
     this.vault.locked.delete(reference);
+    this.credentialErrors.delete(reference);
     return secret;
   }
   /** @param {{apiKeyEnv?:string}} item */
@@ -271,22 +292,16 @@ class ModelConfiguration {
       ]),
     );
   }
-  public() {
-    const value = this.value;
+  /** @param {import('./provider-contract.cjs').ModelSnapshot} [snapshot] */
+  public(snapshot) {
+    const value = snapshot ?? this.value;
     if (!value) throw new Error("模型配置尚未读取");
     return {
       ...value,
       credentialErrors: Object.fromEntries(
         value.data
-          .filter(
-            (item) =>
-              item.apiKeyEnv &&
-              (this.vault.locked.has(item.apiKeyEnv) || this.vault.pending.has(item.apiKeyEnv)),
-          )
-          .map((item) => [
-            item.id,
-            this.vault.pending.has(item.apiKeyEnv ?? "") ? "migrationPending" : "storageLocked",
-          ]),
+          .filter((item) => item.apiKeyEnv && this.credentialErrors.has(item.apiKeyEnv))
+          .map((item) => [item.id, this.credentialErrors.get(item.apiKeyEnv ?? "")]),
       ),
       data: value.data.map((item) => ({
         ...item,

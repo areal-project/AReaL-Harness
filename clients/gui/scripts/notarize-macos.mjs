@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { preserveSignedPaths } from "./macos-signing-paths.mjs";
+import { createTimings } from "./package-build.mjs";
+import { createSigningFilter, signCoreTools } from "./macos-signing-paths.mjs";
 import { buildMacOSDmg } from "./macos-dmg.mjs";
 import { execFileSync, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -23,69 +24,69 @@ import {
   renameSync,
   statSync,
 } from "node:fs";
-// Core 的摘要校验要求签名后更新清单，并排除后续 Electron 重签。
-async function signCoreTools({ directory, manifest, identity, run }) {
-  const signed = [];
-  for (const relative of [
-    "bin/areal",
-    "libexec/areal/areal-runtime",
-    "libexec/areal/areal-runtime-fs",
-    ...["libexec/areal/shells/bash", "libexec/areal/shells/sh"].filter(
-      (relative) => relative in manifest.files,
-    ),
-  ]) {
-    const binary = join(directory, relative);
-    assert.equal(hash(binary), manifest.files[relative], "Input Core digest differs: " + relative);
-    run("/usr/bin/codesign", [
-      "--force",
-      "--sign",
-      identity,
-      "--options",
-      "runtime",
-      "--timestamp",
-      binary,
-    ]);
-    run("/usr/bin/codesign", ["--verify", "--strict", binary]);
-    manifest.files[relative] = hash(binary);
-    signed.push(binary);
-  }
-  manifest.signing = "Developer ID; verify enclosing app notarization";
-  return signed;
-}
 
 const desktop = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(desktop, "app/package.json"));
 const readJSON = (path) => JSON.parse(readFileSync(path, "utf8"));
 const hash = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
 let output, state, lock;
+const runId = randomUUID();
+const timingEvents = [];
+function timingEvent(event) {
+  timingEvents.push({ runId, ...event });
+  flushTimings();
+}
+function flushTimings() {
+  if (!output || !existsSync(output) || timingEvents.length === 0) return;
+  appendFileSync(
+    join(output, "notarization-timings.jsonl"),
+    timingEvents.map((event) => JSON.stringify(event)).join("\n") + "\n",
+  );
+  timingEvents.length = 0;
+}
+const timings = createTimings((stage) => timingEvent({ type: "stage", ...stage }));
 
 function save() {
+  flushTimings();
   const path = join(output, "notarization.json");
   writeFileSync(path + ".tmp", JSON.stringify(state, null, 2) + "\n");
   // Same-directory rename leaves the previous complete state after interruption.
   renameSync(path + ".tmp", path);
 }
-function record(bin, args, result) {
+function record(bin, args, result, timing) {
   if (output && existsSync(output))
     appendFileSync(
       join(output, "commands.log"),
       JSON.stringify({
         command: [bin, ...args],
+        ...timing,
         exitCode: result.status,
         stdout: String(result.stdout || ""),
         stderr: String(result.stderr || ""),
       }) + "\n",
     );
 }
-function run(bin, args, { allowed = [0], stdout, env = process.env } = {}) {
+function run(bin, args, options = {}) {
+  return timings.measureSync("command:" + basename(bin) + ":" + (args[0] || ""), () =>
+    runCommand(bin, args, options),
+  );
+}
+function runCommand(bin, args, { allowed = [0], stdout, env = process.env } = {}) {
   console.error("→ " + basename(bin) + " " + (args[0] || ""));
+  const startedAt = new Date().toISOString();
+  const start = performance.now();
   const result = spawnSync(bin, args, {
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
     env,
     stdio: ["ignore", stdout ?? "pipe", "pipe"],
   });
-  record(bin, args, result);
+  record(bin, args, result, {
+    runId,
+    startedAt,
+    completedAt: new Date().toISOString(),
+    durationMs: Math.round(performance.now() - start),
+  });
   if (result.error) throw result.error;
   assert.ok(
     allowed.includes(result.status),
@@ -276,10 +277,10 @@ async function main() {
     assert.ok(identity && identity !== "-", "A Developer ID Application identity is required");
     assert.ok(profile && !profile.startsWith("-"), "A Keychain profile is required");
     // Resolve only an exact valid identity, never an ambiguous substring.
-    const inventory = execFileSync(
-      "/usr/bin/security",
-      ["find-identity", "-v", "-p", "codesigning"],
-      { encoding: "utf8" },
+    const inventory = timings.measureSync("resolve-signing-identity", () =>
+      execFileSync("/usr/bin/security", ["find-identity", "-v", "-p", "codesigning"], {
+        encoding: "utf8",
+      }),
     );
     const matches = [...inventory.matchAll(/([A-F0-9]{40}) "([^"]+)"/g)].filter(
       (match) => match[1] === identity || match[2] === identity,
@@ -291,10 +292,12 @@ async function main() {
     );
     const teamId = /^Developer ID Application: .+ \(([A-Z0-9]{10})\)$/.exec(matches[0][2])?.[1];
     assert.ok(teamId, "The certificate must be Developer ID Application");
-    execFileSync(
-      "/usr/bin/xcrun",
-      ["notarytool", "history", "--keychain-profile", profile, "--output-format", "json"],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+    timings.measureSync("validate-notary-profile", () =>
+      execFileSync(
+        "/usr/bin/xcrun",
+        ["notarytool", "history", "--keychain-profile", profile, "--output-format", "json"],
+        { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+      ),
     );
     const builderRequire = createRequire(require.resolve("electron-builder"));
     const { signAsync } = builderRequire("@electron/osx-sign");
@@ -321,36 +324,47 @@ async function main() {
     };
     save();
     const app = join(output, appName);
-    run("/usr/bin/ditto", [source, app]);
+    timings.measureSync("copy-app", () => run("/usr/bin/ditto", [source, app]));
     const core = join(app, "Contents/Resources/areal-core");
-    const ignored = await signCoreTools({
-      directory: core,
-      manifest,
-      identity: state.identity,
-      run,
-    });
-    writeFileSync(join(app, manifestRelative), JSON.stringify(manifest, null, 2) + "\n");
-    await signAsync({
-      app,
-      identity: state.identity,
-      platform: "darwin",
-      type: "distribution",
-      gatekeeperAssess: false,
-      preAutoEntitlements: false,
-      preEmbedProvisioningProfile: false,
-      ignore: preserveSignedPaths(ignored),
-      optionsForFile: () => ({
-        hardenedRuntime: true,
-        entitlements: join(desktop, "scripts/entitlements.mac.plist"),
+    const ignored = await timings.measure("sign-core", () =>
+      signCoreTools({
+        directory: core,
+        manifest,
+        identity: state.identity,
+        run,
       }),
-    });
-    assertApp();
-    // 外层签名不得改变已签 Core 的字节；在任何 Apple 上传前检查，失败保留现场。
-    require(join(desktop, "../../services/workbench/src/desktop/core/bundle.cjs")).verifyCoreBundle(
-      join(app, "Contents/Resources"),
-      { hashes: true },
     );
-    run("/usr/bin/ditto", ["-c", "-k", "--keepParent", app, join(output, "app-submission.zip")]);
+    writeFileSync(join(app, manifestRelative), JSON.stringify(manifest, null, 2) + "\n");
+    await timings.measure("sign-electron", () =>
+      signAsync({
+        app,
+        identity: state.identity,
+        platform: "darwin",
+        type: "distribution",
+        gatekeeperAssess: false,
+        preAutoEntitlements: false,
+        preEmbedProvisioningProfile: false,
+        ignore: createSigningFilter({ app, protectedPaths: ignored }),
+        optionsForFile: (path) => {
+          // 目标开始点用于区分扫描与逐文件签名；不冒充内部 codesign 的精确结束时间。
+          timingEvent({ type: "sign-target", path, startedAt: new Date().toISOString() });
+          return {
+            hardenedRuntime: true,
+            entitlements: join(desktop, "scripts/entitlements.mac.plist"),
+          };
+        },
+      }),
+    );
+    timings.measureSync("verify-signed-app", assertApp);
+    // 外层签名不得改变已签 Core 的字节；在任何 Apple 上传前检查，失败保留现场。
+    timings.measureSync("verify-core-bundle", () =>
+      require(
+        join(desktop, "../../services/workbench/src/desktop/core/bundle.cjs"),
+      ).verifyCoreBundle(join(app, "Contents/Resources"), { hashes: true }),
+    );
+    timings.measureSync("archive-app-submission", () =>
+      run("/usr/bin/ditto", ["-c", "-k", "--keepParent", app, join(output, "app-submission.zip")]),
+    );
     state.phase = "signed";
     save();
   }
@@ -468,15 +482,21 @@ async function main() {
   const zip = join(output, stem + ".zip"),
     dmg = join(output, stem + ".dmg"),
     dmgOnly = state.dmgOnly === true;
-  if (!(await notarize("zip", join(output, "app-submission.zip")))) return;
+  if (
+    !(await timings.measure("notarize-app", () =>
+      notarize("zip", join(output, "app-submission.zip")),
+    ))
+  )
+    return;
   if (state.phase === "signed") {
     run("/usr/bin/xcrun", ["stapler", "staple", app]);
     run("/usr/bin/xcrun", ["stapler", "validate", app]);
     assertApp();
     run("/usr/sbin/spctl", ["--assess", "--type", "execute", "--verbose=2", app]);
-    require(join(desktop, "../../services/workbench/src/desktop/core/bundle.cjs")).verifyCoreBundle(
-      join(app, "Contents/Resources"),
-      { hashes: true },
+    timings.measureSync("verify-core-bundle", () =>
+      require(
+        join(desktop, "../../services/workbench/src/desktop/core/bundle.cjs"),
+      ).verifyCoreBundle(join(app, "Contents/Resources"), { hashes: true }),
     );
     if (options["skip-tests"]) {
       state.packagedGui = "skipped-by-request";
@@ -500,12 +520,17 @@ async function main() {
     save();
     // These paths belong to this locked run and may contain interrupted output.
     for (const path of [zip, dmg]) rmSync(path, { recursive: true, force: true });
-    if (!dmgOnly) run("/usr/bin/ditto", ["-c", "-k", "--keepParent", app, zip]);
-    state.dmgExport = await buildMacOSDmg({
-      app,
-      destination: dmg,
-      volumeName: "AReaL Harness " + state.version,
-    });
+    if (!dmgOnly)
+      timings.measureSync("archive-final-zip", () =>
+        run("/usr/bin/ditto", ["-c", "-k", "--keepParent", app, zip]),
+      );
+    state.dmgExport = await timings.measure("build-dmg", () =>
+      buildMacOSDmg({
+        app,
+        destination: dmg,
+        volumeName: "AReaL Harness " + state.version,
+      }),
+    );
     run("/usr/bin/codesign", ["--force", "--sign", state.identity, "--timestamp", dmg]);
     run("/usr/bin/codesign", ["--verify", "--strict", dmg]);
     const detail = run("/usr/bin/codesign", ["--display", "--verbose=4", dmg]).stderr;
@@ -516,7 +541,11 @@ async function main() {
     save();
   }
   if (!dmgOnly) assert.equal(hash(zip), state.zipSha256, "Final ZIP changed");
-  if (state.phase !== "finalizing" && !(await notarize("dmg", dmg))) return;
+  if (
+    state.phase !== "finalizing" &&
+    !(await timings.measure("notarize-dmg", () => notarize("dmg", dmg)))
+  )
+    return;
   const dmgLog = readJSON(join(output, "dmg-notary-log.json"));
   assert.equal(dmgLog.status, "Accepted", "DMG must have an accepted Apple receipt");
   assert.equal(dmgLog.sha256, state.notarization.dmg.sha256, "DMG receipt digest mismatch");

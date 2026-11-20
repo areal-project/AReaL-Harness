@@ -1536,6 +1536,12 @@ function startDesktop() {
                   computerAdmissionSuspended = false;
                 }
               }
+              // 非原生资料库写入只允许 Host 的带回执入口，不能从 IPC 绕过准入。
+              if (name === "library")
+                throw Object.assign(new Error("资料库操作请通过 Host 提交"), {
+                  code: "CAPABILITY_UNAVAILABLE",
+                  outcome: { kind: "noMutation" },
+                });
               if (name === "exportDiagnostics")
                 return { ok: true, value: await exportDiagnostics() };
               if (

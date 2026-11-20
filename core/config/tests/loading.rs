@@ -15,6 +15,33 @@ fn inputs(root: &Path) -> ConfigInputs {
 }
 
 #[test]
+fn history_configuration_uses_registered_storage_without_execution_inputs() {
+    let root = tempfile::tempdir().unwrap();
+    let mut input = inputs(root.path());
+    let data = root.path().join("registered-state");
+    input.overrides.data_dir = Some(data.clone());
+    write(
+        &mut input,
+        "[model.providers.broken\nsecret-must-not-appear",
+    );
+    input.env.insert(
+        "AREAL_HARNESS_TOOL_EXTENSIONS".into(),
+        "/missing/plugins.json".into(),
+    );
+    let config = load_read_config(&input).unwrap();
+    assert_eq!(config.data_dir, data);
+    assert!(config.model.name.is_empty());
+    assert!(config.model_catalog.is_empty());
+    assert!(config.tool_extensions_file.is_none());
+    assert!(load_management_config(&input).is_err());
+    input.overrides.data_dir = None;
+    assert!(
+        load_read_config(&input).is_err(),
+        "never guess a different history directory"
+    );
+}
+
+#[test]
 fn previous_thinking_option_imports_to_the_current_policy() {
     let root = tempfile::tempdir().unwrap();
     let mut i = inputs(root.path());

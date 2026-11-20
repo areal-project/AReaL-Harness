@@ -95,7 +95,6 @@ export const DESKTOP_COMMANDS = new Set([
   "feedback",
   "fork",
   "history",
-  "library",
   "list",
   "manage",
   "media",
@@ -359,21 +358,6 @@ const ACTIVITY_MS = 5000;
 const IDLE_CAP_SECONDS = 24 * 60 * 60;
 /** 服务没起来或方法未开放时退回桌面原路径；其它错误照常报给界面。 */
 const FALLBACK = new Set(["CAPABILITY_UNAVAILABLE", "methodNotFound", "FORBIDDEN"]);
-const LIBRARY_OPERATIONS = new Set(
-  "renameProject renameThread pinThread pinProject createSection renameSection removeSection orderSection moveThread moveProject readThread markAllRead orderSidebarThread hideProject orderProject orderThread dropSidebar".split(
-    " ",
-  ),
-);
-
-const LIBRARY_SETTINGS = new Set([
-  "sidebarSort",
-  "sidebarSortChats",
-  "sidebarSortProjects",
-  "sidebarSortPinned",
-  "showPinned",
-  "showCompleted",
-]);
-
 /** Host 明确未受理（服务没起来、方法未开放、无权限），可以安全改走桌面原路径。 */
 export function declinedCode(code: unknown) {
   return FALLBACK.has(String(code));
@@ -385,6 +369,13 @@ function declined(error: unknown) {
     typeof error === "object" &&
     FALLBACK.has(String((error as { code?: unknown }).code))
   );
+}
+
+function backendUnavailable(message: string) {
+  return Object.assign(new Error(message), {
+    code: "CAPABILITY_UNAVAILABLE",
+    submissionUnknown: false,
+  });
 }
 
 /**
@@ -445,10 +436,7 @@ export function createWorkbenchRoutes(
 ): NonNullable<PlatformServices["workbench"]> {
   // 写操作不再带来源，但 Host 还没认定工作台后台时先挡住，免得落成“结果未确认”。
   const backendReady = () => {
-    if (!source())
-      throw Object.assign(new Error("工作台后台尚未就绪，请稍后再试"), {
-        submissionUnknown: false,
-      });
+    if (!source()) throw backendUnavailable("工作台后台尚未就绪，请稍后再试");
   };
   let lastInput = Date.now();
   for (const name of ["pointerdown", "pointermove", "keydown", "wheel"])
@@ -465,6 +453,18 @@ export function createWorkbenchRoutes(
   for (const name of ["focus", "blur"]) events?.addEventListener(name, report);
   return {
     async call(name, params) {
+      if (name === "connectService") {
+        if (desktop) {
+          const result = await desktop.command("connectService", {});
+          if (!result.ok) throw result.error;
+        }
+        await client.retry();
+        if (client.snapshot().connection !== "ready")
+          throw Object.assign(new Error("连接暂未恢复，正在自动重连。历史和草稿已保留。"), {
+            code: "DISCONNECTED",
+          });
+        return { value: null };
+      }
       // 原生进程的连接租约归 Main；其薄适配仍经 Host 访问 Core。
       if (desktop && name === "manage" && String(params.operation).startsWith("process"))
         return undefined;
@@ -579,12 +579,9 @@ export function createWorkbenchRoutes(
         }
       }
 
-      if (
-        name === "library" &&
-        (LIBRARY_OPERATIONS.has(String(params.operation)) ||
-          (params.operation === "settings" && LIBRARY_SETTINGS.has(String(params.key)))) &&
-        client.writable("library.command")
-      ) {
+      if (name === "library" && !desktopKeepsCommand(name, params)) {
+        if (!client.writable("library.command"))
+          throw backendUnavailable("资料库服务尚未就绪，请稍后再试");
         backendReady();
         const commandId = crypto.randomUUID();
         // 已派发的写操作不能退回 Main 再做一次；丢失回复保留原 commandId 供查询。
@@ -681,6 +678,9 @@ export function routeDesktopCommand(
   if (!desktop) return hostCommand as Run;
   const native = desktop.command as Run;
   return async (name, params) => {
+    // 非原生资料库操作必须先经过 workbench 的回执路径，不能旁路派发。
+    if (name === "library" && !desktopKeepsCommand(name, params))
+      throw backendUnavailable("资料库操作入口尚未就绪，请重新连接");
     if (!DESKTOP_COMMANDS.has(name) || desktopKeepsCommand(name, params) || !hostReady())
       return native(name, params);
     const result = await (hostCommand as Run)(name, params);

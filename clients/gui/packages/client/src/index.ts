@@ -219,7 +219,7 @@ export class HostClient {
     this.#publishReads({ shell: stale(this.#reads.shell), session: stale(this.#reads.session) });
     this.#watched.markStale();
     const current = () => !this.#closed && epoch === this.#epoch;
-    void (async () => {
+    return (async () => {
       const connection = this.options.transport
         ? await this.options.transport({
             signal: abort.signal,

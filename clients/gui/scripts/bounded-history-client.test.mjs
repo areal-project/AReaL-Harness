@@ -153,6 +153,33 @@ function fixture(
   return { backend, project, calls, history };
 }
 
+test("opening 140 historical threads releases evicted subscriptions and keeps active readers", async () => {
+  const subscriptions = new Set();
+  const f = fixture(async (method, params) => {
+    if (method === "areal/subscription/remove") {
+      for (const id of params.threadIds) subscriptions.delete(id);
+      return { subscriptionCount: subscriptions.size };
+    }
+    assert.equal(method, "areal/thread/observe");
+    assert.ok(subscriptions.size < 128, "subscription limit reached");
+    subscriptions.add(params.threadId);
+    const result = baseline();
+    result.thread.id = params.threadId;
+    result.history = { snapshotId: params.threadId, nextCursor: null, complete: true };
+    return result;
+  });
+  await f.backend.openThread(f.project, "thread");
+  await f.history("acquire");
+  for (let index = 0; index < 140; index++) {
+    const id = `history-${index}`;
+    await f.backend.openThread(f.project, id);
+    assert.ok(f.project.model.state.threads[id], "opened history must remain visible");
+  }
+  assert.ok(subscriptions.has("thread"), "active reader must remain subscribed");
+  assert.ok(subscriptions.has("history-139"));
+  assert.equal(subscriptions.size, 8);
+});
+
 function anchorFixture(count = 12, intercept = async () => {}) {
   return fixture(async (method, params) => {
     if (method === "areal/thread/observe") return baseline();

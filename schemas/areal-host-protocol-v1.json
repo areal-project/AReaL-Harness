@@ -1301,6 +1301,9 @@
         },
         "no_deployment_mcp": {
           "type": "boolean"
+        },
+        "history_only": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -8338,12 +8341,115 @@
           "items": {
             "type": "object"
           }
+        },
+        "contextParts": {
+          "type": "array",
+          "description": "gui-write-v1 only. Structured context parts retained with the user message.",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/ContextPart"
+          }
         }
       },
       "required": [
         "threadId",
         "expectedConfigRevision",
         "text"
+      ],
+      "additionalProperties": false
+    },
+    "ContextPart": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "reviewComment"
+          ]
+        },
+        "comment": {
+          "$ref": "#/$defs/ReviewComment"
+        }
+      },
+      "required": [
+        "type",
+        "comment"
+      ],
+      "additionalProperties": false
+    },
+    "ReviewComment": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "path": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "root": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "scope": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "ref": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "token": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "head": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "base": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "side": {
+          "type": "string",
+          "enum": [
+            "additions",
+            "deletions"
+          ]
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "snippet": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "body": {
+          "type": "string",
+          "maxLength": 65536
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "root",
+        "scope",
+        "ref",
+        "token",
+        "head",
+        "base",
+        "side",
+        "start",
+        "end",
+        "snippet",
+        "body"
       ],
       "additionalProperties": false
     },
@@ -8949,6 +9055,14 @@
                   "maxItems": 32,
                   "items": {
                     "type": "object"
+                  }
+                },
+                "contextParts": {
+                  "type": "array",
+                  "description": "gui-write-v1 only. Structured context parts retained with the user message.",
+                  "maxItems": 32,
+                  "items": {
+                    "$ref": "#/$defs/ContextPart"
                   }
                 }
               },
@@ -16665,94 +16779,6 @@
         }
       ]
     },
-    "LocalLibraryWriteParams": {
-      "type": "object",
-      "description": "Desktop library single writer: Main writes the whole next library.json to a staged file beside it (the library can exceed a 1 MiB frame); Host validates it and replaces library.json only if the file still has expectedDigest (sha256 hex, null when absent).",
-      "properties": {
-        "profile": {
-          "type": "string",
-          "minLength": 1
-        },
-        "expectedDigest": {
-          "anyOf": [
-            {
-              "type": "string",
-              "pattern": "^[0-9a-f]{64}$"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "staged": {
-          "type": "string",
-          "pattern": "^\\.library-next-[0-9a-f-]{36}\\.json$"
-        }
-      },
-      "required": [
-        "profile",
-        "expectedDigest",
-        "staged"
-      ],
-      "additionalProperties": false
-    },
-    "LocalLibraryWriteRequest": {
-      "type": "object",
-      "properties": {
-        "version": {
-          "type": "integer",
-          "const": 1
-        },
-        "id": {
-          "type": "string",
-          "minLength": 1
-        },
-        "method": {
-          "type": "string",
-          "const": "library.write"
-        },
-        "params": {
-          "$ref": "#/$defs/LocalLibraryWriteParams"
-        }
-      },
-      "required": [
-        "version",
-        "id",
-        "method",
-        "params"
-      ],
-      "additionalProperties": false,
-      "examples": [
-        {
-          "version": 1,
-          "id": "example",
-          "method": "library.write",
-          "params": {
-            "profile": "/example",
-            "expectedDigest": null,
-            "staged": ".library-next-11111111-1111-4111-8111-111111111111.json"
-          }
-        }
-      ]
-    },
-    "LocalLibraryWriteResult": {
-      "type": "object",
-      "properties": {
-        "digest": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
-        }
-      },
-      "required": [
-        "digest"
-      ],
-      "additionalProperties": false,
-      "examples": [
-        {
-          "digest": "0000000000000000000000000000000000000000000000000000000000000000"
-        }
-      ]
-    },
     "DesktopBackendOptions": {
       "type": "object",
       "properties": {
@@ -16944,25 +16970,58 @@
     "LocalBackendCredentialNamesResult": {
       "type": "object",
       "properties": {
-        "names": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-        "configurationError": { "type": "boolean" }
+        "names": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "configurationError": {
+          "type": "boolean"
+        }
       },
-      "required": ["names"],
+      "required": [
+        "names"
+      ],
       "additionalProperties": false,
       "examples": [
-        { "names": ["FIXTURE_MODEL_API_KEY"] },
-        { "names": [], "configurationError": true }
+        {
+          "names": [
+            "FIXTURE_MODEL_API_KEY"
+          ]
+        },
+        {
+          "names": [],
+          "configurationError": true
+        }
       ]
     },
     "LocalBackendCredentialNamesRequest": {
       "type": "object",
       "properties": {
-        "version": { "type": "integer", "const": 1 },
-        "id": { "type": "string", "minLength": 1 },
-        "method": { "type": "string", "const": "backend.credentialNames" },
-        "params": { "$ref": "#/$defs/LocalBackendEnsureParams" }
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "backend.credentialNames"
+        },
+        "params": {
+          "$ref": "#/$defs/LocalBackendEnsureParams"
+        }
       },
-      "required": ["version", "id", "method", "params"],
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params"
+      ],
       "additionalProperties": false,
       "examples": [
         {
@@ -17135,12 +17194,32 @@
         "key": {
           "type": "string",
           "enum": [
+            "showPinned",
+            "showCompleted",
+            "permissionNotifications",
+            "questionNotifications",
+            "preventSleep",
+            "showInMenuBar",
+            "betaUpdates",
+            "terminalInheritSystemProfile",
+            "hardwareAcceleration",
+            "taskNotifications",
+            "computerControlShowEntry",
+            "browserFullAddress",
+            "terminalFontFamily",
+            "httpProxy",
+            "httpProxyNoProxy",
+            "httpProxyCaCertPath",
+            "busyEnter",
             "sidebarSort",
             "sidebarSortChats",
             "sidebarSortProjects",
             "sidebarSortPinned",
-            "showPinned",
-            "showCompleted"
+            "turnNotifications",
+            "notificationSound",
+            "fileOpenTarget",
+            "browserLinkTarget",
+            "browserLocalTarget"
           ]
         },
         "value": {
@@ -17150,11 +17229,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "updated_at",
-                "priority",
-                "manual"
-              ]
+              "maxLength": 4096
             }
           ]
         },
@@ -24923,6 +24998,9 @@
           "items": {
             "$ref": "#/$defs/WorkbenchProviderDefinition"
           }
+        },
+        "refreshing": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -35673,7 +35751,6 @@
             "feedback",
             "fork",
             "history",
-            "library",
             "list",
             "manage",
             "media",
@@ -44164,12 +44241,32 @@
         "key": {
           "type": "string",
           "enum": [
+            "showPinned",
+            "showCompleted",
+            "permissionNotifications",
+            "questionNotifications",
+            "preventSleep",
+            "showInMenuBar",
+            "betaUpdates",
+            "terminalInheritSystemProfile",
+            "hardwareAcceleration",
+            "taskNotifications",
+            "computerControlShowEntry",
+            "browserFullAddress",
+            "terminalFontFamily",
+            "httpProxy",
+            "httpProxyNoProxy",
+            "httpProxyCaCertPath",
+            "busyEnter",
             "sidebarSort",
             "sidebarSortChats",
             "sidebarSortProjects",
             "sidebarSortPinned",
-            "showPinned",
-            "showCompleted"
+            "turnNotifications",
+            "notificationSound",
+            "fileOpenTarget",
+            "browserLinkTarget",
+            "browserLocalTarget"
           ]
         },
         "value": {
@@ -44179,11 +44276,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                "updated_at",
-                "priority",
-                "manual"
-              ]
+              "maxLength": 4096
             }
           ]
         },
@@ -61220,6 +61313,7 @@
             "operation": {
               "type": "string",
               "enum": [
+                "modelsCatalog",
                 "modelsRead",
                 "configShow",
                 "feedbackStatus"
@@ -66193,11 +66287,6 @@
           "request": "#/$defs/LocalWebRevokeRequest",
           "result": "#/$defs/LocalWebRevokeResult",
           "source": "core/host/src/server.rs"
-        },
-        "library.write": {
-          "request": "#/$defs/LocalLibraryWriteRequest",
-          "result": "#/$defs/LocalLibraryWriteResult",
-          "source": "core/host/src/library_store.rs"
         },
         "backend.ensure": {
           "request": "#/$defs/LocalBackendEnsureRequest",

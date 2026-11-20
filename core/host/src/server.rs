@@ -1427,7 +1427,6 @@ impl Host {
                 self.update_status()
             }
             "host.update" => self.update(serde_json::from_value(params)?).await,
-            "library.write" => library_store::write(self, serde_json::from_value(params)?),
             _ => Err(error("methodNotFound", "unknown Host method")),
         }
     }
@@ -1757,10 +1756,14 @@ impl Host {
         };
         let uses_shared_host_config = self.uses_shared_host_config(&inputs);
         if uses_shared_host_config && self.home.join("config.toml").exists() {
-            let config = areal_config::load_management_config(&areal_config::ConfigInputs {
+            let (config, _) = areal_config::load_service_config(&areal_config::ConfigInputs {
                 cwd: inputs.cwd.clone(),
                 homedir: inputs.homedir.clone(),
                 config_file: Some(self.home.join("config.toml")),
+                overrides: areal_config::ConfigOverrides {
+                    data_dir: Some(registration.data_dir.clone()),
+                    ..Default::default()
+                },
                 ..Default::default()
             })?;
             for name in config.model.api_key_env.iter().chain(
@@ -1803,16 +1806,12 @@ impl Host {
             "invalidRequest: credentials must be named by launch inputs"
         );
 
-        let selected_credential = launch::selected_credential(&self.home, &inputs);
         let mut deferred_credentials = BTreeSet::new();
         let mut imported_credentials = BTreeMap::new();
         for name in &inputs.credential_names {
             if let Some(source) = &credential_source
                 && name.starts_with("AREAL_CREDENTIAL_")
             {
-                let optional = selected_credential
-                    .as_ref()
-                    .is_some_and(|selected| selected != name);
                 let credential_slot = if name == "AREAL_CREDENTIAL_areal_openai" {
                     crate::vault::Slot::SubscriptionTransport {
                         source_id: source.clone(),
@@ -1823,7 +1822,7 @@ impl Host {
                         reference: name.clone(),
                     }
                 };
-                if optional && self.migration.vault.slot_in_flight(&credential_slot) {
+                if self.migration.vault.slot_in_flight(&credential_slot) {
                     deferred_credentials.insert(name.clone());
                     continue;
                 }
@@ -1834,10 +1833,9 @@ impl Host {
                 {
                     Ok(value) => value,
                     Err(cause)
-                        if optional
-                            && cause
-                                .downcast_ref::<wire::Error>()
-                                .is_some_and(|error| error.code == "migrationPending") =>
+                        if cause
+                            .downcast_ref::<wire::Error>()
+                            .is_some_and(|error| error.code == "migrationPending") =>
                     {
                         deferred_credentials.insert(name.clone());
                         continue;
@@ -1889,7 +1887,7 @@ impl Host {
                 .map(|(name, value)| (name.clone(), value.clone()))
                 .collect()
         };
-        // 未依赖的在途或迁移中凭据只从本次启动投影暂缓，不清除缓存或改写原回执。
+        // 在途或迁移中凭据只从本次启动投影暂缓，历史启动不清除缓存或改写原回执。
         inputs
             .credential_names
             .retain(|name| !deferred_credentials.contains(name));

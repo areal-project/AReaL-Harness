@@ -229,6 +229,10 @@ export function useSessionNavigation(
             await services.recoverPersistedHistory(null);
             if (restorationAttempt.current !== attempt) return;
           }
+          if (options.connectService) {
+            await resourceAction("connectService", {});
+            if (!current()) return;
+          }
           if (services.reads && !services.recoverPersistedHistory) {
             // Host 读取不启动项目；GUI 和网页都先由后台连接，再打开历史订阅。
             const target = restorationProjects.current.find((item) => item.id === owner.projectId);
@@ -287,10 +291,6 @@ export function useSessionNavigation(
                 }).catch(() => {});
             }
             return;
-          }
-          if (options.connectService) {
-            await resourceAction("connectService", {});
-            if (!current()) return;
           }
           const target = restorationProjects.current.find((item) => item.id === owner.projectId);
           const cloud = target?.state?.threads?.[owner.threadId]?.cloud;

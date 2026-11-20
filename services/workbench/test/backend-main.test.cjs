@@ -29,7 +29,7 @@ async function fixture(t, retired, projectionFixture = false) {
     exports.createMainDesktop = async (options, lifetime) => {
       if (typeof lifetime.hostCall !== "function") throw Error("Host ownership must precede backend initialization");
       if (options.sourceSingletonHeld !== false || options.applicationOwner) throw Error('wrong owner');
-      const backend = { home: options.home, hostCall: lifetime.hostCall, host: { sourceId: 'fixture-source' }, cloud: {}, useHostLibrary: async () => {}, addProject: async (path) => 'project:' + path };
+      const backend = { home: options.home, hostCall: lifetime.hostCall, host: { sourceId: 'fixture-source' }, cloud: {}, addProject: async (path) => 'project:' + path };
       if (options.retired === 'catalog') {
         const accepted = { acceptedAt: 2, model: { providerId: 'p', modelId: 'm' }, modelId: 'm', reasoningEffort: 'xhigh' };
         backend.starting = new Map();
@@ -418,4 +418,63 @@ test("Workbench and Host error classifications stay in sync", async () => {
   assert.deepEqual(mapBackendError({ code: "NEW_INTERNAL", message: "private detail" }, false), {
     code: "CORE_UNAVAILABLE",
   });
+});
+
+test("workbench readiness does not wait for phone identity initialization", async () => {
+  const { DesktopService } = require("../src/desktop/core/service-protocol.cjs");
+  const phone = Promise.withResolvers();
+  let observing = false;
+  const service = {
+    backend: { host: { client: { requireCapability() {} } } },
+    initRemote: () => phone.promise,
+    startObservers: () => {
+      observing = true;
+    },
+    schedule() {},
+  };
+  let timer;
+  try {
+    await Promise.race([
+      DesktopService.prototype.startMain.call(service),
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("phone identity blocked readiness for 300 ms")),
+          300,
+        );
+      }),
+    ]);
+    assert.equal(observing, true);
+    assert.equal(service.remoteInitialization, phone.promise);
+    phone.reject(new Error("original phone write remains unknown"));
+    await assert.rejects(service.remoteInitialization, /original phone write remains unknown/);
+  } finally {
+    clearTimeout(timer);
+    phone.resolve();
+  }
+});
+
+test("phone commands retain the original initialization failure without submitting another write", async () => {
+  const { DesktopService } = require("../src/desktop/core/service-protocol.cjs");
+  const phone = Promise.withResolvers();
+  const socket = {};
+  let calls = 0;
+  const service = {
+    clients: new Set([socket]),
+    remoteInitialization: phone.promise,
+    remote: {
+      control: async () => {
+        calls++;
+      },
+    },
+    backend: { providers: { redact: (message) => message } },
+  };
+  const command = DesktopService.prototype.execute.call(service, socket, "remoteControl", {
+    operation: "status",
+  });
+  const rejected = assert.rejects(command, /original identity write pending/);
+  await new Promise(setImmediate);
+  assert.equal(calls, 0);
+  phone.reject(new Error("original identity write pending"));
+  await rejected;
+  assert.equal(calls, 0);
 });

@@ -647,6 +647,49 @@ pub fn load_management_config(inputs: &ConfigInputs) -> Result<ResolvedCoreConfi
     load_mode(inputs, true, None)
 }
 
+/// 历史读取只接受已登记的存储位置；执行配置损坏时不能猜测另一个数据目录。
+pub fn load_read_config(inputs: &ConfigInputs) -> Result<ResolvedCoreConfig> {
+    let data_dir = inputs.overrides.data_dir.clone().ok_or_else(|| {
+        error(
+            ConfigErrorKind::MissingValue,
+            "server.data_dir",
+            &ConfigSource::Default,
+            "history startup requires a registered data directory",
+        )
+    })?;
+    let read_inputs = ConfigInputs {
+        cwd: inputs.cwd.clone(),
+        homedir: inputs.homedir.clone(),
+        config_file: inputs.config_file.clone(),
+        env: inputs
+            .env
+            .iter()
+            .filter(|(name, _)| name.as_os_str() == OsStr::new("AREAL_HARNESS_HOME"))
+            .map(|(name, value)| (name.clone(), value.clone()))
+            .collect(),
+        overrides: crate::ConfigOverrides {
+            data_dir: Some(data_dir),
+            listen: inputs.overrides.listen.clone(),
+            permissions: Some("ASK_PERMISSIONS".into()),
+            ..Default::default()
+        },
+    };
+    let mut config = load_mode(&read_inputs, true, Some(file::FileLayer::default()))?;
+    config.config_file = inputs.config_file.clone();
+    Ok(config)
+}
+
+/// 执行解析失败作为独立诊断返回；调用方必须阻止执行，不能把读取配置用于执行。
+pub fn load_service_config(
+    inputs: &ConfigInputs,
+) -> Result<(ResolvedCoreConfig, Option<crate::ConfigError>)> {
+    match load_management_config(inputs) {
+        Ok(config) => Ok((config, None)),
+        Err(cause) if inputs.overrides.data_dir.is_none() => Err(cause),
+        Err(cause) => Ok((load_read_config(inputs)?, Some(cause))),
+    }
+}
+
 pub(crate) fn load_mode(
     inputs: &ConfigInputs,
     management: bool,

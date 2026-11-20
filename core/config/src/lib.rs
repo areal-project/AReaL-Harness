@@ -10,7 +10,10 @@ mod trajectory_control;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, ffi::OsString, fmt, net::SocketAddr, path::PathBuf};
 
-pub use resolve::{is_config_environment_name, load_config, load_management_config};
+pub use resolve::{
+    is_config_environment_name, load_config, load_management_config, load_read_config,
+    load_service_config,
+};
 pub use trajectory::TrajectoryConfig;
 pub use trajectory_control::set_trajectory_enabled;
 

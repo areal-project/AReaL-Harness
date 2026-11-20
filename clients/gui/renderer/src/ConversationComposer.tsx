@@ -3,6 +3,10 @@ import { ChatPromptEditor } from "./prompt-editor/ChatPromptEditor.js";
 import { ComposerModelMenu, composerModelOption } from "./ComposerModelMenu.js";
 import { resolveModelEffort } from "@areal/workbench/model-selection";
 import type { Data } from "./services.js";
+import { Button } from "@areal/ui";
+import { FeedbackNotice } from "./FeedbackNotice.js";
+import { useOpenSettings } from "./settings/openSettingsContext.js";
+import { useI18n } from "./i18n/IntlProvider.js";
 
 type ConversationComposerProps = Omit<
   ComponentProps<typeof ChatPromptEditor>,
@@ -30,6 +34,8 @@ export function ConversationComposer({
   modelControl,
   ...editor
 }: ConversationComposerProps) {
+  const { t } = useI18n();
+  const openSettings = useOpenSettings();
   // 展示回退不改变草稿意图；显式点选当前展示模型仍可覆盖历史锚点模型。
   const config =
     modelConfig?.model === undefined && fallbackModelConfig
@@ -78,6 +84,32 @@ export function ConversationComposer({
   return (
     <ChatPromptEditor
       {...editor}
+      submitDisabled={editor.submitDisabled || !!project.executionError}
+      submitDisabledReason={project.executionError ? undefined : editor.submitDisabledReason}
+      topContent={
+        <>
+          {editor.topContent}
+          {project.executionError && (
+            <FeedbackNotice
+              tone="warning"
+              message={t("recovery.executionUnavailable")}
+              detail={project.executionError}
+              actions={
+                openSettings ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openSettings("模型服务")}
+                  >
+                    {t("recovery.openModelSettings")}
+                  </Button>
+                ) : undefined
+              }
+            />
+          )}
+        </>
+      }
       betweenCancelAndSubmitAction={
         <>
           {contextControl}
@@ -111,7 +143,10 @@ export function ConversationComposer({
                 if (model)
                   onConfigureModel({
                     model: model.providerId
-                      ? { providerId: model.providerId, modelId: model.modelId }
+                      ? {
+                          providerId: model.providerId,
+                          modelId: model.modelId,
+                        }
                       : null,
                     parameters: {
                       reasoningEffort: resolveModelEffort(model) ?? null,

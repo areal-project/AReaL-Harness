@@ -1659,11 +1659,7 @@ mod tests {
             Item::UserMessage {
                 created_at: None,
                 id: "you".into(),
-                content: vec![Input::Text {
-                    text: "question".into(),
-                    text_elements: Vec::new(),
-                    mcp_content: None,
-                }],
+                content: vec![Input::text("question")],
             },
             Item::AgentMessage {
                 created_at: None,

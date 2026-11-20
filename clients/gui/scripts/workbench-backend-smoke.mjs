@@ -353,6 +353,25 @@ try {
     checks.push(
       "Paired browser drag ordering and navigation preferences persist; native settings are rejected",
     );
+    const fontId = randomUUID();
+    const fontParams = { operation: "settings", key: "terminalFontFamily", value: "monospace" };
+    const font = await call("library.command", fontParams, fontId);
+    assert.equal(font.submissionUnknown, false);
+    assert.equal(font.receipt.settings.terminalFontFamily, undefined);
+    assert.deepEqual(await call("library.command", fontParams, fontId), font);
+    assert.deepEqual(await call("command.read", { commandId: fontId }), font);
+    await assert.rejects(call("desktop.command", { command: "library", request: fontParams }), {
+      code: "INVALID_PARAMS",
+    });
+    const savedPreferences = JSON.parse(
+      await readFile(join(source.coreHome, "library.json"), "utf8"),
+    );
+    assert.equal(savedPreferences.settings.terminalFontFamily, "monospace");
+    assert.equal(
+      savedPreferences.sections.filter((section) => section.title === "Web library").length,
+      1,
+    );
+    checks.push("Non-native preferences use the Host workbench path and preserve navigation state");
   }
   if (selected("trajectory")) {
     const trajectory = await call("trajectory.read", {

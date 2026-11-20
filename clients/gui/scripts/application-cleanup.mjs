@@ -53,9 +53,22 @@ export async function stopFixtureHost(binary, home, evidence) {
 }
 
 export async function stopAndAssertFixtureHost(binary, env, evidence, metadata) {
+  const descriptor = await readFile(
+    join(env.AREAL_HARNESS_SERVICE_HOME, "host", "host.json"),
+    "utf8",
+  )
+    .then(JSON.parse)
+    .catch((error) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
   const receipt = await stopFixtureHost(binary, env.AREAL_HARNESS_SERVICE_HOME, evidence);
   assert.ok(receipt, "the original fixture Host stop is confirmed");
-  await assertApplicationStopped(binary, env, metadata);
+  assert.ok(
+    Number.isSafeInteger(descriptor?.pid) && descriptor.pid > 1,
+    "fixture Host PID is available",
+  );
+  await assertApplicationStopped(binary, env, { ...metadata, hostPid: descriptor.pid });
   return receipt;
 }
 
@@ -123,6 +136,7 @@ export async function assertApplicationStopped(binary, env, metadata) {
     records = JSON.parse(stdout);
     if (
       !alive(metadata?.pid) &&
+      !alive(metadata?.hostPid) &&
       records.every(
         (record) => record.state === "stopped" && !alive(record.hostPid) && !alive(record.corePid),
       )
