@@ -1,5 +1,7 @@
 // @ts-check
 "use strict";
+const { resourceRef } = require("./shared.cjs");
+/** @typedef {{id:string,revision:string}} Ref */
 /** @typedef {Record<string,unknown>} Fields */
 /** @typedef {{revision:number,skills:Record<string,Record<string,boolean>>}} ResourceState */
 /** @typedef {{id:string,scope:string,managed:boolean,enabled:boolean,root:string,name:string,description:string,revision:string,error?:undefined}} AvailableSkill */
@@ -113,13 +115,13 @@ function availableSkills(value) {
 
 /** @typedef {{scope:'user',projectId?:string}|{scope:'project',projectId:string}} Scope */
 /** @typedef {{name:string,event:'PreToolUse'|'PostToolUse'|'PostToolUseFailure',matcher:string,argv:string[],timeoutMs:number}} Hook */
-/** @typedef {{operation:'hooks'}|{operation:'hooksSave',expectedRevision:string,hooks:Hook[]}|{operation:'builtinSkill',id:'openai-skill-creator'}| (Scope & ({operation:'skills'}|{operation:'skillRead',id:string}|{operation:'skillToggle',id:string,enabled:boolean,expectedRevision:number}|{operation:'skillSave',id:string,name?:string|null,description?:string|null,content:string,expectedRevision:number}))} ResourceRequest */
+/** @typedef {{operation:'skillPrepare',projectId:string,skill:Ref,profile?:Ref}|{operation:'hooks'}|{operation:'hooksSave',expectedRevision:string,hooks:Hook[]}|{operation:'builtinSkill',id:'openai-skill-creator'}| (Scope & ({operation:'skills'}|{operation:'skillRead',id:string}|{operation:'skillToggle',id:string,enabled:boolean,expectedRevision:number}|{operation:'skillSave',id:string,name?:string|null,description?:string|null,content:string,expectedRevision:number}))} ResourceRequest */
 /** @typedef {{path:string,external:boolean,revision:string,hooks:Hook[],projects:Array<{projectId:string,root:string,connected:boolean,applied:boolean}>}} HooksStatus */
 /** @typedef {{skill:{id:string,revision:string,name:string,description:string},provenance:{upstream:string,revision:string,contentDigest:string}}} BuiltinSkill */
 /** @typedef {{revision:number,data:Array<Skill & {overridden:boolean}>,customDeployment:boolean}} SkillsStatus */
 /** @typedef {{revision:number,warning:string|null}} ResourceSaved */
 /** @template {string} N @typedef {N extends 'resources' ? ResourceRequest : never} Request */
-/** @template {string} N @template P @typedef {N extends 'resources' ? P extends {operation:'hooks'|'hooksSave'} ? HooksStatus : P extends {operation:'builtinSkill'} ? BuiltinSkill : P extends {operation:'skills'} ? SkillsStatus : P extends {operation:'skillRead'} ? {content:string,truncated:boolean} : P extends {operation:'skillToggle'|'skillSave'} ? ResourceSaved : never : never} Response */
+/** @template {string} N @template P @typedef {N extends 'resources' ? P extends {operation:'skillPrepare'} ? {profile:Ref} : P extends {operation:'hooks'|'hooksSave'} ? HooksStatus : P extends {operation:'builtinSkill'} ? BuiltinSkill : P extends {operation:'skills'} ? SkillsStatus : P extends {operation:'skillRead'} ? {content:string,truncated:boolean} : P extends {operation:'skillToggle'|'skillSave'} ? ResourceSaved : never : never} Response */
 /** @param {unknown} value @returns {value is string} */
 function text(value) {
   return typeof value === "string";
@@ -142,6 +144,16 @@ function hook(value) {
 /** @template {string} N @param {N} name @param {unknown} value @returns {value is Request<N>} */
 function isRequest(name, value) {
   if (name !== "resources" || !record(value)) return false;
+  if (value.operation === "skillPrepare")
+    return (
+      text(value.projectId) &&
+      value.projectId.length > 0 &&
+      resourceRef(value.skill) &&
+      (value.profile === undefined || resourceRef(value.profile)) &&
+      Object.keys(value).every((key) =>
+        ["operation", "projectId", "skill", "profile"].includes(key),
+      )
+    );
   if (value.operation === "hooks") return true;
   if (value.operation === "hooksSave")
     return text(value.expectedRevision) && Array.isArray(value.hooks) && value.hooks.every(hook);
@@ -207,6 +219,7 @@ function saved(value) {
 /** @template {string} N @template P @param {N} name @param {P} request @param {unknown} value @returns {value is Response<N,P>} */
 function isResponse(name, request, value) {
   if (name !== "resources" || !record(request) || !record(value)) return false;
+  if (request.operation === "skillPrepare") return resourceRef(value.profile);
   if (request.operation === "hooks" || request.operation === "hooksSave")
     return (
       text(value.path) &&

@@ -55,6 +55,7 @@ const errors = [];
 const requests = [];
 const instances = [];
 const auxiliaryRequests = [];
+let trySkillRef;
 const creatorOnly = process.argv.includes("--creator-only");
 assert.ok(
   process.argv.slice(2).every((arg) => arg === "--creator-only"),
@@ -399,7 +400,9 @@ const model = createServer(async (request, response) => {
         },
       ],
     ];
-    const planned = steps[completed];
+    const planned = trySkillRef
+      ? [["skill_load", { skill: trySkillRef }]][completed]
+      : steps[completed];
     const step = planned && [
       planned[0],
       typeof planned[1] === "function" ? planned[1]() : planned[1],
@@ -415,7 +418,7 @@ const model = createServer(async (request, response) => {
             },
           ],
         }
-      : { content: "CONCEPT_MODEL_REPLY" };
+      : { content: trySkillRef ? "TRIED_CREATED_SKILL" : "CONCEPT_MODEL_REPLY" };
     response.writeHead(200, { "Content-Type": "text/event-stream" });
     response.end(
       `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: null }] })}\n\n` +
@@ -983,6 +986,13 @@ try {
     );
     await page.getByTestId("chat-input").fill("CREATOR_EXISTING_DRAFT");
     await skillWorkspace();
+    // 模拟会话打开期间由其他客户端安装 Skill；创建草稿时必须切换到含它的新配置。
+    const imported = join(workspace, ".agents/skills/added-while-open");
+    await mkdir(imported);
+    await writeFile(
+      join(imported, "SKILL.md"),
+      "---\nname: added-while-open\ndescription: Installed after opening the project.\n---\nLive installation.\n",
+    );
   } else {
     const legacyDeployment = join(scratch, "legacy-desktop.json");
     await json(legacyDeployment, {
@@ -999,7 +1009,13 @@ try {
     });
     env.AREAL_CORE_DESKTOP_CONFIG = legacyDeployment;
     await launch();
-    const initialProjects = (await state()).projects;
+    // 首页草稿在后台准备项目外工作区；先等其就绪，才能把后续项目变化归因于打开插件页。
+    const initialProjects = await until(async () => {
+      const { projects } = await state();
+      return (
+        projects.some((project) => project.projectless && project.state?.connected) && projects
+      );
+    }, "home draft workspace ready before opening Plugins");
     assert.equal(
       initialProjects.filter((project) => !project.projectless).length,
       0,
@@ -1975,13 +1991,10 @@ try {
     false,
   );
   const projectSkills = await resources("skills");
-  assert.equal(
-    projectSkills.data.some(
-      (skill) => skill.id === createdSkillId && skill.scope === "project" && skill.enabled,
-    ),
-    true,
-    "Agent-created Skill is discovered in the selected project",
+  const installedSkill = projectSkills.data.find(
+    (skill) => skill.id === createdSkillId && skill.scope === "project" && skill.enabled,
   );
+  assert.ok(installedSkill?.revision, "Agent-created Skill is discovered in the selected project");
   const toolResults = requests
     .at(-1)
     .messages.filter((message) => message.role === "tool")
@@ -2028,6 +2041,17 @@ try {
     boundProfile,
     "ordinary created thread uses the exact prepared profile",
   );
+  if (creatorOnly) {
+    const catalog = await call("manage", {
+      operation: "skills",
+      projectId,
+      threadId: authoringThreadId,
+    });
+    assert.ok(
+      catalog.data.some((s) => s.id === "added-while-open" && s.available),
+      "new conversation uses the profile containing the newly installed Skill",
+    );
+  }
   await json(join(scratch, "creator-thread.json"), authoring);
   const authoringCore = await ownedCoreGeneration(creatorWorkspace);
   assert.equal(
@@ -2050,6 +2074,77 @@ try {
     "Create Skill preserves draft input, binds the verified official Creator, starts no execution before Send, and sends its exact body in an ordinary first chat turn",
   );
   await capture("08-official-creator-first-turn");
+  if (creatorOnly) {
+    await skillWorkspace();
+    const buttonForSkill = button(`查看技能 ${createdSkillId}`);
+    if (!(await buttonForSkill.isVisible()))
+      await page
+        .getByRole("button", { name: /查看更多.*Skill/ })
+        .first()
+        .click();
+    await buttonForSkill.click();
+    await page
+      .getByTestId("skill-detail-page")
+      .getByRole("button", { name: "试用", exact: true })
+      .click();
+    await page.getByTestId("chat-input").waitFor();
+    const attached = await page.evaluate(
+      (id) => JSON.parse(localStorage.getItem(`areal-gui:draft:${id}:new:skills`) ?? "[]"),
+      projectId,
+    );
+    assert.ok(
+      attached.some(
+        (item) => item.id === createdSkillId && item.revision === installedSkill.revision,
+      ),
+      "Try stages the newly installed Skill's exact revision",
+    );
+    const denied = await page.evaluate(
+      (params) => window.arealDesktop.command("resources", params),
+      {
+        operation: "skillPrepare",
+        projectId,
+        skill: { id: createdSkillId, revision: installedSkill.revision },
+        profile: boundProfile,
+      },
+    );
+    assert.equal(denied.ok, false, "a pinned profile cannot acquire the new Skill");
+    assert.match(denied.error.message, /确切版本/);
+    assert.equal(requests.length, creatorToolCount + 1, "Try cannot start another inference");
+    trySkillRef = { id: createdSkillId, revision: installedSkill.revision };
+    await button("发送").click();
+    await page.getByText("TRIED_CREATED_SKILL", { exact: true }).waitFor();
+    assert.equal(requests.length, creatorToolCount + 3);
+    const tryRequest = requests.at(-1);
+    const selectedBody = tryRequest.messages
+      .filter((message) => message.role === "user")
+      .map((message) =>
+        typeof message.content === "string"
+          ? message.content
+          : message.content.map((part) => part.text ?? "").join("\n"),
+      )
+      .join("\n");
+    assert.ok(selectedBody.includes(createdSkillBody));
+    assert.ok(
+      selectedBody.includes(`id="${createdSkillId}" revision="${installedSkill.revision}"`),
+    );
+    const loaded = JSON.parse(
+      tryRequest.messages.findLast((message) => message.role === "tool").content,
+    );
+    assert.equal(loaded.complete, true);
+    assert.equal(loaded.revision, installedSkill.revision);
+    assert.equal(loaded.text, createdSkillBody);
+    assert.notEqual(
+      await page.getByTestId("areal-workbench").getAttribute("data-thread-id"),
+      authoringThreadId,
+    );
+    checks.push(
+      "Try preserves pinned profiles, waits for Send, and loads the just-created Skill's exact revision and full text in a new conversation",
+    );
+    await settings();
+    await tab("Skills");
+    await button(`查看技能 ${createdSkillId}`).waitFor();
+    checks.push("Settings opens installed resources and lists the Skill used in the conversation");
+  }
   assert.deepEqual(errors, []);
   assert.equal(
     sha(await readFile(env.AREAL_CORE_BIN)),
@@ -2111,7 +2206,7 @@ try {
     modelRequests: requests.length,
     auxiliaryRequests,
     scope: creatorOnly
-      ? "source Electron/Main/Core official Creator first ordinary turn in an otherwise unoccupied project workspace; deterministic model; actual Runtime writes and validation; no MCP App, worktree inheritance, package or real-provider acceptance"
+      ? "source Electron/Main/Core Create, Try and Send in the same open project; deterministic model; actual Runtime writes, validation and full Skill readback; no packaged or real-provider acceptance"
       : "source Electron/Main/Core plugin workspace, reviewed portable local and ZIP plugins, standalone resources, stdio MCP, native App iframe before and after cold Desktop/Core restart, official bundled Creator ordinary chat turn in a separate unoccupied project; deterministic loopback model; no packaged or remote-provider acceptance",
     creatorPython,
     injectedBoundary:

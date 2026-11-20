@@ -590,7 +590,9 @@ GUI 服务的窄命令 `trajectory` 支持 `{operation:"status"}`、`{operation:
 
 共享 Desktop 的 `areal.desktop-service.v1` 认证快照新增 `service.commandContract: "areal.desktop-commands.v2"`。这项声明来自驻留 Desktop 代码，与 Rust Core 的能力独立。Main 将精确匹配结果投影为顶层及每个项目的 `desktopCapabilities.currentCommands`，不采用旧快照自行声明的同名投影。
 
-缺失或未知命令声明不阻止只读接入；停止原后台另需独立的 lifecycle version 2 能力。Main 对需要当前语义的 `send`、`continue`、`prepareCreator`、`feedback`、携带 MCP 内容的 steer/队列更新、新增插件管理操作、`providers.defaultAndApply` 和 `trajectory.setEnabled` 在发出前返回 `SERVICE_COMMAND_UNSUPPORTED`。这是已知未提交，不带未知提交标记或伪造的请求 ID。兼容的队列操作继续使用原业务请求键；不退回另一种写操作。评价草稿读取、偏好及 MCP Apps/表单轮询按这项可用性降级，保留本地草稿。
+桌面 `resources` 的 `skillPrepare` 操作接受 `{operation:"skillPrepare",projectId,skill:{id,revision},profile?:{id,revision}}`，返回 `{profile:{id,revision}}`。独立 Skill 在已打开项目中安装后，草稿可用它在现有生命周期约束下刷新资源并确认所选版本。不会创建会话、发送模型请求或扩大固定 Profile 的权限。
+
+缺失或未知命令声明不阻止只读接入；停止原后台另需独立的 lifecycle version 2 能力。Main 对需要当前语义的 `send`、`continue`、`prepareCreator`、`resources.skillPrepare`、`feedback`、携带 MCP 内容的 steer/队列更新、新增插件管理操作、`providers.defaultAndApply` 和 `trajectory.setEnabled` 在发出前返回 `SERVICE_COMMAND_UNSUPPORTED`。这是已知未提交，不带未知提交标记或伪造的请求 ID。兼容的队列操作继续使用原业务请求键；不退回另一种写操作。评价草稿读取、偏好及 MCP Apps/表单轮询按这项可用性降级，保留本地草稿。
 
 命令 version 2 还要求创建、配置和 Task 写入保留原调用者身份及规范化的受理/执行结果。Main 在旧 version 1 上分配业务请求 ID 之前拒绝这些写入；已有只读观察和旧队列/追加指令核查仍保留。
 

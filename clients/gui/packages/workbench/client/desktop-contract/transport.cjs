@@ -134,7 +134,7 @@ const commandDefinitions = Object.freeze({
     "app",
     {
       ...operations(read, "hooks builtinSkill skills skillRead"),
-      ...operations(mutation, "hooksSave skillToggle skillSave"),
+      ...operations(mutation, "hooksSave skillToggle skillSave skillPrepare"),
     },
   ],
   projectless: [

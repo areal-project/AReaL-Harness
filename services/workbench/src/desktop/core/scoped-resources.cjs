@@ -367,24 +367,29 @@ class ScopedResources {
     )
       throw new Error("请先选择要创建 Skill 的项目。");
     const { skill, provenance } = await builtinSkill(this.backend.home, BUILTIN_SKILL_ID);
+    const profile = await this.prepareSkillProfile(project, skill, requestedProfile, true);
+    return { projectId: project.id, profile, skill, provenance };
+  }
+  /** @param {CoreProject} project @param {import('@areal/workbench/desktop-contract').ResourceRef} skill @param {import('@areal/workbench/desktop-contract').ResourceRef} [requestedProfile] @param {boolean} [allowBaseAlias] */
+  async prepareSkillProfile(project, skill, requestedProfile, allowBaseAlias = false) {
     await this.beforeCreate(project);
     const managed = this.backend.desktopConfig === join(__dirname, "desktop-profile.json");
     const base =
-      managed && this.backend.desktopConfig
+      allowBaseAlias && managed && this.backend.desktopConfig
         ? resourceContract.deployment(
             JSON.parse(await readFile(this.backend.desktopConfig, "utf8")),
           ).profiles[0]
         : null;
     const useCurrent =
       !requestedProfile ||
-      (managed && requestedProfile.id === base?.id && requestedProfile.revision === base?.revision);
+      (base && requestedProfile.id === base.id && requestedProfile.revision === base.revision);
     const profile = useCurrent
       ? this.backend.providers.manages(project)
         ? (project.resourceProfile ?? this.backend.defaultProfile)
         : undefined
       : requestedProfile;
     if (!profile) throw new Error("当前部署未配置默认任务配置，现有草稿已保留。");
-    const available = await project.client.request(
+    const available = await requireClient(project).request(
       "areal/skill/list",
       { agentProfile: profile },
       { decode: resourceContract.availableSkills },
@@ -394,9 +399,13 @@ class ScopedResources {
         (item) => item.available && item.id === skill.id && item.revision === skill.revision,
       )
     )
-      throw new Error("当前任务配置未提供官方 Skill Creator 的确切版本，现有草稿已保留。");
+      throw new Error(
+        skill.id === BUILTIN_SKILL_ID
+          ? "当前任务配置未提供官方 Skill Creator 的确切版本，现有草稿已保留。"
+          : "当前任务配置未提供此 Skill 的确切版本，现有草稿已保留。",
+      );
     this.backend.onChange();
-    return { projectId: project.id, profile, skill, provenance };
+    return profile;
   }
   /** @param {unknown} request */
   async command(request) {

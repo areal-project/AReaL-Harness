@@ -15,7 +15,9 @@ CLI、TUI、serve 和直接 Core 共用发现规则；连接既有服务时使�
 
 同名按目录名精确覆盖整个 Skill，不合并资源、不用 frontmatter name 改身份。只发现直接子目录，不向父项目递归搜索；workspace 由可信启动参数决定，不随 RPC cwd 改变。主目录与 AREAL_HARNESS_HOME 分开。
 
-直接在会话中要求安装或创建独立 Skill 时，默认使用 `<workspace>/.agents/skills/<name>/`；明确要求个人范围时使用 `~/.agents/skills/<name>/`。Core 提供本次启动实际扫描的绝对目录，首次安装也不用指定路径；显式指定的位置和已有写入权限仍然有效。GUI 的“新建技能”和“保存技能”使用同样的目录。缺少搜索目录时会跳过，不影响使用其他 Skill。`.claude/skills` 与 `.codex/skills` 只作为兼容读取目录；旧版本 GUI 的私有 `resources/*/skills` 目录仍可读取，但不会覆盖标准目录，也不会再作为新 Skill 的写入位置。
+直接在会话中要求安装或创建独立 Skill 时，默认使用 `<workspace>/.agents/skills/<name>/`；明确要求个人范围时使用 `~/.agents/skills/<name>/`。Core 提供本次启动实际扫描的绝对目录，首次安装也不用指定路径；显式指定的位置和已有写入权限仍然有效。GUI 的“新建技能”和“保存技能”使用同样的目录。缺少搜索目录时会跳过，不影响使用其他 Skill。`.claude/skills` 与 `.codex/skills` 只作为兼容读取目录；旧版本 GUI 的私有 `resources/*/skills` 目录仍可读取，但不会覆盖同一范围的标准目录，也不会再作为新 Skill 的写入位置。
+
+从「设置 → 插件 → Skills」管理已安装的 Skill。项目已打开时安装的独立 Skill 也可以从详情页直接“试用”。准备新草稿时会核对被选中 Skill 的确切版本；如果项目目录已改变，会在可以安全更新时刷新任务配置，并保留已有输入。已打开的任务与显式固定的配置不会因此获得新的 Skill。
 
 ## 启动时登记元信息
 

@@ -15,7 +15,9 @@ CLI, TUI, serve and direct Core share discovery rules. Connections to an existin
 
 Exact directory names override whole Skills without merging resources or taking identity from frontmatter name. Discovery examines direct children only, not parent projects. Trusted launch parameters determine workspace; RPC cwd cannot change it. User home is separate from AREAL_HARNESS_HOME.
 
-Asking a conversation to install or create a standalone Skill defaults to `<workspace>/.agents/skills/<name>/`. Requesting a personal installation uses `~/.agents/skills/<name>/`. Core supplies the absolute roots used for discovery, even on the first installation. An explicit destination and existing write permissions still apply. The GUI's Create and Save Skill actions use the same roots. Missing search directories are skipped. `.claude/skills` and `.codex/skills` are read-only compatibility roots; private `resources/*/skills` directories from older GUI versions remain readable as a fallback, but never override a standard root or receive new Skills.
+Asking a conversation to install or create a standalone Skill defaults to `<workspace>/.agents/skills/<name>/`. Requesting a personal installation uses `~/.agents/skills/<name>/`. Core supplies the absolute roots used for discovery, even on the first installation. An explicit destination and existing write permissions still apply. The GUI's Create and Save Skill actions use the same roots. Missing search directories are skipped. `.claude/skills` and `.codex/skills` are read-only compatibility roots; private `resources/*/skills` directories from older GUI versions remain readable as a fallback, but never override a standard root in the same scope or receive new Skills.
+
+Manage installed Skills under **Settings → Plugins → Skills**. A standalone Skill installed while its project is open can be used from **Try it** on its detail page. Draft preparation checks the exact Skill revision and refreshes the project profile when needed and safe, preserving existing draft input. Existing conversations and explicitly pinned profiles do not gain new Skills.
 
 ## Metadata registration at startup
 
