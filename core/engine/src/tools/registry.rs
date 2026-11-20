@@ -240,18 +240,100 @@ impl RegisteredTool {
         {
             return result;
         }
-        self.input
-            .validate(arguments)
-            .map_err(|e| anyhow::anyhow!("invalid tool arguments at {}: {}", e.instance_path, e))
+        self.input.validate(arguments).map_err(|e| {
+            anyhow::anyhow!(validation_feedback(
+                "invalid tool arguments",
+                &e,
+                &self.definition.input_schema
+            ))
+        })
     }
     pub fn validate_output(&self, result: &Value) -> anyhow::Result<()> {
         if let Some(output) = &self.output {
             output.validate(result).map_err(|e| {
-                anyhow::anyhow!("invalid tool result at {}: {}", e.instance_path, e)
+                anyhow::anyhow!(validation_feedback(
+                    "invalid tool result",
+                    &e,
+                    self.definition.output_schema.as_ref().unwrap()
+                ))
             })?;
         }
         Ok(())
     }
+}
+
+fn validation_feedback(
+    label: &str,
+    error: &jsonschema::ValidationError<'_>,
+    schema: &Value,
+) -> String {
+    fn bounded(mut text: String, maximum: usize) -> String {
+        if text.len() > maximum {
+            let mut end = maximum - "…".len();
+            while !text.is_char_boundary(end) {
+                end -= 1;
+            }
+            text.truncate(end);
+            text.push('…');
+        }
+        text
+    }
+
+    let mut message = format!(
+        "{label} at {} (schema {}): {}",
+        error.instance_path,
+        error.schema_path,
+        error.masked()
+    );
+    if matches!(
+        error.kind,
+        jsonschema::error::ValidationErrorKind::AdditionalProperties { .. }
+    ) && let Some(path) = error
+        .schema_path
+        .as_str()
+        .strip_suffix("/additionalProperties")
+        && let Some(properties) = schema
+            .pointer(path)
+            .and_then(|node| node.get("properties"))
+            .and_then(Value::as_object)
+        && !properties.is_empty()
+    {
+        // 只取公开 schema 中的字段名；不回显参数值，也不替调用方选择修改分支。
+        let fields: Vec<_> = properties.keys().take(16).collect();
+        message = bounded(message, 384);
+        message.push_str(&format!(
+            "; declared properties: {}",
+            bounded(serde_json::to_string(&fields).unwrap(), 768)
+        ));
+        if properties.len() > fields.len() {
+            message.push_str("; further declared properties omitted");
+        }
+    }
+    let alternatives = match &error.kind {
+        jsonschema::error::ValidationErrorKind::OneOfNotValid { context }
+        | jsonschema::error::ValidationErrorKind::AnyOf { context } => Some(context),
+        _ => None,
+    };
+    if let Some(alternatives) = alternatives {
+        // 展示校验器已有的分支事实，不猜测目标分支、不改参数，也不回显被拒绝的正文。
+        message = bounded(message, 384);
+        for (index, errors) in alternatives.iter().take(3).enumerate() {
+            let details = errors
+                .iter()
+                .take(2)
+                .map(|error| bounded(format!("{}: {}", error.instance_path, error.masked()), 192))
+                .collect::<Vec<_>>()
+                .join("; ");
+            message.push_str(&format!("; alternative {index}: {details}"));
+            if errors.len() > 2 {
+                message.push_str("; further constraints omitted");
+            }
+        }
+        if alternatives.len() > 3 {
+            message.push_str("; further alternatives omitted");
+        }
+    }
+    bounded(message, 2048)
 }
 
 #[derive(Clone, Default)]
@@ -859,6 +941,201 @@ mod tests {
         }
         tool.validate_output(&json!(4)).unwrap();
         assert!(tool.validate_output(&json!("4")).is_err());
+    }
+
+    #[test]
+    fn validation_feedback_omits_rejected_file_bodies() {
+        let registry = Registry::new(true, &ToolExtensions::default()).unwrap();
+        let tool = registry.get("edit_files").unwrap();
+        let body = "SOURCE_BODY_MARKER".repeat(1024);
+        let arguments = json!({"files":[{"path":"module.js","oldText":"old","newText":body}]});
+        let original = arguments.clone();
+        let message = tool.validate_input(&arguments).unwrap_err().to_string();
+        assert!(message.contains("/files/0"), "{message}");
+        assert!(message.contains("additionalProperties"), "{message}");
+        assert!(message.contains("declared properties"), "{message}");
+        assert!(message.contains("patches"), "{message}");
+        assert!(!message.contains("SOURCE_BODY_MARKER"));
+        assert!(message.len() < 512);
+        assert_eq!(arguments, original);
+        tool.validate_input(
+            &json!({"files":[{"path":"module.js","patches":[{"oldText":"old","newText":"new"}]}]}),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn validation_feedback_preserves_fields_types_and_limits() {
+        let schema = json!({"type":"object","required":["value"],"properties":{"value":{"type":"integer","minimum":1,"maximum":8}},"additionalProperties":false});
+        let registry = Registry::default()
+            .with_dynamic(&[definition(schema)])
+            .unwrap();
+        let tool = registry.get("lookup").unwrap();
+        let message = tool
+            .validate_input(&json!({"value":"INPUT_BODY_MARKER".repeat(1024)}))
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("/value"), "{message}");
+        assert!(message.contains("integer"), "{message}");
+        assert!(!message.contains("INPUT_BODY_MARKER"));
+        assert!(message.len() < 512);
+        let required = tool.validate_input(&json!({})).unwrap_err().to_string();
+        assert!(
+            required.contains("\"value\" is a required property"),
+            "{required}"
+        );
+        let limit = tool
+            .validate_input(&json!({"value":9}))
+            .unwrap_err()
+            .to_string();
+        assert!(limit.contains("maximum of 8"), "{limit}");
+        tool.validate_input(&json!({"value":4})).unwrap();
+    }
+
+    #[test]
+    fn validation_feedback_omits_invalid_output_bodies() {
+        let registry = Registry::default()
+            .with_dynamic(&[definition(json!({"type":"object"}))])
+            .unwrap();
+        let tool = registry.get("lookup").unwrap();
+        let message = tool
+            .validate_output(&json!("OUTPUT_BODY_MARKER".repeat(1024)))
+            .unwrap_err()
+            .to_string();
+        assert!(message.starts_with("invalid tool result at "), "{message}");
+        assert!(message.contains("integer"), "{message}");
+        assert!(!message.contains("OUTPUT_BODY_MARKER"));
+        assert!(message.len() < 512);
+        tool.validate_output(&json!(4)).unwrap();
+    }
+
+    #[test]
+    fn unknown_field_feedback_uses_nested_declared_names_without_relaxing_validation() {
+        let shape = json!({"type":"object","properties":{"box/with~key":{"type":"object","properties":{"patches":{"type":"array"},"path":{"type":"string"}},"additionalProperties":false}},"required":["box/with~key"],"additionalProperties":false});
+        let mut spec = definition(shape.clone());
+        spec.output_schema = Some(shape);
+        let registry = Registry::default().with_dynamic(&[spec]).unwrap();
+        let tool = registry.get("lookup").unwrap();
+        let rejected = json!({"box/with~key":{"oldText":"BODY_MUST_STAY_PRIVATE".repeat(1024)}});
+        let original = rejected.clone();
+        for message in [
+            tool.validate_input(&rejected).unwrap_err().to_string(),
+            tool.validate_output(&rejected).unwrap_err().to_string(),
+        ] {
+            assert!(message.contains("oldText"), "{message}");
+            assert!(message.contains("declared properties"), "{message}");
+            assert!(message.contains("patches"), "{message}");
+            assert!(message.contains("path"), "{message}");
+            assert!(!message.contains("BODY_MUST_STAY_PRIVATE"));
+            assert!(message.len() <= 2048);
+        }
+        assert_eq!(rejected, original);
+        let accepted = json!({"box/with~key":{"path":"renamed.py","patches":[]}});
+        tool.validate_input(&accepted).unwrap();
+        tool.validate_output(&accepted).unwrap();
+
+        let fields: serde_json::Map<String, Value> = (0..24)
+            .map(|i| {
+                (
+                    format!("field{i}{}", "长".repeat(200)),
+                    json!({"type":"string"}),
+                )
+            })
+            .collect();
+        let registry = Registry::default()
+            .with_dynamic(&[definition(
+                json!({"type":"object","properties":fields,"additionalProperties":false}),
+            )])
+            .unwrap();
+        let message = registry
+            .get("lookup")
+            .unwrap()
+            .validate_input(&json!({"extra":"BODY_MUST_STAY_PRIVATE"}))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            message.contains("further declared properties omitted"),
+            "{message}"
+        );
+        assert!(!message.contains("BODY_MUST_STAY_PRIVATE"));
+        assert!(message.len() <= 2048);
+    }
+
+    #[test]
+    fn validation_feedback_explains_rejected_union_branches() {
+        let registry = Registry::new(true, &ToolExtensions::default()).unwrap();
+        let arguments = json!({"files":[{"path":"renamed.ts","fileVersion":"v1","text":"REJECTED_BODY".repeat(1024)}]});
+        let original = arguments.clone();
+        let message = registry
+            .get("edit_files")
+            .unwrap()
+            .validate_input(&arguments)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("oneOf"), "{message}");
+        assert!(message.contains("/files/0"), "{message}");
+        assert!(
+            message.contains("\"patches\" is a required property"),
+            "{message}"
+        );
+        assert!(message.contains("fileVersion"), "{message}");
+        assert!(!message.contains("REJECTED_BODY"));
+        assert!(message.len() <= 2048);
+        assert_eq!(arguments, original);
+
+        let schema = json!({"type":"object","properties":{"value":{"anyOf":[{"$ref":"#/$defs/count"},{"type":"string"}]}},"$defs":{"count":{"type":"integer","minimum":2}}});
+        let mut definition = definition(schema);
+        definition.output_schema =
+            Some(json!({"anyOf":[{"type":"integer","minimum":2},{"type":"string"}]}));
+        let registry = Registry::default().with_dynamic(&[definition]).unwrap();
+        let tool = registry.get("lookup").unwrap();
+        for message in [
+            tool.validate_input(&json!({"value":1}))
+                .unwrap_err()
+                .to_string(),
+            tool.validate_output(&json!(1)).unwrap_err().to_string(),
+        ] {
+            assert!(message.contains("anyOf"), "{message}");
+            assert!(message.contains("minimum of 2"), "{message}");
+            assert!(message.contains("string"), "{message}");
+        }
+        tool.validate_input(&json!({"value":2})).unwrap();
+        tool.validate_input(&json!({"value":"other"})).unwrap();
+    }
+
+    #[test]
+    fn validation_feedback_bounds_union_details_without_choosing_a_branch() {
+        let branches: Vec<_> = (0..16)
+            .map(|index| json!({"type":"object","required":[format!("字段{index}{}", "长".repeat(600))]}))
+            .collect();
+        let registry = Registry::default()
+            .with_dynamic(&[definition(json!({"type":"object","anyOf":branches}))])
+            .unwrap();
+        let message = registry
+            .get("lookup")
+            .unwrap()
+            .validate_input(&json!({}))
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("alternative 0"), "{message}");
+        assert!(message.contains("alternative 1"), "{message}");
+        assert!(
+            message.contains("further alternatives omitted"),
+            "{message}"
+        );
+        assert!(message.len() <= 2048);
+
+        let registry = Registry::default()
+            .with_dynamic(&[definition(json!({"type":"object","properties":{"value":{"oneOf":[{"type":"integer"},{"minimum":0}]}}}))])
+            .unwrap();
+        let message = registry
+            .get("lookup")
+            .unwrap()
+            .validate_input(&json!({"value":2}))
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("more than one"), "{message}");
+        assert!(!message.contains("alternative 0"), "{message}");
     }
     #[test]
     fn rejects_invalid_schemas_external_refs_and_name_collisions() {

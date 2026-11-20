@@ -28,6 +28,10 @@ installer = load("release_installer", "install.py")
 release = load("release_artifacts", "release-artifacts.py")
 package = load("release_package", "package.py")
 versions = load("release_versions", "set-version.py")
+with patch.dict(
+    sys.modules, {"fixture_session_title": load("release_titles", "fixture_session_title.py")}
+):
+    release_smoke = load("release_smoke", "release-smoke.py")
 
 
 class ReleaseTests(unittest.TestCase):
@@ -489,3 +493,130 @@ class BuildIdentityTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             package.validate_build_info(info, "B", "changed", metadata, reuse_core=True)
+
+
+class ReleaseSmokeCleanupTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name) / "probe"
+        self.root.mkdir()
+        self.home = self.root / "home/.areal"
+        (self.home / "host").mkdir(parents=True)
+        self.env = {
+            "HOME": str(self.root / "home"),
+            "AREAL_HARNESS_HOME": str(self.home),
+            "AREAL_HARNESS_SERVICE_HOME": str(self.home),
+        }
+
+    def owner(self):
+        child = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                """
+import fcntl, json, sys
+from pathlib import Path
+home = Path(sys.argv[1])
+with (home / 'host.lock').open('w') as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    descriptor = home / 'host/host.json'
+    descriptor.write_text(json.dumps({'hostId':'fixture-owner', 'generation':'original'}))
+    print('ready', flush=True)
+    sys.stdin.readline()
+    descriptor.unlink()
+""",
+                str(self.home),
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+        def finish():
+            if child.poll() is None:
+                child.terminate()
+            child.communicate(timeout=5)
+
+        self.addCleanup(finish)
+        self.assertEqual(child.stdout.readline(), "ready\n")
+        return child
+
+    def receipt(self, arguments, **changes):
+        return subprocess.CompletedProcess(
+            arguments,
+            0,
+            json.dumps(
+                {
+                    "requestId": arguments[arguments.index("--request-id") + 1],
+                    "hostId": "fixture-owner",
+                    "generation": "original",
+                    "state": "completed",
+                    **changes,
+                }
+            ),
+            "",
+        )
+
+    def test_completed_stop_still_requires_the_real_owner_lock_to_be_released(self):
+        child = self.owner()
+        with patch.object(
+            release_smoke.subprocess,
+            "run",
+            side_effect=lambda arguments, **_: self.receipt(arguments),
+        ):
+            with self.assertRaisesRegex(TimeoutError, "lifecycle lock"):
+                release_smoke.stop_fixture_host(Path("fixture"), self.root, self.env, timeout=0)
+        self.assertIsNone(child.poll())
+        self.assertTrue((self.home / "host/host.json").exists())
+
+    def test_unsettled_or_different_generation_receipt_preserves_fixture_state(self):
+        child = self.owner()
+        for change in [
+            {"state": "acceptedPending"},
+            {"generation": "successor"},
+            {"hostId": "other"},
+        ]:
+            with self.subTest(change=change):
+                with patch.object(release_smoke.tempfile, "mkdtemp", return_value=str(self.root)):
+                    with patch.object(
+                        release_smoke.subprocess,
+                        "run",
+                        side_effect=lambda arguments, **_: self.receipt(arguments, **change),
+                    ):
+                        with self.assertRaisesRegex(AssertionError, "not settled"):
+                            with release_smoke.isolated_run(Path("fixture")):
+                                pass
+                self.assertTrue(self.root.exists())
+                self.assertIsNone(child.poll())
+
+    def test_fixture_shutdown_precedes_deletion_even_when_the_probe_fails(self):
+        child = self.owner()
+
+        def stop(arguments, **_):
+            child.communicate(input="stop\n", timeout=5)
+            self.assertEqual(child.returncode, 0)
+            self.assertTrue(self.root.exists())
+            return self.receipt(arguments)
+
+        with patch.object(release_smoke.tempfile, "mkdtemp", return_value=str(self.root)):
+            with patch.object(release_smoke.subprocess, "run", side_effect=stop):
+                with self.assertRaisesRegex(RuntimeError, "probe failed"):
+                    with release_smoke.isolated_run(Path("fixture")):
+                        raise RuntimeError("probe failed")
+        self.assertFalse(self.root.exists())
+
+    def test_fixture_cannot_stop_an_external_service_home(self):
+        self.owner()
+        with patch.object(release_smoke.subprocess, "run") as stopped:
+            with self.assertRaises(AssertionError):
+                release_smoke.stop_fixture_host(
+                    Path("fixture"),
+                    self.root,
+                    {
+                        **self.env,
+                        "AREAL_HARNESS_SERVICE_HOME": str(self.root.parent),
+                    },
+                )
+        stopped.assert_not_called()

@@ -2,16 +2,90 @@
 """在解压或安装后的完整 bundle 上验证无源码启动、真实读写和内置搜索。"""
 
 import argparse
+from contextlib import contextmanager
+import fcntl
 import hashlib
 import http.server
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import threading
+import time
+import uuid
 from pathlib import Path
 
 from fixture_session_title import reply_to_session_title
+
+
+def stop_fixture_host(executable, root, env, timeout=30):
+    home = root / "home/.areal"
+    assert env["AREAL_HARNESS_HOME"] == env["AREAL_HARNESS_SERVICE_HOME"] == str(home)
+    descriptor = home / "host/host.json"
+    if descriptor.exists():
+        identity = json.loads(descriptor.read_text())
+        request = str(uuid.uuid4())
+        stopped = subprocess.run(
+            [
+                str(executable),
+                "host",
+                "stop",
+                "--cancel",
+                "--json",
+                "--request-id",
+                request,
+                "--expected-generation",
+                identity["generation"],
+            ],
+            cwd=root,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=True,
+        )
+        receipt = json.loads(stopped.stdout)
+        assert (
+            receipt["requestId"] == request
+            and receipt["generation"] == identity["generation"]
+            and receipt["hostId"] == identity["hostId"]
+            and receipt["state"] == "completed"
+        ), f"fixture Host stop is not settled; retained {root}"
+    lock = home / "host.lock"
+    if lock.exists():
+        with lock.open("rb") as handle:
+            deadline = time.monotonic() + timeout
+            while True:
+                try:
+                    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError(
+                            f"fixture Host still owns its lifecycle lock; retained {root}"
+                        ) from None
+                    time.sleep(0.05)
+    assert not descriptor.exists(), f"fixture Host discovery still exists; retained {root}"
+
+
+@contextmanager
+def isolated_run(executable, timeout=30):
+    root = Path(tempfile.mkdtemp(prefix="areal-release-smoke-")).resolve()
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("AREAL_", "OTEL_"))}
+    env.update(
+        HOME=str(root / "home"),
+        AREAL_HARNESS_HOME=str(root / "home/.areal"),
+        AREAL_HARNESS_SERVICE_HOME=str(root / "home/.areal"),
+        NO_PROXY="127.0.0.1,localhost",
+        no_proxy="127.0.0.1,localhost",
+    )
+    try:
+        yield root, env
+    finally:
+        # owned 参数也连接持久 Host；必须先确认本探针的代际与锁结算，再删除状态。
+        stop_fixture_host(executable, root, env, timeout)
+        shutil.rmtree(root)
 
 
 def main():
@@ -121,8 +195,7 @@ def main():
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        with tempfile.TemporaryDirectory(prefix="areal-release-smoke-") as temporary:
-            root = Path(temporary)
+        with isolated_run(executable) as (root, env):
             workspace = root / "workspace"
             workspace.mkdir()
             config = root / "config.toml"
@@ -136,13 +209,6 @@ endpoint="http://127.0.0.1:{server.server_port}/v1/chat/completions"
 [limits]
 watchdog_disable=true
 """)
-            env = {k: v for k, v in os.environ.items() if not k.startswith(("AREAL_", "OTEL_"))}
-            env.update(
-                HOME=str(root / "home"),
-                AREAL_HARNESS_HOME=str(root / "home/.areal"),
-                NO_PROXY="127.0.0.1,localhost",
-                no_proxy="127.0.0.1,localhost",
-            )
             result = subprocess.run(
                 [
                     str(executable),
@@ -168,18 +234,19 @@ watchdog_disable=true
             assert "RELEASE_RW_OK" in result.stdout, result.stdout
             assert (workspace / "release-check.txt").read_text() == "RELEASE_RW_OK\n"
             assert calls == [0, 1, 2, 3], calls
-            print(
-                json.dumps(
-                    {
-                        "releaseSmoke": "passed",
-                        "platform": manifest["platform"],
-                        "profile": manifest["profile"],
-                        "model": "local-fixture",
-                        "toolCalls": 3,
-                        "sourceRevision": manifest["sourceRevision"],
-                    }
-                )
+        print(
+            json.dumps(
+                {
+                    "releaseSmoke": "passed",
+                    "platform": manifest["platform"],
+                    "profile": manifest["profile"],
+                    "model": "local-fixture",
+                    "toolCalls": 3,
+                    "hostCleanupConfirmed": True,
+                    "sourceRevision": manifest["sourceRevision"],
+                }
             )
+        )
     finally:
         server.shutdown()
         server.server_close()
