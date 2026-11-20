@@ -1,0 +1,74 @@
+docs/api/desktop.md
+  s_f9fad336940d7a::t_af870b0e432e4b 591
+  s_f9fad336940d7a::t_8b7d2ee4f3244c 595
+  s_f9fad336940d7a::t_56de25406bb4f7 593
+services/workbench/test/scoped-resources.test.cjs
+  s_f9fad336940d7a::t_e4bc5dea19013f 98-99,106
+  s_f9fad336940d7a::t_16938b5f95774c 91,93-97,100-102,104-105,107
+  s_f9fad336940d7a::t_d039df31d92903 80-90,92,103,108-114
+docs/guides/skills.en.md
+  s_f9fad336940d7a::t_f74e5953a389a2 18,20
+services/workbench/src/desktop/core/worktrees.cjs
+  s_f9fad336940d7a::t_a534b78252633d 282-283,294-300,319,321-328
+clients/gui/scripts/worktree-host.test.cjs
+  s_f9fad336940d7a::t_af870b0e432e4b 92-93,100,108,117,125,132,137-176
+  s_f9fad336940d7a::t_14d7285183f7f5 177-192
+clients/gui/renderer/src/state/resourceDraft.ts
+  s_f9fad336940d7a::t_5b4b86243db1bd 3,118-119
+  s_f9fad336940d7a::t_16938b5f95774c 111-117
+clients/gui/renderer/src/ComposerSkills.tsx
+  s_f9fad336940d7a::t_16938b5f95774c 42-46,62
+  s_f9fad336940d7a::t_5b4b86243db1bd 34-41,47,63-64
+  s_f9fad336940d7a::t_33ac234eb66e9a 22,24-33,48,55,60-61,175,188-190
+  s_f9fad336940d7a::t_da7964895e76bf 20-21,23,49-54,56-59,168-174,186-187
+  s_f9fad336940d7a::t_7273e8bfadfef5 65-67,95,103,176-178,184-185,191-192,195-199,241
+services/workbench/src/desktop/core/scoped-resources.cjs
+  s_f9fad336940d7a::t_808671ff722a6b 14,71-72,86,235-236
+  s_f9fad336940d7a::t_16938b5f95774c 73-85,230-234,243
+  s_f9fad336940d7a::t_e4bc5dea19013f 9,237-242
+  s_f9fad336940d7a::t_161b495f44b817 20-25
+  s_f9fad336940d7a::t_1485ae67d7bdc9 26,87,244,247,268,337,344,401,408,415,425,427
+clients/gui/packages/workbench/client/desktop-contract/resource.cjs
+  s_f9fad336940d7a::t_16938b5f95774c 162-165,242,248
+  s_f9fad336940d7a::t_8b7d2ee4f3244c 124
+  s_f9fad336940d7a::t_808671ff722a6b 161,241
+  s_f9fad336940d7a::t_33ac234eb66e9a 117,120-121,243-247
+  s_f9fad336940d7a::t_ffdc373b9647e3 249-250
+clients/gui/packages/workbench/client/desktop-contract/transport.cjs
+  s_f9fad336940d7a::t_8b7d2ee4f3244c 137
+services/workbench/src/desktop/core/backend.cjs
+  s_f9fad336940d7a::t_8b7d2ee4f3244c 1544
+docs/guides/skills.md
+  s_f9fad336940d7a::t_f74e5953a389a2 18,20
+clients/gui/renderer/src/DraftComposer.tsx
+  s_f9fad336940d7a::t_33ac234eb66e9a 203,532
+  s_f9fad336940d7a::t_16938b5f95774c 525-531,533-534
+  s_f9fad336940d7a::t_5b4b86243db1bd 48,535
+clients/gui/scripts/plugin-concepts-smoke.mjs
+  s_f9fad336940d7a::t_1eb46e55b22e44 2085,2087-2088,2093,2102
+  s_f9fad336940d7a::t_a545920157b0d8 2116-2138,2172-2173
+  s_f9fad336940d7a::t_16938b5f95774c 2089-2092,2094-2101,2192
+  s_f9fad336940d7a::t_6503eefe61f002 2174-2191,2193-2202
+services/workbench/src/desktop/core/builtin-skills.cjs
+  s_f9fad336940d7a::t_e4bc5dea19013f 21,125,146
+docs/api/desktop.en.md
+  s_f9fad336940d7a::t_af870b0e432e4b 593
+  s_f9fad336940d7a::t_8b7d2ee4f3244c 597
+  s_f9fad336940d7a::t_4933187070699a 595
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "63a1e50db57395805a5f757d30618b4ecebab9ce",
+  "prompts": {},
+  "sessions": {
+    "s_f9fad336940d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1f2b3-c54f-7f92-a60a-ee46af3d4d62",
+        "model": "gpt-6.2-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
