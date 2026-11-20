@@ -12,14 +12,19 @@ import {
   createProjectConversation,
   selectConversation,
 } from "./smoke-navigation.mjs";
-import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
+import {
+  assertApplicationStopped,
+  closeSmokeApplication,
+  stopFixtureHost,
+} from "./application-cleanup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const { ServiceConnection, waitForServiceExit } = require("../app/src/core/service-client.cjs");
+const { ServiceConnection } = require("../app/src/core/service-client.cjs");
+const { HostClient } = require("@areal/client/node");
 const scratch = await makeTempDir("areal-plugin-concepts-");
 const workspace = join(scratch, "workspace");
 const userHome = join(scratch, "user");
@@ -572,8 +577,14 @@ async function launch() {
   } finally {
     connection.close();
   }
+  const host = JSON.parse(
+    await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/host.json"), "utf8"),
+  );
   instances.push({
     ...identity,
+    hostId: host.hostId,
+    hostGeneration: host.generation,
+    hostPid: host.pid,
     servicePid: metadata.pid,
     serviceProtocol: metadata.protocol,
     desktopGeneration: metadata.desktopGeneration,
@@ -817,22 +828,42 @@ async function openAndEchoApp(detail, ownerThreadId, expectedCalls) {
   return { frameUrl: frame.url(), threadId: ownerThreadId };
 }
 async function ownedCoreGeneration(ownerRoot) {
-  return until(async () => {
-    const entries = JSON.parse(
-      execFileSync(env.AREAL_CORE_BIN, ["service", "list", "--json"], {
-        env,
-        encoding: "utf8",
-        timeout: 30_000,
-      }),
-    );
-    const owner = entries.find(
-      (entry) =>
-        entry.workspace === ownerRoot &&
-        entry.owner?.profile === env.AREAL_GUI_USER_DATA &&
-        entry.state !== "stopped",
-    );
-    return owner?.corePid && owner?.generation ? owner : null;
-  }, "owned Core generation is running");
+  const host = new HostClient();
+  try {
+    await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+    return await until(async () => {
+      const { projects } = await host.status();
+      const matches = projects.filter(({ registration }) => registration.workspace === ownerRoot);
+      if (!matches.length || !matches[0].service?.corePid) return null;
+      assert.equal(matches.length, 1);
+      const { registration, service } = matches[0];
+      assert.deepEqual(registration.source, {
+        kind: "gui",
+        profile: env.AREAL_GUI_USER_DATA,
+        legacyProjectId: projectId,
+      });
+      assert.ok(registration.projectId);
+      assert.equal(registration.dataDir, join(env.AREAL_CORE_HOME, projectId, "state"));
+      assert.equal(service.workspace, ownerRoot);
+      assert.equal(service.dataDir, registration.dataDir);
+      assert.deepEqual(service.owner, {
+        kind: "host",
+        hostId: host.hostId,
+        generation: host.generation,
+      });
+      assert.ok(service.generation);
+      process.kill(service.corePid, 0);
+      return {
+        workspace: service.workspace,
+        corePid: service.corePid,
+        generation: service.generation,
+        projectId: registration.projectId,
+        owner: service.owner,
+      };
+    }, "registered project Core generation is running");
+  } finally {
+    host.close();
+  }
 }
 async function closeDetail() {
   await button("返回插件列表").click();
@@ -878,36 +909,16 @@ async function assertSkillOwners() {
   return { packaged, standalone };
 }
 async function stopService() {
-  let metadata;
-  try {
-    metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-  }
-  if (metadata) {
-    const connection = new ServiceConnection();
-    try {
-      await connection.connect(metadata);
-      await connection.request("hello", {
-        protocol: metadata.protocol,
-        identity: metadata.identity,
-      });
-      await connection.request("stopService", { protocol: metadata.protocol }, true);
-    } finally {
-      connection.close();
-    }
-    await waitForServiceExit(join(scratch, "core"), metadata);
-    await until(async () => {
-      try {
-        process.kill(metadata.pid, 0);
-        return false;
-      } catch (error) {
-        if (error.code === "ESRCH") return true;
-        throw error;
-      }
-    }, "owned desktop service exits");
-  }
-  await assertApplicationStopped(env.AREAL_CORE_BIN, env, metadata);
+  const instance = instances.at(-1);
+  assert.ok(instance, "fixture recorded the Desktop and Host identity at launch");
+  const receipt =
+    (await stopFixtureHost(env.AREAL_CORE_BIN, env.AREAL_HARNESS_SERVICE_HOME, scratch)) ??
+    JSON.parse(await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/stop.json"), "utf8"));
+  assert.equal(receipt.hostId, instance.hostId);
+  assert.equal(receipt.generation, instance.hostGeneration);
+  assert.equal(receipt.state, "completed");
+  await assertApplicationStopped(env.AREAL_CORE_BIN, env, { pid: instance.servicePid });
+  await assertApplicationStopped(env.AREAL_CORE_BIN, env, { pid: instance.hostPid });
   const remaining = JSON.parse(
     execFileSync(env.AREAL_CORE_BIN, ["service", "list", "--json"], {
       env,
@@ -929,8 +940,14 @@ async function stopService() {
             owner.root.startsWith(`${userHome}/`))),
       "registry contains only persisted fixture owners",
     );
-    assert.equal(service.owner?.kind, "gui");
-    assert.equal(service.owner?.profile, env.AREAL_GUI_USER_DATA);
+    assert.equal(service.owner?.kind, "host");
+    assert.ok(
+      instances.some(
+        (run) =>
+          service.owner.hostId === run.hostId && service.owner.generation === run.hostGeneration,
+      ),
+      "service belongs to a recorded fixture Host generation",
+    );
     assert.equal(service.dataDir, join(scratch, "core", owner.id, "state"));
   }
   assert.equal(
@@ -938,7 +955,7 @@ async function stopService() {
     true,
     "owned Core services stopped",
   );
-  return { desktopStopped: true, coreStopped: true, remaining };
+  return { desktopStopped: true, coreStopped: true, hostStop: receipt.state, remaining };
 }
 
 try {
@@ -1664,7 +1681,7 @@ try {
     const oldElectronPid = app.process().pid;
     await closeSmokeApplication(app);
     app = null;
-    await assertApplicationStopped(env.AREAL_CORE_BIN, env, oldDesktop);
+    await stopService();
     appEvidence.applicationStopped = true;
     await launch();
     await until(

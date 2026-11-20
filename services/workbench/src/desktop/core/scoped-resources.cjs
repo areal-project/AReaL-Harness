@@ -15,7 +15,8 @@ const { serverStatus } = require("./provider-contract.cjs");
 const MAX_REGISTERED_SKILLS = 512;
 const MAX_SKILL_DIRECTORY_ENTRIES = 512;
 // 新建位置与 Core 发现规则一致；兼容目录只读取，按高到低优先级选定同名 Skill。
-const STANDARD_SKILL_ROOTS = [".agents/skills", ".claude/skills", ".codex/skills"];
+const DEFAULT_SKILL_DIRECTORY = ".agents/skills";
+const STANDARD_SKILL_ROOTS = [DEFAULT_SKILL_DIRECTORY, ".claude/skills", ".codex/skills"];
 /** @param {unknown} value */
 const digest = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 /** @param {string} root @param {string} path */
@@ -103,17 +104,13 @@ class ScopedResources {
     const base = await realpath(this.base(scope));
     let root = base;
     // 分段检查后才创建下一层，避免通过项目 .agents 链接在工作区外创建 skills。
-    for (const name of [".agents", "skills"]) {
+    for (const name of DEFAULT_SKILL_DIRECTORY.split("/")) {
       const path = join(root, name);
-      let exists = true;
       try {
-        // 先解析现有目录/链接，不能先在链接目标中创建下一层再做范围检查。
-        await realpath(path);
+        await mkdir(path, { mode: 0o700 });
       } catch (e) {
-        if (!(e instanceof Error && "code" in e && e.code === "ENOENT")) throw e;
-        exists = false;
+        if (!(e instanceof Error && "code" in e && e.code === "EEXIST")) throw e;
       }
-      if (!exists) await mkdir(path, { mode: 0o700 });
       root = await realpath(path);
       if (scope !== "user" && !within(base, root)) throw new Error("项目 Skill 写入目录超出工作区");
     }
@@ -243,7 +240,12 @@ class ScopedResources {
       }));
     const builtin = await builtinSkill(this.backend.home, BUILTIN_SKILL_ID);
     const { id, revision, name: builtinName, description } = builtin.skill;
-    skills.push({ id, revision, root: builtin.root, metadata: { name: builtinName, description } });
+    skills.push({
+      id,
+      revision,
+      root: builtin.root,
+      metadata: { name: builtinName, description },
+    });
     const base = resourceContract.deployment(
       JSON.parse(await readFile(this.backend.desktopConfig, "utf8")),
     );

@@ -232,34 +232,39 @@ test("user linked roots remain readable and receive new skills at the standard l
   assert.match(await readFile(join(root, "new/SKILL.md"), "utf8"), /new body/);
 });
 
-test("worktree snapshots inherit the effective project skills and supporting files", async (t) => {
+test("a fresh worktree discovers committed skills and keeps source-only skills local", async (t) => {
   const f = await fixture(t);
-  f.backend.start = async () => ({ pending: [], client: {} });
-  f.backend.worktrees = { key() {} };
-  const standard = await skill(join(f.workspace, ".agents/skills"), "shared", "standard");
-  await skill(join(f.workspace, ".claude/skills"), "shared", "claude");
-  await skill(join(f.workspace, ".codex/skills"), "shared", "codex");
-  await skill(join(f.home, "resources/project/skills"), "shared", "legacy");
-  await skill(join(f.home, "resources/project/skills"), "legacy-only", "legacy only");
-  await skill(join(f.workspace, ".codex/skills"), "codex-only", "codex only");
-  await skill(join(f.userHome, ".agents/skills"), "user-only", "user only");
+  const git = (...args) =>
+    require("node:child_process").execFileSync("git", ["-C", f.workspace, ...args]);
+  git("init", "--quiet");
+  const standard = await skill(join(f.workspace, ".agents/skills"), "shared", "committed");
   await mkdir(join(standard, "references"));
   await writeFile(join(standard, "references/guide.md"), "supporting guide");
-  f.resources.value.skills.project = { shared: false };
-  const target = { id: "target", root: join(f.root, "target"), worktreeResources: "request" };
-  await mkdir(target.root);
+  git("add", ".agents");
+  git(
+    "-c",
+    "user.email=test@localhost",
+    "-c",
+    "user.name=Fixture",
+    "-c",
+    "commit.gpgsign=false",
+    "commit",
+    "--quiet",
+    "-m",
+    "Skill fixture",
+  );
+  await skill(join(f.workspace, ".agents/skills"), "local-only", "untracked");
+  const target = { id: "target", root: join(f.root, "worktree") };
+  git("worktree", "add", "--quiet", "--detach", target.root, "HEAD");
   f.backend.saved.push(target);
-  await f.resources.worktrees.snapshot(f.project, target.root, "request");
-  await writeFile(join(standard, "SKILL.md"), "changed after snapshot");
-  await f.resources.worktrees.prepare(target);
   const found = await f.resources.scan(target.id);
-  assert.deepEqual(found.map((s) => s.id).sort(), ["codex-only", "legacy-only", "shared"]);
-  assert.equal(found.find((s) => s.id === "shared").enabled, false);
-  assert.equal(found.find((s) => s.id === "shared").description, "standard");
+  assert.deepEqual(
+    found.map((s) => s.id),
+    ["shared"],
+  );
+  assert.equal(found[0].root, await realpath(join(target.root, ".agents/skills/shared")));
   assert.equal(
-    await readFile(join(found.find((s) => s.id === "shared").root, "references/guide.md"), "utf8"),
+    await readFile(join(found[0].root, "references/guide.md"), "utf8"),
     "supporting guide",
   );
-  await f.resources.worktrees.prepare(target);
-  assert.equal((await f.resources.scan(target.id)).length, 3);
 });

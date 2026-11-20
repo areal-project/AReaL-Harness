@@ -9,6 +9,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub const DEFAULT_SKILL_DIRECTORY: &str = ".agents/skills";
+pub const SKILL_SEARCH_DIRECTORIES: [&str; 3] =
+    [DEFAULT_SKILL_DIRECTORY, ".claude/skills", ".codex/skills"];
+
 pub const MAX_REGISTERED_SKILLS: usize = 512;
 pub const MAX_SKILL_DIRECTORY_ENTRIES: usize = 512;
 
@@ -46,7 +50,7 @@ pub fn discover(workspace: Option<&Path>, homedir: Option<&Path>) -> Result<Skil
     }
     for base in [homedir, workspace.as_deref()].into_iter().flatten() {
         // agents > claude > codex；反向选取时保持项目目录优先于用户目录。
-        for directory in [".codex/skills", ".claude/skills", ".agents/skills"] {
+        for directory in SKILL_SEARCH_DIRECTORIES.into_iter().rev() {
             let path = base.join(directory);
             match fs::symlink_metadata(&path) {
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,

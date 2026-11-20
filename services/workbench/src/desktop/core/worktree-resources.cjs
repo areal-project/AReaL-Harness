@@ -53,16 +53,6 @@ class WorktreeResources {
       },
     });
   }
-  /** @param {import('./project-index.cjs').SavedProject} source @param {string} destination */
-  async copyDiscoveredSkills(source, destination) {
-    // 复制与项目启动相同的有效 Skill 集合：标准 .agents/.claude/.codex
-    // 根按统一优先级覆盖，旧 managed 根只在没有标准副本时生效。
-    const skills = await this.resources.scan(source.id);
-    for (const skill of skills) {
-      if (!skill.root || skill.error !== undefined) continue;
-      await this.copySkills(skill.root, join(destination, skill.id));
-    }
-  }
   /** @param {import('./project-index.cjs').SavedProject} source @param {string} targetRoot @param {string} requestId */
   async snapshot(source, targetRoot, requestId) {
     const directory = this.directory(requestId);
@@ -92,8 +82,16 @@ class WorktreeResources {
       if (!live.client) throw new Error("Core 连接不可用");
       await mkdir(join(b.home, "worktree-resource-imports"), { recursive: true, mode: 0o700 });
       staging = await mkdtemp(directory + ".staging-");
-      await mkdir(join(staging, "skills"), { mode: 0o700 });
-      await this.copyDiscoveredSkills(source, join(staging, "skills"));
+      const managed = join(b.home, "resources", source.id, "skills");
+      let exists = true;
+      try {
+        await lstat(managed);
+      } catch (error) {
+        if (!record(error) || error.code !== "ENOENT") throw error;
+        exists = false;
+      }
+      if (exists) await this.copySkills(managed, join(staging, "skills"));
+      else await mkdir(join(staging, "skills"), { mode: 0o700 });
       const plan = {
         sourceId: source.id,
         sourceRoot: source.root,

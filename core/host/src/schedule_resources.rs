@@ -13,8 +13,6 @@ use std::{
 
 const BUILTIN_SKILL_ID: &str = "openai-skill-creator";
 const MAX_SKILLS: usize = 512;
-// 与 Core 的标准目录优先级一致，旧私有 managed 根只作为最后的兼容读取来源。
-const STANDARD_SKILL_ROOTS: [&str; 3] = [".agents/skills", ".claude/skills", ".codex/skills"];
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(
@@ -232,7 +230,7 @@ fn scan(
 ) -> Result<BTreeMap<String, Option<Skill>>> {
     let base = base.canonicalize()?;
     let mut roots = Vec::new();
-    for relative in STANDARD_SKILL_ROOTS {
+    for relative in areal_config::skills::SKILL_SEARCH_DIRECTORIES {
         match base.join(relative).canonicalize() {
             Ok(root) => {
                 ensure!(
