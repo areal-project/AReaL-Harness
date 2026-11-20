@@ -24,6 +24,7 @@ export type ResourceDraftSeed =
   | { kind: "creator"; projectId: string }
   | {
       kind?: "resource";
+      standalone?: { projectId?: string };
       text: string;
       skill?: ComposerSkill;
       plugin?: { id: string };
@@ -317,6 +318,7 @@ export function PluginSkillsPage({
       }
       if (!activeRef.current || draftVersion !== draftGeneration.current) return;
       await onStartDraft({
+        ...(skill.scope === "plugin" ? {} : { standalone: { projectId: skill.projectId } }),
         text: t("settings.pluginSkillsPage.pleaseUseValueToHelpMeComplete", { value0: skill.name }),
         skill: {
           id: skill.id,

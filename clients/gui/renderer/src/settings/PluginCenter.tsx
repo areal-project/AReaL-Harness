@@ -318,11 +318,8 @@ export function PluginCenter({
   useEffect(() => {
     if (marketRequest) setRoute({ kind: "market", audience: "public" });
   }, [marketRequest]);
-  const previousTab = useRef(initialTab);
   useEffect(() => {
-    if (surface === "settings" && initialTab !== previousTab.current)
-      setRoute({ kind: "installed", tab: initialTab });
-    previousTab.current = initialTab;
+    if (surface === "settings") setRoute({ kind: "installed", tab: initialTab });
   }, [surface, initialTab]);
   const api = useCallback(
     async <P extends ManagementRequest>(request: P) => {

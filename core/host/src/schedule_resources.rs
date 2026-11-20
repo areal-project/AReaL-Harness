@@ -230,21 +230,24 @@ fn scan(
 ) -> Result<BTreeMap<String, Option<Skill>>> {
     let base = base.canonicalize()?;
     let mut roots = Vec::new();
-    for relative in [".agents/skills", ".claude/skills"] {
+    for relative in areal_config::skills::SKILL_SEARCH_DIRECTORIES {
         match base.join(relative).canonicalize() {
             Ok(root) => {
                 ensure!(
                     !project || root.starts_with(&base),
                     "project skill directory escapes workspace"
                 );
-                roots.push(root);
+                if !roots.iter().any(|known| known == &root) {
+                    roots.push(root);
+                }
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => return Err(error.into()),
         }
     }
     match managed.canonicalize() {
-        Ok(root) => roots.insert(0, root),
+        Ok(root) if !roots.iter().any(|known| known == &root) => roots.push(root),
+        Ok(_) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(error.into()),
     }
@@ -305,7 +308,7 @@ fn valid_id(id: &str) -> bool {
         && !matches!(id, "__proto__" | "constructor" | "prototype")
         && id
             .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || b"_.-".contains(&byte))
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_.:-".contains(&byte))
 }
 
 fn bounded(path: &Path, bytes: u64) -> Result<String> {
@@ -522,7 +525,7 @@ mod tests {
     }
 
     #[test]
-    fn managed_roots_win_and_project_disabled_or_invalid_entries_shadow_user_skills() {
+    fn standard_project_roots_win_and_invalid_entries_shadow_user_skills() {
         let fixture = Fixture::new();
         let user = fixture.inputs.homedir.as_ref().unwrap();
         for id in ["same", "disabled", "invalid"] {
@@ -537,13 +540,22 @@ mod tests {
             &fixture.registration.workspace.join(".claude/skills/same"),
             "project claude",
         );
-        let winner = fixture.managed(true).join("same");
-        write_skill(&winner, "project managed");
-        write_skill(&fixture.managed(true).join("disabled"), "disabled project");
+        let winner = fixture.registration.workspace.join(".agents/skills/same");
         write_skill(
-            &fixture.managed(true).join("invalid"),
+            &fixture
+                .registration
+                .workspace
+                .join(".agents/skills/disabled"),
+            "disabled project",
+        );
+        write_skill(
+            &fixture
+                .registration
+                .workspace
+                .join(".agents/skills/invalid"),
             "---\nname: []\n---\n",
         );
+        write_skill(&fixture.managed(true).join("same"), "project managed");
         fixture.state(json!({"legacy-project":{"disabled":false}}));
         let prepared = fixture.prepare();
         let value = deployment(&prepared);
@@ -555,16 +567,86 @@ mod tests {
             .find(|skill| skill["id"] == "same")
             .unwrap();
         assert_eq!(same["root"], json!(winner.canonicalize().unwrap()));
-        assert_eq!(same["metadata"]["description"], "project managed");
+        assert_eq!(same["metadata"]["description"], "project agents");
         let expected = storage::digest(
             &serde_json::to_vec(&json!([
                 winner.canonicalize().unwrap(),
                 "same",
-                "project managed"
+                "project agents"
             ]))
             .unwrap(),
         );
         assert_eq!(same["revision"], format!("harness-{}", &expected[..32]));
+    }
+
+    #[test]
+    fn codex_and_claude_roots_are_read_and_managed_root_is_fallback() {
+        let fixture = Fixture::new();
+        let user = fixture.inputs.homedir.as_ref().unwrap();
+        write_skill(&user.join(".codex/skills/codex-only"), "codex fallback");
+        write_skill(
+            &user.join(".codex/skills/namespace:skill"),
+            "namespaced fallback",
+        );
+        write_skill(&user.join(".claude/skills/shared"), "claude fallback");
+        write_skill(&user.join(".agents/skills/shared"), "areal standard");
+        write_skill(&fixture.managed(false).join("managed-only"), "old managed");
+
+        write_skill(
+            &fixture
+                .registration
+                .workspace
+                .join(".codex/skills/project-codex"),
+            "project codex",
+        );
+        write_skill(
+            &fixture
+                .registration
+                .workspace
+                .join(".claude/skills/project-shared"),
+            "project claude",
+        );
+        let project_winner = fixture
+            .registration
+            .workspace
+            .join(".agents/skills/project-shared");
+        write_skill(&project_winner, "project agents");
+        write_skill(
+            &fixture.managed(true).join("project-managed"),
+            "old project",
+        );
+
+        let value = deployment(&fixture.prepare());
+        assert_eq!(
+            current_skills(&value),
+            [
+                "codex-only",
+                "managed-only",
+                "namespace:skill",
+                "project-codex",
+                "project-managed",
+                "project-shared",
+                "shared",
+                BUILTIN_SKILL_ID
+            ]
+        );
+        let shared = value["skills"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|skill| skill["id"] == "shared")
+            .unwrap();
+        assert_eq!(shared["metadata"]["description"], "areal standard");
+        let project_shared = value["skills"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|skill| skill["id"] == "project-shared")
+            .unwrap();
+        assert_eq!(
+            project_shared["root"],
+            json!(project_winner.canonicalize().unwrap())
+        );
     }
 
     #[test]

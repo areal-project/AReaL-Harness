@@ -2103,6 +2103,14 @@ export const pluginMessages = {
     "zh-CN": "连接所属项目后读取 Skill 正文。",
     en: "Connect the owning project to read the skill content.",
   },
+  "settings.pluginSkillsPage.profileNotReady": {
+    "zh-CN": "更新后的任务配置尚不可用，现有草稿已保留。",
+    en: "The updated profile is not ready yet. Your draft has been preserved.",
+  },
+  "settings.pluginSkillsPage.connectProjectForDraft": {
+    "zh-CN": "请先连接 Skill 所属的项目，现有草稿已保留。",
+    en: "Connect the project that owns this skill first. Your draft has been preserved.",
+  },
   "settings.pluginSkillsPage.theSkillPageIsInvalid": {
     "zh-CN": "Skill 分页无效。",
     en: "The skill page is invalid.",

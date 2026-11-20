@@ -633,6 +633,16 @@ impl Engine {
                 instructions.push(Kind::Rules, &profile.display_name, "\n\nProduct mode instructions (subject to user instructions and deployment permissions):\n");
                 instructions.push(Kind::Rules, &profile.display_name, &profile.instructions);
             }
+            if !task_read_only
+                && !cell.research
+                && let Some(roots) = self.skill_install_roots()
+            {
+                instructions.push(
+                    Kind::Skills,
+                    "技能安装目录",
+                    &format!("\nStandalone Skill installation roots: {roots}. When asked to install or create a Skill, default to project; use user for a personal installation. Put <name>/SKILL.md and its supporting files under that root without asking for a destination. Honor an explicit destination and normal write permissions.\n"),
+                );
+            }
             let skill_refs = self.effective_skill_refs(&config, true);
             if !self.extensions.policy.compact_tools || !skill_refs.is_empty() {
                 instructions.push(

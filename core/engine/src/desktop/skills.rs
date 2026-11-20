@@ -284,6 +284,16 @@ impl Engine {
         self.watch_plugin_state();
         Ok(())
     }
+    pub(crate) fn skill_install_roots(&self) -> Option<serde_json::Value> {
+        use areal_config::skills::DEFAULT_SKILL_DIRECTORY;
+        let discovery = self.desktop.discovered_skills.lock().unwrap();
+        let source = discovery.as_ref()?;
+        Some(serde_json::json!({
+            "project": source.workspace.join(DEFAULT_SKILL_DIRECTORY),
+            "user": source.home.as_ref().map(|home| home.join(DEFAULT_SKILL_DIRECTORY))
+        }))
+    }
+
     fn discover_skill_locations(
         workspace: &Path,
         home: Option<&Path>,

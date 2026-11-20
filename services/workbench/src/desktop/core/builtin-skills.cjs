@@ -18,6 +18,7 @@ const YAML = require("yaml");
 const ID = "openai-skill-creator";
 const REVISION = "49f948faa9258a0c61caceaf225e179651397431";
 const CONTENT_DIGEST = "0f1420873667f4997fc9342ed78a543228c66f977f4f8be37a88e573a1a5ae71";
+const BUILTIN_SKILL_REF = Object.freeze({ id: ID, revision: `builtin-${CONTENT_DIGEST}` });
 const UPSTREAM = "https://github.com/openai/skills";
 /** @param {string|Uint8Array} bytes */
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -121,8 +122,7 @@ async function builtinSkill(home, id) {
     throw new Error("内置 Skill 元数据无效");
   return {
     skill: {
-      id: ID,
-      revision: `builtin-${CONTENT_DIGEST}`,
+      ...BUILTIN_SKILL_REF,
       name: metadata.name,
       description: metadata.description,
     },
@@ -143,4 +143,4 @@ function isSkillFile(value) {
     typeof value.executable === "boolean"
   );
 }
-module.exports = { builtinSkill, BUILTIN_SKILL_ID: ID };
+module.exports = { builtinSkill, BUILTIN_SKILL_ID: ID, BUILTIN_SKILL_REF };
