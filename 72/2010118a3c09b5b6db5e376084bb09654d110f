@@ -1,0 +1,42 @@
+core/engine/src/desktop/skills.rs
+  s_f9fad336940d7a::t_63c6a02b558a98 287-296
+services/workbench/src/desktop/core/scoped-resources.cjs
+  s_f9fad336940d7a::t_29aab26ed7ff2a 107,110,112,243-248
+  s_f9fad336940d7a::t_e3a548b28196bc 18-19
+services/workbench/src/desktop/core/worktree-resources.cjs
+  s_f9fad336940d7a::t_7c2981d5ee2c76 85-94
+clients/gui/scripts/plugin-concepts-smoke.mjs
+  s_f9fad336940d7a::t_4e83c4dc775d82 18,852,861,947,949
+  s_f9fad336940d7a::t_f4de0d6c121deb 15-17,19,26-27,580-582,585-587,831-851,853-860,862-866,912-921,943-946,948,950,958,1684
+core/host/src/schedule_resources.rs
+  s_f9fad336940d7a::t_d9d5e7a10dd16f 233
+core/engine/tests/skill_loading.rs
+  s_f9fad336940d7a::t_ae5b21fadd3409 848-900
+core/config/src/skills.rs
+  s_f9fad336940d7a::t_6fa0b306878974 12-15,53
+services/workbench/test/scoped-resources.test.cjs
+  s_f9fad336940d7a::t_fb881e724fb146 235
+  s_f9fad336940d7a::t_29aab26ed7ff2a 237-240,243-258,261-265,267
+core/engine/src/context.rs
+  s_f9fad336940d7a::t_a5600be3a70f68 636-645
+docs/guides/skills.md
+  s_f9fad336940d7a::t_f313f64f385377 18
+docs/guides/skills.en.md
+  s_f9fad336940d7a::t_d3d86877f36f67 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "722010118a3c09b5b6db5e376084bb09654d110f",
+  "prompts": {},
+  "sessions": {
+    "s_f9fad336940d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1f2b3-c54f-7f92-a60a-ee46af3d4d62",
+        "model": "gpt-6.2-astra"
+      },
+      "human_author": null
+    }
+  }
+}
