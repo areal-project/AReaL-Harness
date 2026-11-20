@@ -1,0 +1,65 @@
+clients/gui/scripts/service-connection-recovery.test.mjs
+  s_f9fad336940d7a::t_8bf660ac3328d3 629-632
+docs/guides/skills.md
+  s_f9fad336940d7a::t_0a683c6ee37f39 18-20
+clients/gui/renderer/src/settings/PluginCenter.tsx
+  s_f9fad336940d7a::t_e416f75e2f2925 322
+clients/gui/renderer/src/i18n/messages/plugins.ts
+  s_f9fad336940d7a::t_e416f75e2f2925 2106-2113
+docs/guides/skills.en.md
+  s_f9fad336940d7a::t_0a683c6ee37f39 18-20
+clients/gui/renderer/src/state/resourceDraft.ts
+  s_f9fad336940d7a::t_8bf660ac3328d3 107-116,122-134
+  s_f9fad336940d7a::t_e416f75e2f2925 13-46,55-62
+  s_f63eeb45d64ab0::t_71f0064a741e05 5-10,82,135
+clients/gui/app/src/core/service-command-compatibility.cjs
+  s_f9fad336940d7a::t_8bf660ac3328d3 37
+docs/api/desktop.en.md
+  s_f9fad336940d7a::t_71334b2f790609 595-597
+clients/gui/scripts/plugin-concepts-smoke.mjs
+  s_f9fad336940d7a::t_8bf660ac3328d3 995,2044,2047,2053-2054,2077-2078,2080-2096,2098-2100,2112,2140,2142,2147
+  s_f9fad336940d7a::t_45ccb2bcfdff3e 1012-1014,1018
+  s_f9fad336940d7a::t_6fbfb337daff63 2050,2120-2124,2127-2132,2136-2139
+  s_f9fad336940d7a::t_65e9ecb895bba6 1015-1017
+  s_f9fad336940d7a::t_71334b2f790609 2079
+  s_f9fad336940d7a::t_20ee3c23604b5f 2143-2146,2209
+  s_f9fad336940d7a::t_14ce804e14b736 58,403-405,421,2111,2113-2119,2125-2126,2133-2135,2141
+  s_f9fad336940d7a::t_95b848c5c39d5b 2101-2110
+  s_f9fad336940d7a::t_0dd0d56d7dfe1c 989-994,1994-1995,1997,2045-2046,2048-2049,2051-2052,2097
+docs/api/desktop.md
+  s_f9fad336940d7a::t_71334b2f790609 593-595
+clients/gui/packages/workbench/client/desktop-contract/resource.cjs
+  s_f9fad336940d7a::t_72f268ac04cfd7 3-4,118,124,147-156,222
+clients/gui/packages/workbench/client/desktop-contract/transport.cjs
+  s_f9fad336940d7a::t_44801d98a6d9df 137
+clients/gui/renderer/src/settings/PluginSkillsPage.tsx
+  s_f9fad336940d7a::t_129662d4b89aaa 27,321
+services/workbench/src/desktop/core/backend.cjs
+  s_f9fad336940d7a::t_5fac70d231e312 1544-1546,1806-1814
+services/workbench/src/desktop/core/scoped-resources.cjs
+  s_f9fad336940d7a::t_afd6fa83ff01b0 370-374,378,385,392,402-406,408
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "fdde09e0240e7898770f3c0ac924183bfb832a36",
+  "prompts": {},
+  "sessions": {
+    "s_f63eeb45d64ab0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1effd-8686-73d0-ab05-b86be7c8f244",
+        "model": "gpt-6.2-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    },
+    "s_f9fad336940d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1f2b3-c54f-7f92-a60a-ee46af3d4d62",
+        "model": "gpt-6.2-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
