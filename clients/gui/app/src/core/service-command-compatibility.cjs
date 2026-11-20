@@ -34,7 +34,6 @@ function requiresCurrentCommands(name, request) {
     (["steer", "queueEdit"].includes(name) &&
       Array.isArray(request.mcpContent) &&
       request.mcpContent.length > 0) ||
-    (name === "resources" && request.operation === "skillPrepare") ||
     (name === "trajectory" && request.operation === "setEnabled") ||
     (name === "providers" && request.operation === "defaultAndApply") ||
     (name === "manage" &&

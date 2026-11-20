@@ -1541,9 +1541,7 @@ class CoreBackend {
     if (name === "cloudSession") return this.cloudConversations.command(request);
     if (this.cloudConversations?.owns(projectId, threadId))
       return this.cloudConversations.route(name, request);
-    // 准备草稿可能切换项目 Core；与会话创建共用项目生命周期和并发准入。
-    if (name === "resources" && request.operation !== "skillPrepare")
-      return this.resources.command(request);
+    if (name === "resources") return this.resources.command(request);
     if (this.providerUpdating || this.resourcesUpdating)
       throw new Error("配置正在应用，请稍后重试");
     /** @type {ReadCommandOwner|null} */ let read = null;
@@ -1803,15 +1801,6 @@ class CoreBackend {
           operation: request.operation,
         });
       }
-      case "resources":
-        if (request.operation !== "skillPrepare") throw new Error("不支持的资源操作");
-        return {
-          profile: await this.resources.prepareSkillProfile(
-            project,
-            request.skill,
-            request.profile,
-          ),
-        };
       case "prepareCreator":
         return this.resources.prepareCreator(project, request.profile);
       case "dismissRecovery": {

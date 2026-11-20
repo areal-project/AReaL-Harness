@@ -599,7 +599,6 @@ async function settings() {
     .getByLabel("集成", { exact: true })
     .getByRole("button", { name: "插件", exact: true })
     .click();
-  if (await button("返回插件列表").isVisible()) await button("返回插件列表").click();
   await page.getByRole("heading", { name: "插件", exact: true }).first().waitFor();
   await primaryTabs().waitFor();
   assert.deepEqual(await primaryTabs().getByRole("tab").allTextContents(), [
@@ -2083,10 +2082,24 @@ try {
         .first()
         .click();
     await buttonForSkill.click();
-    await page
+    const tryButton = page
       .getByTestId("skill-detail-page")
-      .getByRole("button", { name: "试用", exact: true })
-      .click();
+      .getByRole("button", { name: "试用", exact: true });
+    const profileKey = `areal-gui:draft:${projectId}:new:profile`;
+    await page.evaluate(
+      ([key, value]) => localStorage.setItem(key, value),
+      [profileKey, JSON.stringify(boundProfile)],
+    );
+    await tryButton.click();
+    await page
+      .getByText("当前任务配置未提供此 Skill 的确切版本，现有草稿已保留。", { exact: true })
+      .waitFor();
+    assert.deepEqual(
+      JSON.parse(await page.evaluate((key) => localStorage.getItem(key), profileKey)),
+      boundProfile,
+    );
+    await page.evaluate((key) => localStorage.removeItem(key), profileKey);
+    await tryButton.click();
     await page.getByTestId("chat-input").waitFor();
     const attached = await page.evaluate(
       (id) => JSON.parse(localStorage.getItem(`areal-gui:draft:${id}:new:skills`) ?? "[]"),
@@ -2098,19 +2111,31 @@ try {
       ),
       "Try stages the newly installed Skill's exact revision",
     );
-    const denied = await page.evaluate(
-      (params) => window.arealDesktop.command("resources", params),
-      {
-        operation: "skillPrepare",
-        projectId,
-        skill: { id: createdSkillId, revision: installedSkill.revision },
-        profile: boundProfile,
-      },
-    );
-    assert.equal(denied.ok, false, "a pinned profile cannot acquire the new Skill");
-    assert.match(denied.error.message, /确切版本/);
     assert.equal(requests.length, creatorToolCount + 1, "Try cannot start another inference");
     trySkillRef = { id: createdSkillId, revision: installedSkill.revision };
+    await button("添加功能与 Skills").click();
+    await page.getByRole("option", { name: new RegExp(createdSkillId) }).waitFor();
+    await page.getByRole("option", { name: /added-while-open/ }).click();
+    const toggle = async (enabled) =>
+      call("resources", {
+        operation: "skillToggle",
+        projectId,
+        scope: "project",
+        id: "added-while-open",
+        enabled,
+        expectedRevision: (await resources("skills")).revision,
+      });
+    await toggle(false);
+    await button("发送").click();
+    await page
+      .getByText("当前任务配置未提供所选 Skill 的确切版本，草稿已保留。", { exact: true })
+      .waitFor();
+    assert.equal(threadIds(await state()).length, threadIds(beforeCreator).length + 1);
+    assert.equal(requests.length, creatorToolCount + 1);
+    await toggle(true);
+    checks.push(
+      "The draft picker lists an externally installed Skill; disabling an attached Skill blocks Send before thread creation or inference",
+    );
     await button("发送").click();
     await page.getByText("TRIED_CREATED_SKILL", { exact: true }).waitFor();
     assert.equal(requests.length, creatorToolCount + 3);
@@ -2144,6 +2169,37 @@ try {
     await tab("Skills");
     await button(`查看技能 ${createdSkillId}`).waitFor();
     checks.push("Settings opens installed resources and lists the Skill used in the conversation");
+    const beforeCold = await ownedCoreGeneration(creatorWorkspace);
+    await closeSmokeApplication(app);
+    app = null;
+    await stopService();
+    await launch();
+    await until(
+      async () => (await state()).projects.find((p) => p.id === projectId && p.state?.connected),
+      "same project ready after cold restart",
+    );
+    const afterCold = await ownedCoreGeneration(creatorWorkspace);
+    assert.notEqual(beforeCold.corePid, afterCold.corePid);
+    assert.notEqual(instances.at(-2).hostGeneration, instances.at(-1).hostGeneration);
+    assert.ok(
+      (await resources("skills")).data.some(
+        (s) => s.id === createdSkillId && s.revision === trySkillRef.revision && s.enabled,
+      ),
+    );
+    assert.equal(
+      (
+        await call("resources", {
+          operation: "skillRead",
+          projectId,
+          scope: "project",
+          id: createdSkillId,
+        })
+      ).content,
+      createdSkillBody,
+    );
+    checks.push(
+      "Full GUI/Host/Core stop and restart restores the installed Skill's exact revision and on-disk body",
+    );
   }
   assert.deepEqual(errors, []);
   assert.equal(

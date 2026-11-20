@@ -77,6 +77,41 @@ test("discovers all compatible roots without requiring absent directories", asyn
   assert.equal(result.data.find((item) => item.id === "legacy").managed, true);
 });
 
+test("a default draft previews the deployment selection without refreshing or changing a profile", async (t) => {
+  const f = await fixture(t);
+  f.backend.projects = new Map([[f.project.id, f.project]]);
+  f.backend.providers = { manages: () => true };
+  f.backend.desktopConfig = require.resolve("../src/desktop/core/desktop-profile.json");
+  f.backend.save = () => assert.fail("a catalog read cannot write deployment state");
+  const query = { operation: "skills", scope: "project", projectId: f.project.id };
+  assert.equal((await f.resources.command(query)).defaultSelection, undefined);
+  await skill(join(f.userHome, ".codex/skills"), "shared", "personal");
+  await skill(join(f.userHome, ".claude/skills"), "only-personal", "personal");
+  await skill(join(f.workspace, ".agents/skills"), "shared", "project");
+  const preview = () => f.resources.command({ ...query, includeDefaultSelection: true });
+  const first = await preview();
+  assert.deepEqual(
+    first.defaultSelection.find((s) => s.id === "shared"),
+    {
+      id: "shared",
+      revision: first.data.find((s) => s.id === "shared").revision,
+      name: first.data.find((s) => s.id === "shared").name,
+      description: first.data.find((s) => s.id === "shared").description,
+    },
+  );
+  assert.ok(first.defaultSelection.some((s) => s.id === "only-personal"));
+  f.resources.value.skills[f.project.id] = { shared: false };
+  assert.deepEqual(
+    (await preview()).defaultSelection.map((s) => s.id),
+    ["only-personal", "openai-skill-creator"],
+  );
+  f.backend.providers.manages = () => false;
+  assert.equal((await preview()).defaultSelection, undefined);
+  f.backend.providers.manages = () => true;
+  f.backend.desktopConfig = join(f.home, "custom-deployment.json");
+  assert.equal((await preview()).defaultSelection, undefined);
+});
+
 test("saves user and project Skills to the fixed .agents/skills roots", async (t) => {
   const f = await fixture(t);
   const projectState = await f.resources.command({

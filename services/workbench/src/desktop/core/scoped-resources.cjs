@@ -6,17 +6,24 @@ const { join, relative, isAbsolute } = require("node:path");
 const { homedir } = require("node:os");
 const { createHash } = require("node:crypto");
 const YAML = require("yaml");
-const { builtinSkill, BUILTIN_SKILL_ID } = require("./builtin-skills.cjs");
+const { builtinSkill, BUILTIN_SKILL_ID, BUILTIN_SKILL_REF } = require("./builtin-skills.cjs");
 const { WorktreeResources } = require("./worktree-resources.cjs");
 const resourceContract = require("./resource-contract.cjs");
 const { serverStatus } = require("./provider-contract.cjs");
 /** @typedef {import('./project-state.cjs').CoreProject} CoreProject */
-/** @typedef {Record<string,unknown> & {operation?:string,scope?:string,projectId?:string,id?:string,expectedRevision?:number,enabled?:boolean,content?:unknown,name?:unknown,description?:unknown,config?:unknown}} ResourceRequest */
+/** @typedef {Record<string,unknown> & {operation?:string,scope?:string,projectId?:string,id?:string,expectedRevision?:number,includeDefaultSelection?:boolean,enabled?:boolean,content?:unknown,name?:unknown,description?:unknown,config?:unknown}} ResourceRequest */
 const MAX_REGISTERED_SKILLS = 512;
 const MAX_SKILL_DIRECTORY_ENTRIES = 512;
 // 新建位置与 Core 发现规则一致；兼容目录只读取，按高到低优先级选定同名 Skill。
 const DEFAULT_SKILL_DIRECTORY = ".agents/skills";
 const STANDARD_SKILL_ROOTS = [DEFAULT_SKILL_DIRECTORY, ".claude/skills", ".codex/skills"];
+// 仅用于 drain 之前已确定拒绝的创建请求；已派发的操作仍保留原来的未知状态。
+/** @param {string} message */
+const refreshBusy = (message) =>
+  Object.assign(new Error(message), {
+    code: -32000,
+    data: { reason: "RESOURCE_REFRESH_BUSY", outcome: { kind: "noMutation" } },
+  });
 /** @param {unknown} value */
 const digest = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 /** @param {string} root @param {string} path */
@@ -60,6 +67,23 @@ function metadata(text, id) {
   const name = data.name?.trim() || id;
   if (Buffer.byteLength(name) > 256) throw new Error("技能名称过长");
   return { name, description: (data.description ?? "").slice(0, 2048) };
+}
+// 草稿预览和实际部署都按相同的覆盖顺序选取独立 Skill；禁用或无效的项目项也遮住个人项。
+/** @param {import('./resource-contract.cjs').Skill[]} user @param {import('./resource-contract.cjs').Skill[]} local */
+function selectedStandaloneSkills(user, local) {
+  const selected = new Map(user.map((s) => [s.id, s]));
+  for (const s of local) selected.set(s.id, s);
+  return [...selected.values()]
+    .filter(
+      /** @returns {s is import('./resource-contract.cjs').AvailableSkill} */ (s) =>
+        s.enabled && s.error === undefined,
+    )
+    .map(({ id, revision, root, name, description }) => ({
+      id,
+      revision,
+      root,
+      metadata: { name, description },
+    }));
 }
 // Desktop 管理资源配置，Runtime 仍拥有任务绑定、资源读取和 MCP 实时连接。
 class ScopedResources {
@@ -203,8 +227,24 @@ class ScopedResources {
       scope === "user" && request.projectId
         ? await this.scan(this.project(request.projectId).id)
         : [];
+    const owner =
+      request.includeDefaultSelection === true && request.scope === "project"
+        ? this.backend.projects.get(scope)
+        : undefined;
+    const defaultSelection =
+      owner &&
+      this.backend.desktopConfig === join(__dirname, "desktop-profile.json") &&
+      this.backend.providers.manages(owner)
+        ? [
+            ...selectedStandaloneSkills(await this.scan("user"), data).map(
+              ({ id, revision, metadata }) => ({ id, revision, ...metadata }),
+            ),
+            BUILTIN_SKILL_REF,
+          ]
+        : undefined;
     return {
       revision: this.value.revision,
+      ...(defaultSelection !== undefined ? { defaultSelection } : {}),
       data: data.map((item) => ({
         ...item,
         overridden: scope === "user" && projectSkills.some((p) => p.id === item.id),
@@ -225,19 +265,7 @@ class ScopedResources {
       };
     const user = await this.scan("user"),
       local = await this.scan(project.id);
-    const selected = new Map(user.map((s) => [s.id, s]));
-    for (const s of local) selected.set(s.id, s);
-    const skills = [...selected.values()]
-      .filter(
-        /** @returns {s is import('./resource-contract.cjs').AvailableSkill} */ (s) =>
-          s.enabled && s.error === undefined,
-      )
-      .map(({ id, revision, root, name, description }) => ({
-        id,
-        revision,
-        root,
-        metadata: { name, description },
-      }));
+    const skills = selectedStandaloneSkills(user, local);
     const builtin = await builtinSkill(this.backend.home, BUILTIN_SKILL_ID);
     const { id, revision, name: builtinName, description } = builtin.skill;
     skills.push({
@@ -306,14 +334,14 @@ class ScopedResources {
       this.backend.starting.size ||
       project.pending.length
     )
-      throw new Error("技能配置正在更新，请稍后创建任务");
+      throw refreshBusy("技能配置正在更新，请稍后创建任务");
     this.backend.resourcesUpdating = true;
     try {
       if (
         !(await project.client.request("areal/server/status", {}, { decode: serverStatus }))
           .restartSafe
       )
-        throw new Error("技能配置已保存，请在当前任务和终端结束后创建新任务");
+        throw refreshBusy("技能配置已保存，请在当前任务和终端结束后创建新任务");
       const connectedPlugins = ["areal/plugin/mcp/list", "areal/plugin/connection"].every(
         (method) => requireClient(project).capabilities?.methods?.includes(method),
       )
@@ -367,29 +395,24 @@ class ScopedResources {
     )
       throw new Error("请先选择要创建 Skill 的项目。");
     const { skill, provenance } = await builtinSkill(this.backend.home, BUILTIN_SKILL_ID);
-    const profile = await this.prepareSkillProfile(project, skill, requestedProfile, true);
-    return { projectId: project.id, profile, skill, provenance };
-  }
-  /** @param {CoreProject} project @param {import('@areal/workbench/desktop-contract').ResourceRef} skill @param {import('@areal/workbench/desktop-contract').ResourceRef} [requestedProfile] @param {boolean} [allowBaseAlias] */
-  async prepareSkillProfile(project, skill, requestedProfile, allowBaseAlias = false) {
     await this.beforeCreate(project);
     const managed = this.backend.desktopConfig === join(__dirname, "desktop-profile.json");
     const base =
-      allowBaseAlias && managed && this.backend.desktopConfig
+      managed && this.backend.desktopConfig
         ? resourceContract.deployment(
             JSON.parse(await readFile(this.backend.desktopConfig, "utf8")),
           ).profiles[0]
         : null;
     const useCurrent =
       !requestedProfile ||
-      (base && requestedProfile.id === base.id && requestedProfile.revision === base.revision);
+      (managed && requestedProfile.id === base?.id && requestedProfile.revision === base?.revision);
     const profile = useCurrent
       ? this.backend.providers.manages(project)
         ? (project.resourceProfile ?? this.backend.defaultProfile)
         : undefined
       : requestedProfile;
     if (!profile) throw new Error("当前部署未配置默认任务配置，现有草稿已保留。");
-    const available = await requireClient(project).request(
+    const available = await project.client.request(
       "areal/skill/list",
       { agentProfile: profile },
       { decode: resourceContract.availableSkills },
@@ -399,13 +422,9 @@ class ScopedResources {
         (item) => item.available && item.id === skill.id && item.revision === skill.revision,
       )
     )
-      throw new Error(
-        skill.id === BUILTIN_SKILL_ID
-          ? "当前任务配置未提供官方 Skill Creator 的确切版本，现有草稿已保留。"
-          : "当前任务配置未提供此 Skill 的确切版本，现有草稿已保留。",
-      );
+      throw new Error("当前任务配置未提供官方 Skill Creator 的确切版本，现有草稿已保留。");
     this.backend.onChange();
-    return profile;
+    return { projectId: project.id, profile, skill, provenance };
   }
   /** @param {unknown} request */
   async command(request) {

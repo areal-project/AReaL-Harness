@@ -626,10 +626,6 @@ test("an unadvertised backend rejects current commands before sending or inventi
     ["send", { ...thread, text: "keep my draft" }],
     ["continue", { ...thread, expectedTurnId: "turn" }],
     ["prepareCreator", { projectId: "p" }],
-    [
-      "resources",
-      { operation: "skillPrepare", projectId: "p", skill: { id: "example", revision: "v1" } },
-    ],
     ["feedback", { operation: "status" }],
     ["feedback", { operation: "preference", enabled: true }],
     [

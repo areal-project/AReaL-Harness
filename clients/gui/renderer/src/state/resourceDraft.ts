@@ -1,6 +1,6 @@
 import { UiMessageError } from "../i18n/IntlProvider.js";
 import { composerDraftStorage } from "../composerDraftStorage.js";
-import { readComposerSkills, type ComposerSkill } from "../ComposerSkills.js";
+import { draftSkillsAvailable, readComposerSkills, type ComposerSkill } from "../ComposerSkills.js";
 import { profileKey, resolveDraftProfile } from "../ProfileDetails.js";
 import {
   type Data,
@@ -106,33 +106,17 @@ export async function prepareResourceDraft(
     const profile = resolveDraftProfile(owner, selection);
     if (!profile && (selection || !seed.standalone))
       throw new Error("当前任务配置不可用，无法附加 Skill。");
-    const available =
-      skill && profile
-        ? await resourceAction("manage", {
-            projectId: owner.id,
-            operation: "skills",
-            agentProfile: { id: profile.id, revision: profile.revision },
-          })
-        : null;
     if (
       skill &&
-      !(available?.data ?? []).some(
-        (item: Data) => item.available && item.id === skill.id && item.revision === skill.revision,
-      )
-    ) {
-      if (!seed.standalone)
-        throw new Error("当前任务配置未提供此 Skill 的确切版本，现有草稿已保留。");
-      const prepared = await resourceAction("resources", {
-        operation: "skillPrepare",
-        projectId: owner.id,
-        skill: { id: skill.id, revision: skill.revision },
-        ...(selection && profile
-          ? { profile: { id: profile.id, revision: profile.revision } }
-          : {}),
-      });
-      setSnapshot(await preparedSnapshot(services, owner.id, prepared.profile));
-      resourceProfile = prepared.profile;
-    }
+      !(await draftSkillsAvailable(
+        resourceAction,
+        owner.id,
+        profile,
+        [skill],
+        !!seed.standalone && selection === null,
+      ))
+    )
+      throw new Error("当前任务配置未提供此 Skill 的确切版本，现有草稿已保留。");
   }
   const existingSkills = readComposerSkills(key);
   const existingText = composerDraftStorage.getItem(key) || "";
