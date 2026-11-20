@@ -1294,7 +1294,7 @@ impl Engine {
                 }
             }
         }
-        definitions
+        self.project_skill_tools(config, &bindings, definitions)
     }
     pub async fn inspect(&self, thread_id: &str) -> Result<Value> {
         let cell = self.cell(thread_id).await?;

@@ -224,8 +224,15 @@ impl Engine {
             })
             .map(|d| d["function"].clone())
             .collect();
+        drop(bindings);
         if catalog.is_empty() {
             definitions.retain(|d| d["function"]["name"] != "tool_program");
+            // 没有可调用子工具时，原生搜索也不能声称此入口已展示。
+            if self.extensions.policy.compact_tools
+                && let Some(active) = cell.state.lock().await.active.as_mut()
+            {
+                active.native_tool_exposure.remove_common("tool_program");
+            }
             return definitions;
         }
         let direct = &self.extensions.policy.programmatic_direct_tools;

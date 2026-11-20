@@ -633,16 +633,17 @@ impl Engine {
                 instructions.push(Kind::Rules, &profile.display_name, "\n\nProduct mode instructions (subject to user instructions and deployment permissions):\n");
                 instructions.push(Kind::Rules, &profile.display_name, &profile.instructions);
             }
-            instructions.push(
-                Kind::Skills,
-                "技能目录",
-                &format!(
-                    "\nAvailable skills: {}\nBefore applying a selected skill, use skill_load to load its complete SKILL.md. Read required supporting instructions before acting on them; skill_resource_read pages are for resource inspection, not complete skill activation. If loading fails, state the limitation; never assume a partial page contains all rules.",
-                    serde_json::to_string(
-                        &self.skill_summaries(&self.effective_skill_refs(&config, true))
-                    )?
-                ),
-            );
+            let skill_refs = self.effective_skill_refs(&config, true);
+            if !self.extensions.policy.compact_tools || !skill_refs.is_empty() {
+                instructions.push(
+                    Kind::Skills,
+                    "技能目录",
+                    &format!(
+                        "\nAvailable skills: {}\nBefore applying a selected skill, use skill_load to load its complete SKILL.md. Read required supporting instructions before acting on them; skill_resource_read pages are for resource inspection, not complete skill activation. If loading fails, state the limitation; never assume a partial page contains all rules.",
+                        serde_json::to_string(&self.skill_summaries(&skill_refs))?
+                    ),
+                );
+            }
             instructions.push(Kind::Rules, "会话规则", &config.instructions);
             instructions.push(Kind::Rules, "附加规则", "\nClient appended instructions:\n");
             instructions.push(Kind::Rules, "附加规则", &config.options.append_instructions);

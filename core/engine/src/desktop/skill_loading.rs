@@ -1,6 +1,7 @@
 //! 主体加载与附件分页共用目录授权；完整主体不能经过普通工具的头尾裁剪。
 use super::skills::SkillPage;
 use super::*;
+use crate::tools::Bindings;
 
 /// 限制包含身份、正文及 JSON 转义的完整响应，而非给任意资源扩大工具预算。
 pub(crate) const MAX_SKILL_LOAD_BYTES: usize = 64 * 1024;
@@ -15,6 +16,30 @@ pub(crate) fn is_complete_body(value: &Value) -> bool {
 }
 
 impl Engine {
+    pub(super) fn project_skill_tools(
+        &self,
+        config: &EffectiveConfig,
+        bindings: &Bindings,
+        mut definitions: Vec<Value>,
+    ) -> Vec<Value> {
+        if !self.extensions.policy.compact_tools
+            || !self.effective_skill_refs(config, true).is_empty()
+        {
+            return definitions;
+        }
+        // 只省略当前冻结选择不可用的 Core 入口；不改注册、授权或外部同名工具。
+        // 下一 Turn 重算，安装或显式选择后仍按原配置展示。
+        definitions.retain(|definition| {
+            let name = definition["function"]["name"].as_str().unwrap_or("");
+            !matches!(name, "skill_list" | "skill_load" | "skill_resource_read")
+                || !bindings
+                    .registry
+                    .get(name)
+                    .is_ok_and(|entry| matches!(entry.backend, crate::tools::Backend::Core))
+        });
+        definitions
+    }
+
     pub(super) async fn load_skill_body(
         &self,
         thread_id: &str,

@@ -706,7 +706,192 @@ async fn resource_reader_rejects_main_aliases_and_legacy_model_tool() {
     }
 }
 
-struct Exposure;
+struct OptionalSkillExposure {
+    compact: bool,
+    round: AtomicUsize,
+}
+#[async_trait]
+impl Model for OptionalSkillExposure {
+    fn name(&self) -> &str {
+        "optional-skill-exposure-fixture"
+    }
+    async fn stream(&self, _: Vec<Message>) -> anyhow::Result<ModelStream> {
+        unreachable!()
+    }
+    async fn chat(&self, messages: Vec<Message>, tools: Vec<Value>) -> anyhow::Result<ModelStream> {
+        let round = self.round.fetch_add(1, Ordering::SeqCst);
+        let available = !self.compact || round > 0;
+        for name in ["skill_load", "skill_resource_read"] {
+            assert_eq!(
+                tools.iter().any(|tool| tool["function"]["name"] == name),
+                available,
+                "{name} should follow the effective skill selection"
+            );
+        }
+        if self.compact {
+            let description = tools
+                .iter()
+                .find(|tool| tool["function"]["name"] == "tool_search")
+                .unwrap()["function"]["description"]
+                .as_str()
+                .unwrap();
+            assert_eq!(description.contains("skill_list"), available);
+        }
+        assert_eq!(
+            messages
+                .iter()
+                .any(|m| m.text_content().contains("Available skills:")),
+            available
+        );
+        let events = if round == 1 {
+            load()
+        } else {
+            if round == 2 {
+                assert_eq!(last(&messages)["text"], "selected instructions");
+            }
+            done()
+        };
+        Ok(Box::pin(futures_util::stream::iter(
+            events.into_iter().map(Ok),
+        )))
+    }
+}
+
+#[tokio::test]
+async fn newly_installed_skill_becomes_visible_on_the_next_turn() {
+    let model = Arc::new(OptionalSkillExposure {
+        compact: true,
+        round: AtomicUsize::new(0),
+    });
+    let state = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    fs::write(root.path().join("SKILL.md"), "selected instructions").unwrap();
+    let engine = Engine::open_with_extensions(
+        state.path(),
+        model.clone(),
+        Limits::default(),
+        None,
+        areal_engine::tools::ToolExtensions {
+            policy: areal_engine::tools::ToolPolicy {
+                compact_tools: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    engine.install_default_skills(vec![]).unwrap();
+    let thread = engine
+        .create(root.path().to_string_lossy().into_owned())
+        .await
+        .unwrap();
+    let fixture = Fixture {
+        data: state,
+        root,
+        engine,
+        thread,
+    };
+    completed(&fixture.run().await);
+    fixture
+        .engine
+        .install_default_skills(vec![SkillLocation {
+            id: ID.into(),
+            revision: REV.into(),
+            root: fixture.root.path().into(),
+            metadata: Some(SkillMetadata {
+                name: "Fixture".into(),
+                description: "Metadata only".into(),
+            }),
+        }])
+        .unwrap();
+    completed(&fixture.run().await);
+    assert_eq!(model.round.load(Ordering::SeqCst), 3);
+    fixture.engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn empty_skill_catalog_omits_read_schemas_and_loading_rules() {
+    for compact in [false, true] {
+        let state = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let engine = Engine::open_with_extensions(
+            state.path(),
+            Arc::new(OptionalSkillExposure {
+                compact,
+                round: AtomicUsize::new(0),
+            }),
+            Limits::default(),
+            None,
+            areal_engine::tools::ToolExtensions {
+                policy: areal_engine::tools::ToolPolicy {
+                    compact_tools: compact,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        engine.install_default_skills(vec![]).unwrap();
+        let thread = engine
+            .create(root.path().to_string_lossy().into_owned())
+            .await
+            .unwrap();
+        engine
+            .start(&thread.id, vec![Input::text("Inspect workspace")])
+            .await
+            .unwrap();
+        completed(&engine.wait(&thread.id).await.unwrap());
+        engine.shutdown().await;
+    }
+}
+
+#[tokio::test]
+async fn empty_explicit_profile_does_not_expose_other_catalog_skills() {
+    let state = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    fs::write(root.path().join("SKILL.md"), "unselected instructions").unwrap();
+    let engine = Engine::open_with_extensions(
+        state.path(),
+        Arc::new(OptionalSkillExposure {
+            compact: true,
+            round: AtomicUsize::new(0),
+        }),
+        Limits::default(),
+        None,
+        areal_engine::tools::ToolExtensions {
+            policy: areal_engine::tools::ToolPolicy {
+                compact_tools: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    engine
+        .install_default_skills(vec![SkillLocation {
+            id: ID.into(),
+            revision: REV.into(),
+            root: root.path().into(),
+            metadata: None,
+        }])
+        .unwrap();
+    let deployment = root.path().join("deployment.json");
+    fs::write(&deployment, json!({"profiles":[{"id":"empty","revision":"v1","displayName":"Empty","instructions":"","skills":[]}]}).to_string()).unwrap();
+    engine.install_deployment(&deployment).unwrap();
+    let thread = engine
+        .create(root.path().to_string_lossy().into_owned())
+        .await
+        .unwrap();
+    engine.configure_thread(serde_json::from_value(json!({"threadId":thread.id,"expectedRevision":1,"agentProfile":{"id":"empty","revision":"v1"}})).unwrap()).await.unwrap();
+    engine
+        .start(&thread.id, vec![Input::text("Inspect workspace")])
+        .await
+        .unwrap();
+    completed(&engine.wait(&thread.id).await.unwrap());
+    engine.shutdown().await;
+}
+
+struct Exposure(AtomicUsize);
 #[async_trait]
 impl Model for Exposure {
     fn name(&self) -> &str {
@@ -723,13 +908,31 @@ impl Model for Exposure {
             );
         }
         assert!(!tools.iter().any(|t| t["function"]["name"] == "skill_read"));
-        assert!(
-            !messages
-                .iter()
-                .any(|m| m.text_content().contains("PRIVATE_BODY_MARKER"))
-        );
+        let events = match self.0.fetch_add(1, Ordering::SeqCst) {
+            0 => {
+                assert!(
+                    !messages
+                        .iter()
+                        .any(|m| m.text_content().contains("PRIVATE_BODY_MARKER"))
+                );
+                load()
+            }
+            1 => {
+                assert_eq!(last(&messages)["text"], "PRIVATE_BODY_MARKER");
+                call(
+                    "skill_resource_read",
+                    json!({"skill":reference(),"resource":"notes.md"}),
+                )
+            }
+            2 => {
+                assert_eq!(last(&messages)["text"], "attachment instructions");
+                assert_eq!(last(&messages)["eof"], true);
+                done()
+            }
+            _ => panic!("unexpected extra solve"),
+        };
         Ok(Box::pin(futures_util::stream::iter(
-            done().into_iter().map(Ok),
+            events.into_iter().map(Ok),
         )))
     }
 }
@@ -740,9 +943,10 @@ async fn compact_tools_keep_load_and_resource_read_direct_without_preloading_bod
         let state = tempfile::tempdir().unwrap();
         let root = tempfile::tempdir().unwrap();
         fs::write(root.path().join("SKILL.md"), "PRIVATE_BODY_MARKER").unwrap();
+        fs::write(root.path().join("notes.md"), "attachment instructions").unwrap();
         let engine = Engine::open_with_extensions(
             state.path(),
-            Arc::new(Exposure),
+            Arc::new(Exposure(AtomicUsize::new(0))),
             Limits::default(),
             None,
             areal_engine::tools::ToolExtensions {
