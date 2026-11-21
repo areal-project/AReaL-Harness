@@ -70,6 +70,7 @@
   field-sizing: content;
 }
 .composer-toolbar {
+  container: composer-footer / inline-size;
   display: flex;
   align-items: center;
   gap: var(--spacing-inline);
@@ -78,10 +79,28 @@
 }
 .composer-toolbar :is([type="submit"], .composer-primary-action) {
   border-radius: var(--radius-pill);
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+.composer-toolbar :is([type="submit"], .composer-primary-action):active:not(:disabled) {
+  transform: scale(0.95);
 }
 .composer-toolbar :is([type="submit"], .composer-primary-action):not(:disabled) {
   background: var(--color-composer-action);
   color: var(--color-composer-action-foreground);
+}
+/* 窄输入容器下自动折叠标记为次要的工具项，与 useComposerToolbarFit 协同避免挤换行。 */
+@container composer-footer (max-width: 440px) {
+  .composer-toolbar [data-composer-collapse="secondary"] {
+    display: none;
+  }
+}
+@container composer-footer (max-width: 320px) {
+  .composer-toolbar [data-composer-collapse="compact"] {
+    display: none;
+  }
 }
 
 /* 宿主显式选择布局；面板祖先不能改变另一输入器的几何。 */

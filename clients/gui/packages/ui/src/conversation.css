@@ -12,3 +12,4 @@
 @import "./conversation/attachment-card/attachment-card.css";
 @import "./conversation/message-code-block/message-code-block.css";
 @import "./conversation/native-content/native-content.css";
+@import "./conversation/thread-summary-panel/thread-summary-panel.css";

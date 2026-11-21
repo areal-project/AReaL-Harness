@@ -111,7 +111,7 @@
   -webkit-app-region: drag;
 }
 .sidebar-chrome {
-  border-right: var(--border-width-default) solid var(--color-border);
+  border-right: var(--border-width-default) solid var(--color-border-hairline);
 }
 .sidebar-chrome button {
   -webkit-app-region: no-drag;
@@ -127,6 +127,16 @@
   min-height: 0;
   overflow: auto;
   padding: 0 var(--spacing-inline);
+  scrollbar-width: thin;
+}
+@media not all and ((prefers-contrast: more) or (forced-colors: active)) {
+  .sidebar-scroll {
+    scrollbar-color: transparent transparent;
+  }
+  .sidebar-scroll:hover,
+  .sidebar-scroll:focus-within {
+    scrollbar-color: var(--color-border-hover) transparent;
+  }
 }
 .sidebar-section-toggle {
   display: flex;

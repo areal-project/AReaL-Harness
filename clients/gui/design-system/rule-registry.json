@@ -2878,6 +2878,29 @@
       "strength": "default",
       "textSha256": "cae424249362a0fb0a8832c08f08b40a111a34a74876158e15bc78802562c4d9",
       "check": "clients/gui/packages/ui/src/workbench/mobile-button/mobile-button.test.tsx"
+    },
+    {
+      "id": "R-THREADSUMMARY-001",
+      "title": "在会话顶部固定呈现当前任务的关键上下文（变更文件、待确认项、活跃子任务或关联计划），供用户随时展开、收起或取消固定",
+      "owner": "clients/gui/packages/ui/src/conversation/thread-summary-panel/thread-summary-panel.md#何时使用",
+      "strength": "default",
+      "textSha256": "60814ec57a4d2be8549ff1152318aa63364cc4bd90785313cb0e513318579534"
+    },
+    {
+      "id": "R-THREADSUMMARY-002",
+      "title": "展开卡片（variant=\"card\"）、紧凑浮条（variant=\"compact\"）与固定/取消固定态",
+      "owner": "clients/gui/packages/ui/src/conversation/thread-summary-panel/thread-summary-panel.md#状态",
+      "strength": "default",
+      "textSha256": "7efb5436bff675284de93fda53da31720fc2a03b25d9057a3e28dd04398aa4d4",
+      "check": "clients/gui/packages/ui/src/conversation/thread-summary-panel/thread-summary-panel.test.tsx"
+    },
+    {
+      "id": "R-THREADSUMMARY-003",
+      "title": "触发按钮暴露真实 aria-expanded，固定按钮暴露 aria-pressed 与可读标签，不使用原生 title",
+      "owner": "clients/gui/packages/ui/src/conversation/thread-summary-panel/thread-summary-panel.md#可访问性",
+      "strength": "default",
+      "textSha256": "f240f80f0b961ba6bf78e4103a35d876282fd942ce4e4eb731697a3ed1e3c2e9",
+      "check": "clients/gui/packages/ui/src/conversation/thread-summary-panel/thread-summary-panel.test.tsx"
     }
   ]
 }

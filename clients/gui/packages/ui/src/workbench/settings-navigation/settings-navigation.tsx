@@ -103,7 +103,31 @@ export function SettingsNavigation({
           clearLabel={labels.clear}
         />
       </div>
-      <nav className="settings-category-navigation" aria-label={labels.navigation}>
+      <nav
+        className="settings-category-navigation"
+        aria-label={labels.navigation}
+        onKeyDown={(event) => {
+          if (
+            event.defaultPrevented ||
+            !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)
+          )
+            return;
+          const items = Array.from(
+            event.currentTarget.querySelectorAll<HTMLButtonElement>(
+              "button.settings-navigation-item:not(:disabled)",
+            ),
+          );
+          if (!items.length) return;
+          const current = items.indexOf(document.activeElement as HTMLButtonElement);
+          let next = 0;
+          if (event.key === "ArrowDown") next = current < 0 ? 0 : (current + 1) % items.length;
+          else if (event.key === "ArrowUp")
+            next = current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length;
+          else if (event.key === "End") next = items.length - 1;
+          event.preventDefault();
+          items[next]?.focus();
+        }}
+      >
         {visibleGroups.map((group) => (
           <section key={group.id} aria-label={group.label}>
             <div className="settings-group-label">{group.label}</div>

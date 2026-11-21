@@ -28,6 +28,38 @@
 .areal-activity-group > .areal-disclosure > .areal-disclosure-trigger:hover {
   color: var(--color-foreground);
 }
+.areal-activity-heading {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--activity-icon-gap);
+  min-width: 0;
+  max-width: 100%;
+}
+.areal-activity-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.areal-activity-duration {
+  flex: none;
+  color: var(--color-foreground-subtlest);
+  font-size: var(--text-ui-caption);
+  letter-spacing: var(--tracking-ui-subtle);
+}
+@keyframes areal-activity-active-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: var(--opacity-resting);
+  }
+}
+.areal-activity-group[data-active="true"] > .areal-disclosure > .areal-disclosure-trigger {
+  color: var(--color-foreground);
+  animation: areal-activity-active-pulse var(--motion-cycle-slow) var(--ease-in-out)
+    var(--motion-loop);
+}
 /* 通用按钮会把内部图标压小；活动图标与行内图标同尺寸，保证文字起点对齐。 */
 .areal-activity-group > .areal-disclosure > .areal-disclosure-trigger > svg {
   flex: none;

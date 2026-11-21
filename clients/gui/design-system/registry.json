@@ -330,6 +330,12 @@
       "importFrom": "@areal/ui/compositions"
     },
     {
+      "id": "ThreadSummaryPanel",
+      "source": "packages/ui/src/conversation/thread-summary-panel/thread-summary-panel.tsx",
+      "purpose": "会话顶部置顶摘要面板（卡片与紧凑浮条双态）",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
       "id": "WorkbenchShell",
       "source": "packages/ui/src/workbench/workbench-shell/workbench-shell.tsx",
       "purpose": "工作台主框架、顶栏、侧栏与工作表面",
@@ -550,6 +556,7 @@
       "MarkdownSurface",
       "NativeContent",
       "QuestionCard",
+      "ThreadSummaryPanel",
       "WorkbenchShell",
       "SidePaneFrame",
       "SidePaneLauncher",
@@ -940,7 +947,17 @@
         "consumers": ["renderer/src/AskUserQuestion.tsx"],
         "variants": ["default"],
         "states": ["ready", "busy"],
-        "evidence": ["E-DECISION"]
+        "evidence": ["E-DECISION"],
+        "exports": ["QuestionCard", "QuestionSummary"]
+      },
+      {
+        "id": "ThreadSummaryPanel",
+        "contract": "packages/ui/src/conversation/thread-summary-panel/thread-summary-panel.md",
+        "consumers": ["renderer/src/views/ConversationWorkspace.tsx"],
+        "variants": ["card", "compact"],
+        "states": ["open", "closed", "pinned"],
+        "evidence": ["E-CONVERSATION"],
+        "exports": ["ThreadSummaryPanel", "ThreadSummaryItem"]
       },
       {
         "id": "WorkbenchShell",

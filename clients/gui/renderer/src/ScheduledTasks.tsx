@@ -1,8 +1,9 @@
 import { useTaskReadOnly } from "./PlatformReadContext.js";
 import { currentErrorText } from "./errors/currentErrorText.js";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Pause, Play } from "lucide-react";
 import { ScheduledWorkspace } from "@areal/ui/compositions";
-import { DelayedVisible } from "@areal/ui";
+import { DelayedVisible, TitleTooltip } from "@areal/ui";
 import { Button } from "./components/ui/button.js";
 import {
   DropdownMenu,
@@ -279,6 +280,17 @@ export function ScheduledTaskRow({
       : state.kind === "deleted" || state.kind === "finished"
         ? describeSchedule(task, t)
         : scheduledTaskSummary(task, t);
+  const { control, busy, blocked } = useScheduledTaskControl(
+    task,
+    project,
+    action,
+    onChanged,
+    disabled,
+  );
+  const live = task.deletedAt == null;
+  const toggleLabel = task.paused
+    ? t("operations.schedules.enable")
+    : t("operations.schedules.pause");
   return (
     <>
       <ScheduledWorkspace.TaskRow
@@ -299,15 +311,33 @@ export function ScheduledTaskRow({
             : undefined
         }
         actions={
-          <ScheduledTaskMenu
-            task={task}
-            project={project}
-            action={action}
-            disabled={disabled}
-            onChanged={onChanged}
-            onOpen={onOpen ? () => onOpen(task) : undefined}
-            onEdit={() => void loader.open()}
-          />
+          <>
+            {live && !task.cancelled && (
+              <TitleTooltip title={toggleLabel}>
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label={toggleLabel}
+                  aria-busy={busy || undefined}
+                  disabled={blocked}
+                  data-scheduled-task-toggle={task.id}
+                  onClick={() => void control(task.paused ? "taskResume" : "taskPause")}
+                >
+                  {task.paused ? <Play size={14} /> : <Pause size={14} />}
+                </Button>
+              </TitleTooltip>
+            )}
+            <ScheduledTaskMenu
+              task={task}
+              project={project}
+              action={action}
+              disabled={disabled}
+              onChanged={onChanged}
+              onOpen={onOpen ? () => onOpen(task) : undefined}
+              onEdit={() => void loader.open()}
+            />
+          </>
         }
       />
       <DelayedVisible active={editorLoading}>

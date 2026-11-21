@@ -522,6 +522,15 @@
       "styles": ["clients/gui/packages/ui/src/workbench/mobile-surface/mobile-surface.css"],
       "internalSelectors": [".mobile-sheet-content"],
       "enforces": []
+    },
+    {
+      "id": "thread-summary-panel",
+      "contract": "clients/gui/packages/ui/src/conversation/thread-summary-panel/thread-summary-panel.md",
+      "styles": [
+        "clients/gui/packages/ui/src/conversation/thread-summary-panel/thread-summary-panel.css"
+      ],
+      "internalSelectors": [".areal-thread-summary-panel"],
+      "enforces": []
     }
   ],
   "rules": [

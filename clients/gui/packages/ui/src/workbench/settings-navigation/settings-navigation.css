@@ -49,6 +49,16 @@
   flex: 1;
   min-height: 0;
   padding: var(--spacing-inline);
+  scrollbar-width: thin;
+}
+@media not all and ((prefers-contrast: more) or (forced-colors: active)) {
+  .settings-sidebar .settings-category-navigation {
+    scrollbar-color: transparent transparent;
+  }
+  .settings-sidebar .settings-category-navigation:hover,
+  .settings-sidebar .settings-category-navigation:focus-within {
+    scrollbar-color: var(--color-border-hover) transparent;
+  }
 }
 
 .settings-sidebar .settings-category-navigation section {
@@ -58,9 +68,10 @@
 }
 
 .settings-sidebar .settings-group-label {
-  font-size: var(--text-ui-base);
+  font-size: var(--text-ui-caption);
   font-weight: var(--font-weight-medium);
-  line-height: var(--line-height-ui);
+  line-height: var(--line-height-ui-sm);
+  letter-spacing: var(--tracking-ui-subtle);
   color: var(--color-foreground-subtle);
   padding: 0 var(--spacing-inline) calc(var(--spacing-inline) / 2);
   margin: 0;

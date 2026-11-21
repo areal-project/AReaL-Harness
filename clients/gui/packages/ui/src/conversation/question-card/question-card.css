@@ -142,3 +142,37 @@
 .ask-user-check {
   margin-top: calc(var(--spacing-inline) / 4);
 }
+.ask-user-summary {
+  min-width: 0;
+}
+.ask-user-summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-inline);
+  margin: var(--spacing-inline) 0 0;
+  padding: 0 0 0 calc(var(--activity-icon-size) + var(--activity-icon-gap));
+}
+.ask-user-summary-row {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing-inline) / 4);
+  min-width: 0;
+}
+.ask-user-summary-question {
+  font-size: var(--text-conversation);
+  line-height: var(--conversation-line);
+  color: var(--color-foreground-subtle);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ask-user-summary-answer {
+  margin: 0;
+  font-size: var(--text-conversation);
+  line-height: var(--conversation-line);
+  color: var(--color-foreground);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ask-user-summary-answer[data-empty="true"] {
+  color: var(--color-foreground-subtlest);
+}

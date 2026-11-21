@@ -51,6 +51,7 @@
 | MarkdownSurface | [合同](../packages/ui/src/conversation/markdown-surface/markdown-surface.md) | E-CONVERSATION |
 | NativeContent | [合同](../packages/ui/src/conversation/native-content/native-content.md) | E-CONVERSATION |
 | QuestionCard | [合同](../packages/ui/src/conversation/question-card/question-card.md) | E-DECISION |
+| ThreadSummaryPanel | [合同](../packages/ui/src/conversation/thread-summary-panel/thread-summary-panel.md) | E-CONVERSATION |
 | WorkbenchShell | [合同](../packages/ui/src/workbench/workbench-shell/workbench-shell.md) | E-SETTINGS |
 | SidePaneFrame | [合同](../packages/ui/src/workbench/side-pane-frame/side-pane-frame.md) | E-CONVERSATION |
 | SidePaneLauncher | [合同](../packages/ui/src/workbench/side-pane-launcher/side-pane-launcher.md) | E-CONVERSATION |

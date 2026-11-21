@@ -54,7 +54,13 @@ export {
 export { MessageCodeBlock } from "./conversation/message-code-block/message-code-block.js";
 export { MarkdownSurface } from "./conversation/markdown-surface/markdown-surface.js";
 export { NativeContent } from "./conversation/native-content/native-content.js";
-export { QuestionCard } from "./conversation/question-card/question-card.js";
+export { QuestionCard, QuestionSummary } from "./conversation/question-card/question-card.js";
+export {
+  ThreadSummaryPanel,
+  ThreadSummaryItem,
+  type ThreadSummaryPanelProps,
+  type ThreadSummaryItemProps,
+} from "./conversation/thread-summary-panel/thread-summary-panel.js";
 export {
   WorkbenchShell,
   WorkspaceHeader,

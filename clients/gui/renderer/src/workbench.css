@@ -498,20 +498,32 @@ button.composer-project:hover > svg,
   display: none;
 }
 .active-composer {
+  container: composer-column / inline-size;
   flex-shrink: 0;
 }
 .active-composer .composer-project-bar {
   width: calc(100% - 2 * var(--spacing-field));
-  max-width: calc(var(--reading-width, 768px) - 2 * var(--spacing-field));
+  max-width: calc(
+    var(--thread-reading-width, var(--reading-width-expanded)) - 2 * var(--spacing-field)
+  );
   margin-inline: auto;
 }
 .composer-dock {
   margin: 0 auto;
   width: 100%;
-  max-width: var(--reading-width, 768px);
+  max-width: var(--thread-reading-width, var(--reading-width-expanded));
   padding: var(--spacing-inline) var(--spacing-field) var(--spacing-field);
 }
+@container composer-column (max-width: 820px) {
+  .active-composer .composer-project-bar {
+    max-width: calc(var(--reading-width-compact) - 2 * var(--spacing-field));
+  }
+  .composer-dock {
+    max-width: var(--reading-width-compact);
+  }
+}
 .messages {
+  container: conversation-column / inline-size;
   flex: 1;
   min-height: 0;
   overflow-x: hidden;
@@ -520,12 +532,26 @@ button.composer-project:hover > svg,
   scrollbar-gutter: stable both-edges;
   scrollbar-width: thin;
 }
+@media not all and ((prefers-contrast: more) or (forced-colors: active)) {
+  .messages {
+    scrollbar-color: transparent transparent;
+  }
+  .messages:hover,
+  .messages:focus-within {
+    scrollbar-color: var(--color-border-hover) transparent;
+  }
+}
 .message-column {
   width: 100%;
   min-width: 0;
-  max-width: var(--reading-width, 768px);
+  max-width: var(--thread-reading-width, var(--reading-width-expanded));
   margin: 0 auto;
   padding: var(--message-reading-inset) var(--spacing-field);
+}
+@container conversation-column (max-width: 820px) {
+  .message-column {
+    max-width: var(--reading-width-compact);
+  }
 }
 /* 恢复提示、分页与全部加载完毕共享同一高度，避免状态切换推动正文。 */
 .message-history-controls {

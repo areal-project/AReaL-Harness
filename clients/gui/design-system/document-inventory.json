@@ -440,6 +440,11 @@
     "status": "active"
   },
   {
+    "path": "clients/gui/packages/ui/src/conversation/thread-summary-panel/thread-summary-panel.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
     "path": "clients/gui/packages/ui/src/conversation/subagent-panel/subagent-panel.md",
     "role": "consumer",
     "status": "active",

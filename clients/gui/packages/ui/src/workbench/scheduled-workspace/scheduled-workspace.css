@@ -125,7 +125,7 @@
 }
 .scheduled-row[data-variant="card"] {
   padding: var(--spacing-inline) var(--spacing-inline) var(--spacing-inline) var(--spacing-panel);
-  border: 1px solid var(--color-border);
+  border: var(--border-width-default) solid var(--color-border-hairline);
   background: var(--color-background);
   max-width: calc(var(--spacing-inline) * 80);
 }
@@ -189,6 +189,7 @@
 .scheduled-row-actions {
   display: flex;
   align-items: center;
+  gap: calc(var(--spacing-inline) / 4);
   flex-shrink: 0;
 }
 .scheduled-row[data-variant="compact"] .scheduled-row-actions {

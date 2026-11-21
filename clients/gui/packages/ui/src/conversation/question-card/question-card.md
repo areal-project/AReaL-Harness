@@ -8,6 +8,7 @@ layer: conversation
 category: decision
 aliases: ["Ask User", "问题卡片", "追问"]
 related: ["decision-card", "textarea", "button"]
+exports: ["QuestionCard", "QuestionSummary"]
 ---
 
 # QuestionCard 问题卡片

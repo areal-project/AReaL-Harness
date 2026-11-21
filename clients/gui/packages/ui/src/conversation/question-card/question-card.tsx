@@ -1,5 +1,6 @@
 import { useId, type ReactNode, type Ref } from "react";
 import { Check, MessageCircleQuestion } from "lucide-react";
+import { Disclosure } from "../../components/disclosure/disclosure.js";
 import { DecisionCard } from "../decision-card/decision-card.js";
 
 export function QuestionCard({
@@ -69,5 +70,48 @@ export function QuestionCard({
         ))}
       </fieldset>
     </DecisionCard>
+  );
+}
+
+/** 问答提交后在对话流中沉淀的单行可折叠摘要，点击展开查看完整问答对。 */
+export function QuestionSummary({
+  summary,
+  items,
+  emptyAnswerLabel = "未提供回答",
+  icon,
+  open,
+  onOpenChange,
+}: {
+  summary: string;
+  items: readonly { question: string; answer?: string }[];
+  emptyAnswerLabel?: string;
+  icon?: ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  return (
+    <div className="ask-user-summary" data-slot="question-summary">
+      <Disclosure
+        label={summary}
+        icon={icon ?? <MessageCircleQuestion size={16} />}
+        open={open}
+        onOpenChange={onOpenChange}
+        textRole="content"
+      >
+        <dl className="ask-user-summary-list">
+          {items.map((entry, index) => (
+            <div key={index} className="ask-user-summary-row">
+              <dt className="ask-user-summary-question">{entry.question}</dt>
+              <dd
+                className="ask-user-summary-answer"
+                data-empty={!entry.answer?.trim() || undefined}
+              >
+                {entry.answer?.trim() || emptyAnswerLabel}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </Disclosure>
+    </div>
   );
 }

@@ -54,6 +54,7 @@
 | [MarkdownSurface](../packages/ui/src/conversation/markdown-surface/markdown-surface.tsx) |
 | [NativeContent](../packages/ui/src/conversation/native-content/native-content.tsx) |
 | [QuestionCard](../packages/ui/src/conversation/question-card/question-card.tsx) |
+| [ThreadSummaryPanel](../packages/ui/src/conversation/thread-summary-panel/thread-summary-panel.tsx) |
 | [WorkbenchShell](../packages/ui/src/workbench/workbench-shell/workbench-shell.tsx) |
 | [SidePaneFrame](../packages/ui/src/workbench/side-pane-frame/side-pane-frame.tsx) |
 | [SidePaneLauncher](../packages/ui/src/workbench/side-pane-launcher/side-pane-launcher.tsx) |

@@ -53,7 +53,8 @@ export {
 export { MessageCodeBlock } from "@areal/ui/compositions";
 export { MarkdownSurface } from "@areal/ui/compositions";
 export { NativeContent } from "@areal/ui/compositions";
-export { QuestionCard } from "@areal/ui/compositions";
+export { QuestionCard, QuestionSummary } from "@areal/ui/compositions";
+export { ThreadSummaryPanel, ThreadSummaryItem } from "@areal/ui/compositions";
 export {
   WorkbenchShell,
   WorkspaceHeader,

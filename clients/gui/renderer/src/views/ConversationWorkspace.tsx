@@ -3,8 +3,9 @@ import {
   useConversationSubmitReadOnly,
   useConversationCreateReadOnly,
 } from "../PlatformReadContext.js";
-import React from "react";
+import React, { createContext, useContext, useState } from "react";
 import { DelayedVisible } from "@areal/ui";
+import { ThreadSummaryItem, ThreadSummaryPanel } from "@areal/ui/compositions";
 import { projectUserState } from "../state/userStates.js";
 import { ComposerSurface } from "../prompt-editor/ComposerSurface.js";
 import { Button } from "../components/ui/button.js";
@@ -46,8 +47,6 @@ import type { useWorkspacePreview } from "../state/useWorkspacePreview.js";
 import { WorktreeStarter } from "../WorktreeStarter.js";
 import { usePendingMessage } from "../pendingMessage.js";
 import { PendingMessageView } from "../UserMessageBody.js";
-
-import { createContext, useContext } from "react";
 
 type ConversationWorkspaceProps = {
   session: ReturnType<typeof useSessionNavigation>;
@@ -313,12 +312,55 @@ function ActiveConversation() {
   const { newTask } = navigationCommands;
 
   const { t } = useI18n();
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summaryPinned, setSummaryPinned] = useState(true);
   const pendingSide =
     project && thread ? sideChats.pendingCreation(project.id, thread.id) : undefined;
   const sideError = project && thread ? sideChats.creationError(project.id, thread.id) : undefined;
   if (!project || !thread) return null;
+  const turns = Array.isArray(thread.turns) ? thread.turns : [];
+  const pendingApprovals = Array.isArray(thread.approvals) ? thread.approvals.length : 0;
+  const pendingQuestions = Array.isArray(thread.questions) ? thread.questions.length : 0;
+  const pendingDecisions = pendingApprovals + pendingQuestions;
+  const changedFileCount = turns.reduce((count: number, turn: { files?: unknown[] }) => {
+    return count + (Array.isArray(turn?.files) ? turn.files.length : 0);
+  }, 0);
+  const summaryParts = [
+    pendingDecisions > 0 ? `${pendingDecisions} 项待确认` : null,
+    changedFileCount > 0 ? `${changedFileCount} 个变更文件` : null,
+    turns.length > 0 ? `${turns.length} 轮对话` : null,
+  ].filter(Boolean);
+  const showPinnedSummary =
+    !empty && summaryPinned && (pendingDecisions > 0 || changedFileCount > 0);
   return (
     <>
+      {showPinnedSummary && (
+        <div className="composer-dock">
+          <ThreadSummaryPanel
+            title={thread.title || "当前会话"}
+            summary={summaryParts.join(" · ")}
+            variant={summaryOpen ? "card" : "compact"}
+            open={summaryOpen}
+            onOpenChange={setSummaryOpen}
+            pinned={summaryPinned}
+            onPinnedChange={setSummaryPinned}
+          >
+            {pendingDecisions > 0 && (
+              <ThreadSummaryItem label="待处理确认" meta={`${pendingDecisions}`} tone="attention" />
+            )}
+            {changedFileCount > 0 && (
+              <ThreadSummaryItem
+                label="本会话变更文件"
+                meta={`${changedFileCount}`}
+                onClick={() => showPanel("changes")}
+              />
+            )}
+            {turns.length > 0 && (
+              <ThreadSummaryItem label="对话轮次" meta={`${turns.length}`} tone="muted" />
+            )}
+          </ThreadSummaryPanel>
+        </div>
+      )}
       {empty ? (
         <div className="draft-greeting">
           <ConversationDraftEmptyState

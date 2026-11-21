@@ -1,7 +1,7 @@
 import { useI18n } from "./i18n/IntlProvider.js";
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, MessageCircleQuestion, Pencil, X } from "lucide-react";
-import { QuestionCard } from "@areal/ui/compositions";
+import { QuestionCard, QuestionSummary } from "@areal/ui/compositions";
 import { Feedback } from "./components/ui/feedback.js";
 import { useApplicationPreferences } from "./settings/applicationPreferences.js";
 import { Button } from "./components/ui/button.js";
@@ -103,6 +103,17 @@ export function AskUserQuestion({
   };
   // Retain the ZCode elicitation state mechanism with Codex bottom-dock layout.
   // Core receives the original option string or explicit custom text, never a skip.
+  if (submitted) {
+    return (
+      <QuestionSummary
+        summary={`已提交 ${questions.length} 项回答，等待继续执行`}
+        items={questions.map((entry) => ({
+          question: String(entry.title ?? ""),
+          answer: answer(drafts[entry.id]),
+        }))}
+      />
+    );
+  }
   return (
     <>
       {collapsed && (
@@ -122,9 +133,26 @@ export function AskUserQuestion({
         hidden={collapsed}
         className="ask-user-form"
         onKeyDown={(e) => {
+          if (locked || e.nativeEvent.isComposing) return;
           if (
-            locked ||
-            e.nativeEvent.isComposing ||
+            (e.key === "ArrowDown" || e.key === "ArrowUp") &&
+            options.length > 0 &&
+            !(e.target as HTMLElement).closest("textarea")
+          ) {
+            e.preventDefault();
+            const currentIndex = custom ? -1 : options.indexOf(draft.option);
+            const delta = e.key === "ArrowDown" ? 1 : -1;
+            const nextIndex =
+              currentIndex === -1
+                ? delta > 0
+                  ? 0
+                  : options.length - 1
+                : (currentIndex + delta + options.length) % options.length;
+            const option = options[nextIndex];
+            if (option) update({ mode: "option", option });
+            return;
+          }
+          if (
             !/^[1-9]$/.test(e.key) ||
             (e.target as HTMLElement).closest("input, textarea, button")
           )
