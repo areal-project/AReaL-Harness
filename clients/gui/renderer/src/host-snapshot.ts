@@ -731,15 +731,15 @@ export function createHostSnapshotProjector(
         projects,
         providerRevision: navigation?.providerRevision,
         revision: ++revision,
-        connection: {
-          state: fresh
-            ? "ready"
-            : connection.connection === "connecting" ||
-                (shell && connection.connection === "offline")
-              ? "connecting"
-              : "unavailable",
-          ...(fresh ? {} : connectionStage ? { stage: connectionStage } : {}),
-        },
+        // 握手、目录基线和自动退避都属于加载；仅桌面连接所有者的明确失败提供恢复入口。
+        connection: fresh
+          ? { state: "ready" }
+          : desktopSnapshot?.connection?.state === "unavailable"
+            ? desktopSnapshot.connection
+            : {
+                state: "connecting",
+                ...(connectionStage ? { stage: connectionStage } : {}),
+              },
         desktopCapabilities: { currentCommands: desktop !== undefined },
         library: {
           projects: projectedNavigation,

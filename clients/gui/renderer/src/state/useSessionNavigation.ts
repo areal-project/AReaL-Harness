@@ -543,12 +543,14 @@ export function useSessionNavigation(
     const previous = restorationAttempt.current;
     const owner = restorationOwner;
     const sameOwner = sameRestorationOwner(previous, owner);
-    // 已打开的会话或草稿随后台空闲回收进入休眠时，不主动拉起 Core，保留省内存效果；等用户再次输入或发送时按需唤醒。
+    // 同一 Host 连接内的空闲休眠不主动唤醒 Core；Host 或 socket 换代后须重新建立当前 owner 的恢复结果。
     if (
       isProjectHibernated(project) &&
       previous &&
       previous.projectId === owner.projectId &&
       previous.threadId === owner.threadId &&
+      previous.hostGeneration === owner.hostGeneration &&
+      previous.connectionId === owner.connectionId &&
       !previous.prewarmDeferred &&
       !previous.failure &&
       (!owner.threadId || Boolean(thread))

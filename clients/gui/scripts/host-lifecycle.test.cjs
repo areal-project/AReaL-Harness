@@ -123,6 +123,65 @@ async function fixture(t, extraCapabilities = []) {
   };
 }
 
+for (const failure of [
+  { code: "CAPABILITY_UNAVAILABLE" },
+  { code: "TIMEOUT", recovery: { kind: "retryRead" } },
+  { code: "SERVICE_NOT_READY" },
+]) {
+  test(`automatic ${failure.code} recovery stays loading throughout published states`, async (t) => {
+    const f = await fixture(t);
+    const states = [];
+    f.backend.identity = `${f.hostId}:${f.generation}`;
+    f.backend.onChange = () => states.push(f.backend.snapshot().connection.state);
+    const error = Object.assign(new Error("synthetic recoverable connection failure"), failure);
+    f.backend.initialize = async () => {
+      throw error;
+    };
+    t.after(() => f.backend.clearReconnect());
+    await assert.rejects(f.backend.init({ automatic: true }), (cause) => cause === error);
+    assert.ok(f.backend.reconnectTimer);
+    assert.ok(states.length > 0);
+    assert.equal(states.includes("unavailable"), false);
+    assert.equal(f.backend.connectionState.state, "connecting");
+  });
+}
+
+test("repeated disconnect notifications keep one automatic retry and loading state", async (t) => {
+  const f = await fixture(t);
+  f.backend.identity = `${f.hostId}:${f.generation}`;
+  const states = [];
+  f.backend.onChange = () => states.push(f.backend.snapshot().connection.state);
+  t.after(() => f.backend.clearReconnect());
+  f.backend.disconnected();
+  const originalTimer = f.backend.reconnectTimer;
+  assert.ok(originalTimer);
+  f.backend.disconnected();
+  assert.equal(f.backend.reconnectTimer, originalTimer);
+  assert.deepEqual(states, ["connecting", "connecting"]);
+});
+
+for (const failure of [
+  { code: "DISCONNECTED", submissionUnknown: true },
+  { code: "storageAuthorizationRequired" },
+  { code: "TIMEOUT" },
+  { code: "PREREQUISITE_REQUIRED", prerequisite: { reason: "python-unavailable" } },
+]) {
+  test(`automatic ${failure.code} ${failure.submissionUnknown ? "UNKNOWN" : "failure"} stays unavailable without retry`, async (t) => {
+    const f = await fixture(t);
+    f.backend.identity = `${f.hostId}:${f.generation}`;
+    const error = Object.assign(new Error("synthetic confirmed failure"), failure);
+    f.backend.initialize = async () => {
+      throw error;
+    };
+    t.after(() => f.backend.clearReconnect());
+    await assert.rejects(f.backend.init({ automatic: true }), (cause) => cause === error);
+    assert.equal(f.backend.connectionState.state, "unavailable");
+    assert.equal(f.backend.connectionState.message, error.message);
+    assert.equal(f.backend.connectionState.prerequisite, failure.prerequisite);
+    assert.ok(!f.backend.reconnectTimer);
+  });
+}
+
 test("ordinary quit arms the original reclamation request without stopping a shared Host", async (t) => {
   const f = await fixture(t);
   await f.backend.completeApplicationQuit({ keepBackground: true });

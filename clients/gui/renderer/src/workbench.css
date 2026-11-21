@@ -86,25 +86,6 @@ pre {
 .startup-settings button {
   -webkit-app-region: no-drag;
 }
-.startup-steps {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--spacing-inline);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: var(--text-ui-sm);
-  color: var(--color-foreground-subtle);
-}
-.startup-steps li[data-step-state="active"] {
-  color: var(--color-foreground);
-  font-weight: var(--font-weight-medium);
-}
-.startup-steps li[data-step-state="done"] {
-  color: var(--color-foreground-muted, var(--color-foreground-subtle));
-  opacity: 0.7;
-}
 .startup-hint {
   font-size: var(--text-ui-sm);
   opacity: 0.85;

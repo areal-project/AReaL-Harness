@@ -204,6 +204,78 @@ function options(factory: NonNullable<HostClientOptions["transport"]>): HostClie
   };
 }
 
+it("keeps the first shell baseline and automatic transport retry in loading", async () => {
+  const wire = transport();
+  let release!: () => void;
+  const baseline = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const states: string[] = [];
+  const services = createHostReadServices(
+    undefined,
+    options(async (lifecycle) => {
+      const base = await wire.factory(lifecycle);
+      return {
+        ...base,
+        transport: {
+          ...base.transport,
+          async request(method, params, context) {
+            if (method === "shell.subscribe") await baseline;
+            return base.transport.request(method, params, context);
+          },
+        },
+      };
+    }),
+  );
+  const unsubscribe = services.onState((value) => states.push(value.connection!.state));
+  try {
+    await vi.waitFor(() => expect(services.reads!.status().connection).toBe("ready"));
+    expect((await services.snapshot()).connection?.state).toBe("connecting");
+    release();
+    await until(services);
+    expect(states).not.toContain("unavailable");
+  } finally {
+    release();
+    unsubscribe();
+    disposeHostReadServices(services);
+  }
+  const retrying = createHostReadServices(
+    undefined,
+    options(async () => {
+      throw new Error("temporary transport failure");
+    }),
+  );
+  try {
+    await vi.waitFor(() => expect(retrying.reads!.status().connection).toBe("offline"));
+    expect((await retrying.snapshot()).connection?.state).toBe("connecting");
+  } finally {
+    disposeHostReadServices(retrying);
+  }
+});
+
+it("preserves confirmed desktop failure and its recovery while the shell is unavailable", async () => {
+  const failure: NonNullable<Snapshot["connection"]> = {
+    state: "unavailable",
+    recovery: "check",
+    message: "Original operation needs attention",
+  };
+  const desktop = {
+    snapshot: async () => ({ projects: [], connection: failure }),
+    onState: () => () => {},
+  } as unknown as PlatformServices;
+  const services = createHostReadServices(
+    desktop,
+    options(async () => {
+      throw new Error("transport unavailable");
+    }),
+  );
+  try {
+    await vi.waitFor(async () => expect((await services.snapshot()).connection).toEqual(failure));
+  } finally {
+    disposeHostReadServices(services);
+  }
+});
+
 it("writes the file-opening preference once through Host and returns the selected application", async () => {
   const page = new EventTarget();
   vi.stubGlobal("window", page);

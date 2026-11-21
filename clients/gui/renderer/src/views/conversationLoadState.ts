@@ -45,7 +45,7 @@ export function conversationLoadState(
           retry: true,
           settings: false,
         }
-      : { kind: "starting", message: "startup.connectingProject" };
+      : { kind: "starting", message: "startup.loading" };
   if (
     input.attemptSettled &&
     ["fresh", "unavailable"].includes(startup.conversationReadState ?? "")
@@ -57,5 +57,5 @@ export function conversationLoadState(
       retry: true,
       settings: input.settings,
     };
-  return { kind: "reading", message: "startup.readingConversation" };
+  return { kind: "reading", message: "startup.loading" };
 }

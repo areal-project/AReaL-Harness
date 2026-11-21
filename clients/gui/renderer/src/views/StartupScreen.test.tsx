@@ -39,22 +39,33 @@ function renderStartup(overrides?: {
   );
 }
 
-it("exposes live startup stage progress and clickable Settings while loading", () => {
+it("shows loading without exposing internal startup stages or recovery actions", () => {
   const html = renderStartup({ connection: { state: "connecting", stage: "host" } });
   expect(html).toContain('data-testid="startup-loading"');
-  expect(html).toContain("startup.stage.host");
-  expect(html).toContain("startup.step.backend");
+  expect(html).toContain("startup.loading");
+  expect(html).not.toContain("startup.stage.");
+  expect(html).not.toContain("startup.step.");
+  expect(html).not.toContain("startup.reconnect");
+  expect(html).not.toContain("startup.check");
   expect(html).toContain("startup.openSettings");
   expect(html).toContain("startup.quit");
 });
 
-it("maps ready connection and session restoration to the project and conversation stages", () => {
+it("keeps project and conversation preparation as loading", () => {
   expect(renderStartup({ connection: { state: "ready" }, refreshing: false })).toContain(
-    "startup.stage.project",
+    "startup.loading",
   );
   expect(renderStartup({ connection: { state: "ready" }, refreshing: true })).toContain(
-    "startup.stage.conversation",
+    "startup.loading",
   );
+});
+
+it("offers recovery only for a confirmed failure", () => {
+  const html = renderStartup({ connection: { state: "unavailable", message: "failure detail" } });
+  expect(html).toContain("startup.failed");
+  expect(html).toContain("startup.reconnect");
+  expect(html).toContain("failure detail");
+  expect(renderStartup({ delayed: true })).not.toContain("startup.reconnect");
 });
 
 it("renders settings view with back button when settingsPage is active during startup", () => {

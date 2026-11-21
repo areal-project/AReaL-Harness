@@ -29,6 +29,17 @@ const { desktopKind, needsOriginalCheck } = lifecycleControl;
 const { checkHostPrerequisites } = require("./host-prerequisites.cjs");
 /** @param {number} ms */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+/** @param {unknown} error */
+function canRetryConnection(error) {
+  const failure = desktopError(error);
+  return (
+    failure.submissionUnknown !== true &&
+    (["SERVICE_NOT_READY", "DISCONNECTED", "CAPABILITY_UNAVAILABLE"].some(
+      (code) => code === failure.code,
+    ) ||
+      (failure.code === "TIMEOUT" && failure.recovery?.kind === "retryRead"))
+  );
+}
 /** @param {unknown} value @returns {value is string} */
 const uuid = (value) =>
   typeof value === "string" &&
@@ -460,8 +471,10 @@ class SharedCoreBackend {
     );
   }
   scheduleReconnect() {
-    if (!this.identity || !this.canReconnect() || this.reconnectTimer) return;
+    if (!this.identity || !this.canReconnect()) return;
+    // 已排队的恢复仍是等待；重复断线通知不能把它重新投影成故障。
     this.connectionState = { state: "connecting" };
+    if (this.reconnectTimer) return;
     const delay = Math.min(30000, 500 * 2 ** Math.min(this.reconnectAttempts ?? 0, 6));
     this.reconnectAttempts = (this.reconnectAttempts ?? 0) + 1;
     this.reconnectTimer = setTimeout(() => {
@@ -475,14 +488,7 @@ class SharedCoreBackend {
       void this.init({ automatic: true })
         .catch(
           /** @param {unknown} error */ (error) => {
-            if (
-              desktopError(error).submissionUnknown !== true &&
-              (desktopError(error).code === "DISCONNECTED" ||
-                desktopError(error).code === "CAPABILITY_UNAVAILABLE" ||
-                (desktopError(error).code === "TIMEOUT" &&
-                  desktopError(error).recovery?.kind === "retryRead"))
-            )
-              return;
+            if (canRetryConnection(error)) return;
             this.reconnectBlocked = true;
             this.connectionState = {
               state: "unavailable",
@@ -626,7 +632,11 @@ class SharedCoreBackend {
             ...(record(error) && error.prerequisite ? { prerequisite: error.prerequisite } : {}),
           };
           if (
-            ["SERVICE_NOT_READY", "DISCONNECTED"].some((code) => code === desktopError(error).code)
+            canRetryConnection(error) &&
+            (automatic ||
+              ["SERVICE_NOT_READY", "DISCONNECTED"].some(
+                (code) => code === desktopError(error).code,
+              ))
           )
             this.scheduleReconnect();
           this.onChange();

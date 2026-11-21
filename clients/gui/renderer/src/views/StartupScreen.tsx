@@ -70,35 +70,6 @@ export function StartupScreen({
     const timer = window.setTimeout(() => setSlowHint(true), 3000);
     return () => window.clearTimeout(timer);
   }, [failed]);
-  const stage = state.connection?.stage;
-  const activeStep =
-    state.connection?.state === "ready"
-      ? state.restoration.refreshing
-        ? 3
-        : 2
-      : stage === "prerequisites" || stage === "identity"
-        ? 0
-        : stage === "attach"
-          ? 2
-          : 1;
-  const stageKey =
-    state.connection?.state === "ready"
-      ? state.restoration.refreshing
-        ? "startup.stage.conversation"
-        : "startup.stage.project"
-      : stage === "prerequisites" ||
-          stage === "identity" ||
-          stage === "host" ||
-          stage === "workbench" ||
-          stage === "attach"
-        ? (`startup.stage.${stage}` as const)
-        : "startup.loading";
-  const steps = [
-    t("startup.step.environment"),
-    t("startup.step.backend"),
-    t("startup.step.project"),
-    t("startup.step.session"),
-  ];
   return (
     <div className="startup-screen" data-testid="startup-loading">
       <div className="startup-drag-region" aria-hidden="true" />
@@ -121,22 +92,9 @@ export function StartupScreen({
             />
           ) : (
             <>
-              <p role={failed ? "alert" : "status"}>{failed ? t("startup.failed") : t(stageKey)}</p>
-              {!failed && (
-                <ol className="startup-steps" aria-label={t("startup.progressLabel")}>
-                  {steps.map((label, index) => (
-                    <li
-                      key={label}
-                      aria-current={index === activeStep ? "step" : undefined}
-                      data-step-state={
-                        index < activeStep ? "done" : index === activeStep ? "active" : "pending"
-                      }
-                    >
-                      {label}
-                    </li>
-                  ))}
-                </ol>
-              )}
+              <p role={failed ? "alert" : "status"}>
+                {t(failed ? "startup.failed" : "startup.loading")}
+              </p>
               {!failed && (delayed || slowHint) && (
                 <p className="startup-hint">
                   {t(delayed ? "startup.delayed" : "startup.elapsedHint")}

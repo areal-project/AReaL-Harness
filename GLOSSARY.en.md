@@ -6,6 +6,14 @@ This glossary defines the shared language for AReaL Harness user interfaces. It 
 
 ## Language
 
+**Loading**:
+The application is preparing or automatically restoring the requested content; the user can wait without manually connecting a project.
+_Avoid_: Confirmed failure; an unconfirmed operation outcome
+
+**Unconfirmed Outcome**:
+An initiated operation lacks sufficient evidence to determine whether it ran or completed.
+_Avoid_: Operation failure; permission to resubmit
+
 **Schedule**:
 An arrangement made by the user to initiate specified work at specified times, once or repeatedly.
 _Avoid_: foreground or background execution mode; an execution that has already started; the conversation itself

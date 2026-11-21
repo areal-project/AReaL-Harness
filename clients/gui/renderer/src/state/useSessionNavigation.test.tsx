@@ -10,6 +10,7 @@ const seed = vi.hoisted(() => ({
   stateIndex: 0,
   restoration: undefined as ReturnType<typeof useSessionNavigation>["restoration"],
   hostGeneration: undefined as string | undefined,
+  connectionId: undefined as string | undefined,
 }));
 vi.mock("react", async (original) => {
   const react = await original<typeof import("react")>();
@@ -40,6 +41,7 @@ afterEach(() => {
   seed.selectedProject = undefined;
   seed.restoration = undefined;
   seed.hostGeneration = undefined;
+  seed.connectionId = undefined;
   vi.unstubAllGlobals();
 });
 
@@ -96,7 +98,12 @@ function fixture(
       selectSession,
       status: () => ({
         connection: "ready",
-        identity: { persistedHistory, hostId: "host", hostGeneration: seed.hostGeneration },
+        identity: {
+          persistedHistory,
+          hostId: "host",
+          hostGeneration: seed.hostGeneration,
+          connectionId: seed.connectionId,
+        },
       }),
     },
   } as unknown as PlatformServices;
@@ -683,6 +690,100 @@ it("does not automatically wake Core when an open conversation enters idle hiber
   await Promise.resolve();
   expect(f.events).toEqual([]);
 });
+
+it.each(["host", "socket"])(
+  "restores an idle empty project after its %s connection changes",
+  async (change) => {
+    seed.selectedProject = owner.projectId;
+    seed.hostGeneration = "old-host";
+    seed.connectionId = "old-socket";
+    seed.snapshot = {
+      connection: { state: "ready" },
+      projects: [
+        {
+          id: owner.projectId,
+          root: "/fixture",
+          state: { connected: false, hostState: "stopped", threads: {} },
+        },
+      ],
+    };
+    const f = fixture(true, async () => {}, false, true, "");
+    await f.navigation.restoreConversation(f.navigation.restorationOwner, "open");
+    f.events.length = 0;
+    f.navigation.synchronizeRestoration();
+    expect(f.events).toEqual([]);
+
+    // 模拟新投影的 owner；Core 仍休眠，但旧连接的恢复结果不能满足新连接。
+    seed.hostGeneration = change === "host" ? "new-host" : "old-host";
+    seed.connectionId = "new-socket";
+    Object.assign(f.navigation.restorationOwner, {
+      hostGeneration: JSON.stringify(["host", seed.hostGeneration]),
+      connectionId: seed.connectionId,
+    });
+    f.navigation.synchronizeRestoration();
+    await f.navigation.pendingRestoration();
+
+    expect(f.events).toEqual(["connect", "read"]);
+    expect(seed.restoration).toMatchObject({
+      ...f.navigation.restorationOwner,
+      pending: false,
+      error: "",
+    });
+    expect(f.selectSession).toHaveBeenLastCalledWith(null);
+  },
+);
+
+it.each(["host", "socket"])(
+  "ignores the old idle project's rejection after a %s handoff restores it",
+  async (change) => {
+    seed.selectedProject = owner.projectId;
+    seed.hostGeneration = "old-host";
+    seed.connectionId = "old-socket";
+    seed.snapshot = {
+      connection: { state: "ready" },
+      projects: [
+        {
+          id: owner.projectId,
+          root: "/fixture",
+          state: { connected: false, hostState: "stopped", threads: {} },
+        },
+      ],
+    };
+    let rejectOld!: (cause: Error) => void;
+    const connect = vi
+      .fn<(resume: boolean) => Promise<void>>()
+      .mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            rejectOld = reject;
+          }),
+      )
+      .mockResolvedValue(undefined);
+    const f = fixture(true, connect, false, true, "");
+    const original = f.navigation.restoreConversation(
+      { ...f.navigation.restorationOwner },
+      "connect",
+    );
+    await vi.waitFor(() => expect(connect).toHaveBeenCalledOnce());
+    seed.hostGeneration = change === "host" ? "new-host" : "old-host";
+    seed.connectionId = "new-socket";
+    Object.assign(f.navigation.restorationOwner, {
+      hostGeneration: JSON.stringify(["host", seed.hostGeneration]),
+      connectionId: seed.connectionId,
+    });
+    f.navigation.synchronizeRestoration();
+    await vi.waitFor(() => expect(connect).toHaveBeenCalledTimes(2));
+    await f.navigation.pendingRestoration();
+    rejectOld(Object.assign(Error("old connection retired"), { code: "CORE_UNAVAILABLE" }));
+    await original;
+    expect(seed.restoration).toMatchObject({
+      ...f.navigation.restorationOwner,
+      pending: false,
+      error: "",
+    });
+    expect(seed.restoration?.failure).toBeUndefined();
+  },
+);
 
 it.each(["sidebar", "startup", "retry"])(
   "reads saved history from %s before verifying execution",
