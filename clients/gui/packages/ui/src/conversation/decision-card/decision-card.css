@@ -73,16 +73,21 @@
   color: var(--color-primary-foreground);
 }
 .decision-card kbd {
-  color: var(--color-foreground-subtle);
+  color: var(--color-foreground-subtlest);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   height: var(--line-height-ui-sm);
-  padding: 0 calc(var(--spacing-inline) / 2);
+  padding: 0 calc(var(--spacing-inline) / 4);
   border-radius: var(--radius-micro);
-  background: var(--color-surface-tertiary);
+  background: transparent;
   font: inherit;
   font-size: var(--text-ui-sm);
+}
+.decision-card .decision-primary kbd {
+  color: var(--color-primary-foreground);
+  background: transparent;
+  opacity: 0.65;
 }
 .decision-card .ui-feedback {
   margin: var(--spacing-inline) 0 0;
