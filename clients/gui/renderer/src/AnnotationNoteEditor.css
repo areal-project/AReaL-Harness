@@ -44,7 +44,7 @@
   min-width: 0;
   height: var(--spacing-control);
   min-height: 0;
-  padding: calc(var(--spacing-inline) / 2) 1px;
+  padding: calc(var(--spacing-inline) / 2) var(--border-width-default);
   resize: none;
   border: 0;
   background: transparent;

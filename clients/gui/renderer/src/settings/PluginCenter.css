@@ -85,7 +85,8 @@
 .plugin-center-content {
   width: min(100%, 1160px);
   margin: 0 auto;
-  padding: calc(var(--spacing-inline) * 5) calc(var(--spacing-inline) * 5) 64px;
+  padding: calc(var(--spacing-inline) * 5) calc(var(--spacing-inline) * 5)
+    calc(var(--spacing-inline) * 8);
 }
 .plugin-center-header {
   display: flex;

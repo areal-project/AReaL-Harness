@@ -25,7 +25,7 @@ exports: ["Tooltip", "TooltipContent", "TooltipProvider", "TooltipTrigger", "Tit
 
 ## 行为
 
-`R-TOOLTIP-001` 不作为唯一按钮名称，不在提示中放必须完成的业务动作。浮层使用 `tooltip` 角色；DOM 宿主用 `aria-describedby` 关联触发节点与提示。
+`R-TOOLTIP-001` 不作为唯一按钮名称，不在提示中放必须完成的业务动作。浮层使用 `tooltip` 角色；DOM 宿主用 `aria-describedby` 关联触发节点与提示。**检查：**`clients/gui/packages/ui/src/components/tooltip/tooltip.test.ts`
 
 ## 内容
 

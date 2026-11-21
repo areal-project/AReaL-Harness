@@ -134,9 +134,9 @@
   .settings-sidebar .settings-category-navigation {
     display: flex;
     flex: none;
-    gap: 4px;
+    gap: calc(var(--spacing-inline) / 2);
     overflow-x: auto;
-    padding-bottom: 8px;
+    padding-bottom: var(--spacing-inline);
   }
 }
 @media (max-width: 640px) {
@@ -165,9 +165,9 @@
   .settings-sidebar .settings-category-navigation {
     flex: none;
     flex-direction: row;
-    gap: 4px;
+    gap: calc(var(--spacing-inline) / 2);
     overflow-x: auto;
-    padding-bottom: 8px;
+    padding-bottom: var(--spacing-inline);
   }
 }
 @media (max-width: 640px) {
@@ -234,8 +234,8 @@
 /* 带计数的图标按钮：胶囊形，常驻显示数字。 */
 .icon-button[data-variant="count"] {
   width: auto;
-  gap: 6px;
-  padding: 0 8px 0 6px;
+  gap: calc(var(--spacing-inline) * 3 / 4);
+  padding: 0 var(--spacing-inline) 0 calc(var(--spacing-inline) * 3 / 4);
   border-radius: var(--radius-pill);
   background: var(--color-surface-elevated);
 }

@@ -58,6 +58,230 @@
       "styles": [],
       "internalSelectors": ["[data-slot=\"dialog-overlay\"]", "[data-slot=\"dialog-content\"]"],
       "enforces": ["R-DIALOG-002"]
+    },
+    {
+      "id": "input",
+      "contract": "clients/gui/packages/ui/src/components/input/input.md",
+      "styles": [],
+      "internalSelectors": ["[data-slot=\"input\"]"],
+      "enforces": []
+    },
+    {
+      "id": "switch",
+      "contract": "clients/gui/packages/ui/src/components/switch/switch.md",
+      "styles": [],
+      "internalSelectors": ["[data-slot=\"switch\"]", "[data-slot=\"switch-thumb\"]"],
+      "enforces": []
+    },
+    {
+      "id": "select",
+      "contract": "clients/gui/packages/ui/src/components/select/select.md",
+      "styles": [],
+      "internalSelectors": [
+        "[data-slot=\"select-trigger\"]",
+        "[data-slot=\"select-content\"]",
+        "[data-slot=\"select-item\"]"
+      ],
+      "enforces": []
+    },
+    {
+      "id": "popover",
+      "contract": "clients/gui/packages/ui/src/components/popover/popover.md",
+      "styles": ["clients/gui/packages/ui/src/components/popover/popup.css"],
+      "internalSelectors": ["[data-slot=\"popover-content\"]"],
+      "enforces": []
+    },
+    {
+      "id": "skeleton",
+      "contract": "clients/gui/packages/ui/src/components/skeleton/skeleton.md",
+      "styles": ["clients/gui/packages/ui/src/components/skeleton/skeleton.css"],
+      "internalSelectors": [".areal-skeleton", "[data-slot=\"skeleton\"]"],
+      "enforces": []
+    },
+    {
+      "id": "context-menu",
+      "contract": "clients/gui/packages/ui/src/components/context-menu/context-menu.md",
+      "styles": [],
+      "internalSelectors": [
+        "[data-slot=\"context-menu-content\"]",
+        "[data-slot=\"context-menu-item\"]"
+      ],
+      "enforces": []
+    },
+    {
+      "id": "dropdown-menu",
+      "contract": "clients/gui/packages/ui/src/components/dropdown-menu/dropdown-menu.md",
+      "styles": [],
+      "internalSelectors": [
+        "[data-slot=\"dropdown-menu-content\"]",
+        "[data-slot=\"dropdown-menu-item\"]"
+      ],
+      "enforces": []
+    },
+    {
+      "id": "control-hint-tooltip",
+      "contract": "clients/gui/packages/ui/src/components/control-hint-tooltip/control-hint-tooltip.md",
+      "styles": [],
+      "internalSelectors": ["[data-slot=\"kbd\"]"],
+      "enforces": []
+    },
+    {
+      "id": "action-button",
+      "contract": "clients/gui/packages/ui/src/components/action-button/action-button.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "tooltip",
+      "contract": "clients/gui/packages/ui/src/components/tooltip/tooltip.md",
+      "styles": [],
+      "internalSelectors": ["[data-slot=\"tooltip-content\"]"],
+      "enforces": []
+    },
+    {
+      "id": "settings-disclosure",
+      "contract": "clients/gui/packages/ui/src/components/settings-disclosure/settings-disclosure.md",
+      "styles": [
+        "clients/gui/packages/ui/src/components/settings-disclosure/settings-disclosure.css"
+      ],
+      "internalSelectors": [".settings-disclosure-title", ".settings-disclosure-action"],
+      "enforces": []
+    },
+    {
+      "id": "feedback-notice",
+      "contract": "clients/gui/packages/ui/src/components/feedback-notice/feedback-notice.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "spinner",
+      "contract": "clients/gui/packages/ui/src/components/spinner/spinner.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "input-group",
+      "contract": "clients/gui/packages/ui/src/components/input-group/input-group.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "code-viewer",
+      "contract": "clients/gui/packages/ui/src/components/code-viewer/code-viewer.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "command",
+      "contract": "clients/gui/packages/ui/src/components/command/command.md",
+      "styles": [],
+      "internalSelectors": [
+        "[data-slot=\"command\"]",
+        "[data-slot=\"command-input\"]",
+        "[data-slot=\"command-list\"]",
+        "[data-slot=\"command-item\"]"
+      ],
+      "enforces": []
+    },
+    {
+      "id": "diff-viewer",
+      "contract": "clients/gui/packages/ui/src/components/diff-viewer/diff-viewer.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "markdown-blockquote",
+      "contract": "clients/gui/packages/ui/src/conversation/markdown-blockquote/markdown-blockquote.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "markdown-list",
+      "contract": "clients/gui/packages/ui/src/conversation/markdown-list/markdown-list.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "markdown-surface",
+      "contract": "clients/gui/packages/ui/src/conversation/markdown-surface/markdown-surface.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "message-attachments",
+      "contract": "clients/gui/packages/ui/src/conversation/message-attachments/message-attachments.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "settings-search-input",
+      "contract": "clients/gui/packages/ui/src/settings/settings-search-input/settings-search-input.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "settings-section",
+      "contract": "clients/gui/packages/ui/src/settings/settings-section/settings-section.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "settings-segmented-tabs",
+      "contract": "clients/gui/packages/ui/src/settings/settings-segmented-tabs/settings-segmented-tabs.md",
+      "styles": [
+        "clients/gui/packages/ui/src/settings/settings-segmented-tabs/settings-segmented-tabs.css"
+      ],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "settings-select",
+      "contract": "clients/gui/packages/ui/src/settings/settings-select/settings-select.md",
+      "styles": ["clients/gui/packages/ui/src/settings/settings-select/settings-select.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "resource-controls",
+      "contract": "clients/gui/packages/ui/src/workbench/resource-controls/resource-controls.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "side-pane-frame",
+      "contract": "clients/gui/packages/ui/src/workbench/side-pane-frame/side-pane-frame.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "side-pane-launcher",
+      "contract": "clients/gui/packages/ui/src/workbench/side-pane-launcher/side-pane-launcher.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "task-title-overflow",
+      "contract": "clients/gui/packages/ui/src/workbench/task-title-overflow/task-title-overflow.md",
+      "styles": [
+        "clients/gui/packages/ui/src/workbench/task-title-overflow/task-title-overflow.css"
+      ],
+      "internalSelectors": [],
+      "enforces": []
     }
   ],
   "rules": [

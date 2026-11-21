@@ -139,7 +139,7 @@
   .settings-field-layout,
   .settings-field-layout-wide {
     grid-template-columns: minmax(0, 1fr);
-    gap: 8px;
+    gap: var(--spacing-inline);
   }
   .settings-field-control {
     justify-content: flex-start;
@@ -194,7 +194,7 @@
   appearance: none;
   width: 20px;
   height: 20px;
-  margin-top: -9px;
+  margin-top: calc(var(--spacing-inline) * -9 / 8);
   border: 1px solid transparent;
   border-radius: 50%;
   background: currentColor;

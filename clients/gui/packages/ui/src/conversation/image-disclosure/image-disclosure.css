@@ -6,7 +6,7 @@
   margin-block: 0;
 }
 .areal-image-disclosure > .areal-disclosure > .areal-disclosure-trigger {
-  gap: 6px;
+  gap: calc(var(--spacing-inline) * 3 / 4);
   width: auto;
   max-width: 100%;
   min-height: 0;

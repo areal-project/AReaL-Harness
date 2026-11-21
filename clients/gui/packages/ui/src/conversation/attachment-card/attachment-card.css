@@ -29,8 +29,8 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 4px;
-  padding: 6px;
+  gap: calc(var(--spacing-inline) / 2);
+  padding: calc(var(--spacing-inline) * 3 / 4);
 }
 .composer-text-icon {
   display: grid;
@@ -46,7 +46,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: calc(var(--spacing-inline) / 4);
   font-size: var(--text-fixed-body);
   line-height: 1.2;
 }
@@ -93,7 +93,7 @@
   min-width: 0;
   width: 96px;
   flex-direction: column;
-  gap: 4px;
+  gap: calc(var(--spacing-inline) / 2);
   overflow-wrap: anywhere;
 }
 
@@ -113,14 +113,14 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
+  gap: calc(var(--spacing-inline) * 3 / 4);
   flex-shrink: 0;
 }
 .composer-image-note-count {
   display: flex;
   align-items: center;
-  gap: 3px;
-  padding: 3px 5px;
+  gap: calc(var(--spacing-inline) * 3 / 8);
+  padding: calc(var(--spacing-inline) * 3 / 8) calc(var(--spacing-inline) * 5 / 8);
   border-radius: var(--radius-inline);
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-xs);

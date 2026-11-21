@@ -127,7 +127,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 2px;
+  gap: calc(var(--spacing-inline) / 4);
   min-width: 0;
   padding-right: var(--spacing-control-lg);
   color: var(--color-foreground-subtle);
@@ -220,7 +220,7 @@
   display: grid;
   flex: 1;
   min-width: 0;
-  gap: 2px;
+  gap: calc(var(--spacing-inline) / 4);
   font-size: var(--text-ui-caption);
 }
 .worktrees-action-summary > span {

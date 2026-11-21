@@ -166,11 +166,11 @@
   height: var(--shell-bar-height);
   min-height: var(--shell-bar-height);
   flex-shrink: 0;
-  padding: 0 8px;
+  padding: 0 var(--spacing-inline);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 4px;
+  gap: calc(var(--spacing-inline) / 2);
 }
 .sidebar-footer strong {
   flex: 1;
@@ -179,11 +179,11 @@
 .sidebar-footer-settings {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-inline);
   flex: 1;
   min-width: 0;
   height: 30px;
-  padding: 0 8px;
+  padding: 0 var(--spacing-inline);
   border-radius: var(--radius-control);
   font-size: var(--text-ui-caption);
   font-weight: 430;
@@ -286,7 +286,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
+  padding: 0 calc(var(--spacing-inline) * 3 / 2);
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
@@ -304,10 +304,13 @@
   flex-direction: column;
 }
 .areal-workbench:has(.sidebar[data-collapsed="true"]) .workspace-header {
-  padding-left: max(16px, calc(var(--window-inset) - 52px));
+  padding-left: max(
+    var(--spacing-field),
+    calc(var(--window-inset) - calc(var(--spacing-inline) * 13 / 2))
+  );
 }
 .areal-workbench:not(:has(.sidebar)) .workspace-header {
-  padding-left: max(16px, var(--window-inset));
+  padding-left: max(var(--spacing-field), var(--window-inset));
 }
 @media (max-width: 640px) {
   .sidebar:not(.settings-sidebar) {
@@ -321,7 +324,7 @@
     --page-clip-start: 0px;
   }
   .areal-workbench:has(.sidebar[data-collapsed="true"]) .workspace-header {
-    padding-left: max(16px, var(--window-inset));
+    padding-left: max(var(--spacing-field), var(--window-inset));
   }
   .areal-workbench:has(.sidebar:not(.settings-sidebar):not([data-collapsed="true"])) > .work-area {
     display: none;
@@ -343,7 +346,7 @@
 }
 .side-panel .resource-catalog-bar {
   flex-wrap: wrap;
-  gap: 10px;
+  gap: calc(var(--spacing-inline) * 5 / 4);
 }
 .side-panel .resource-catalog-bar > .relative {
   width: 100%;
@@ -526,7 +529,7 @@
 }
 .work-area[data-workspace-view] > .work-surface {
   z-index: 2;
-  padding-top: var(--shell-bar-height, 44px);
+  padding-top: var(--shell-bar-height, var(--height-toolbar));
 }
 .work-area[data-workspace-view] > .work-surface > .workspace-header {
   display: none;
@@ -576,7 +579,7 @@
   }
   .areal-workbench[data-view="settings"] > .work-area {
     min-height: 0;
-    margin-left: 52px;
+    margin-left: calc(var(--spacing-inline) * 13 / 2);
   }
   .areal-workbench[data-view="settings"] .settings-sidebar .application-rail {
     position: absolute;
@@ -588,7 +591,7 @@
     position: static;
   }
   .areal-workbench[data-view="settings"] .settings-sidebar .sidebar-content {
-    margin-left: 52px;
+    margin-left: calc(var(--spacing-inline) * 13 / 2);
   }
   .settings-sidebar .sidebar-footer,
   .settings-sidebar .settings-group-label {
@@ -598,7 +601,7 @@
 
 .sidebar-drag-preview {
   max-width: 280px;
-  padding: 5px 8px;
+  padding: calc(var(--spacing-inline) * 5 / 8) var(--spacing-inline);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-navigation);
   background: var(--color-popover);
@@ -652,10 +655,10 @@
 .resource-scope {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: calc(var(--spacing-inline) * 3 / 4);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-overlay);
-  padding: 4px 8px;
+  padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
   font-size: var(--text-ui-sm);
   white-space: nowrap;
 }
@@ -671,18 +674,18 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: calc(var(--spacing-inline) * 5 / 4);
   text-align: center;
   border: 1px dashed var(--color-border);
   border-radius: var(--radius-card);
-  padding: 28px;
+  padding: calc(var(--spacing-inline) * 7 / 2);
 }
 .resource-empty > svg,
 .resource-empty p {
   color: var(--color-muted-foreground);
 }
 .resource-empty p {
-  margin: 0 0 6px;
+  margin: 0 0 calc(var(--spacing-inline) * 3 / 4);
   font-size: var(--text-ui-sm);
 }
 .resource-empty strong {

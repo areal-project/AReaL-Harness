@@ -952,7 +952,8 @@
       "title": "pending时保留文字、显示转动图标并禁止重复点击，不推断操作已完成",
       "owner": "clients/gui/packages/ui/src/components/action-button/action-button.md#行为",
       "strength": "must",
-      "textSha256": "b485de678bc8f386733cd61b668547e0c1a4cac94183684675c1bfc4d58f3f69"
+      "textSha256": "d49a30ed6a6506b0600d772b8394225e05ba1660122b90457b3e1804487eaba0",
+      "check": "clients/gui/packages/ui/src/components/action-button/action-button.test.tsx"
     },
     {
       "id": "R-BUTTON-001",
@@ -1030,7 +1031,8 @@
       "title": "不作为唯一按钮名称，不在提示中放必须完成的业务动作",
       "owner": "clients/gui/packages/ui/src/components/tooltip/tooltip.md#行为",
       "strength": "must",
-      "textSha256": "401293e49814e2878d39e928166d85b6a028af2e2085c8c170d38295b8cb6b2d"
+      "textSha256": "db6efd4118b8eb379af177892e41f0cf79afd416d6e34677bd1e53a3ce37cdef",
+      "check": "clients/gui/packages/ui/src/components/tooltip/tooltip.test.ts"
     },
     {
       "id": "R-ACTIVITYGROUP-001",

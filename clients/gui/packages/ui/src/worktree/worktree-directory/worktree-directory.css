@@ -66,7 +66,8 @@
 }
 .worktrees-directory-feedback {
   margin: 0;
-  padding: 0 var(--spacing-panel) var(--spacing-inline) calc(var(--spacing-panel) + 1.5rem);
+  padding: 0 var(--spacing-panel) var(--spacing-inline)
+    calc(var(--spacing-panel) + var(--spacing-section));
   font-size: var(--text-ui-sm);
   overflow-wrap: anywhere;
 }
@@ -75,7 +76,7 @@
   gap: var(--spacing-inline);
   margin: 0;
   padding: var(--spacing-inline) var(--spacing-panel) var(--spacing-panel)
-    calc(var(--spacing-panel) + 1.5rem);
+    calc(var(--spacing-panel) + var(--spacing-section));
   font-size: var(--text-ui-sm);
 }
 .worktrees-directory-details > div {
@@ -100,6 +101,6 @@
 @media (max-width: 520px) {
   .worktrees-directory-details > div {
     grid-template-columns: minmax(0, 1fr);
-    gap: 2px;
+    gap: calc(var(--spacing-inline) / 4);
   }
 }

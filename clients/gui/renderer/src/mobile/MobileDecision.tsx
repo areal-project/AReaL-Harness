@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button } from "@areal/ui";
+import { Button, Textarea } from "@areal/ui";
 import { useI18n } from "../i18n/IntlProvider.js";
 import type { Data } from "../services.js";
 import type { MobileCommands } from "./mobile-commands.mjs";
@@ -83,8 +83,7 @@ export function MobileDecision({
                     </label>
                   ))}
                   {question.allowFreeText && (
-                    <textarea
-                      className="min-h-[var(--size-touch-target)] w-full rounded-card border border-border bg-background p-inline"
+                    <Textarea
                       aria-label={question.title}
                       placeholder={t("mobile.decisionCustomAnswer")}
                       value={

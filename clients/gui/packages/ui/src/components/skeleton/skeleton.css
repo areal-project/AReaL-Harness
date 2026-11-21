@@ -1,7 +1,7 @@
 /* 全部占位条共用一次呼吸；分步关键帧让合成器每周期只画几帧，不在高刷屏上逐帧重绘。 */
 .areal-skeleton {
   min-width: 0;
-  height: 1em;
+  height: 1lh;
   border-radius: var(--radius-micro);
   background: var(--color-muted);
   animation: areal-skeleton calc(var(--motion-cycle) * 2) var(--motion-loop);

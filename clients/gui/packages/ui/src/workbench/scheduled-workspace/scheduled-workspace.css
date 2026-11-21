@@ -55,7 +55,8 @@
   flex: 1;
   min-width: 0;
   overflow: auto;
-  padding: clamp(2rem, 12vh, 8rem) var(--spacing-section) var(--spacing-section);
+  padding: clamp(calc(var(--spacing-field) * 2), 12vh, calc(var(--spacing-field) * 8))
+    var(--spacing-section) var(--spacing-section);
 }
 .scheduled-intro {
   max-width: 32rem;
@@ -96,7 +97,7 @@
 .scheduled-template > span:first-child {
   color: var(--color-foreground-subtle);
   flex-shrink: 0;
-  padding-top: 0.15rem;
+  padding-top: calc(var(--spacing-inline) * 3 / 10);
 }
 .scheduled-template strong {
   font-size: var(--text-ui-base);
@@ -104,7 +105,7 @@
 }
 .scheduled-template small {
   display: block;
-  margin-top: 0.25rem;
+  margin-top: calc(var(--spacing-inline) / 2);
   font-size: var(--text-ui-sm);
   color: var(--color-foreground-subtle);
   line-height: 1.5;

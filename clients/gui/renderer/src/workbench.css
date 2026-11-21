@@ -394,10 +394,11 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin: 0 13px -4px;
+  gap: var(--spacing-inline);
+  margin: 0 calc(var(--spacing-inline) * 13 / 8) calc(var(--spacing-inline) / -2);
   /* WT-PICKER-01 tray: 34px visible above the composer (28px row + 3/7 padding − 4px overlap). */
-  padding: 3px 4px 7px;
+  padding: calc(var(--spacing-inline) * 3 / 8) calc(var(--spacing-inline) / 2)
+    calc(var(--spacing-inline) * 7 / 8);
   overflow: clip;
   border-radius: var(--radius-composer) var(--radius-composer) 0 0;
   corner-shape: superellipse(1.5);
@@ -612,15 +613,16 @@ button.composer-project:hover > svg,
   white-space: pre-wrap;
 }
 .user-message-body > * + p {
-  margin-block-start: 1em;
+  margin-block-start: var(--content-font-size, var(--text-ui-base));
 }
 .user-message-body > p + * {
-  margin-block-start: 1em;
+  margin-block-start: var(--content-font-size, var(--text-ui-base));
 }
 .user-message-body > h1 {
   font-size: var(--text-user-message-heading);
   line-height: 1.333333;
-  margin-block: 0.666667em 0.333333em;
+  margin-block: calc(var(--text-user-message-heading) * 2 / 3)
+    calc(var(--text-user-message-heading) / 3);
 }
 .user-message-body > h1:first-child {
   margin-block-start: 0;
@@ -2880,7 +2882,7 @@ button[aria-label="停止"] {
   box-sizing: border-box;
   font-family: var(--font-sans);
   line-height: 1.4;
-  padding: 0 var(--spacing-field) 64px;
+  padding: 0 var(--spacing-field) calc(var(--spacing-inline) * 8);
 }
 .workspace-file-markdown .cm-content {
   padding: 0;
@@ -3032,7 +3034,7 @@ button[aria-label="停止"] {
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 1px;
+  gap: var(--border-width-default);
 }
 .browser-address {
   flex: 1;
@@ -3093,7 +3095,7 @@ button[aria-label="停止"] {
   line-height: 1.42857;
 }
 .composer-permission-menu .permission-choice > svg {
-  margin-top: 1px;
+  margin-top: var(--border-width-default);
   color: color-mix(in srgb, currentColor 75%, transparent);
 }
 .composer-permission-menu .permission-choice:hover > svg,
@@ -3294,7 +3296,7 @@ button[aria-label="停止"] {
 }
 .sent-review-comments {
   margin-bottom: var(--spacing-inline);
-  padding: 1px;
+  padding: var(--border-width-default);
   background: transparent;
   box-shadow: none;
 }
@@ -3850,7 +3852,7 @@ button[aria-label="停止"] {
 .workspace-tree-search-row {
   display: flex;
   flex-shrink: 0;
-  padding: var(--spacing-inline) calc(var(--spacing-inline) / 2) 1px;
+  padding: var(--spacing-inline) calc(var(--spacing-inline) / 2) var(--border-width-default);
 }
 .workspace-tree-search-row [aria-label="文件树更多"] {
   flex-shrink: 0;
@@ -4233,7 +4235,7 @@ button[aria-label="停止"] {
 /* 批注与导航同组，地址栏保留可用宽度。 */
 .browser-navigation-controls {
   border-radius: var(--radius-pill);
-  padding: 1px calc(var(--spacing-inline) / 4);
+  padding: var(--border-width-default) calc(var(--spacing-inline) / 4);
   background: var(--color-surface);
 }
 .browser-annotation-trigger {
@@ -4740,7 +4742,4 @@ button[aria-label="停止"] {
   display: flex;
   align-items: center;
   gap: var(--spacing-inline);
-}
-.preview-device-controls [data-slot="select-trigger"] {
-  width: auto;
 }

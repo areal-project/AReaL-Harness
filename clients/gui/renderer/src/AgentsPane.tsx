@@ -534,8 +534,8 @@ export function AgentsPane({
           />
           <SettingsDisclosure title="子任务配置">
             <fieldset disabled={creating || unknown} className="mt-3 flex min-w-0 flex-col gap-3">
-              <label className="flex flex-col gap-1">
-                预设
+              <div className="flex flex-col gap-1">
+                <span>预设</span>
                 <Select
                   value={options.profile}
                   disabled={creating || unknown}
@@ -564,9 +564,9 @@ export function AgentsPane({
                     ))}
                   </SelectContent>
                 </Select>
-              </label>
-              <label className="flex flex-col gap-1">
-                模型
+              </div>
+              <div className="flex flex-col gap-1">
+                <span>模型</span>
                 <Select
                   value={options.model}
                   disabled={creating || unknown}
@@ -590,7 +590,7 @@ export function AgentsPane({
                     ))}
                   </SelectContent>
                 </Select>
-              </label>
+              </div>
               <label className="flex flex-col gap-1">
                 附加指令
                 <Textarea
@@ -600,8 +600,8 @@ export function AgentsPane({
                   placeholder="补充本次子任务的要求…"
                 />
               </label>
-              <label className="flex flex-col gap-1">
-                技能范围
+              <div className="flex flex-col gap-1">
+                <span>技能范围</span>
                 <Select
                   value={options.skillMode}
                   disabled={creating || unknown}
@@ -620,7 +620,7 @@ export function AgentsPane({
                     <SelectItem value="custom">选择技能</SelectItem>
                   </SelectContent>
                 </Select>
-              </label>
+              </div>
               {options.skillMode === "custom" && (
                 <div className="flex flex-col gap-2">
                   {skills.map((skill) => (
@@ -646,8 +646,8 @@ export function AgentsPane({
                   </p>
                 </div>
               )}
-              <label className="flex flex-col gap-1">
-                工具范围
+              <div className="flex flex-col gap-1">
+                <span>工具范围</span>
                 <Select
                   value={options.toolMode}
                   disabled={creating || unknown}
@@ -666,7 +666,7 @@ export function AgentsPane({
                     <SelectItem value="custom">指定工具</SelectItem>
                   </SelectContent>
                 </Select>
-              </label>
+              </div>
               {options.toolMode === "custom" && (
                 <label className="flex flex-col gap-1">
                   每行一个工具名

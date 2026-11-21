@@ -24,46 +24,6 @@
     "exitCondition": "Remove this exact finding when the owning surface is migrated or its semantic association is corrected; do not admit replacement findings."
   },
   {
-    "file": "renderer/src/AgentsPane.tsx",
-    "rule": "jsx-a11y(label-has-associated-control)",
-    "fingerprint": "d353069b8d15f6841c3829c364c831b1727c7fc6a01d8a3df41c5055e0b8f866",
-    "snippet": "<label className=\"flex flex-col gap-1\">",
-    "reason": "Existing composed controls need explicit label association reviewed at their production owner.",
-    "exitCondition": "Remove this exact finding when the owning surface is migrated or its semantic association is corrected; do not admit replacement findings."
-  },
-  {
-    "file": "renderer/src/AgentsPane.tsx",
-    "rule": "jsx-a11y(label-has-associated-control)",
-    "fingerprint": "8972a1cca6c532e0e49f618be0ef2d13e2af05dfba4372078be7a7066d4e2570",
-    "snippet": "<label className=\"flex flex-col gap-1\">",
-    "reason": "Existing composed controls need explicit label association reviewed at their production owner.",
-    "exitCondition": "Remove this exact finding when the owning surface is migrated or its semantic association is corrected; do not admit replacement findings."
-  },
-  {
-    "file": "renderer/src/AgentsPane.tsx",
-    "rule": "jsx-a11y(label-has-associated-control)",
-    "fingerprint": "1b7a8a0ba3cd7f54eed987578a02c6d57efb2a86ad5ffc068f80f4ae1dd8005c",
-    "snippet": "<label className=\"flex flex-col gap-1\">",
-    "reason": "Existing composed controls need explicit label association reviewed at their production owner.",
-    "exitCondition": "Remove this exact finding when the owning surface is migrated or its semantic association is corrected; do not admit replacement findings."
-  },
-  {
-    "file": "renderer/src/AgentsPane.tsx",
-    "rule": "jsx-a11y(label-has-associated-control)",
-    "fingerprint": "3f6c1e0f7d46e7ff4f03943bc91dc89ffbf8b866fe1e5687cc93686f95b43c3e",
-    "snippet": "<label className=\"flex flex-col gap-1\">",
-    "reason": "Existing composed controls need explicit label association reviewed at their production owner.",
-    "exitCondition": "Remove this exact finding when the owning surface is migrated or its semantic association is corrected; do not admit replacement findings."
-  },
-  {
-    "file": "renderer/src/GitActions.tsx",
-    "rule": "jsx-a11y(label-has-associated-control)",
-    "fingerprint": "73df72ad780eef1780fd1aa14d432072342adf907a34d53e40806deb1029598e",
-    "snippet": "<label className=\"grid gap-2 text-ui-sm\">",
-    "reason": "Existing composed controls need explicit label association reviewed at their production owner.",
-    "exitCondition": "Remove this exact finding when the owning surface is migrated or its semantic association is corrected; do not admit replacement findings."
-  },
-  {
     "file": "renderer/src/prompt-editor/ComposerCatalogTrigger.tsx",
     "rule": "jsx-a11y(no-static-element-interactions)",
     "fingerprint": "297cf1fc9f8edb573c56ba9f162d0f4e3dc413d04d4bd8d9a2923f9161ce0629",
@@ -84,22 +44,6 @@
     "rule": "jsx-a11y(no-static-element-interactions)",
     "fingerprint": "dc275698a002edc2bb9221d01cb0ec0c736af5dc6f473bf465a43c22b77673a8",
     "snippet": "div",
-    "reason": "Existing click containment or group focus behavior needs keyboard and semantics review at its production owner.",
-    "exitCondition": "Remove this exact finding when the owning surface is migrated or its semantic association is corrected; do not admit replacement findings."
-  },
-  {
-    "file": "packages/ui/src/workbench/task-list-item/task-list-item.tsx",
-    "rule": "jsx-a11y(click-events-have-key-events)",
-    "fingerprint": "0f72ea62d62203c8a3bfbd4c7b56c2bf7725ed90c667e7d70432691552995e48",
-    "snippet": "<span onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} className=\"task-row-actions\" >",
-    "reason": "Existing click containment or group focus behavior needs keyboard and semantics review at its production owner.",
-    "exitCondition": "Remove this exact finding when the owning surface is migrated or its semantic association is corrected; do not admit replacement findings."
-  },
-  {
-    "file": "packages/ui/src/workbench/task-list-item/task-list-item.tsx",
-    "rule": "jsx-a11y(no-static-element-interactions)",
-    "fingerprint": "8ea9d0cc4ca30c48e791c423f6dd4d86b35562ceab6639f5a7f11675bb525a6c",
-    "snippet": "span",
     "reason": "Existing click containment or group focus behavior needs keyboard and semantics review at its production owner.",
     "exitCondition": "Remove this exact finding when the owning surface is migrated or its semantic association is corrected; do not admit replacement findings."
   },

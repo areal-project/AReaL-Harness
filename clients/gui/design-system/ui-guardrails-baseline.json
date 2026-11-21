@@ -15,75 +15,12 @@
     }
   ],
   "total": {
-    "spacing-literal": 215,
-    "host-ui-class": 10,
-    "native-control": 23
+    "spacing-literal": 108,
+    "host-ui-class": 2,
+    "native-control": 18
   },
   "files": {
-    "packages/ui/src/conversation/attachment-card/attachment-card.css": {
-      "spacing-literal": 7
-    },
-    "packages/ui/src/conversation/command-details/command-details.css": {
-      "spacing-literal": 12
-    },
-    "packages/ui/src/conversation/composer-surface/composer-surface.css": {
-      "spacing-literal": 4
-    },
-    "packages/ui/src/conversation/decision-card/decision-card.css": {
-      "spacing-literal": 11
-    },
-    "packages/ui/src/conversation/image-disclosure/image-disclosure.css": {
-      "spacing-literal": 1
-    },
-    "packages/ui/src/conversation/message-code-block/message-code-block.css": {
-      "spacing-literal": 8
-    },
-    "packages/ui/src/conversation/subagent-panel/subagent-panel.css": {
-      "spacing-literal": 1
-    },
-    "packages/ui/src/settings/settings-dialog/settings-dialog.css": {
-      "spacing-literal": 7
-    },
-    "packages/ui/src/settings/settings-page/settings-page.css": {
-      "spacing-literal": 5
-    },
-    "packages/ui/src/settings/settings-row/settings-row.css": {
-      "spacing-literal": 2
-    },
-    "packages/ui/src/workbench/scheduled-workspace/scheduled-workspace.css": {
-      "spacing-literal": 3
-    },
-    "packages/ui/src/workbench/settings-navigation/settings-navigation.css": {
-      "spacing-literal": 6
-    },
-    "packages/ui/src/workbench/workbench-shell/workbench-shell.css": {
-      "spacing-literal": 18
-    },
-    "packages/ui/src/worktree/worktree-directory/worktree-directory.css": {
-      "spacing-literal": 3
-    },
-    "packages/ui/src/worktree/worktree-picker/worktree-picker.css": {
-      "spacing-literal": 2
-    },
-    "packages/ui/src/worktree/worktree-settings/worktree-settings.css": {
-      "spacing-literal": 2
-    },
-    "renderer/src/AgentResources.css": {
-      "host-ui-class": 8
-    },
-    "renderer/src/AnnotationNoteEditor.css": {
-      "spacing-literal": 1
-    },
     "renderer/src/BrowserStyleTrial.tsx": {
-      "native-control": 1
-    },
-    "renderer/src/McpAppForm.tsx": {
-      "native-control": 1
-    },
-    "renderer/src/McpAppsWorkspace.tsx": {
-      "native-control": 1
-    },
-    "renderer/src/ProcessesPane.tsx": {
       "native-control": 1
     },
     "renderer/src/SideChatPane.tsx": {
@@ -110,26 +47,14 @@
     "renderer/src/bots/BotsWorkspace.tsx": {
       "native-control": 1
     },
-    "renderer/src/components/ui/feedback.css": {
-      "spacing-literal": 1
-    },
     "renderer/src/mobile/MobileDecision.tsx": {
-      "native-control": 2
+      "native-control": 1
     },
     "renderer/src/mobile/MobileProjectCacheSheet.tsx": {
       "native-control": 2
     },
     "renderer/src/mobile/mobile.layout.css": {
       "host-ui-class": 2
-    },
-    "renderer/src/settings/PluginCenter.css": {
-      "spacing-literal": 1
-    },
-    "renderer/src/terminal/TerminalPane.tsx": {
-      "native-control": 1
-    },
-    "renderer/src/workbench.css": {
-      "spacing-literal": 12
     }
   }
 }

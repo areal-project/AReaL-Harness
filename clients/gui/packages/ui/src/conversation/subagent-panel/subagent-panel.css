@@ -66,6 +66,7 @@
   min-width: 0;
   flex: 1;
   text-align: left;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -76,7 +77,7 @@
 .areal-subagent-state {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: calc(var(--spacing-inline) / 2);
   flex: none;
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-xs);

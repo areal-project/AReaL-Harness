@@ -1,4 +1,11 @@
-import { DelayedVisible } from "@areal/ui";
+import {
+  DelayedVisible,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@areal/ui";
 import { currentErrorText } from "./errors/currentErrorText.js";
 import { errorText } from "./errors/errorCopy.js";
 import { useI18n } from "./i18n/IntlProvider.js";
@@ -708,22 +715,26 @@ export function ProcessesPane({
             }}
             placeholder="输入命令脚本"
           />
-          <label>
-            保留范围
-            <select
-              aria-label="保留范围"
+          <div className="flex items-center gap-inline">
+            <span>保留范围</span>
+            <Select
               value={lifetime}
               disabled={creating || unknown}
-              onChange={(event) => {
-                setLifetime(event.target.value);
-                localStorage.setItem(`${draftKey}:lifetime`, event.target.value);
+              onValueChange={(value) => {
+                if (!value) return;
+                setLifetime(value);
+                localStorage.setItem(`${draftKey}:lifetime`, value);
               }}
-              className="ml-2 rounded-control border border-border bg-background p-2"
             >
-              <option value="turn">随本轮执行</option>
-              <option value="thread">随会话保留</option>
-            </select>
-          </label>
+              <SelectTrigger size="sm" aria-label="保留范围">
+                <SelectValue>{lifetime === "thread" ? "随会话保留" : "随本轮执行"}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="turn">随本轮执行</SelectItem>
+                <SelectItem value="thread">随会话保留</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <p className="text-foreground-subtle">{t("common.processes.lifetimeHelp")}</p>
           {unknown && <p role="status">创建结果待核对；不能再次创建。</p>}
           {createError && <p role="alert">{createError}</p>}

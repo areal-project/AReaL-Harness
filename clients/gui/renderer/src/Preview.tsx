@@ -1157,7 +1157,7 @@ export function Preview({
                 void applyViewport({ mode: "device", width: preset.width, height: preset.height });
             }}
           >
-            <SelectTrigger aria-label={t("browser.viewport.preset")} size="sm">
+            <SelectTrigger aria-label={t("browser.viewport.preset")} size="sm" className="w-auto">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
