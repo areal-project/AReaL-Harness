@@ -1,0 +1,22 @@
+/* 移动端底部面板与离线缓存卡片的共享外观，与布局规则分离。 */
+.mobile-model-sheet {
+  border-radius: var(--radius-overlay) var(--radius-overlay) 0 0;
+  transition: translate var(--motion-normal) var(--ease-standard);
+}
+.mobile-model-sheet[data-starting-style],
+.mobile-model-sheet[data-ending-style] {
+  opacity: 1;
+}
+.mobile-session .turn-thinking {
+  animation: none;
+  background: none;
+  color: var(--color-foreground-subtle);
+}
+.mobile-cache-card {
+  border-radius: var(--radius-card);
+  border: var(--border-width-default) solid var(--color-border);
+  background: var(--color-surface);
+}
+.mobile-cache-card[data-selected="true"] {
+  border-color: var(--color-brand);
+}

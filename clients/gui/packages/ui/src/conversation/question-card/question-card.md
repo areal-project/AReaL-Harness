@@ -22,7 +22,7 @@ DecisionCard、聚焦标题、原生radio列表、宿主提供的头部/页脚/�
 
 ## 状态
 
-`R-QUESTIONCARD-002` 未选、已选、禁用/处理中；业务未确认和已受理由宿主投影，不能显示为已完成。
+`R-QUESTIONCARD-002` 未选、已选、禁用/处理中；业务未确认和已受理由宿主投影，不能显示为已完成。**检查：**`clients/gui/packages/ui/src/conversation/question-card/question-card.test.tsx`
 
 ## 内容
 

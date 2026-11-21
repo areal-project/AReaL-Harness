@@ -24,7 +24,8 @@ function ToolActivityDisclosure({ activities }: { activities: BotToolActivity[] 
 
   return (
     <div className="bot-activity-block">
-      <button
+      <Button
+        unstyled
         type="button"
         className="bot-activity-toggle"
         aria-expanded={expanded}
@@ -33,7 +34,7 @@ function ToolActivityDisclosure({ activities }: { activities: BotToolActivity[] 
         <Wrench size={12} />
         <span>{t("bots.chat.toolActivity", { count: activities.length })}</span>
         {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-      </button>
+      </Button>
       {expanded && (
         <ul className="bot-activity-list">
           {activities.map((item) => (
@@ -52,7 +53,8 @@ function CopyTextButton({ text }: { text: string }) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   return (
-    <button
+    <Button
+      unstyled
       type="button"
       className="bot-msg-action"
       aria-label={copied ? t("bots.chat.copied") : t("bots.chat.copy")}
@@ -64,7 +66,7 @@ function CopyTextButton({ text }: { text: string }) {
       }}
     >
       {copied ? <Check size={13} /> : <Copy size={13} />}
-    </button>
+    </Button>
   );
 }
 
@@ -161,7 +163,8 @@ export function BotMessages({
             {bot.starterPrompts.length > 0 && (
               <div className="bot-starter-grid">
                 {bot.starterPrompts.map((prompt, index) => (
-                  <button
+                  <Button
+                    unstyled
                     key={`${index}-${prompt}`}
                     type="button"
                     className="bot-starter-chip"
@@ -170,7 +173,7 @@ export function BotMessages({
                   >
                     <Sparkles size={13} />
                     <span>{prompt}</span>
-                  </button>
+                  </Button>
                 ))}
               </div>
             )}

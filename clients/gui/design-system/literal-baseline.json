@@ -1,7 +1,7 @@
 {
   "$description": "生产 UI 字面量存量上限，由 scripts/design-system-baseline.mjs --write 生成；只允许减少。",
   "total": {
-    "color": 49,
+    "color": 48,
     "radius": 3,
     "typography": 3
   },
@@ -42,9 +42,6 @@
     },
     "packages/ui/src/conversation/message-attachments/message-attachments.tsx": {
       "color": 2
-    },
-    "packages/ui/src/conversation/thinking-status/thinking-status.css": {
-      "color": 1
     }
   },
   "exceptions": [
@@ -425,13 +422,6 @@
       "occurrence": 1,
       "reason": "这是图片上的半透明黑底或白色控件文字，属于媒体覆盖层，需要独立于图片和应用主题。",
       "exitCondition": "媒体覆盖组件统一固定 overlay Token 后迁移。"
-    },
-    {
-      "file": "packages/ui/src/conversation/thinking-status/thinking-status.css",
-      "finding": "literal color: mask-image: linear-gradient(90deg, transparent 12.5%, #000 50%, transparent 87.5%)",
-      "occurrence": 1,
-      "reason": "黑色只定义 alpha 遮罩的覆盖度，颜色不进入最终前景。保持现有扫光和遮罩范围。",
-      "exitCondition": "遮罩形状变更时以动画像素证据复核，不映射到主题前景色。"
     }
   ],
   "classification": {

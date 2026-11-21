@@ -9,7 +9,7 @@
   font-size: var(--text-ui-sm);
 }
 .ask-user-navigation > span {
-  min-width: 36px;
+  min-width: calc(var(--spacing-inline) * 9 / 2);
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
@@ -96,7 +96,7 @@
 }
 .ask-user-custom textarea:focus-visible {
   outline: var(--focus-width) solid var(--color-foreground-subtle);
-  outline-offset: 2px;
+  outline-offset: var(--focus-offset);
 }
 .ask-user-progress {
   margin-right: auto;

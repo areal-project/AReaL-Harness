@@ -156,7 +156,7 @@ function Example() {
           </div>
         )}
         {show("task-context") && (
-          <div>
+          <div className="library-context-slot">
             {only && (
               <Button
                 variant="outline"
@@ -217,23 +217,25 @@ function Example() {
               查看子代理
             </Button>
           )}
-          <SubagentPanel
-            open={agentsOpen}
-            agents={[
-              { id: "running", name: "独立交互检查", state: "running" },
-              { id: "done", name: "独立合同检查", state: "completed" },
-            ]}
-            selectedId={selectedAgent}
-            onSelect={setSelectedAgent}
-            onClose={() => setAgentsOpen(false)}
-          >
-            <p>本地子任务历史样例：已读取规范并核对组件接口。</p>
-            {selectedAgent === "running" ? (
-              <ThinkingStatus label={modelLabel} />
-            ) : (
-              <p>检查已完成，保留原记录。</p>
-            )}
-          </SubagentPanel>
+          <div className="library-subagent-slot">
+            <SubagentPanel
+              open={agentsOpen}
+              agents={[
+                { id: "running", name: "独立交互检查", state: "running" },
+                { id: "done", name: "独立合同检查", state: "completed" },
+              ]}
+              selectedId={selectedAgent}
+              onSelect={setSelectedAgent}
+              onClose={() => setAgentsOpen(false)}
+            >
+              <p>本地子任务历史样例：已读取规范并核对组件接口。</p>
+              {selectedAgent === "running" ? (
+                <ThinkingStatus label={modelLabel} />
+              ) : (
+                <p>检查已完成，保留原记录。</p>
+              )}
+            </SubagentPanel>
+          </div>
         </>
       )}
     </main>

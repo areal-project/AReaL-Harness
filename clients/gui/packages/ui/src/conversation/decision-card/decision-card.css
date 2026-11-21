@@ -34,7 +34,7 @@
   gap: var(--spacing-inline);
 }
 .decision-card-body {
-  max-height: min(40dvh, 24rem);
+  max-height: min(40dvh, calc(var(--spacing-inline) * 48));
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
@@ -124,14 +124,14 @@
   padding-right: calc(var(--spacing-inline) / 2);
 }
 .decision-card .approval-split .approval-scope-trigger {
-  width: 26px;
+  width: calc(var(--spacing-inline) * 13 / 4);
   padding: 0 calc(var(--spacing-inline) * 3 / 4) 0 calc(var(--spacing-inline) / 4);
   border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
   background: var(--color-primary);
   color: var(--color-primary-foreground);
 }
 .approval-scope-menu {
-  width: 282px;
+  width: calc(var(--spacing-inline) * 141 / 4);
   padding: calc(var(--spacing-inline) * 3 / 4);
 }
 .approval-scope-menu [role="menuitem"] {

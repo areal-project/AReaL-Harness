@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, Textarea } from "@areal/ui";
+import { Button, Input, Textarea } from "@areal/ui";
 import { useI18n } from "../i18n/IntlProvider.js";
 import type { Data } from "../services.js";
 import type { MobileCommands } from "./mobile-commands.mjs";
@@ -73,7 +73,8 @@ export function MobileDecision({
                       key={option}
                       className="flex min-h-[var(--size-touch-target)] items-center gap-inline"
                     >
-                      <input
+                      <Input
+                        unstyled
                         type="radio"
                         name={`${item.interactionId}-${question.id}`}
                         checked={answers[question.id] === option}

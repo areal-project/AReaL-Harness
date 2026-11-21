@@ -16,33 +16,8 @@
   ],
   "total": {
     "spacing-literal": 0,
-    "host-ui-class": 2,
-    "native-control": 16
+    "host-ui-class": 0,
+    "native-control": 0
   },
-  "files": {
-    "renderer/src/BrowserStyleTrial.tsx": {
-      "native-control": 1
-    },
-    "renderer/src/SideChatPane.tsx": {
-      "native-control": 1
-    },
-    "renderer/src/bots/BotMessages.tsx": {
-      "native-control": 3
-    },
-    "renderer/src/bots/BotSettingsPane.tsx": {
-      "native-control": 6
-    },
-    "renderer/src/bots/BotSidebar.tsx": {
-      "native-control": 2
-    },
-    "renderer/src/mobile/MobileDecision.tsx": {
-      "native-control": 1
-    },
-    "renderer/src/mobile/MobileProjectCacheSheet.tsx": {
-      "native-control": 2
-    },
-    "renderer/src/mobile/mobile.layout.css": {
-      "host-ui-class": 2
-    }
-  }
+  "files": {}
 }

@@ -1144,28 +1144,32 @@
       "title": "默认、compact、聚焦、拖放",
       "owner": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.md#状态",
       "strength": "must",
-      "textSha256": "83c90edf800430a71bdf230e34e75ef5f6de7992abce034fcfdf0ad44833ba94"
+      "textSha256": "cbde66a310e21446b31e5bc8852bde8d922bf3afe86fe79b0624455adb3d37e9",
+      "check": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.test.tsx"
     },
     {
       "id": "R-COMPOSERSURFACE-004",
       "title": "占位说明输入目标",
       "owner": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.md#内容",
       "strength": "must",
-      "textSha256": "7aee40cf26c03126b1e201720a3d3edd47f1317ce58ed546112626d27337606b"
+      "textSha256": "d19b7a94540bd3efe9546c2e272a2de0224b09c2d5cd75db711a9d61ec9102eb",
+      "check": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.test.tsx"
     },
     {
       "id": "R-COMPOSERSURFACE-005",
       "title": "宿主标注编辑器与图标按钮",
       "owner": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.md#可访问性",
       "strength": "must",
-      "textSha256": "0c07bc82411eebf828dcc2930038766b292b1d219a19cd423d3ca53dbb5cb693"
+      "textSha256": "e9fe1ace130138bd187493be2652b83b3aa92e78dac0374636af7f82a7a3e470",
+      "check": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.test.tsx"
     },
     {
       "id": "R-COMPOSERSURFACE-006",
       "title": "包负责通用几何，模型菜单/审批布局适配留renderer",
       "owner": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.md#规则",
       "strength": "must",
-      "textSha256": "3b93ed16322f7d76c167586fb11fef73574f6e564c1fb2432303c7712ab8b2a6"
+      "textSha256": "44aa9560516702fafe04018d69a153ccf7abe68dc8e4aa055657418fa6822c17",
+      "check": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.test.tsx"
     },
     {
       "id": "CONV-COMPOSER-01",
@@ -1176,10 +1180,11 @@
     },
     {
       "id": "R-LAYOUT-013",
-      "title": "ChatPromptEditor.surfaceLayout 透传 ComposerSurface.layout ，仅有 def",
+      "title": "ChatPromptEditor.surfaceLayout 透传 ComposerSurface.layout，仅有 ",
       "owner": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.md#输入区与面板组合",
       "strength": "must",
-      "textSha256": "ada5ccd8409a887e8550150927d0a8994f96c33346fa47728503ef59d89bdb9f"
+      "textSha256": "66c094944d5358777def46599b47980c43e6e7466d0d5374db88497d2e76d15e",
+      "check": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.test.tsx"
     },
     {
       "id": "R-COMPOSERTOOLBAR-002",
@@ -1224,7 +1229,8 @@
       "title": "宿主必须把完整原因、补充说明、目的、目标和命令保留在详情中",
       "owner": "clients/gui/packages/ui/src/conversation/decision-card/decision-card.md#内容",
       "strength": "must",
-      "textSha256": "da56c37a38785709ba80fe702af927c575714bee2104e242f915c8b8005855ca"
+      "textSha256": "a1849a5d36fc9abfba3dae753a0365659c4490eacbf7214d90881d989a470334",
+      "check": "clients/gui/packages/ui/src/conversation/decision-card/decision-card.test.tsx"
     },
     {
       "id": "R-IMAGEDISCLOSURE-001",
@@ -1238,21 +1244,24 @@
       "title": "具名图片入口、可展开内容、不可用反馈",
       "owner": "clients/gui/packages/ui/src/conversation/image-disclosure/image-disclosure.md#组成",
       "strength": "must",
-      "textSha256": "d5aee0f1d582f6a75d61059b7803f39c2e165f615c972fb8eda96b5e77e31a50"
+      "textSha256": "3c246bded6c10079e5b7465ab87a69b9683a5a506cc7e5761c66b9962c95199b",
+      "check": "clients/gui/packages/ui/src/conversation/image-disclosure/image-disclosure.test.tsx"
     },
     {
       "id": "R-IMAGEDISCLOSURE-003",
       "title": "默认收起",
       "owner": "clients/gui/packages/ui/src/conversation/image-disclosure/image-disclosure.md#状态",
       "strength": "must",
-      "textSha256": "ef29d74e8e632bd22d3e1628a5016423dbf80f7b4b78d75c08d525c2f4b2f047"
+      "textSha256": "ccfc9cf181b1cf2244be7ba13101b40fa0b85336c7195c1f56981c6c7dbb14f1",
+      "check": "clients/gui/packages/ui/src/conversation/image-disclosure/image-disclosure.test.tsx"
     },
     {
       "id": "R-IMAGEDISCLOSURE-005",
       "title": "名称可识别、图片保留比例、不撑宽阅读列",
       "owner": "clients/gui/packages/ui/src/conversation/image-disclosure/image-disclosure.md#内容",
       "strength": "must",
-      "textSha256": "4663a766479c0376136fd7fac3ddd5f4ebe4b81416ec837ca06bf8a7f5ad1127"
+      "textSha256": "5d9f46e96099904efe2af3d6ee2b3c0d8c6dc37d8cf2ff5c5c6d59e85265a402",
+      "check": "clients/gui/packages/ui/src/conversation/image-disclosure/image-disclosure.test.tsx"
     },
     {
       "id": "R-MARKDOWNTABLE-001",
@@ -1267,7 +1276,8 @@
       "title": "Mermaid预览由renderer复用既有Streamdown插件，保持strict安全配置",
       "owner": "clients/gui/packages/ui/src/conversation/message-code-block/message-code-block.md#内容",
       "strength": "must",
-      "textSha256": "92e1c56b58dc36359925c44eae5c8af2d0fcaacd5ff20aca1e1eb7b3a14f79cc"
+      "textSha256": "c6e5549aa84c79277a7b2ba7be99951b314431fa609dfb3e0400b7c08fdd2d0b",
+      "check": "clients/gui/packages/ui/src/conversation/message-code-block/message-code-block.test.tsx"
     },
     {
       "id": "R-NATIVECONTENT-001",
@@ -1281,21 +1291,24 @@
       "title": "version固定为1",
       "owner": "clients/gui/packages/ui/src/conversation/native-content/native-content.md#内容",
       "strength": "must",
-      "textSha256": "a82d1b73b7115e686e8ef045cd42dc510b6d5f159a9535b01a88cd32c8375f13"
+      "textSha256": "0f919979797db32b1f15e285d60eb56166cb08661c72045dcc23852b60afea4d",
+      "check": "clients/gui/packages/ui/src/conversation/native-content/native-content.test.tsx"
     },
     {
       "id": "R-CONTENT-029",
-      "title": "@areal/ui/content 提供可重建的内容投影、严格校验与 toText ",
+      "title": "@areal/ui/content提供可重建的内容投影、严格校验与toText",
       "owner": "clients/gui/packages/ui/src/conversation/native-content/native-content.md#围栏历史与跨渠道边界",
       "strength": "must",
-      "textSha256": "e6f3eee91aac57adc6feeabb85242685e20c769cd49c4305177f15d3712d88ea"
+      "textSha256": "ba7b03a324fd1f4fd5cb4d72d6f40de04aad4c419a2929e7ba3b3942d962e36d",
+      "check": "clients/gui/packages/ui/src/conversation/native-content/native-content.test.tsx"
     },
     {
       "id": "R-CONTENT-030",
       "title": "每种原生类型登记校验、文字投影、流式策略和最小占位信息",
       "owner": "clients/gui/packages/ui/src/conversation/native-content/native-content.md#围栏历史与跨渠道边界",
       "strength": "must",
-      "textSha256": "a747781da729fa10ecddebac715fab4eaa643a1877e3fe2e5ace73cadd9dd7f1"
+      "textSha256": "aff0a5ca9243e2ff092c745cae2a5f3e75c09fe07d6d5451b9760a23d62132de",
+      "check": "clients/gui/packages/ui/src/conversation/native-content/native-content.test.tsx"
     },
     {
       "id": "R-QUESTIONCARD-001",
@@ -1309,7 +1322,8 @@
       "title": "未选、已选、禁用/处理中",
       "owner": "clients/gui/packages/ui/src/conversation/question-card/question-card.md#状态",
       "strength": "must",
-      "textSha256": "4427f46d5ea271665b2011947dd0187717e4abb1d055e08d397e699052dac3ff"
+      "textSha256": "697f461caf77fecacde13a787a880b54f1dd525fc128c65ee4166c10e5f62b24",
+      "check": "clients/gui/packages/ui/src/conversation/question-card/question-card.test.tsx"
     },
     {
       "id": "R-TASKCONTEXT-001",
@@ -1323,35 +1337,40 @@
       "title": "来源默认最多三项，超过提供带总数的全部入口",
       "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#规则",
       "strength": "must",
-      "textSha256": "9b9eb5f4574f42d4b58f80959ccfe0e034f3850aa033b7c820a7e7ec65a67655"
+      "textSha256": "78e1139bb0b25025df1af24d78f2301c564e56e09b9f3e2bbb4383dfe3d2829b",
+      "check": "clients/gui/packages/ui/src/conversation/task-context/task-context.test.tsx"
     },
     {
       "id": "R-TASKCONTEXT-009",
       "title": "顶部按钮打开的任务上下文卡片回答“当前工作涉及什么”",
       "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#右侧任务上下文",
       "strength": "must",
-      "textSha256": "2588396d5c920cbdfcd637a6442279c402df2e01d050b4f4db12bcb3ef11e5c7"
+      "textSha256": "7f60766d8836b246c3d4a49d741c57db649c5cc10246d6843b47d191debc648c",
+      "check": "clients/gui/packages/ui/src/conversation/task-context/task-context.test.tsx"
     },
     {
       "id": "R-TASKCONTEXT-010",
-      "title": "Changes / 变更 当前项目名称、明确的变更范围、文件数及可信增删统计 打开原 Diff/变更面板",
+      "title": "| Changes / 变更 | 当前项目名称、明确的变更范围、文件数及可信增删统计 | 打开原 Diff/变更面板",
       "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#右侧任务上下文",
       "strength": "must",
-      "textSha256": "bc414d6ca8b01cdb425c03290c3a1f83f19b6eab07f305a4d3e28448acd5689c"
+      "textSha256": "44098eddf63c47518ed72c419d3ee87ee87801b0e8196c61ce318438a824ab50",
+      "check": "clients/gui/packages/ui/src/conversation/task-context/task-context.test.tsx"
     },
     {
       "id": "R-TASKCONTEXT-012",
-      "title": "Subagents / 子代理 用户要求有列表",
+      "title": "| Subagents / 子代理 | 用户要求有列表",
       "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#右侧任务上下文",
       "strength": "must",
-      "textSha256": "372634bfcde7ca605dab4fd2e567cc10e5f9766948c6fd01f44548617db1a3c3"
+      "textSha256": "e22e1af23c5ffd787ce31bcba55cb7a6b278d97a2b558d53c5989646ad3df54c",
+      "check": "clients/gui/packages/ui/src/conversation/task-context/task-context.test.tsx"
     },
     {
       "id": "R-TASKCONTEXT-021",
-      "title": "预览与打开 图片可预览，网页交给原浏览器/链接入口，文件交给原文件阅读器",
+      "title": "| 预览与打开 | 图片可预览，网页交给原浏览器/链接入口，文件交给原文件阅读器",
       "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#sources-管理输入",
       "strength": "must",
-      "textSha256": "21297534ebcb1b1f88c2f56b199598d77baf0578dbee3d6380ef5823b08b5bfe"
+      "textSha256": "78b309f9df911c2e012e0910efa1607cf05fab58749fe6ed8ff679a74f6975eb",
+      "check": "clients/gui/packages/ui/src/conversation/task-context/task-context.test.tsx"
     },
     {
       "id": "R-SETTINGSDIALOG-001",

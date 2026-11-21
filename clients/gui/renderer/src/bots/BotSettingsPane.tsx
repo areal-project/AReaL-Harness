@@ -279,9 +279,10 @@ export function BotSettingsPane({
           {/* 1. Identity Card */}
           <section className="bot-inspector-group">
             <h3 className="bot-settings-section-title">{t("bots.settings.sectionIdentity")}</h3>
-            <SettingsGroupCard density="compact" className="bot-group-card">
+            <SettingsGroupCard density="compact">
               <div className="bot-identity-hero">
-                <button
+                <Button
+                  unstyled
                   type="button"
                   className="bot-avatar-trigger"
                   aria-label={t("bots.settings.avatarPick")}
@@ -289,9 +290,10 @@ export function BotSettingsPane({
                   onClick={() => setAvatarPickerOpen((open) => !open)}
                 >
                   <span className="bot-avatar-glyph">{avatar.trim() || "🤖"}</span>
-                </button>
+                </Button>
                 <div className="bot-identity-inputs">
-                  <input
+                  <Input
+                    unstyled
                     type="text"
                     className="bot-inline-title-input"
                     value={name}
@@ -302,7 +304,8 @@ export function BotSettingsPane({
                     aria-label={t("bots.settings.name")}
                     data-testid="bot-settings-name"
                   />
-                  <input
+                  <Input
+                    unstyled
                     type="text"
                     className="bot-inline-desc-input"
                     value={description}
@@ -318,7 +321,8 @@ export function BotSettingsPane({
                 <div className="bot-avatar-picker">
                   <div className="bot-avatar-preset-grid">
                     {AVATAR_PRESETS.map((emoji) => (
-                      <button
+                      <Button
+                        unstyled
                         key={emoji}
                         type="button"
                         className={`bot-avatar-preset ${avatar === emoji ? "is-selected" : ""}`}
@@ -328,7 +332,7 @@ export function BotSettingsPane({
                         }}
                       >
                         {emoji}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                   <Input
@@ -344,7 +348,8 @@ export function BotSettingsPane({
 
               <div className="bot-card-divider" />
               <div className="bot-card-row-stack">
-                <button
+                <Button
+                  unstyled
                   type="button"
                   className="bot-row-disclosure"
                   aria-expanded={startersOpen}
@@ -361,7 +366,7 @@ export function BotSettingsPane({
                     </span>
                     {startersOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                   </span>
-                </button>
+                </Button>
                 {startersOpen && (
                   <div className="bot-disclosure-body">
                     <Textarea
@@ -389,7 +394,7 @@ export function BotSettingsPane({
                   : t("bots.settings.preferencesSynced")}
               </span>
             </div>
-            <SettingsGroupCard density="compact" className="bot-group-card">
+            <SettingsGroupCard density="compact">
               <div className="bot-card-row">
                 <span className="bot-row-label">{t("bots.settings.promptMode")}</span>
                 <SettingsSegmentedTabs
@@ -428,7 +433,7 @@ export function BotSettingsPane({
           {/* 3. Model & Remote Channel Card */}
           <section className="bot-inspector-group">
             <h3 className="bot-settings-section-title">{t("bots.settings.sectionModel")}</h3>
-            <SettingsGroupCard density="compact" className="bot-group-card">
+            <SettingsGroupCard density="compact">
               <div className="bot-card-row">
                 <span className="bot-row-label">{t("bots.settings.providerStatusLabel")}</span>
                 <span className={`bot-health-chip is-${healthStatus}`}>
@@ -529,7 +534,8 @@ export function BotSettingsPane({
 
               <div className="bot-card-divider" />
               <div className="bot-card-row-stack">
-                <button
+                <Button
+                  unstyled
                   type="button"
                   className="bot-row-disclosure"
                   hidden={usesHarnessModel}
@@ -541,7 +547,7 @@ export function BotSettingsPane({
                   <span className="bot-row-meta">
                     {providerOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                   </span>
-                </button>
+                </Button>
 
                 {providerOpen && !usesHarnessModel && (
                   <div className="bot-provider-sheet">
@@ -648,7 +654,7 @@ export function BotSettingsPane({
         {/* 4. Sandbox & Session Card */}
         <section className="bot-inspector-group">
           <h3 className="bot-settings-section-title">{t("bots.settings.sectionSandbox")}</h3>
-          <SettingsGroupCard density="compact" className="bot-group-card">
+          <SettingsGroupCard density="compact">
             <div className="bot-card-row">
               <span className="bot-row-label">{t("bots.settings.workspace")}</span>
               <div className="bot-workspace-chip-wrap">

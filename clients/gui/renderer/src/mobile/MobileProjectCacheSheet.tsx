@@ -88,38 +88,46 @@ export function MobileProjectCacheSheet({
                 data-project-id={project.projectId}
                 data-selected={selected}
               >
-                <button
-                  type="button"
-                  className="flex min-w-0 flex-1 flex-col gap-0.5 text-left"
-                  onClick={() => {
-                    onSelectProject(project.projectId);
-                    onClose();
-                  }}
-                >
-                  <span className="flex items-center gap-1.5 font-medium">
-                    <Folder className="size-4 shrink-0 text-foreground-subtle" aria-hidden="true" />
-                    <span className="truncate">{name}</span>
-                    {selected && (
-                      <span className="rounded bg-primary/15 px-1.5 py-0.5 text-fixed-caption text-primary">
-                        {t("mobile.cache.current")}
-                      </span>
-                    )}
-                  </span>
-                  <span className="text-fixed-caption text-foreground-subtle">
-                    {t(project.state === "ready" ? "mobile.cache.online" : "mobile.cache.offline")}
-                    {" · "}
-                    {t("mobile.cache.summaryCount", { count: project.summaries.items.length })}
-                    {" · "}
-                    {cacheEnabled
-                      ? projectStats?.count
-                        ? t("mobile.cache.cachedDetail", {
-                            count: projectStats.count,
-                            size: formatCacheBytes(projectStats.bytes),
-                          })
-                        : t("mobile.cache.cachedDetail", { count: 0, size: "0 KB" })
-                      : t("mobile.cache.disabled")}
-                  </span>
-                </button>
+                <div className="min-w-0 flex-1 text-left">
+                  <Button
+                    unstyled
+                    type="button"
+                    className="flex w-full min-w-0 flex-col gap-0.5"
+                    onClick={() => {
+                      onSelectProject(project.projectId);
+                      onClose();
+                    }}
+                  >
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <Folder
+                        className="size-4 shrink-0 text-foreground-subtle"
+                        aria-hidden="true"
+                      />
+                      <span className="truncate">{name}</span>
+                      {selected && (
+                        <span className="rounded bg-primary/15 px-1.5 py-0.5 text-fixed-caption text-primary">
+                          {t("mobile.cache.current")}
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-fixed-caption text-foreground-subtle">
+                      {t(
+                        project.state === "ready" ? "mobile.cache.online" : "mobile.cache.offline",
+                      )}
+                      {" · "}
+                      {t("mobile.cache.summaryCount", { count: project.summaries.items.length })}
+                      {" · "}
+                      {cacheEnabled
+                        ? projectStats?.count
+                          ? t("mobile.cache.cachedDetail", {
+                              count: projectStats.count,
+                              size: formatCacheBytes(projectStats.bytes),
+                            })
+                          : t("mobile.cache.cachedDetail", { count: 0, size: "0 KB" })
+                        : t("mobile.cache.disabled")}
+                    </span>
+                  </Button>
+                </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {projectStats?.count ? (
                     <Button
@@ -309,30 +317,37 @@ export function OfflineCachedWorkspace({
               {summaries.slice(0, visibleCount).map((item) => {
                 const isCached = cachedThreads.includes(item.id);
                 return (
-                  <button
+                  <div
                     key={item.id}
-                    type="button"
                     data-thread-id={item.id}
                     className="mobile-cache-card flex-col items-stretch text-left"
-                    onClick={() => {
-                      onSelectProject(activeProject.projectId, item.id);
-                      setThreadId(item.id);
-                    }}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate font-medium">
-                        {item.name || t("mobile.untitled")}
-                      </span>
-                      <span className="shrink-0 rounded bg-hover px-1.5 py-0.5 text-fixed-caption text-foreground-subtle">
-                        {t(isCached ? "mobile.cache.cachedBadge" : "mobile.cache.summaryOnlyBadge")}
-                      </span>
-                    </div>
-                    {item.preview ? (
-                      <span className="line-clamp-2 text-fixed-caption text-foreground-subtle">
-                        {item.preview}
-                      </span>
-                    ) : null}
-                  </button>
+                    <Button
+                      unstyled
+                      type="button"
+                      className="flex w-full flex-col gap-0.5"
+                      onClick={() => {
+                        onSelectProject(activeProject.projectId, item.id);
+                        setThreadId(item.id);
+                      }}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate font-medium">
+                          {item.name || t("mobile.untitled")}
+                        </span>
+                        <span className="shrink-0 rounded bg-hover px-1.5 py-0.5 text-fixed-caption text-foreground-subtle">
+                          {t(
+                            isCached ? "mobile.cache.cachedBadge" : "mobile.cache.summaryOnlyBadge",
+                          )}
+                        </span>
+                      </div>
+                      {item.preview ? (
+                        <span className="line-clamp-2 text-fixed-caption text-foreground-subtle">
+                          {item.preview}
+                        </span>
+                      ) : null}
+                    </Button>
+                  </div>
                 );
               })}
               {summaries.length > visibleCount && (

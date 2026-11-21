@@ -83,7 +83,8 @@ export function BotSidebar({
       className="bot-sidebar"
       footer={
         <div className="bot-sidebar-footer">
-          <button
+          <Button
+            unstyled
             type="button"
             className={`bot-arena-pill ${arena?.ready ? "is-ready" : "is-unconfigured"}`}
             onClick={onConfigureArena}
@@ -91,7 +92,7 @@ export function BotSidebar({
           >
             {arena?.ready ? <Cloud size={14} /> : <CloudOff size={14} />}
             <span>{arena?.ready ? t("bots.arena.ready") : t("bots.arena.unconfigured")}</span>
-          </button>
+          </Button>
         </div>
       }
     >
@@ -149,7 +150,8 @@ export function BotSidebar({
               const preview = bot.lastMessagePreview || bot.description || bot.workspace;
               const time = formatRelativeTime(bot.lastActiveAt || bot.updatedAt, locale);
               return (
-                <button
+                <Button
+                  unstyled
                   key={bot.id}
                   type="button"
                   role="option"
@@ -172,7 +174,7 @@ export function BotSidebar({
                     </div>
                     <p className="bot-list-item-preview">{preview}</p>
                   </div>
-                </button>
+                </Button>
               );
             })
           )}

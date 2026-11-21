@@ -376,6 +376,71 @@
       "styles": [],
       "internalSelectors": [],
       "enforces": []
+    },
+    {
+      "id": "thinking-status",
+      "contract": "clients/gui/packages/ui/src/conversation/thinking-status/thinking-status.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/thinking-status/thinking-status.css"],
+      "internalSelectors": [".areal-thinking", ".areal-thinking-message", ".areal-thinking-sweep"],
+      "enforces": []
+    },
+    {
+      "id": "subagent-panel",
+      "contract": "clients/gui/packages/ui/src/conversation/subagent-panel/subagent-panel.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/subagent-panel/subagent-panel.css"],
+      "internalSelectors": [".areal-subagent-panel"],
+      "enforces": []
+    },
+    {
+      "id": "decision-card",
+      "contract": "clients/gui/packages/ui/src/conversation/decision-card/decision-card.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/decision-card/decision-card.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "question-card",
+      "contract": "clients/gui/packages/ui/src/conversation/question-card/question-card.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/question-card/question-card.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "message-code-block",
+      "contract": "clients/gui/packages/ui/src/conversation/message-code-block/message-code-block.md",
+      "styles": [
+        "clients/gui/packages/ui/src/conversation/message-code-block/message-code-block.css"
+      ],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "native-content",
+      "contract": "clients/gui/packages/ui/src/conversation/native-content/native-content.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/native-content/native-content.css"],
+      "internalSelectors": [".areal-native-content"],
+      "enforces": []
+    },
+    {
+      "id": "image-disclosure",
+      "contract": "clients/gui/packages/ui/src/conversation/image-disclosure/image-disclosure.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/image-disclosure/image-disclosure.css"],
+      "internalSelectors": [".areal-image-disclosure", ".areal-image-content"],
+      "enforces": []
+    },
+    {
+      "id": "composer-surface",
+      "contract": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "task-context",
+      "contract": "clients/gui/packages/ui/src/conversation/task-context/task-context.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/task-context/task-context.css"],
+      "internalSelectors": [".areal-task-context"],
+      "enforces": []
     }
   ],
   "rules": [

@@ -1,6 +1,14 @@
 import { sideSelection, sideAnchor, type SideSelection, type SideAnchor } from "./services.js";
 import { errorText } from "./errors/errorCopy.js";
-import { Textarea, TitleTooltip } from "@areal/ui";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Textarea,
+  TitleTooltip,
+} from "@areal/ui";
 import { useComposerPrediction } from "./useComposerPrediction.js";
 import { ContextMeter } from "./ContextMeter.js";
 import { useI18n } from "./i18n/IntlProvider.js";
@@ -697,23 +705,33 @@ function SideChatEditor({
           {!sideId && (
             <label>
               文件访问范围{" "}
-              <select
+              <Select
                 value={workspaceAccess}
-                onChange={(event) => {
-                  const value = event.target.value;
+                onValueChange={(value) => {
                   if (value !== "none" && value !== "readOnly") return;
                   localStorage.setItem(workspaceAccessKey, value);
                   setWorkspaceAccess(value);
                 }}
                 disabled={busy || !!pendingId}
               >
-                {(workspaceReadAvailable || workspaceAccess === "readOnly") && (
-                  <option value="readOnly" disabled={!workspaceReadAvailable}>
-                    {workspaceReadAvailable ? "只读当前工作区" : "只读当前工作区（当前不可用）"}
-                  </option>
-                )}
-                <option value="none">仅会话证据</option>
-              </select>
+                <SelectTrigger aria-label="文件访问范围">
+                  <SelectValue>
+                    {workspaceAccess === "readOnly"
+                      ? workspaceReadAvailable
+                        ? "只读当前工作区"
+                        : "只读当前工作区（当前不可用）"
+                      : "仅会话证据"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {(workspaceReadAvailable || workspaceAccess === "readOnly") && (
+                    <SelectItem value="readOnly" disabled={!workspaceReadAvailable}>
+                      {workspaceReadAvailable ? "只读当前工作区" : "只读当前工作区（当前不可用）"}
+                    </SelectItem>
+                  )}
+                  <SelectItem value="none">仅会话证据</SelectItem>
+                </SelectContent>
+              </Select>
             </label>
           )}
           {!sideId && !workspaceReadAvailable && (

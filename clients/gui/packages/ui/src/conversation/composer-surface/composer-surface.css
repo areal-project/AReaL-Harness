@@ -16,7 +16,7 @@
   box-shadow:
     var(--shadow-composer),
     0 0 0 1px var(--color-border-hover),
-    0 0 0 3px var(--color-focus-ring-soft);
+    0 0 0 calc(var(--spacing-inline) * 3 / 8) var(--color-focus-ring-soft);
 }
 .composer-surface[data-dragging] {
   outline: var(--focus-width) solid var(--color-brand);
@@ -39,7 +39,7 @@
   scrollbar-width: thin;
 }
 .composer-editor :is([contenteditable], textarea) {
-  min-height: 40px;
+  min-height: calc(var(--spacing-inline) * 5);
   max-height: none;
   overflow-y: visible;
   padding-bottom: var(--spacing-inline);
@@ -74,7 +74,7 @@
   align-items: center;
   gap: var(--spacing-inline);
   min-width: 0;
-  min-height: 28px;
+  min-height: calc(var(--spacing-inline) * 7 / 2);
 }
 .composer-toolbar :is([type="submit"], .composer-primary-action) {
   border-radius: var(--radius-pill);
@@ -108,10 +108,10 @@
   grid-column: 2;
   grid-row: 1;
   padding: 0;
-  max-height: 80px;
+  max-height: calc(var(--spacing-inline) * 10);
 }
 .composer-surface[data-layout="compact"] .composer-editor :is([contenteditable], textarea) {
-  min-height: 36px;
+  min-height: calc(var(--spacing-inline) * 9 / 2);
 }
 .composer-surface[data-layout="compact"] .composer-toolbar {
   display: contents;
@@ -136,7 +136,7 @@
     display: flex;
   }
   .composer-surface[data-layout="compact"] .composer-model-trigger {
-    max-width: 120px;
+    max-width: calc(var(--spacing-inline) * 15);
   }
 }
 
@@ -162,7 +162,7 @@
     calc(var(--spacing-inline) * 3 / 4) var(--composer-inset);
 }
 .composer-surface[data-layout="decision"] .composer-editor {
-  flex: 1 1 120px;
+  flex: 1 1 calc(var(--spacing-inline) * 15);
   padding: 0 0 0 calc(var(--spacing-control) + var(--spacing-inline) * 3 / 4);
   max-height: calc(4 * var(--line-height-ui));
 }

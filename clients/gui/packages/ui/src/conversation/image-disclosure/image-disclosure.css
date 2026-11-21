@@ -27,16 +27,16 @@
 /* 通用按钮会把内部图标压到 14px；活动图标与行内图标同为 16px，箭头 14px，保证文字起点对齐。 */
 .areal-image-disclosure > .areal-disclosure > .areal-disclosure-trigger > svg {
   flex: none;
-  width: 16px;
-  height: 16px;
+  width: var(--spacing-field);
+  height: var(--spacing-field);
 }
 .areal-image-disclosure
   > .areal-disclosure
   > .areal-disclosure-trigger
   > .areal-disclosure-indicator
   > svg {
-  width: 14px;
-  height: 14px;
+  width: calc(var(--spacing-inline) * 7 / 4);
+  height: calc(var(--spacing-inline) * 7 / 4);
 }
 .areal-image-disclosure
   > .areal-disclosure
@@ -52,7 +52,7 @@
   opacity: 1;
 }
 .areal-image-content {
-  max-width: 260px;
+  max-width: calc(var(--spacing-inline) * 65 / 2);
   padding-block: var(--spacing-inline);
   overflow-wrap: anywhere;
 }

@@ -357,27 +357,29 @@ export function ConversationSystemPreview({ dark }: { dark: boolean }) {
                   />
                 ))}
               </ActivityGroup>
-              <ImageDisclosure
-                indicator={<ActivityIcon kind="chevron" size={14} />}
-                label="已查看图片 · 界面参考.png"
-                {...(imageAvailable
-                  ? {
-                      state: "available",
-                      children: (
-                        <SentAttachment
-                          part={{
-                            type: "image",
-                            uri: "areal://blob/system-image",
-                            name: "界面参考.png",
-                          }}
-                          projectId={previewProject.id}
-                          threadId="system-main"
-                          action={previewMedia}
-                        />
-                      ),
-                    }
-                  : { state: "unavailable", message: "图片引用暂不可用；保留原活动记录。" })}
-              />
+              <div className="cs-image-slot">
+                <ImageDisclosure
+                  indicator={<ActivityIcon kind="chevron" size={14} />}
+                  label="已查看图片 · 界面参考.png"
+                  {...(imageAvailable
+                    ? {
+                        state: "available",
+                        children: (
+                          <SentAttachment
+                            part={{
+                              type: "image",
+                              uri: "areal://blob/system-image",
+                              name: "界面参考.png",
+                            }}
+                            projectId={previewProject.id}
+                            threadId="system-main"
+                            action={previewMedia}
+                          />
+                        ),
+                      }
+                    : { state: "unavailable", message: "图片引用暂不可用；保留原活动记录。" })}
+                />
+              </div>
               <ToolEvent item={readActivity} onFile={(path) => inspect({ kind: "file", path })} />
               <Button
                 variant="ghost"
@@ -445,167 +447,169 @@ export function ConversationSystemPreview({ dark }: { dark: boolean }) {
             />
           </div>
         </div>
-        <TaskContext
-          id={contextId}
-          hidden={!contextOpen}
-          title={inspectionTitle}
-          headingRef={contextHeading}
-          onBack={inspection ? returnContext : undefined}
-          onKeyDown={(event) => {
-            if (
-              event.key === "Escape" &&
-              !event.defaultPrevented &&
-              !(event.target as HTMLElement).closest('[role="dialog"]')
-            ) {
-              event.preventDefault();
-              returnConversation();
-            }
-          }}
-          actions={
-            <Button
-              variant="ghost"
-              size="sm"
-              className="cs-context-toggle"
-              onClick={returnConversation}
-            >
-              返回对话
-            </Button>
-          }
-        >
-          <div hidden={!!inspection}>
-            <TaskContext.Section label="当前项目变更" title="AReaL-Harness">
-              <TaskContext.Item
-                title="Changes"
-                description="未暂存 · 2 个文件"
-                icon={<ReviewPanelIcon />}
-                onClick={() => inspect({ kind: "changes" })}
-                meta={
-                  <span className="diff-count">
-                    <b>+24</b>
-                    <em>−8</em>
-                  </span>
-                }
-              />
-            </TaskContext.Section>
-            <TaskContext.Section label="关联项目">
-              {["ZCode", "Classic-skills", "magpie"].map((name) => (
-                <Disclosure
-                  indicator={<ActivityIcon kind="chevron" size={14} />}
-                  key={name}
-                  label={`展开关联项目 ${name}`}
-                  displayLabel={name}
-                  textRole="interface"
-                  className="cs-project"
-                  icon={<ActivityIcon kind="list" />}
-                >
-                  <p className="cs-detail-note">同一工作上下文的关联项目</p>
-                  <p className="cs-path">/preview/workspace/{name}</p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => inspect({ kind: "file", path: `${name}/README.md` })}
-                  >
-                    查看项目说明
-                  </Button>
-                </Disclosure>
-              ))}
-            </TaskContext.Section>
-            <TaskContext.Section label="子代理列表">
-              <TaskContext.Item
-                title="Subagents"
-                aria-label="查看全部 Subagents（16）"
-                onClick={() => openAgents()}
-                meta={<ActivityIcon kind="chevron" size={14} />}
-              />
-              <div className="cs-agent-summary">
-                <AgentAvatar id="layout" size={18} />
-                <AgentAvatar id="contract" size={18} />
-                <AgentAvatar id="review" size={18} />
-                <span>
-                  {agentMode === "completed"
-                    ? "16 个已完成"
-                    : agentMode === "attention"
-                      ? "1 个待确认 · 15 个已完成"
-                      : "1 个运行中 · 15 个已完成"}
-                </span>
-              </div>
-            </TaskContext.Section>
-            <TaskContext.Sources
-              items={sources}
-              onViewAll={() => inspect({ kind: "sources" })}
-              onAdd={() => inspect({ kind: "add" })}
-            >
-              {sourceRow}
-            </TaskContext.Sources>
-          </div>
-          {inspection?.kind === "sources" && (
-            <section aria-label="全部来源">
-              <p className="cs-detail-note">{sources.length} 项输入来源</p>
-              {sources.map(sourceRow)}
-            </section>
-          )}
-          {inspection?.kind === "add" && (
-            <section aria-label="添加输入来源">
-              <p>将参考资料加入未发送的草稿。</p>
+        <div className="cs-task-context-slot" hidden={!contextOpen}>
+          <TaskContext
+            id={contextId}
+            hidden={!contextOpen}
+            title={inspectionTitle}
+            headingRef={contextHeading}
+            onBack={inspection ? returnContext : undefined}
+            onKeyDown={(event) => {
+              if (
+                event.key === "Escape" &&
+                !event.defaultPrevented &&
+                !(event.target as HTMLElement).closest('[role="dialog"]')
+              ) {
+                event.preventDefault();
+                returnConversation();
+              }
+            }}
+            actions={
               <Button
-                variant="outline"
-                onClick={() => {
-                  setDraftSource(true);
-                  setInspection(null);
-                }}
+                variant="ghost"
+                size="sm"
+                className="cs-context-toggle"
+                onClick={returnConversation}
               >
-                添加示例网页到草稿
+                返回对话
               </Button>
-            </section>
-          )}
-          {inspection?.kind === "source" && (
-            <section>
-              <p className="cs-path">{inspection.source.location}</p>
-              {inspection.source.note && <Feedback message={inspection.source.note} />}
-              {inspection.source.kind === "image" ? (
-                <SentAttachment
-                  part={{
-                    type: "image",
-                    uri: "areal://blob/system-image",
-                    name: inspection.source.name,
-                  }}
-                  projectId={previewProject.id}
-                  threadId="system-main"
-                  action={previewMedia}
+            }
+          >
+            <div hidden={!!inspection}>
+              <TaskContext.Section label="当前项目变更" title="AReaL-Harness">
+                <TaskContext.Item
+                  title="Changes"
+                  description="未暂存 · 2 个文件"
+                  icon={<ReviewPanelIcon />}
+                  onClick={() => inspect({ kind: "changes" })}
+                  meta={
+                    <span className="diff-count">
+                      <b>+24</b>
+                      <em>−8</em>
+                    </span>
+                  }
                 />
-              ) : (
-                <p>
-                  {inspection.source.id === "raft"
-                    ? "参考其基础规则、通用控件、领域组合与产品布局的职责划分。此处展示本地引用摘要。"
-                    : "这是设计预览中的引用记录；来源身份与名称在返回后保留。"}
+              </TaskContext.Section>
+              <TaskContext.Section label="关联项目">
+                {["ZCode", "Classic-skills", "magpie"].map((name) => (
+                  <Disclosure
+                    indicator={<ActivityIcon kind="chevron" size={14} />}
+                    key={name}
+                    label={`展开关联项目 ${name}`}
+                    displayLabel={name}
+                    textRole="interface"
+                    className="cs-project"
+                    icon={<ActivityIcon kind="list" />}
+                  >
+                    <p className="cs-detail-note">同一工作上下文的关联项目</p>
+                    <p className="cs-path">/preview/workspace/{name}</p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => inspect({ kind: "file", path: `${name}/README.md` })}
+                    >
+                      查看项目说明
+                    </Button>
+                  </Disclosure>
+                ))}
+              </TaskContext.Section>
+              <TaskContext.Section label="子代理列表">
+                <TaskContext.Item
+                  title="Subagents"
+                  aria-label="查看全部 Subagents（16）"
+                  onClick={() => openAgents()}
+                  meta={<ActivityIcon kind="chevron" size={14} />}
+                />
+                <div className="cs-agent-summary">
+                  <AgentAvatar id="layout" size={18} />
+                  <AgentAvatar id="contract" size={18} />
+                  <AgentAvatar id="review" size={18} />
+                  <span>
+                    {agentMode === "completed"
+                      ? "16 个已完成"
+                      : agentMode === "attention"
+                        ? "1 个待确认 · 15 个已完成"
+                        : "1 个运行中 · 15 个已完成"}
+                  </span>
+                </div>
+              </TaskContext.Section>
+              <TaskContext.Sources
+                items={sources}
+                onViewAll={() => inspect({ kind: "sources" })}
+                onAdd={() => inspect({ kind: "add" })}
+              >
+                {sourceRow}
+              </TaskContext.Sources>
+            </div>
+            {inspection?.kind === "sources" && (
+              <section aria-label="全部来源">
+                <p className="cs-detail-note">{sources.length} 项输入来源</p>
+                {sources.map(sourceRow)}
+              </section>
+            )}
+            {inspection?.kind === "add" && (
+              <section aria-label="添加输入来源">
+                <p>将参考资料加入未发送的草稿。</p>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setDraftSource(true);
+                    setInspection(null);
+                  }}
+                >
+                  添加示例网页到草稿
+                </Button>
+              </section>
+            )}
+            {inspection?.kind === "source" && (
+              <section>
+                <p className="cs-path">{inspection.source.location}</p>
+                {inspection.source.note && <Feedback message={inspection.source.note} />}
+                {inspection.source.kind === "image" ? (
+                  <SentAttachment
+                    part={{
+                      type: "image",
+                      uri: "areal://blob/system-image",
+                      name: inspection.source.name,
+                    }}
+                    projectId={previewProject.id}
+                    threadId="system-main"
+                    action={previewMedia}
+                  />
+                ) : (
+                  <p>
+                    {inspection.source.id === "raft"
+                      ? "参考其基础规则、通用控件、领域组合与产品布局的职责划分。此处展示本地引用摘要。"
+                      : "这是设计预览中的引用记录；来源身份与名称在返回后保留。"}
+                  </p>
+                )}
+              </section>
+            )}
+            {inspection?.kind === "file" && (
+              <section>
+                <p className="cs-path">{inspection.path}</p>
+                <pre className="cs-file-content">{`# 对话流设计\n\n活动按原始顺序组织。\n展开用于核对内容，返回后继续原来的阅读。`}</pre>
+              </section>
+            )}
+            {inspection?.kind === "changes" && (
+              <section>
+                <p>当前项目 · 未暂存变更</p>
+                <p className="cs-detail-note">
+                  示例统计包含工作区变更，不将全部修改归为 Agent 产出。
                 </p>
-              )}
-            </section>
-          )}
-          {inspection?.kind === "file" && (
-            <section>
-              <p className="cs-path">{inspection.path}</p>
-              <pre className="cs-file-content">{`# 对话流设计\n\n活动按原始顺序组织。\n展开用于核对内容，返回后继续原来的阅读。`}</pre>
-            </section>
-          )}
-          {inspection?.kind === "changes" && (
-            <section>
-              <p>当前项目 · 未暂存变更</p>
-              <p className="cs-detail-note">
-                示例统计包含工作区变更，不将全部修改归为 Agent 产出。
-              </p>
-              <pre className="cs-file-content">{`src/conversation/ActivityGroup.tsx  +16 −4\nsrc/conversation/Context.tsx         +8 −4`}</pre>
-            </section>
-          )}
-          {inspection?.kind === "unknown" && (
-            <section>
-              <Feedback message="退出结果尚未确认；保留原命令记录。" />
-              <p>processId: preview-process</p>
-              <p>最后一次观察：已收到部分输出，连接随后中断。</p>
-              <p className="cs-detail-note">这里只展示已收集记录，不执行重试或重新运行命令。</p>
-            </section>
-          )}
-        </TaskContext>
+                <pre className="cs-file-content">{`src/conversation/ActivityGroup.tsx  +16 −4\nsrc/conversation/Context.tsx         +8 −4`}</pre>
+              </section>
+            )}
+            {inspection?.kind === "unknown" && (
+              <section>
+                <Feedback message="退出结果尚未确认；保留原命令记录。" />
+                <p>processId: preview-process</p>
+                <p>最后一次观察：已收到部分输出，连接随后中断。</p>
+                <p className="cs-detail-note">这里只展示已收集记录，不执行重试或重新运行命令。</p>
+              </section>
+            )}
+          </TaskContext>
+        </div>
         <SubagentPanel
           open={agentPanelOpen}
           agents={agents.map((agent) => ({

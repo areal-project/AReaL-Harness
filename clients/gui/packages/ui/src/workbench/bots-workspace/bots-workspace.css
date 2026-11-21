@@ -811,10 +811,6 @@
   color: var(--color-settings-secondary);
 }
 
-.bot-group-card {
-  border-radius: var(--radius-panel);
-}
-
 /* Identity Hero Card */
 .bot-identity-hero {
   display: flex;

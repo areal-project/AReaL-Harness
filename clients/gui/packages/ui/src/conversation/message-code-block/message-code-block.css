@@ -13,7 +13,7 @@
 .conversation-code-header {
   display: flex;
   align-items: center;
-  min-height: 48px;
+  min-height: calc(var(--spacing-inline) * 6);
   gap: var(--spacing-inline);
   padding: calc(var(--spacing-inline) * 3 / 4) calc(var(--spacing-inline) * 3 / 4)
     calc(var(--spacing-inline) * 3 / 4) calc(var(--spacing-inline) * 5 / 2);
@@ -33,8 +33,8 @@
   flex-shrink: 0;
 }
 .conversation-code-actions > button {
-  width: 36px;
-  height: 36px;
+  width: calc(var(--spacing-inline) * 9 / 2);
+  height: calc(var(--spacing-inline) * 9 / 2);
   padding: 0;
   border-radius: 50%;
 }
@@ -82,5 +82,5 @@
 }
 .conversation-code-preview svg {
   width: 100%;
-  max-height: min(28rem, 60vh);
+  max-height: min(calc(var(--spacing-inline) * 56), 60vh);
 }
