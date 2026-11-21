@@ -29,17 +29,25 @@ export function WorkspacePreparationStatus({
         );
   if (state.kind === "preparing")
     return (
-      <span role="status" data-testid="workspace-preparation-status">
+      <span
+        role="status"
+        data-testid="workspace-preparation-status"
+        className="inline-flex items-center gap-2 text-ui-caption text-foreground-subtle"
+      >
         {label}
       </span>
     );
   return (
-    <span role="status" data-testid="workspace-preparation-status">
-      {label}
+    <span
+      role="status"
+      data-testid="workspace-preparation-status"
+      className="inline-flex items-center gap-2 text-ui-caption text-foreground-subtle"
+    >
+      <span>{label}</span>
       {onRetry && (
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
           size="sm"
           disabled={retrying}
           onClick={() => {

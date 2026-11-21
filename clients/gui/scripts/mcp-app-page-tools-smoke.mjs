@@ -955,7 +955,7 @@ try {
   const beforeDraft = Object.keys(
     (await state()).projects.find((project) => project.id === initialOwner.projectId).state.threads,
   ).length;
-  await button("新聊天").click();
+  await button("新会话").click();
   await page.getByTestId("chat-input").fill("/pageA");
   await page
     .getByTestId("composer-catalog")

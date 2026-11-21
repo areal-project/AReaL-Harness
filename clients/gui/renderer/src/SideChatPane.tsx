@@ -1,6 +1,6 @@
 import { sideSelection, sideAnchor, type SideSelection, type SideAnchor } from "./services.js";
 import { errorText } from "./errors/errorCopy.js";
-import { Textarea } from "@areal/ui";
+import { Textarea, TitleTooltip } from "@areal/ui";
 import { useComposerPrediction } from "./useComposerPrediction.js";
 import { ContextMeter } from "./ContextMeter.js";
 import { useI18n } from "./i18n/IntlProvider.js";
@@ -51,6 +51,7 @@ export function SideChatPane({
   dark: boolean;
   onPanel: (name: string) => void;
 }) {
+  const { t } = useI18n();
   const workspace = useMemo(
     () =>
       new SideDraftWorkspace(localStorage, {
@@ -85,32 +86,34 @@ export function SideChatPane({
     };
   }, [workspace]);
   return (
-    <section className="side-chat-pane" aria-label="侧边聊天">
+    <section className="side-chat-pane" aria-label={t("chat.side.title")}>
       <div className="side-chat-toolbar">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label="新讨论"
-          title="新讨论"
-          onClick={() => choose(workspace.newDraft())}
-        >
-          <AddPanelIcon />
-        </Button>
+        <TitleTooltip title={t("chat.side.new")}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={t("chat.side.new")}
+            onClick={() => choose(workspace.newDraft())}
+          >
+            <AddPanelIcon />
+          </Button>
+        </TitleTooltip>
         <Popover open={relatedOpen} onOpenChange={setRelatedOpen}>
-          <PopoverTrigger
-            render={
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="相关侧边讨论"
-                title="相关讨论"
-              >
-                <MoreOptionsIcon />
-              </Button>
-            }
-          />
+          <TitleTooltip title={t("chat.side.related")}>
+            <PopoverTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t("chat.side.related")}
+                >
+                  <MoreOptionsIcon />
+                </Button>
+              }
+            />
+          </TitleTooltip>
           <PopoverContent align="end" className="side-chat-related">
             <Button
               unstyled

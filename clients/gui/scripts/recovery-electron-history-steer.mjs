@@ -232,7 +232,7 @@ try {
     old,
   );
   mark("unknown-injected", { old, hostProject });
-  await page.getByRole("button", { name: "新聊天", exact: true }).click();
+  await page.getByRole("button", { name: "新会话", exact: true }).click();
   assert.notEqual(
     await page.getByTestId("areal-workbench").getAttribute("data-thread-id"),
     threadId,

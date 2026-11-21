@@ -375,7 +375,7 @@ try {
   assert.ok(noticeBounds.y < 100 && Math.abs(noticeBounds.x + noticeBounds.width / 2 - 720) < 5);
   assert.equal(await page.getByTestId("chat-view").getByRole("alert").count(), 0);
   await page.screenshot({ path: join(scratch, "unknown-receipt-draft.png") });
-  await page.getByRole("button", { name: "新聊天", exact: true }).click();
+  await page.getByRole("button", { name: "新会话", exact: true }).click();
   await page.getByTestId("chat-input").waitFor();
   assert.equal(await page.getByTestId("cloud-chat-input").count(), 0);
   assert.doesNotMatch(await page.locator(".composer-project-bar").innerText(), /Cloud|Local|本地/);

@@ -1294,7 +1294,7 @@ try {
     await page
       .locator(`[data-agent-conversation="${liveChild.id}"] [data-turn-status=interrupted]`)
       .waitFor();
-    await button("新聊天").click();
+    await button("新会话").click();
     assert.equal(await page.locator("[data-agent-conversation]").count(), 0);
     await page.locator(`#areal-sidebar [data-thread-id="${tid}"]`).first().click();
     await page
