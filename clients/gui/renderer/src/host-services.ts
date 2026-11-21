@@ -929,14 +929,30 @@ export function createHostReadServices(
     () => librarySourceId,
     closedSidePublisher(client, commandOutcomes, hostTarget, publish),
   ) as PlatformServices["command"];
+  let selectedThemeId = "system";
+  const resolveBrowserTheme = (id = selectedThemeId) => {
+    const prefersDark = matchMedia("(prefers-color-scheme: dark)").matches;
+    const dark = id === "data-dense" ? true : id === "soft-glass" ? false : prefersDark;
+    return {
+      dark,
+      id: id === "system" ? (dark ? "data-dense" : "soft-glass") : id,
+    };
+  };
   const result: PlatformServices = {
     ...(desktop ?? {
       chooseProject: () => chooseHostProject(client),
-      theme: async () => ({
-        dark: matchMedia("(prefers-color-scheme: dark)").matches,
-        id: "system",
-      }),
-      onTheme: () => () => {},
+      theme: async (id) => {
+        selectedThemeId = id || "system";
+        return resolveBrowserTheme(selectedThemeId);
+      },
+      onTheme: (listener) => {
+        const media = matchMedia("(prefers-color-scheme: dark)");
+        const handleChange = () => {
+          if (selectedThemeId === "system") listener(resolveBrowserTheme("system"));
+        };
+        media.addEventListener?.("change", handleChange);
+        return () => media.removeEventListener?.("change", handleChange);
+      },
       preview: unavailable,
     }),
     command,

@@ -649,8 +649,8 @@ export const commonMessages = {
   },
   "startup.readingConversation": { "zh-CN": "正在读取对话…", en: "Reading conversation…" },
   "common.conversation.newInProject": {
-    "zh-CN": "在 {project} 中开始新聊天",
-    en: "Start a new chat in {project}",
+    "zh-CN": "在 {project} 中开始新会话",
+    en: "Start a new conversation in {project}",
   },
   "recovery.creationNotAdmitted": {
     "zh-CN": "后台已确认原会话未创建，草稿已保留。",

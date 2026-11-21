@@ -144,7 +144,15 @@ export async function assertApplicationStopped(binary, env, metadata) {
       return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   } while (Date.now() < deadline);
-  assert.fail("Application quit left a live isolated adapter or Core generation");
+  assert.fail(
+    `Application quit left a live isolated adapter or Core generation: ${JSON.stringify({
+      pid: metadata?.pid ?? null,
+      pidAlive: alive(metadata?.pid),
+      hostPid: metadata?.hostPid ?? null,
+      hostAlive: alive(metadata?.hostPid),
+      records,
+    })}`,
+  );
 }
 
 // A failed quit must not leave the test runner held open until the CI job timeout.

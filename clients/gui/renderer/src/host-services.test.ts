@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { HostClientOptions, ShellProject, SourceNavigation } from "@areal/client";
-import { createHostReadServices } from "./host-services.js";
+import { createHostReadServices, disposeHostReadServices } from "./host-services.js";
 import {
   configurationIdentity,
   createHostSnapshotProjector,
@@ -2158,4 +2158,41 @@ it("keeps local execution unavailable until desktop and Host agree on the Core g
     state: { connected: true },
     scheduling: { suppressed: false },
   });
+});
+
+it("browser Host services apply explicit light/dark theme choices and react to system changes", async () => {
+  let systemDark = false;
+  const listeners = new Set<() => void>();
+  const originalMatchMedia = globalThis.matchMedia;
+  globalThis.matchMedia = ((query: string) =>
+    ({
+      matches: query.includes("dark") ? systemDark : false,
+      media: query,
+      addEventListener: (_event: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_event: string, listener: () => void) => listeners.delete(listener),
+    }) as unknown as MediaQueryList) as typeof globalThis.matchMedia;
+  const services = createHostReadServices(undefined, {
+    transport: () => {
+      throw new Error("unused");
+    },
+  });
+  try {
+    expect(await services.theme("data-dense")).toEqual({ dark: true, id: "data-dense" });
+    expect(await services.theme("soft-glass")).toEqual({ dark: false, id: "soft-glass" });
+    expect(await services.theme("system")).toEqual({ dark: false, id: "soft-glass" });
+    const observed: { dark: boolean; id: string }[] = [];
+    const unsubscribe = services.onTheme((next) => observed.push(next));
+    systemDark = true;
+    for (const listener of listeners) listener();
+    expect(observed).toEqual([{ dark: true, id: "data-dense" }]);
+    // 显式选择浅色后，系统配色变化不再覆盖用户选择。
+    await services.theme("soft-glass");
+    systemDark = false;
+    for (const listener of listeners) listener();
+    expect(observed).toHaveLength(1);
+    unsubscribe();
+  } finally {
+    disposeHostReadServices(services);
+    globalThis.matchMedia = originalMatchMedia;
+  }
 });

@@ -231,9 +231,16 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
             <strong>{status.title}</strong>
             <small>{status.description}</small>
           </div>
-          {(state.enabled || state.directEnabled) && (
+          {state.enabled || state.directEnabled ? (
             <Button disabled={busy || !entryReady} onClick={startAdding}>
               {t("settings.mobileConnect.addDevice")}
+            </Button>
+          ) : (
+            <Button
+              disabled={busy}
+              onClick={() => void run({ operation: "relayServiceStartLocal" })}
+            >
+              {t("settings.relayService.startLocal")}
             </Button>
           )}
         </div>
@@ -246,11 +253,16 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
               { host: relayHost },
             )}
           </p>
-        ) : (
-          <Button disabled={busy} onClick={() => void run({ operation: "relayServiceStartLocal" })}>
-            {t("settings.relayService.startLocal")}
-          </Button>
-        )}
+        ) : state.directEnabled ? (
+          <div className="flex">
+            <Button
+              disabled={busy}
+              onClick={() => void run({ operation: "relayServiceStartLocal" })}
+            >
+              {t("settings.relayService.startLocal")}
+            </Button>
+          </div>
+        ) : null}
         {!adding && credentialHint && (
           <p className="remote-error" role="alert">
             {credentialHint}

@@ -34,7 +34,12 @@ export function ProjectlessDraft({
   const [prepared, setPrepared] = useState<Data>();
   const [error, setError] = useState("");
   const [ownerId, setOwnerId] = useState(() => localStorage.getItem(`${key}:project`));
-  const owner = snapshot.projects.find((p) => p.id === ownerId) ?? prepared;
+  // 本机网页冷启动时，桌面后台可能在首次 prepare 之后才完成向 Host 登记；
+  // 一旦 Host 权威快照推送了已连接的 projectless 项目，直接复用它而不停留在旧失败态。
+  const adopted = !ownerId
+    ? snapshot.projects.find((p) => p.projectless && p.state?.connected)
+    : undefined;
+  const owner = snapshot.projects.find((p) => p.id === ownerId) ?? adopted ?? prepared;
   const ready = snapshot.connection?.state === "ready";
   const prepare = async () => {
     setPreparing(true);
@@ -59,6 +64,9 @@ export function ProjectlessDraft({
       setPreparing(false);
     }
   };
+  useEffect(() => {
+    if (adopted?.id && error) setError("");
+  }, [adopted?.id, error]);
   useEffect(() => {
     if (ownerId && ready && !owner?.state?.connected)
       void readAction("connect", { projectId: ownerId }).catch(() => {});

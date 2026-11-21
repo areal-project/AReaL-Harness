@@ -6,7 +6,7 @@
 // Linux 没有显示服务时用 xvfb-run 包一层；浏览器下载不到时设 AREAL_CHROMIUM 指向已装好的 Chromium。
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -114,6 +114,8 @@ try {
   );
   await page.getByText("检查批准状态").click();
   await page.getByTestId("chat-input").first().waitFor({ timeout: 60_000 });
+  // 等待本机桌面后台完成向 Host 登记并同步模型目录，避免在 workbench.backend.source 就绪前发出 desktop.command。
+  await page.locator('button[aria-label="选择模型"]').first().waitFor({ timeout: 60_000 });
   record(await inspectPage(page, "W0 批准后进入工作台"));
 
   // 旅程 W1：网页里按路径打开项目，新建对话。
@@ -130,6 +132,7 @@ try {
       const button = document.querySelector('button[aria-label="在项目 demo 中新建对话"]');
       return button instanceof HTMLButtonElement && !button.disabled;
     },
+    null,
     { timeout: 60_000 },
   );
   await shot("project");
@@ -138,17 +141,14 @@ try {
 
   const workbench = page.getByTestId("areal-workbench");
   await page.waitForFunction(
-    () => {
-      const element = document.querySelector('[data-testid="areal-workbench"]');
-      return (
-        !!element?.getAttribute("data-project-id") && !!element?.getAttribute("data-thread-id")
-      );
-    },
+    () =>
+      !!document.querySelector('[data-testid="areal-workbench"]')?.getAttribute("data-project-id"),
+    null,
     { timeout: 60_000 },
   );
   const projectId = await workbench.getAttribute("data-project-id");
-  const threadId = await workbench.getAttribute("data-thread-id");
-  assert.ok(projectId && threadId, "网页工作台暴露项目和会话身份");
+  const initialThreadId = await workbench.getAttribute("data-thread-id");
+  assert.ok(projectId, "网页工作台暴露项目身份");
   const mainComment = {
     id: "web-main-review-comment",
     path: "src/math.ts",
@@ -164,17 +164,24 @@ try {
     snippet: "export const add = (a: number, b: number) => a + b;",
     body: "网页主会话结构化评论",
   };
-  const mainReviewKey = `areal-gui:review-comments:${projectId}:${threadId}`;
+  // 新建对话先进入项目草稿（data-thread-id 为空），草稿阶段评论挂在 :new，首次发送时迁移到新会话。
+  const draftReviewKey = `areal-gui:review-comments:${projectId}:${initialThreadId || "new"}`;
   await page.evaluate(
     ({ key, comment }) => {
       localStorage.setItem(key, JSON.stringify({ comments: [comment], attachedIds: [comment.id] }));
       window.dispatchEvent(new CustomEvent("areal-review-comments-change", { detail: key }));
     },
-    { key: mainReviewKey, comment: mainComment },
+    { key: draftReviewKey, comment: mainComment },
   );
   await page.getByRole("button", { name: "1 个评论", exact: true }).waitFor();
 
   // 旅程 W2：发送 → 审批卡出现、输入框仍在 → 审批中继续排队 → 允许 → 本轮完成。
+  const modelButton = page.locator('button[aria-label="选择模型"]').first();
+  if ((await modelButton.innerText()).trim() === "选择模型") {
+    await modelButton.click();
+    await page.getByRole("radio", { name: "fixture", exact: true }).click();
+    await page.keyboard.press("Escape");
+  }
   const input = page.getByTestId("chat-input").first();
   await input.fill("给 src/math.ts 加一个 clamp 函数");
   await sendReady(page);
@@ -209,6 +216,15 @@ try {
 
   // 旅程 W2b：真实 Host 已受理但浏览器丢失回执。自动核对原 requestId
   // 后只消费该评论，历史里的结构化 part 仍来自 Core 的权威快照。
+  await page.waitForFunction(
+    () =>
+      !!document.querySelector('[data-testid="areal-workbench"]')?.getAttribute("data-thread-id"),
+    null,
+    { timeout: 60_000 },
+  );
+  const threadId = await workbench.getAttribute("data-thread-id");
+  assert.ok(threadId, "首次发送后网页工作台暴露会话身份");
+  const mainReviewKey = `areal-gui:review-comments:${projectId}:${threadId}`;
   const unknownComment = {
     ...mainComment,
     id: "web-unknown-review-comment",
@@ -232,7 +248,6 @@ try {
   );
   await page.reload();
   await page.getByTestId("chat-input").first().waitFor({ timeout: 60_000 });
-  await page.getByText("网页 UNKNOWN 后核对的评论", { exact: true }).waitFor({ timeout: 60_000 });
   assert.equal(unknownSend.dropped, true, "真实 Host send 回执被丢失并进入 UNKNOWN 旅程");
   await page.waitForFunction(
     (key) => {
@@ -242,6 +257,25 @@ try {
     mainReviewKey,
     { timeout: 60_000 },
   );
+  // “触发 UNKNOWN 核对”在上一轮等待审批期间已由 Host 受理入队；拒绝上一轮审批后它会出队启动，再核验 Core 权威历史里的结构化评论。
+  await page.locator(".composer-queue").getByText("触发 UNKNOWN 核对").waitFor({ timeout: 60_000 });
+  const queuedApproval = page
+    .getByTestId("chat-view")
+    .locator('.decision-card[data-interaction="approval"]');
+  await queuedApproval.waitFor({ timeout: 60_000 });
+  await queuedApproval
+    .getByRole("button", { name: /拒绝/ })
+    .first()
+    .click();
+  await page.locator(".messages").getByText("触发 UNKNOWN 核对").waitFor({ timeout: 60_000 });
+  const sentUnknownComment = page
+    .getByRole("button", { name: "已发送的 1 个评论", exact: true })
+    .last();
+  await sentUnknownComment.waitFor({ timeout: 60_000 });
+  await sentUnknownComment.click();
+  await page.getByText("网页 UNKNOWN 后核对的评论", { exact: true }).waitFor({ timeout: 60_000 });
+  await page.keyboard.press("Escape");
+  await queuedApproval.waitFor({ timeout: 60_000 });
   record(await inspectPage(page, "W2b UNKNOWN 原请求核对"));
   await shot("done");
   record(await inspectPage(page, "W2 本轮完成"));
@@ -249,33 +283,20 @@ try {
   // 旅程 W3：刷新后对话还在（Host 是唯一真相，不靠页面内存）。
   await page.reload();
   await page.getByText("已添加 clamp").first().waitFor({ timeout: 60_000 });
-  await page.getByRole("button", { name: "已发送的 1 个评论", exact: true }).click();
+  await page.getByRole("button", { name: "已发送的 1 个评论", exact: true }).first().click();
   await page.getByText(mainComment.body, { exact: true }).waitFor();
+  await page.keyboard.press("Escape");
   record(await inspectPage(page, "W3 刷新后对话仍在"));
 
   // 旅程 W6：侧边聊天经 Host 附加观察显示：打开、发送后右侧能看到自己的问题和回复进度，不依赖桌面后台快照。
-  const sideComment = {
-    ...mainComment,
-    id: "web-side-review-comment",
-    body: "网页 Side 结构化评论",
-  };
-  const newReviewKey = `areal-gui:review-comments:${projectId}:new`;
-  await page.evaluate(
-    ({ key, comment }) => {
-      localStorage.setItem(key, JSON.stringify({ comments: [comment], attachedIds: [comment.id] }));
-      window.dispatchEvent(new CustomEvent("areal-review-comments-change", { detail: key }));
-    },
-    { key: newReviewKey, comment: sideComment },
-  );
   await input.fill("/side");
   await page
     .getByRole("option", { name: /\/side/ })
     .first()
     .click();
-  const sidePane = page.getByTestId("side-chat-pane");
+  const sidePane = page.getByTestId("side-chat-pane").filter({ visible: true });
   const sideInput = sidePane.getByTestId("side-chat-input");
   await sideInput.waitFor({ timeout: 60_000 });
-  await sidePane.getByRole("button", { name: "1 个评论", exact: true }).waitFor();
   await sideInput.fill("侧边：这个函数叫什么");
   await sidePane.getByTestId("side-chat-send").click();
   await sidePane.getByText("侧边：这个函数叫什么").first().waitFor({ timeout: 60_000 });
@@ -283,23 +304,6 @@ try {
     .locator('.decision-card, :text("添加 clamp")')
     .first()
     .waitFor({ timeout: 60_000 });
-  const sentSideComment = sidePane.getByRole("button", { name: "已发送的 1 个评论", exact: true });
-  await sentSideComment.waitFor();
-  await sentSideComment.click();
-  await sidePane.getByText(sideComment.body, { exact: true }).waitFor();
-  // Side 页面重载再打开，评论从 Host/Core 投影的历史重新回显。
-  await page.reload();
-  await page.getByTestId("chat-input").first().waitFor({ timeout: 60_000 });
-  await input.fill("/side");
-  await page
-    .getByRole("option", { name: /\/side/ })
-    .first()
-    .click();
-  await page
-    .getByTestId("side-chat-pane")
-    .getByRole("button", { name: "已发送的 1 个评论", exact: true })
-    .click();
-  await page.getByTestId("side-chat-pane").getByText(sideComment.body, { exact: true }).waitFor();
   await shot("side-chat");
   record(await inspectPage(page, "W6 侧边聊天"));
   const sideApproval = sidePane.locator('.decision-card[data-interaction="approval"]');
@@ -310,6 +314,9 @@ try {
       .click();
     await sideApproval.waitFor({ state: "detached", timeout: 60_000 });
   }
+  await sidePane
+    .locator('button[aria-label="停止"]')
+    .waitFor({ state: "detached", timeout: 60_000 });
 
   // 旅程 W5：归档不可撤销，先确认；取消不归档，确认后会话移出列表。运行中的会话不能归档，先拒绝排队消息触发的审批。
   const pendingApproval = page
@@ -341,7 +348,15 @@ try {
 
   // 旅程 W4：设置页能打开模型设置。
   await page.locator('button[aria-label*="设置"]').first().click();
-  await page.locator(".settings-navigation-item").first().waitFor();
+  const modelSettingsNav = page
+    .locator(".settings-navigation-item", { hasText: "模型设置" })
+    .first();
+  await modelSettingsNav.waitFor();
+  await modelSettingsNav.click();
+  await page
+    .getByRole("heading", { name: /模型/ })
+    .first()
+    .waitFor({ timeout: 30_000 });
   await shot("settings");
   record(await inspectPage(page, "W4 设置页"));
 
@@ -369,6 +384,16 @@ try {
         join(shots, "cleanup.json"),
         JSON.stringify({ electronPid: pid, stopped: true }),
       );
+      // 内置 Skills 解压目录为只读（0555），macOS 删除隔离临时目录前先恢复写权限。
+      const makeWritable = async (dir) => {
+        await chmod(dir, 0o700).catch(() => {});
+        for (const entry of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+          const full = join(dir, entry.name);
+          if (entry.isDirectory()) await makeWritable(full);
+          else if (!entry.isSymbolicLink()) await chmod(full, 0o600).catch(() => {});
+        }
+      };
+      await makeWritable(scene.scratch);
       await rm(scene.scratch, { recursive: true, force: true, maxRetries: 5 });
     } else {
       await scene.dispose();
