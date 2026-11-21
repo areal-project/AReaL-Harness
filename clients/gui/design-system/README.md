@@ -1,5 +1,7 @@
 # AReaL GUI 设计系统
 
+> **日常入口**：人的设计系统宪法与品味纠偏见根目录 [DESIGN.md](../../../DESIGN.md)，Agent 开发指南见 [areal-ui-guide](../packages/ui/skills/areal-ui-guide/SKILL.md)，当前生效的 Lint 规则与债务统计运行 `pnpm --dir clients/gui run design:health`。本目录存放历史参考与自动化基线数据。
+
 这是维护者入口。写页面、选组件和写样式从 [@areal/ui](../packages/ui/README.md)进入。跨产品原则、术语和设计决策从[设计地图](../../../design/README.md)查阅。
 
 ## 当前阶段
