@@ -228,7 +228,7 @@ export function MobileAdvancedNetwork({
               }
             />
           </SettingsGroupCard>
-          <SettingsGroupCard className="remote-access-panel">
+          <SettingsGroupCard className="remote-access-panel" layout="stack">
             <SettingsDisclosure
               className="remote-connection-details"
               title={<> {t("settings.mobileSettings.connectionDetailsAndDiagnostics")}</>}

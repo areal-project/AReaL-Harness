@@ -13,7 +13,7 @@
   color: var(--color-foreground-subtle);
 }
 .tool-event-body pre {
-  max-height: 240px;
+  max-height: calc(var(--spacing-inline) * 30);
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -60,7 +60,7 @@
   max-height: none;
 }
 .command-card .command-output {
-  max-height: 160px;
+  max-height: calc(var(--spacing-inline) * 20);
   margin: 0;
   padding: var(--spacing-inline) calc(var(--spacing-field) * 2) var(--spacing-inline)
     calc(var(--spacing-inline) * 3 / 2);
@@ -85,7 +85,7 @@
   color: var(--color-foreground-subtle);
 }
 .command-raw pre {
-  max-height: 240px;
+  max-height: calc(var(--spacing-inline) * 30);
 }
 .command-heading {
   padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
@@ -116,10 +116,10 @@
 }
 .command-copy {
   position: absolute;
-  top: 4px;
-  right: 8px;
-  width: 24px;
-  height: 24px;
+  top: calc(var(--spacing-inline) / 2);
+  right: var(--spacing-inline);
+  width: var(--spacing-section);
+  height: var(--spacing-section);
   opacity: 0;
 }
 .command-text:hover .command-copy,

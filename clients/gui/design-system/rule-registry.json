@@ -1118,17 +1118,19 @@
     },
     {
       "id": "R-COLLAPSIBLETEXT-002",
-      "title": "预览与全文可逆切换 ：默认保留开头预览，提供始终可见的“展开全文 / 收起”按钮",
+      "title": "-",
       "owner": "clients/gui/packages/ui/src/conversation/collapsible-text/collapsible-text.md#gui-接线",
       "strength": "must",
-      "textSha256": "27a98bc49effb0a35cb4579139ad951682f44ebfc001f7dc46ba1811e08e2427"
+      "textSha256": "6ef8e8223fe30df83434a8b21d6c80549f038409cc72fd9c99732191252ef30d",
+      "check": "clients/gui/packages/ui/src/conversation/collapsible-text/collapsible-text.test.tsx"
     },
     {
       "id": "R-COLLAPSIBLETEXT-005",
-      "title": "按任务设定例外 ：正在编辑的输入、流式主要回复、需要完整核对的审批关键信息以及专用文件/日志阅读器，保留其现有阅读机制",
+      "title": "-",
       "owner": "clients/gui/packages/ui/src/conversation/collapsible-text/collapsible-text.md#gui-接线",
       "strength": "must",
-      "textSha256": "7e1aac9d45377efebd0d125637bcbbbacd8f70600e18f751a9597f5ce7f65f75"
+      "textSha256": "8f3cfe2f3c621fc57eb70aca2ece9c703832010e89fcebb8980ae67cb038b1a2",
+      "check": "clients/gui/packages/ui/src/conversation/collapsible-text/collapsible-text.test.tsx"
     },
     {
       "id": "R-COMPOSERSURFACE-001",
@@ -1184,21 +1186,24 @@
       "title": "默认、窄容器换行、宿主提供的不可用/发送中/运行中控件",
       "owner": "clients/gui/packages/ui/src/conversation/composer-toolbar/composer-toolbar.md#状态",
       "strength": "must",
-      "textSha256": "ec28172dc95231cdaec0ab0cc8f9eae10898daf49ad2ff3d043a34eb4c9d4a5a"
+      "textSha256": "6d4e956bb990f22c6023d37cff9ef417f23326b909593dc2ed14cf421186f39d",
+      "check": "clients/gui/packages/ui/src/conversation/composer-toolbar/composer-toolbar.test.tsx"
     },
     {
       "id": "R-COMPOSERTOOLBAR-004",
       "title": "模型和权限显示当前真实选值",
       "owner": "clients/gui/packages/ui/src/conversation/composer-toolbar/composer-toolbar.md#内容",
       "strength": "must",
-      "textSha256": "acfae889c3ab324cb467054b11750b3a3a0b13664bd0f439bd9b7623c873284a"
+      "textSha256": "1c74c436a3c36454be36571603abb4cffb091f403337fbc04d04399286fc87a1",
+      "check": "clients/gui/packages/ui/src/conversation/composer-toolbar/composer-toolbar.test.tsx"
     },
     {
       "id": "R-COMPOSERTOOLBAR-005",
       "title": "使用原按钮/菜单语义",
       "owner": "clients/gui/packages/ui/src/conversation/composer-toolbar/composer-toolbar.md#可访问性",
       "strength": "must",
-      "textSha256": "e70940bfcb478c69b10d5fe6c4bbfcd2be6db9d717bdc2673b5140dfbab79191"
+      "textSha256": "3e208237cf46fe6ab558c5650da32d8eaa7a5d02d690b6376f46aba197719d09",
+      "check": "clients/gui/packages/ui/src/conversation/composer-toolbar/composer-toolbar.test.tsx"
     },
     {
       "id": "R-DECISIONCARD-001",
@@ -1254,7 +1259,8 @@
       "title": "横向滚动属于表格内部",
       "owner": "clients/gui/packages/ui/src/conversation/markdown-table/markdown-table.md#行为",
       "strength": "must",
-      "textSha256": "44af24f7fcafb4d2d7b313eac3cad8b30bcba94f8b74480c11521ab29a8ce0ae"
+      "textSha256": "9f5bd2f635cfa61352472486bb6bb5c42816a0f9cf6755eaa259bdc592c14980",
+      "check": "clients/gui/packages/ui/src/conversation/markdown-table/markdown-table.test.ts"
     },
     {
       "id": "R-MESSAGECODEBLOCK-002",
@@ -1366,14 +1372,16 @@
       "title": "卡片不新增角色或键盘焦点",
       "owner": "clients/gui/packages/ui/src/settings/settings-group-card/settings-group-card.md#可访问性",
       "strength": "must",
-      "textSha256": "f1c845e8dc752d601e884eed5323f69bbb6b535ce6756eab2ca0e4e8b72ba0d2"
+      "textSha256": "f74fbc8f62a817c86b21b30cb532647f089c4972ed50307da4492a4a5a123b92",
+      "check": "clients/gui/packages/ui/src/settings/settings-group-card/settings-group-card.test.tsx"
     },
     {
       "id": "R-SETTINGSGROUPCARD-006",
       "title": "导入settings.css",
       "owner": "clients/gui/packages/ui/src/settings/settings-group-card/settings-group-card.md#规则",
       "strength": "must",
-      "textSha256": "778d8508d3a17c65996bc7e8541ab49975cebea85c6342badfd304218152f670"
+      "textSha256": "afe56d3de7cf0fcdd8895569ca91c8e6fa482218d36f09768f95ebf20843971b",
+      "check": "clients/gui/packages/ui/src/settings/settings-group-card/settings-group-card.test.tsx"
     },
     {
       "id": "R-SETTINGSPAGE-001",
@@ -1489,10 +1497,11 @@
     },
     {
       "id": "WT-IDENTITY-01",
-      "title": "（WT-R04～06）：会话名称仍为侧栏主内容",
+      "title": "WT-IDENTITY-01（WT-R04～06）：会话名称仍为侧栏主内容",
       "owner": "clients/gui/packages/ui/src/workbench/task-list-item/task-list-item.md#worktree-身份",
       "strength": "must",
-      "textSha256": "d5d5098a006dc198173773011a701d7069c3756301b9ac589e63e701c874430d"
+      "textSha256": "cc3ee0974d3fe4aee15e45f2e1d4514ba5c99db257e56da750ab7d6d097dfb2f",
+      "check": "clients/gui/packages/ui/src/workbench/task-list-item/task-list-item.test.tsx"
     },
     {
       "id": "WT-LIST-01",

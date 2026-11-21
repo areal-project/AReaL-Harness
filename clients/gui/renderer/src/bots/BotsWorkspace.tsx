@@ -28,8 +28,6 @@ import { BotAvatar, BotSidebar } from "./BotSidebar.js";
 import { BotMessages } from "./BotMessages.js";
 import { BotSettingsPane } from "./BotSettingsPane.js";
 import { ArenaConfigDialog, CreateBotDialog } from "./BotDialogs.js";
-import "./BotsWorkspace.layout.css";
-import "./BotPanels.layout.css";
 
 export function BotsWorkspace({
   service,

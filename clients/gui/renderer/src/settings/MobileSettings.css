@@ -29,11 +29,6 @@
 }
 
 /* 状态卡：一行回答“能不能连”，右侧唯一主按钮。 */
-.remote-status-card > [data-slot="card-content"] {
-  display: grid;
-  gap: var(--spacing-field);
-  padding: var(--spacing-panel);
-}
 .remote-status {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -410,11 +405,6 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
-.remote-access-panel > [data-slot="card-content"] {
-  display: flex;
-  flex-direction: column;
-  padding: var(--spacing-panel);
-}
 .remote-access-fields {
   order: 0;
   border: 0;
@@ -478,13 +468,6 @@
 .remote-network-recovery p {
   color: var(--remote-muted);
   font-size: var(--text-ui-sm);
-}
-
-.remote-relay-service > [data-slot="card-content"] {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-panel);
-  padding: var(--spacing-panel);
 }
 
 .remote-relay-service-heading {

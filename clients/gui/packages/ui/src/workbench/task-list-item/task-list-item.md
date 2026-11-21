@@ -43,6 +43,6 @@ exports: ["MemoTaskItem"]
 
 ## Worktree 身份
 
-`WT-IDENTITY-01`（WT-R04～06）：会话名称仍为侧栏主内容；尾部以一个紧凑 GitFork 标明 Worktree。不得为每个会话常驻第二行 UUID 分支或完整路径。正在准备时可以显示准备态，已绑定后才标为“在 Worktree 工作”，取消且未绑定不能留下成功标识。
+`WT-IDENTITY-01`（WT-R04～06）：会话名称仍为侧栏主内容；尾部以一个紧凑 GitFork 标明 Worktree。不得为每个会话常驻第二行 UUID 分支或完整路径。正在准备时可以显示准备态，已绑定后才标为“在 Worktree 工作”，取消且未绑定不能留下成功标识。**检查：**`clients/gui/packages/ui/src/workbench/task-list-item/task-list-item.test.tsx`
 
 标识使用可读名称 / tooltip，说明“Worktree”、当前状态与完整分支；目录在工作区详情可读。它与未读点、运行状态分别占位，不相互覆盖。颜色只辅助状态，减弱动效后仍能区分正在准备与已绑定。

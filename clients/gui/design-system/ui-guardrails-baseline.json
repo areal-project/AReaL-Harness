@@ -15,7 +15,7 @@
     }
   ],
   "total": {
-    "spacing-literal": 108,
+    "spacing-literal": 0,
     "host-ui-class": 2,
     "native-control": 16
   },
@@ -29,17 +29,11 @@
     "renderer/src/bots/BotMessages.tsx": {
       "native-control": 3
     },
-    "renderer/src/bots/BotPanels.layout.css": {
-      "spacing-literal": 48
-    },
     "renderer/src/bots/BotSettingsPane.tsx": {
       "native-control": 6
     },
     "renderer/src/bots/BotSidebar.tsx": {
       "native-control": 2
-    },
-    "renderer/src/bots/BotsWorkspace.layout.css": {
-      "spacing-literal": 60
     },
     "renderer/src/mobile/MobileDecision.tsx": {
       "native-control": 1

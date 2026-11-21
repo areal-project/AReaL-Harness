@@ -20,7 +20,7 @@
   color: var(--color-foreground-subtle);
 }
 .settings-dialog {
-  max-height: calc(100dvh - 64px);
+  max-height: calc(100dvh - var(--spacing-inline) * 8);
   overflow: auto;
 }
 .resource-settings > .settings-toolbar {

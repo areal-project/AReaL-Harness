@@ -91,3 +91,20 @@
   max-width: 1200px;
   gap: var(--spacing-panel);
 }
+
+.settings-group-card[data-layout="grid"] > .settings-group-content {
+  display: grid;
+  gap: var(--spacing-field);
+  padding: var(--spacing-panel);
+}
+.settings-group-card[data-layout="stack"] > .settings-group-content {
+  display: flex;
+  flex-direction: column;
+  padding: var(--spacing-panel);
+}
+.settings-group-card[data-layout="stack-gap"] > .settings-group-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-panel);
+  padding: var(--spacing-panel);
+}

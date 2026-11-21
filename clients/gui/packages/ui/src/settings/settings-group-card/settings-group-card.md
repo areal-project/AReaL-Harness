@@ -22,11 +22,11 @@ related: ["settings-section", "settings-row"]
 
 ## 可访问性
 
-`R-SETTINGSGROUPCARD-005` 卡片不新增角色或键盘焦点；实际字段必须具有可访问名称。不要把视觉分隔线当作唯一分组标识。
+`R-SETTINGSGROUPCARD-005` 卡片不新增角色或键盘焦点；实际字段必须具有可访问名称。不要把视觉分隔线当作唯一分组标识。**检查：**`clients/gui/packages/ui/src/settings/settings-group-card/settings-group-card.test.tsx`
 
 ## 规则
 
-`R-SETTINGSGROUPCARD-006` 导入settings.css；默认行最小48px，compact为40px。卡片不拥有字段值，也不能批量推断子控件禁用。
+`R-SETTINGSGROUPCARD-006` 导入settings.css；默认行最小48px，compact为40px。卡片不拥有字段值，也不能批量推断子控件禁用。**检查：**`clients/gui/packages/ui/src/settings/settings-group-card/settings-group-card.test.tsx`
 
 ## 示例
 

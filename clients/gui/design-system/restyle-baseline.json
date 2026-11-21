@@ -318,24 +318,6 @@
     "fingerprint": "77aa680030e0298d9f5f4e7fe6dc325d940035f6314c4d106579799652d29281"
   },
   {
-    "file": "renderer/src/settings/MobileSettings.css",
-    "kind": "css",
-    "snippet": ".remote-status-card > [data-slot=\"card-content\"] {",
-    "fingerprint": "d9fa99076d35bd8dd83a5e621e860b0f61e7181c317db2c8d5bc82ad534a2c4a"
-  },
-  {
-    "file": "renderer/src/settings/MobileSettings.css",
-    "kind": "css",
-    "snippet": ".remote-access-panel > [data-slot=\"card-content\"] {",
-    "fingerprint": "3be896624193337a83f214ed6f3ba0e0e6b55f1180473edc00b8e8201e19928b"
-  },
-  {
-    "file": "renderer/src/settings/MobileSettings.css",
-    "kind": "css",
-    "snippet": ".remote-relay-service > [data-slot=\"card-content\"] {",
-    "fingerprint": "b47d229992e7361cb1fb692f6ddd089ac5d29f53844fbe1a26e7ceab3c4bf03a"
-  },
-  {
     "file": "renderer/src/styles.css",
     "kind": "css",
     "snippet": ".areal-update-charge-progress [data-slot=\"progress-indicator\"] {",

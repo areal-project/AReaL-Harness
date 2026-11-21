@@ -27,7 +27,7 @@ Markdown表格、虚拟横向阅读及复制导出，沿现有生产用途。
 
 ## 行为
 
-`R-MARKDOWNTABLE-001` 横向滚动属于表格内部；隐藏的虚拟滑块也被轨道裁切，宽容器缩窄后不能撑宽页面。
+`R-MARKDOWNTABLE-001` 横向滚动属于表格内部；隐藏的虚拟滑块也被轨道裁切，宽容器缩窄后不能撑宽页面。**检查：**`clients/gui/packages/ui/src/conversation/markdown-table/markdown-table.test.ts`
 
 ## 内容
 

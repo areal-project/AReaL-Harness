@@ -94,7 +94,7 @@ pre {
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: var(--text-ui-sm, 12px);
+  font-size: var(--text-ui-sm);
   color: var(--color-foreground-subtle);
 }
 .startup-steps li[data-step-state="active"] {
@@ -106,7 +106,7 @@ pre {
   opacity: 0.7;
 }
 .startup-hint {
-  font-size: var(--text-ui-sm, 12px);
+  font-size: var(--text-ui-sm);
   opacity: 0.85;
 }
 .startup-content pre {

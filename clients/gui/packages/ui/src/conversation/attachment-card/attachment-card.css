@@ -5,9 +5,9 @@
 .composer-text-card {
   box-sizing: border-box;
   position: relative;
-  width: 96px;
-  height: 96px;
-  flex: 0 0 96px;
+  width: calc(var(--spacing-inline) * 12);
+  height: calc(var(--spacing-inline) * 12);
+  flex: 0 0 calc(var(--spacing-inline) * 12);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-attachment);
   background: var(--color-surface-elevated);
@@ -35,8 +35,8 @@
 .composer-text-icon {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: var(--spacing-control-sm);
+  height: var(--spacing-control-sm);
   flex-shrink: 0;
   border-radius: var(--radius-compact);
   background: var(--color-background);
@@ -60,17 +60,17 @@
   font-size: var(--text-fixed-label);
   color: var(--color-foreground-subtle);
   text-decoration: underline;
-  text-underline-offset: 3px;
+  text-underline-offset: calc(var(--spacing-inline) * 3 / 8);
   overflow-wrap: anywhere;
 }
 .composer-remove-attachment {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: calc(var(--spacing-inline) / 2);
+  right: calc(var(--spacing-inline) / 2);
   display: grid;
   place-items: center;
-  width: 17px;
-  height: 17px;
+  width: calc(var(--spacing-inline) * 17 / 8);
+  height: calc(var(--spacing-inline) * 17 / 8);
   border-radius: 50%;
   background: var(--color-foreground);
   color: var(--color-background);
@@ -89,9 +89,9 @@
 }
 .composer-attachment-item {
   display: flex;
-  flex: 0 0 96px;
+  flex: 0 0 calc(var(--spacing-inline) * 12);
   min-width: 0;
-  width: 96px;
+  width: calc(var(--spacing-inline) * 12);
   flex-direction: column;
   gap: calc(var(--spacing-inline) / 2);
   overflow-wrap: anywhere;

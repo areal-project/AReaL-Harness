@@ -308,6 +308,74 @@
       "styles": [],
       "internalSelectors": ["[data-slot=\"textarea\"]"],
       "enforces": []
+    },
+    {
+      "id": "card",
+      "contract": "clients/gui/packages/ui/src/components/card/card.md",
+      "styles": [],
+      "internalSelectors": [
+        "[data-slot=\"card\"]",
+        "[data-slot=\"card-header\"]",
+        "[data-slot=\"card-content\"]",
+        "[data-slot=\"card-footer\"]"
+      ],
+      "enforces": []
+    },
+    {
+      "id": "settings-group-card",
+      "contract": "clients/gui/packages/ui/src/settings/settings-group-card/settings-group-card.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "settings-dialog",
+      "contract": "clients/gui/packages/ui/src/settings/settings-dialog/settings-dialog.md",
+      "styles": ["clients/gui/packages/ui/src/settings/settings-dialog/settings-dialog.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "command-details",
+      "contract": "clients/gui/packages/ui/src/conversation/command-details/command-details.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/command-details/command-details.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "attachment-card",
+      "contract": "clients/gui/packages/ui/src/conversation/attachment-card/attachment-card.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/attachment-card/attachment-card.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "task-list-item",
+      "contract": "clients/gui/packages/ui/src/workbench/task-list-item/task-list-item.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "markdown-table",
+      "contract": "clients/gui/packages/ui/src/conversation/markdown-table/markdown-table.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "collapsible-text",
+      "contract": "clients/gui/packages/ui/src/conversation/collapsible-text/collapsible-text.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/collapsible-text/collapsible-text.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "composer-toolbar",
+      "contract": "clients/gui/packages/ui/src/conversation/composer-toolbar/composer-toolbar.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
     }
   ],
   "rules": [
