@@ -2172,6 +2172,10 @@ it("browser Host services apply explicit light/dark theme choices and react to s
       removeEventListener: (_event: string, listener: () => void) => listeners.delete(listener),
     }) as unknown as MediaQueryList) as typeof globalThis.matchMedia;
   const services = createHostReadServices(undefined, {
+    bootstrap: async () => {
+      throw new Error("unused");
+    },
+    origin: "http://127.0.0.1",
     transport: () => {
       throw new Error("unused");
     },

@@ -17,6 +17,24 @@ type Subagent = {
   timeLabel?: string;
   statusLabel?: string;
 };
+export type SubagentPanelLabels = {
+  panel?: string;
+  back?: string;
+  close?: string;
+  title?: string;
+  fallbackTitle?: string;
+  historyRegion?: string;
+  states?: Record<"running" | "completed" | "attention", string>;
+  sectionTitles?: Record<"running" | "completed" | "attention", string>;
+  sectionRegions?: Record<"running" | "completed" | "attention", string>;
+  emptyCompleted?: string;
+  emptyCompletedLoaded?: string;
+  emptyRunning?: string;
+  emptyRunningLoaded?: string;
+  collapseCompleted?: string;
+  showMoreCompleted?: (count: number) => string;
+};
+
 export type SubagentPanelProps = {
   open: boolean;
   agents: readonly Subagent[];
@@ -26,9 +44,16 @@ export type SubagentPanelProps = {
   onClose: () => void;
   /** Inside a reader pane: no divider, and the history child owns its own insets. */
   embedded?: boolean;
+  labels?: SubagentPanelLabels;
   children?: ReactNode;
 };
-const labels = { running: "运行中", completed: "已完成", attention: "需要确认" };
+const defaultStateLabels = { running: "运行中", completed: "已完成", attention: "需要确认" };
+const defaultSectionTitles = { running: "Active", completed: "Done", attention: "Needs attention" };
+const defaultSectionRegions = {
+  running: "运行中子任务",
+  completed: "已完成子任务",
+  attention: "需要确认子任务",
+};
 const icons = { running: CircleDotIcon, completed: CircleCheckIcon, attention: CircleAlertIcon };
 
 /** Host-owned selection and history; list expansion and focus are reading state. */
@@ -40,8 +65,12 @@ export function SubagentPanel({
   onSelect,
   onClose,
   embedded = false,
+  labels,
   children,
 }: SubagentPanelProps) {
+  const stateLabels = labels?.states ?? defaultStateLabels;
+  const sectionTitles = labels?.sectionTitles ?? defaultSectionTitles;
+  const sectionRegions = labels?.sectionRegions ?? defaultSectionRegions;
   const [expanded, setExpanded] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -62,7 +91,7 @@ export function SubagentPanel({
   return (
     <section
       className="areal-subagent-panel"
-      aria-label="子代理面板"
+      aria-label={labels?.panel ?? "子代理面板"}
       hidden={!open}
       data-embedded={embedded || undefined}
     >
@@ -71,7 +100,7 @@ export function SubagentPanel({
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="返回子代理列表"
+            aria-label={labels?.back ?? "返回子代理列表"}
             onClick={() => onSelect(undefined)}
           >
             <ArrowLeftIcon size={16} />
@@ -86,17 +115,22 @@ export function SubagentPanel({
               </TitleTooltip>
             </>
           ) : selectedId ? (
-            "子代理"
+            (labels?.fallbackTitle ?? "子代理")
           ) : (
-            "Subagents"
+            (labels?.title ?? "Subagents")
           )}
         </h2>
         {selected && (
           <span className="areal-subagent-state" data-state={selected.state}>
-            {selected.statusLabel ?? labels[selected.state]}
+            {selected.statusLabel ?? stateLabels[selected.state]}
           </span>
         )}
-        <Button variant="ghost" size="icon-sm" aria-label="关闭子代理面板" onClick={onClose}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={labels?.close ?? "关闭子代理面板"}
+          onClick={onClose}
+        >
           <XIcon size={16} />
         </Button>
       </header>
@@ -107,33 +141,19 @@ export function SubagentPanel({
           const visible = state === "completed" && !expanded ? items.slice(0, 10) : items;
           const StatusIcon = icons[state];
           return (
-            <section
-              key={state}
-              aria-label={
-                state === "running"
-                  ? "运行中子任务"
-                  : state === "completed"
-                    ? "已完成子任务"
-                    : "需要确认子任务"
-              }
-            >
+            <section key={state} aria-label={sectionRegions[state]}>
               <h3>
-                {state === "running"
-                  ? "Active"
-                  : state === "completed"
-                    ? "Done"
-                    : "Needs attention"}{" "}
-                · {items.length}
+                {sectionTitles[state]} · {items.length}
               </h3>
               {!items.length && (
                 <p className="areal-subagent-empty">
                   {state === "completed"
                     ? hasMore
-                      ? "已加载列表中没有已完成的子任务"
-                      : "还没有已完成的子任务"
+                      ? (labels?.emptyCompletedLoaded ?? "已加载列表中没有已完成的子任务")
+                      : (labels?.emptyCompleted ?? "还没有已完成的子任务")
                     : hasMore
-                      ? "已加载列表中没有运行中的子任务"
-                      : "没有运行中的子任务"}
+                      ? (labels?.emptyRunningLoaded ?? "已加载列表中没有运行中的子任务")
+                      : (labels?.emptyRunning ?? "没有运行中的子任务")}
                 </p>
               )}
               {visible.map((agent) => (
@@ -148,7 +168,7 @@ export function SubagentPanel({
                   <span className="areal-subagent-name">{agent.name}</span>
                   <span className="areal-subagent-state" data-state={state}>
                     <StatusIcon size={14} />
-                    {agent.statusLabel ?? labels[state]}
+                    {agent.statusLabel ?? stateLabels[state]}
                   </span>
                   {agent.timeLabel && <small>{agent.timeLabel}</small>}
                 </Button>
@@ -160,7 +180,11 @@ export function SubagentPanel({
                   className="areal-subagent-more"
                   onClick={() => setExpanded((value) => !value)}
                 >
-                  {expanded ? "收起已完成子任务" : `显示另外 ${items.length - 10} 个已完成子任务`}
+                  {expanded
+                    ? (labels?.collapseCompleted ?? "收起已完成子任务")
+                    : labels?.showMoreCompleted
+                      ? labels.showMoreCompleted(items.length - 10)
+                      : `显示另外 ${items.length - 10} 个已完成子任务`}
                 </Button>
               )}
             </section>
@@ -168,7 +192,11 @@ export function SubagentPanel({
         })}
       </div>
       {selectedId && (
-        <div className="areal-subagent-history" role="region" aria-label="子代理历史对话">
+        <div
+          className="areal-subagent-history"
+          role="region"
+          aria-label={labels?.historyRegion ?? "子代理历史对话"}
+        >
           {children}
         </div>
       )}

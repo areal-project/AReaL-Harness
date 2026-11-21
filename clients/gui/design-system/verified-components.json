@@ -26,6 +26,38 @@
       "styles": ["clients/gui/packages/ui/src/components/hover-actions/hover-actions.css"],
       "internalSelectors": [".areal-hover-actions"],
       "enforces": ["R-HOVERACTIONS-002", "R-HOVERACTIONS-003"]
+    },
+    {
+      "id": "disclosure",
+      "contract": "clients/gui/packages/ui/src/components/disclosure/disclosure.md",
+      "styles": ["clients/gui/packages/ui/src/components/disclosure/disclosure.css"],
+      "internalSelectors": [
+        ".areal-disclosure",
+        ".areal-disclosure-trigger",
+        ".areal-disclosure-panel",
+        ".areal-disclosure-indicator"
+      ],
+      "enforces": ["R-DISCLOSURE-006"]
+    },
+    {
+      "id": "notification-toast",
+      "contract": "clients/gui/packages/ui/src/components/notification-toast/notification-toast.md",
+      "styles": [
+        "clients/gui/packages/ui/src/components/notification-toast/notification-toast.css"
+      ],
+      "internalSelectors": [
+        ".areal-notification-toast",
+        ".areal-toast-icon",
+        ".areal-toast-actions"
+      ],
+      "enforces": ["R-NOTIFICATIONTOAST-002"]
+    },
+    {
+      "id": "dialog",
+      "contract": "clients/gui/packages/ui/src/components/dialog/dialog.md",
+      "styles": [],
+      "internalSelectors": ["[data-slot=\"dialog-overlay\"]", "[data-slot=\"dialog-content\"]"],
+      "enforces": ["R-DIALOG-002"]
     }
   ],
   "rules": [

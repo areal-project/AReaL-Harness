@@ -394,6 +394,30 @@ export function AgentsPane({
           open
           embedded
           hasMore={more}
+          labels={{
+            panel: t("chat.agents.panel"),
+            back: t("chat.agents.back"),
+            close: t("chat.agents.close"),
+            title: t("chat.agents.title"),
+            fallbackTitle: t("chat.agents.title"),
+            historyRegion: t("chat.agents.historyRegion"),
+            states: {
+              running: t("chat.agents.sectionActive"),
+              completed: t("chat.agents.sectionDone"),
+              attention: t("chat.agents.sectionAttention"),
+            },
+            sectionTitles: {
+              running: t("chat.agents.sectionActive"),
+              completed: t("chat.agents.sectionDone"),
+              attention: t("chat.agents.sectionAttention"),
+            },
+            emptyCompleted: t("chat.agents.emptyCompleted"),
+            emptyCompletedLoaded: t("chat.agents.emptyCompletedLoaded"),
+            emptyRunning: t("chat.agents.emptyRunning"),
+            emptyRunningLoaded: t("chat.agents.emptyRunningLoaded"),
+            collapseCompleted: t("chat.agents.collapseCompleted"),
+            showMoreCompleted: (count) => t("chat.agents.showMoreCompleted", { count }),
+          }}
           agents={children.map((child) => {
             const result = results[child.id];
             const status = connected && !readError ? result?.status : undefined;

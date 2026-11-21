@@ -1,33 +1,47 @@
 import { TitleTooltip } from "../../components/tooltip/tooltip.js";
 import { useState, type ReactNode } from "react";
+export type CommandDetailsLabels = {
+  expandCommand?: string;
+  collapseCommand?: string;
+  commandRegion?: string;
+  outputRegion?: string;
+  directoryPrefix?: string;
+};
+
 function CommandText({
   text,
   kind,
   placeholder,
   copy,
+  labels,
 }: {
   text: string;
-  kind: "命令" | "输出";
+  kind: "command" | "output";
   placeholder?: string;
   copy?: ReactNode;
+  labels?: CommandDetailsLabels;
 }) {
   const [expanded, setExpanded] = useState(false);
   return (
     <div className="command-text">
-      {kind === "命令" ? (
+      {kind === "command" ? (
         <button
           type="button"
           className="command-input-toggle"
-          aria-label={`${expanded ? "收起完整命令" : "展开完整命令"} $ ${text}`}
+          aria-label={`${expanded ? (labels?.collapseCommand ?? "收起完整命令") : (labels?.expandCommand ?? "展开完整命令")} $ ${text}`}
           aria-expanded={expanded}
           onClick={() => setExpanded(!expanded)}
         >
-          <pre className="command-input" aria-label="执行命令">
+          <pre className="command-input" aria-label={labels?.commandRegion ?? "执行命令"}>
             $ {text}
           </pre>
         </button>
       ) : (
-        <pre className="command-output" tabIndex={0} aria-label="工具结果">
+        <pre
+          className="command-output"
+          tabIndex={0}
+          aria-label={labels?.outputRegion ?? "工具结果"}
+        >
           {text || placeholder}
         </pre>
       )}
@@ -49,6 +63,7 @@ export function CommandDetails({
   metadata,
   notices,
   raw,
+  labels,
 }: {
   heading: string;
   status: string;
@@ -62,6 +77,7 @@ export function CommandDetails({
   metadata?: ReactNode;
   notices?: ReactNode;
   raw: ReactNode;
+  labels?: CommandDetailsLabels;
 }) {
   return (
     <div className="tool-event-body command-card">
@@ -74,11 +90,20 @@ export function CommandDetails({
       </div>
       {directory && (
         <TitleTooltip title={directory}>
-          <div className="command-directory">工作目录：{directory}</div>
+          <div className="command-directory">
+            {labels?.directoryPrefix ?? "工作目录："}
+            {directory}
+          </div>
         </TitleTooltip>
       )}
-      {command && <CommandText kind="命令" text={command} copy={commandCopy} />}
-      <CommandText kind="输出" text={output} placeholder={placeholder} copy={outputCopy} />
+      {command && <CommandText kind="command" text={command} copy={commandCopy} labels={labels} />}
+      <CommandText
+        kind="output"
+        text={output}
+        placeholder={placeholder}
+        copy={outputCopy}
+        labels={labels}
+      />
       {notices}
       {raw}
     </div>

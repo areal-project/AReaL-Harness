@@ -463,6 +463,10 @@ function AppContent({ services }: { services: PlatformServices }) {
       traverseWorkspaceHistory={traverseWorkspaceHistory}
     />
   );
+  const openModelSettings = () => {
+    setSettingsTab("模型服务");
+    setSettingsOpen(true);
+  };
   const settingsPage = (
     <WorkbenchSettings
       session={session}
@@ -509,10 +513,7 @@ function AppContent({ services }: { services: PlatformServices }) {
           ready={snapshot.connection?.state === "ready"}
           onAvailable={setUpgradeAvailable}
           openRequest={upgradeOpenRequest}
-          onModels={() => {
-            setSettingsTab("模型服务");
-            setSettingsOpen(true);
-          }}
+          onModels={openModelSettings}
         />
         <ToastHost />
         {snapshot.computerControl?.active === true && (
@@ -664,10 +665,7 @@ function AppContent({ services }: { services: PlatformServices }) {
                 sidebarWidth={sidebarWidth}
                 onSidebarWidthChange={setSidebarWidth}
                 active={botsOpen}
-                onOpenModelServices={() => {
-                  setSettingsTab("模型服务");
-                  setSettingsOpen(true);
-                }}
+                onOpenModelServices={openModelSettings}
               />
             ) : (
               <main

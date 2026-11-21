@@ -514,6 +514,34 @@ export const commonMessages = {
   "chat.agents.title": { "zh-CN": "子代理", en: "Subagents" },
   "chat.agents.region": { "zh-CN": "子代理", en: "Subagents" },
   "chat.agents.more": { "zh-CN": "加载更多子代理", en: "Load more subagents" },
+  "chat.agents.panel": { "zh-CN": "子代理面板", en: "Subagents panel" },
+  "chat.agents.back": { "zh-CN": "返回子代理列表", en: "Back to subagents list" },
+  "chat.agents.close": { "zh-CN": "关闭子代理面板", en: "Close subagents panel" },
+  "chat.agents.historyRegion": { "zh-CN": "子代理历史对话", en: "Subagent conversation history" },
+  "chat.agents.sectionActive": { "zh-CN": "运行中", en: "Active" },
+  "chat.agents.sectionDone": { "zh-CN": "已完成", en: "Done" },
+  "chat.agents.sectionAttention": { "zh-CN": "需要确认", en: "Needs attention" },
+  "chat.agents.emptyCompleted": {
+    "zh-CN": "还没有已完成的子任务",
+    en: "No completed subagents yet",
+  },
+  "chat.agents.emptyCompletedLoaded": {
+    "zh-CN": "已加载列表中没有已完成的子任务",
+    en: "No completed subagents in loaded list",
+  },
+  "chat.agents.emptyRunning": { "zh-CN": "没有运行中的子任务", en: "No running subagents" },
+  "chat.agents.emptyRunningLoaded": {
+    "zh-CN": "已加载列表中没有运行中的子任务",
+    en: "No running subagents in loaded list",
+  },
+  "chat.agents.collapseCompleted": {
+    "zh-CN": "收起已完成子任务",
+    en: "Collapse completed subagents",
+  },
+  "chat.agents.showMoreCompleted": {
+    "zh-CN": "显示另外 {count} 个已完成子任务",
+    en: "Show {count} more completed subagents",
+  },
   "chat.tool.images": { "zh-CN": "已查看 {count} 张图片", en: "Viewed {count} images" },
   "chat.tool.unconfirmed": { "zh-CN": "工具结果待确认", en: "Tool result unconfirmed" },
 

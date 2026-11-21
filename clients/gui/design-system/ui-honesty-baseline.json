@@ -146,12 +146,6 @@
   {
     "file": "renderer/src/i18n/messages/mobile.ts",
     "kind": "internal-term",
-    "snippet": "mobile.commandUnknown: 核对",
-    "fingerprint": "9427c4cbfedf546609392b289afdc4864ad7da2a967c16d67b02fcff063f4b5b"
-  },
-  {
-    "file": "renderer/src/i18n/messages/mobile.ts",
-    "kind": "internal-term",
     "snippet": "mobile.commandRecoveryFailed: 核对",
     "fingerprint": "3344de5bdf58bff90fd1abb128e02c5f3456a52b0312223ee1b292e30487b1a5"
   },
@@ -1102,12 +1096,6 @@
     "kind": "cjk-identifier",
     "snippet": "进程",
     "fingerprint": "7a0de0a8725ed145bdc5b1c1dd19e5d5467f6d9dd87d90b585bbb3427aaa31b5"
-  },
-  {
-    "file": "renderer/src/DraftComposer.tsx",
-    "kind": "cjk-identifier",
-    "snippet": "会话配置",
-    "fingerprint": "fd5169aa4b8cca3268efc131c8c3610f845c419f9dcaf086e70e8f176af83fed"
   },
   {
     "file": "renderer/src/DraftComposer.tsx",

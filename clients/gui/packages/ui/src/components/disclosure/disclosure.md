@@ -22,7 +22,11 @@ related: ["button", "activity-group", "image-disclosure"]
 
 ## 内容
 
-`R-DISCLOSURE-005` 标题回答展开后能读什么；重要异常或决定不能只藏在 Panel 中。基本外观由包内 CSS 负责。
+`R-DISCLOSURE-005` 标题回答展开后能读什么；重要异常或决定不能只藏在 Panel 中。基本外观由包内 CSS 负责。**检查：**`clients/gui/scripts/design-system-conversation-system.mjs`
+
+## 规则
+
+`R-DISCLOSURE-006` 尺寸与展开动效只引用 Token，宿主不覆盖 `.areal-disclosure`、`.areal-disclosure-trigger`、`.areal-disclosure-panel`、`.areal-disclosure-indicator` 内部样式。**为什么：**确保正文与活动折叠区的节奏和无障碍焦点在各页面保持一致。**推广：**需要不同展示形态时通过 props 或 Token 扩展。**检查：**`clients/gui/design-system/verified-components.json`
 
 ## 示例
 

@@ -155,7 +155,7 @@ export function BotsWorkspace({
               <Bot size={32} strokeWidth={1.5} />
             </div>
             <h2>{t("bots.title")}</h2>
-            <p>{t("bots.selectPrompt")}</p>
+            <p>{model.bots.length === 0 ? t("bots.emptyListHint") : t("bots.selectPrompt")}</p>
             <div className="bots-empty-actions">
               <Button onClick={() => setCreateOpen(true)} data-testid="bot-empty-create">
                 <Plus size={15} />
