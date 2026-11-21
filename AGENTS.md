@@ -18,7 +18,7 @@
 - 对照实际支持的入口验证行为，包括桌面、网页、CLI/TUI、移动端，以及适用的命令与快捷键、本机/中继/远程、多项目/设备、Agent 和定时任务。共享能力落在服务层，并提供可观察的状态和适用的撤销入口。
 - 前期 Beta 不支持降级。需要迁移时使用一次停机导入，长期只保留一套实现。按 `make check-transitional` 为 `legacy`、`compat` 命名和过渡开关标记“过渡：到 <版本> 删”，随旧实现删除其测试。
 - 职责或依赖变化查 [架构](docs/design/architecture.md) 与 [ADR 0017](docs/adr/0017-one-protocol-one-ui.md)。Host 或协议变化查 [Host API](docs/api/host.md) 与 [本地服务契约](docs/api/local-service.md)。工具、提示词、上下文、预算或调度行为改动查 [Agent 改进方法](docs/development/agent-improvement.md)。
-- Agent 改进根据公开任务和可复现失败修复共享边界。保持隔离、评分断言和重试策略，不按题号、答案、基准或隐藏评分器切换策略。
+- Agent 改进根据公开任务和可复现失败修复共享边界。保持评测隔离与隐藏评分断言，重试变更须显式、完整计量，并按 Agent 改进方法验证。不按题号、答案、基准或隐藏评分器切换策略。
 
 ## 验证与委派
 
