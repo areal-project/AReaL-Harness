@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button, DelayedVisible } from "@areal/ui";
 import { SettingsDisclosure } from "../settings/SettingsDisclosure.js";
-import { Dialog, DialogContent, DialogTitle } from "@areal/ui";
+import { Dialog, DialogTitle } from "@areal/ui";
+import { MobileButton, MobileSheetContent } from "@areal/ui/experimental";
 import { ConversationComposer } from "../ConversationComposer.js";
 import { RadioGroup } from "@base-ui/react/radio-group";
 import { Radio } from "@base-ui/react/radio";
@@ -207,7 +208,7 @@ export function MobileComposer({
         )}
       </p>
       <Button
-        className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
+        className="min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
         variant="outline"
         data-action="query-command"
         disabled={!connected || value.checkingReceipt}
@@ -220,7 +221,7 @@ export function MobileComposer({
         value.admissionState === "notFound" &&
         !value.detached && (
           <Button
-            className="mobile-touch min-h-[var(--size-touch-target)]"
+            className="min-h-[var(--size-touch-target)]"
             variant="ghost"
             disabled={!connected || value.checkingReceipt}
             onClick={() => void commands.startSeparateConversation(value)}
@@ -278,9 +279,9 @@ export function MobileComposer({
           modelConfig={config}
           onConfigureModel={() => {}}
           modelControl={
-            <Button
+            <MobileButton
+              kind="chip"
               variant="ghost"
-              className="mobile-composer-chip h-auto min-h-[var(--size-touch-target)] min-w-0 max-w-full py-[calc(var(--spacing-inline)/2)] px-inline gap-[calc(var(--spacing-inline)/2)] shrink [&_span]:min-w-0 [&_span]:truncate [&_svg]:size-[var(--activity-chevron-size)]! text-fixed-caption text-foreground-subtle"
               data-action="model-sheet"
               disabled={disabled || command.busy || blocked}
               onClick={(event) => choose("model", event.currentTarget)}
@@ -292,12 +293,12 @@ export function MobileComposer({
                   : ""}
               </span>
               <ChevronDown />
-            </Button>
+            </MobileButton>
           }
           leadingActions={
-            <Button
+            <MobileButton
+              kind="chip"
               variant="ghost"
-              className="mobile-composer-chip h-auto min-h-[var(--size-touch-target)] min-w-0 max-w-full py-[calc(var(--spacing-inline)/2)] px-inline gap-[calc(var(--spacing-inline)/2)] shrink [&_span]:min-w-0 [&_span]:truncate [&_svg]:size-[var(--activity-chevron-size)]! text-fixed-caption text-foreground-subtle"
               data-action="permission-sheet"
               aria-label={t("mobile.permissions")}
               disabled={disabled || command.busy || blocked}
@@ -305,7 +306,7 @@ export function MobileComposer({
             >
               {currentPermission === "ask" ? <AskPermissionIcon /> : <AutoPermissionIcon />}
               <span>{permissionLabel(currentPermission)}</span>
-            </Button>
+            </MobileButton>
           }
           workspacePath=""
           taskId={threadId || null}
@@ -334,8 +335,8 @@ export function MobileComposer({
           onCancel={running && canInterrupt ? () => void commands.stop() : undefined}
           submitControl={
             running && !draft.trim() ? (
-              <Button
-                className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] composer-primary-action [border-radius:var(--radius-pill)] composer-stop-action"
+              <MobileButton
+                kind="stop"
                 size="icon"
                 variant="secondary"
                 aria-label={t("mobile.stop")}
@@ -344,10 +345,10 @@ export function MobileComposer({
                 onClick={() => void commands.stop()}
               >
                 <StopIcon />
-              </Button>
+              </MobileButton>
             ) : (
-              <Button
-                className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] composer-primary-action [border-radius:var(--radius-pill)]"
+              <MobileButton
+                kind="primary"
                 size="icon"
                 aria-label={t(running ? "mobile.enqueue" : "mobile.send")}
                 data-testid="mobile-chat-send"
@@ -356,7 +357,7 @@ export function MobileComposer({
                 onClick={() => send(input.current?.getMarkdown() ?? draft)}
               >
                 <SendMessageIcon />
-              </Button>
+              </MobileButton>
             )
           }
         />
@@ -367,10 +368,9 @@ export function MobileComposer({
           if (!open) setSheet(null);
         }}
       >
-        <DialogContent
+        <MobileSheetContent
           placement="bottom"
           finalFocus={sheetTrigger}
-          className="mobile-model-sheet [&_h2]:[line-height:1.3] [&_h2]:font-semibold [&_h3]:[line-height:1.3] [&_h3]:font-semibold border-0 shadow-none"
           data-panel={panel}
           data-view={modelView}
           overlayClassName="mobile-sheet-overlay bg-dialog-backdrop supports-backdrop-filter:backdrop-blur-none"
@@ -389,13 +389,14 @@ export function MobileComposer({
                 <ChevronLeft />
               </Button>
             ) : (
-              <Button
+              <MobileButton
+                kind="sheet-cancel"
                 variant="ghost"
-                className="justify-self-start min-h-[var(--size-touch-target)] text-fixed-control"
+                className="justify-self-start"
                 onClick={() => setSheet(null)}
               >
                 {t("mobile.cancel")}
-              </Button>
+              </MobileButton>
             )}
             <DialogTitle>
               {panel === "permissions"
@@ -408,15 +409,16 @@ export function MobileComposer({
                       ? t("mobile.models")
                       : t("mobile.modelAdvanced")}
             </DialogTitle>
-            <Button
+            <MobileButton
+              kind="sheet-done"
               variant="ghost"
-              className="mobile-sheet-done justify-self-end h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] text-fixed-body font-semibold"
+              className="justify-self-end"
               data-action="model-done"
               disabled={command.busy || (running && !!Object.keys(sheet ?? {}).length)}
               onClick={() => void save()}
             >
               {t("mobile.done")}
-            </Button>
+            </MobileButton>
           </div>
           <div className="mobile-sheet-scroll overflow-y-auto min-h-0 flex flex-col gap-section">
             {panel === "model" && (
@@ -425,9 +427,9 @@ export function MobileComposer({
                   <p role="status">{t("mobile.modelsUpgrade")}</p>
                 )}
                 {modelView === "quick" && (
-                  <Button
+                  <MobileButton
+                    kind="summary"
                     variant="ghost"
-                    className="mobile-model-summary w-full h-auto min-h-[var(--size-touch-target)] gap-inline [&>span]:min-w-0 text-fixed-section-title! justify-center"
                     data-action="model-advanced"
                     onClick={() => setModelView("advanced")}
                   >
@@ -438,13 +440,13 @@ export function MobileComposer({
                         : t("chat.composer.serviceDefault")}
                     </span>
                     <ChevronRight />
-                  </Button>
+                  </MobileButton>
                 )}
                 {modelView === "advanced" && (
                   <div className="mobile-choice-group overflow-hidden rounded-[var(--radius-card)] bg-hover">
-                    <Button
+                    <MobileButton
+                      kind="setting-row"
                       variant="ghost"
-                      className="mobile-setting-row flex w-full h-auto min-h-[var(--size-touch-target)] p-field gap-inline justify-start [&_svg]:size-[var(--spacing-field)]! text-fixed-emphasis! [&:not(:last-child)]:border-b [&:not(:last-child)]:border-border"
                       data-action="model-list"
                       onClick={() => setModelView("models")}
                     >
@@ -453,12 +455,12 @@ export function MobileComposer({
                         {selectedModel?.displayName || modelName}
                       </span>
                       <ChevronDown />
-                    </Button>
+                    </MobileButton>
                     {selectedModel?.capabilities?.reasoning !== false &&
                       visibleEfforts.length > 0 && (
-                        <Button
+                        <MobileButton
+                          kind="setting-row"
                           variant="ghost"
-                          className="mobile-setting-row flex w-full h-auto min-h-[var(--size-touch-target)] p-field gap-inline justify-start [&_svg]:size-[var(--spacing-field)]! text-fixed-emphasis! [&:not(:last-child)]:border-b [&:not(:last-child)]:border-border"
                           data-action="effort-list"
                           onClick={() => setModelView("effort")}
                         >
@@ -469,7 +471,7 @@ export function MobileComposer({
                               : t("chat.composer.serviceDefault")}
                           </span>
                           <ChevronDown />
-                        </Button>
+                        </MobileButton>
                       )}
                   </div>
                 )}
@@ -642,7 +644,7 @@ export function MobileComposer({
               </Button>
             )}
           </div>
-        </DialogContent>
+        </MobileSheetContent>
       </Dialog>
     </>
   );

@@ -156,3 +156,4 @@ export { MarkdownSurface } from "./conversation/markdown-surface/markdown-surfac
 export { NativeContent } from "./conversation/native-content/native-content.js";
 export { QuestionCard } from "./conversation/question-card/question-card.js";
 export { ScheduledWorkspace } from "./workbench/scheduled-workspace/scheduled-workspace.js";
+export { MobileButton, MobileSheetContent } from "./workbench/mobile-button/mobile-button.js";

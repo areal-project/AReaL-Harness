@@ -9,6 +9,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { Button } from "@areal/ui";
+import { MobileButton } from "@areal/ui/experimental";
 import { ChevronLeft, ChevronRight, Settings, SquarePen } from "lucide-react";
 import { TooltipProvider } from "../components/ui/tooltip.js";
 import { Messages } from "../Messages.js";
@@ -210,7 +211,7 @@ export function MobileWorkspaceView({
               <Button
                 variant="ghost"
                 size="icon"
-                className="mobile-touch size-[var(--size-touch-target)]"
+                className="size-[var(--size-touch-target)]"
                 data-action="settings"
                 aria-label={t("mobile.settings")}
                 onClick={onSettings}
@@ -234,9 +235,10 @@ export function MobileWorkspaceView({
           </header>
         ) : (
           <header className="grid shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] items-center gap-inline">
-            <Button
+            <MobileButton
+              kind="inline"
               variant="ghost"
-              className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] max-w-full justify-self-start gap-0 px-0 text-fixed-control"
+              className="max-w-full justify-self-start"
               data-action="workspace-back"
               onClick={() => workspace.back()}
             >
@@ -248,7 +250,7 @@ export function MobileWorkspaceView({
                     : "mobile.sessions",
                 )}
               </span>
-            </Button>
+            </MobileButton>
             <div className="min-w-0 text-center">
               <h2 className="truncate text-fixed-emphasis">
                 {page.kind === "new" ? t("mobile.newConversation") : title}
@@ -261,7 +263,7 @@ export function MobileWorkspaceView({
             </div>
             {page.kind === "work" && (
               <Button
-                className="mobile-touch min-h-[var(--size-touch-target)] justify-self-end gap-inline"
+                className="min-h-[var(--size-touch-target)] justify-self-end gap-inline"
                 data-action="new-session"
                 disabled={
                   connection.kind !== "connected" ||
@@ -299,7 +301,7 @@ export function MobileWorkspaceView({
                     key={JSON.stringify([item.projectId, item.threadId])}
                     variant="outline"
                     disabled={connection.kind !== "connected"}
-                    className="min-h-[var(--size-touch-target)] justify-between gap-inline"
+                    className="min-h-[var(--size-touch-target)] gap-inline"
                     onClick={() =>
                       void workspace.navigate({
                         kind: "session",
@@ -309,7 +311,7 @@ export function MobileWorkspaceView({
                       })
                     }
                   >
-                    <span className="min-w-0 truncate">
+                    <span className="min-w-0 flex-1 truncate text-start">
                       {item.title ? `${item.projectName} · ${item.title}` : item.projectName}
                     </span>
                     <span>
@@ -328,9 +330,9 @@ export function MobileWorkspaceView({
             )}
             {projects.map((project) => {
               return (
-                <Button
+                <MobileButton
+                  kind="project-card"
                   key={project.projectId}
-                  className="mobile-project-card w-full gap-inline shadow-none h-auto whitespace-normal text-start justify-start p-field mobile-touch min-h-[var(--size-touch-target)] rounded-none! border-b border-border text-foreground"
                   variant="ghost"
                   data-project-id={project.projectId}
                   disabled={!view.projectsLoaded}
@@ -348,7 +350,7 @@ export function MobileWorkspaceView({
                     className="mobile-card-chevron size-[var(--spacing-field)]! text-foreground-subtle"
                     aria-hidden="true"
                   />
-                </Button>
+                </MobileButton>
               );
             })}
           </div>
@@ -361,9 +363,9 @@ export function MobileWorkspaceView({
                 <p>{t("mobile.noSessions")}</p>
               )}
               {(group?.data ?? []).map((row: Data) => (
-                <Button
+                <MobileButton
+                  kind="work-row"
                   variant="ghost"
-                  className="mobile-work-row w-full gap-inline shadow-none [border-radius:var(--radius-navigation)]! hover:bg-navigation-selected focus-visible:bg-navigation-selected active:bg-navigation-selected h-auto whitespace-normal text-start justify-start p-inline mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
                   key={row.kind === "taskRun" ? `${row.taskId}/${row.runId}` : row.threadId}
                   data-thread-id={row.threadId}
                   data-task-id={row.taskId}
@@ -396,13 +398,13 @@ export function MobileWorkspaceView({
                       <Time value={row.sourceUpdatedAt} />
                     </span>
                   </span>
-                </Button>
+                </MobileButton>
               ))}
             </div>
             {group?.nextCursor && (
               <Button
                 variant="ghost"
-                className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
+                className="min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
                 data-action="more-sessions"
                 disabled={view.loading}
                 onClick={() => void workspace.more()}
@@ -416,7 +418,7 @@ export function MobileWorkspaceView({
           <>
             {view.bodyError && (
               <Button
-                className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
+                className="min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
                 variant="ghost"
                 onClick={() => workspace.bodies.retry()}
               >
@@ -523,7 +525,7 @@ export function MobileWorkspaceView({
             <p>{t("mobile.taskReadOnly")}</p>
             {task.threadId && (
               <Button
-                className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
+                className="min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
                 onClick={() =>
                   workspace.navigate({
                     kind: "session",

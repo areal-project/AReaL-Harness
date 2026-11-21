@@ -515,6 +515,13 @@
       "styles": ["clients/gui/packages/ui/src/workbench/workbench-shell/workbench-shell.css"],
       "internalSelectors": [".areal-workbench"],
       "enforces": []
+    },
+    {
+      "id": "mobile-button",
+      "contract": "clients/gui/packages/ui/src/workbench/mobile-button/mobile-button.md",
+      "styles": ["clients/gui/packages/ui/src/workbench/mobile-surface/mobile-surface.css"],
+      "internalSelectors": [".mobile-sheet-content"],
+      "enforces": []
     }
   ],
   "rules": [

@@ -1,11 +1,32 @@
-/* 移动端底部面板与离线缓存卡片的共享外观，与布局规则分离。 */
+/* 移动端底部面板与离线缓存卡片：几何、外观与进出动效都归包内，页面只挂类名。 */
 .mobile-model-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: 90dvh;
+  padding: var(--spacing-inline) var(--spacing-field)
+    calc(env(safe-area-inset-bottom) + var(--spacing-field));
+  translate: 0 0;
+  scale: 1;
   border-radius: var(--radius-overlay) var(--radius-overlay) 0 0;
   transition: translate var(--motion-normal) var(--ease-standard);
+}
+.mobile-model-sheet :is(h2, h3) {
+  margin: 0;
+}
+.mobile-model-sheet[data-panel="model"][data-view="advanced"],
+.mobile-model-sheet[data-panel="permissions"] {
+  min-height: 52dvh;
+}
+.mobile-sheet-content :is(h2, h3) {
+  line-height: 1.3;
+  font-weight: 600;
 }
 .mobile-model-sheet[data-starting-style],
 .mobile-model-sheet[data-ending-style] {
   opacity: 1;
+  scale: 1;
+  translate: 0 100%;
 }
 .mobile-session .turn-thinking {
   animation: none;

@@ -3,7 +3,7 @@ import { applyShellDelta, readShell } from "@areal/client";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button, Input } from "@areal/ui";
 import { FolderGit2, Monitor, Settings } from "lucide-react";
-import { FeedbackNotice } from "@areal/ui/experimental";
+import { FeedbackNotice, MobileButton } from "@areal/ui/experimental";
 import { applyThemeWithoutTransitions } from "@areal/ui/theme";
 import { SettingsGroupCard, SettingsRow } from "@areal/ui/compositions";
 import { ApplicationIntlProvider, useI18n, type MessageId } from "../i18n/IntlProvider.js";
@@ -377,8 +377,9 @@ function MobileApp() {
             )}
           </div>
           {pairedHostId && !settings && state.kind !== "revoked" && (
-            <Button
-              className="mobile-touch min-h-[var(--size-touch-target)] gap-1.5 px-2.5"
+            <MobileButton
+              kind="touch"
+              className="gap-1.5"
               variant="outline"
               size="sm"
               data-action="projects-cache"
@@ -389,7 +390,7 @@ function MobileApp() {
                 {t("mobile.cache.button")}
                 {authorizedProjects.length ? ` (${authorizedProjects.length})` : ""}
               </span>
-            </Button>
+            </MobileButton>
           )}
           {state.kind !== "unpaired" && state.kind !== "pairing" && (
             <Button
@@ -423,13 +424,13 @@ function MobileApp() {
             />
           </label>
           <Button
-            className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
+            className="min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
             onClick={() => void scan()}
           >
             {t("mobile.scan")}
           </Button>
           <Button
-            className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
+            className="min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
             variant="outline"
             data-action="paste"
             onClick={() => setPaste(!paste)}
@@ -458,7 +459,7 @@ function MobileApp() {
                 />
               </label>
               <Button
-                className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
+                className="min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
                 data-action="pair"
                 type="submit"
                 disabled={!link.trim()}
@@ -480,7 +481,7 @@ function MobileApp() {
           </code>
           <p>{t("mobile.access")}</p>
           <Button
-            className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
+            className="min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
             variant="outline"
             onClick={() => {
               client.disconnect();
@@ -528,18 +529,10 @@ function MobileApp() {
                   <FeedbackNotice tone={endpointNotice.tone} message={t(endpointNotice.id)} />
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    className="mobile-touch"
-                    onClick={() => void scanEndpoint()}
-                  >
+                  <Button variant="outline" onClick={() => void scanEndpoint()}>
                     {t("mobile.endpoint.scan")}
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="mobile-touch"
-                    onClick={() => setEndpointPaste(!endpointPaste)}
-                  >
+                  <Button variant="outline" onClick={() => setEndpointPaste(!endpointPaste)}>
                     {t("mobile.endpoint.paste")}
                   </Button>
                 </div>
@@ -568,7 +561,7 @@ function MobileApp() {
             </SettingsGroupCard>
           )}
           <Button
-            className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
+            className="min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
             variant="outline"
             data-action="clear"
             onClick={() => setClearConfirm(true)}
@@ -582,7 +575,7 @@ function MobileApp() {
               actions={
                 <>
                   <Button
-                    className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
+                    className="min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
                     variant="destructive"
                     data-action="confirm-clear"
                     onClick={() => void clear()}
@@ -590,7 +583,7 @@ function MobileApp() {
                     {t("mobile.clear")}
                   </Button>
                   <Button
-                    className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
+                    className="min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
                     variant="ghost"
                     onClick={() => setClearConfirm(false)}
                   >
@@ -657,7 +650,7 @@ function MobileApp() {
               </p>
               {["offline", "blocked"].includes(state.kind) && (
                 <Button
-                  className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
+                  className="min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]"
                   onClick={() => void client.setActive(true)}
                 >
                   {t("mobile.retry")}

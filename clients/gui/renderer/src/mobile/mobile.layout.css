@@ -32,30 +32,8 @@ body,
 }
 .mobile-page h1,
 .mobile-page h2,
-.mobile-page h3,
-.mobile-model-sheet h2,
-.mobile-model-sheet h3 {
+.mobile-page h3 {
   margin: 0;
-}
-/* 底部面板沿纵轴进出，并保留 Home 指示条安全区。 */
-.mobile-model-sheet {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  max-height: 90dvh;
-  padding: var(--spacing-inline) var(--spacing-field)
-    calc(env(safe-area-inset-bottom) + var(--spacing-field));
-  translate: 0 0;
-  scale: 1;
-}
-.mobile-model-sheet[data-starting-style],
-.mobile-model-sheet[data-ending-style] {
-  scale: 1;
-  translate: 0 100%;
-}
-.mobile-model-sheet[data-panel="model"][data-view="advanced"],
-.mobile-model-sheet[data-panel="permissions"] {
-  min-height: 52dvh;
 }
 .mobile-cache-sheet {
   gap: var(--spacing-inline);

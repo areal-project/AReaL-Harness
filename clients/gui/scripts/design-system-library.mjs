@@ -40,6 +40,7 @@ export async function runUiLibrary(page, scratch, checks) {
       ["MarkdownTable", "experimental", "experimental", "conversation"],
       ["Attachments", "experimental", "experimental", "conversation"],
       ["MessageCodeBlock", "experimental", "experimental", "conversation"],
+      ["MobileButton", "experimental", "experimental", "workbench"],
       ["NativeContent", "experimental", "experimental", "conversation"],
       ["NotificationToast", "experimental", "experimental", "core"],
       ["Popover", "stable", "index", "core"],

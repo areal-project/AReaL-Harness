@@ -7,7 +7,7 @@ import {
   SelectValue,
   Textarea,
 } from "@areal/ui";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "./components/ui/button.js";
 import type { RegionDraft } from "./BrowserRegionAnnotation.js";
 import "./BrowserStyleTrial.css";
@@ -61,6 +61,7 @@ export function BrowserStyleTrial({
   const [property, setProperty] = useState<string>("color");
   const [value, setValue] = useState("");
   const field = useRef<HTMLButtonElement>(null);
+  const propertyId = useId();
   const focused = useRef(false);
   useLayoutEffect(() => {
     if (!busy && !focused.current && field.current) {
@@ -98,7 +99,7 @@ export function BrowserStyleTrial({
       )}
       {!draft.after && (
         <div className="browser-style-trial-fields">
-          <label>
+          <label htmlFor={propertyId}>
             属性
             <Select
               value={property}
@@ -107,7 +108,7 @@ export function BrowserStyleTrial({
                 if (next) setProperty(next);
               }}
             >
-              <SelectTrigger ref={field} aria-label="属性">
+              <SelectTrigger ref={field} id={propertyId}>
                 <SelectValue>
                   {choices.find(([key]) => key === property)?.[1] ?? property}
                 </SelectValue>

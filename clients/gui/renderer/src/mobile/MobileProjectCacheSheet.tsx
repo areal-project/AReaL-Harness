@@ -254,12 +254,7 @@ export function OfflineCachedWorkspace({
       ) : threadId ? (
         <div className="flex min-h-0 flex-1 flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
-            <Button
-              size="sm"
-              variant="ghost"
-              className="mobile-touch"
-              onClick={() => setThreadId("")}
-            >
+            <Button size="sm" variant="ghost" onClick={() => setThreadId("")}>
               {t("mobile.cache.backToThreads")}
             </Button>
             <span className="truncate text-fixed-caption text-foreground-subtle">
@@ -353,7 +348,7 @@ export function OfflineCachedWorkspace({
               {summaries.length > visibleCount && (
                 <Button
                   variant="ghost"
-                  className="mobile-touch min-h-[var(--size-touch-target)]"
+                  className="min-h-[var(--size-touch-target)]"
                   data-action="more-sessions"
                   onClick={() => setVisibleCount((count) => count + SESSION_PAGE_SIZE)}
                 >
