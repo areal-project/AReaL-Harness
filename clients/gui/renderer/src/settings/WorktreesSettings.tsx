@@ -560,7 +560,7 @@ export function WorktreesSettings({
       ) : tab === "general" ? (
         <>
           <SettingsSection title={t("worktree.settings.creationAndCleanup")}>
-            <SettingsGroupCard className="worktrees-general-group">
+            <SettingsGroupCard>
               <SettingsRow
                 label={t("worktree.root")}
                 description={t("worktree.settings.rootDescription")}
@@ -831,21 +831,23 @@ export function WorktreesSettings({
         </>
       ) : (
         <>
-          <SettingsGroupCard className="worktrees-name-group">
-            <label>
-              {t("worktree.environmentName")}
-              <Input
-                aria-label={t("worktree.environmentName")}
-                disabled={busy}
-                value={editor.draft.name}
-                onChange={(event) =>
-                  updateEditor((value) => ({
-                    ...value,
-                    draft: { ...value.draft, name: event.target.value },
-                  }))
-                }
-              />
-            </label>
+          <SettingsGroupCard>
+            <div className="worktrees-name-group">
+              <label>
+                {t("worktree.environmentName")}
+                <Input
+                  aria-label={t("worktree.environmentName")}
+                  disabled={busy}
+                  value={editor.draft.name}
+                  onChange={(event) =>
+                    updateEditor((value) => ({
+                      ...value,
+                      draft: { ...value.draft, name: event.target.value },
+                    }))
+                  }
+                />
+              </label>
+            </div>
           </SettingsGroupCard>
           <ScriptField
             label={t("worktree.setupScript")}

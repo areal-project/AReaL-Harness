@@ -13,6 +13,8 @@ const inputVariants = cva(
         default:
           "h-control rounded-control px-2 py-0.5 text-ui-base md:text-ui-base/relaxed file:h-control-sm file:text-ui-base/relaxed",
         lg: "h-control-lg rounded-overlay px-3 py-1.5 text-ui-base file:h-control-sm file:text-ui-base",
+        touch:
+          "min-h-(--size-touch-target) min-w-(--size-touch-target) rounded-control px-2 py-0.5 text-mobile-input-safe md:text-mobile-input-safe",
       },
     },
     defaultVariants: {

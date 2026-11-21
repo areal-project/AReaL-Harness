@@ -228,431 +228,435 @@ export function MobileAdvancedNetwork({
               }
             />
           </SettingsGroupCard>
-          <SettingsGroupCard className="remote-access-panel" layout="stack">
-            <SettingsDisclosure
-              className="remote-connection-details"
-              title={<> {t("settings.mobileSettings.connectionDetailsAndDiagnostics")}</>}
-            >
-              <p>{t("settings.mobileSettings.phonesUsingServeMustJoinTheSame")}</p>
-              <p>{t("settings.mobileSettings.ifTheHostIsOfflineCheckThe")}</p>
-              <Button
-                variant="outline"
-                disabled={busy}
-                onClick={() => void run({ operation: "networkInspect" })}
+          <div className="remote-access-panel">
+            <SettingsGroupCard layout="stack">
+              <SettingsDisclosure
+                className="remote-connection-details"
+                title={<> {t("settings.mobileSettings.connectionDetailsAndDiagnostics")}</>}
               >
-                {t("settings.mobileSettings.checkNetworkTools")}
-              </Button>
-              {state.network?.inspection && (
-                <div role="status">
+                <p>{t("settings.mobileSettings.phonesUsingServeMustJoinTheSame")}</p>
+                <p>{t("settings.mobileSettings.ifTheHostIsOfflineCheckThe")}</p>
+                <Button
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => void run({ operation: "networkInspect" })}
+                >
+                  {t("settings.mobileSettings.checkNetworkTools")}
+                </Button>
+                {state.network?.inspection && (
+                  <div role="status">
+                    <p>
+                      {t("settings.mobileSettings.tailscaleVersionValue", {
+                        version:
+                          state.network.inspection.version ?? t("settings.mobileSettings.unknown"),
+                      })}
+                    </p>
+                    {state.network.inspection.diagnostic && (
+                      <p>{networkDiagnostic(t, state.network.inspection.diagnostic)}</p>
+                    )}
+                    {state.network.inspection.login && (
+                      <p>
+                        {t(
+                          networkLoginDiagnostics[state.network.inspection.login] ??
+                            networkLoginDiagnostics.unknown,
+                        )}
+                      </p>
+                    )}
+                    {state.network.inspection.https && (
+                      <p>
+                        {state.network.inspection.https === "enabled"
+                          ? t("settings.mobileSettings.hostHTTPSSupportIsEnabledThePhone")
+                          : networkDiagnostic(
+                              t,
+                              state.network.inspection.https === "disabled"
+                                ? "https-disabled"
+                                : "https-unknown",
+                            )}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </SettingsDisclosure>
+              {state.network?.diagnostic && (
+                <p className="remote-error" role="alert">
+                  {networkDiagnostic(t, state.network.diagnostic)}
+                </p>
+              )}
+              <fieldset
+                disabled={busy}
+                hidden={accessMethod !== "private"}
+                className="remote-access-fields"
+              >
+                <legend>{t("settings.mobileSettings.tailscaleServePrivateNetwork")}</legend>
+                <p className="remote-muted">
+                  {t("settings.mobileSettings.yourPhoneAndComputerMustJoinThe")}
+                </p>
+                <label>
+                  {t("settings.mobileSettings.httpsPort")}
+                  <Input
+                    aria-label={t("settings.mobileSettings.serveHTTPSPort")}
+                    type="number"
+                    min={1}
+                    max={65535}
+                    value={httpsPort}
+                    onChange={(event) => {
+                      setHttpsPort(event.target.value);
+                      setProposal(null);
+                      setServeConfirmed(false);
+                    }}
+                  />
+                </label>
+                <Button
+                  disabled={busy || !state.directEnabled}
+                  onClick={() =>
+                    void run({
+                      operation: "networkPropose",
+                      httpsPort: Number(httpsPort),
+                    })
+                  }
+                >
+                  {t("settings.mobileSettings.generateServePlan")}
+                </Button>
+                {proposal && !proposal.scope && (
+                  <div>
+                    <p>{proposal.confirmation}</p>
+                    <p>
+                      {t("settings.mobileSettings.entryAddress", { origin: proposal.publicOrigin })}
+                    </p>
+                    <label>
+                      <Input
+                        unstyled
+                        data-slot={undefined}
+                        type="checkbox"
+                        checked={serveConfirmed}
+                        onChange={(event) => setServeConfirmed(event.target.checked)}
+                      />
+                      {t("settings.mobileSettings.iConfirmThisPlanMayChangeThe")}
+                    </label>
+                    <Button
+                      disabled={busy || !serveConfirmed}
+                      onClick={() =>
+                        void run({
+                          operation: "networkApply",
+                          proposalId: proposal.proposalId,
+                          confirmed: true,
+                        })
+                      }
+                    >
+                      {t("settings.mobileSettings.confirmAndApplyServe")}
+                    </Button>
+                  </div>
+                )}
+                {!proposal && (
+                  <p>{t("settings.mobileSettings.generateAPlanThenConfirmItBefore")}</p>
+                )}
+              </fieldset>
+              <fieldset
+                disabled={busy}
+                hidden={accessMethod !== "public"}
+                className="remote-access-fields"
+              >
+                <legend>{t("settings.mobileSettings.tailscaleFunnelPublicInternet")}</legend>
+                <p className="remote-muted">
+                  {t("settings.mobileSettings.publishTheRemoteEntryPairingAndOperations")}
+                </p>
+                {state.network?.scope !== "private" && state.network?.scope !== "public" && (
+                  <p className="remote-muted">
+                    {t("settings.mobileSettings.configureServeOnThePrivateNetworkBefore")}
+                  </p>
+                )}
+                <SettingsDisclosure title={<> {t("settings.mobileSettings.aboutPublicAccess")}</>}>
+                  <p>{t("settings.mobileSettings.theEntryStaysPrivateByDefaultFunnel")}</p>
                   <p>
-                    {t("settings.mobileSettings.tailscaleVersionValue", {
-                      version:
-                        state.network.inspection.version ?? t("settings.mobileSettings.unknown"),
+                    {t("settings.mobileSettings.savedScopeValue", {
+                      scope:
+                        state.network?.scope === "public"
+                          ? t("settings.mobileSettings.publicInternet")
+                          : state.network?.scope === "private"
+                            ? t("settings.mobileSettings.private")
+                            : t("settings.mobileSettings.needsVerification"),
                     })}
                   </p>
-                  {state.network.inspection.diagnostic && (
-                    <p>{networkDiagnostic(t, state.network.inspection.diagnostic)}</p>
-                  )}
-                  {state.network.inspection.login && (
+                  {state.network?.inspection && (
                     <p>
-                      {t(
-                        networkLoginDiagnostics[state.network.inspection.login] ??
-                          networkLoginDiagnostics.unknown,
-                      )}
+                      {t("settings.mobileSettings.funnelPorts", {
+                        ports:
+                          state.network.inspection.funnelPorts == null
+                            ? t("settings.mobileSettings.unknown")
+                            : state.network.inspection.funnelPorts.length
+                              ? intl.formatList(state.network.inspection.funnelPorts.map(String), {
+                                  type: "conjunction",
+                                })
+                              : t("settings.mobileSettings.none"),
+                      })}
                     </p>
                   )}
-                  {state.network.inspection.https && (
+                  {state.network?.reconciliation && (
                     <p>
-                      {state.network.inspection.https === "enabled"
-                        ? t("settings.mobileSettings.hostHTTPSSupportIsEnabledThePhone")
-                        : networkDiagnostic(
-                            t,
-                            state.network.inspection.https === "disabled"
-                              ? "https-disabled"
-                              : "https-unknown",
-                          )}
+                      {t("settings.mobileSettings.reconciliationReview", {
+                        status:
+                          {
+                            destination: t("settings.mobileSettings.theTargetScopeIsStillPresent"),
+                            source: t("settings.mobileSettings.theOriginalScopeIsStillPresent"),
+                            absent: t("settings.mobileSettings.theMappingNoLongerExists"),
+                            changed: t("settings.mobileSettings.theMappingWasChangedExternally"),
+                          }[state.network.reconciliation as string] ??
+                          t("settings.mobileSettings.unknown"),
+                      })}
                     </p>
                   )}
-                </div>
-              )}
-            </SettingsDisclosure>
-            {state.network?.diagnostic && (
-              <p className="remote-error" role="alert">
-                {networkDiagnostic(t, state.network.diagnostic)}
-              </p>
-            )}
-            <fieldset
-              disabled={busy}
-              hidden={accessMethod !== "private"}
-              className="remote-access-fields"
-            >
-              <legend>{t("settings.mobileSettings.tailscaleServePrivateNetwork")}</legend>
-              <p className="remote-muted">
-                {t("settings.mobileSettings.yourPhoneAndComputerMustJoinThe")}
-              </p>
-              <label>
-                {t("settings.mobileSettings.httpsPort")}
-                <Input
-                  aria-label={t("settings.mobileSettings.serveHTTPSPort")}
-                  type="number"
-                  min={1}
-                  max={65535}
-                  value={httpsPort}
-                  onChange={(event) => {
-                    setHttpsPort(event.target.value);
-                    setProposal(null);
-                    setServeConfirmed(false);
-                  }}
-                />
-              </label>
-              <Button
-                disabled={busy || !state.directEnabled}
-                onClick={() =>
-                  void run({
-                    operation: "networkPropose",
-                    httpsPort: Number(httpsPort),
-                  })
-                }
-              >
-                {t("settings.mobileSettings.generateServePlan")}
-              </Button>
-              {proposal && !proposal.scope && (
-                <div>
-                  <p>{proposal.confirmation}</p>
-                  <p>
-                    {t("settings.mobileSettings.entryAddress", { origin: proposal.publicOrigin })}
-                  </p>
-                  <label>
-                    <Input
-                      unstyled
-                      data-slot={undefined}
-                      type="checkbox"
-                      checked={serveConfirmed}
-                      onChange={(event) => setServeConfirmed(event.target.checked)}
-                    />
-                    {t("settings.mobileSettings.iConfirmThisPlanMayChangeThe")}
-                  </label>
+                </SettingsDisclosure>
+                <div className="flex flex-wrap gap-2">
                   <Button
-                    disabled={busy || !serveConfirmed}
+                    disabled={
+                      busy ||
+                      !state.directEnabled ||
+                      state.network?.kind !== "tailscale" ||
+                      state.network?.scope !== "private"
+                    }
                     onClick={() =>
                       void run({
-                        operation: "networkApply",
-                        proposalId: proposal.proposalId,
-                        confirmed: true,
+                        operation: "networkProposeScope",
+                        scope: "public",
                       })
                     }
                   >
-                    {t("settings.mobileSettings.confirmAndApplyServe")}
+                    {t("settings.mobileSettings.generatePublicFunnelPlan")}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={
+                      busy ||
+                      !state.directEnabled ||
+                      state.network?.kind !== "tailscale" ||
+                      state.network?.scope !== "public"
+                    }
+                    onClick={() =>
+                      void run({
+                        operation: "networkProposeScope",
+                        scope: "private",
+                      })
+                    }
+                  >
+                    {t("settings.mobileSettings.generatePlanToRestorePrivateEntry")}
                   </Button>
                 </div>
-              )}
-              {!proposal && <p>{t("settings.mobileSettings.generateAPlanThenConfirmItBefore")}</p>}
-            </fieldset>
-            <fieldset
-              disabled={busy}
-              hidden={accessMethod !== "public"}
-              className="remote-access-fields"
-            >
-              <legend>{t("settings.mobileSettings.tailscaleFunnelPublicInternet")}</legend>
-              <p className="remote-muted">
-                {t("settings.mobileSettings.publishTheRemoteEntryPairingAndOperations")}
-              </p>
-              {state.network?.scope !== "private" && state.network?.scope !== "public" && (
-                <p className="remote-muted">
-                  {t("settings.mobileSettings.configureServeOnThePrivateNetworkBefore")}
-                </p>
-              )}
-              <SettingsDisclosure title={<> {t("settings.mobileSettings.aboutPublicAccess")}</>}>
-                <p>{t("settings.mobileSettings.theEntryStaysPrivateByDefaultFunnel")}</p>
-                <p>
-                  {t("settings.mobileSettings.savedScopeValue", {
-                    scope:
-                      state.network?.scope === "public"
-                        ? t("settings.mobileSettings.publicInternet")
-                        : state.network?.scope === "private"
-                          ? t("settings.mobileSettings.private")
-                          : t("settings.mobileSettings.needsVerification"),
-                  })}
-                </p>
-                {state.network?.inspection && (
-                  <p>
-                    {t("settings.mobileSettings.funnelPorts", {
-                      ports:
-                        state.network.inspection.funnelPorts == null
-                          ? t("settings.mobileSettings.unknown")
-                          : state.network.inspection.funnelPorts.length
-                            ? intl.formatList(state.network.inspection.funnelPorts.map(String), {
-                                type: "conjunction",
-                              })
-                            : t("settings.mobileSettings.none"),
-                    })}
-                  </p>
-                )}
-                {state.network?.reconciliation && (
-                  <p>
-                    {t("settings.mobileSettings.reconciliationReview", {
-                      status:
-                        {
-                          destination: t("settings.mobileSettings.theTargetScopeIsStillPresent"),
-                          source: t("settings.mobileSettings.theOriginalScopeIsStillPresent"),
-                          absent: t("settings.mobileSettings.theMappingNoLongerExists"),
-                          changed: t("settings.mobileSettings.theMappingWasChangedExternally"),
-                        }[state.network.reconciliation as string] ??
-                        t("settings.mobileSettings.unknown"),
-                    })}
-                  </p>
-                )}
-              </SettingsDisclosure>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  disabled={
-                    busy ||
-                    !state.directEnabled ||
-                    state.network?.kind !== "tailscale" ||
-                    state.network?.scope !== "private"
-                  }
-                  onClick={() =>
-                    void run({
-                      operation: "networkProposeScope",
-                      scope: "public",
-                    })
-                  }
-                >
-                  {t("settings.mobileSettings.generatePublicFunnelPlan")}
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={
-                    busy ||
-                    !state.directEnabled ||
-                    state.network?.kind !== "tailscale" ||
-                    state.network?.scope !== "public"
-                  }
-                  onClick={() =>
-                    void run({
-                      operation: "networkProposeScope",
-                      scope: "private",
-                    })
-                  }
-                >
-                  {t("settings.mobileSettings.generatePlanToRestorePrivateEntry")}
-                </Button>
-              </div>
-              {proposal?.scope && (
-                <div>
-                  <p>{proposal.confirmation}</p>
-                  <p>
-                    {t(
-                      "settings.mobileSettings.changingScopeInvalidatesCurrentInvitationsAndConnections",
-                    )}
-                  </p>
-                  <p>
-                    {t("settings.mobileSettings.scopeEntryPlan", {
-                      origin: proposal.publicOrigin,
-                      source:
-                        proposal.sourceScope === "private"
-                          ? t("settings.mobileSettings.private")
-                          : t("settings.mobileSettings.publicInternet"),
-                      destination:
-                        proposal.scope === "public"
-                          ? t("settings.mobileSettings.publicInternet")
-                          : t("settings.mobileSettings.private"),
-                    })}
-                  </p>
-                  <label className="block">
-                    <Input
-                      unstyled
-                      data-slot={undefined}
-                      type="checkbox"
-                      checked={scopeConfirmed}
-                      onChange={(event) => setScopeConfirmed(event.target.checked)}
-                    />
-                    {t("settings.mobileSettings.iConfirmThisPlanMayChangeThe2")}
-                  </label>
-                  {proposal.scope === "public" && (
+                {proposal?.scope && (
+                  <div>
+                    <p>{proposal.confirmation}</p>
+                    <p>
+                      {t(
+                        "settings.mobileSettings.changingScopeInvalidatesCurrentInvitationsAndConnections",
+                      )}
+                    </p>
+                    <p>
+                      {t("settings.mobileSettings.scopeEntryPlan", {
+                        origin: proposal.publicOrigin,
+                        source:
+                          proposal.sourceScope === "private"
+                            ? t("settings.mobileSettings.private")
+                            : t("settings.mobileSettings.publicInternet"),
+                        destination:
+                          proposal.scope === "public"
+                            ? t("settings.mobileSettings.publicInternet")
+                            : t("settings.mobileSettings.private"),
+                      })}
+                    </p>
                     <label className="block">
                       <Input
                         unstyled
                         data-slot={undefined}
                         type="checkbox"
-                        checked={funnelConfirmed}
-                        onChange={(event) => setFunnelConfirmed(event.target.checked)}
+                        checked={scopeConfirmed}
+                        onChange={(event) => setScopeConfirmed(event.target.checked)}
                       />
-                      {t("settings.mobileSettings.iConfirmAgainThatThisRemoteEntry")}
+                      {t("settings.mobileSettings.iConfirmThisPlanMayChangeThe2")}
                     </label>
-                  )}
-                  <Button
-                    disabled={
-                      busy || !scopeConfirmed || (proposal.scope === "public" && !funnelConfirmed)
-                    }
-                    onClick={() =>
-                      void run({
-                        operation: "networkChangeScope",
-                        proposalId: proposal.proposalId,
-                        confirmed: true,
-                        publicConfirmed: funnelConfirmed,
-                      })
-                    }
-                  >
-                    {t("settings.mobileSettings.confirmAccessScopeChange")}
-                  </Button>
-                </div>
-              )}
-            </fieldset>
-            <fieldset
-              disabled={busy}
-              hidden={accessMethod !== "organization"}
-              className="remote-access-fields"
-            >
-              <legend>{t("settings.mobileSettings.organizationHTTPS")}</legend>
-              <p className="remote-muted">
-                {t("settings.mobileSettings.useAnHTTPSEntryConfiguredByYour")}
-              </p>
-              <label>
-                {t("settings.mobileSettings.httpsOrigin")}
-                <Input
-                  aria-label={t("settings.mobileSettings.organizationHTTPSOrigin")}
-                  placeholder="https://remote.example.com"
-                  value={organizationOrigin}
-                  onChange={(event) => {
-                    setOrganizationOrigin(event.target.value);
-                    setOrganizationConfirmed(false);
-                    setPublicConfirmed(false);
-                  }}
-                />
-              </label>
-              <div className="settings-choice-field">
-                {t("settings.mobileSettings.accessScope")}
-                <SettingsSelect
-                  aria-label={t("settings.mobileSettings.organizationEntryAccessScope")}
-                  value={visibility}
-                  onValueChange={(selectedValue) => {
-                    if (selectedValue !== "private" && selectedValue !== "public") return;
-                    setVisibility(selectedValue);
-                    setOrganizationConfirmed(false);
-                    setPublicConfirmed(false);
-                  }}
-                >
-                  <option value="private">
-                    {t("settings.mobileSettings.privateOrganizationNetwork")}
-                  </option>
-                  <option value="public">
-                    {t("settings.mobileSettings.mayBePubliclyAccessible")}
-                  </option>
-                </SettingsSelect>
-              </div>
-              <SettingsDisclosure
-                title={<> {t("settings.mobileSettings.organizationEntryRequirements")}</>}
+                    {proposal.scope === "public" && (
+                      <label className="block">
+                        <Input
+                          unstyled
+                          data-slot={undefined}
+                          type="checkbox"
+                          checked={funnelConfirmed}
+                          onChange={(event) => setFunnelConfirmed(event.target.checked)}
+                        />
+                        {t("settings.mobileSettings.iConfirmAgainThatThisRemoteEntry")}
+                      </label>
+                    )}
+                    <Button
+                      disabled={
+                        busy || !scopeConfirmed || (proposal.scope === "public" && !funnelConfirmed)
+                      }
+                      onClick={() =>
+                        void run({
+                          operation: "networkChangeScope",
+                          proposalId: proposal.proposalId,
+                          confirmed: true,
+                          publicConfirmed: funnelConfirmed,
+                        })
+                      }
+                    >
+                      {t("settings.mobileSettings.confirmAccessScopeChange")}
+                    </Button>
+                  </div>
+                )}
+              </fieldset>
+              <fieldset
+                disabled={busy}
+                hidden={accessMethod !== "organization"}
+                className="remote-access-fields"
               >
-                <p>{t("settings.mobileSettings.thisSavesOnlyTheExactHTTPSOrigin")}</p>
-              </SettingsDisclosure>
-              <label className="block">
-                <Input
-                  unstyled
-                  data-slot={undefined}
-                  type="checkbox"
-                  checked={organizationConfirmed}
-                  onChange={(event) => setOrganizationConfirmed(event.target.checked)}
-                />
-                {t("settings.mobileSettings.iConfirmTheOrganizationEntryIsReady")}
-              </label>
-              {visibility === "public" && (
+                <legend>{t("settings.mobileSettings.organizationHTTPS")}</legend>
+                <p className="remote-muted">
+                  {t("settings.mobileSettings.useAnHTTPSEntryConfiguredByYour")}
+                </p>
+                <label>
+                  {t("settings.mobileSettings.httpsOrigin")}
+                  <Input
+                    aria-label={t("settings.mobileSettings.organizationHTTPSOrigin")}
+                    placeholder="https://remote.example.com"
+                    value={organizationOrigin}
+                    onChange={(event) => {
+                      setOrganizationOrigin(event.target.value);
+                      setOrganizationConfirmed(false);
+                      setPublicConfirmed(false);
+                    }}
+                  />
+                </label>
+                <div className="settings-choice-field">
+                  {t("settings.mobileSettings.accessScope")}
+                  <SettingsSelect
+                    aria-label={t("settings.mobileSettings.organizationEntryAccessScope")}
+                    value={visibility}
+                    onValueChange={(selectedValue) => {
+                      if (selectedValue !== "private" && selectedValue !== "public") return;
+                      setVisibility(selectedValue);
+                      setOrganizationConfirmed(false);
+                      setPublicConfirmed(false);
+                    }}
+                  >
+                    <option value="private">
+                      {t("settings.mobileSettings.privateOrganizationNetwork")}
+                    </option>
+                    <option value="public">
+                      {t("settings.mobileSettings.mayBePubliclyAccessible")}
+                    </option>
+                  </SettingsSelect>
+                </div>
+                <SettingsDisclosure
+                  title={<> {t("settings.mobileSettings.organizationEntryRequirements")}</>}
+                >
+                  <p>{t("settings.mobileSettings.thisSavesOnlyTheExactHTTPSOrigin")}</p>
+                </SettingsDisclosure>
                 <label className="block">
                   <Input
                     unstyled
                     data-slot={undefined}
                     type="checkbox"
-                    checked={publicConfirmed}
-                    onChange={(event) => setPublicConfirmed(event.target.checked)}
+                    checked={organizationConfirmed}
+                    onChange={(event) => setOrganizationConfirmed(event.target.checked)}
                   />
-                  {t("settings.mobileSettings.iConfirmAgainThatThisHTTPSEntry")}
+                  {t("settings.mobileSettings.iConfirmTheOrganizationEntryIsReady")}
                 </label>
-              )}
-              <Button
-                disabled={
-                  busy ||
-                  !state.directEnabled ||
-                  !organizationConfirmed ||
-                  (visibility === "public" && !publicConfirmed)
-                }
-                onClick={() =>
-                  void run({
-                    operation: "networkConfigureOrganization",
-                    publicOrigin: organizationOrigin,
-                    visibility,
-                    confirmed: true,
-                    publicConfirmed,
-                  })
-                }
-              >
-                {t("settings.mobileSettings.saveOrganizationHTTPSOrigin")}
-              </Button>
-            </fieldset>
-            <div
-              className="remote-network-status"
-              role="status"
-              aria-label={t("settings.mobileSettings.networkConfigurationStatus")}
-            >
-              <span>{t("settings.mobileSettings.configurationStatus")}</span>
-              <strong>
-                {state.network?.kind
-                  ? !state.network.scope
-                    ? t("settings.mobileSettings.needsVerification")
-                    : state.network.kind === "organization"
-                      ? t("settings.mobileSettings.organizationEntry")
-                      : state.network.scope === "public"
-                        ? t("settings.mobileSettings.publicEntry")
-                        : t("settings.mobileSettings.privateEntry")
-                  : t("settings.mobileSettings.notConfigured")}
-              </strong>
-              <span>{t("settings.mobileSettings.phoneConnectionNeedsVerification")}</span>
-            </div>
-            {state.network?.kind && (
-              <SettingsDisclosure
-                className="remote-network-recovery"
-                title={<> {t("settings.mobileSettings.restoreOrRemoveThisAppSNetwork")}</>}
-              >
-                <fieldset disabled={busy} className="p-4">
-                  <p>{t("settings.mobileSettings.restoreChecksTheActualScopeOfThe")}</p>
-                  <label>
+                {visibility === "public" && (
+                  <label className="block">
                     <Input
                       unstyled
                       data-slot={undefined}
                       type="checkbox"
-                      checked={recoveryConfirmed}
-                      onChange={(event) => setRecoveryConfirmed(event.target.checked)}
+                      checked={publicConfirmed}
+                      onChange={(event) => setPublicConfirmed(event.target.checked)}
                     />
-                    {t("settings.mobileSettings.iConfirmOnlyThisAppSRecords")}
+                    {t("settings.mobileSettings.iConfirmAgainThatThisHTTPSEntry")}
                   </label>
-                  <div className="flex gap-2">
-                    <Button
-                      disabled={busy || !recoveryConfirmed}
-                      onClick={() =>
-                        void run({
-                          operation: "networkRecover",
-                          confirmed: true,
-                        })
-                      }
-                    >
-                      {t("settings.mobileSettings.verifyAndRestore")}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      disabled={busy || !recoveryConfirmed}
-                      onClick={() =>
-                        void run({
-                          operation: "networkRemove",
-                          confirmed: true,
-                        })
-                      }
-                    >
-                      {t("settings.mobileSettings.removeNetworkConfiguration")}
-                    </Button>
-                  </div>
-                </fieldset>
-              </SettingsDisclosure>
-            )}
-          </SettingsGroupCard>
+                )}
+                <Button
+                  disabled={
+                    busy ||
+                    !state.directEnabled ||
+                    !organizationConfirmed ||
+                    (visibility === "public" && !publicConfirmed)
+                  }
+                  onClick={() =>
+                    void run({
+                      operation: "networkConfigureOrganization",
+                      publicOrigin: organizationOrigin,
+                      visibility,
+                      confirmed: true,
+                      publicConfirmed,
+                    })
+                  }
+                >
+                  {t("settings.mobileSettings.saveOrganizationHTTPSOrigin")}
+                </Button>
+              </fieldset>
+              <div
+                className="remote-network-status"
+                role="status"
+                aria-label={t("settings.mobileSettings.networkConfigurationStatus")}
+              >
+                <span>{t("settings.mobileSettings.configurationStatus")}</span>
+                <strong>
+                  {state.network?.kind
+                    ? !state.network.scope
+                      ? t("settings.mobileSettings.needsVerification")
+                      : state.network.kind === "organization"
+                        ? t("settings.mobileSettings.organizationEntry")
+                        : state.network.scope === "public"
+                          ? t("settings.mobileSettings.publicEntry")
+                          : t("settings.mobileSettings.privateEntry")
+                    : t("settings.mobileSettings.notConfigured")}
+                </strong>
+                <span>{t("settings.mobileSettings.phoneConnectionNeedsVerification")}</span>
+              </div>
+              {state.network?.kind && (
+                <SettingsDisclosure
+                  className="remote-network-recovery"
+                  title={<> {t("settings.mobileSettings.restoreOrRemoveThisAppSNetwork")}</>}
+                >
+                  <fieldset disabled={busy} className="p-4">
+                    <p>{t("settings.mobileSettings.restoreChecksTheActualScopeOfThe")}</p>
+                    <label>
+                      <Input
+                        unstyled
+                        data-slot={undefined}
+                        type="checkbox"
+                        checked={recoveryConfirmed}
+                        onChange={(event) => setRecoveryConfirmed(event.target.checked)}
+                      />
+                      {t("settings.mobileSettings.iConfirmOnlyThisAppSRecords")}
+                    </label>
+                    <div className="flex gap-2">
+                      <Button
+                        disabled={busy || !recoveryConfirmed}
+                        onClick={() =>
+                          void run({
+                            operation: "networkRecover",
+                            confirmed: true,
+                          })
+                        }
+                      >
+                        {t("settings.mobileSettings.verifyAndRestore")}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        disabled={busy || !recoveryConfirmed}
+                        onClick={() =>
+                          void run({
+                            operation: "networkRemove",
+                            confirmed: true,
+                          })
+                        }
+                      >
+                        {t("settings.mobileSettings.removeNetworkConfiguration")}
+                      </Button>
+                    </div>
+                  </fieldset>
+                </SettingsDisclosure>
+              )}
+            </SettingsGroupCard>
+          </div>
         </SettingsSection>
         <SettingsSection
           title={t("settings.mobileConnect.directEntry")}

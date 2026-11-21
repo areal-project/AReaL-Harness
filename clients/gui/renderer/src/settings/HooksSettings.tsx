@@ -358,15 +358,17 @@ export function HooksSettings({
             </label>
             <label>
               {t("settings.hooksSettings.commandArgumentsJSONArray")}
-              <Textarea
-                unstyled
-                data-slot={undefined}
-                aria-label={t("settings.hooksSettings.commandArgumentsJSONArray")}
-                className="w-full min-h-32 font-mono"
-                disabled={busy}
-                value={draft.argv}
-                onChange={(e) => update({ ...draft, argv: e.target.value })}
-              />
+              <div className="w-full font-mono">
+                <Textarea
+                  unstyled
+                  data-slot={undefined}
+                  aria-label={t("settings.hooksSettings.commandArgumentsJSONArray")}
+                  className="w-full min-h-32"
+                  disabled={busy}
+                  value={draft.argv}
+                  onChange={(e) => update({ ...draft, argv: e.target.value })}
+                />
+              </div>
             </label>
             <label>
               {t("settings.hooksSettings.timeoutMs")}

@@ -1178,9 +1178,6 @@ button.composer-project:hover > svg,
   width: min(100%, 28rem);
   gap: var(--spacing-field);
 }
-.settings-confirm-dialog [data-slot="dialog-footer"] {
-  margin-top: calc(var(--spacing-inline) / 2);
-}
 .settings-form {
   display: flex;
   flex-direction: column;
@@ -4104,9 +4101,6 @@ button[aria-label="停止"] {
   overflow-y: auto;
   padding: var(--spacing-inline);
   gap: calc(var(--spacing-inline) / 2);
-}
-.fork-target-dialog [data-slot="dialog-title"] {
-  padding: calc(var(--spacing-inline) * 3 / 4) var(--spacing-inline);
 }
 .fork-workspace-choice {
   display: flex;

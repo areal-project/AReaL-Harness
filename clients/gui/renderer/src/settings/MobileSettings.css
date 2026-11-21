@@ -172,9 +172,6 @@
   gap: var(--spacing-inline);
   padding-top: var(--spacing-inline);
 }
-.remote-revoked-body > .remote-device-list {
-  justify-self: stretch;
-}
 
 /* 对话框：添加设备、修改权限、重命名、撤销。 */
 .settings-dialog.remote-dialog {

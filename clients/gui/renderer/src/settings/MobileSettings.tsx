@@ -222,7 +222,7 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
           </Button>
         </div>
       )}
-      <SettingsGroupCard className="remote-status-card" layout="grid">
+      <SettingsGroupCard layout="grid">
         <div className="remote-status" data-tone={status.tone}>
           <span className="remote-status-icon" aria-hidden>
             {status.tone === "idle" ? <Smartphone size={18} /> : <span className="remote-dot" />}

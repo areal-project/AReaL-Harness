@@ -41,8 +41,7 @@
   font-variant-numeric: tabular-nums;
   color: var(--color-foreground-subtle);
 }
-.goal-strip > button,
-.goal-strip [data-slot="tooltip-trigger"] {
+.goal-strip > button {
   width: var(--spacing-control-sm);
   height: var(--spacing-control-sm);
   padding: 0;

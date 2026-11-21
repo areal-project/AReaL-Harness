@@ -706,7 +706,7 @@ export function WorkgroupsPane({ project, action }: { project: Data; action: Act
                   value={workers}
                   disabled={disabled}
                   onChange={(event) => setWorkers(event.target.value)}
-                  className="ml-2 w-20 rounded-control border border-border bg-transparent px-2"
+                  className="ml-2 w-20"
                   placeholder="默认"
                 />
               </label>

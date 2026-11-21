@@ -252,39 +252,53 @@ export const Attachment = ({
     [onKeyDown, onOpen],
   );
 
+  const attachmentClassName = cn(
+    "group relative",
+    variant === "grid" && "size-24 overflow-hidden rounded-lg",
+    variant === "inline" && [
+      "flex h-8 select-none items-center gap-0.5",
+      "overflow-hidden rounded-md border border-border p-1 pr-2.5",
+      "font-medium text-ui-base transition-colors",
+      "bg-background",
+      "[--attachment-bg:var(--color-background)]",
+    ],
+    variant === "list" && [
+      "flex w-full items-center gap-3 rounded-lg border p-3",
+      "hover:bg-accent/50",
+    ],
+    isOpenable && [
+      "cursor-pointer hover:border-border-hover hover:text-accent-foreground",
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-input-border-focused focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+    ],
+    !isOpenable && "cursor-default",
+    className,
+  );
+
   return (
     <AttachmentContext.Provider value={contextValue}>
-      <div
-        aria-label={ariaLabel ?? openLabel}
-        className={cn(
-          "group relative",
-          variant === "grid" && "size-24 overflow-hidden rounded-lg",
-          variant === "inline" && [
-            "flex h-8 select-none items-center gap-0.5",
-            "overflow-hidden rounded-md border border-border p-1 pr-2.5",
-            "font-medium text-ui-base transition-colors",
-            "bg-background",
-            "[--attachment-bg:var(--color-background)]",
-          ],
-          variant === "list" && [
-            "flex w-full items-center gap-3 rounded-lg border p-3",
-            "hover:bg-accent/50",
-          ],
-          isOpenable && [
-            "cursor-pointer hover:border-border-hover hover:text-accent-foreground",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-input-border-focused focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-          ],
-          !isOpenable && "cursor-default",
-          className,
-        )}
-        onClick={handleClick}
-        onKeyDown={handleKeyDown}
-        role={role ?? (isOpenable ? "button" : undefined)}
-        tabIndex={tabIndex ?? (isOpenable ? 0 : undefined)}
-        {...props}
-      >
-        {children}
-      </div>
+      {isOpenable ? (
+        <div
+          aria-label={ariaLabel ?? openLabel}
+          className={attachmentClassName}
+          onClick={handleClick}
+          onKeyDown={handleKeyDown}
+          role="button"
+          tabIndex={tabIndex ?? 0}
+          {...props}
+        >
+          {children}
+        </div>
+      ) : (
+        <div
+          aria-label={ariaLabel ?? openLabel}
+          className={attachmentClassName}
+          role={role}
+          tabIndex={tabIndex}
+          {...props}
+        >
+          {children}
+        </div>
+      )}
     </AttachmentContext.Provider>
   );
 };

@@ -684,10 +684,17 @@ function SidebarSearch() {
     <>
       {searchOpen && (
         <div
+          role="presentation"
           className="dialog-backdrop search-backdrop"
           onClick={() => {
             setSearchOpen(false);
             setSearch("");
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setSearchOpen(false);
+              setSearch("");
+            }
           }}
         >
           <section
@@ -696,6 +703,13 @@ function SidebarSearch() {
             aria-label={t("common.navigation.searchTasks")}
             className="search-dialog"
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.stopPropagation();
+                setSearchOpen(false);
+                setSearch("");
+              }
+            }}
           >
             <div className="search">
               <SearchIcon size={18} />

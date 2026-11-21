@@ -393,15 +393,15 @@ function MobileApp() {
             </MobileButton>
           )}
           {state.kind !== "unpaired" && state.kind !== "pairing" && (
-            <Button
-              className="mobile-touch size-[var(--size-touch-target)] min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] p-inline"
+            <MobileButton
+              kind="icon"
               variant="ghost"
               data-action="settings"
               aria-label={t(settings ? "mobile.back" : "mobile.settings")}
               onClick={() => setSettings(!settings)}
             >
               {settings ? t("mobile.back") : <Settings aria-hidden="true" />}
-            </Button>
+            </MobileButton>
           )}
         </header>
       )}
@@ -416,7 +416,7 @@ function MobileApp() {
           <label className="mobile-field flex flex-col gap-inline">
             {t("mobile.deviceName")}
             <Input
-              className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] text-mobile-input-safe md:text-mobile-input-safe"
+              size="touch"
               aria-label={t("mobile.deviceName")}
               value={name}
               maxLength={80}
@@ -448,7 +448,7 @@ function MobileApp() {
               <label className="mobile-field flex flex-col gap-inline">
                 {t("mobile.link")}
                 <Input
-                  className="mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] text-mobile-input-safe md:text-mobile-input-safe"
+                  size="touch"
                   autoComplete="off"
                   autoCapitalize="none"
                   spellCheck={false}

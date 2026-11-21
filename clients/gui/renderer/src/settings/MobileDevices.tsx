@@ -133,7 +133,7 @@ export function MobileDevices({
           <small>{t("settings.mobileConnect.activeCount", { count: active.length })}</small>
         )}
       </header>
-      <SettingsGroupCard className="remote-device-list">
+      <SettingsGroupCard>
         {active.map((device) => (
           <DeviceRow
             key={device.devicePeerId}
@@ -194,7 +194,7 @@ export function MobileDevices({
           }
         >
           <div className="remote-revoked-body">
-            <SettingsGroupCard className="remote-device-list">
+            <SettingsGroupCard className="justify-self-stretch">
               {revoked.map((device) => (
                 <DeviceRow
                   key={`${device.devicePeerId}:${device.revision}`}

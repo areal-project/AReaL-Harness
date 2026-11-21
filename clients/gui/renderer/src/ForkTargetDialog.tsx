@@ -63,7 +63,9 @@ export function ForkTargetDialog({
         aria-describedby={undefined}
         finalFocus={() => (anchor?.isConnected ? anchor : false)}
       >
-        <DialogTitle>从这里创建聊天分支</DialogTitle>
+        <div className="px-inline py-[calc(var(--spacing-inline)*3/4)]">
+          <DialogTitle>从这里创建聊天分支</DialogTitle>
+        </div>
         {!unknown && (
           <Button
             unstyled

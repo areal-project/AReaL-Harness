@@ -748,44 +748,6 @@ body {
   }
 }
 
-.areal-update-charge-progress [data-slot="progress-indicator"] {
-  position: relative;
-  overflow: hidden;
-}
-
-.areal-update-charge-progress [data-slot="progress-indicator"]::after {
-  content: "";
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  top: 0;
-  width: min(3.5rem, 70%);
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in oklab, var(--color-primary-foreground) 62%, transparent),
-    transparent
-  );
-  animation: zcode-update-charge-sweep var(--motion-cycle) var(--ease-in-out) var(--motion-loop);
-  transform: translateX(-120%);
-}
-
-@keyframes zcode-update-charge-sweep {
-  0% {
-    opacity: 0.35;
-    transform: translateX(-120%);
-  }
-
-  50% {
-    opacity: 0.9;
-  }
-
-  100% {
-    opacity: 0.35;
-    transform: translateX(260%);
-  }
-}
-
 @keyframes fork-highlight-pulse {
   0% {
     background-color: transparent;

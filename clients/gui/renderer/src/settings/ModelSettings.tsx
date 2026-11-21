@@ -1031,7 +1031,7 @@ export function ModelSettings({
           busy={busy}
         >
           <Feedback error={error} />
-          <DialogFooter>
+          <DialogFooter className="mt-1">
             <Button
               variant="outline"
               className="min-w-22"

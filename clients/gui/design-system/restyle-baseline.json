@@ -1,39 +1,39 @@
 [
   {
-    "file": "renderer/src/ToolEvent.tsx",
+    "file": "renderer/src/ComposerQueue.tsx",
     "kind": "jsx",
-    "snippet": "className=\"tool-summary-row tool-image-row\"",
-    "fingerprint": "f1d5cf0d9fe42691da9c7e0a827cc82d61e53f91836ade63a9d6fa833a8c6de0"
+    "snippet": "className=\"composer-queue-grip\"",
+    "fingerprint": "6bef83741456dd2290fd0ecaf32aee8594e9f6e5d9f97749320c52b5e7a19397"
   },
   {
-    "file": "renderer/src/ToolEvent.tsx",
+    "file": "renderer/src/ComposerQueue.tsx",
     "kind": "jsx",
-    "snippet": "className=\"tool-summary-row tool-file-row\"",
-    "fingerprint": "915521aacf35e4a544da53b9bb593e0da10203f330c5fd602a3fded8baad1ce9"
+    "snippet": "className=\"composer-queue-steer\"",
+    "fingerprint": "a33dd175f4cadfa035cd95b38b339c0754b4965d59e4a7a24b58f743feba5642"
   },
   {
-    "file": "renderer/src/ToolEvent.tsx",
+    "file": "renderer/src/workspace-file-tree/WorkspaceFileTree.tsx",
     "kind": "jsx",
-    "snippet": "className=\"tool-summary-row\"",
-    "fingerprint": "3e81ed3a6872554ddc7eb9c91acfd8ff3bb1471d327dd4ecff27216f5bec1da7"
+    "snippet": "className=\"review-file-filter-input\"",
+    "fingerprint": "42b73e89bf63362abc985d1a81519bbe3ee7886d269a29db755278ab2e5df828"
   },
   {
-    "file": "renderer/src/app-shell/SidePane.tsx",
+    "file": "renderer/src/NewTaskButtonGroup.tsx",
     "kind": "jsx",
-    "snippet": "style={{ flexBasis: `${width}%`, display: active ? undefined : \"none\" }}",
-    "fingerprint": "d7211eadea7db0a19e772a7d2afc024fda6100c7cdbb927215840ca89834d019"
+    "snippet": "className=\"navigation-task-row new-task-action\"",
+    "fingerprint": "ffc9bd82f99db387b3485dbaadfe18a3be4eb043f40ac6dcf8bdd2f2664977c8"
   },
   {
-    "file": "renderer/src/remote/RemoteWorkbench.tsx",
+    "file": "renderer/src/ConversationTimeline.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"message-time\"",
+    "fingerprint": "6130904ad6fdd8a8308126a5c869973678f0dc424901c81f3d609ab0ab23f3ae"
+  },
+  {
+    "file": "renderer/src/Composer.tsx",
     "kind": "jsx",
     "snippet": "className=\"composer-primary-action\"",
-    "fingerprint": "a12d0f638ad6a899fd918787a87833cecccbe1f79c2cac98599a743a815195ca"
-  },
-  {
-    "file": "renderer/src/prompt-editor/ComposerCatalog.tsx",
-    "kind": "jsx",
-    "snippet": "className=\"composer-catalog-row\"",
-    "fingerprint": "52871716202239c73a536beb26b6305f99e52cb0fbe18ce53a4c8ff6e7a00c1c"
+    "fingerprint": "61f60bb8b7ce3d066b4a8014a672b94c3272e94fedf45a8e1de63bd59bd889d6"
   },
   {
     "file": "renderer/src/UpdateIndicator.tsx",
@@ -60,76 +60,34 @@
     "fingerprint": "21f966c0403f57ad481918a26cdd6aa6e3c07b031d8060a1a943e5f9538cde65"
   },
   {
-    "file": "renderer/src/mobile/MobileApp.tsx",
+    "file": "renderer/src/components/ai-elements/message-response-renderer.tsx",
     "kind": "jsx",
-    "snippet": "className=\"mobile-touch size-[var(--size-touch-target)] min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] p-inline\"",
-    "fingerprint": "2df277b16ec1b452ea0b2182731fffb50f66a12c4ae8cffe428a59da3c9a3d52"
+    "snippet": "className={className}",
+    "fingerprint": "eb0516f0fa5e34e9e7983fa36756bfec889b3eb9df468d6b916abecccbf02d4a"
   },
   {
-    "file": "renderer/src/mobile/MobileApp.tsx",
+    "file": "renderer/src/ModelTrajectoryPane.tsx",
     "kind": "jsx",
-    "snippet": "className=\"mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] text-mobile-input-safe md:text-mobile-input-safe\"",
-    "fingerprint": "370491b8ce0f9c647cef6358f83acdd39d12ec49d6aa8b2e2f69712a59fe719d"
+    "snippet": "className=\"trajectory-entry\"",
+    "fingerprint": "f3c38b25021530bdf90f3859fcefa11c3f7b6f9f85a3766ecc5d252ca637f966"
   },
   {
-    "file": "renderer/src/mobile/MobileApp.tsx",
+    "file": "renderer/src/ToolEvent.tsx",
     "kind": "jsx",
-    "snippet": "className=\"mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] text-mobile-input-safe md:text-mobile-input-safe\"",
-    "fingerprint": "2eca21f5ca5c6c30d1dcced60d534eec252beab95e2568b06bac904e56a2a43b"
+    "snippet": "className=\"tool-summary-row tool-image-row\"",
+    "fingerprint": "f1d5cf0d9fe42691da9c7e0a827cc82d61e53f91836ade63a9d6fa833a8c6de0"
   },
   {
-    "file": "renderer/src/settings/MobileDevices.tsx",
+    "file": "renderer/src/ToolEvent.tsx",
     "kind": "jsx",
-    "snippet": "className=\"remote-device-list\"",
-    "fingerprint": "bd27bac0b774beab4b546c6375eac6a802c422b7628449c4acb0a52aa08bbb64"
+    "snippet": "className=\"tool-summary-row tool-file-row\"",
+    "fingerprint": "915521aacf35e4a544da53b9bb593e0da10203f330c5fd602a3fded8baad1ce9"
   },
   {
-    "file": "renderer/src/settings/MobileDevices.tsx",
+    "file": "renderer/src/ToolEvent.tsx",
     "kind": "jsx",
-    "snippet": "className=\"remote-device-list\"",
-    "fingerprint": "218079c113c36807e6cec2128c7d7848b4756080ee0fdcbe34fcd1f7c3d2fd24"
-  },
-  {
-    "file": "renderer/src/settings/RelayServicePanel.tsx",
-    "kind": "jsx",
-    "snippet": "className=\"remote-relay-service\"",
-    "fingerprint": "641ed5ddd2be79cbc19b1451dd3767735618e00072ae95a91d2e12aad04509c7"
-  },
-  {
-    "file": "renderer/src/NewTaskButtonGroup.tsx",
-    "kind": "jsx",
-    "snippet": "className=\"navigation-task-row new-task-action\"",
-    "fingerprint": "ffc9bd82f99db387b3485dbaadfe18a3be4eb043f40ac6dcf8bdd2f2664977c8"
-  },
-  {
-    "file": "renderer/src/Composer.tsx",
-    "kind": "jsx",
-    "snippet": "className=\"composer-primary-action\"",
-    "fingerprint": "61f60bb8b7ce3d066b4a8014a672b94c3272e94fedf45a8e1de63bd59bd889d6"
-  },
-  {
-    "file": "renderer/src/settings/UsageDashboard.tsx",
-    "kind": "jsx",
-    "snippet": "className={`usage-cell usage-level-${level(day.activeMs)}`}",
-    "fingerprint": "7fbbbfee7f9c8911e5386e1ec418d0a07bda7cd51fffd9e63ffda6b7924d8786"
-  },
-  {
-    "file": "renderer/src/settings/WorktreesSettings.tsx",
-    "kind": "jsx",
-    "snippet": "className=\"worktrees-general-group\"",
-    "fingerprint": "dea26d1b3766e86ca5f130fe8a4d339b8a21c24974b1c2d42ccd9a1a2133e40f"
-  },
-  {
-    "file": "renderer/src/settings/WorktreesSettings.tsx",
-    "kind": "jsx",
-    "snippet": "className=\"worktrees-name-group\"",
-    "fingerprint": "c726596bdbf65f3ec31ddc5cf6d8f3c05713babcad8db6532dde06a7c8e37263"
-  },
-  {
-    "file": "renderer/src/settings/HooksSettings.tsx",
-    "kind": "jsx",
-    "snippet": "className=\"w-full min-h-32 font-mono\"",
-    "fingerprint": "0ce1449050daef8f53b2419a96e09527c06e8345e9fd98e950a88201f95cf091"
+    "snippet": "className=\"tool-summary-row\"",
+    "fingerprint": "3e81ed3a6872554ddc7eb9c91acfd8ff3bb1471d327dd4ecff27216f5bec1da7"
   },
   {
     "file": "renderer/src/TurnProgress.tsx",
@@ -144,34 +102,10 @@
     "fingerprint": "0c4bf6d323846b67c8679c394fee2c74d8ff35ef89279b2684197ed49598ba64"
   },
   {
-    "file": "renderer/src/ModelTrajectoryPane.tsx",
+    "file": "renderer/src/SlashCommandMenu.tsx",
     "kind": "jsx",
-    "snippet": "className=\"trajectory-entry\"",
-    "fingerprint": "f3c38b25021530bdf90f3859fcefa11c3f7b6f9f85a3766ecc5d252ca637f966"
-  },
-  {
-    "file": "renderer/src/TaskCenter.tsx",
-    "kind": "jsx",
-    "snippet": "className=\"task-search\"",
-    "fingerprint": "17cbfc9fee8fe91138edd1d825cc894a04d2815a4c765d8177e159f49b6383a4"
-  },
-  {
-    "file": "renderer/src/settings/MobileSettings.tsx",
-    "kind": "jsx",
-    "snippet": "className=\"remote-status-card\"",
-    "fingerprint": "b10ff727fc570444ab132f88630b9d72f16f0a7b700395a2af38bf0693d51932"
-  },
-  {
-    "file": "renderer/src/ComposerQueue.tsx",
-    "kind": "jsx",
-    "snippet": "className=\"composer-queue-grip\"",
-    "fingerprint": "6bef83741456dd2290fd0ecaf32aee8594e9f6e5d9f97749320c52b5e7a19397"
-  },
-  {
-    "file": "renderer/src/ComposerQueue.tsx",
-    "kind": "jsx",
-    "snippet": "className=\"composer-queue-steer\"",
-    "fingerprint": "a33dd175f4cadfa035cd95b38b339c0754b4965d59e4a7a24b58f743feba5642"
+    "snippet": "className=\"slash-command-row\"",
+    "fingerprint": "1c98c5060926de154806f1b8c2f09b27f73556bc90c255133f2629e18e6d127b"
   },
   {
     "file": "renderer/src/settings/ChatGPTSubscription.tsx",
@@ -180,64 +114,10 @@
     "fingerprint": "30ee1a87f923e506dee79955b767f011cbe6b77ed468aa204f6f18e5f8a3fd2f"
   },
   {
-    "file": "renderer/src/ConversationTimeline.tsx",
+    "file": "renderer/src/app-shell/SidePane.tsx",
     "kind": "jsx",
-    "snippet": "className=\"message-time\"",
-    "fingerprint": "6130904ad6fdd8a8308126a5c869973678f0dc424901c81f3d609ab0ab23f3ae"
-  },
-  {
-    "file": "renderer/src/SlashCommandMenu.tsx",
-    "kind": "jsx",
-    "snippet": "className=\"slash-command-row\"",
-    "fingerprint": "1c98c5060926de154806f1b8c2f09b27f73556bc90c255133f2629e18e6d127b"
-  },
-  {
-    "file": "renderer/src/settings/MobileAdvancedNetwork.tsx",
-    "kind": "jsx",
-    "snippet": "className=\"remote-access-panel\"",
-    "fingerprint": "41d068fe74bc550a122feed1bb974fac4cd98ecd8a546ff6ee1b6f5d473150c0"
-  },
-  {
-    "file": "renderer/src/WorkgroupsPane.tsx",
-    "kind": "jsx",
-    "snippet": "className=\"ml-2 w-20 rounded-control border border-border bg-transparent px-2\"",
-    "fingerprint": "53b007854a4c163cfc68fed5e41cda5f32c7450484205ced3f9fc844b7cd38e9"
-  },
-  {
-    "file": "renderer/src/components/ai-elements/message-response-renderer.tsx",
-    "kind": "jsx",
-    "snippet": "className={className}",
-    "fingerprint": "eb0516f0fa5e34e9e7983fa36756bfec889b3eb9df468d6b916abecccbf02d4a"
-  },
-  {
-    "file": "renderer/src/terminal/TerminalPane.tsx",
-    "kind": "jsx",
-    "snippet": "className={`text-button shrink-0 ${value === id ? \"bg-selected\" : \"\"}`}",
-    "fingerprint": "45280df73078c4e7be3dc67c5904378e82cbac9f65995afabbf5cf4ff268c339"
-  },
-  {
-    "file": "renderer/src/terminal/TerminalPane.tsx",
-    "kind": "jsx",
-    "snippet": "className=\"icon-button\"",
-    "fingerprint": "f2becec2745f5abf84c830eba10840ad097ef6c78cf9419ea8f7aad02ebb652c"
-  },
-  {
-    "file": "renderer/src/terminal/TerminalPane.tsx",
-    "kind": "jsx",
-    "snippet": "className=\"icon-button\"",
-    "fingerprint": "7cb7e259c133faa1e74cd73c798bbb2791ea7802040a9c82ed3af016f0a8d33b"
-  },
-  {
-    "file": "renderer/src/terminal/TerminalPane.tsx",
-    "kind": "jsx",
-    "snippet": "className=\"text-button justify-self-start\"",
-    "fingerprint": "9247622a5197bea211efafca523cf24570cce3d2df07fbefdc7b208c23caf292"
-  },
-  {
-    "file": "renderer/src/terminal/TerminalPane.tsx",
-    "kind": "jsx",
-    "snippet": "className=\"text-button justify-self-start\"",
-    "fingerprint": "1a73638134f9d74b3b7d897bdd113b1e8648b05f9e4d0f568213b361d4c3ce54"
+    "snippet": "style={{ flexBasis: `${width}%`, display: active ? undefined : \"none\" }}",
+    "fingerprint": "d7211eadea7db0a19e772a7d2afc024fda6100c7cdbb927215840ca89834d019"
   },
   {
     "file": "renderer/src/TurnElapsed.tsx",
@@ -246,16 +126,16 @@
     "fingerprint": "3c3d016fcb1e9b28a2ad52e09679c3c69d103abb8719861c268aff7ec74e14e7"
   },
   {
-    "file": "renderer/src/workspace-file-tree/WorkspaceFileTree.tsx",
+    "file": "renderer/src/remote/RemoteWorkbench.tsx",
     "kind": "jsx",
-    "snippet": "className=\"review-file-filter-input\"",
-    "fingerprint": "42b73e89bf63362abc985d1a81519bbe3ee7886d269a29db755278ab2e5df828"
+    "snippet": "className=\"composer-primary-action\"",
+    "fingerprint": "a12d0f638ad6a899fd918787a87833cecccbe1f79c2cac98599a743a815195ca"
   },
   {
-    "file": "renderer/src/Reasoning.tsx",
+    "file": "renderer/src/prompt-editor/ComposerCatalog.tsx",
     "kind": "jsx",
-    "snippet": "className=\"tool-group-summary\"",
-    "fingerprint": "bbf5e2943905e0083580b4059b7349cb014fc361330ff83248b32e59ee2ec9af"
+    "snippet": "className=\"composer-catalog-row\"",
+    "fingerprint": "52871716202239c73a536beb26b6305f99e52cb0fbe18ce53a4c8ff6e7a00c1c"
   },
   {
     "file": "renderer/src/ReasoningGroup.tsx",
@@ -264,33 +144,21 @@
     "fingerprint": "6cc263c603c3215c7935f49b6e6bfb81ac9c2228d7d5b3197c70b0c1adfdd8ac"
   },
   {
-    "file": "renderer/src/Goal.css",
-    "kind": "css",
-    "snippet": ".goal-strip [data-slot=\"tooltip-trigger\"] {",
-    "fingerprint": "77aa680030e0298d9f5f4e7fe6dc325d940035f6314c4d106579799652d29281"
+    "file": "renderer/src/settings/UsageDashboard.tsx",
+    "kind": "jsx",
+    "snippet": "className={`usage-cell usage-level-${level(day.activeMs)}`}",
+    "fingerprint": "7fbbbfee7f9c8911e5386e1ec418d0a07bda7cd51fffd9e63ffda6b7924d8786"
   },
   {
-    "file": "renderer/src/styles.css",
-    "kind": "css",
-    "snippet": ".areal-update-charge-progress [data-slot=\"progress-indicator\"] {",
-    "fingerprint": "88d201d3f7cb6707cface8bd56b5ab11e8b073f11f88836b750204bc4cc73000"
+    "file": "renderer/src/Reasoning.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"tool-group-summary\"",
+    "fingerprint": "bbf5e2943905e0083580b4059b7349cb014fc361330ff83248b32e59ee2ec9af"
   },
   {
-    "file": "renderer/src/styles.css",
-    "kind": "css",
-    "snippet": ".areal-update-charge-progress [data-slot=\"progress-indicator\"]::after {",
-    "fingerprint": "b60068dfa8b66d55e591f7df19c067b205e9c917254c8aaa7c39ad2aab091520"
-  },
-  {
-    "file": "renderer/src/workbench.css",
-    "kind": "css",
-    "snippet": ".settings-confirm-dialog [data-slot=\"dialog-footer\"] {",
-    "fingerprint": "8b95a20533f239b046ae57c0acbcfdc53a6d579ecffb00bff39f3eb810d06e64"
-  },
-  {
-    "file": "renderer/src/workbench.css",
-    "kind": "css",
-    "snippet": ".fork-target-dialog [data-slot=\"dialog-title\"] {",
-    "fingerprint": "72cad79361050a90a1e6a0c82fb0b2d54941a6de3e3d8bf7ee59792a68d02555"
+    "file": "renderer/src/TaskCenter.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"task-search\"",
+    "fingerprint": "17cbfc9fee8fe91138edd1d825cc894a04d2815a4c765d8177e159f49b6383a4"
   }
 ]

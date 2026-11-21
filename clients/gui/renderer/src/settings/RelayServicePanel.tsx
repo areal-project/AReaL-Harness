@@ -31,7 +31,7 @@ export function RelayServicePanel({ state, busy, run }: { state: Data; busy: boo
       title={t("settings.relayService.title")}
       description={t("settings.relayService.description")}
     >
-      <SettingsGroupCard className="remote-relay-service" layout="stack-gap">
+      <SettingsGroupCard layout="stack-gap">
         <div className="remote-relay-service-heading">
           <div>
             <strong>{t("settings.relayService.local")}</strong>

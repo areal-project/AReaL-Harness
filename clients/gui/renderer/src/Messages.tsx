@@ -898,6 +898,7 @@ export function Messages({
         />
       )}
       <div
+        role="presentation"
         className={embedded ? "messages-embedded-content" : "messages"}
         ref={container}
         tabIndex={embedded ? undefined : 0}

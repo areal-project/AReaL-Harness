@@ -181,13 +181,13 @@ export function TerminalPane({
           >
             {state.ids.map((value) => (
               <Button
-                unstyled
-                data-slot={undefined}
-                type="submit"
+                variant={value === id ? "secondary" : "ghost"}
+                size="sm"
+                type="button"
                 key={value}
                 role="tab"
                 aria-selected={value === id}
-                className={`text-button shrink-0 ${value === id ? "bg-selected" : ""}`}
+                className="shrink-0"
                 onClick={() => selectTerminal(owner, value)}
               >
                 {terminalTitle(owner, value, project.root)}
@@ -211,20 +211,18 @@ export function TerminalPane({
             </SelectContent>
           </Select>
           <Button
-            unstyled
-            data-slot={undefined}
-            type="submit"
-            className="icon-button"
+            variant="ghost"
+            size="icon-sm"
+            type="button"
             aria-label="新建终端"
             onClick={() => addTerminal(owner, nextLifetime)}
           >
             <Plus size={15} />
           </Button>
           <Button
-            unstyled
-            data-slot={undefined}
-            type="submit"
-            className="icon-button"
+            variant="ghost"
+            size="icon-sm"
+            type="button"
             aria-label="关闭当前终端"
             disabled={!id || closing || restarting}
             onClick={() => void close()}
@@ -274,10 +272,10 @@ export function TerminalPane({
               <>
                 <p>创建结果尚未确认；核对原请求后连接已有终端，不会自动重建。</p>
                 <Button
-                  unstyled
-                  data-slot={undefined}
-                  type="submit"
-                  className="text-button justify-self-start"
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  className="justify-self-start"
                   disabled={recovering}
                   onClick={() => void recover()}
                 >
@@ -287,10 +285,10 @@ export function TerminalPane({
               </>
             ) : (
               <Button
-                unstyled
-                data-slot={undefined}
-                type="submit"
-                className="text-button justify-self-start"
+                variant="outline"
+                size="sm"
+                type="button"
+                className="justify-self-start"
                 disabled={!canStart || restarting}
                 onClick={restart}
               >
