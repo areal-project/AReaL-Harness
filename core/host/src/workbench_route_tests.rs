@@ -1665,6 +1665,64 @@ async fn gui_refresh_keeps_managed_launch_snapshots_stable() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn saved_gui_launch_rebuilds_tool_extensions_from_current_source() {
+    tokio::task::LocalSet::new().run_until(async {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let (host, mut input, source) = resumable_host(&root);
+        storage::private_dir(&host.home.join("host/projects")).unwrap();
+        let config_home = root.join("configuration");
+        storage::private_dir(&config_home).unwrap();
+        storage::write_bytes(&config_home.join("config.toml"), b"schema_version=1\n").unwrap();
+        input.options["configHome"] = json!(config_home);
+        let options = frontend_options(&host, &source, input.options, None).unwrap();
+        host.schedules.connections.frontend_subscribe(&host, "upgrade-tools", &source, options, None).unwrap();
+        let workspace = root.join("workspace");
+        storage::private_dir(&workspace).unwrap();
+        let added = super::super::worktree_catalog::add_project(&host, &source, json!({"root":workspace})).await.unwrap();
+        let registration = super::super::worktree_catalog::project(&host, &source, added["projectId"].as_str().unwrap()).unwrap();
+        let saved = host.home.join("host/launch").join(storage::digest(registration.project_id.as_bytes())).join("inputs.json");
+        let mut inputs: crate::LaunchInputs = storage::read(&saved).unwrap();
+        // 旧桌面把已退役字段写进每项目生成文件；当前源文件仍是普通工具配置。
+        let obsolete = root.join("data/desktop-tool-extensions.json");
+        storage::write(&obsolete, &json!({"hooks":[],"genUi":true})).unwrap();
+        let old_bytes = std::fs::read(&obsolete).unwrap();
+        assert!(serde_json::from_slice::<areal_engine::tools::ToolExtensions>(&old_bytes).is_err());
+        inputs.environment.insert("AREAL_HARNESS_TOOL_EXTENSIONS".into(), obsolete.to_string_lossy().into_owned());
+        storage::write(&saved, &inputs).unwrap();
+        let saved_bytes = std::fs::read(&saved).unwrap();
+        let current = json!({
+            "hooks":[{"name":"audit","event":"PostToolUse","matcher":"*","argv":["echo","fixture"],"timeoutMs":1000}],
+            "mcpServers":{"ordinary":{"transport":{"type":"stdio","command":"fixture-mcp"}}}
+        });
+        storage::write(&root.join("data/tool-extensions.json"), &current).unwrap();
+        super::super::gui_project::refresh_saved_configuration(&host, &registration, &mut inputs).await.unwrap();
+        assert!(!inputs.options.history_only);
+        let path = &inputs.environment["AREAL_HARNESS_TOOL_EXTENSIONS"];
+        assert_ne!(path, obsolete.to_str().unwrap());
+        let rebuilt: Value = storage::read(Path::new(path)).unwrap();
+        assert_eq!(rebuilt, current);
+        let extensions: areal_engine::tools::ToolExtensions = serde_json::from_value(rebuilt).unwrap();
+        extensions.validate().unwrap();
+        assert!(extensions.mcp_servers.contains_key("ordinary"));
+        assert_eq!(std::fs::read(&obsolete).unwrap(), old_bytes);
+        assert_eq!(std::fs::read(&saved).unwrap(), saved_bytes, "candidate preparation must not overwrite the active launch record");
+        let first = inputs.environment["AREAL_HARNESS_TOOL_EXTENSIONS"].clone();
+        super::super::gui_project::refresh_saved_configuration(&host, &registration, &mut inputs).await.unwrap();
+        assert_eq!(inputs.environment["AREAL_HARNESS_TOOL_EXTENSIONS"], first);
+        // 源配置错误仍禁止执行，不能通过忽略未知字段恢复已退役能力。
+        storage::write(&root.join("data/tool-extensions.json"), &json!({"genUi":true})).unwrap();
+        super::super::gui_project::refresh_saved_configuration(&host, &registration, &mut inputs).await.unwrap();
+        assert!(inputs.options.history_only);
+        let mut cli = registration.clone();
+        cli.source = crate::ProjectSource::Cli;
+        let before = serde_json::to_value(&inputs).unwrap();
+        super::super::gui_project::refresh_saved_configuration(&host, &cli, &mut inputs).await.unwrap();
+        assert_eq!(serde_json::to_value(&inputs).unwrap(), before);
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn projectless_allocations_keep_original_roots_without_node() {
     tokio::task::LocalSet::new().run_until(async {
         let temp=tempfile::tempdir().unwrap();let root=temp.path().canonicalize().unwrap();

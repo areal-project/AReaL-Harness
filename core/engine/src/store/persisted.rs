@@ -72,6 +72,27 @@ fn read_file(root: &Path, relative: &Path, maximum: usize) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
+/// 历史归属允许工作区已删除，但存在路径仍须规范化，悬空链接不能冒充缺失目录。
+fn canonical_history_workspace(path: &Path) -> Result<PathBuf> {
+    ensure!(path.is_absolute(), "history workspace must be absolute");
+    match std::fs::symlink_metadata(path) {
+        Ok(_) => Ok(path.canonicalize()?),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            ensure!(
+                !path
+                    .components()
+                    .any(|part| matches!(part, std::path::Component::ParentDir)),
+                "missing history workspace must not traverse parents"
+            );
+            Ok(canonical_history_workspace(
+                path.parent().context("history workspace parent missing")?,
+            )?
+            .join(path.file_name().context("history workspace name missing")?))
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
 impl PersistedConversation {
     pub fn read(root: &Path, workspace: &Path, id: &str) -> Result<Self> {
         ensure!(uuid::Uuid::parse_str(id).is_ok(), "invalid thread ID");
@@ -80,7 +101,7 @@ impl PersistedConversation {
         ensure!(
             (1..=STATE_VERSION).contains(&record.version)
                 && record.thread.id == id
-                && Path::new(&record.thread.cwd).canonicalize()? == workspace,
+                && canonical_history_workspace(Path::new(&record.thread.cwd))? == workspace,
             "PERSISTED_HISTORY_IDENTITY_MISMATCH"
         );
         let mut used = bytes.len();
@@ -191,6 +212,46 @@ impl PersistedConversation {
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+    #[test]
+    fn persisted_history_reads_removed_workspace_without_recreating_it() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let workspace = root.join("removed/workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let record = json!({"version":17,"thread":{"id":id,"sessionId":id,"parentThreadId":null,"preview":"fixture","modelProvider":"fixture","createdAt":1,"updatedAt":2,"status":{"type":"idle"},"cwd":workspace,"cliVersion":"fixture","source":"cli","ephemeral":false,"turns":[{"id":"original-turn","status":"completed","items":[{"type":"agentMessage","id":"original-item","text":"retained history"}]}]}});
+        let path = root.join(format!("{id}.json"));
+        let bytes = serde_json::to_vec(&record).unwrap();
+        std::fs::write(&path, &bytes).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let before = PersistedConversation::read(&root, &workspace, &id)
+            .unwrap()
+            .snapshot(128 * 1024)
+            .unwrap();
+        std::fs::remove_dir(&workspace).unwrap();
+        std::fs::remove_dir(workspace.parent().unwrap()).unwrap();
+        let after = PersistedConversation::read(&root, &workspace, &id).unwrap();
+        assert_eq!(after.snapshot(128 * 1024).unwrap(), before);
+        assert!(PersistedConversation::read(&root, &root.join("different"), &id).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        assert!(!workspace.exists());
+        assert!(!root.join("owner.lock").exists());
+    }
+
+    #[test]
+    fn persisted_history_workspace_identity_rejects_dangling_links_and_parent_traversal() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let link = root.join("link");
+        std::os::unix::fs::symlink(root.join("absent"), &link).unwrap();
+        assert!(canonical_history_workspace(&link).is_err());
+        assert!(canonical_history_workspace(&link.join("child")).is_err());
+        assert!(canonical_history_workspace(&root.join("absent/../other")).is_err());
+        std::fs::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink(&root, &link).unwrap();
+        assert_eq!(canonical_history_workspace(&link).unwrap(), root);
+    }
+
     #[test]
     fn persisted_history_keeps_original_status_archive_and_bytes_without_store_open() {
         let root = tempfile::tempdir().unwrap();

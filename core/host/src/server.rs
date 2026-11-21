@@ -2153,13 +2153,13 @@ impl Host {
         } else {
             None
         };
-        // 只给下一代 Core 使用当前网络设置；继续复用运行中代际的原始启动输入。
+        // 只给下一代 Core 使用当前网络和工具设置；继续复用运行中代际的原始启动输入。
         if using_saved_inputs
             && current
                 .as_ref()
                 .is_none_or(|service| service.state == State::Stopped)
         {
-            gui_project::refresh_saved_network(self, &registration, &mut inputs).await?;
+            gui_project::refresh_saved_configuration(self, &registration, &mut inputs).await?;
         }
         let (mut spec, _) =
             launch::prepare(&self.home, &self.bin, &registration, &inputs, &credentials)?;

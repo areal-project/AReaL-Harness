@@ -896,7 +896,8 @@ impl Migration {
                 project.root.is_absolute(),
                 "legacy workspace must be absolute"
             );
-            let workspace = project.root.canonicalize()?;
+            // 旧工作区可能已删除；登记保留原路径与历史，新执行仍由服务启动校验真实目录。
+            let workspace = storage::canonical_pending(&project.root)?;
             let data_dir =
                 storage::canonical_pending(&r.source.core_home.join(&project.id).join("state"))?;
             let scratch_dir =
@@ -937,7 +938,9 @@ impl Migration {
             let default_binding = equivalent.map(|p| p.default_binding).unwrap_or_else(|| {
                 projects
                     .iter()
-                    .filter(|p| p.root.canonicalize().ok().as_ref() == Some(&workspace))
+                    .filter(|p| {
+                        storage::canonical_pending(&p.root).ok().as_ref() == Some(&workspace)
+                    })
                     .count()
                     == 1
                     && !existing
@@ -3337,6 +3340,106 @@ mod tests {
             f.original
         );
     }
+    #[test]
+    fn missing_workspace_import_preserves_history_and_other_projects() {
+        let f = Fixture::new();
+        let existing = f.source.core_home.parent().unwrap().join("workspace");
+        let missing = f
+            .source
+            .core_home
+            .parent()
+            .unwrap()
+            .join("removed/workspace");
+        std::fs::create_dir_all(&missing).unwrap();
+        std::fs::remove_dir(&missing).unwrap();
+        std::fs::remove_dir(missing.parent().unwrap()).unwrap();
+        storage::write(
+            &f.source.core_home.join("projects.json"),
+            &json!([{"id":f.ids[0],"root":existing},{"id":f.ids[1],"root":missing}]),
+        )
+        .unwrap();
+        let thread_id = uuid::Uuid::new_v4().to_string();
+        let history = f
+            .source
+            .core_home
+            .join(&f.ids[1])
+            .join("state")
+            .join(format!("{thread_id}.json"));
+        storage::private_dir(history.parent().unwrap()).unwrap();
+        let bytes = serde_json::to_vec(&json!({"version":17,"thread":{"id":thread_id,"sessionId":thread_id,"parentThreadId":null,"preview":"fixture","modelProvider":"fixture","createdAt":1,"updatedAt":2,"status":{"type":"idle"},"cwd":missing,"cliVersion":"fixture","source":"cli","ephemeral":false,"turns":[]}})).unwrap();
+        std::fs::write(&history, &bytes).unwrap();
+        // 非空旧 Store 必须携带原服务的精确清理证明，目录删除不豁免所有者交接。
+        let data = history.parent().unwrap();
+        let service_id = storage::digest(data.as_os_str().as_encoded_bytes())[..24].to_owned();
+        let directory = storage::registry(&f.source.legacy_service_home, &service_id).unwrap();
+        storage::private_dir(&directory).unwrap();
+        let service: Service = serde_json::from_value(json!({
+            "protocolVersion": 1,
+            "serviceId": service_id,
+            "generation": uuid::Uuid::new_v4().to_string(),
+            "workspace": missing,
+            "dataDir": data,
+            "configFingerprint": "fixture",
+            "endpoint": "http://127.0.0.1:1",
+            "webUrl": "http://127.0.0.1:1",
+            "authFile": directory.join("auth.json"),
+            "logFile": directory.join("host.log"),
+            "hostPid": 1,
+            "corePid": 1,
+            "state": "stopped"
+        }))
+        .unwrap();
+        storage::write(&directory.join("service.json"), &service).unwrap();
+        storage::write(
+            &directory.join("cleanup.json"),
+            &storage::CleanupReceipt {
+                version: 1,
+                identity: service.identity,
+                owner: service.owner,
+                components: BTreeMap::new(),
+                cleanup_confirmed: true,
+            },
+        )
+        .unwrap();
+        f.attach();
+        assert_eq!(f.import().unwrap()["kind"], "ready");
+        let published = f.migration.published().unwrap();
+        assert_eq!(published.len(), 2);
+        for (id, workspace) in [(&f.ids[0], &existing), (&f.ids[1], &missing)] {
+            let registration = published.iter().find(|p| &p.project_id == id).unwrap();
+            assert_eq!(&registration.workspace, workspace);
+            assert!(registration.default_binding);
+        }
+        assert_eq!(std::fs::read(&history).unwrap(), bytes);
+        assert!(!missing.exists());
+        assert_eq!(
+            Migration::new(&f.migration.home)
+                .unwrap()
+                .published()
+                .unwrap()
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn missing_workspace_import_rejects_dangling_links() {
+        for nested in [false, true] {
+            let f = Fixture::new();
+            let link = f.source.core_home.parent().unwrap().join("dangling");
+            std::os::unix::fs::symlink(link.with_file_name("absent"), &link).unwrap();
+            let workspace = if nested { link.join("child") } else { link };
+            storage::write(
+                &f.source.core_home.join("projects.json"),
+                &json!([{"id":f.ids[0],"root":workspace}]),
+            )
+            .unwrap();
+            f.attach();
+            assert!(f.import().is_err());
+            assert!(f.migration.published().unwrap().is_empty());
+        }
+    }
+
     #[test]
     fn manifest_rejects_path_traversal_and_symlink_source_files() {
         let f = Fixture::new();

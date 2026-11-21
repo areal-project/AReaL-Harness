@@ -39,7 +39,7 @@ Remote 的新读方法和原生会话格式只在 hello 协商 `gui-read-v1` 后
 
 `desktop.command` 的 `connect` 由 Host 按逻辑项目和 Thread 解析执行工作区。显式 `resumeScheduling:true` 复用原 `project.ensure` 受理记录清除调度停止意图；遇到未决启动时只核对原回执，返回原 `activationId`，不会重发启动。结果使用原生激活状态，客户端重读共享投影并校验 Core 代际。
 
-本机 WebSocket 协商 `persistedHistoryV1` 后，可对已登记且未运行的项目调用 `session.openPersisted`。Host 核对旧服务身份并取得启动、服务和 Store 锁，生成有大小上限的固定只读快照，不启动 Core 或 Runtime；响应标记 `access.readOnly` 和快照摘要，不改变项目状态或旧回执。历史分页及内容寻址附件绑定该订阅；不支持的继承视图和缺失资源明确返回错误。连接关闭、订阅关闭或项目归属改变后快照失效。此能力不授予发送、任务控制或项目接管权限。
+本机 WebSocket 协商 `persistedHistoryV1` 后，可对已登记且未运行的项目调用 `session.openPersisted`。Host 核对旧服务身份并取得启动、服务和 Store 锁，生成有大小上限的固定只读快照，不启动 Core 或 Runtime；响应标记 `access.readOnly` 和快照摘要，不改变项目状态或旧回执。历史分页及内容寻址附件绑定该订阅；不支持的继承视图和缺失资源明确返回错误。连接关闭、订阅关闭或项目归属改变后快照失效。此能力不授予发送、任务控制或项目接管权限。已发布导入但从未建立服务的项目，可在完整登记与迁移记录一致、无服务绑定且未指定执行代际时取得同样的锁读取历史；其 `persisted:<snapshotId>` 身份只用于只读订阅，不能充当执行代际。
 
 Host 无法交接时，`areal host history-snapshot --service <service.json> --thread <id> --output <private-dir>/history.html` 可在取得同样的项目锁并验证服务身份后导出离线只读页面。输出目录须为当前用户拥有的私有目录；命令不连接或启动 Host、Core、Runtime，不改变原回执。页面不加载附件或引用会话，也不能发送或执行操作。
 
@@ -135,7 +135,7 @@ Main 在已附接的窗口通过 `desktop.core.call` 调用 `lifecycle.read`。�
 
 本机网页通过 `worktree.project.add {root}` 登记用户选择的项目目录，需要 `gui-write-v1` 与 `manage` 授权。Host 核对当前 GUI 来源并规范目录，在同一来源重复登记同一路径返回同一 `projectId`。界面收到项目 ID 后刷新 Shell，登记失败时保留当前选择。
 
-GUI 来源的新项目登记由 Host 生成首次 `LaunchInputs`，不等待 Node 写入启动记录；已保存的输入继续沿原记录复用。首次准备带有绑定项目和输入摘要的只读空闲证明，实际启动准备前持久撤销；缺少证明的既有输入仍按未知启动历史处理。已导入但缺少启动记录的 GUI 项目可从同一来源经校验的启动选项准备；CLI 的首次激活仍须显式提供输入。配置根、执行目录与数据目录独立绑定，凭据值仍经 Host 内存通道注入。默认 Profile 和内置 Skill 来自共享资源，固定清单与摘要校验后物化；用户与项目 Skill 选择复用定时准备的同一物化器，显式外部部署保留自身契约。代理与补充证书使用来源设置，附加 CA 保留原系统信任根。资源、钩子或网络准备失败时，启动输入标记为仅历史模式，不因此开放执行。
+GUI 来源的新项目登记由 Host 生成首次 `LaunchInputs`，不等待 Node 写入启动记录；运行中代际继续使用原启动输入；服务停止后的下一次启动从当前 GUI 来源重建工具快照与网络配置，保留普通 MCP 和 hooks，旧生成文件中的退役字段不再送入 Core。首次准备带有绑定项目和输入摘要的只读空闲证明，实际启动准备前持久撤销；缺少证明的既有输入仍按未知启动历史处理。已导入但缺少启动记录的 GUI 项目可从同一来源经校验的启动选项准备；CLI 的首次激活仍须显式提供输入。配置根、执行目录与数据目录独立绑定，凭据值仍经 Host 内存通道注入。默认 Profile 和内置 Skill 来自共享资源，固定清单与摘要校验后物化；用户与项目 Skill 选择复用定时准备的同一物化器，显式外部部署保留自身契约。代理与补充证书使用来源设置，附加 CA 保留原系统信任根。资源、钩子或网络准备失败时，启动输入标记为仅历史模式，不因此开放执行。
 
 项目外目录的 `projectless` 命令与本机附件的 `projectless.command` 共用 Rust Host 所有者。Host 先将原 requestId 和规范目录写入来源的预约文件，再创建目录与登记项目；重复请求只能恢复原目录，不能改绑，已有普通项目目录不能被转成项目外任务。预约与登记跨异步调用串行处理。模型目录复用 Host 的配置与订阅投影，响应不含端点或凭据值。
 
@@ -208,7 +208,7 @@ Host 在排空前保存并 fsync 汇总目标集合与各子操作身份。停�
 
 CLI 提供显式 `projectId` 时按该 ID 解析。否则先按规范工作区和显式 `dataDir` 匹配，再选择唯一默认绑定。存在多个候选且没有唯一默认项时返回 `projectAmbiguous` 与候选 ID，不能按显示名、目录顺序或首条登记选择。同一工作区、不同数据目录保留独立项目。同一规范 dataDir 不得产生第二写者。等价重复导入使用已保存的来源映射，不兼容绑定返回 `dataDirConflict`。
 
-GUI 导入持久化 `(profile,legacyProjectId) -> projectId`，同时保存 Worktree 绑定、授权范围、回执定位、来源与默认绑定。旧 GUI ID 无冲突时原样保留；碰撞时分配新 ID，并在激活前提交完整映射。Remote grants 与旧请求定位沿该映射解析，不能因 ID 复用扩大授权。
+GUI 导入持久化 `(profile,legacyProjectId) -> projectId`，同时保存 Worktree 绑定、授权范围、回执定位、来源与默认绑定。旧 GUI ID 无冲突时原样保留；碰撞时分配新 ID，并在激活前提交完整映射。Remote grants 与旧请求定位沿该映射解析，不能因 ID 复用扩大授权。已删除的工作区保留项目身份与只读历史，不阻断其他项目导入，也不重建目录或改写历史；新执行仍要求有效工作区。
 
 GUI 根目录中的 `<projectId>-pending.json` 与 `<projectId>-outcomes.json` 提交 journal 位于 Core Store 外。必须保留原生 Core request ID、语义摘要、已受理结果、UNKNOWN 定位、原服务身份与全部 Remote 命令关联。先关闭旧 writer 准入、flush 并取得 journal 快照，再在 Host 锁下导入，fsync 绑定来源身份与 journal 摘要的迁移回执。回执耐久后才切换 writer，并通过新 owner 重新开放准入。恢复按回执阶段继续，不能产生第二写者。Core Store 和 dataDir 原地保留。升级前已受理但回复丢失的请求，升级后必须用原回执核对，副作用恰好一次。
 

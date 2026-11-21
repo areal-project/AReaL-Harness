@@ -602,13 +602,19 @@ async fn serve(
         let workspace = PathBuf::from(engine.default_cwd());
         engine.set_permissions(config.permissions.clone(), config.sources.get("permissions.mode").cloned())?;
         let mut reload = None;
+        let mut preparation_phase = "start";
         let preparation: Result<()> = async {
         if execution_error.is_none() {
+        preparation_phase = "reload";
         if args.service_info.is_some() { reload = Some(reload::Reload::open(inputs.clone(), &config, &engine)?); }
+        preparation_phase = "deployment";
         if let Some(path) = &args.desktop_config { engine.install_deployment(path)?; }
+        preparation_phase = "skill_sources";
         engine.install_discovered_skill_sources(workspace.clone(), homedir.clone())?;
         // Trusted launcher paths determine plugin discovery and shared installation state.
+        preparation_phase = "hooks";
         engine.install_hook_configuration(config.home.clone(), config.config_file.clone())?;
+        preparation_phase = "credentials";
         for name in mcp_env.keys() {
             if let Some(name) = name.to_str()
                 && let Some(reference) = name.strip_prefix("AREAL_CREDENTIAL_")
@@ -617,15 +623,21 @@ async fn serve(
                 engine.register_credential(reference.into(), value.into())?;
             }
         }
+        preparation_phase = "configured_models";
         let (configured, credentials) = configured_models(&config, &mcp_env)?;
+        preparation_phase = "model_credentials";
         for (reference, value) in credentials { engine.register_credential(reference, value)?; }
+        preparation_phase = "model_catalog";
         engine.install_configured_models(configured)?;
+        preparation_phase = "plugin_store";
         engine.install_plugin_store(Arc::new(areal_plugins::Store::open(
             config.home.join("plugins"), args.workspace.clone().unwrap_or(workspace.clone()).canonicalize()?, homedir.clone(),
         )?))?;
+        preparation_phase = "recover_default_models";
         engine.recover_desktop_default_models().await?;
         }
         if let Some(policy_path) = &args.workgroup_policy && execution_error.is_none() {
+            preparation_phase = "workgroup";
             use areal_engine::workgroup::service::{NativeFactory, Policy, Service};
             let policy: Policy = serde_json::from_slice(&std::fs::read(policy_path)?)?;
             // launcher 的主 Runtime 使用私有管道；工作组还需自行启动隔离
@@ -672,6 +684,7 @@ async fn serve(
         }
         // 自动隔离沿用宿主的工作区写授权；没有部署验收时只报告候选和实际检查证据。
         if execution_error.is_none() && args.allow_write && runtime.is_some() && limits.max_children_per_turn > 0 {
+            preparation_phase = "automatic_workgroup";
             use areal_engine::workgroup::service::{NativeFactory, Service};
             let executable = std::env::current_exe()?;
             let bin = executable.parent().context("executable directory missing")?;
@@ -694,13 +707,27 @@ async fn serve(
         }.await;
         match preparation {
             Ok(()) => {},
-            Err(_) if args.service_info.is_some() => {
+            Err(cause) if args.service_info.is_some() => {
+                // 只输出固定装配阶段与错误类型，不能记录配置、路径、凭据或底层错误原文。
+                let io = cause.chain().find_map(|error| error.downcast_ref::<std::io::Error>().map(std::io::Error::kind));
+                let json = cause.chain().find_map(|error| error.downcast_ref::<serde_json::Error>().map(serde_json::Error::classify));
+                eprintln!("Core execution preparation failed: phase={preparation_phase} io={io:?} json={json:?}");
                 reload = None;
                 execution_error = Some("Execution deployment is unavailable; history remains readable".into());
             }
             Err(cause) => return Err(cause),
         }
         if let Some(message) = &execution_error {
+            let phase = match message.as_str() {
+                "Execution configuration is unavailable; history remains readable" => "history_only",
+                "Tool configuration is unavailable; history remains readable" => "tools",
+                "Model configuration is unavailable; history remains readable" => "model",
+                "MCP configuration is unavailable; history remains readable" => "mcp",
+                "Plugin configuration is unavailable; history remains readable" => "plugins",
+                "Execution deployment is unavailable; history remains readable" => "deployment",
+                _ => "model_configuration",
+            };
+            eprintln!("Core execution unavailable: phase={phase}");
             engine.disable_execution();
             engine.set_configuration_status(serde_json::json!({
                 "restartRequired": true, "pendingApply": false,

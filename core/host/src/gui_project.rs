@@ -227,6 +227,34 @@ fn hooks(home: &Path, options: &Value) -> Result<Value> {
     Ok(serde_json::from_slice(&bytes)?)
 }
 
+fn prepare_tool_extensions(
+    home: &Path,
+    directory: &Path,
+    options: &Value,
+    args: &mut LocalArgs,
+    environment: &mut BTreeMap<String, String>,
+) -> Result<()> {
+    let hook_value = match hooks(home, options) {
+        Ok(value) => value,
+        Err(error) => {
+            super::execution_preparation::trace_failure("gui.prepare.hooks", &error);
+            args.history_only = true;
+            eprintln!("Host GUI hook preparation unavailable; using history-only Core");
+            json!({})
+        }
+    };
+    let extensions = directory.join(format!(
+        "tool-extensions-{}.json",
+        storage::digest(&serde_json::to_vec(&hook_value)?)
+    ));
+    storage::write(&extensions, &hook_value)?;
+    environment.insert(
+        "AREAL_HARNESS_TOOL_EXTENSIONS".into(),
+        extensions.to_string_lossy().into_owned(),
+    );
+    Ok(())
+}
+
 async fn network_environment(
     host: &Host,
     project: &ProjectRegistration,
@@ -236,7 +264,7 @@ async fn network_environment(
     crate::network::launch_environment(network, launch_path(host, project).parent().unwrap())
 }
 
-pub(super) async fn refresh_saved_network(
+pub(super) async fn refresh_saved_configuration(
     host: &Host,
     project: &ProjectRegistration,
     inputs: &mut LaunchInputs,
@@ -249,6 +277,18 @@ pub(super) async fn refresh_saved_network(
         .migration
         .credential_source(project)?
         .context("GUI_SOURCE_PENDING")?;
+    let options = self::options(host, &source)?;
+    let home = library_store::source_home(host, &source)?;
+    let alias = workbench_route::backend_project_alias(host, &source, &project.project_id)?;
+    let directory = home.join(alias);
+    storage::private_dir(&directory)?;
+    prepare_tool_extensions(
+        &home,
+        &directory,
+        &options,
+        &mut inputs.options,
+        &mut inputs.environment,
+    )?;
     let network_key = |key: &str| {
         areal_config::PROXY_ENV_VARS.contains(&key) || areal_config::TLS_ENV_VARS.contains(&key)
     };
@@ -317,24 +357,7 @@ async fn prepare(
             eprintln!("Host GUI network preparation unavailable; using history-only Core");
         }
     }
-    let hook_value = match hooks(&home, options) {
-        Ok(value) => value,
-        Err(error) => {
-            super::execution_preparation::trace_failure("gui.prepare.hooks", &error);
-            args.history_only = true;
-            eprintln!("Host GUI hook preparation unavailable; using history-only Core");
-            json!({})
-        }
-    };
-    let extensions = directory.join(format!(
-        "tool-extensions-{}.json",
-        storage::digest(&serde_json::to_vec(&hook_value)?)
-    ));
-    storage::write(&extensions, &hook_value)?;
-    environment.insert(
-        "AREAL_HARNESS_TOOL_EXTENSIONS".into(),
-        extensions.to_string_lossy().into_owned(),
-    );
+    prepare_tool_extensions(&home, &directory, options, &mut args, &mut environment)?;
     let is_managed = managed(host, options)?;
     let builtin_profile: Value = serde_json::from_str(include_str!(
         "../../../clients/gui/packages/workbench/assets/desktop-profile.json"
