@@ -15,9 +15,12 @@ description: 审查 AReaL GUI 的界面改动或 PR 时使用。先取浏览器�
 pnpm --dir clients/gui design:build
 pnpm --dir clients/gui test:design
 pnpm --dir clients/gui test:design -- --conversation-system
+pnpm --dir clients/gui audit:ui
 ```
 
-`test:design` 最后一行 JSON 的 `scratch` 是本次证据目录：截图、计算样式、`manifest.json`、`accessibility.json` 与 `contrast-matrix.json` 都在里面。改动涉及的场景没有截图时，先补检查用例，再下视觉结论。
+`test:design` 最后一行 JSON 的 `scratch` 是本次证据目录：截图、计算样式、`manifest.json`、`accessibility.json` 与 `contrast-matrix.json` 都在里面。`audit:ui` 补充采集多视图亮暗/宽窄/18px 的水平溢出、CLS、Web Animations API 动效时长与 `reduced-motion` 归零情况，并自动合成带编号的 `contact-sheet-overview.png` 供横向视觉比对。改动涉及的场景没有截图时，先补检查用例，再下视觉结论。
+
+业务与 UI/UX 回归优先在 Web（`test:web-journeys` / `audit:ui`）取证；仅原生标题栏、毛玻璃材质、系统菜单/弹窗、Keychain、IME 组合态与 `WebContentsView` 等桌面外壳能力使用隔离 Electron 验证。
 
 ## 2. 亮暗分别看
 
