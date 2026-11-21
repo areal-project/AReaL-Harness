@@ -3,3 +3,5 @@
 @import "./workbench/scheduled-workspace/scheduled-workspace.css";
 @import "./workbench/task-title-overflow/task-title-overflow.css";
 @import "./workbench/bots-workspace/bots-workspace.css";
+@import "./workbench/popover-sidebar/popover-sidebar.css";
+@import "./workbench/automation-template-dialog/automation-template-dialog.css";

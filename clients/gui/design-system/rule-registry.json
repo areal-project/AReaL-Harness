@@ -2901,6 +2901,141 @@
       "strength": "default",
       "textSha256": "f240f80f0b961ba6bf78e4103a35d876282fd942ce4e4eb731697a3ed1e3c2e9",
       "check": "clients/gui/packages/ui/src/conversation/thread-summary-panel/thread-summary-panel.test.tsx"
+    },
+    {
+      "id": "R-BADGE-001",
+      "title": "需要以紧凑胶囊呈现状态、计数或分类标签时使用 Badge，不手写私有标签类",
+      "owner": "clients/gui/packages/ui/src/components/badge/badge.md#何时使用",
+      "strength": "default",
+      "textSha256": "9219b7b7f0fe0e386eb1264e3d4f63ebf250decb2886600eeaa1d77641c774e9"
+    },
+    {
+      "id": "R-BADGE-002",
+      "title": "状态色必须伴随可读文字或图标，不单靠颜色传递语义",
+      "owner": "clients/gui/packages/ui/src/components/badge/badge.md#状态",
+      "strength": "default",
+      "textSha256": "174734363bd44e2aaf936b3decdf8543a499cb364ba713e6fb75e4cbc0e0c821",
+      "check": "clients/gui/packages/ui/src/components/badge/badge.test.tsx"
+    },
+    {
+      "id": "R-CALLOUT-001",
+      "title": "在设置分组、审批原因或弹窗内说明操作影响时使用 Callout",
+      "owner": "clients/gui/packages/ui/src/components/callout/callout.md#何时使用",
+      "strength": "default",
+      "textSha256": "337417f3391c4b9afd6260ed0f4bf395aa7a3ff0be66027ce92fadfbadc3d823"
+    },
+    {
+      "id": "R-CALLOUT-002",
+      "title": "tone=\"danger\" 暴露 role=\"alert\"，其余语义暴露 role=\"note\"，文字在可用宽度内完整换",
+      "owner": "clients/gui/packages/ui/src/components/callout/callout.md#可访问性",
+      "strength": "default",
+      "textSha256": "b5134b19d0186e12d8870774d8fa4744c78bd5a929771ba82f31be928a451875",
+      "check": "clients/gui/packages/ui/src/components/callout/callout.test.tsx"
+    },
+    {
+      "id": "R-KBD-001",
+      "title": "在按钮、菜单项、Tooltip 或快捷键说明中呈现按键提示，禁止在页面内手写带硬编码底色的 <kbd> 样式",
+      "owner": "clients/gui/packages/ui/src/components/kbd/kbd.md#何时使用",
+      "strength": "default",
+      "textSha256": "34dc023a615a518f35c78df5136a1c1f517d875e17b386cd596b085645bfe97a"
+    },
+    {
+      "id": "R-KBD-002",
+      "title": "装饰性快捷键提示默认 aria-hidden=\"true\"，由宿主按钮的可访问名称或说明承担语义",
+      "owner": "clients/gui/packages/ui/src/components/kbd/kbd.md#可访问性",
+      "strength": "default",
+      "textSha256": "d811f9e6f2fb02f0294a81ba5582987f459e0e53838ca08004b59406fc18373b",
+      "check": "clients/gui/packages/ui/src/components/kbd/kbd.test.tsx"
+    },
+    {
+      "id": "R-COMPOSERREQUESTSTACK-001",
+      "title": "同一会话同时存在多条待确认审批或提问时，使用本组件统一承载并按 1 / N 切换",
+      "owner": "clients/gui/packages/ui/src/conversation/composer-request-stack/composer-request-stack.md#何时使用",
+      "strength": "default",
+      "textSha256": "f66f75a601d1a1aaae6f36aadc8a6b500a2262f1bcb89a76e3fec277fe524610"
+    },
+    {
+      "id": "R-COMPOSERREQUESTSTACK-002",
+      "title": "上下切换按钮具名并在首尾禁用，页码使用 aria-live=\"polite\" 播报",
+      "owner": "clients/gui/packages/ui/src/conversation/composer-request-stack/composer-request-stack.md#可访问性",
+      "strength": "default",
+      "textSha256": "c9d5ddc02db2fd96c365486ebb11bd6c8517a64397406fef809c5e5bed3c583a",
+      "check": "clients/gui/packages/ui/src/conversation/composer-request-stack/composer-request-stack.test.tsx"
+    },
+    {
+      "id": "R-THREADFINDBAR-001",
+      "title": "在当前会话内快速检索消息、命令输出或文件路径时浮起展示，不推动正文布局",
+      "owner": "clients/gui/packages/ui/src/conversation/thread-find-bar/thread-find-bar.md#何时使用",
+      "strength": "default",
+      "textSha256": "ca4bff04ab85d4bcfca7fe123e4ca1a9a8e99b0add1fe978ea4c77f4257862ff"
+    },
+    {
+      "id": "R-THREADFINDBAR-002",
+      "title": "容器暴露 role=\"search\"，匹配数用 aria-live=\"polite\" 播报，无匹配时禁用上下跳转按钮",
+      "owner": "clients/gui/packages/ui/src/conversation/thread-find-bar/thread-find-bar.md#可访问性",
+      "strength": "default",
+      "textSha256": "25a4c8f32053796bbc813672913437d139e24bafc4923b6e285a5f873dfdc84c",
+      "check": "clients/gui/packages/ui/src/conversation/thread-find-bar/thread-find-bar.test.tsx"
+    },
+    {
+      "id": "R-WORKEDFOR-001",
+      "title": "一轮工具活动完成并进入最终结论前，用本组件呈现阶段耗时与细分割线，不给过程增加卡片边框",
+      "owner": "clients/gui/packages/ui/src/conversation/worked-for-divider/worked-for-divider.md#何时使用",
+      "strength": "default",
+      "textSha256": "0afd93f1db2c7ada4efe3b5d95598b227af8992847d8f2639b6f4f47db878250"
+    },
+    {
+      "id": "R-WORKEDFOR-002",
+      "title": "容器暴露 role=\"separator\" 与可读耗时名称",
+      "owner": "clients/gui/packages/ui/src/conversation/worked-for-divider/worked-for-divider.md#可访问性",
+      "strength": "default",
+      "textSha256": "a449192b6f262dd6d61efff04749559acf1063fb734a9cae3ece211c78639d32",
+      "check": "clients/gui/packages/ui/src/conversation/worked-for-divider/worked-for-divider.test.tsx"
+    },
+    {
+      "id": "R-SHORTCUTCAPTURE-001",
+      "title": "在设置页自定义全局或会话快捷键时使用本组件，点击进入监听态、按 Escape 取消、按 Backspace/Delete",
+      "owner": "clients/gui/packages/ui/src/settings/shortcut-capture/shortcut-capture.md#何时使用",
+      "strength": "default",
+      "textSha256": "6f18cf621ca07904bb8cb077eee0bbfef7c9b3ab2843759f3faebb1b00b07b57"
+    },
+    {
+      "id": "R-SHORTCUTCAPTURE-002",
+      "title": "使用原生按钮暴露 aria-label 与 aria-pressed 录制态，恢复默认按钮配有 TitleTooltip",
+      "owner": "clients/gui/packages/ui/src/settings/shortcut-capture/shortcut-capture.md#可访问性",
+      "strength": "default",
+      "textSha256": "3de190db0180d38ec68143778b711ff82633b892ad3fc134eb27eba99d140205",
+      "check": "clients/gui/packages/ui/src/settings/shortcut-capture/shortcut-capture.test.tsx"
+    },
+    {
+      "id": "R-AUTOMATIONTEMPLATE-001",
+      "title": "用户选用预设定时任务模板或重置已有自定义配置前，展示完整只读指令与周期摘要，并在覆盖自定义内容时用 Callout 明确",
+      "owner": "clients/gui/packages/ui/src/workbench/automation-template-dialog/automation-template-dialog.md#何时使用",
+      "strength": "default",
+      "textSha256": "b97d0d43e5f12084fd5b948de19ba331de3268093edafcd8309ecc728dc9a44f"
+    },
+    {
+      "id": "R-AUTOMATIONTEMPLATE-002",
+      "title": "基于共享 Dialog 承载焦点陷阱与 Escape 关闭，指令预览区可键盘聚焦滚动",
+      "owner": "clients/gui/packages/ui/src/workbench/automation-template-dialog/automation-template-dialog.md#可访问性",
+      "strength": "default",
+      "textSha256": "fe7f40965b520dae82bf750261bb113c8a9b65a961705f49fb596c9f87b6cf7e",
+      "check": "clients/gui/packages/ui/src/workbench/automation-template-dialog/automation-template-dialog.test.tsx"
+    },
+    {
+      "id": "R-POPOVERSIDEBAR-001",
+      "title": "主侧栏折叠收起后，用本组件提供左缘悬停与键盘聚焦浮出浏览，避免反复展开挤压主阅读区",
+      "owner": "clients/gui/packages/ui/src/workbench/popover-sidebar/popover-sidebar.md#何时使用",
+      "strength": "default",
+      "textSha256": "3a0f09d44c551741f89361eb4782aa4749ed35a410c1c08820cb6473e9c12791"
+    },
+    {
+      "id": "R-POPOVERSIDEBAR-002",
+      "title": "未展开时暴露 aria-hidden=\"true\" 且不截获指针",
+      "owner": "clients/gui/packages/ui/src/workbench/popover-sidebar/popover-sidebar.md#可访问性",
+      "strength": "default",
+      "textSha256": "0dfea39892d865f159d4df8a07cc1535474c83ec5562196a0116c7c4dba3d9c9",
+      "check": "clients/gui/packages/ui/src/workbench/popover-sidebar/popover-sidebar.test.tsx"
     }
   ]
 }

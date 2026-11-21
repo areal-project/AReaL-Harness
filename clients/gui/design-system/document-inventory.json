@@ -1012,5 +1012,50 @@
     "path": "design/spec/quality.md",
     "role": "cross-product",
     "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/components/kbd/kbd.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/components/badge/badge.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/components/callout/callout.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/conversation/composer-request-stack/composer-request-stack.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/conversation/worked-for-divider/worked-for-divider.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/conversation/thread-find-bar/thread-find-bar.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/workbench/popover-sidebar/popover-sidebar.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/workbench/automation-template-dialog/automation-template-dialog.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/settings/shortcut-capture/shortcut-capture.md",
+    "role": "consumer",
+    "status": "active"
   }
 ]

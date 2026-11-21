@@ -1,0 +1,33 @@
+.areal-composer-request-stack {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing-inline) / 2);
+  width: 100%;
+  min-width: 0;
+}
+
+.areal-composer-request-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-inline);
+  padding: 0 calc(var(--spacing-inline) / 2);
+}
+
+.areal-composer-request-pager {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing-inline) / 2);
+}
+
+.areal-composer-request-count {
+  min-width: calc(var(--spacing-inline) * 5);
+  text-align: center;
+  font-size: var(--text-ui-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-foreground-subtle);
+}
+
+.areal-composer-request-body {
+  min-width: 0;
+}

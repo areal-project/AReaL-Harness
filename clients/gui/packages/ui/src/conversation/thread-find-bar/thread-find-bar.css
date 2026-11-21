@@ -1,0 +1,42 @@
+.areal-thread-find-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing-inline) / 2);
+  max-width: 100%;
+  padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
+  border: var(--border-width-default) solid var(--color-border-hairline);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface-popover);
+  box-shadow: var(--shadow-popover-overlay);
+  backdrop-filter: var(--material-overlay-filter);
+}
+
+.areal-thread-find-icon {
+  flex: none;
+  color: var(--color-foreground-subtle);
+}
+
+.areal-thread-find-input {
+  flex: 1 1 auto;
+  min-width: calc(var(--spacing-inline) * 20);
+  height: var(--spacing-control-sm);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  font-size: var(--text-ui-caption);
+}
+
+.areal-thread-find-count {
+  flex: none;
+  font-size: var(--text-ui-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-foreground-subtle);
+}
+
+.areal-thread-find-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing-inline) / 4);
+  flex: none;
+}

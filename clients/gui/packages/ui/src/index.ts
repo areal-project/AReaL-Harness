@@ -127,3 +127,6 @@ export {
   type DiffViewerProps,
   type DiffViewerSelectedLineRange,
 } from "./components/diff-viewer/diff-viewer.js";
+export { Kbd, type KbdProps } from "./components/kbd/kbd.js";
+export { Badge, type BadgeProps } from "./components/badge/badge.js";
+export { Callout, type CalloutProps } from "./components/callout/callout.js";

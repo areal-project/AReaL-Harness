@@ -64,6 +64,15 @@
 | WorktreeDirectory | [合同](../packages/ui/src/worktree/worktree-directory/worktree-directory.md) | E-SETTINGS |
 | WorktreeSettings | [合同](../packages/ui/src/worktree/worktree-settings/worktree-settings.md) | E-SETTINGS |
 | WorktreeWorkspace | [合同](../packages/ui/src/worktree/worktree-workspace/worktree-workspace.md) | E-SETTINGS |
+| Kbd | [合同](../packages/ui/src/components/kbd/kbd.md) | E-DECISION |
+| Badge | [合同](../packages/ui/src/components/badge/badge.md) | E-CONVERSATION |
+| Callout | [合同](../packages/ui/src/components/callout/callout.md) | E-SETTINGS |
+| ComposerRequestStack | [合同](../packages/ui/src/conversation/composer-request-stack/composer-request-stack.md) | E-DECISION |
+| WorkedForDivider | [合同](../packages/ui/src/conversation/worked-for-divider/worked-for-divider.md) | E-CONVERSATION |
+| ThreadFindBar | [合同](../packages/ui/src/conversation/thread-find-bar/thread-find-bar.md) | E-CONVERSATION |
+| PopoverSidebar | [合同](../packages/ui/src/workbench/popover-sidebar/popover-sidebar.md) | E-SETTINGS |
+| AutomationTemplateDialog | [合同](../packages/ui/src/workbench/automation-template-dialog/automation-template-dialog.md) | E-SETTINGS |
+| ShortcutCapture | [合同](../packages/ui/src/settings/shortcut-capture/shortcut-capture.md) | E-SETTINGS |
 
 证据见 [Base索引](base-evidence.md)。
 

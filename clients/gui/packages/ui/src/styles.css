@@ -30,6 +30,9 @@
 @import "./settings/settings-dialog/settings-dialog.css";
 @import "./components/popover/popup.css";
 @import "./components/hover-actions/hover-actions.css";
+@import "./components/kbd/kbd.css";
+@import "./components/badge/badge.css";
+@import "./components/callout/callout.css";
 
 /* Tailwind 自带的 animate-spin 写死 1s 和 infinite，改走动效变量，减少动效时随之停住。 */
 @theme {

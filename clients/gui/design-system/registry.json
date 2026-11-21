@@ -406,6 +406,60 @@
       "source": "packages/ui/src/worktree/worktree-workspace/worktree-workspace.tsx",
       "purpose": "Worktree 工作区详情视图",
       "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "Kbd",
+      "source": "packages/ui/src/components/kbd/kbd.tsx",
+      "purpose": "统一快捷键提示原语（primary/secondary/keycap）",
+      "importFrom": "@areal/ui"
+    },
+    {
+      "id": "Badge",
+      "source": "packages/ui/src/components/badge/badge.tsx",
+      "purpose": "通用语义状态徽标",
+      "importFrom": "@areal/ui"
+    },
+    {
+      "id": "Callout",
+      "source": "packages/ui/src/components/callout/callout.tsx",
+      "purpose": "轻量内联提示块",
+      "importFrom": "@areal/ui"
+    },
+    {
+      "id": "ComposerRequestStack",
+      "source": "packages/ui/src/conversation/composer-request-stack/composer-request-stack.tsx",
+      "purpose": "底部待处理请求导航栈（1/N 切换）",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "WorkedForDivider",
+      "source": "packages/ui/src/conversation/worked-for-divider/worked-for-divider.tsx",
+      "purpose": "对话流过程耗时分隔条",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "ThreadFindBar",
+      "source": "packages/ui/src/conversation/thread-find-bar/thread-find-bar.tsx",
+      "purpose": "会话内紧凑查找浮条",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "PopoverSidebar",
+      "source": "packages/ui/src/workbench/popover-sidebar/popover-sidebar.tsx",
+      "purpose": "折叠侧栏左缘悬停浮出容器",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "AutomationTemplateDialog",
+      "source": "packages/ui/src/workbench/automation-template-dialog/automation-template-dialog.tsx",
+      "purpose": "定时任务模板预览与重置确认弹窗",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "ShortcutCapture",
+      "source": "packages/ui/src/settings/shortcut-capture/shortcut-capture.tsx",
+      "purpose": "设置页快捷键录制控件",
+      "importFrom": "@areal/ui/compositions"
     }
   ],
   "patterns": [
@@ -520,7 +574,16 @@
     "id": "desktop-core",
     "version": "0.4.1",
     "foundations": ["文字", "表面与反馈", "尺寸与间距", "形状与动效"],
-    "primitives": ["Button", "ActionButton", "Switch", "Select", "Feedback"],
+    "primitives": [
+      "Button",
+      "ActionButton",
+      "Switch",
+      "Select",
+      "Feedback",
+      "Kbd",
+      "Badge",
+      "Callout"
+    ],
     "compositions": [
       "SettingsPage",
       "SettingsSection",
@@ -568,7 +631,13 @@
       "WorktreeStatus",
       "WorktreeDirectory",
       "WorktreeSettings",
-      "WorktreeWorkspace"
+      "WorktreeWorkspace",
+      "ComposerRequestStack",
+      "WorkedForDivider",
+      "ThreadFindBar",
+      "PopoverSidebar",
+      "AutomationTemplateDialog",
+      "ShortcutCapture"
     ],
     "patterns": ["P-SETTINGS", "P-DECISION", "P-RESOURCES"],
     "acceptance": [
@@ -1056,6 +1125,97 @@
         "variants": ["default"],
         "states": ["ready"],
         "evidence": ["E-SETTINGS"]
+      },
+      {
+        "id": "Kbd",
+        "contract": "packages/ui/src/components/kbd/kbd.md",
+        "consumers": ["packages/ui/src/settings/shortcut-capture/shortcut-capture.tsx"],
+        "variants": ["secondary", "primary", "keycap"],
+        "states": ["default"],
+        "evidence": ["E-DECISION"],
+        "exports": ["Kbd"]
+      },
+      {
+        "id": "Badge",
+        "contract": "packages/ui/src/components/badge/badge.md",
+        "consumers": [
+          "packages/ui/src/conversation/composer-request-stack/composer-request-stack.tsx"
+        ],
+        "variants": ["neutral", "info", "success", "warning", "danger"],
+        "states": ["default"],
+        "evidence": ["E-CONVERSATION"],
+        "exports": ["Badge"]
+      },
+      {
+        "id": "Callout",
+        "contract": "packages/ui/src/components/callout/callout.md",
+        "consumers": [
+          "packages/ui/src/workbench/automation-template-dialog/automation-template-dialog.tsx"
+        ],
+        "variants": ["info", "warning", "danger", "neutral"],
+        "states": ["default"],
+        "evidence": ["E-SETTINGS"],
+        "exports": ["Callout"]
+      },
+      {
+        "id": "ComposerRequestStack",
+        "contract": "packages/ui/src/conversation/composer-request-stack/composer-request-stack.md",
+        "consumers": [
+          "packages/ui/src/conversation/composer-request-stack/composer-request-stack.test.tsx"
+        ],
+        "variants": ["default"],
+        "states": ["single", "paginated"],
+        "evidence": ["E-DECISION"],
+        "exports": ["ComposerRequestStack"]
+      },
+      {
+        "id": "WorkedForDivider",
+        "contract": "packages/ui/src/conversation/worked-for-divider/worked-for-divider.md",
+        "consumers": [
+          "packages/ui/src/conversation/worked-for-divider/worked-for-divider.test.tsx"
+        ],
+        "variants": ["default"],
+        "states": ["static", "interactive"],
+        "evidence": ["E-CONVERSATION"],
+        "exports": ["WorkedForDivider"]
+      },
+      {
+        "id": "ThreadFindBar",
+        "contract": "packages/ui/src/conversation/thread-find-bar/thread-find-bar.md",
+        "consumers": ["packages/ui/src/conversation/thread-find-bar/thread-find-bar.test.tsx"],
+        "variants": ["default"],
+        "states": ["empty", "matched"],
+        "evidence": ["E-CONVERSATION"],
+        "exports": ["ThreadFindBar"]
+      },
+      {
+        "id": "PopoverSidebar",
+        "contract": "packages/ui/src/workbench/popover-sidebar/popover-sidebar.md",
+        "consumers": ["packages/ui/src/workbench/popover-sidebar/popover-sidebar.test.tsx"],
+        "variants": ["default"],
+        "states": ["closed", "open"],
+        "evidence": ["E-SETTINGS"],
+        "exports": ["PopoverSidebar"]
+      },
+      {
+        "id": "AutomationTemplateDialog",
+        "contract": "packages/ui/src/workbench/automation-template-dialog/automation-template-dialog.md",
+        "consumers": [
+          "packages/ui/src/workbench/automation-template-dialog/automation-template-dialog.test.tsx"
+        ],
+        "variants": ["default"],
+        "states": ["closed", "open"],
+        "evidence": ["E-SETTINGS"],
+        "exports": ["AutomationTemplateDialog"]
+      },
+      {
+        "id": "ShortcutCapture",
+        "contract": "packages/ui/src/settings/shortcut-capture/shortcut-capture.md",
+        "consumers": ["packages/ui/src/settings/shortcut-capture/shortcut-capture.test.tsx"],
+        "variants": ["default"],
+        "states": ["idle", "recording", "disabled"],
+        "evidence": ["E-SETTINGS"],
+        "exports": ["ShortcutCapture"]
       }
     ],
     "evidence": [

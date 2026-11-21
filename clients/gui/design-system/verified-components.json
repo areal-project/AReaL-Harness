@@ -531,6 +531,75 @@
       ],
       "internalSelectors": [".areal-thread-summary-panel"],
       "enforces": []
+    },
+    {
+      "id": "kbd",
+      "contract": "clients/gui/packages/ui/src/components/kbd/kbd.md",
+      "styles": ["clients/gui/packages/ui/src/components/kbd/kbd.css"],
+      "internalSelectors": [".areal-kbd"],
+      "enforces": []
+    },
+    {
+      "id": "badge",
+      "contract": "clients/gui/packages/ui/src/components/badge/badge.md",
+      "styles": ["clients/gui/packages/ui/src/components/badge/badge.css"],
+      "internalSelectors": [".areal-badge"],
+      "enforces": []
+    },
+    {
+      "id": "callout",
+      "contract": "clients/gui/packages/ui/src/components/callout/callout.md",
+      "styles": ["clients/gui/packages/ui/src/components/callout/callout.css"],
+      "internalSelectors": [".areal-callout"],
+      "enforces": []
+    },
+    {
+      "id": "composer-request-stack",
+      "contract": "clients/gui/packages/ui/src/conversation/composer-request-stack/composer-request-stack.md",
+      "styles": [
+        "clients/gui/packages/ui/src/conversation/composer-request-stack/composer-request-stack.css"
+      ],
+      "internalSelectors": [".areal-composer-request-stack"],
+      "enforces": []
+    },
+    {
+      "id": "worked-for-divider",
+      "contract": "clients/gui/packages/ui/src/conversation/worked-for-divider/worked-for-divider.md",
+      "styles": [
+        "clients/gui/packages/ui/src/conversation/worked-for-divider/worked-for-divider.css"
+      ],
+      "internalSelectors": [".areal-worked-for-divider"],
+      "enforces": []
+    },
+    {
+      "id": "thread-find-bar",
+      "contract": "clients/gui/packages/ui/src/conversation/thread-find-bar/thread-find-bar.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/thread-find-bar/thread-find-bar.css"],
+      "internalSelectors": [".areal-thread-find-bar"],
+      "enforces": []
+    },
+    {
+      "id": "popover-sidebar",
+      "contract": "clients/gui/packages/ui/src/workbench/popover-sidebar/popover-sidebar.md",
+      "styles": ["clients/gui/packages/ui/src/workbench/popover-sidebar/popover-sidebar.css"],
+      "internalSelectors": [".areal-popover-sidebar-panel"],
+      "enforces": []
+    },
+    {
+      "id": "automation-template-dialog",
+      "contract": "clients/gui/packages/ui/src/workbench/automation-template-dialog/automation-template-dialog.md",
+      "styles": [
+        "clients/gui/packages/ui/src/workbench/automation-template-dialog/automation-template-dialog.css"
+      ],
+      "internalSelectors": [".areal-automation-template-dialog"],
+      "enforces": []
+    },
+    {
+      "id": "shortcut-capture",
+      "contract": "clients/gui/packages/ui/src/settings/shortcut-capture/shortcut-capture.md",
+      "styles": ["clients/gui/packages/ui/src/settings/shortcut-capture/shortcut-capture.css"],
+      "internalSelectors": [".areal-shortcut-capture"],
+      "enforces": []
     }
   ],
   "rules": [

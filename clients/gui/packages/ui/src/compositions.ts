@@ -62,6 +62,30 @@ export {
   type ThreadSummaryItemProps,
 } from "./conversation/thread-summary-panel/thread-summary-panel.js";
 export {
+  ComposerRequestStack,
+  type ComposerRequestStackProps,
+} from "./conversation/composer-request-stack/composer-request-stack.js";
+export {
+  WorkedForDivider,
+  type WorkedForDividerProps,
+} from "./conversation/worked-for-divider/worked-for-divider.js";
+export {
+  ThreadFindBar,
+  type ThreadFindBarProps,
+} from "./conversation/thread-find-bar/thread-find-bar.js";
+export {
+  PopoverSidebar,
+  type PopoverSidebarProps,
+} from "./workbench/popover-sidebar/popover-sidebar.js";
+export {
+  AutomationTemplateDialog,
+  type AutomationTemplateDialogProps,
+} from "./workbench/automation-template-dialog/automation-template-dialog.js";
+export {
+  ShortcutCapture,
+  type ShortcutCaptureProps,
+} from "./settings/shortcut-capture/shortcut-capture.js";
+export {
   WorkbenchShell,
   WorkspaceHeader,
   WorkSurface,

@@ -67,6 +67,15 @@
 | [WorktreeDirectory](../packages/ui/src/worktree/worktree-directory/worktree-directory.tsx) |
 | [WorktreeSettings](../packages/ui/src/worktree/worktree-settings/worktree-settings.tsx) |
 | [WorktreeWorkspace](../packages/ui/src/worktree/worktree-workspace/worktree-workspace.tsx) |
+| [Kbd](../packages/ui/src/components/kbd/kbd.tsx) |
+| [Badge](../packages/ui/src/components/badge/badge.tsx) |
+| [Callout](../packages/ui/src/components/callout/callout.tsx) |
+| [ComposerRequestStack](../packages/ui/src/conversation/composer-request-stack/composer-request-stack.tsx) |
+| [WorkedForDivider](../packages/ui/src/conversation/worked-for-divider/worked-for-divider.tsx) |
+| [ThreadFindBar](../packages/ui/src/conversation/thread-find-bar/thread-find-bar.tsx) |
+| [PopoverSidebar](../packages/ui/src/workbench/popover-sidebar/popover-sidebar.tsx) |
+| [AutomationTemplateDialog](../packages/ui/src/workbench/automation-template-dialog/automation-template-dialog.tsx) |
+| [ShortcutCapture](../packages/ui/src/settings/shortcut-capture/shortcut-capture.tsx) |
 
 <!-- END GENERATED: components -->
 
