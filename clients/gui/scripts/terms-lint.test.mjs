@@ -16,10 +16,10 @@ test("reads multi-line and single-line Chinese messages", () => {
 
 test("flags retired names with the line of the message", () => {
   const source =
-    '  "a.b": { "zh-CN": "定时任务", en: "x" },\n  "a.c": { "zh-CN": "自动化中心", en: "y" },\n' +
+    '  "a.b": { "zh-CN": "定时任务", en: "Scheduled" },\n  "a.c": { "zh-CN": "自动化中心", en: "Cancelled" },\n' +
     '  "settings.search.worktrees": { "zh-CN": "工作树、Worktree", en: "z" },\n';
   assert.deepEqual(
     lintTerms("m.ts", source).map((item) => `${item.where} ${item.problem}`),
-    ["m.ts:2 “自动化”改用“定时任务”"],
+    ["m.ts:2 “自动化”改用“定时任务”", "m.ts:2 “Cancelled”改用美式拼写“Canceled”"],
   );
 });

@@ -33,7 +33,7 @@ export const mobileMessages = {
     en: "{count} projects shared by this computer",
   },
   "mobile.projectAccessHint": {
-    "zh-CN": "需要更多项目？在电脑的「设置 → 手机连接」里给这台手机授权。",
+    "zh-CN": "需要更多项目？在电脑的“设置 → 手机连接”里给这台手机授权。",
     en: "Need more projects? Grant access in Settings → Mobile connection on your computer.",
   },
   "mobile.runsOnComputer": {
@@ -51,7 +51,7 @@ export const mobileMessages = {
     en: "Connect your computer",
   },
   "mobile.instructions": {
-    "zh-CN": "在电脑的「设置 → 手机连接」里选择 Relay，生成配对二维码。",
+    "zh-CN": "在电脑的“设置 → 手机连接”里选择 Relay，生成配对二维码。",
     en: "In Settings → Mobile connection on your computer, select Relay and generate a pairing QR code.",
   },
   "mobile.scan": {
@@ -131,8 +131,7 @@ export const mobileMessages = {
     en: "Pairing did not complete. Check your computer, network and pairing link, then try again.",
   },
   "mobile.localRelayUnreachable": {
-    "zh-CN":
-      "手机未能连接电脑的本机 Relay。请确认两台设备的网络可以互访，并检查 AReaL 的本地网络权限。",
+    "zh-CN": "手机连不上电脑的本机 Relay，请确认网络互通并开启本地网络权限。",
     en: "Your phone could not connect to the local relay. Check that both devices can reach each other and that AReaL has local network access.",
   },
   "mobile.scanFailed": {
@@ -239,7 +238,7 @@ export const mobileMessages = {
   "mobile.taskPaused": { "zh-CN": "已暂停", en: "Paused" },
   "mobile.taskBlocked": { "zh-CN": "受阻", en: "Blocked" },
   "mobile.taskCompleted": { "zh-CN": "已完成", en: "Completed" },
-  "mobile.taskCancelled": { "zh-CN": "已取消", en: "Cancelled" },
+  "mobile.taskCancelled": { "zh-CN": "已取消", en: "Canceled" },
   "mobile.taskUnavailable": { "zh-CN": "此轮执行不可用", en: "Run unavailable" },
   "mobile.newSession": { "zh-CN": "新建会话", en: "New conversation" },
   "mobile.newPrompt": {

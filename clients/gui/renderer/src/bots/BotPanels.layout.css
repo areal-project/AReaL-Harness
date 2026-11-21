@@ -494,7 +494,7 @@
 }
 
 .bot-spin {
-  animation: bot-spin 1s linear infinite;
+  animation: bot-spin var(--motion-cycle) linear var(--motion-loop);
 }
 
 @keyframes bot-spin {

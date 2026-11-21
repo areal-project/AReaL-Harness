@@ -15,7 +15,7 @@ export const conversationMessages = {
   "chat.submission.context": { "zh-CN": "附加的上下文", en: "Attached context" },
   "chat.activity.action": {
     "zh-CN":
-      "{tense, select, running {正在} done {已} other {}}{verb, select, read {读取} edit {编辑} create {创建} search {搜索} list {列出} command {运行} wait {等待} skillRead {读取技能} planRead {读取计划} readProcess {读取进程输出} terminateProcess {停止进程} browser {使用浏览器} agentSpawn {创建子智能体} agentWait {等待子智能体} image {查看图片} other {调用 {name}}}",
+      "{tense, select, running {正在} done {已} other {}}{verb, select, read {读取} edit {编辑} create {创建} search {搜索} list {列出} command {运行} wait {等待} skillRead {读取 Skills} planRead {读取计划} readProcess {读取进程输出} terminateProcess {停止进程} browser {使用浏览器} agentSpawn {创建子代理} agentWait {等待子代理} image {查看图片} other {调用 {name}}}",
     en: "{tense, select, running {{verb, select, read {Reading} edit {Editing} create {Creating} search {Searching} list {Listing} command {Running} wait {Waiting} skillRead {Reading skill} planRead {Reading plan} readProcess {Reading process output} terminateProcess {Stopping process} browser {Using browser} agentSpawn {Creating subagent} agentWait {Waiting for subagent} image {Viewing image} other {Calling {name}}}} other {{verb, select, read {Read} edit {Edited} create {Created} search {Searched} list {Listed} command {Ran} wait {Waited} skillRead {Read skill} planRead {Read plan} readProcess {Read process output} terminateProcess {Stopped process} browser {Used browser} agentSpawn {Created subagent} agentWait {Waited for subagent} image {Viewed image} other {Called {name}}}}}",
   },
   "chat.activity.run.explore": {

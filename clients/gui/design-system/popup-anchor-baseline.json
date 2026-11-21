@@ -1,37 +1,5 @@
 [
   {
-    "file": "renderer/src/styles.css",
-    "rule": "dead-state-selector",
-    "snippet": "[data-zcode-collapsible-animate-close=\"true\"][data-state=\"closed\"]",
-    "fingerprint": "08ee134594aa7814214db26472456c60984716b30d77f6e074ed94cf42e315e7",
-    "reason": "Collapsible close animation selector predates Base UI; no source writes data-state=\"closed\" on these elements, so it never matches.",
-    "exitCondition": "Remove this exact finding when the selector moves to Base UI [data-closed] or the unused animation rule is deleted."
-  },
-  {
-    "file": "renderer/src/styles.css",
-    "rule": "dead-state-selector",
-    "snippet": "[data-zcode-collapsible-animate-close=\"true\"][data-state=\"closed\"] > *",
-    "fingerprint": "a264caa0540127680c9db931b29b4f0337ed0a410007f066ed15445fe264cbe0",
-    "reason": "Collapsible close animation selector predates Base UI; no source writes data-state=\"closed\" on these elements, so it never matches.",
-    "exitCondition": "Remove this exact finding when the selector moves to Base UI [data-closed] or the unused animation rule is deleted."
-  },
-  {
-    "file": "renderer/src/styles.css",
-    "rule": "dead-state-selector",
-    "snippet": "[data-zcode-collapsible-animate-close=\"true\"][data-state=\"closed\"]",
-    "fingerprint": "93c798e02bf7dd53cac3effd19630158f331c9f4c295498b989caefc60f40502",
-    "reason": "Collapsible close animation selector predates Base UI; no source writes data-state=\"closed\" on these elements, so it never matches.",
-    "exitCondition": "Remove this exact finding when the selector moves to Base UI [data-closed] or the unused animation rule is deleted."
-  },
-  {
-    "file": "renderer/src/styles.css",
-    "rule": "dead-state-selector",
-    "snippet": "[data-zcode-collapsible-animate-close=\"true\"][data-state=\"closed\"] > *",
-    "fingerprint": "bb6b90009976fb4a9475f6b78a44523f666e5b97ede1bd0b133e81190010c674",
-    "reason": "Collapsible close animation selector predates Base UI; no source writes data-state=\"closed\" on these elements, so it never matches.",
-    "exitCondition": "Remove this exact finding when the selector moves to Base UI [data-closed] or the unused animation rule is deleted."
-  },
-  {
     "file": "packages/ui/src/conversation/command-details/command-details.css",
     "rule": "hover-layout",
     "snippet": ".command-input-toggle[aria-expanded=\"false\"] .command-input { display }",

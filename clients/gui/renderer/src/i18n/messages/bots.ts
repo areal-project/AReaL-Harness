@@ -4,12 +4,12 @@ export const botMessages = {
     en: "Bots",
   },
   "bots.navigation.label": {
-    "zh-CN": "Personal Agent 列表",
-    en: "Personal Agents",
+    "zh-CN": "Bot 列表",
+    en: "Bots",
   },
   "bots.new": {
     "zh-CN": "新建 Bot",
-    en: "New Bot",
+    en: "New bot",
   },
   "bots.searchPlaceholder": {
     "zh-CN": "搜索 Bot…",
@@ -20,12 +20,12 @@ export const botMessages = {
     en: "No bots yet",
   },
   "bots.emptyListHint": {
-    "zh-CN": "创建一个专属 Personal Agent，它会拥有独立的云端工作区与长期记忆。",
-    en: "Create a personal agent with its own persistent cloud workspace and memory.",
+    "zh-CN": "创建一个专属 Bot，拥有独立云端工作区与长期记忆。",
+    en: "Create a bot with its own persistent cloud workspace and memory.",
   },
   "bots.selectPrompt": {
-    "zh-CN": "选择左侧的 Bot 开始对话，或新建一个 Personal Agent。",
-    en: "Select a bot from the sidebar to chat, or create a new Personal Agent.",
+    "zh-CN": "选择左侧的 Bot 开始对话，或新建一个 Bot。",
+    en: "Select a bot from the sidebar to chat, or create a new bot.",
   },
   "bots.unavailable": {
     "zh-CN": "当前连接暂不支持 Bot 服务，请确保本机服务正在运行并已升级到最新版本。",
@@ -176,7 +176,7 @@ export const botMessages = {
     en: "Deny",
   },
   "bots.chat.emptyHint": {
-    "zh-CN": "直接发消息即可开始。所有对话与长期偏好都会保存在这个 Bot 专属工作区中。",
+    "zh-CN": "直接发消息即可开始，对话与偏好会保存在 Bot 工作区。",
     en: "Send a message to get started. Conversations and preferences persist in this bot's workspace.",
   },
   "bots.actions.settings": {
@@ -209,7 +209,7 @@ export const botMessages = {
   },
   "bots.actions.delete": {
     "zh-CN": "删除 Bot",
-    en: "Delete Bot",
+    en: "Delete bot",
   },
   "bots.actions.deleteConfirm": {
     "zh-CN": "确认删除",
@@ -217,7 +217,7 @@ export const botMessages = {
   },
   "bots.settings.title": {
     "zh-CN": "Bot 设置",
-    en: "Bot Settings",
+    en: "Bot settings",
   },
   "bots.settings.close": {
     "zh-CN": "收起设置",
@@ -236,13 +236,12 @@ export const botMessages = {
     en: "Harness · {model} ({provider})",
   },
   "bots.settings.openModelServices": {
-    "zh-CN": "打开模型服务设置",
-    en: "Open model service settings",
+    "zh-CN": "打开模型设置",
+    en: "Open model settings",
   },
   "bots.settings.harnessAuthorization": {
-    "zh-CN":
-      "服务地址和凭据在 Harness 模型服务中管理。若沙箱尚未授权，请在 EnvArena 的部署配置中启用同一模型服务，然后回来重新保存。",
-    en: "Manage the endpoint and credentials in Harness Model Services. If access is missing, enable the same model service in the EnvArena deployment, then return and save again.",
+    "zh-CN": "在模型设置中管理凭据；若无权限，请在 EnvArena 启用同服务后重存。",
+    en: "Manage endpoints and credentials in Models. If access is missing, enable the same service in EnvArena and save again.",
   },
   "bots.settings.sectionModel": {
     "zh-CN": "模型与远端通道",
@@ -273,15 +272,15 @@ export const botMessages = {
     en: "Persona mode",
   },
   "bots.settings.promptModePersonal": {
-    "zh-CN": "Personal Agent（私人助理）",
-    en: "Personal Agent (Assistant)",
+    "zh-CN": "Bot 模式",
+    en: "Bot mode",
   },
   "bots.settings.promptModeDefault": {
     "zh-CN": "默认工程模式",
-    en: "Default Engineering Mode",
+    en: "Default engineering mode",
   },
   "bots.settings.preferencesPlaceholder": {
-    "zh-CN": "例如：始终用中文要点回复；每天上午优先提醒重点事项；不要输出冗长技术细节。",
+    "zh-CN": "例如：用中文要点回复；每天上午提醒重点；避免冗长技术细节。",
     en: "e.g. Reply concisely in bullet points; prioritize action items; avoid verbose jargon.",
   },
   "bots.settings.preferencesSynced": {
@@ -393,8 +392,8 @@ export const botMessages = {
     en: "Starter prompts",
   },
   "bots.settings.promptModePersonalShort": {
-    "zh-CN": "私人助理",
-    en: "Assistant",
+    "zh-CN": "Bot",
+    en: "Bot",
   },
   "bots.settings.promptModeDefaultShort": {
     "zh-CN": "标准模式",
@@ -437,8 +436,7 @@ export const botMessages = {
     en: "Resolved endpoint: {url}",
   },
   "bots.settings.providerCredentialLimited": {
-    "zh-CN":
-      "当前 EnvArena 沙箱版本不支持从客户端写入自定义 API Key。默认模型需平台侧修复鉴权或升级沙箱；此处仍可配置无鉴权内部网关或引用沙箱已有环境变量。",
+    "zh-CN": "当前沙箱不支持写入自定义 API Key，请改用无鉴权网关或已有环境变量。",
     en: "This EnvArena sandbox version does not support injecting custom API keys from the client yet. Platform credentials or a sandbox upgrade is needed for authenticated custom keys; keyless gateways or existing sandbox env vars still work.",
   },
   "bots.settings.providerStatusLabel": {
@@ -466,11 +464,11 @@ export const botMessages = {
     en: "Workspace ID",
   },
   "bots.create.title": {
-    "zh-CN": "新建 Personal Agent",
-    en: "Create Personal Agent",
+    "zh-CN": "新建 Bot",
+    en: "Create bot",
   },
   "bots.create.subtitle": {
-    "zh-CN": "每个 Bot 都拥有独立的云端环境与记忆。你可以先填名字和偏好，随时在右侧调整。",
+    "zh-CN": "每个 Bot 有独立云端环境与记忆，可先填名称和偏好，随时在右侧调整。",
     en: "Each bot gets its own persistent cloud workspace and memory. You can refine preferences anytime.",
   },
   "bots.create.templates": {
@@ -487,7 +485,7 @@ export const botMessages = {
   },
   "bots.create.submit": {
     "zh-CN": "创建 Bot",
-    en: "Create Bot",
+    en: "Create bot",
   },
   "bots.create.creating": {
     "zh-CN": "创建中…",

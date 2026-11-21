@@ -131,7 +131,7 @@
 
 .bot-status-dot.is-waking {
   background: var(--color-status-running);
-  animation: bot-pulse 1.2s ease-in-out infinite;
+  animation: bot-pulse var(--motion-cycle) var(--ease-in-out) var(--motion-loop);
 }
 
 .bot-status-dot.is-error {
@@ -340,7 +340,7 @@
 
 .bot-header-status.is-waking .bot-header-status-dot {
   background: var(--color-status-running);
-  animation: bot-pulse 1.2s ease-in-out infinite;
+  animation: bot-pulse var(--motion-cycle) var(--ease-in-out) var(--motion-loop);
 }
 
 .bot-header-status.is-error .bot-header-status-dot {
@@ -522,7 +522,7 @@
 .bot-typing-indicator {
   font-size: 13px;
   color: var(--color-foreground-subtle);
-  animation: bot-pulse 1.4s ease-in-out infinite;
+  animation: bot-pulse var(--motion-cycle-slow) var(--ease-in-out) var(--motion-loop);
 }
 
 .bot-assistant-error {
@@ -566,7 +566,7 @@
   display: flex;
   gap: 4px;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--motion-fast) var(--ease-standard);
 }
 
 .bot-msg-row.is-assistant:hover .bot-msg-toolbar,
@@ -646,7 +646,7 @@
 
 .bot-activity-item.is-running .bot-activity-dot {
   background: var(--color-status-running);
-  animation: bot-pulse 1s ease-in-out infinite;
+  animation: bot-pulse var(--motion-cycle) var(--ease-in-out) var(--motion-loop);
 }
 
 .bot-activity-item.is-failed .bot-activity-dot {

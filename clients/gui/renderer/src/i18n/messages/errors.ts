@@ -6,8 +6,8 @@ export const errorMessages = {
     en: "That didn't work. Please try again.",
   },
   "errors.FORBIDDEN": {
-    "zh-CN": "这台设备没有权限做这个操作。请在桌面应用“手机与网页”设置里允许它。",
-    en: "This device isn't allowed to do that. Allow it again in the desktop app under Mobile & Web.",
+    "zh-CN": "这台设备没有权限做这个操作。请在桌面应用“手机连接”设置里允许它。",
+    en: "This device isn't allowed to do that. Allow it again in the desktop app under Mobile connection.",
   },
   "errors.GRANT_CHANGED": {
     "zh-CN": "这台设备的权限刚刚有变化，请刷新后再试。",
@@ -94,7 +94,7 @@ export const errorMessages = {
     en: "We're not sure whether that finished. Check the result before trying again to avoid doing it twice.",
   },
   "errors.SUBMISSION_PENDING": {
-    "zh-CN": "上一条消息状态尚未确认，已暂停新的写入以免重复执行。请先检查最新状态。",
+    "zh-CN": "上一条消息尚未确认，已暂停新的写入以免重复，请先查看最新状态。",
     en: "The previous message status is still unconfirmed. New sends are paused to avoid duplicates—check the latest status first.",
   },
   "errors.ARENA_NOT_CONFIGURED": {
@@ -106,8 +106,7 @@ export const errorMessages = {
     en: "The sandbox cannot use this model. Check the model service and sandbox access.",
   },
   "errors.REMOTE_CREDENTIAL_UNSUPPORTED": {
-    "zh-CN":
-      "当前远端 EnvArena 沙箱版本暂不支持运行时写入自定义 API Key。可留空 API Key 使用无鉴权网关或沙箱预置凭据，或升级远端沙箱后再试。",
+    "zh-CN": "当前远端沙箱不支持写入自定义 API Key，请留空或升级沙箱后再试。",
     en: "This EnvArena sandbox version does not support registering custom API keys at runtime yet. Leave API Key blank for a keyless or preconfigured gateway, or upgrade the sandbox.",
   },
   "errors.PROVIDER_MANAGED": {
@@ -160,8 +159,8 @@ export const errorMessages = {
     en: "The project's last run hasn't confirmed it stopped, so it can't open yet. History and drafts are kept. Make sure the original task has stopped.",
   },
   "errors.UNSUPPORTED_PROFILE": {
-    "zh-CN": "当前的模型设置不支持这个操作，请在会话设置里换一个模型。",
-    en: "The current model settings don't support this. Choose another model in conversation settings.",
+    "zh-CN": "当前的模型设置不支持这个操作，请在会话配置里换一个模型。",
+    en: "The current model settings don't support this. Choose another model in session configuration.",
   },
   "errors.MODEL_REASONING_EFFORT_UNSUPPORTED": {
     "zh-CN": "当前模型不支持所选推理强度，请选择支持的强度或服务默认值。",
@@ -177,9 +176,9 @@ export const errorMessages = {
   },
   "errors.PAIRING_USED": {
     "zh-CN": "这个邀请已经用过或被取消，请生成新的配对码。",
-    en: "This invite was already used or cancelled. Create a new pairing code.",
+    en: "This invite was already used or canceled. Create a new pairing code.",
   },
-  "errors.PAIRING_CANCELLED": { "zh-CN": "配对已取消。", en: "Pairing was cancelled." },
+  "errors.PAIRING_CANCELLED": { "zh-CN": "配对已取消。", en: "Pairing was canceled." },
   "errors.PROTOCOL_UNSUPPORTED": {
     "zh-CN": "这个客户端版本太旧，请更新后再连接。",
     en: "This app version is too old. Update it and connect again.",
@@ -229,7 +228,7 @@ export const errorMessages = {
     en: "macOS Keychain did not authorize this app to access credentials. Grant access in Keychain and try again.",
   },
   "errors.storageMissing": {
-    "zh-CN": "系统钥匙串中缺少解密本地凭据的主密钥，请恢复原有凭据或重新配置手机连接。",
+    "zh-CN": "钥匙串缺少解密本地凭据的主密钥，请恢复凭据或重新配置手机连接。",
     en: "The Keychain master key for encrypted credentials is missing. Restore the original key or reconfigure mobile access.",
   },
   "errors.storageLocked": {
@@ -237,8 +236,7 @@ export const errorMessages = {
     en: "Credential storage is locked. Unlock your Keychain and try again.",
   },
   "errors.remoteCredentialUnreadable": {
-    "zh-CN":
-      "无法解密原有的手机连接凭据。请从同一份备份恢复钥匙串主密钥和手机连接配置后重试。没有可用备份时，需要重新配置手机连接并重新配对。新增 Provider API Key 无法恢复手机连接。",
+    "zh-CN": "无法解密手机连接凭据，请从同份备份恢复钥匙串，或重新配置并配对。",
     en: "The saved mobile connection credentials cannot be decrypted. Restore the matching Keychain master key and mobile connection settings from the same backup, then try again. Without a usable backup, set up mobile access again and re-pair your devices. A Provider API key cannot restore mobile access.",
   },
   "errors.remoteStateUnavailable": {
@@ -250,8 +248,7 @@ export const errorMessages = {
     en: "The local Relay bundle is incomplete or failed verification and could not start.",
   },
   "errors.localRelayAddressUnavailable": {
-    "zh-CN":
-      "没有可用的内网连接地址。请让电脑和手机接入同一可互访的 Wi‑Fi 或 VPN，再重新开启内网连接并生成新二维码。",
+    "zh-CN": "无可用内网地址。请让电脑和手机连同一 Wi‑Fi 或 VPN 后重试。",
     en: "There is no usable local connection address. Connect your computer and phone to the same reachable Wi‑Fi or VPN, enable the local connection again, and generate a new QR code.",
   },
 } as const;

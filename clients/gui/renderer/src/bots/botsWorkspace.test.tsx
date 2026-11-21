@@ -301,6 +301,6 @@ describe("BotSettingsPane", () => {
     expect(dirtyHtml).toContain('value="custom"');
     expect(dirtyHtml).toContain("bot-capability-callout");
     expect(dirtyHtml).toContain("Harness · Team Model（team）");
-    expect(dirtyHtml).toContain("打开模型服务设置");
+    expect(dirtyHtml).toContain("打开模型设置");
   });
 });

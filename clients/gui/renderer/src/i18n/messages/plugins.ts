@@ -1400,7 +1400,7 @@ export const pluginMessages = {
     en: "Signing key ID",
   },
   "settings.pluginAuthConfiguration.apiCredentialsUsernamePassword": {
-    "zh-CN": "API 凭据（用户名:密码）",
+    "zh-CN": "API 凭据（用户名：密码）",
     en: "API credentials (username:password)",
   },
   "settings.pluginAuthConfiguration.apiCredentials": {
@@ -1897,7 +1897,7 @@ export const pluginMessages = {
   },
   "settings.hooksSettings.restartCancelledYourConfigurationIsSaved": {
     "zh-CN": "已取消重启，配置仍保留。",
-    en: "Restart cancelled. Your configuration is saved.",
+    en: "Restart canceled. Your configuration is saved.",
   },
   "settings.hooksSettings.theBackendHasNotStoppedConfigurationHas": {
     "zh-CN": "后台尚未停止，配置尚未应用。",

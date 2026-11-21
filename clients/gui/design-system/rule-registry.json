@@ -2028,17 +2028,17 @@
     },
     {
       "id": "R-TERM-003",
-      "title": "Thread 聊天",
+      "title": "| Thread | 会话 | 一段会话不等于一次执行",
       "owner": "design/content/terminology.md#界面术语",
       "strength": "must",
-      "textSha256": "c67f058ab6648868d6eddcf66c18e1c964004c0b44039d7414b9d1fdb72984ef"
+      "textSha256": "578154bd34725cecca251b9ad229ada632f27eabcc6115c01161d42ffcf789c0"
     },
     {
       "id": "R-TERM-004",
-      "title": "Turn 轮次 用户输入、过程与回答按所属轮次组织，不能将每个工具调用称为一次聊天 任务推进与过程阅读、Core API",
+      "title": "| Turn | 轮次 | 用户输入、过程与回答按所属轮次组织，不能将每个工具调用称为一次会话 | 任务推进与过程阅读、",
       "owner": "design/content/terminology.md#界面术语",
       "strength": "must",
-      "textSha256": "126f6be96447c770167b354e253d562413de498da78fc1eabaf76c16946efc80"
+      "textSha256": "f4bc1cc60c8d76bd9d5cb784cebe10ab1aaad811bdce59d8de38c76002322384"
     },
     {
       "id": "R-CONTRIBUTING-003",

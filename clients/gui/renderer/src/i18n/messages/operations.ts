@@ -369,7 +369,7 @@ export const operationMessages = {
     en: "Deleting, waiting for execution to settle",
   },
   "operations.schedules.deleted": { "zh-CN": "已删除", en: "Deleted" },
-  "operations.schedules.cancelled": { "zh-CN": "已取消", en: "Cancelled" },
+  "operations.schedules.cancelled": { "zh-CN": "已取消", en: "Canceled" },
   "operations.schedules.paused": { "zh-CN": "已暂停", en: "Paused" },
   "operations.schedules.enabled": { "zh-CN": "已开启", en: "Enabled" },
   "operations.schedules.none": { "zh-CN": "无后续计划", en: "No future occurrence" },
@@ -495,7 +495,7 @@ export const operationMessages = {
   },
   "operations.schedules.finishedGroup": { "zh-CN": "已结束", en: "Finished" },
   "operations.schedules.backToList": { "zh-CN": "返回任务列表", en: "Back to task list" },
-  "operations.schedules.pinnedSummary": { "zh-CN": "定时安排摘要", en: "Schedule summary" },
+  "operations.schedules.pinnedSummary": { "zh-CN": "定时任务摘要", en: "Schedule summary" },
   "operations.schedules.location": {
     "zh-CN": "工作目录与来源",
     en: "Working directory and source",
@@ -555,10 +555,10 @@ export const operationMessages = {
   "operations.schedules.statusBlocked": { "zh-CN": "受阻", en: "Blocked" },
   "operations.schedules.statusCompleted": { "zh-CN": "已完成", en: "Completed" },
   "operations.schedules.statusFailed": { "zh-CN": "失败", en: "Failed" },
-  "operations.schedules.statusCancelled": { "zh-CN": "已取消", en: "Cancelled" },
+  "operations.schedules.statusCancelled": { "zh-CN": "已取消", en: "Canceled" },
   "operations.schedules.statusCancelling": {
     "zh-CN": "正在取消，等待执行结算",
-    en: "Cancelling, waiting for execution to settle",
+    en: "Canceling, waiting for execution to settle",
   },
   "operations.schedules.statusPausing": {
     "zh-CN": "正在暂停，等待执行结算",

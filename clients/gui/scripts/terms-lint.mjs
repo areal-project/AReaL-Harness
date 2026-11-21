@@ -6,9 +6,17 @@ import { fileURLToPath } from "node:url";
 const gui = fileURLToPath(new URL("../", import.meta.url));
 const MESSAGES = "renderer/src/i18n/messages";
 export const TERMS = [
-  { use: "定时任务", avoid: ["自动化"] },
+  { use: "定时任务", avoid: ["自动化", "定时安排"] },
   { use: "工作树", avoid: ["Worktree"] },
   { use: "侧边聊天", avoid: ["旁路"] },
+  { use: "子代理", avoid: ["子智能体"] },
+  { use: "Bot", avoid: ["Personal Agent", "私人助理"] },
+  { use: "…", avoid: ["..."] },
+  { use: "“”", avoid: ["「", "」"] },
+];
+export const EN_TERMS = [
+  { use: "Canceled", avoid: ["Cancelled", "cancelled"] },
+  { use: "Canceling", avoid: ["Cancelling", "cancelling"] },
 ];
 // 搜索关键词保留旧叫法，方便按旧名找到设置。
 const ALIASES = /^settings\.search\./;
@@ -20,7 +28,16 @@ export function chineseMessages(source) {
   );
 }
 
-export function lintTerms(path, source, terms = TERMS) {
+/** 从消息目录源码里取出每条英文文案。 */
+export function englishMessages(source) {
+  return [
+    ...source.matchAll(
+      /"([\w.-]+)"\s*:\s*\{\s*"zh-CN"\s*:\s*"(?:[^"\\]|\\.)*"\s*,\s*(?:"en"|en)\s*:\s*("(?:[^"\\]|\\.)*")/g,
+    ),
+  ].map((match) => ({ id: match[1], text: JSON.parse(match[2]), index: match.index }));
+}
+
+export function lintTerms(path, source, terms = TERMS, enTerms = EN_TERMS) {
   const problems = [];
   for (const message of chineseMessages(source).filter((item) => !ALIASES.test(item.id)))
     for (const term of terms)
@@ -29,6 +46,15 @@ export function lintTerms(path, source, terms = TERMS) {
           problems.push({
             where: `${path}:${source.slice(0, message.index).split("\n").length}`,
             problem: `“${word}”改用“${term.use}”`,
+            text: message.text,
+          });
+  for (const message of englishMessages(source).filter((item) => !ALIASES.test(item.id)))
+    for (const term of enTerms)
+      for (const word of term.avoid)
+        if (new RegExp(`\\b${word}\\b`).test(message.text))
+          problems.push({
+            where: `${path}:${source.slice(0, message.index).split("\n").length}`,
+            problem: `“${word}”改用美式拼写“${term.use}”`,
             text: message.text,
           });
   return problems;

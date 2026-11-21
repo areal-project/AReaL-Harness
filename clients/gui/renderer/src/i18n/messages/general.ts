@@ -712,8 +712,7 @@ export const generalMessages = {
     en: "System credential access is restricted. Use Show API key to authorize access.",
   },
   "settings.modelSettings.keychainAuthorizationRequired": {
-    "zh-CN":
-      "旧密钥的系统授权不适用于当前应用。可点击显示密钥授权读取，或重新输入并保存；旧记录会保留。",
+    "zh-CN": "旧密钥授权不适用于当前应用，请点击显示密钥授权，或重新输入保存。",
     en: "The saved key is not authorized for this app identity. Use Show API key to authorize access, or re-enter and save it. The old entry is preserved.",
   },
   "settings.modelSettings.credentialCheckUnavailable": {
