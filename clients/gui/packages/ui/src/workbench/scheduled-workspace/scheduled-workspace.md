@@ -24,11 +24,11 @@ TaskRow 是会话里的定时任务卡片（`variant="card"`）和右侧面板�
 
 ## 状态
 
-`R-SCHEDULEDWORKSPACE-001` 已开启、已暂停、已结束；初次读取、部分结果、读取失败、无任务和搜索无匹配必须区分。未完成目录读取不得推断空态。正在创建保留原请求身份，不因切换界面重新创建。
+`R-SCHEDULEDWORKSPACE-001` 已开启、已暂停、已结束；初次读取、部分结果、读取失败、无任务和搜索无匹配必须区分。未完成目录读取不得推断空态。正在创建保留原请求身份，不因切换界面重新创建。**检查：**`clients/gui/packages/ui/src/workbench/scheduled-workspace/scheduled-workspace.test.tsx`
 
 ## 规则
 
-`R-SCHEDULEDWORKSPACE-005` 包不导入 Core 类型，不请求服务，不持有任务状态。宿主不能因隐藏加载诊断而删除目录完整性检查、重试和未知写入保护。
+`R-SCHEDULEDWORKSPACE-005` 包不导入 Core 类型，不请求服务，不持有任务状态。宿主不能因隐藏加载诊断而删除目录完整性检查、重试和未知写入保护。**检查：**`clients/gui/packages/ui/src/workbench/scheduled-workspace/scheduled-workspace.test.tsx`
 
 ## 示例
 

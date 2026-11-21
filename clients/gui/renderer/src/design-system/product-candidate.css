@@ -1,4 +1,4 @@
-.areal-workbench.product-candidate {
+.product-candidate.product-candidate {
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
   width: 100%;
@@ -325,7 +325,7 @@
   scroll-behavior: auto !important;
 }
 @media (max-width: 1100px) {
-  .areal-workbench.product-candidate {
+  .product-candidate.product-candidate {
     grid-template-columns: 220px minmax(0, 1fr);
   }
   .product-candidate .candidate-sidebar {
@@ -342,7 +342,7 @@
   }
 }
 @media (max-width: 760px) {
-  .areal-workbench.product-candidate {
+  .product-candidate.product-candidate {
     grid-template-columns: minmax(0, 1fr);
   }
   .product-candidate .candidate-sidebar {

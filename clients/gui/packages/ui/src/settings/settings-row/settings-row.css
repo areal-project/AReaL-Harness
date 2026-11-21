@@ -175,9 +175,9 @@
 
 .settings-field-row .settings-field-control input[type="range"] {
   appearance: none;
-  width: 146px;
+  width: calc(var(--spacing-inline) * 73 / 4);
   min-width: 0;
-  height: 20px;
+  height: calc(var(--spacing-inline) * 5 / 2);
   margin: 0;
   background: transparent;
   color: var(--color-foreground);
@@ -185,26 +185,26 @@
 }
 
 .settings-field-row .settings-field-control input[type="range"]::-webkit-slider-runnable-track {
-  height: 2px;
+  height: calc(var(--spacing-inline) / 4);
   border-radius: var(--radius-full);
   background: var(--color-brand);
 }
 
 .settings-field-row .settings-field-control input[type="range"]::-webkit-slider-thumb {
   appearance: none;
-  width: 20px;
-  height: 20px;
+  width: calc(var(--spacing-inline) * 5 / 2);
+  height: calc(var(--spacing-inline) * 5 / 2);
   margin-top: calc(var(--spacing-inline) * -9 / 8);
   border: 1px solid transparent;
   border-radius: 50%;
   background: currentColor;
-  box-shadow: 0 1px 2px var(--color-border);
+  box-shadow: 0 1px calc(var(--spacing-inline) / 4) var(--color-border);
 }
 
 .settings-field-row .settings-field-control output {
   font-size: var(--text-ui-sm);
   color: var(--color-muted-foreground);
-  min-width: 24px;
+  min-width: calc(var(--spacing-inline) * 3);
   text-align: right;
   font-variant-numeric: tabular-nums;
 }

@@ -16,10 +16,10 @@
   font-weight: var(--ui-font-weight);
 }
 .worktrees-settings .worktrees-root-input {
-  width: 16rem;
+  width: calc(var(--spacing-inline) * 32);
 }
 .worktrees-settings .worktrees-count-input {
-  width: 5rem;
+  width: calc(var(--spacing-inline) * 10);
 }
 .worktrees-settings .worktrees-advanced {
   margin-top: var(--spacing-inline);
@@ -37,7 +37,7 @@
 }
 
 .worktrees-save-row > p {
-  flex: 1 1 16rem;
+  flex: 1 1 calc(var(--spacing-inline) * 32);
 }
 .worktrees-save-spacer {
   flex: 1;
@@ -134,8 +134,8 @@
   font-size: var(--text-ui-sm);
 }
 .worktrees-breadcrumb > svg {
-  width: 0.75rem;
-  height: 0.75rem;
+  width: calc(var(--spacing-inline) * 3 / 2);
+  height: calc(var(--spacing-inline) * 3 / 2);
   flex: none;
 }
 .worktrees-breadcrumb > span {
@@ -192,7 +192,7 @@
   background: var(--color-surface);
   width: 100%;
   min-height: calc(6 * var(--line-height-ui) + 2 * var(--spacing-inline));
-  max-height: 30rem;
+  max-height: calc(var(--spacing-inline) * 60);
   resize: vertical;
   font-family: var(--font-mono);
   font-size: var(--text-ui-caption);

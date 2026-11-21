@@ -57,7 +57,7 @@
   flex: 1;
   overflow: auto;
   width: 100%;
-  max-width: 808px;
+  max-width: calc(var(--spacing-inline) * 101);
   margin: 0 auto;
   padding: calc(var(--spacing-inline) * 5 / 2) calc(var(--spacing-inline) * 5 / 2)
     calc(var(--spacing-inline) * 5);
@@ -88,7 +88,7 @@
   padding-top: var(--spacing-panel);
 }
 .settings-workspace[data-width="wide"] > .settings-page {
-  max-width: 1200px;
+  max-width: calc(var(--spacing-inline) * 150);
   gap: var(--spacing-panel);
 }
 

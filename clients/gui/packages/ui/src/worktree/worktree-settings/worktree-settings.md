@@ -50,10 +50,10 @@ Root、Breadcrumb、Project、Environment、Script、Action。平台Tabs、输�
 | --- | --- |
 | Cleanup | 标题、执行说明、独立的三平台标签、代码输入；与 Setup 的左边缘、编辑器宽度和节奏一致 |
 
-`R-WORKTREESETTINGS-016` Setup 与 Cleanup **各自拥有当前平台标签**；切 Setup 到 macOS 不改变 Cleanup 或 Action 正在编辑的平台。切换标签保留未保存的其他平台文本。空覆盖回退 Default 的真实规则就近说明；标签不以“空”冒充“禁用”。代码输入使用单一边框和等宽字体，候选最小高度为六行代码的行高加内边距，可增长 / 纵向滚动，不能横向撑宽页面。
+`R-WORKTREESETTINGS-016` Setup 与 Cleanup **各自拥有当前平台标签**；切 Setup 到 macOS 不改变 Cleanup 或 Action 正在编辑的平台。切换标签保留未保存的其他平台文本。空覆盖回退 Default 的真实规则就近说明；标签不以“空”冒充“禁用”。代码输入使用单一边框和等宽字体，候选最小高度为六行代码的行高加内边距，可增长 / 纵向滚动，不能横向撑宽页面。**检查：**`clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.test.tsx`
 
 Variables 入口打开小型只读说明，列出 `AREAL_WORKTREE_PATH`、`AREAL_PROJECT_PATH`、`AREAL_WORKTREE_BRANCH` 的含义与可复制名称；不显示截图的 `CODEX_*` 变量，不诱导填写凭据。主执行位置为新 Worktree 的项目根；保存脚本不执行脚本。
 
 ### Action 的有限形态
 
-`WT-ACTION-01`：已有 Action 行以名称为主、必要的命令摘要为次，尾部“编辑 / 删除”；添加或编辑在所属行下展开名称与脚本，沿同样的平台标签规则。不要让每个 Action 常驻三个大编辑器。顺序沿已保存配置，删除仅移除配置；运行入口在会话工作区详情，不能把设置里的“保存”变成运行。
+`WT-ACTION-01`：已有 Action 行以名称为主、必要的命令摘要为次，尾部“编辑 / 删除”；添加或编辑在所属行下展开名称与脚本，沿同样的平台标签规则。不要让每个 Action 常驻三个大编辑器。顺序沿已保存配置，删除仅移除配置；运行入口在会话工作区详情，不能把设置里的“保存”变成运行。**检查：**`clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.test.tsx`

@@ -19,8 +19,8 @@
 }
 
 .worktrees-directory-project-heading svg {
-  width: 1rem;
-  height: 1rem;
+  width: var(--spacing-field);
+  height: var(--spacing-field);
   flex: none;
 }
 .worktrees-directory-project-heading span {
@@ -81,7 +81,7 @@
 }
 .worktrees-directory-details > div {
   display: grid;
-  grid-template-columns: 5rem minmax(0, 1fr);
+  grid-template-columns: calc(var(--spacing-inline) * 10) minmax(0, 1fr);
   gap: var(--spacing-inline);
 }
 .worktrees-directory-details dt {

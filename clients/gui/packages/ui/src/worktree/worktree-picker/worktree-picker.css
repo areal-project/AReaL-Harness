@@ -20,8 +20,8 @@
 }
 .worktree-picker-row > svg,
 .worktree-picker-option > svg {
-  width: 1em;
-  height: 1em;
+  width: var(--icon-size-control);
+  height: var(--icon-size-control);
   flex-shrink: 0;
 }
 .worktree-picker-value {
@@ -54,7 +54,7 @@
   font-size: var(--text-ui-base);
 }
 .worktree-picker-list {
-  max-height: min(22rem, 45vh);
+  max-height: min(calc(var(--spacing-inline) * 44), 45vh);
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;

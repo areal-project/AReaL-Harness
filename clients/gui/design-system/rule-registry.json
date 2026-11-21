@@ -1414,7 +1414,8 @@
       "title": "本节是新增、修改和评审客户端 UI 必须遵循的约束",
       "owner": "clients/gui/packages/ui/src/settings/settings-page/settings-page.md#设置控件与反馈",
       "strength": "must",
-      "textSha256": "7481aa6d853b8d70aa4af23ae682089ef20c45679ba828f08700d0e3bd5df11c"
+      "textSha256": "039562731fd7a69fd4472cdcdecb01782ca73b0368d39f4a175d1f3f0892b7eb",
+      "check": "clients/gui/packages/ui/src/settings/settings-page/settings-page.test.tsx"
     },
     {
       "id": "R-SETTINGSPAGE-011",
@@ -1446,38 +1447,43 @@
     },
     {
       "id": "R-SETTINGSPAGE-015",
-      "title": "设置行默认使用 Switch 的 default 尺寸（ SettingsSwitch 同样默认）",
+      "title": "设置行默认使用 Switch 的 default 尺寸（SettingsSwitch 同样默认）",
       "owner": "clients/gui/packages/ui/src/settings/settings-page/settings-page.md#按交互类型选择控件",
       "strength": "must",
-      "textSha256": "33983c4b5b69e35d17d1f8072fe7a98dd0e462f24f966999742a5907ca0dd401"
+      "textSha256": "b2f87f4f616c0758aaeac254b27092461ea3324e7139fe5c5ea826e48fd9e1ae",
+      "check": "clients/gui/packages/ui/src/settings/settings-page/settings-page.test.tsx"
     },
     {
       "id": "R-SETTINGSPAGE-016",
       "title": "此处“多项选择”指多个候选值的单选，不等于一次选择多个值",
       "owner": "clients/gui/packages/ui/src/settings/settings-page/settings-page.md#按交互类型选择控件",
       "strength": "must",
-      "textSha256": "ea518616b8b718c7d8f42ad75c79d9a552bd8da943b03f914d8107e8154f0867"
+      "textSha256": "d8b5d9f3dc3ab1314b29f08d680fcc934e238ae67d2855390eb1d7c9a6025853",
+      "check": "clients/gui/packages/ui/src/settings/settings-page/settings-page.test.tsx"
     },
     {
       "id": "R-BASE-009",
       "title": "设置组合必须包含生产 SettingsPage 上下文",
       "owner": "clients/gui/packages/ui/src/settings/settings-page/settings-page.md#生产上下文",
       "strength": "must",
-      "textSha256": "697a1351854dd3955819ef004ee3058ec95de4271e2ce757fa46007056887f5b"
+      "textSha256": "4a4fe4d2626151cccb27b0cba31370679f5cf0c14af0f433d81290cc85a061d4",
+      "check": "clients/gui/packages/ui/src/settings/settings-page/settings-page.test.tsx"
     },
     {
       "id": "R-SETTINGSROW-004",
       "title": "字段名说明用户可调整的内容，描述说明影响",
       "owner": "clients/gui/packages/ui/src/settings/settings-row/settings-row.md#内容",
       "strength": "must",
-      "textSha256": "76ee44708936d19af5cdcb4eeaeb8dfa7142cc59c2bee14cd436b3f70f3f5d10"
+      "textSha256": "39b44977c97bc3a8a91ddba67428544f14fd3d68f2ebbfaee1938859c8d01e10",
+      "check": "clients/gui/packages/ui/src/settings/settings-row/settings-row.test.tsx"
     },
     {
       "id": "R-SETTINGSROW-005",
       "title": "label插槽是布局内容，不能自动标记任意控件",
       "owner": "clients/gui/packages/ui/src/settings/settings-row/settings-row.md#可访问性",
       "strength": "must",
-      "textSha256": "98205d6a85a9b57eab0be2419637de5821e04e23fb3dcdbc53b8d83375257ea1"
+      "textSha256": "596bce67d8b23ad81f35732a90fde25c1ef4b19eee02d839720057a0741aa063",
+      "check": "clients/gui/packages/ui/src/settings/settings-row/settings-row.test.tsx"
     },
     {
       "id": "R-SETTINGSSEARCHINPUT-001",
@@ -1505,14 +1511,16 @@
       "title": "已开启、已暂停、已结束",
       "owner": "clients/gui/packages/ui/src/workbench/scheduled-workspace/scheduled-workspace.md#状态",
       "strength": "must",
-      "textSha256": "de5972bd999115eb7a7732c9b2f511ae5598db69697fdde168c4c28d54700c96"
+      "textSha256": "7b2a52a218d5222ec34ca1d00cd35fd198712c2925a1b1c14de6122ac520167c",
+      "check": "clients/gui/packages/ui/src/workbench/scheduled-workspace/scheduled-workspace.test.tsx"
     },
     {
       "id": "R-SCHEDULEDWORKSPACE-005",
       "title": "包不导入 Core 类型，不请求服务，不持有任务状态",
       "owner": "clients/gui/packages/ui/src/workbench/scheduled-workspace/scheduled-workspace.md#规则",
       "strength": "must",
-      "textSha256": "f55f5411e6264678fe44ccfe8d5234bc05522f813688fc7a345ed1ad1a4681ba"
+      "textSha256": "d9cbb9c36bb00548c1b242272a5c9092d23902c11e3253f1c97ea2c95e64d481",
+      "check": "clients/gui/packages/ui/src/workbench/scheduled-workspace/scheduled-workspace.test.tsx"
     },
     {
       "id": "WT-IDENTITY-01",
@@ -1531,17 +1539,19 @@
     },
     {
       "id": "R-WORKTREEDIRECTORY-007",
-      "title": "名称优先使用绑定会话标题，其次为分支，再无名称时使用短标识",
+      "title": "- 名称优先使用绑定会话标题，其次为分支，再无名称时使用短标识",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-directory/worktree-directory.md#按项目管理目录",
       "strength": "must",
-      "textSha256": "2d564a7111562308dd077ea9ace02442fa2756ca34fb9bf88e600d7df53fdc86"
+      "textSha256": "af713a4dc4fd90a61249e7794619eaaca904e0bf4c43ea8beff03e9982187620",
+      "check": "clients/gui/packages/ui/src/worktree/worktree-directory/worktree-directory.test.tsx"
     },
     {
       "id": "R-WORKTREEPICKER-004",
       "title": "真实开关命名并禁用",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.md#可访问性",
       "strength": "must",
-      "textSha256": "6236f15aeb871bcc7cb560b1dd85cc1cb5ea17618203354049bf1d2dae39c045"
+      "textSha256": "916f33f2901bfb67b1838be3467522797c7e5f47afd3f65db9d79c49ebc8895e",
+      "check": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.test.tsx"
     },
     {
       "id": "WT-PICKER-01",
@@ -1552,24 +1562,27 @@
     },
     {
       "id": "R-WORKTREEPICKER-008",
-      "title": "合法 Git 项目，新 Worktree 关闭 每个新会话默认关闭，不继承旧偏好",
+      "title": "| 合法 Git 项目，新 Worktree 关闭 | 每个新会话默认关闭，不继承旧偏好",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.md#composer上下文条与配置菜单",
       "strength": "must",
-      "textSha256": "aa585aafc40092042d522cde1b5299001b3943ab408c3975a865cecdebe98cc6"
+      "textSha256": "f1543391c5fb19c1940bd53b19ba826e27f5d24bef60f811b412e4353f8fda2e",
+      "check": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.test.tsx"
     },
     {
       "id": "R-WORKTREEPICKER-009",
-      "title": "非 Git / 项目外模式 不提供可用的创建开关",
+      "title": "| 非 Git / 项目外模式 | 不提供可用的创建开关",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.md#composer上下文条与配置菜单",
       "strength": "must",
-      "textSha256": "60b433b00c0f468deeda056a5e52266162287ffd0fa3940781c4b821c9db778a"
+      "textSha256": "1d897eab9dd1f15caaf5c41a831cae1e10cd786a97d4f0c9d7cd884a655bfdc0",
+      "check": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.test.tsx"
     },
     {
       "id": "R-WORKTREEPICKER-010",
-      "title": "读取选项中 / 失败 原值保留",
+      "title": "| 读取选项中 / 失败 | 原值保留",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.md#composer上下文条与配置菜单",
       "strength": "must",
-      "textSha256": "c6eff3b9a45d0f5416536251eb030d201dc826550ff5939861102229a7c2794e"
+      "textSha256": "7dc58fdb69ea37cd72b7237853100353d4a4af8caf7beb731120c5ad64aa8db4",
+      "check": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.test.tsx"
     },
     {
       "id": "WT-PICKER-02",
@@ -1580,10 +1593,11 @@
     },
     {
       "id": "R-WORKTREEPICKER-012",
-      "title": "当前来源、Local branches、Remote branches 只在有相应数据时出现",
+      "title": "- 当前来源、Local branches、Remote branches 只在有相应数据时出现",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.md#分支与环境子页",
       "strength": "must",
-      "textSha256": "32226ed0c3074d5b3e299ad276ea629aaef7f269bc20758f8ea3d4c8811fe071"
+      "textSha256": "0034b3d693dfe6d0cc77c9dc9b63f05f7af3a5316859a3a09ef659c70f491ac7",
+      "check": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.test.tsx"
     },
     {
       "id": "WT-PICKER-03",
@@ -1597,7 +1611,8 @@
       "title": "从配置入口进入设置保留项目、Prompt、附件、来源分支及选择",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.md#分支与环境子页",
       "strength": "must",
-      "textSha256": "305d1331a224afe9d24148cb6f1fd8beda2f132ad2e092b1fd242e040215e4fb"
+      "textSha256": "5602cbc9905f6bb03cb6131e04cd51a744aa653022a5f723e8b85db5edcc3b15",
+      "check": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.test.tsx"
     },
     {
       "id": "WT-SETTINGS-01",
@@ -1622,59 +1637,67 @@
     },
     {
       "id": "R-WORKTREESETTINGS-016",
-      "title": "Setup 与 Cleanup 各自拥有当前平台标签 ",
+      "title": "Setup 与 Cleanup",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.md#设置environments-与环境编辑",
       "strength": "must",
-      "textSha256": "5bab6dc2d7c2599e714337f597d41c95487e85138f5aba78e2861c33838b134c"
+      "textSha256": "ffd75e4939d826987604600c9ff1073ec8cca169d8b36912cf2604f2e5ee7d73",
+      "check": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.test.tsx"
     },
     {
       "id": "WT-ACTION-01",
       "title": "已有 Action 行以名称为主、必要的命令摘要为次，尾部“编辑 / 删除”",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.md#action-的有限形态",
       "strength": "must",
-      "textSha256": "d56bc75bad19e0d43b8cda32ed1cd2c896b9c45ac168f0ff43a113b4e85784da"
+      "textSha256": "fd0215574dbf31c2d5dec91e60e7ff6642b6f1cb2a54ea021f7213f2f381137d",
+      "check": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.test.tsx"
     },
     {
       "id": "WT-PROGRESS-01",
-      "title": "（WT-R04～06）：用户 Prompt → Worktree 准备记录 → 助手内容，顺序可核对",
+      "title": "WT-PROGRESS-01（WT-R04～06）：用户 Prompt → Worktree 准备记录 → 助手内容，顺",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-status/worktree-status.md#时间线准备取消与完成",
       "strength": "must",
-      "textSha256": "5203b15b3e7051cb916bea645292eaa20162eb8249576c92ed40f0813ff6101d"
+      "textSha256": "10ece7e27616cac78829fda3d29666e13851dab61853ebd88e86edd1ad51d194",
+      "check": "clients/gui/packages/ui/src/worktree/worktree-status/worktree-status.test.tsx"
     },
     {
       "id": "R-WORKTREESTATUS-007",
-      "title": "控制行 左侧“展开详情 / 收起详情”，右侧“不使用 Worktree”“取消” 动作保持具名、同一基线",
+      "title": "| 控制行 | 左侧“展开详情 / 收起详情”，右侧“不使用 Worktree”“取消” | 动作保持具名、同一基线",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-status/worktree-status.md#时间线准备取消与完成",
       "strength": "must",
-      "textSha256": "04426ae62a29674edf3e0e93ba4c53ed6724a806027bd9297bf322082069f543"
+      "textSha256": "668154b97c28fdc6da381796cedc56f6116b73a4d1f21dab65f5055998c35f98",
+      "check": "clients/gui/packages/ui/src/worktree/worktree-status/worktree-status.test.tsx"
     },
     {
       "id": "WT-PROGRESS-02",
       "title": "准备期间 Composer 保持原位，以“正在等待 Worktree 准备…”说明不能重复发送",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-status/worktree-status.md#时间线准备取消与完成",
       "strength": "must",
-      "textSha256": "91b79cbc1da458273d7adda638a341fd25b4c9971d269da2acb4fc654887a6bc"
+      "textSha256": "1066d7e2f4636fbfe203e9dc8a800973db1489d1429f9298592c2d3667e719dd",
+      "check": "clients/gui/packages/ui/src/worktree/worktree-status/worktree-status.test.tsx"
     },
     {
       "id": "R-WORKTREESTATUS-011",
       "title": "“不使用 Worktree”是显式改用原目录的用户意图：先确认原准备取消，再发起新的明确请求",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-status/worktree-status.md#时间线准备取消与完成",
       "strength": "must",
-      "textSha256": "bd6dc4fed1e7d29b1c1088a287329ae01de4acd2ac423fd856d25e87419d08b9"
+      "textSha256": "92501a49c8ce7eb56781b2e7f9d7ca4a6ef6bea8831562fe014805c16cd05a4b",
+      "check": "clients/gui/packages/ui/src/worktree/worktree-status/worktree-status.test.tsx"
     },
     {
       "id": "R-WORKTREEWORKSPACE-002",
       "title": "名称与路径使用实际绑定记录",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-workspace/worktree-workspace.md#内容",
       "strength": "must",
-      "textSha256": "442adee0f63b3fe569305e00be1686aeb59160ee040012f8026b1d33e923d250"
+      "textSha256": "38147af5d35ec1dabd9f0a91272897ec8691026feb1a1d05560aee77e41a0514",
+      "check": "clients/gui/packages/ui/src/worktree/worktree-workspace/worktree-workspace.test.tsx"
     },
     {
       "id": "R-WORKTREEWORKSPACE-003",
       "title": "操作必须有清楚名称和真实disabled",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-workspace/worktree-workspace.md#可访问性",
       "strength": "must",
-      "textSha256": "7c18489db1810221e65558ad36ed2f3227f6835c3f3e1de6dc0eee8eec34d4fc"
+      "textSha256": "7691e4a85b4dce9feb86256d9879b95d3987080c3d39f24b43c693f6a1479f2e",
+      "check": "clients/gui/packages/ui/src/worktree/worktree-workspace/worktree-workspace.test.tsx"
     },
     {
       "id": "R-WORKTREE-018",

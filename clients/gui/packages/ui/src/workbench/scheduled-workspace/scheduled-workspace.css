@@ -48,7 +48,7 @@
 }
 .scheduled-item:focus-visible,
 .scheduled-template:focus-visible {
-  outline: 2px solid var(--color-input-border-focused);
+  outline: var(--focus-width) solid var(--color-input-border-focused);
   outline-offset: -2px;
 }
 .scheduled-welcome {
@@ -59,7 +59,7 @@
     var(--spacing-section) var(--spacing-section);
 }
 .scheduled-intro {
-  max-width: 32rem;
+  max-width: calc(var(--spacing-inline) * 64);
   margin: auto;
   text-align: center;
 }
@@ -82,7 +82,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--spacing-inline);
-  max-width: 36rem;
+  max-width: calc(var(--spacing-inline) * 72);
   margin: var(--spacing-section) auto 0;
 }
 .scheduled-template {
@@ -127,7 +127,7 @@
   padding: var(--spacing-inline) var(--spacing-inline) var(--spacing-inline) var(--spacing-panel);
   border: 1px solid var(--color-border);
   background: var(--color-background);
-  max-width: 40rem;
+  max-width: calc(var(--spacing-inline) * 80);
 }
 .scheduled-row[data-variant="compact"] {
   min-height: var(--spacing-control);
@@ -151,7 +151,7 @@
   border-radius: var(--radius-control);
 }
 .scheduled-row-main:focus-visible {
-  outline: 2px solid var(--color-input-border-focused);
+  outline: var(--focus-width) solid var(--color-input-border-focused);
   outline-offset: -2px;
 }
 .scheduled-row-icon {
@@ -210,8 +210,8 @@
 }
 .scheduled-status::before {
   content: "";
-  width: 0.5rem;
-  height: 0.5rem;
+  width: var(--spacing-inline);
+  height: var(--spacing-inline);
   border-radius: var(--radius-status-dot);
   background: currentColor;
   opacity: 0.55;

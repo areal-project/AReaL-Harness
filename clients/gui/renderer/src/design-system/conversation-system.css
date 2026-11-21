@@ -38,7 +38,7 @@
   font-size: var(--text-ui-sm);
   text-underline-offset: 3px;
 }
-.areal-workbench.conversation-system-shell {
+.conversation-system-shell.conversation-system-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
@@ -293,7 +293,7 @@
   }
 }
 @media (max-width: 800px) {
-  .areal-workbench.conversation-system-shell[data-context-open] {
+  .conversation-system-shell.conversation-system-shell[data-context-open] {
     grid-template-columns: minmax(0, 1fr);
   }
   .conversation-system .cs-context-toggle {

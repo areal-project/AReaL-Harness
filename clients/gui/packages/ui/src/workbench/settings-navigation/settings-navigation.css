@@ -178,7 +178,7 @@
 
 @media (max-width: 640px) {
   .settings-sidebar {
-    width: 156px;
+    width: calc(var(--spacing-inline) * 39 / 2);
   }
 }
 @media (max-width: 640px) {

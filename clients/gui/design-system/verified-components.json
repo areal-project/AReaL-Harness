@@ -441,6 +441,80 @@
       "styles": ["clients/gui/packages/ui/src/conversation/task-context/task-context.css"],
       "internalSelectors": [".areal-task-context"],
       "enforces": []
+    },
+    {
+      "id": "worktree-directory",
+      "contract": "clients/gui/packages/ui/src/worktree/worktree-directory/worktree-directory.md",
+      "styles": ["clients/gui/packages/ui/src/worktree/worktree-directory/worktree-directory.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "worktree-picker",
+      "contract": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.md",
+      "styles": ["clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "worktree-settings",
+      "contract": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.md",
+      "styles": ["clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "worktree-status",
+      "contract": "clients/gui/packages/ui/src/worktree/worktree-status/worktree-status.md",
+      "styles": ["clients/gui/packages/ui/src/worktree/worktree-status/worktree-status.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "worktree-workspace",
+      "contract": "clients/gui/packages/ui/src/worktree/worktree-workspace/worktree-workspace.md",
+      "styles": ["clients/gui/packages/ui/src/worktree/worktree-workspace/worktree-workspace.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "settings-page",
+      "contract": "clients/gui/packages/ui/src/settings/settings-page/settings-page.md",
+      "styles": ["clients/gui/packages/ui/src/settings/settings-page/settings-page.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "settings-row",
+      "contract": "clients/gui/packages/ui/src/settings/settings-row/settings-row.md",
+      "styles": ["clients/gui/packages/ui/src/settings/settings-row/settings-row.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "scheduled-workspace",
+      "contract": "clients/gui/packages/ui/src/workbench/scheduled-workspace/scheduled-workspace.md",
+      "styles": [
+        "clients/gui/packages/ui/src/workbench/scheduled-workspace/scheduled-workspace.css"
+      ],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "settings-navigation",
+      "contract": "clients/gui/packages/ui/src/workbench/settings-navigation/settings-navigation.md",
+      "styles": [
+        "clients/gui/packages/ui/src/workbench/settings-navigation/settings-navigation.css"
+      ],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "workbench-shell",
+      "contract": "clients/gui/packages/ui/src/workbench/workbench-shell/workbench-shell.md",
+      "styles": ["clients/gui/packages/ui/src/workbench/workbench-shell/workbench-shell.css"],
+      "internalSelectors": [".areal-workbench"],
+      "enforces": []
     }
   ],
   "rules": [
