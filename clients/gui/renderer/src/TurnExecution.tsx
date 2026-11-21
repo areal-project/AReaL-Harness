@@ -204,11 +204,41 @@ export function TurnExecution({
         };
         const grouped = run.key !== null && activities.items.length > 1;
         const icon = activityStageIcon(grouped ? activityRunStages(activities)[0] : null);
+        const activeRun =
+          grouped &&
+          activities.items.some(
+            (item) => item.type === "activity" && item.activity?.status === "running",
+          );
+        const totalDurationMs = grouped
+          ? activities.items.reduce((sum, item) => {
+              if (item.type !== "activity") return sum;
+              const entry = item.activity;
+              if (typeof entry?.durationMs === "number" && entry.durationMs > 0) {
+                return sum + entry.durationMs;
+              }
+              if (
+                typeof entry?.startedAt === "number" &&
+                typeof entry?.completedAt === "number" &&
+                entry.completedAt > entry.startedAt
+              ) {
+                return sum + (entry.completedAt - entry.startedAt);
+              }
+              return sum;
+            }, 0)
+          : 0;
+        const duration =
+          !activeRun && totalDurationMs >= 1000
+            ? totalDurationMs >= 60_000
+              ? `${Math.floor(totalDurationMs / 60_000)}m ${Math.round((totalDurationMs % 60_000) / 1000)}s`
+              : `${(totalDurationMs / 1000).toFixed(1)}s`
+            : undefined;
         return (
           <ReadingActivityGroup
             key={run.id}
             readingKey={readingKey && JSON.stringify([readingKey, run.id, "activity"])}
             presentation={grouped ? "collapsible" : "inline"}
+            active={activeRun}
+            duration={duration}
             label={
               run.key !== null
                 ? activityRunLabel(activities, t)

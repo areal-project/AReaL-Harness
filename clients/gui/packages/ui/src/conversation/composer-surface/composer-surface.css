@@ -6,16 +6,18 @@
   grid-template-columns: var(--composer-inset) minmax(0, 1fr) var(--composer-inset);
   gap: 0;
   padding: var(--composer-inset) 0 var(--spacing-inline);
-  border: 0;
+  border: var(--border-width-default) solid var(--color-border-hairline);
   border-radius: var(--radius-composer);
   background: var(--color-composer);
   box-shadow: var(--shadow-composer);
-  transition: box-shadow var(--motion-fast) var(--ease-standard);
+  transition:
+    box-shadow var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
 }
 .composer-surface:focus-within {
+  border-color: var(--color-border-hover);
   box-shadow:
     var(--shadow-composer),
-    0 0 0 1px var(--color-border-hover),
     0 0 0 calc(var(--spacing-inline) * 3 / 8) var(--color-focus-ring-soft);
 }
 .composer-surface[data-dragging] {
@@ -68,6 +70,10 @@
 }
 .composer-editor textarea {
   field-sizing: content;
+}
+.composer-surface[data-layout="default"] .composer-toolbar {
+  padding-top: calc(var(--spacing-inline) / 2);
+  border-top: var(--border-width-default) solid var(--color-border-hairline);
 }
 .composer-toolbar {
   container: composer-footer / inline-size;

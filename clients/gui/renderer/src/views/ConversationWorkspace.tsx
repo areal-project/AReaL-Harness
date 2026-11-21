@@ -330,8 +330,8 @@ function ActiveConversation() {
     changedFileCount > 0 ? `${changedFileCount} 个变更文件` : null,
     turns.length > 0 ? `${turns.length} 轮对话` : null,
   ].filter(Boolean);
-  const showPinnedSummary =
-    !empty && summaryPinned && (pendingDecisions > 0 || changedFileCount > 0);
+  const hasSummaryContext = !empty && (pendingDecisions > 0 || changedFileCount > 0);
+  const showPinnedSummary = hasSummaryContext && summaryPinned;
   return (
     <>
       {showPinnedSummary && (
@@ -359,6 +359,13 @@ function ActiveConversation() {
               <ThreadSummaryItem label="对话轮次" meta={`${turns.length}`} tone="muted" />
             )}
           </ThreadSummaryPanel>
+        </div>
+      )}
+      {hasSummaryContext && !summaryPinned && (
+        <div className="composer-dock">
+          <Button type="button" variant="ghost" size="xs" onClick={() => setSummaryPinned(true)}>
+            显示置顶摘要 · {summaryParts.join(" · ")}
+          </Button>
         </div>
       )}
       {empty ? (

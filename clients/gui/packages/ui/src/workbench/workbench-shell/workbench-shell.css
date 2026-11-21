@@ -93,6 +93,7 @@
   font-size: var(--text-ui-xl);
   line-height: var(--line-height-title);
   font-weight: var(--font-weight-strong);
+  letter-spacing: var(--tracking-ui-tight);
 }
 .sidebar-workspace-header button {
   width: var(--spacing-control);
@@ -286,7 +287,7 @@
 .side-panel {
   flex: 0 1 44%;
   min-width: calc(var(--spacing-inline) * 40);
-  border-left: 1px solid var(--color-border);
+  border-left: var(--border-width-default) solid var(--color-border-hairline);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -297,7 +298,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 calc(var(--spacing-inline) * 3 / 2);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: var(--border-width-default) solid var(--color-border-hairline);
   flex-shrink: 0;
 }
 .panel-header strong {
