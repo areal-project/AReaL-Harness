@@ -650,7 +650,7 @@
 .navigation-task-title {
   font-size: var(--text-ui-base);
   line-height: var(--line-height-ui);
-  color: color-mix(in oklab, var(--color-foreground) 85%, transparent);
+  color: var(--color-foreground);
 }
 .resource-scope {
   display: flex;

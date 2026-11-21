@@ -35,7 +35,7 @@
   position: absolute;
   box-sizing: border-box;
   border: calc(var(--border-width-default) * 2) solid var(--color-foreground);
-  background: color-mix(in srgb, var(--color-foreground) 16%, transparent);
+  background: var(--color-annotation-selected-surface);
   pointer-events: none;
 }
 .browser-region-annotation label {

@@ -23,7 +23,7 @@
 .tool-event-body.command-card {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-navigation);
-  background: color-mix(in srgb, var(--color-foreground) 5.5%, transparent);
+  background: var(--color-surface);
   padding: 0;
   margin-top: var(--spacing-inline);
   overflow: hidden;

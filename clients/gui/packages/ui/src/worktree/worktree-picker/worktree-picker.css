@@ -77,7 +77,7 @@
   text-overflow: ellipsis;
 }
 .worktree-picker-option[aria-selected="true"] {
-  background: var(--color-hover);
+  background: var(--color-selected);
 }
 .worktree-picker-note,
 .worktree-picker-feedback {

@@ -83,8 +83,7 @@
   grid-template-columns: 1fr 1fr;
   margin-top: calc(var(--spacing-inline) * 3 / 2);
   overflow: hidden;
-  border: var(--border-width-default) solid
-    color-mix(in srgb, var(--color-foreground) 8%, transparent);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-choice);
   background: var(--color-card);
   color: var(--color-foreground);

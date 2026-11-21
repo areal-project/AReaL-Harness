@@ -146,9 +146,11 @@
   font: inherit;
   font-weight: 400;
 }
-.task-resource-row:hover,
-.task-resource-row[data-selected] {
+.task-resource-row:hover {
   background: var(--color-hover);
+}
+.task-resource-row[data-selected] {
+  background: var(--color-selected);
 }
 .task-resource-row > svg {
   flex-shrink: 0;

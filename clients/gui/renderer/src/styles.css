@@ -146,7 +146,7 @@ body {
   --color-tab: var(--color-neutral-100);
   --color-tab-active: var(--color-white);
   --color-tab-border: var(--color-border);
-  --color-secondary-hover: color-mix(in srgb, var(--color-foreground) 10%, transparent);
+  --color-secondary-hover: var(--color-button-hover);
   --color-interaction-ask-surface: var(--color-sky-50);
   --color-interaction-ask-foreground: var(--color-sky-700);
   --color-interaction-ask-fill: color-mix(in oklab, var(--color-green-500) 20%, transparent);

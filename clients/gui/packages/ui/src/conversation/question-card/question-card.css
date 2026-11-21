@@ -40,9 +40,11 @@
   overflow-wrap: anywhere;
 }
 .ask-user-option:hover,
-.ask-user-option:focus-within,
-.ask-user-option[data-selected="true"] {
+.ask-user-option:focus-within {
   background: var(--color-hover);
+}
+.ask-user-option[data-selected="true"] {
+  background: var(--color-selected);
 }
 .ask-user-option:has(input:focus-visible) {
   outline: var(--focus-width) solid var(--color-foreground-subtle);

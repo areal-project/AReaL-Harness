@@ -139,7 +139,7 @@ pre {
   width: var(--rail-button-size);
   height: var(--rail-button-size);
   border-radius: var(--radius-navigation);
-  color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
+  color: var(--color-foreground-subtle);
 }
 .application-rail .application-rail-button svg {
   width: var(--icon-size-rail);
@@ -227,7 +227,7 @@ kbd {
 .project-row:hover,
 .project-row:has([data-popup-open]),
 .project-row:has(> .project-label[aria-current="page"]) {
-  background: var(--color-sidebar-item, var(--color-hover));
+  background: var(--color-sidebar-item);
 }
 /* 显隐交给 HoverActions；绝对定位让锚点不随悬停移动，标题只在悬停时让出空间。 */
 .project-actions {
@@ -1011,9 +1011,11 @@ button.composer-project:hover > svg,
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-sm);
 }
-.provider-catalog-row:hover,
-.provider-catalog-row[aria-current="true"] {
+.provider-catalog-row:hover {
   background: var(--color-hover);
+}
+.provider-catalog-row[aria-current="true"] {
+  background: var(--color-selected);
 }
 .provider-catalog-dot {
   width: calc(var(--spacing-inline) * 3 / 4);
@@ -1340,7 +1342,7 @@ button.composer-project:hover > svg,
 .panel-glyph {
   fill: none;
   stroke: none;
-  color: color-mix(in srgb, var(--color-foreground) 65%, transparent);
+  color: var(--color-foreground-subtle);
 }
 .panel-glyph path {
   fill: currentColor;
@@ -1873,13 +1875,13 @@ button[aria-label="停止"] {
   width: var(--turn-marker-length);
   height: var(--turn-marker-thickness);
   border-radius: var(--radius-turn-marker);
-  background: var(--color-foreground-subtle);
+  background: var(--turn-marker-color, var(--color-foreground-subtle));
   opacity: var(--turn-opacity, 0.55);
   transform-origin: left center;
   pointer-events: none;
 }
 .turn-navigation button[aria-current] .turn-marker {
-  background: var(--color-foreground);
+  --turn-marker-color: var(--color-foreground);
   opacity: 1;
 }
 .turn-navigation button[aria-current]::before {
@@ -1889,7 +1891,7 @@ button[aria-label="停止"] {
   width: var(--turn-marker-thickness);
   height: var(--turn-marker-thickness);
   border-radius: 50%;
-  background: var(--color-foreground);
+  box-shadow: inset 0 0 0 var(--turn-marker-thickness) var(--color-foreground);
 }
 .turn-navigation button:focus-visible {
   outline: calc(var(--border-width-default) * 2) solid var(--color-ring);
@@ -2047,7 +2049,7 @@ button[aria-label="停止"] {
     monospace;
 }
 .trajectory-match {
-  background: color-mix(in srgb, var(--color-foreground) 7%, transparent);
+  background: var(--color-surface);
   box-shadow: inset 3px 0 var(--color-foreground);
 }
 .trajectory-error {
@@ -2428,7 +2430,7 @@ button[aria-label="停止"] {
   height: var(--spacing-control);
   padding: calc((var(--spacing-control) - var(--icon-size-control)) / 2);
   border-radius: var(--radius-control);
-  color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
+  color: var(--color-foreground-subtle);
 }
 /* Core turn identity determines the latest result; opacity keeps the reading
    layout stable while prior copy actions remain reachable by mouse/keyboard. */
@@ -2824,7 +2826,7 @@ button[aria-label="停止"] {
 }
 .file-preview-open-group > .file-preview-control {
   border-color: var(--color-border);
-  background: color-mix(in srgb, var(--color-foreground) 3%, transparent);
+  background: var(--color-surface);
 }
 .file-preview-open-group
   > .file-preview-control:is(:hover, :focus-visible, [aria-expanded="true"]):not(:disabled) {
@@ -3155,7 +3157,7 @@ button[aria-label="停止"] {
   justify-content: space-between;
   gap: var(--spacing-inline);
   padding: var(--spacing-inline) calc(var(--spacing-inline) * 3 / 2) calc(var(--spacing-inline) / 4);
-  color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
+  color: var(--color-foreground-subtle);
   font-family: var(--font-sans);
   font-size: var(--text-ui-sm);
   line-height: 1.333333;
@@ -3234,7 +3236,7 @@ button[aria-label="停止"] {
 .review-comment-attachment-trigger > svg {
   width: var(--icon-size-control);
   height: var(--icon-size-control);
-  color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
+  color: var(--color-foreground-subtle);
 }
 
 .review-comment-attachment-trigger > span {
@@ -3419,17 +3421,10 @@ button[aria-label="停止"] {
 }
 
 .review-comment-actions [data-variant="ghost"]:not(.review-comment-delete-editing) {
-  color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
-}
-:root:not(.dark)
-  :is(
-    .review-comment-heading,
-    .review-comment-actions [data-variant="ghost"]:not(.review-comment-delete-editing)
-  ) {
-  color: color-mix(in srgb, var(--color-foreground) 65%, transparent);
+  color: var(--color-foreground-subtle);
 }
 .dark .review-comment-actions [data-variant="ghost"]:not(.review-comment-delete-editing):hover {
-  background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
+  background: var(--color-hover);
 }
 
 .review-resource-layout {
@@ -3470,7 +3465,7 @@ button[aria-label="停止"] {
   height: var(--icon-size-control);
   flex-shrink: 0;
   margin-left: var(--spacing-inline);
-  color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
+  color: var(--color-foreground-subtle);
   pointer-events: none;
 }
 .review-file-filter-input {
@@ -3486,7 +3481,7 @@ button[aria-label="停止"] {
   box-shadow: none;
 }
 .review-file-filter-input::placeholder {
-  color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
+  color: var(--color-foreground-subtle);
 }
 .review-file-tree-row {
   position: relative;
@@ -3577,7 +3572,7 @@ button[aria-label="停止"] {
   border-radius: var(--radius-navigation);
   corner-shape: superellipse(1.5);
   overflow: clip;
-  background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
+  background: var(--color-surface);
 }
 .review-markdown-content {
   font-size: var(--text-ui-base);
@@ -3733,9 +3728,6 @@ button[aria-label="停止"] {
   max-width: 100%;
   color: var(--color-foreground-subtle);
 }
-:root:not(.dark) .review-empty-illustration {
-  color: color-mix(in srgb, var(--color-foreground) 49.5%, transparent);
-}
 .review-empty-copy {
   display: flex;
   flex-direction: column;
@@ -3751,7 +3743,7 @@ button[aria-label="停止"] {
   font-size: var(--text-ui-caption);
   font-weight: 430;
   line-height: 1.4285714;
-  color: color-mix(in srgb, var(--color-foreground) 65%, transparent);
+  color: var(--color-foreground-subtle);
 }
 
 /* Workspace and review trees share search/row roles; each keeps its own state. */
@@ -3847,7 +3839,7 @@ button[aria-label="停止"] {
   border-radius: var(--radius-choice);
 }
 .composer-catalog-row[aria-selected="true"] {
-  background: var(--color-hover);
+  background: var(--color-selected);
 }
 .composer-catalog-row[aria-disabled="true"] {
   opacity: var(--opacity-disabled);
@@ -3982,7 +3974,7 @@ button[aria-label="停止"] {
     var(--color-foreground) 14%,
     var(--color-composer-catalog, var(--color-background))
   );
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-foreground) 8%, transparent);
+  box-shadow: inset 0 0 0 1px var(--color-border);
   overflow: hidden;
   pointer-events: none;
 }
@@ -3996,7 +3988,7 @@ button[aria-label="停止"] {
   width: calc(var(--spacing-inline) / 2);
   height: calc(var(--spacing-inline) / 2);
   border-radius: 50%;
-  background: color-mix(in srgb, var(--color-foreground) 35%, transparent);
+  background: var(--color-foreground-subtlest);
   transform: translateX(-50%);
 }
 .composer-slider-track i[data-selected="true"] {

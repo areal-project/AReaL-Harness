@@ -32,7 +32,7 @@
   text-align: left;
 }
 .side-chat-related button[aria-current] {
-  background: var(--color-surface);
+  background: var(--color-selected);
 }
 .side-chat-information {
   padding: var(--spacing-inline) calc(var(--spacing-inline) * 5 / 2);
