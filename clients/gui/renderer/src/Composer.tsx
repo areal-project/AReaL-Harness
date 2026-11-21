@@ -22,7 +22,7 @@ import {
   userMessageIds,
 } from "./pendingMessage.js";
 import { Input } from "@areal/ui";
-import { ComposerActionButton } from "@areal/ui/compositions";
+import { ComposerActionButton, ComposerRequestStack } from "@areal/ui/compositions";
 import { parseMentionMarkdown } from "./mentions/mentionMarkdown.js";
 import { stopConversationTurn, releaseSettledStops } from "./conversationStop.js";
 import { ConversationSelectionReferences } from "./ConversationSelectionReferences.js";
@@ -281,6 +281,14 @@ export function Composer({
   const approvals = (project.state?.interactions?.[thread.id]?.data ?? []).filter(
     (item: Data) => item.status === "pending" && item.kind === "approval" && !archived,
   );
+  const [requestIndex, setRequestIndex] = useState(0);
+  const pendingRequests = [
+    ...approvals.map((item: Data) => ({ kind: "approval" as const, item })),
+    ...questions.map((item: Data) => ({ kind: "question" as const, item })),
+  ];
+  const safeRequestIndex =
+    pendingRequests.length > 0 ? Math.min(requestIndex, pendingRequests.length - 1) : 0;
+  const activePendingRequest = pendingRequests[safeRequestIndex];
   const hadQuestion = useRef(false);
   useEffect(() => {
     if (hadQuestion.current && !questions.length) api.current?.focus();
@@ -949,23 +957,31 @@ export function Composer({
       )}
       <div className="composer-input-stack">
         <div ref={setMenuAnchor} className="composer-menu-anchor" />
-        {/* 待决定事项在队列与输入框之上；队列仍贴着输入框，不会盖住决定卡。 */}
-        {approvals.map((item: Data) => (
-          <ApprovalRequest
-            key={item.requestId}
-            item={item}
-            projectId={project.id}
-            action={action}
-          />
-        ))}
-        {questions.map((item: Data) => (
-          <AskUserQuestion
-            key={item.requestId}
-            item={item}
-            projectId={project.id}
-            action={action}
-          />
-        ))}
+        {/* 待决定事项在队列与输入框之上；多请求并存时通过 ComposerRequestStack 提供 1 / N 切换。 */}
+        {activePendingRequest && (
+          <ComposerRequestStack
+            index={safeRequestIndex}
+            total={pendingRequests.length}
+            onIndexChange={setRequestIndex}
+            label="待处理请求"
+          >
+            {activePendingRequest.kind === "approval" ? (
+              <ApprovalRequest
+                key={activePendingRequest.item.requestId}
+                item={activePendingRequest.item}
+                projectId={project.id}
+                action={action}
+              />
+            ) : (
+              <AskUserQuestion
+                key={activePendingRequest.item.requestId}
+                item={activePendingRequest.item}
+                projectId={project.id}
+                action={action}
+              />
+            )}
+          </ComposerRequestStack>
+        )}
         <ComposerQueue
           key={key}
           project={project}

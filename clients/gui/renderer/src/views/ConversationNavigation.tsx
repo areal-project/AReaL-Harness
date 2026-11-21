@@ -13,6 +13,7 @@ import {
   SidebarWorkspaceHeader,
 } from "../app-shell/ApplicationNavigation.js";
 import { NavigationSidebar } from "../app-shell/WorkbenchShell.js";
+import { PopoverSidebar } from "@areal/ui/compositions";
 import { Button } from "../components/ui/button.js";
 import {
   DropdownMenu,
@@ -51,7 +52,9 @@ export function ConversationNavigation(props: SidebarNavigationProps) {
   const archive = useArchiveConfirm();
   return (
     <SidebarScope model={model} confirmArchive={archive.confirm}>
-      {props.visible && <SidebarContent onUpgradeHistory={props.onUpgradeHistory} />}
+      <PopoverSidebar collapsed={!props.visible} label="项目导航">
+        <SidebarContent onUpgradeHistory={props.onUpgradeHistory} />
+      </PopoverSidebar>
       <SidebarSearch />
       {archive.dialog}
     </SidebarScope>

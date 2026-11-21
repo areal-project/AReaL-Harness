@@ -5,7 +5,8 @@ import {
 } from "../PlatformReadContext.js";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { DelayedVisible } from "@areal/ui";
-import { ThreadSummaryItem, ThreadSummaryPanel } from "@areal/ui/compositions";
+import { ThreadFindBar, ThreadSummaryItem, ThreadSummaryPanel } from "@areal/ui/compositions";
+import { matchesWorkspaceShortcut, useWorkspaceShortcuts } from "../settings/workspaceShortcuts.js";
 import { projectUserState } from "../state/userStates.js";
 import { ComposerSurface } from "../prompt-editor/ComposerSurface.js";
 import { Button } from "../components/ui/button.js";
@@ -261,6 +262,7 @@ function ActiveConversation() {
     action,
     dark,
     empty,
+    mainPane,
     workspacePanels,
     side,
     fork,
@@ -312,12 +314,17 @@ function ActiveConversation() {
   const { newTask } = navigationCommands;
 
   const { t } = useI18n();
+  const shortcuts = useWorkspaceShortcuts();
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [summaryPinned, setSummaryPinned] = useState(true);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [findMatchIndex, setFindMatchIndex] = useState(0);
+  const [findMatches, setFindMatches] = useState<HTMLElement[]>([]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.isComposing || event.defaultPrevented) return;
-      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "s") {
+      if (matchesWorkspaceShortcut(event, shortcuts.pinSummary)) {
         event.preventDefault();
         setSummaryPinned((prev) => {
           if (!prev) {
@@ -327,11 +334,44 @@ function ActiveConversation() {
           setSummaryOpen((open) => !open);
           return prev;
         });
+        return;
+      }
+      if (!empty && matchesWorkspaceShortcut(event, shortcuts.threadFind)) {
+        event.preventDefault();
+        setFindOpen(true);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [empty, shortcuts.pinSummary, shortcuts.threadFind]);
+  useEffect(() => {
+    if (!findOpen) {
+      setFindMatches([]);
+      setFindMatchIndex(0);
+      return;
+    }
+    const needle = findQuery.trim().toLowerCase();
+    const root = mainPane.current;
+    if (!needle || !root) {
+      setFindMatches([]);
+      setFindMatchIndex(0);
+      return;
+    }
+    const candidates = Array.from(
+      root.querySelectorAll<HTMLElement>(
+        ".message-column, .turn-body, [data-testid='message-item']",
+      ),
+    ).filter((node) => node.textContent?.toLowerCase().includes(needle));
+    setFindMatches(candidates);
+    setFindMatchIndex(0);
+    candidates[0]?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [findOpen, findQuery, mainPane, threadId]);
+  const jumpFindMatch = (delta: number) => {
+    if (!findMatches.length) return;
+    const next = (findMatchIndex + delta + findMatches.length) % findMatches.length;
+    setFindMatchIndex(next);
+    findMatches[next]?.scrollIntoView({ block: "center", behavior: "smooth" });
+  };
   const pendingSide =
     project && thread ? sideChats.pendingCreation(project.id, thread.id) : undefined;
   const sideError = project && thread ? sideChats.creationError(project.id, thread.id) : undefined;
@@ -352,6 +392,22 @@ function ActiveConversation() {
   const showPinnedSummary = hasSummaryContext && summaryPinned;
   return (
     <>
+      {!empty && findOpen && (
+        <div className="composer-dock">
+          <ThreadFindBar
+            value={findQuery}
+            onChange={setFindQuery}
+            matchIndex={findMatchIndex}
+            matchCount={findMatches.length}
+            onPrevious={() => jumpFindMatch(-1)}
+            onNext={() => jumpFindMatch(1)}
+            onClose={() => {
+              setFindOpen(false);
+              setFindQuery("");
+            }}
+          />
+        </div>
+      )}
       {showPinnedSummary && (
         <div className="composer-dock">
           <ThreadSummaryPanel

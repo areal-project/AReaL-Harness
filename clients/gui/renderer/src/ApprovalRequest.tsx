@@ -1,5 +1,6 @@
 import { useI18n } from "./i18n/IntlProvider.js";
 import { useRef, useState } from "react";
+import { Callout, Kbd } from "@areal/ui";
 import { Button } from "./components/ui/button.js";
 import { DecisionCard } from "./DecisionCard.js";
 import { ChevronDown, CornerDownLeft, Globe, SquareTerminal } from "lucide-react";
@@ -243,7 +244,7 @@ export function ApprovalRequest({
                   </SettingsDisclosure>
                 </div>
               )}
-              <p>目标页面或控件变化后，本次批准会失效。</p>
+              <Callout tone="warning">目标页面或控件变化后，本次批准会失效。</Callout>
             </div>
           ) : (
             <pre className="approval-preview">
@@ -285,7 +286,7 @@ export function ApprovalRequest({
               onClick={() => void respond("deny")}
             >
               {t("decision.deny")}
-              <kbd aria-hidden="true">Esc</kbd>
+              <Kbd variant="secondary">Esc</Kbd>
             </Button>
             {canRemember ? (
               <div className="approval-split">
@@ -297,9 +298,9 @@ export function ApprovalRequest({
                   onClick={() => void respond("allowOnce")}
                 >
                   {busy ? "提交中…" : "允许一次"}
-                  <kbd aria-hidden="true">
+                  <Kbd variant="primary">
                     <CornerDownLeft size={12} />
-                  </kbd>
+                  </Kbd>
                 </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger
@@ -346,9 +347,9 @@ export function ApprovalRequest({
                 onClick={() => void respond("allowOnce")}
               >
                 {busy ? "提交中…" : "允许一次"}
-                <kbd aria-hidden="true">
+                <Kbd variant="primary">
                   <CornerDownLeft size={12} />
-                </kbd>
+                </Kbd>
               </Button>
             )}
           </>

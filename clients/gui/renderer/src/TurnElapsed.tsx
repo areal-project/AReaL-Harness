@@ -1,4 +1,5 @@
 import { Button } from "@areal/ui";
+import { WorkedForDivider } from "@areal/ui/compositions";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { useEffect, useState, type ReactNode } from "react";
 import type { Data } from "./services.js";
@@ -68,6 +69,13 @@ export function TurnElapsed({
           : undefined
     : completedTimeLabel(turn, t);
   if (!label && !disclosure) return null;
+  if (!running && !disclosure && label) {
+    return (
+      <div className="turn-elapsed turn-progress-heading" data-testid="turn-elapsed">
+        <WorkedForDivider label={label} meta={indicator} />
+      </div>
+    );
+  }
   return (
     <div className="turn-elapsed turn-progress-heading" data-testid="turn-elapsed">
       <div className="turn-progress-label">

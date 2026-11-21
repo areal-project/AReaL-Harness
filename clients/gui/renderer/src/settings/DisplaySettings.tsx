@@ -1,7 +1,17 @@
 import { ThemeDiffPreview } from "./ThemeDiffPreview.js";
 import { currentErrorText } from "../errors/currentErrorText.js";
-import { TitleTooltip } from "@areal/ui";
-import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
+import { Badge, TitleTooltip } from "@areal/ui";
+import {
+  SettingsGroupCard,
+  SettingsRow,
+  SettingsSection,
+  ShortcutCapture,
+} from "@areal/ui/compositions";
+import {
+  resetWorkspaceShortcut,
+  setWorkspaceShortcut,
+  useWorkspaceShortcuts,
+} from "./workspaceShortcuts.js";
 import { colorContrastRatio } from "@areal/ui/theme";
 import { useI18n, UiMessageError, formatUiMessage, type UiMessage } from "../i18n/IntlProvider.js";
 import { ActionButton } from "../components/ui/action-button.js";
@@ -101,6 +111,7 @@ export function GeneralSettings({
 }) {
   const { t } = useI18n();
   const prefs = useApplicationPreferences();
+  const shortcuts = useWorkspaceShortcuts();
   const [powerSaving, setPowerSaving] = useState(false),
     [powerError, setPowerError] = useState<string | UiMessage>("");
   const powerSavePending = useRef(false);
@@ -220,6 +231,48 @@ export function GeneralSettings({
               {formatUiMessage(t, powerError) || power?.error}
             </p>
           )}
+        </SettingsGroupCard>
+      </SettingsSection>
+      <SettingsSection title="快捷键">
+        <SettingsGroupCard>
+          <SettingsRow
+            label={
+              <span className="inline-flex items-center gap-2">
+                置顶 / 展开会话摘要
+                <Badge tone="neutral" size="sm">
+                  对话流
+                </Badge>
+              </span>
+            }
+            description="在活跃对话顶部快速固定或展开 Pin Summary 面板。"
+            control={
+              <ShortcutCapture
+                label="置顶或展开会话摘要快捷键"
+                value={shortcuts.pinSummary}
+                onChange={(combo) => setWorkspaceShortcut("pinSummary", combo)}
+                onReset={() => resetWorkspaceShortcut("pinSummary")}
+              />
+            }
+          />
+          <SettingsRow
+            label={
+              <span className="inline-flex items-center gap-2">
+                对话内查找
+                <Badge tone="neutral" size="sm">
+                  对话流
+                </Badge>
+              </span>
+            }
+            description="在当前会话消息中打开查找浮条并跳转匹配项。"
+            control={
+              <ShortcutCapture
+                label="对话内查找快捷键"
+                value={shortcuts.threadFind}
+                onChange={(combo) => setWorkspaceShortcut("threadFind", combo)}
+                onReset={() => resetWorkspaceShortcut("threadFind")}
+              />
+            }
+          />
         </SettingsGroupCard>
       </SettingsSection>
       <SettingsSection title={t("settings.displaySettings.editor")}>

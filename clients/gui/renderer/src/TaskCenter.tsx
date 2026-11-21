@@ -1,10 +1,9 @@
-import { DelayedVisible } from "@areal/ui";
+import { DelayedVisible, TitleTooltip, Input } from "@areal/ui";
+import { AutomationTemplateDialog } from "@areal/ui/compositions";
 import { taskUserState } from "./state/userStates.js";
 import { currentErrorText } from "./errors/currentErrorText.js";
 import { errorText } from "./errors/errorCopy.js";
-import { TitleTooltip } from "@areal/ui";
 import { observeResize } from "@areal/ui/observe-resize";
-import { Input } from "@areal/ui";
 import { recoveredOutcome, recoveryMessage, type RecoveryFailure } from "./recoveryPresentation.js";
 import { FeedbackNotice } from "./FeedbackNotice.js";
 import {
@@ -679,6 +678,11 @@ export function TaskCenter({
   const [creationRequestId, setCreationRequestId] = useState<string>();
   const [creationChecked, setCreationChecked] = useState(false);
   const [composer, setComposer] = useState<{ text: string; requestId: string } | null>(null);
+  const [previewTemplate, setPreviewTemplate] = useState<{
+    title: string;
+    description: string;
+    icon: ReactNode;
+  } | null>(null);
   const creatingRequest = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -2193,12 +2197,26 @@ export function TaskCenter({
                 icon={<Icon size={18} />}
                 title={title}
                 description={description}
-                onClick={() => void beginCreate(description)}
+                onClick={() => setPreviewTemplate({ title, description, icon: <Icon size={16} /> })}
                 disabled={!connected}
               />
             ))}
           </ScheduledWorkspace.Welcome>
         )}
+        <AutomationTemplateDialog
+          open={previewTemplate !== null}
+          onOpenChange={(open) => {
+            if (!open) setPreviewTemplate(null);
+          }}
+          title={previewTemplate?.title ?? ""}
+          scheduleSummary="按需配置运行频率 · 创建后可随时暂停或修改"
+          prompt={previewTemplate?.description ?? ""}
+          hint="确认后将以此模板作为任务提示词进入创建流程。"
+          icon={previewTemplate?.icon}
+          onConfirm={() => {
+            if (previewTemplate) void beginCreate(previewTemplate.description);
+          }}
+        />
 
         {task && project && !creating && !detailsReady && (
           <main
