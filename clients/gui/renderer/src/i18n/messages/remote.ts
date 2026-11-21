@@ -1076,11 +1076,11 @@ export const remoteMessages = {
     en: "Search skill rankings",
   },
   "settings.usageDashboard.searchSkills": {
-    "zh-CN": "搜索技能…",
+    "zh-CN": "搜索 Skills …",
     en: "Search skills…",
   },
   "settings.usageDashboard.noMatchingSkills": {
-    "zh-CN": "没有匹配的技能",
+    "zh-CN": "没有匹配的 Skills",
     en: "No matching skills",
   },
   "settings.usageDashboard.noSkillCallsYet": {
@@ -1092,7 +1092,7 @@ export const remoteMessages = {
     en: "Try another search.",
   },
   "settings.usageDashboard.callsAppearHereAfterTheAgentSuccessfully": {
-    "zh-CN": "Agent 成功读取技能入口后，调用次数会出现在这里。",
+    "zh-CN": "Agent 成功读取 Skills 入口后，调用次数会出现在这里。",
     en: "Calls appear here after the agent successfully reads a skill entry file.",
   },
   "settings.usageDashboard.howStatisticsAreCounted": {
@@ -1912,7 +1912,7 @@ export const remoteMessages = {
     en: "{value0, plural, one {# turn with reported usage} other {# turns with reported usage}}",
   },
   "settings.usageDashboard.skillCount": {
-    "zh-CN": "{value0, number} 个技能",
+    "zh-CN": "{value0, number} 个 Skills",
     en: "{value0, plural, one {# skill} other {# skills}}",
   },
   "settings.usageDashboard.calendarDaySummary": {

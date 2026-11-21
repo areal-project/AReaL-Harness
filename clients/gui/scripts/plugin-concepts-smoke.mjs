@@ -1140,7 +1140,7 @@ try {
     );
     await button("创建 Skill").click();
     await page.getByTestId("chat-input").filter({ hasText: ".agents/skills" }).waitFor();
-    await button("查看技能 skill-creator 官方 · OpenAI").waitFor();
+    await button("查看 Skills skill-creator 官方 · OpenAI").waitFor();
     assert.equal(await page.getByRole("dialog").count(), 0);
     assert.equal(
       await page.getByTestId("areal-workbench").getAttribute("data-project-id"),
@@ -1260,7 +1260,7 @@ try {
     assert.equal(await projectPreview.getByRole("article").count(), 6);
     assert.equal(
       await projectPreview
-        .getByRole("button", { name: "查看技能 project-preview-08", exact: true })
+        .getByRole("button", { name: "查看 Skills project-preview-08", exact: true })
         .count(),
       0,
     );
@@ -1269,7 +1269,7 @@ try {
       .click();
     assert.equal(await projectPreview.getByRole("article").count(), 10);
     await projectPreview
-      .getByRole("button", { name: "查看技能 project-preview-08", exact: true })
+      .getByRole("button", { name: "查看 Skills project-preview-08", exact: true })
       .click();
     await page
       .getByTestId("skill-detail-page")
@@ -1336,7 +1336,7 @@ try {
     );
     let standaloneDetails = skillRow("standalone");
     await standaloneDetails
-      .getByRole("button", { name: `查看技能 ${fixture.skillId}`, exact: true })
+      .getByRole("button", { name: `查看 Skills ${fixture.skillId}`, exact: true })
       .click();
     let skillDetail = page.getByTestId("skill-detail-page");
     await skillDetail.getByText("STANDALONE_CONCEPT_BODY", { exact: true }).waitFor();
@@ -1348,7 +1348,7 @@ try {
     assert.equal((await skillDetail.innerText()).includes("PACKAGE_CONCEPT_BODY"), false);
     await closeDetail();
     await skillRow("plugin")
-      .getByRole("button", { name: /^查看技能 / })
+      .getByRole("button", { name: /^查看 Skills / })
       .click();
     skillDetail = page.getByTestId("skill-detail-page");
     await skillDetail.getByText("PACKAGE_CONCEPT_BODY", { exact: true }).waitFor();
@@ -1827,7 +1827,7 @@ try {
       true,
     );
     assert.equal(
-      await page.getByRole("button", { name: /^查看技能 / }).count(),
+      await page.getByRole("button", { name: /^查看 Skills / }).count(),
       0,
       "a plugin without Skills cannot attach a fabricated Skill",
     );
@@ -1892,7 +1892,7 @@ try {
   await button("创建 Skill").click();
   const draft = page.getByTestId("chat-input");
   await draft.filter({ hasText: "CREATOR_EXISTING_DRAFT" }).waitFor();
-  await button(`查看技能 ${creator.skill.name} 官方 · OpenAI`).waitFor();
+  await button(`查看 Skills ${creator.skill.name} 官方 · OpenAI`).waitFor();
   const draftText = await draft.innerText();
   assert.equal(
     draftText.includes("CREATOR_EXISTING_DRAFT"),
@@ -2075,7 +2075,7 @@ try {
   await capture("08-official-creator-first-turn");
   if (creatorOnly) {
     await skillWorkspace();
-    const buttonForSkill = button(`查看技能 ${createdSkillId}`);
+    const buttonForSkill = button(`查看 Skills ${createdSkillId}`);
     if (!(await buttonForSkill.isVisible()))
       await page
         .getByRole("button", { name: /查看更多.*Skill/ })
@@ -2167,7 +2167,7 @@ try {
     );
     await settings();
     await tab("Skills");
-    await button(`查看技能 ${createdSkillId}`).waitFor();
+    await button(`查看 Skills ${createdSkillId}`).waitFor();
     checks.push("Settings opens installed resources and lists the Skill used in the conversation");
     const beforeCold = await ownedCoreGeneration(creatorWorkspace);
     await closeSmokeApplication(app);

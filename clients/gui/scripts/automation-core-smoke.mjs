@@ -910,7 +910,7 @@ async function prepareEcosystemDraft() {
     .getByRole("button", { name: "试用", exact: true })
     .click();
   await page
-    .getByRole("button", { name: new RegExp(`^查看技能 ${ecosystem.skillName}`) })
+    .getByRole("button", { name: new RegExp(`^查看 Skills ${ecosystem.skillName}`) })
     .waitFor();
   assert.deepEqual(
     Object.keys(

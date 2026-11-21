@@ -60,6 +60,9 @@
   min-height: 0;
 }
 .side-chat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   margin: auto;
   text-align: center;
   padding: calc(var(--spacing-inline) * 7 / 2) calc(var(--spacing-inline) * 5 / 2);

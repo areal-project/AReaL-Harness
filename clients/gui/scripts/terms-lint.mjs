@@ -11,6 +11,7 @@ export const TERMS = [
   { use: "侧边聊天", avoid: ["旁路"] },
   { use: "子代理", avoid: ["子智能体"] },
   { use: "Bot", avoid: ["Personal Agent", "私人助理"] },
+  { use: "Skills", avoid: ["技能"] },
   { use: "…", avoid: ["..."] },
   { use: "“”", avoid: ["「", "」"] },
 ];

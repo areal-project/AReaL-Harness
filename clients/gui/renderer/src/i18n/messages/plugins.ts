@@ -235,7 +235,7 @@ export const pluginMessages = {
     en: "Source resolution completed, but the returned preview is incomplete. Refresh the catalog and resolve the source again.",
   },
   "settings.pluginCenter.theSetupSkillWasSubmittedReturnTo": {
-    "zh-CN": "设置技能已提交，请回到对话查看执行与审批。",
+    "zh-CN": "设置 Skills 已提交，请回到对话查看执行与审批。",
     en: "The setup skill was submitted. Return to the conversation to view execution and approvals.",
   },
   "settings.pluginCenter.operationCompleted": {
@@ -932,7 +932,7 @@ export const pluginMessages = {
     en: "Installed skills",
   },
   "settings.pluginCenter.runTheSetupSkillInARegular": {
-    "zh-CN": "在普通对话中运行设置技能，由对话展示执行与审批。",
+    "zh-CN": "在普通对话中运行设置 Skills，由对话展示执行与审批。",
     en: "Run the setup skill in a regular conversation to view execution and approvals there.",
   },
   "settings.pluginCenter.runSetup": {
@@ -1288,7 +1288,7 @@ export const pluginMessages = {
     en: "Clear skill search",
   },
   "settings.pluginSkillsPage.viewSkillValue": {
-    "zh-CN": "查看技能 {value0}",
+    "zh-CN": "查看 Skills {value0}",
     en: "View skill {value0}",
   },
   "settings.pluginSkillsPage.disable": {
@@ -1300,7 +1300,7 @@ export const pluginMessages = {
     en: "Enable",
   },
   "settings.pluginSkillsPage.valueSkillValue": {
-    "zh-CN": "{value0}技能 {value1}",
+    "zh-CN": "{value0} Skills {value1}",
     en: "{value0} skill {value1}",
   },
   "settings.pluginSkillsPage.noMatchingSkills": {
@@ -1448,15 +1448,15 @@ export const pluginMessages = {
     en: "Standalone resources · {value0}",
   },
   "settings.scopedSkillsSettings.skills": {
-    "zh-CN": "技能",
+    "zh-CN": "Skills",
     en: "Skills",
   },
   "settings.scopedSkillsSettings.searchSkills": {
-    "zh-CN": "搜索技能",
+    "zh-CN": "搜索 Skills",
     en: "Search skills",
   },
   "settings.scopedSkillsSettings.searchSkills2": {
-    "zh-CN": "搜索技能…",
+    "zh-CN": "搜索 Skills …",
     en: "Search skills…",
   },
   "settings.scopedSkillsSettings.clearSearch": {
@@ -1464,7 +1464,7 @@ export const pluginMessages = {
     en: "Clear search",
   },
   "settings.scopedSkillsSettings.availableToAllProjectsProjectConfigurationTakes": {
-    "zh-CN": "供所有项目使用；同名技能优先使用项目配置。",
+    "zh-CN": "供所有项目使用；同名 Skills 优先使用项目配置。",
     en: "Available to all projects. Project configuration takes priority for skills with the same name.",
   },
   "settings.scopedSkillsSettings.onlyForTheCurrentProjectChangesTake": {
@@ -1472,19 +1472,19 @@ export const pluginMessages = {
     en: "Only for the current project. Changes take effect in new tasks after saving.",
   },
   "settings.scopedSkillsSettings.createSkill": {
-    "zh-CN": "新建技能",
+    "zh-CN": "新建 Skills",
     en: "Create skill",
   },
   "settings.scopedSkillsSettings.aCustomDeploymentIsInUseTask": {
-    "zh-CN": "当前使用自定义部署，任务技能仍由部署文件指定。",
+    "zh-CN": "当前使用自定义部署，任务 Skills 仍由部署文件指定。",
     en: "A custom deployment is in use. Task skills are still specified by the deployment file.",
   },
   "settings.scopedSkillsSettings.viewSkillValue": {
-    "zh-CN": "查看技能 {value0}",
+    "zh-CN": "查看 Skills {value0}",
     en: "View skill {value0}",
   },
   "settings.scopedSkillsSettings.viewSkillContent": {
-    "zh-CN": "查看技能内容",
+    "zh-CN": "查看 Skills 内容",
     en: "View skill content",
   },
   "settings.scopedSkillsSettings.overriddenByProject": {
@@ -1500,7 +1500,7 @@ export const pluginMessages = {
     en: "Enable",
   },
   "settings.scopedSkillsSettings.valueSkillValue": {
-    "zh-CN": "{value0}技能 {value1}",
+    "zh-CN": "{value0} Skills {value1}",
     en: "{value0} skill {value1}",
   },
   "settings.scopedSkillsSettings.savedChangesTakeEffectInNewTasks": {
@@ -1520,23 +1520,23 @@ export const pluginMessages = {
     en: "Manage plugin",
   },
   "settings.scopedSkillsSettings.skillContentPreview": {
-    "zh-CN": "技能内容预览",
+    "zh-CN": "Skills 内容预览",
     en: "Skill content preview",
   },
   "settings.scopedSkillsSettings.saveAsAUserSkillAvailableTo": {
-    "zh-CN": "保存为用户技能，所有项目均可使用。",
+    "zh-CN": "保存为用户 Skills，所有项目均可使用。",
     en: "Save as a user skill available to all projects.",
   },
   "settings.scopedSkillsSettings.saveAsAProjectSkillForThe": {
-    "zh-CN": "保存为项目技能，仅用于当前项目。",
+    "zh-CN": "保存为项目 Skills，仅用于当前项目。",
     en: "Save as a project skill for the current project only.",
   },
   "settings.scopedSkillsSettings.skillSavedChangesTakeEffectInNew": {
-    "zh-CN": "技能已保存，将在新任务中生效。",
+    "zh-CN": "Skills 已保存，将在新任务中生效。",
     en: "Skill saved. Changes take effect in new tasks.",
   },
   "settings.scopedSkillsSettings.skillID": {
-    "zh-CN": "技能 ID",
+    "zh-CN": "Skills ID",
     en: "Skill ID",
   },
   "settings.scopedSkillsSettings.displayName": {
@@ -1548,7 +1548,7 @@ export const pluginMessages = {
     en: "Description",
   },
   "settings.scopedSkillsSettings.skillInstructions": {
-    "zh-CN": "技能指令",
+    "zh-CN": "Skills 指令",
     en: "Skill instructions",
   },
   "settings.scopedSkillsSettings.cancel": {
@@ -1560,7 +1560,7 @@ export const pluginMessages = {
     en: "Saving…",
   },
   "settings.scopedSkillsSettings.saveSkill": {
-    "zh-CN": "保存技能",
+    "zh-CN": "保存 Skills",
     en: "Save skill",
   },
   "settings.resourceSettings.cannotSaveRightNowTryAgainLater": {
@@ -1700,23 +1700,23 @@ export const pluginMessages = {
     en: "Current task",
   },
   "settings.resourceSettings.skills": {
-    "zh-CN": "技能",
+    "zh-CN": "Skills",
     en: "Skills",
   },
   "settings.resourceSettings.searchSkills": {
-    "zh-CN": "搜索技能…",
+    "zh-CN": "搜索 Skills …",
     en: "Search skills…",
   },
   "settings.resourceSettings.searchSkills2": {
-    "zh-CN": "搜索技能",
+    "zh-CN": "搜索 Skills",
     en: "Search skills",
   },
   "settings.resourceSettings.thisTaskHasValueBoundSkillsSelect": {
-    "zh-CN": "当前任务绑定 {value0} 个技能；在会话配置中选择下一轮使用的预设允许技能。",
+    "zh-CN": "当前任务绑定 {value0} 个 Skills；在会话配置中选择下一轮使用的预设允许 Skills。",
     en: "This task has {value0, plural, one {# bound skill} other {# bound skills}}. Select the preset allowed skills for the next turn in conversation settings.",
   },
   "settings.resourceSettings.versionValueViewSkillContent": {
-    "zh-CN": "版本 {value0} · 查看技能内容",
+    "zh-CN": "版本 {value0} · 查看 Skills 内容",
     en: "Version {value0} · View skill content",
   },
   "settings.resourceSettings.unavailable": {
@@ -1732,23 +1732,23 @@ export const pluginMessages = {
     en: "Available",
   },
   "settings.resourceSettings.selectATaskToViewSkillsWithin": {
-    "zh-CN": "请先选择任务，以查看该任务权限范围内的技能。",
+    "zh-CN": "请先选择任务，以查看该任务权限范围内的 Skills。",
     en: "Select a task to view skills within its permission scope.",
   },
   "settings.resourceSettings.noMatchingSkills": {
-    "zh-CN": "没有匹配的技能",
+    "zh-CN": "没有匹配的 Skills",
     en: "No matching skills",
   },
   "settings.resourceSettings.noSkillsAreAvailableForTheCurrent": {
-    "zh-CN": "当前任务没有可用技能。",
+    "zh-CN": "当前任务没有可用 Skills。",
     en: "No skills are available for the current task.",
   },
   "settings.resourceSettings.versionValueSkillResourcesForTheCurrent": {
-    "zh-CN": "版本 {value0} · 当前任务的技能资源",
+    "zh-CN": "版本 {value0} · 当前任务的 Skills 资源",
     en: "Version {value0} · Skill resources for the current task",
   },
   "settings.resourceSettings.skillResources": {
-    "zh-CN": "技能资源",
+    "zh-CN": "Skills 资源",
     en: "Skill resources",
   },
   "settings.resourceSettings.skillMdOrReferencesGuideMd": {
@@ -2236,24 +2236,24 @@ export const pluginMessages = {
     en: "(Content is too long. Previewing only the first 256 KiB.)",
   },
   "settings.scopedSkillsSettings.noMatchingResources": {
-    "zh-CN": "{kind, select, mcp {没有匹配的 MCP 服务器} other {没有匹配的技能}}",
+    "zh-CN": "{kind, select, mcp {没有匹配的 MCP 服务器} other {没有匹配的 Skills}}",
     en: "{kind, select, mcp {No matching MCP servers} other {No matching skills}}",
   },
   "settings.scopedSkillsSettings.noResourcesYet": {
     "zh-CN":
-      "暂无{scope, select, user {用户} other {项目}}{kind, select, mcp { MCP 服务器} other {技能}}",
+      "暂无{scope, select, user {用户} other {项目}}{kind, select, mcp {MCP 服务器} other {Skills}}",
     en: "No {scope, select, user {user} other {project}} {kind, select, mcp {MCP servers} other {skills}} yet",
   },
   "settings.scopedSkillsSettings.sharedResources": {
-    "zh-CN": "在这里添加的{kind, select, mcp { MCP 服务器} other {技能}}可供各项目复用。",
+    "zh-CN": "在这里添加的{kind, select, mcp {MCP 服务器} other {Skills}}可供各项目复用。",
     en: "{kind, select, mcp {MCP servers} other {Skills}} added here can be reused across projects.",
   },
   "settings.scopedSkillsSettings.projectResources": {
-    "zh-CN": "在这里管理仅用于当前项目的{kind, select, mcp { MCP 服务器} other {技能}}。",
+    "zh-CN": "在这里管理仅用于当前项目的{kind, select, mcp {MCP 服务器} other {Skills}}。",
     en: "Manage {kind, select, mcp {MCP servers} other {skills}} for the current project here.",
   },
   "settings.scopedSkillsSettings.addResource": {
-    "zh-CN": "添加{kind, select, mcp { MCP 服务器} other {技能}}",
+    "zh-CN": "添加{kind, select, mcp {MCP 服务器} other {Skills}}",
     en: "Add {kind, select, mcp {MCP server} other {skill}}",
   },
   "settings.hooksSettings.deleteHookConfirmation": {

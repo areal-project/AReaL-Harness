@@ -1,7 +1,7 @@
 import { projectedTurns } from "./session-projection.js";
 import { ComposerActionButton } from "@areal/ui/experimental";
 import { DelayedVisible } from "@areal/ui";
-import { ApplicationIntlProvider } from "../i18n/IntlProvider.js";
+import { ApplicationIntlProvider, useZCodeIntl } from "../i18n/IntlProvider.js";
 import { createRoot } from "react-dom/client";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Messages } from "../Messages.js";
@@ -81,12 +81,13 @@ function useRemoteTheme() {
 }
 function Home({ view, api }: { view: View; api: API }) {
   useRemoteTheme();
+  const { t } = useZCodeIntl();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
   return (
     <TooltipProvider>
       <div className="remote-project-heading">
-        <h2>Projects</h2>
+        <h2>{t("mobile.projects")}</h2>
       </div>
       {view.notice && <p role="status">{view.notice}</p>}
       <nav aria-label="项目与会话">

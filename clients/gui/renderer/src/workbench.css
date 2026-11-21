@@ -37,7 +37,7 @@ textarea {
   font-family: inherit;
 }
 button {
-  transition: background-color var(--motion-normal) var(--ease-standard);
+  transition: background-color var(--motion-fast) var(--ease-standard);
 }
 pre {
   white-space: pre-wrap;
@@ -200,8 +200,8 @@ kbd {
   cursor: var(--interactive-cursor, pointer);
   flex-shrink: 0;
   transition:
-    color var(--motion-normal) var(--ease-standard),
-    background-color var(--motion-normal) var(--ease-standard);
+    color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard);
 }
 .section-action-btn:hover {
   color: var(--color-foreground);
@@ -217,7 +217,7 @@ kbd {
   padding: 0 calc(var(--spacing-inline) / 2) 0 var(--spacing-inline);
   border-radius: var(--radius-navigation);
   color: var(--color-foreground);
-  transition: background-color var(--motion-normal) var(--ease-standard);
+  transition: background-color var(--motion-fast) var(--ease-standard);
 }
 [data-sidebar-pinned] {
   padding-bottom: calc(var(--spacing-inline) * 3 / 4);
@@ -287,8 +287,8 @@ kbd {
   border: 0;
   cursor: var(--interactive-cursor, pointer);
   transition:
-    background-color var(--motion-normal) var(--ease-standard),
-    color var(--motion-normal) var(--ease-standard);
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
 }
 .project-show-more:hover {
   background: var(--color-sidebar-item, var(--color-hover));
@@ -462,8 +462,8 @@ kbd {
   font-weight: 430;
   line-height: 18px;
   transition:
-    color var(--motion-normal) var(--ease-standard),
-    background-color var(--motion-normal) var(--ease-standard);
+    color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard);
 }
 button.composer-project {
   cursor: var(--interactive-cursor, pointer);
@@ -476,7 +476,7 @@ button.composer-project:hover,
 .composer-project > svg {
   flex-shrink: 0;
   color: currentColor;
-  transition: color var(--motion-normal) var(--ease-standard);
+  transition: color var(--motion-fast) var(--ease-standard);
 }
 button.composer-project:hover > svg,
 .composer-project[data-popup-open] > svg {
@@ -2406,7 +2406,7 @@ button[aria-label="停止"] {
 .conversation-disclosure {
   height: var(--collapsible-panel-height);
   overflow: hidden;
-  transition: height var(--motion-slow) var(--ease-enter);
+  transition: height var(--motion-normal) var(--ease-standard);
 }
 .conversation-disclosure[data-starting-style],
 .conversation-disclosure[data-ending-style],
@@ -2709,15 +2709,15 @@ button[aria-label="停止"] {
   border: 0;
   cursor: var(--interactive-cursor, pointer);
   transition:
-    background-color var(--motion-normal) var(--ease-standard),
-    color var(--motion-normal) var(--ease-standard);
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
 }
 .new-task-action > svg {
   flex-shrink: 0;
   width: var(--icon-size-control);
   height: var(--icon-size-control);
   color: var(--color-foreground-subtle);
-  transition: color var(--motion-normal) var(--ease-standard);
+  transition: color var(--motion-fast) var(--ease-standard);
 }
 .new-task-action:hover:not(:disabled) > svg {
   color: var(--color-foreground);

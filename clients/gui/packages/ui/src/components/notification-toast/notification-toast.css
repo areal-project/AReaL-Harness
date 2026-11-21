@@ -46,6 +46,10 @@
   flex: none;
   color: inherit;
 }
+.areal-notification-toast[data-exiting="true"] {
+  pointer-events: none;
+  animation: areal-toast-exit var(--motion-fast) var(--ease-standard) forwards;
+}
 @keyframes areal-toast-enter {
   from {
     opacity: 0;
@@ -54,6 +58,16 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+@keyframes areal-toast-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
   }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -1180,7 +1180,7 @@ export const generalMessages = {
     en: "Session settings changed. Reload before deciding whether to submit. Your draft is retained.",
   },
   "settings.sessionSettings.selectAtLeastOneSkillOrUse": {
-    "zh-CN": "请至少选择一个技能，或改回使用预设全部技能。",
+    "zh-CN": "请至少选择一个 Skills，或改回使用预设全部 Skills。",
     en: "Select at least one skill or use all preset skills.",
   },
   "settings.sessionSettings.sessionSettingsWereSavedButCouldNot": {
@@ -1260,19 +1260,19 @@ export const generalMessages = {
     en: "Additional instructions",
   },
   "settings.sessionSettings.sessionSkills": {
-    "zh-CN": "会话技能",
+    "zh-CN": "会话 Skills",
     en: "Session skills",
   },
   "settings.sessionSettings.chooseSkillsAvailableForFutureExecution": {
-    "zh-CN": "选择之后执行时可用的技能。",
+    "zh-CN": "选择之后执行时可用的 Skills。",
     en: "Choose skills available for future execution.",
   },
   "settings.sessionSettings.skillScope": {
-    "zh-CN": "技能范围",
+    "zh-CN": "Skills 范围",
     en: "Skill scope",
   },
   "settings.sessionSettings.sessionSkillScope": {
-    "zh-CN": "会话技能范围",
+    "zh-CN": "会话 Skills 范围",
     en: "Session skill scope",
   },
   "settings.sessionSettings.allPresetSkills": {
@@ -1280,11 +1280,11 @@ export const generalMessages = {
     en: "All preset skills",
   },
   "settings.sessionSettings.selectedSkills": {
-    "zh-CN": "所选技能",
+    "zh-CN": "所选 Skills",
     en: "Selected skills",
   },
   "settings.sessionSettings.noSelectableSkillsInTheCurrentPreset": {
-    "zh-CN": "当前预设没有可选择的技能。",
+    "zh-CN": "当前预设没有可选择的 Skills。",
     en: "No selectable skills in the current preset.",
   },
   "settings.sessionSettings.modelParameters": {
@@ -1376,11 +1376,11 @@ export const generalMessages = {
     en: "None",
   },
   "settings.sessionSettings.skills": {
-    "zh-CN": "技能：",
+    "zh-CN": "Skills：",
     en: "Skills: ",
   },
   "settings.sessionSettings.allPresetSkills2": {
-    "zh-CN": "预设全部技能",
+    "zh-CN": "预设全部 Skills",
     en: "All preset skills",
   },
   "settings.sessionSettings.maximumModelCallsPerTurn2": {

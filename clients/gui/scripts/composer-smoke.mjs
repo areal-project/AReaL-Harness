@@ -1017,7 +1017,7 @@ try {
     // 草稿目录不创建 Thread，+/slash 同视图并保留正文与同名来源。
     await input().fill("正文保留");
     await chooseFirst();
-    await page.getByRole("button", { name: /查看技能/ }).click();
+    await page.getByRole("button", { name: /查看 Skills/ }).click();
     await page
       .getByRole("dialog", { name: "技能 fixture-skill" })
       .getByText(/PAGED_SKILL_END/)
