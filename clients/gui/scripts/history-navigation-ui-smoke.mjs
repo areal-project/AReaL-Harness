@@ -101,7 +101,7 @@ try {
   await page.getByText("RESTORED_HISTORY_SENTINEL", { exact: true }).waitFor();
   check(true, "Cold startup from a draft opens an existing history by mouse.");
   await page.screenshot({ path: join(scratch, "01-click-history.png") });
-  await page.getByRole("button", { name: "新聊天", exact: true }).click();
+  await page.getByRole("button", { name: "新会话", exact: true }).click();
   await page.getByTestId("chat-input").waitFor();
   await page.evaluate(() => window.creationPending("areal/thread/start", "unrelated-create"));
   await history.focus();

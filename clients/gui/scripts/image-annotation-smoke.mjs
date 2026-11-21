@@ -566,7 +566,7 @@ try {
     .getByRole("textbox", { name: "标注意见", exact: true })
     .fill("IMAGE_PENDING_NAVIGATION");
   await selectConversation(page, otherId);
-  await button("新聊天").click();
+  await button("新会话").click();
   assert.equal(await input().textContent(), "IMAGE_ORIGINAL_DRAFT");
   if (!(await region().isVisible())) await openImage();
   assert.equal(
@@ -889,8 +889,8 @@ try {
   checks.push(
     "Queue editing preserves retained image metadata, reindexes after removal, offsets new annotated media and sends the edited payload through Core",
   );
-  await button("新聊天").click();
-  await button("在 demo 中开始新聊天").click();
+  await button("新会话").click();
+  await button("在 demo 中开始新会话").click();
   await page.getByRole("menuitem", { name: "不在项目中工作", exact: true }).click();
   const beforeProjectless = await threadIdentities();
   const projectlessRequestCount = requests.length;

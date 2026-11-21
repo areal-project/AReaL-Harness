@@ -10,7 +10,13 @@ export function WorkspacePanelContent(
 ) {
   const { t } = useI18n();
   return (
-    <Suspense fallback={<p role="status">{t("common.loading")}</p>}>
+    <Suspense
+      fallback={
+        <div className="settings-empty" role="status">
+          {t("common.loading")}
+        </div>
+      }
+    >
       <Content {...props} />
     </Suspense>
   );

@@ -37,6 +37,8 @@ exports: ["Dialog", "DialogClose", "DialogContent", "DialogDescription", "Dialog
 
 引用 [R-UI-COMMON-003](../../../README.md#共同合同)。
 
+`R-DIALOG-002` 模态遮罩与内容容器只引用 Token，宿主不覆盖 `[data-slot="dialog-overlay"]` 与 `[data-slot="dialog-content"]` 内部样式。**为什么：**保证所有模态确认与编辑弹窗在窗口拖拽区、圆角层级与遮罩过渡上行为一致。**推广：**需要变体尺寸或定位时通过 DialogContent props 声明。**检查：**`clients/gui/design-system/verified-components.json`
+
 ## 示例
 
 [独立实例](../../../../../renderer/design-system.html?ui-library#component-dialog)直接使用包导出，生产消费者继续沿原路径。

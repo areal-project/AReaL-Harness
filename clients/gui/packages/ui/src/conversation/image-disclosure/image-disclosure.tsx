@@ -5,6 +5,7 @@ import { Disclosure } from "../../components/disclosure/disclosure.js";
 export type ImageDisclosureProps = {
   label: string;
   indicator?: ReactNode;
+  unavailableNote?: string;
 } & (
   | { state: "available"; children: ReactNode; message?: never }
   | { state: "unavailable"; message: string; children?: never }
@@ -24,7 +25,7 @@ export function ImageDisclosure(props: ImageDisclosureProps) {
           {props.state === "available" ? (
             props.children
           ) : (
-            <p>保留该图片活动记录，可通过来源核对原引用。</p>
+            <p>{props.unavailableNote ?? "保留该图片活动记录，可通过来源查看原引用。"}</p>
           )}
         </div>
       </Disclosure>

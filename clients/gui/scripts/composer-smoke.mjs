@@ -1353,7 +1353,7 @@ try {
       ["new-draft-five-lines", "新聊天第一行\n第二行\n第三行\n第四行\n第五行", "", true],
     ]) {
       if (newDraft) {
-        await button("新聊天").click();
+        await button("新会话").click();
         await page.waitForFunction(
           () => !document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId,
         );
@@ -1657,7 +1657,7 @@ try {
       canonical,
       /before \[@composer-plugin\]\(plugin:\/\/composer-plugin@composer-fixture\)  after/,
     );
-    await button("新聊天").click();
+    await button("新会话").click();
     await selectConversation(page, tid);
     await input().locator('[data-mention-category="plugins"]').waitFor();
     pluginList = await call("manage", { projectId: pid, operation: "plugins" });
@@ -1783,7 +1783,7 @@ try {
     assert.equal(await tags().count(), 1, "removing plugin chip retains manual Skill tags");
     await page.getByRole("button", { name: /移除技能 fixture-skill/ }).click();
     await input().fill("");
-    await button("新聊天").click();
+    await button("新会话").click();
     await selectFixtureProfile();
     const firstPluginRequests = received.length;
     await input().fill("new plugin @composer");
@@ -1794,7 +1794,7 @@ try {
       "pointer selection in a new draft never sends",
     );
     await selectConversation(page, tid);
-    await button("新聊天").click();
+    await button("新会话").click();
     await input().locator('[data-mention-category="plugins"]').waitFor();
     await page.reload();
     await input().locator('[data-mention-category="plugins"]').waitFor();
@@ -2105,7 +2105,7 @@ try {
     assert.equal(received.at(-1).reasoning_effort, "low");
     checks.push("existing Composer inline Goal toggle; model effort configuration and request");
     // 新目标只消费目标正文；技能和文件留在新聊天。
-    await button("新聊天").click();
+    await button("新会话").click();
     await selectFixtureProfile();
     await chooseFirst();
     await page

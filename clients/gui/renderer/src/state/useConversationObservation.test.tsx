@@ -37,8 +37,16 @@ function observe(input: {
 it("debounces foreground readThread via resourceAction without invoking notice action", () => {
   vi.useFakeTimers();
   vi.stubGlobal("document", { hasFocus: () => true, visibilityState: "visible" });
-  const action = vi.fn(async () => undefined);
-  const resourceAction = vi.fn(async () => undefined);
+  const actionSpy = vi.fn();
+  const resourceActionSpy = vi.fn();
+  const action = ((name, params) => {
+    actionSpy(name, params);
+    return Promise.resolve(undefined);
+  }) as Action;
+  const resourceAction = ((name, params) => {
+    resourceActionSpy(name, params);
+    return Promise.resolve(undefined);
+  }) as Action;
 
   const first = observe({
     threadId: "t1",
@@ -53,8 +61,8 @@ it("debounces foreground readThread via resourceAction without invoking notice a
   vi.advanceTimersByTime(50);
   cancelFirst?.();
   vi.advanceTimersByTime(200);
-  expect(resourceAction).not.toHaveBeenCalled();
-  expect(action).not.toHaveBeenCalled();
+  expect(resourceActionSpy).not.toHaveBeenCalled();
+  expect(actionSpy).not.toHaveBeenCalled();
 
   const second = observe({
     threadId: "t2",
@@ -65,8 +73,8 @@ it("debounces foreground readThread via resourceAction without invoking notice a
   second.markForegroundCompletionRead();
   vi.advanceTimersByTime(150);
 
-  expect(action).not.toHaveBeenCalled();
-  expect(resourceAction).toHaveBeenCalledExactlyOnceWith("library", {
+  expect(actionSpy).not.toHaveBeenCalled();
+  expect(resourceActionSpy).toHaveBeenCalledExactlyOnceWith("library", {
     operation: "readThread",
     projectId: "p1",
     threadId: "t2",

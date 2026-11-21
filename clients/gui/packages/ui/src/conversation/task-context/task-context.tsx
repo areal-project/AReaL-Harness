@@ -12,6 +12,8 @@ import { Button } from "../../components/button/button.js";
 
 export type TaskContextProps = {
   title: string;
+  regionLabel?: string;
+  backLabel?: string;
   id?: string;
   hidden?: boolean;
   onKeyDown?: KeyboardEventHandler<HTMLElement>;
@@ -24,6 +26,8 @@ export type TaskContextProps = {
 };
 function TaskContextRoot({
   title,
+  regionLabel = "任务上下文",
+  backLabel = "返回任务上下文",
   id,
   hidden,
   onKeyDown,
@@ -40,7 +44,7 @@ function TaskContextRoot({
       onKeyDown={onKeyDown}
       className="areal-task-context"
       data-embedded={embedded || undefined}
-      aria-label="任务上下文"
+      aria-label={regionLabel}
     >
       <header className="areal-context-top">
         <h2 ref={headingRef} tabIndex={-1}>
@@ -51,7 +55,7 @@ function TaskContextRoot({
       {onBack && (
         <Button variant="ghost" size="sm" className="areal-context-back" onClick={onBack}>
           <ArrowLeftIcon size={14} />
-          返回任务上下文
+          {backLabel}
         </Button>
       )}
       <div className="areal-context-body">{children}</div>
@@ -117,6 +121,11 @@ type ContextSourcesProps<T> = {
   collapseLabel?: string;
   expandLabel?: string;
   title?: string;
+  sectionLabel?: string;
+  addLabel?: string;
+  emptyLabel?: string;
+  viewAllLabel?: string;
+  viewAllAriaLabel?: (count: number) => string;
 };
 function ContextSources<T extends { id: string }>({
   items,
@@ -126,11 +135,16 @@ function ContextSources<T extends { id: string }>({
   collapseLabel = "收起",
   expandLabel = "展开",
   title = "来源",
+  sectionLabel = "输入来源",
+  addLabel = "添加来源",
+  emptyLabel = "还没有输入来源",
+  viewAllLabel = "查看全部",
+  viewAllAriaLabel,
 }: ContextSourcesProps<T>) {
   const [open, setOpen] = useState(true);
   const id = useId();
   return (
-    <ContextSection label="输入来源">
+    <ContextSection label={sectionLabel}>
       <Collapsible.Root className="areal-context-sources" open={open} onOpenChange={setOpen}>
         <div className="areal-sources-heading">
           <Collapsible.Trigger
@@ -142,7 +156,7 @@ function ContextSources<T extends { id: string }>({
             <span className="areal-sources-toggle-label">{open ? collapseLabel : expandLabel}</span>
           </Collapsible.Trigger>
           {onAdd && (
-            <Button variant="ghost" size="icon-sm" aria-label="添加来源" onClick={onAdd}>
+            <Button variant="ghost" size="icon-sm" aria-label={addLabel} onClick={onAdd}>
               <PlusIcon size={16} />
             </Button>
           )}
@@ -151,7 +165,7 @@ function ContextSources<T extends { id: string }>({
           {items.length ? (
             items.slice(0, 3).map((item) => <div key={item.id}>{children(item)}</div>)
           ) : (
-            <p className="areal-context-empty">还没有输入来源</p>
+            <p className="areal-context-empty">{emptyLabel}</p>
           )}
           {items.length > 3 && (
             <Button
@@ -159,10 +173,14 @@ function ContextSources<T extends { id: string }>({
               size="sm"
               className="areal-sources-view-all"
               onClick={onViewAll}
-              aria-label={`查看全部来源（${items.length}）`}
+              aria-label={
+                viewAllAriaLabel
+                  ? viewAllAriaLabel(items.length)
+                  : `查看全部来源（${items.length}）`
+              }
             >
               <NetworkIcon size={16} />
-              查看全部
+              {viewAllLabel}
             </Button>
           )}
         </Collapsible.Panel>

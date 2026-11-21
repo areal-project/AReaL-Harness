@@ -383,7 +383,7 @@ function ActiveConversation() {
               (!thread.cloud &&
                 (project.scheduling?.suppressed === true ||
                   Boolean(project.error || project.state?.error) ||
-                  project.state?.hostState === "unavailable"))) && (
+                  projectUserState(project).kind === "unavailable"))) && (
               <div className="composer-project-bar">
                 <div className="composer-project-leading">
                   <div className="composer-project">
@@ -495,14 +495,14 @@ function DraftConversation() {
   const { t } = useI18n();
   const draftSettings = startup.viewFailure && recoverySettings(startup.viewFailure);
   const prepareProject =
-    project && !project.state?.connected
+    project && !projectUserState(project).canAct
       ? async () => {
           const pending = session.pendingRestoration();
           if (pending) await pending.catch(() => {});
           const current = (await services.snapshot()).projects.find(
             (item) => item.id === project.id,
           );
-          if (current?.state?.connected) return current;
+          if (current && projectUserState(current).canAct) return current;
           await resourceAction("connect", {
             projectId: project.id,
             resumeScheduling: true,
@@ -510,7 +510,7 @@ function DraftConversation() {
           const refreshed = (await services.snapshot()).projects.find(
             (item) => item.id === project.id,
           );
-          if (!refreshed?.state?.connected) {
+          if (!refreshed || !projectUserState(refreshed).canAct) {
             throw new Error("项目尚未连接完成，草稿已保留，请稍后重试。");
           }
           return refreshed;
@@ -518,7 +518,7 @@ function DraftConversation() {
       : undefined;
   return (
     <>
-      {project && !project.state?.connected && startup.restorationFailed && (
+      {project && !projectUserState(project).canAct && startup.restorationFailed && (
         <FeedbackNotice
           tone="error"
           message={startup.restorationError || t("startup.projectStartFailed")}

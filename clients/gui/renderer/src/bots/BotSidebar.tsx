@@ -141,11 +141,6 @@ export function BotSidebar({
           {filtered.length === 0 ? (
             <div className="bot-list-empty">
               <p className="bot-list-empty-title">{t("bots.emptyList")}</p>
-              <p className="bot-list-empty-hint">{t("bots.emptyListHint")}</p>
-              <Button size="sm" variant="outline" onClick={onCreate}>
-                <Plus size={14} />
-                {t("bots.new")}
-              </Button>
             </div>
           ) : (
             filtered.map((bot) => {

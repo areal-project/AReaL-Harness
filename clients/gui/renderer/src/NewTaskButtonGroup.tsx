@@ -11,6 +11,7 @@ export function NewTaskButtonGroup({
   disabled?: boolean;
 }) {
   const { intl } = useZCodeIntl();
+  const label = intl.formatMessage({ id: "taskList.newThread" });
   const mac = navigator.platform.includes("Mac");
   return (
     <Tooltip disabled={disabled}>
@@ -21,7 +22,7 @@ export function NewTaskButtonGroup({
             data-slot={undefined}
             type="button"
             className="navigation-task-row new-task-action"
-            aria-label="新聊天"
+            aria-label={label}
             aria-keyshortcuts={mac ? "Meta+N" : "Control+N"}
             disabled={disabled}
             data-testid="task-new-button"
@@ -30,7 +31,7 @@ export function NewTaskButtonGroup({
         }
       >
         <SquarePen size={16} aria-hidden="true" />
-        <span>{intl.formatMessage({ id: "taskList.newThread" })}</span>
+        <span>{label}</span>
       </TooltipTrigger>
       <TooltipContent role="tooltip" side="top" sideOffset={2} className="new-task-shortcut">
         {mac ? "⌘N" : "Ctrl+N"}

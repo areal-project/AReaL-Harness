@@ -127,6 +127,12 @@ async function openRoute(
     }
   }
   await page.waitForTimeout(150);
+  // 切换主题/字号下拉是脚本模拟的用户偏好设置，之后重置 CLS 计数以测量稳态下的真实布局偏移。
+  await page.evaluate(() => {
+    window.__clsTotal = 0;
+    window.__clsEntries = [];
+  });
+  await page.waitForTimeout(200);
   return { page, errors };
 }
 

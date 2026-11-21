@@ -1,7 +1,7 @@
 import { useI18n } from "./i18n/IntlProvider.js";
 import { errorText } from "./errors/errorCopy.js";
 import { TaskContext } from "@areal/ui/experimental";
-import { DelayedVisible } from "@areal/ui";
+import { DelayedVisible, TitleTooltip } from "@areal/ui";
 import "@areal/ui/conversation.css";
 import { Button } from "./components/ui/button.js";
 import { useEffect, useRef, useState } from "react";
@@ -169,16 +169,17 @@ export function ConversationStatusCard({
       title={allSources ? t("chat.context.allSources") : workspaceName}
       onBack={allSources ? () => setAllSources(false) : undefined}
       actions={
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="刷新任务资源"
-          title="刷新任务资源"
-          disabled={!connected || git.loading}
-          onClick={refresh}
-        >
-          <RefreshCwIcon size={14} />
-        </Button>
+        <TitleTooltip title="刷新任务资源">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="刷新任务资源"
+            disabled={!connected || git.loading}
+            onClick={refresh}
+          >
+            <RefreshCwIcon size={14} />
+          </Button>
+        </TitleTooltip>
       }
     >
       <div hidden={allSources}>

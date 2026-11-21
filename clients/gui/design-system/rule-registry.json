@@ -994,7 +994,8 @@
       "title": "标题回答展开后能读什么",
       "owner": "clients/gui/packages/ui/src/components/disclosure/disclosure.md#内容",
       "strength": "must",
-      "textSha256": "af1dddb8afdbe465b1f29f02c4ae77ccab0c92095e7174b2f5ed60da265197d9"
+      "textSha256": "a9b0a7dc07b190cfe373c4bace9007a43c5995a479affe6d4afe7601d8ef157a",
+      "check": "clients/gui/scripts/design-system-conversation-system.mjs"
     },
     {
       "id": "R-FEEDBACKNOTICE-001",
@@ -2784,6 +2785,30 @@
       "owner": "design/spec/quality.md#还没覆盖",
       "strength": "default",
       "textSha256": "73a0310c8fa25dd628e7cc583dfff9fe7b138b2ad8c6d503957df29ef476ad24"
+    },
+    {
+      "id": "R-DIALOG-002",
+      "title": "模态遮罩与内容容器只引用 Token，宿主不覆盖 [data-slot=\"dialog-overlay\"] 与 [dat",
+      "owner": "clients/gui/packages/ui/src/components/dialog/dialog.md#规则",
+      "strength": "default",
+      "textSha256": "75ea450d5047476d62746bdf4ea9b28a8020c0ec312ab013bab0d3c8a519cb67",
+      "check": "clients/gui/design-system/verified-components.json"
+    },
+    {
+      "id": "R-DISCLOSURE-006",
+      "title": "尺寸与展开动效只引用 Token，宿主不覆盖 .areal-disclosure、.areal-disclosure-t",
+      "owner": "clients/gui/packages/ui/src/components/disclosure/disclosure.md#规则",
+      "strength": "default",
+      "textSha256": "aefe04fc45731566a5a7e263e4a577ba0b1d3fef58237ef781b1057882ed0cb5",
+      "check": "clients/gui/design-system/verified-components.json"
+    },
+    {
+      "id": "R-NOTIFICATIONTOAST-002",
+      "title": "尺寸、颜色与出入场动效只引用 Token，宿主不覆盖 .areal-notification-toast、.areal-",
+      "owner": "clients/gui/packages/ui/src/components/notification-toast/notification-toast.md#规则",
+      "strength": "default",
+      "textSha256": "fdaf2327dc51208d32d3711fbb8e2723c02a57fad5f9b8981d6c1b8c40888542",
+      "check": "clients/gui/design-system/verified-components.json"
     }
   ]
 }

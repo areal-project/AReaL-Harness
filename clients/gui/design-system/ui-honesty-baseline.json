@@ -146,12 +146,6 @@
   {
     "file": "renderer/src/i18n/messages/mobile.ts",
     "kind": "internal-term",
-    "snippet": "mobile.commandUnknown: 核对",
-    "fingerprint": "9427c4cbfedf546609392b289afdc4864ad7da2a967c16d67b02fcff063f4b5b"
-  },
-  {
-    "file": "renderer/src/i18n/messages/mobile.ts",
-    "kind": "internal-term",
     "snippet": "mobile.commandRecoveryFailed: 核对",
     "fingerprint": "3344de5bdf58bff90fd1abb128e02c5f3456a52b0312223ee1b292e30487b1a5"
   },

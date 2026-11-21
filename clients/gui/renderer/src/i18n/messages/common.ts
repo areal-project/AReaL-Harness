@@ -514,6 +514,34 @@ export const commonMessages = {
   "chat.agents.title": { "zh-CN": "子代理", en: "Subagents" },
   "chat.agents.region": { "zh-CN": "子代理", en: "Subagents" },
   "chat.agents.more": { "zh-CN": "加载更多子代理", en: "Load more subagents" },
+  "chat.agents.panel": { "zh-CN": "子代理面板", en: "Subagents panel" },
+  "chat.agents.back": { "zh-CN": "返回子代理列表", en: "Back to subagents list" },
+  "chat.agents.close": { "zh-CN": "关闭子代理面板", en: "Close subagents panel" },
+  "chat.agents.historyRegion": { "zh-CN": "子代理历史对话", en: "Subagent conversation history" },
+  "chat.agents.sectionActive": { "zh-CN": "运行中", en: "Active" },
+  "chat.agents.sectionDone": { "zh-CN": "已完成", en: "Done" },
+  "chat.agents.sectionAttention": { "zh-CN": "需要确认", en: "Needs attention" },
+  "chat.agents.emptyCompleted": {
+    "zh-CN": "还没有已完成的子任务",
+    en: "No completed subagents yet",
+  },
+  "chat.agents.emptyCompletedLoaded": {
+    "zh-CN": "已加载列表中没有已完成的子任务",
+    en: "No completed subagents in loaded list",
+  },
+  "chat.agents.emptyRunning": { "zh-CN": "没有运行中的子任务", en: "No running subagents" },
+  "chat.agents.emptyRunningLoaded": {
+    "zh-CN": "已加载列表中没有运行中的子任务",
+    en: "No running subagents in loaded list",
+  },
+  "chat.agents.collapseCompleted": {
+    "zh-CN": "收起已完成子任务",
+    en: "Collapse completed subagents",
+  },
+  "chat.agents.showMoreCompleted": {
+    "zh-CN": "显示另外 {count} 个已完成子任务",
+    en: "Show {count} more completed subagents",
+  },
   "chat.tool.images": { "zh-CN": "已查看 {count} 张图片", en: "Viewed {count} images" },
   "chat.tool.unconfirmed": { "zh-CN": "工具结果待确认", en: "Tool result unconfirmed" },
 
@@ -649,8 +677,8 @@ export const commonMessages = {
   },
   "startup.readingConversation": { "zh-CN": "正在读取对话…", en: "Reading conversation…" },
   "common.conversation.newInProject": {
-    "zh-CN": "在 {project} 中开始新聊天",
-    en: "Start a new chat in {project}",
+    "zh-CN": "在 {project} 中开始新会话",
+    en: "Start a new conversation in {project}",
   },
   "recovery.creationNotAdmitted": {
     "zh-CN": "后台已确认原会话未创建，草稿已保留。",
@@ -896,7 +924,7 @@ export const commonMessages = {
     "zh-CN": "夜深啦，别忘了照顾好自己哦",
     en: "It's late. Remember to take care of yourself.",
   },
-  "taskList.newThread": { "zh-CN": "新聊天", en: "New chat" },
+  "taskList.newThread": { "zh-CN": "新会话", en: "New conversation" },
   "settings.modelProvider.apiKeyPlaceholder": { "zh-CN": "输入 API Key", en: "Enter API key" },
   "settings.modelProvider.apiKey": { "zh-CN": "API Key", en: "API key" },
   "settings.modelSettings.apiKeyStored": {
@@ -1036,7 +1064,9 @@ export const commonMessages = {
   "chat.image.zoomIn": { "zh-CN": "放大图片", en: "Zoom in image" },
   "chat.image.actualSize": { "zh-CN": "实际大小 100%", en: "Actual size 100%" },
   "chat.image.fit": { "zh-CN": "适应窗口", en: "Fit to window" },
-  "chat.side.title": { "zh-CN": "侧边聊天", en: "Side Chat" },
+  "chat.side.title": { "zh-CN": "侧边聊天", en: "Side chat" },
+  "chat.side.new": { "zh-CN": "新侧边聊天", en: "New side chat" },
+  "chat.side.related": { "zh-CN": "相关侧边聊天", en: "Related side chats" },
   "chat.side.numbered": { "zh-CN": "侧边聊天 {ordinal}", en: "Side Chat {ordinal}" },
   "chat.side.history": { "zh-CN": "历史侧边聊天", en: "Previous side chats" },
   "chat.side.btw": { "zh-CN": "顺便问一句", en: "Ask a side question" },

@@ -127,7 +127,8 @@ export function StartupScreen({
                   {steps.map((label, index) => (
                     <li
                       key={label}
-                      data-state={
+                      aria-current={index === activeStep ? "step" : undefined}
+                      data-step-state={
                         index < activeStep ? "done" : index === activeStep ? "active" : "pending"
                       }
                     >

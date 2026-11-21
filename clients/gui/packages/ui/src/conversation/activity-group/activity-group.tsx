@@ -4,6 +4,7 @@ import { Disclosure } from "../../components/disclosure/disclosure.js";
 
 export type ActivityGroupProps = {
   label: string;
+  listLabel?: string;
   presentation?: "collapsible" | "inline";
   children: ReactNode;
   icon?: ReactNode;
@@ -16,6 +17,7 @@ export type ActivityGroupProps = {
 /** A reading group, not an event grouper or execution-state owner. */
 export function ActivityGroup({
   label,
+  listLabel = "分组活动列表",
   children,
   icon,
   indicator,
@@ -35,7 +37,7 @@ export function ActivityGroup({
         indicator={indicator ?? <ActivityIcon kind="chevron" size={14} />}
         keepMounted
       >
-        <div className="areal-activity-list" role="region" aria-label="分组活动列表" tabIndex={0}>
+        <div className="areal-activity-list" role="region" aria-label={listLabel} tabIndex={0}>
           {children}
         </div>
       </Disclosure>

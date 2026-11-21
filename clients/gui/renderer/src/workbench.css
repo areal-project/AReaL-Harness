@@ -97,11 +97,11 @@ pre {
   font-size: var(--text-ui-sm, 12px);
   color: var(--color-foreground-subtle);
 }
-.startup-steps li[data-state="active"] {
+.startup-steps li[data-step-state="active"] {
   color: var(--color-foreground);
   font-weight: var(--font-weight-medium);
 }
-.startup-steps li[data-state="done"] {
+.startup-steps li[data-step-state="done"] {
   color: var(--color-foreground-muted, var(--color-foreground-subtle));
   opacity: 0.7;
 }

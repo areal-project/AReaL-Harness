@@ -318,15 +318,15 @@ export const mobileMessages = {
     en: "Conversation creation is unconfirmed. Your first message is still in the draft.",
   },
   "mobile.receiptNotFound": {
-    "zh-CN": "电脑暂未找到原回执，暂时无法确认结果。",
-    en: "The computer could not find the original receipt. The result is still unconfirmed.",
+    "zh-CN": "电脑暂未找到原请求记录，暂时无法确认结果。",
+    en: "The computer could not find the original request record. The result is still unconfirmed.",
   },
   "mobile.startSeparateConversation": {
     "zh-CN": "另开新会话",
     en: "Start a separate conversation",
   },
   "mobile.separateConversationReady": {
-    "zh-CN": "原创建请求仍可核对。现在可以发送到新会话。",
+    "zh-CN": "原创建请求仍可查看。现在可以发送到新会话。",
     en: "You can still check the previous creation request. Sending now starts a new conversation.",
   },
   "mobile.startSeparateFailed": {

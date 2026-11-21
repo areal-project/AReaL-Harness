@@ -11,6 +11,16 @@ const codeStyle: CSSProperties & Record<`--${string}`, string> = {
   "--diffs-gap-inline": "0px",
 };
 
+export type MessageCodeBlockLabels = {
+  codeRegion?: (language: string) => string;
+  wrap?: string;
+  enableWrap?: string;
+  disableWrap?: string;
+  copy?: string;
+  copied?: string;
+  copyFailed?: string;
+};
+
 /** Presentation only: the existing viewer owns highlighting and line wrapping. */
 export function MessageCodeBlock({
   code,
@@ -22,11 +32,13 @@ export function MessageCodeBlock({
   previewActions,
   previewLabel = "预览图形",
   sourceLabel = "查看源码",
+  labels,
 }: {
   preview?: ReactNode;
   previewActions?: ReactNode;
   previewLabel?: string;
   sourceLabel?: string;
+  labels?: MessageCodeBlockLabels;
   code: string;
   language: string;
   streaming: boolean;
@@ -48,8 +60,13 @@ export function MessageCodeBlock({
       setCopyState("failed");
     }
   };
+  const copyLabel = labels?.copy ?? "复制代码";
+  const wrapTitle = labels?.wrap ?? "自动换行";
   return (
-    <section className="conversation-code-block" aria-label={`${language} 代码`}>
+    <section
+      className="conversation-code-block"
+      aria-label={labels?.codeRegion ? labels.codeRegion(language) : `${language} 代码`}
+    >
       <div className="conversation-code-header">
         <Code2 size={20} aria-hidden="true" />
         <span>{language}</span>
@@ -80,8 +97,12 @@ export function MessageCodeBlock({
           {(!preview || showSource) && (
             <Button
               variant="ghost"
-              aria-label={wrap ? "禁用自动换行" : "启用自动换行"}
-              title="自动换行"
+              aria-label={
+                wrap
+                  ? (labels?.disableWrap ?? "禁用自动换行")
+                  : (labels?.enableWrap ?? "启用自动换行")
+              }
+              title={wrapTitle}
               aria-pressed={wrap}
               onClick={() => setWrap((value) => !value)}
             >
@@ -90,8 +111,8 @@ export function MessageCodeBlock({
           )}
           <Button
             variant="ghost"
-            aria-label="复制代码"
-            title="复制代码"
+            aria-label={copyLabel}
+            title={copyLabel}
             onClick={() => void copy()}
           >
             {copyState === "copied" ? <Check size={16} /> : <Copy size={16} />}
@@ -100,7 +121,9 @@ export function MessageCodeBlock({
       </div>
       {copyState !== "idle" && (
         <span className="sr-only" role="status">
-          {copyState === "copied" ? "代码已复制" : "复制失败，请选择代码手动复制"}
+          {copyState === "copied"
+            ? (labels?.copied ?? "代码已复制")
+            : (labels?.copyFailed ?? "复制失败，请选择代码手动复制")}
         </span>
       )}
       {preview && (

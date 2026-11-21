@@ -18,6 +18,21 @@ import {
   DropdownMenuTrigger,
 } from "../../components/dropdown-menu/dropdown-menu.js";
 import { HoverActions } from "../../components/hover-actions/hover-actions.js";
+export type TaskListItemLabels = {
+  statePendingTooltip?: string;
+  statePending?: string;
+  running?: string;
+  attention?: string;
+  unread?: string;
+  pin?: string;
+  unpin?: string;
+  archive?: string;
+  rename?: string;
+  moreActions?: (title: string) => string;
+  pinAction?: (title: string, pinned: boolean) => string;
+  archiveAction?: (title: string) => string;
+};
+
 export const MemoTaskItem = memo(function TaskListItem({
   id,
   title,
@@ -38,6 +53,7 @@ export const MemoTaskItem = memo(function TaskListItem({
   worktreeTitle,
   organizationActions,
   readOnly = false,
+  labels,
   onSelect,
   onRename,
   onPin,
@@ -62,11 +78,16 @@ export const MemoTaskItem = memo(function TaskListItem({
   worktreeTitle?: string;
   organizationActions?: ReactNode;
   readOnly?: boolean;
+  labels?: TaskListItemLabels;
   onSelect: () => void;
   onRename: () => void;
   onPin: () => void;
   onArchive?: () => void;
 }) {
+  const pinLabel = labels?.pin ?? "置顶";
+  const unpinLabel = labels?.unpin ?? "取消置顶";
+  const archiveLabel = labels?.archive ?? "归档";
+  const renameLabel = labels?.rename ?? "重命名";
   const surface = (
     <li
       data-task-item-key={instanceId ? undefined : id}
@@ -91,21 +112,29 @@ export const MemoTaskItem = memo(function TaskListItem({
       {(nested || statePending || running || attention || unread || archived) && (
         <div className="relative flex size-4 shrink-0 items-center justify-center">
           {statePending ? (
-            <TitleTooltip title={"打开任务以更新状态"}>
-              <span role="img" aria-label="状态待更新">
+            <TitleTooltip title={labels?.statePendingTooltip ?? "打开任务以更新状态"}>
+              <span role="img" aria-label={labels?.statePending ?? "状态待更新"}>
                 <CircleDashed className="size-3.5 text-foreground-subtle" />
               </span>
             </TitleTooltip>
           ) : running ? (
             <LoaderIcon
               role="img"
-              aria-label="运行中"
+              aria-label={labels?.running ?? "运行中"}
               className="size-4 animate-spin motion-reduce:animate-none text-foreground-subtle"
             />
           ) : attention ? (
-            <span className="size-1.5 rounded-full bg-warning" role="img" aria-label="等待处理" />
+            <span
+              className="size-1.5 rounded-full bg-warning"
+              role="img"
+              aria-label={labels?.attention ?? "等待处理"}
+            />
           ) : unread ? (
-            <span className="size-1.5 rounded-full bg-primary" role="img" aria-label="未读" />
+            <span
+              className="size-1.5 rounded-full bg-primary"
+              role="img"
+              aria-label={labels?.unread ?? "未读"}
+            />
           ) : pinned ? (
             <Pin className="size-3.5 text-foreground-subtle" />
           ) : archived ? (
@@ -146,7 +175,11 @@ export const MemoTaskItem = memo(function TaskListItem({
           <Button
             variant="ghost"
             size="icon-xs"
-            aria-label={`${pinned ? "取消置顶" : "置顶"} ${title}`}
+            aria-label={
+              labels?.pinAction
+                ? labels.pinAction(title, pinned)
+                : `${pinned ? unpinLabel : pinLabel} ${title}`
+            }
             disabled={disabled}
             onClick={onPin}
           >
@@ -157,7 +190,9 @@ export const MemoTaskItem = memo(function TaskListItem({
             <Button
               variant="ghost"
               size="icon-xs"
-              aria-label={`归档 ${title}`}
+              aria-label={
+                labels?.archiveAction ? labels.archiveAction(title) : `${archiveLabel} ${title}`
+              }
               disabled={disabled || archived}
               onClick={onArchive}
             >
@@ -167,22 +202,26 @@ export const MemoTaskItem = memo(function TaskListItem({
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
-                <Button variant="ghost" size="icon-xs" aria-label={`任务操作 ${title}`}>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={labels?.moreActions ? labels.moreActions(title) : `任务操作 ${title}`}
+                >
                   <MoreHorizontal className="size-4" />
                 </Button>
               }
             />
             <DropdownMenuContent align="start">
               <DropdownMenuItem onClick={onRename} disabled={disabled}>
-                重命名
+                {renameLabel}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onPin} disabled={disabled}>
-                {pinned ? "取消置顶" : "置顶"}
+                {pinned ? unpinLabel : pinLabel}
               </DropdownMenuItem>
               {organizationActions}
               {onArchive && (
                 <DropdownMenuItem onClick={onArchive} disabled={disabled || archived}>
-                  归档
+                  {archiveLabel}
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
