@@ -2,7 +2,7 @@
 id: collapsible-text
 title: CollapsibleText
 summary: 长正文的渐进阅读。
-status: experimental
+status: stable
 entry: compositions
 layer: conversation
 category: composition

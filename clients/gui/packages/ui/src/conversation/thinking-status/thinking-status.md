@@ -2,8 +2,8 @@
 id: thinking-status
 title: ThinkingStatus
 summary: 呈现动态公开模型过程摘要，无摘要时回退Thinking，保留可读动效。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: conversation
 category: progress
 aliases: ["模型过程摘要", "思考提示"]

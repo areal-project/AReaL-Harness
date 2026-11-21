@@ -1,5 +1,5 @@
 import { isValidElement, useEffect, useRef, useState } from "react";
-import { NotificationToast } from "@areal/ui/experimental";
+import { NotificationToast } from "@areal/ui";
 import { useI18n } from "./i18n/IntlProvider.js";
 import type { ToastMessage } from "./components/ui/toast.js";
 import "@areal/ui/notifications.css";

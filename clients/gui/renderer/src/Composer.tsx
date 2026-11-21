@@ -22,7 +22,7 @@ import {
   userMessageIds,
 } from "./pendingMessage.js";
 import { Input } from "@areal/ui";
-import { ComposerActionButton } from "@areal/ui/experimental";
+import { ComposerActionButton } from "@areal/ui/compositions";
 import { parseMentionMarkdown } from "./mentions/mentionMarkdown.js";
 import { stopConversationTurn, releaseSettledStops } from "./conversationStop.js";
 import { ConversationSelectionReferences } from "./ConversationSelectionReferences.js";

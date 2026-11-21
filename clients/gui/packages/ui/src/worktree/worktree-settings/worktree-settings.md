@@ -2,8 +2,8 @@
 id: worktree-settings
 title: WorktreeSettings
 summary: 组合项目、环境、脚本与Action的既有设置布局。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: worktree
 category: worktree
 aliases: ["Worktree设置组合"]

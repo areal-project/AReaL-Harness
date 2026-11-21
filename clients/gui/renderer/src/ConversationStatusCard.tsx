@@ -1,6 +1,6 @@
 import { useI18n } from "./i18n/IntlProvider.js";
 import { errorText } from "./errors/errorCopy.js";
-import { TaskContext } from "@areal/ui/experimental";
+import { TaskContext } from "@areal/ui/compositions";
 import { DelayedVisible, TitleTooltip } from "@areal/ui";
 import "@areal/ui/conversation.css";
 import { Button } from "./components/ui/button.js";

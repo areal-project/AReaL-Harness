@@ -1,4 +1,4 @@
-import { CodeViewer as View, type CodeViewerProps } from "@areal/ui/experimental";
+import { CodeViewer as View, type CodeViewerProps } from "@areal/ui";
 import { useCodePreferences } from "../../settings/preferences.js";
 export {
   CodeCommentAnnotation,
@@ -7,8 +7,8 @@ export {
   isCodeCommentCancelShortcut,
   formatCodeCommentSubmitShortcutLabel,
   formatCodeCommentCancelShortcutLabel,
-} from "@areal/ui/experimental";
-export type { CodeViewerProps, CodeCommentLabels } from "@areal/ui/experimental";
+} from "@areal/ui";
+export type { CodeViewerProps, CodeCommentLabels } from "@areal/ui";
 export function CodeViewer(props: CodeViewerProps) {
   const prefs = useCodePreferences();
   const mode = document.documentElement.classList.contains("dark") ? "dark" : "light";

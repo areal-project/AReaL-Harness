@@ -8,4 +8,4 @@ export {
   CommandItem,
   CommandShortcut,
   CommandSeparator,
-} from "@areal/ui/experimental";
+} from "@areal/ui";

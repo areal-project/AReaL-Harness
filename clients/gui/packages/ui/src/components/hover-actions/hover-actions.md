@@ -2,8 +2,8 @@
 id: hover-actions
 title: HoverActions
 summary: 行内悬停出现的操作区；弹出层打开期间锚点不移位、不消失。
-status: experimental
-entry: experimental
+status: stable
+entry: index
 layer: core
 category: control
 aliases: ["悬停操作区", "行操作"]

@@ -1,7 +1,7 @@
 import { TitleTooltip } from "@areal/ui";
 import type { ResourceRequest, Scope } from "../services.js";
 import { Textarea } from "@areal/ui";
-import { ResourceScope as ScopeView, CatalogEmpty as EmptyView } from "@areal/ui/experimental";
+import { ResourceScope as ScopeView, CatalogEmpty as EmptyView } from "@areal/ui/compositions";
 import { useI18n, type UiMessage } from "../i18n/IntlProvider.js";
 import { useState } from "react";
 import { BookOpen } from "lucide-react";

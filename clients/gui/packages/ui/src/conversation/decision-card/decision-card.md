@@ -2,7 +2,7 @@
 id: decision-card
 title: DecisionCard
 summary: 审批和问答的决策表面。
-status: experimental
+status: stable
 entry: compositions
 layer: conversation
 category: composition

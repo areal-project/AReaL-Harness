@@ -2,8 +2,8 @@
 id: spinner
 title: Spinner
 summary: 加载标识，沿用现有生产实现与交互。
-status: experimental
-entry: experimental
+status: stable
+entry: index
 layer: core
 category: control
 aliases: ["加载标识"]

@@ -5,4 +5,4 @@ export {
   MarkdownOrderedList,
   type MarkdownListItemProps,
   MarkdownListItem,
-} from "@areal/ui/experimental";
+} from "@areal/ui/compositions";

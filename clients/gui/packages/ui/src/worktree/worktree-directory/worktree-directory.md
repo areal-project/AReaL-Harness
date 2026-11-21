@@ -2,8 +2,8 @@
 id: worktree-directory
 title: WorktreeDirectory
 summary: 按项目分组目录身份、展开详情与删除反馈。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: worktree
 category: worktree
 aliases: ["Worktree目录列表"]

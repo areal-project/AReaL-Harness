@@ -2,8 +2,8 @@
 id: image-disclosure
 title: ImageDisclosure
 summary: 工具活动图片默认收起，可用性变化保留阅读选择和引用身份。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: conversation
 category: media
 aliases: ["图片活动"]

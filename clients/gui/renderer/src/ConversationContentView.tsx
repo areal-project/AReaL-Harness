@@ -1,6 +1,6 @@
 import { useI18n } from "./i18n/IntlProvider.js";
 import type { ReactNode } from "react";
-import { NativeContent } from "@areal/ui/experimental";
+import { NativeContent } from "@areal/ui/compositions";
 import type { ConversationContentBlock } from "./conversationContent.js";
 import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 

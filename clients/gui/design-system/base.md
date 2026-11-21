@@ -32,6 +32,37 @@
 | TurnExecution | [合同](../renderer/src/Messages.md#turnexecution) | E-CONVERSATION |
 | ToolEvent | [合同](../renderer/src/Messages.md#toolevent) | E-CONVERSATION |
 | SettingsSearchInput | [合同](../renderer/src/settings/SettingsSearchInput.md) | E-PLUGINS |
+| SettingsDialog | [合同](../packages/ui/src/settings/settings-dialog/settings-dialog.md) | E-SETTINGS |
+| EmptySettings | [合同](../packages/ui/src/settings/settings-dialog/settings-dialog.md) | E-SETTINGS |
+| SettingsNavigation | [合同](../packages/ui/src/workbench/settings-navigation/settings-navigation.md) | E-SETTINGS |
+| ComposerSurface | [合同](../packages/ui/src/conversation/composer-surface/composer-surface.md) | E-CONVERSATION |
+| CommandDetails | [合同](../packages/ui/src/conversation/command-details/command-details.md) | E-CONVERSATION |
+| TaskContext | [合同](../packages/ui/src/conversation/task-context/task-context.md) | E-CONVERSATION |
+| ActivityGroup | [合同](../packages/ui/src/conversation/activity-group/activity-group.md) | E-CONVERSATION |
+| ActivityRow | [合同](../packages/ui/src/conversation/activity-row/activity-row.md) | E-CONVERSATION |
+| ImageDisclosure | [合同](../packages/ui/src/conversation/image-disclosure/image-disclosure.md) | E-CONVERSATION |
+| SubagentPanel | [合同](../packages/ui/src/conversation/subagent-panel/subagent-panel.md) | E-CONVERSATION |
+| ThinkingStatus | [合同](../packages/ui/src/conversation/thinking-status/thinking-status.md) | E-CONVERSATION |
+| ComposerToolbar | [合同](../packages/ui/src/conversation/composer-toolbar/composer-toolbar.md) | E-CONVERSATION |
+| AttachmentCard | [合同](../packages/ui/src/conversation/attachment-card/attachment-card.md) | E-CONVERSATION |
+| MarkdownBlockquote | [合同](../packages/ui/src/conversation/markdown-blockquote/markdown-blockquote.md) | E-CONVERSATION |
+| MarkdownUnorderedList | [合同](../packages/ui/src/conversation/markdown-list/markdown-list.md) | E-CONVERSATION |
+| MessageCodeBlock | [合同](../packages/ui/src/conversation/message-code-block/message-code-block.md) | E-CONVERSATION |
+| MarkdownSurface | [合同](../packages/ui/src/conversation/markdown-surface/markdown-surface.md) | E-CONVERSATION |
+| NativeContent | [合同](../packages/ui/src/conversation/native-content/native-content.md) | E-CONVERSATION |
+| QuestionCard | [合同](../packages/ui/src/conversation/question-card/question-card.md) | E-DECISION |
+| WorkbenchShell | [合同](../packages/ui/src/workbench/workbench-shell/workbench-shell.md) | E-SETTINGS |
+| SidePaneFrame | [合同](../packages/ui/src/workbench/side-pane-frame/side-pane-frame.md) | E-CONVERSATION |
+| SidePaneLauncher | [合同](../packages/ui/src/workbench/side-pane-launcher/side-pane-launcher.md) | E-CONVERSATION |
+| TaskTitleOverflowText | [合同](../packages/ui/src/workbench/task-title-overflow/task-title-overflow.md) | E-SETTINGS |
+| MemoTaskItem | [合同](../packages/ui/src/workbench/task-list-item/task-list-item.md) | E-SETTINGS |
+| ResourceScope | [合同](../packages/ui/src/workbench/resource-controls/resource-controls.md) | E-RESOURCES |
+| ScheduledWorkspace | [合同](../packages/ui/src/workbench/scheduled-workspace/scheduled-workspace.md) | E-SETTINGS |
+| WorktreePicker | [合同](../packages/ui/src/worktree/worktree-picker/worktree-picker.md) | E-SETTINGS |
+| WorktreeStatus | [合同](../packages/ui/src/worktree/worktree-status/worktree-status.md) | E-SETTINGS |
+| WorktreeDirectory | [合同](../packages/ui/src/worktree/worktree-directory/worktree-directory.md) | E-SETTINGS |
+| WorktreeSettings | [合同](../packages/ui/src/worktree/worktree-settings/worktree-settings.md) | E-SETTINGS |
+| WorktreeWorkspace | [合同](../packages/ui/src/worktree/worktree-workspace/worktree-workspace.md) | E-SETTINGS |
 
 证据见 [Base索引](base-evidence.md)。
 

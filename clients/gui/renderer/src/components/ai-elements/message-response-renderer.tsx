@@ -2,7 +2,7 @@ import { TitleTooltip } from "@areal/ui";
 import { normalizeMessageSingleDollarMath } from "@areal/ui/math-text";
 import "katex/contrib/mhchem";
 import "katex/contrib/copy-tex";
-import { MarkdownSurface } from "@areal/ui/experimental";
+import { MarkdownSurface } from "@areal/ui/compositions";
 /*
  * Derived from ZCode 872ad960 components/ai-elements/message.tsx, in turn derived
  * from vercel/ai-elements. Copyright 2023 Vercel, Inc. Apache-2.0.

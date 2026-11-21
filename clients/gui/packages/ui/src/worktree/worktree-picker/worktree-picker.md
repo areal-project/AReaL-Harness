@@ -2,8 +2,8 @@
 id: worktree-picker
 title: WorktreePicker
 summary: 配置菜单行、同层返回页与键盘选项列表。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: worktree
 category: worktree
 aliases: ["Worktree配置选择"]

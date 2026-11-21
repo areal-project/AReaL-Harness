@@ -5,4 +5,4 @@ export {
   InputGroupText,
   InputGroupInput,
   InputGroupTextarea,
-} from "@areal/ui/experimental";
+} from "@areal/ui";

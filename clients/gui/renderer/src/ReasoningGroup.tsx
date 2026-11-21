@@ -1,4 +1,4 @@
-import { ActivityRowButton, ActivityRowChevron } from "@areal/ui/experimental";
+import { ActivityRowButton, ActivityRowChevron } from "@areal/ui/compositions";
 import { Fragment, useId, useState, type ReactNode } from "react";
 import type { Data } from "./services.js";
 import { readingDisclosure, rememberDisclosure } from "./conversationReading.js";

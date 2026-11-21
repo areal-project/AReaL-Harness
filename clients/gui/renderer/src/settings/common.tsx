@@ -1,4 +1,4 @@
-import { SettingsDialog as DialogView, SettingsToolbar as Toolbar } from "@areal/ui/experimental";
+import { SettingsDialog as DialogView, SettingsToolbar as Toolbar } from "@areal/ui/compositions";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Action, Data } from "../services.js";
@@ -48,7 +48,7 @@ export function useResource(load: () => Promise<Data>, identity: string) {
   return { ...state, refresh, accept };
 }
 export { Feedback } from "../components/ui/feedback.js";
-export { EmptySettings } from "@areal/ui/experimental";
+export { EmptySettings } from "@areal/ui/compositions";
 export function SettingsToolbar(props: import("react").ComponentProps<typeof Toolbar>) {
   const { t } = useI18n();
   return (

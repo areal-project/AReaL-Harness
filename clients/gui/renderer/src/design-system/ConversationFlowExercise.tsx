@@ -1,4 +1,4 @@
-import { ComposerActionButton } from "@areal/ui/experimental";
+import { ComposerActionButton } from "@areal/ui/compositions";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Messages } from "../Messages.js";
 import { ConversationComposer } from "../ConversationComposer.js";

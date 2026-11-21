@@ -1,11 +1,11 @@
 import {
   ActivityGroup,
-  Disclosure,
   ImageDisclosure,
   SubagentPanel,
   TaskContext,
   ThinkingStatus,
-} from "@areal/ui/experimental";
+} from "@areal/ui/compositions";
+import { Disclosure } from "@areal/ui";
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { FileTextIcon, GlobeIcon, ImageIcon } from "lucide-react";
 import "@areal/ui/conversation.css";

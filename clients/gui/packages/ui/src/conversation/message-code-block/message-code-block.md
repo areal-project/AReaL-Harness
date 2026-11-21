@@ -2,8 +2,8 @@
 id: message-code-block
 title: MessageCodeBlock
 summary: Markdown代码块与复制/换行操作。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: conversation
 category: composition
 aliases: ["Markdown代码块与复制/换行操作"]

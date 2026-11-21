@@ -2,8 +2,8 @@
 id: worktree-workspace
 title: WorktreeWorkspace
 summary: 呈现绑定目录、可执行操作与服务结果。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: worktree
 category: worktree
 aliases: ["Worktree会话工作区详情"]

@@ -2,7 +2,7 @@
 id: settings-row
 title: SettingsRow
 summary: 对齐设置名称、说明、控件与详情，保留宿主状态所有权。
-status: experimental
+status: stable
 entry: compositions
 layer: settings
 category: settings

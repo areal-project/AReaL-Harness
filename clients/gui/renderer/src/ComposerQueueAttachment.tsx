@@ -1,6 +1,6 @@
 import { TitleTooltip } from "@areal/ui";
 import { errorText } from "./errors/errorCopy.js";
-import { AttachmentCard } from "@areal/ui/experimental";
+import { AttachmentCard } from "@areal/ui/compositions";
 import { useEffect, useState } from "react";
 import { ScanText } from "lucide-react";
 import { useI18n } from "./i18n/IntlProvider.js";

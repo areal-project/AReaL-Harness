@@ -2,7 +2,7 @@
 id: settings-section
 title: SettingsSection
 summary: 组织设置标题、说明、操作与正文。
-status: experimental
+status: stable
 entry: compositions
 layer: settings
 category: settings

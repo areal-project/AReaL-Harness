@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { GitBranch, GitFork, Settings } from "lucide-react";
 import { Button } from "@areal/ui";
+import { NotificationToast } from "@areal/ui";
 import {
-  NotificationToast,
   WorktreeDirectory,
   WorktreePicker,
   WorktreeSettings,
   WorktreeStatus,
   WorktreeWorkspace,
-} from "@areal/ui/experimental";
+} from "@areal/ui/compositions";
 
 export function WorktreeExamples({ only }: { only: string | null }) {
   const show = (id: string) => !only || only === id;

@@ -1,1 +1,1 @@
-export { SidePaneLauncher } from "@areal/ui/experimental";
+export { SidePaneLauncher } from "@areal/ui/compositions";

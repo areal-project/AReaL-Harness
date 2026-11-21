@@ -2,8 +2,8 @@
 id: worktree-status
 title: WorktreeStatus
 summary: 显示准备摘要、阶段、详情及宿主合法动作。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: worktree
 category: worktree
 aliases: ["Worktree准备状态"]

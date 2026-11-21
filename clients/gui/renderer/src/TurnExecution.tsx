@@ -1,7 +1,7 @@
 import { retryProgress } from "./conversationEvents.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { useState, type ComponentProps, type ReactNode } from "react";
-import { ActivityGroup, ThinkingStatus } from "@areal/ui/experimental";
+import { ActivityGroup, ThinkingStatus } from "@areal/ui/compositions";
 import "@areal/ui/conversation.css";
 import { spawnedAgent } from "./AgentIdentity.js";
 import { CircleAlert } from "lucide-react";

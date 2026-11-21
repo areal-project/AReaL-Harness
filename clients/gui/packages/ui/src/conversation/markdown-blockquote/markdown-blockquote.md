@@ -2,8 +2,8 @@
 id: markdown-blockquote
 title: MarkdownBlockquote
 summary: Markdown引用正文。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: conversation
 category: composition
 aliases: ["Markdown引用正文"]

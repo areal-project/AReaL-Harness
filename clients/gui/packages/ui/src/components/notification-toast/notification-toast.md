@@ -2,8 +2,8 @@
 id: notification-toast
 title: NotificationToast
 summary: 顶部短时提示，以颜色和图标区分信息、成功、警告与错误。
-status: experimental
-entry: experimental
+status: stable
+entry: index
 layer: core
 category: feedback
 aliases: ["短时等级提示"]

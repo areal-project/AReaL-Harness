@@ -2,8 +2,8 @@
 id: activity-row
 title: ActivityRow
 summary: 对话时间线里的一条活动事实：图标、动作与对象、必要状态和展开箭头。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: conversation
 category: activity
 aliases: ["活动行", "工具调用行"]

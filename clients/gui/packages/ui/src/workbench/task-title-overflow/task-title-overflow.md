@@ -2,8 +2,8 @@
 id: task-title-overflow
 title: TaskTitleOverflowText
 summary: 任务长标题的测量、截断渐隐与悬停全名。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: workbench
 category: composition
 aliases: ["任务长标题的测量、渐隐与滚动", "任务长标题截断"]

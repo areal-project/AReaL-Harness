@@ -2,8 +2,8 @@
 id: code-viewer
 title: CodeViewer
 summary: 代码阅读、行号、选区与注释呈现。
-status: experimental
-entry: experimental
+status: stable
+entry: index
 layer: core
 category: reading
 aliases: ["代码阅读、行号、选区与注释呈现"]

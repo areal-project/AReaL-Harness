@@ -6,4 +6,4 @@ export {
   CardAction,
   CardDescription,
   CardContent,
-} from "@areal/ui/experimental";
+} from "@areal/ui";

@@ -1,1 +1,1 @@
-export { HoverActions } from "@areal/ui/experimental";
+export { HoverActions } from "@areal/ui";

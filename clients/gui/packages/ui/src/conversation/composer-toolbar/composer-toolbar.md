@@ -2,8 +2,8 @@
 id: composer-toolbar
 title: ComposerToolbar
 summary: 分配前置工具与后置配置/主动作，保持编辑器附近的操作顺序。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: conversation
 category: input
 aliases: ["对话输入工具栏"]

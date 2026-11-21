@@ -7,12 +7,12 @@ import { useState } from "react";
 import { Button } from "@areal/ui";
 import {
   ActivityGroup,
-  Disclosure,
   ImageDisclosure,
   SubagentPanel,
   TaskContext,
   ThinkingStatus,
-} from "@areal/ui/experimental";
+} from "@areal/ui/compositions";
+import { Disclosure } from "@areal/ui";
 import sampleImage from "../../../../../docs/assets/tui.png";
 import "./library-example.css";
 

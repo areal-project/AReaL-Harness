@@ -2,7 +2,7 @@
 id: settings-search-input
 title: SettingsSearchInput
 summary: 带清除动作的设置搜索输入。
-status: experimental
+status: stable
 entry: compositions
 layer: settings
 category: composition

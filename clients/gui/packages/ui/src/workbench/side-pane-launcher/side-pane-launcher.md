@@ -2,8 +2,8 @@
 id: side-pane-launcher
 title: SidePaneLauncher
 summary: 面板启动入口列表。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: workbench
 category: composition
 aliases: ["面板启动入口列表"]

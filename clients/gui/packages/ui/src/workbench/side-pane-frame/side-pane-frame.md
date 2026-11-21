@@ -2,8 +2,8 @@
 id: side-pane-frame
 title: SidePaneFrame
 summary: 面板框架、标题区、内容与辅助资源区。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: workbench
 category: composition
 aliases: ["面板框架、标题区、内容与辅助资源区"]

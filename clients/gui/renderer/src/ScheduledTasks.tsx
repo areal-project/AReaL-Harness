@@ -1,7 +1,7 @@
 import { useTaskReadOnly } from "./PlatformReadContext.js";
 import { currentErrorText } from "./errors/currentErrorText.js";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ScheduledWorkspace } from "@areal/ui/experimental";
+import { ScheduledWorkspace } from "@areal/ui/compositions";
 import { DelayedVisible } from "@areal/ui";
 import { Button } from "./components/ui/button.js";
 import {

@@ -7,7 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover
 import { SettingsSwitch } from "./settings/SettingsPageParts.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import type { Action, Data } from "./services.js";
-import { WorktreePicker } from "@areal/ui/experimental";
+import { WorktreePicker } from "@areal/ui/compositions";
 import { DelayedVisible } from "@areal/ui";
 import "./Worktree.css";
 

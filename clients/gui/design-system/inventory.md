@@ -41,6 +41,31 @@
 | [SidePane](../renderer/src/app-shell/SidePane.tsx) |
 | [SettingsSearchInput](../packages/ui/src/settings/settings-search-input/settings-search-input.tsx) |
 | [TaskContext](../packages/ui/src/conversation/task-context/task-context.tsx) |
+| [ActivityGroup](../packages/ui/src/conversation/activity-group/activity-group.tsx) |
+| [ActivityRow](../packages/ui/src/conversation/activity-row/activity-row.tsx) |
+| [ImageDisclosure](../packages/ui/src/conversation/image-disclosure/image-disclosure.tsx) |
+| [SubagentPanel](../packages/ui/src/conversation/subagent-panel/subagent-panel.tsx) |
+| [ThinkingStatus](../packages/ui/src/conversation/thinking-status/thinking-status.tsx) |
+| [ComposerToolbar](../packages/ui/src/conversation/composer-toolbar/composer-toolbar.tsx) |
+| [AttachmentCard](../packages/ui/src/conversation/attachment-card/attachment-card.tsx) |
+| [MarkdownBlockquote](../packages/ui/src/conversation/markdown-blockquote/markdown-blockquote.tsx) |
+| [MarkdownUnorderedList](../packages/ui/src/conversation/markdown-list/markdown-list.tsx) |
+| [MessageCodeBlock](../packages/ui/src/conversation/message-code-block/message-code-block.tsx) |
+| [MarkdownSurface](../packages/ui/src/conversation/markdown-surface/markdown-surface.tsx) |
+| [NativeContent](../packages/ui/src/conversation/native-content/native-content.tsx) |
+| [QuestionCard](../packages/ui/src/conversation/question-card/question-card.tsx) |
+| [WorkbenchShell](../packages/ui/src/workbench/workbench-shell/workbench-shell.tsx) |
+| [SidePaneFrame](../packages/ui/src/workbench/side-pane-frame/side-pane-frame.tsx) |
+| [SidePaneLauncher](../packages/ui/src/workbench/side-pane-launcher/side-pane-launcher.tsx) |
+| [TaskTitleOverflowText](../packages/ui/src/workbench/task-title-overflow/task-title-overflow.tsx) |
+| [MemoTaskItem](../packages/ui/src/workbench/task-list-item/task-list-item.tsx) |
+| [ResourceScope](../packages/ui/src/workbench/resource-controls/resource-controls.tsx) |
+| [ScheduledWorkspace](../packages/ui/src/workbench/scheduled-workspace/scheduled-workspace.tsx) |
+| [WorktreePicker](../packages/ui/src/worktree/worktree-picker/worktree-picker.tsx) |
+| [WorktreeStatus](../packages/ui/src/worktree/worktree-status/worktree-status.tsx) |
+| [WorktreeDirectory](../packages/ui/src/worktree/worktree-directory/worktree-directory.tsx) |
+| [WorktreeSettings](../packages/ui/src/worktree/worktree-settings/worktree-settings.tsx) |
+| [WorktreeWorkspace](../packages/ui/src/worktree/worktree-workspace/worktree-workspace.tsx) |
 
 <!-- END GENERATED: components -->
 

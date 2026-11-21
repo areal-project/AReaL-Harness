@@ -1,7 +1,7 @@
 import { useI18n } from "./i18n/IntlProvider.js";
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, MessageCircleQuestion, Pencil, X } from "lucide-react";
-import { QuestionCard } from "@areal/ui/experimental";
+import { QuestionCard } from "@areal/ui/compositions";
 import { Feedback } from "./components/ui/feedback.js";
 import { useApplicationPreferences } from "./settings/applicationPreferences.js";
 import { Button } from "./components/ui/button.js";

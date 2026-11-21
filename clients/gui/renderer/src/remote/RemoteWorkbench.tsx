@@ -1,6 +1,6 @@
 import { projectedTurns } from "./session-projection.js";
 import { currentErrorText } from "../errors/currentErrorText.js";
-import { ComposerActionButton } from "@areal/ui/experimental";
+import { ComposerActionButton } from "@areal/ui/compositions";
 import { DelayedVisible } from "@areal/ui";
 import { ApplicationIntlProvider, useZCodeIntl } from "../i18n/IntlProvider.js";
 import { createRoot } from "react-dom/client";

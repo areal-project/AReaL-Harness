@@ -1,4 +1,4 @@
-import { SidePaneFrame } from "@areal/ui/experimental";
+import { SidePaneFrame } from "@areal/ui/compositions";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { useLayoutEffect, useRef, useState, type ReactNode, type PointerEvent } from "react";
 import { SideChatIcon as MessageCircle, SearchIcon as Search } from "../interfaceIcons.js";

@@ -2,7 +2,7 @@
 id: settings-group-card
 title: SettingsGroupCard
 summary: 用默认或紧凑密度分组设置行。
-status: experimental
+status: stable
 entry: compositions
 layer: settings
 category: settings

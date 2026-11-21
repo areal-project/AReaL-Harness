@@ -2,8 +2,8 @@
 id: native-content
 title: NativeContent
 summary: 六类受控数据内容，统一文字回退与复制，不执行模型代码。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: conversation
 category: content
 aliases: ["原生内容", "指标", "条形图", "时间线"]

@@ -2,8 +2,8 @@
 id: composer-surface
 title: ComposerSurface
 summary: 组合编辑器、上下文与工具栏，提供一致的输入布局与阻塞说明。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: conversation
 category: input
 aliases: ["对话输入表面"]

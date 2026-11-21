@@ -3,7 +3,7 @@ import { currentErrorText } from "./errors/currentErrorText.js";
 import { errorText } from "./errors/errorCopy.js";
 import { Input } from "@areal/ui";
 import { useI18n } from "./i18n/IntlProvider.js";
-import { SubagentPanel, TaskContext } from "@areal/ui/experimental";
+import { SubagentPanel, TaskContext } from "@areal/ui/compositions";
 import "@areal/ui/conversation.css";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "./components/ui/button.js";

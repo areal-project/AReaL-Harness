@@ -2,8 +2,8 @@
 id: scheduled-workspace
 title: ScheduledWorkspace
 summary: 定时任务的紧凑状态分组、任务行与模板入口。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: workbench
 category: composition
 aliases: ["定时任务工作区"]

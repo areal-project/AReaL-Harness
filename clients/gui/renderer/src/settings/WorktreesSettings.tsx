@@ -13,7 +13,7 @@ import { SettingsDisclosure } from "./SettingsDisclosure.js";
 import { SettingsSwitch } from "./SettingsPageParts.js";
 import { SettingsSegmentedTabs } from "./SettingsSegmentedTabs.js";
 import { useDraftBlocker, useGuardedNavigation } from "./UnsavedChanges.js";
-import { WorktreeDirectory, WorktreeSettings } from "@areal/ui/experimental";
+import { WorktreeDirectory, WorktreeSettings } from "@areal/ui/compositions";
 import { DelayedVisible } from "@areal/ui";
 import "./WorktreesSettings.css";
 

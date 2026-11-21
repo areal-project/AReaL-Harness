@@ -2,7 +2,7 @@
 id: settings-segmented-tabs
 title: SettingsSegmentedTabs
 summary: 设置值的分段切换。
-status: experimental
+status: stable
 entry: compositions
 layer: settings
 category: composition

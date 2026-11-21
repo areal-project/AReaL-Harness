@@ -14,7 +14,7 @@ import {
   ActivityRowStatus,
   ActivityRowText,
   ImageDisclosure,
-} from "@areal/ui/experimental";
+} from "@areal/ui/compositions";
 import "@areal/ui/conversation.css";
 import { Collapsible } from "@base-ui/react/collapsible";
 import { AgentAvatar, agentName, agentTask, spawnedAgent } from "./AgentIdentity.js";

@@ -2,7 +2,7 @@ import { TitleTooltip } from "@areal/ui";
 import { SnapShotAttachment } from "./snapshots/SnapShotAttachment.js";
 import { snapShotFile } from "./snapshots/source.js";
 import { Button, Input } from "@areal/ui";
-import { AttachmentCard } from "@areal/ui/experimental";
+import { AttachmentCard } from "@areal/ui/compositions";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import type { ChatComposerPasteEvent, LexicalChatInputHandle } from "./LexicalChatInput.js";

@@ -1,11 +1,11 @@
 import type { ComponentProps } from "react";
-import { SettingsNavigation as View } from "@areal/ui/experimental";
+import { SettingsNavigation as View } from "@areal/ui/compositions";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { useNavigationBusy } from "./UnsavedChanges.js";
 import { NavigationBackIcon, NavigationForwardIcon } from "../interfaceIcons.js";
 import "./SettingsWorkspace.css";
 import "@areal/ui/workbench.css";
-export type { SettingsNavigationGroup } from "@areal/ui/experimental";
+export type { SettingsNavigationGroup } from "@areal/ui/compositions";
 export { SettingsPage } from "@areal/ui/compositions";
 export function SettingsNavigation(
   props: Omit<
