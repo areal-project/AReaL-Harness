@@ -39,10 +39,15 @@ const buttonVariants = cva(
         "icon-sm": "size-control-sm [&_svg:not([class*='size-'])]:size-3",
         "icon-lg": "size-control-lg rounded-button [&_svg:not([class*='size-'])]:size-4",
       },
+      shape: {
+        default: "",
+        pill: "rounded-pill",
+      },
     },
     defaultVariants: {
       variant: "default",
       size: "default",
+      shape: "default",
     },
   },
 );
@@ -51,6 +56,7 @@ function Button({
   className,
   variant = "default",
   size = "default",
+  shape = "default",
   unstyled = false,
   title,
   ...props
@@ -65,7 +71,7 @@ function Button({
       data-slot="button"
       data-variant={unstyled ? undefined : variant}
       data-size={unstyled ? undefined : size}
-      className={unstyled ? className : cn(buttonVariants({ variant, size, className }))}
+      className={unstyled ? className : cn(buttonVariants({ variant, size, shape, className }))}
       {...props}
     />
   );

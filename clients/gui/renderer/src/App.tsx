@@ -276,7 +276,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     } else await resourceAction("connectService", {});
   };
   const backend = useBackendRecovery(snapshot, resourceAction, reconnectService, () => {
-    setSettingsTab("高级诊断");
+    setSettingsTab("diagnostics");
     setSettingsOpen(true);
   });
   const { backendActionPending, backendActionError, runBackendAction, quitStartup } = backend;
@@ -527,7 +527,7 @@ function AppContent({ services }: { services: PlatformServices }) {
                 snapshot.connection?.state === "unavailable" ||
                 !!startupLifecycle?.error;
               setSettingsTab(
-                (viewFailure && recoverySettings(viewFailure)) || (failed ? "高级诊断" : "常规"),
+                (viewFailure && recoverySettings(viewFailure)) || (failed ? "diagnostics" : "常规"),
               );
               setSettingsOpen(true);
             }}

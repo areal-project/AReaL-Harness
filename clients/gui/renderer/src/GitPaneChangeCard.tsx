@@ -150,6 +150,7 @@ export function GitPaneChangeCard({
                   <Button
                     variant="ghost"
                     size="icon-xs"
+                    shape="pill"
                     aria-label="复制路径"
                     title="复制路径"
                     onClick={() => onCopyRelativePath(change)}
@@ -159,6 +160,7 @@ export function GitPaneChangeCard({
                   <Button
                     variant="ghost"
                     size="icon-xs"
+                    shape="pill"
                     className="review-file-disclosure"
                     aria-label="切换文件差异对比"
                     title={isExpanded ? "折叠文件" : "展开文件"}
@@ -171,7 +173,13 @@ export function GitPaneChangeCard({
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     render={
-                      <Button variant="ghost" size="icon-xs" aria-label="文件操作" title="文件操作">
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        shape="pill"
+                        aria-label="文件操作"
+                        title="文件操作"
+                      >
                         <MoreOptionsIcon className="size-4" />
                       </Button>
                     }

@@ -662,7 +662,7 @@ export function TaskCenter({
     eventId?: string;
   };
 }) {
-  const { t } = useI18n();
+  const { t, intl } = useI18n();
   const projects = allProjects;
   const layout = useRef<HTMLElement>(null);
   const [narrow, setNarrow] = useState(false);
@@ -1802,8 +1802,8 @@ export function TaskCenter({
               {run.usage && (
                 <>
                   <p className="text-foreground-subtle">
-                    {run.usage.tokensUsed.toLocaleString()} Token · {run.usage.turnsStarted} 轮 ·{" "}
-                    {run.usage.timeUsedSeconds.toLocaleString(undefined, {
+                    {intl.formatNumber(run.usage.tokensUsed)} Token · {run.usage.turnsStarted} 轮 ·{" "}
+                    {intl.formatNumber(run.usage.timeUsedSeconds, {
                       maximumFractionDigits: 1,
                     })}{" "}
                     秒{!run.usage.accountingComplete && " · 用量尚未结算完整"}

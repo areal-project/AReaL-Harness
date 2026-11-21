@@ -103,10 +103,12 @@ export function CreateBotDialog({
             {BOT_TEMPLATE_IDS.map((tpl) => {
               const tplName = t(tpl.nameKey);
               return (
-                <button
+                <Button
                   key={tpl.id}
                   type="button"
-                  className="bot-template-chip"
+                  variant="outline"
+                  size="sm"
+                  shape="pill"
                   onClick={() => {
                     setName(tplName);
                     setAvatar(tpl.avatar);
@@ -117,7 +119,7 @@ export function CreateBotDialog({
                 >
                   <span>{tpl.avatar}</span>
                   <span>{tplName}</span>
-                </button>
+                </Button>
               );
             })}
           </div>

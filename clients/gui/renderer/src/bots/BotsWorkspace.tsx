@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "../components/ui/button.js";
+import { Textarea } from "../components/ui/textarea.js";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -290,9 +291,9 @@ export function BotsWorkspace({
 
               <div className="bot-composer-wrap">
                 <div className="bot-composer-box">
-                  <textarea
+                  <Textarea
                     ref={inputRef}
-                    className="bot-composer-input"
+                    variant="bare"
                     rows={1}
                     value={draft}
                     disabled={isLockedByUnknown}

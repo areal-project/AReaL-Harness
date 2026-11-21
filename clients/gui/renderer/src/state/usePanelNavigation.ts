@@ -93,11 +93,15 @@ export function usePanelNavigation(
   };
   const showPanel = (name: string) => {
     if (
-      ["设置", "Skills", "MCP", "高级诊断", "后台服务", "会话配置"].includes(name) &&
+      ["设置", "Skills", "MCP", "diagnostics", "后台服务", "会话配置"].includes(name) &&
       !(name === "Skills" && thread)
     ) {
       openSettings(
-        name === "设置" ? (settings?.[0] ?? "模型服务") : name === "后台服务" ? "高级诊断" : name,
+        name === "设置"
+          ? (settings?.[0] ?? "模型服务")
+          : name === "后台服务"
+            ? "diagnostics"
+            : name,
       );
       return;
     }

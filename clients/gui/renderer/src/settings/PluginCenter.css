@@ -565,15 +565,6 @@
 .plugin-skill-source-tabs .settings-segmented-tabs {
   margin-bottom: 0;
 }
-.plugin-skill-source-tabs [data-slot="tabs-list"] {
-  flex-wrap: nowrap;
-  max-width: none;
-  width: max-content;
-  gap: var(--spacing-inline);
-}
-.plugin-skill-source-tabs [data-slot="tabs-trigger"] {
-  font-size: var(--text-ui-fine);
-}
 .plugin-skill-empty {
   margin: calc(var(--spacing-inline) * 5 / 2) calc(var(--spacing-inline) / 2);
   color: var(--color-foreground-subtle);

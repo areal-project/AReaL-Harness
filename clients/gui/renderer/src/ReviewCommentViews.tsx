@@ -96,6 +96,7 @@ export function ReviewCommentView({
         )}
         <Textarea
           ref={input}
+          variant="bare"
           aria-label={editing ? "审查评论" : "编辑已保存审查评论"}
           placeholder="添加评论…"
           maxLength={4000}
@@ -277,7 +278,12 @@ export function SentReviewComments({ comments }: { comments: ReviewComment[] }) 
       <Popover>
         <PopoverTrigger
           render={
-            <Button variant="ghost" size="sm" aria-label={`已发送的 ${comments.length} 个评论`} />
+            <Button
+              variant="outline"
+              size="sm"
+              shape="pill"
+              aria-label={`已发送的 ${comments.length} 个评论`}
+            />
           }
         >
           <ReviewCommentGlyph />

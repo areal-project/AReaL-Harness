@@ -138,12 +138,6 @@
     "fingerprint": "6130904ad6fdd8a8308126a5c869973678f0dc424901c81f3d609ab0ab23f3ae"
   },
   {
-    "file": "renderer/src/McpComposerAttachments.tsx",
-    "kind": "jsx",
-    "snippet": "className=\"composer-mcp-card\"",
-    "fingerprint": "ea79734f5a66155d57105b3f2141b29d4019f9afb554affe52c4a6b24f0a5661"
-  },
-  {
     "file": "renderer/src/TaskCenter.tsx",
     "kind": "jsx",
     "snippet": "className=\"task-search\"",
@@ -342,18 +336,6 @@
     "fingerprint": "b47d229992e7361cb1fb692f6ddd089ac5d29f53844fbe1a26e7ceab3c4bf03a"
   },
   {
-    "file": "renderer/src/settings/PluginCenter.css",
-    "kind": "css",
-    "snippet": ".plugin-skill-source-tabs [data-slot=\"tabs-list\"] {",
-    "fingerprint": "719492523228e3560cd4decedd0e481ef540f88e0b91d758aede9f9976f298aa"
-  },
-  {
-    "file": "renderer/src/settings/PluginCenter.css",
-    "kind": "css",
-    "snippet": ".plugin-skill-source-tabs [data-slot=\"tabs-trigger\"] {",
-    "fingerprint": "9dde2333221e020b846bf2444b5011a338d7c02c1f475a99489dde9d8c576842"
-  },
-  {
     "file": "renderer/src/styles.css",
     "kind": "css",
     "snippet": ".areal-update-charge-progress [data-slot=\"progress-indicator\"] {",
@@ -368,115 +350,13 @@
   {
     "file": "renderer/src/workbench.css",
     "kind": "css",
-    "snippet": ".interaction button:not([data-slot=\"button\"]) {",
-    "fingerprint": "aaeb893f690c5ec2646ee585e88e970ca4c4f9026441c46a9113e8b853f12081"
-  },
-  {
-    "file": "renderer/src/workbench.css",
-    "kind": "css",
     "snippet": ".settings-confirm-dialog [data-slot=\"dialog-footer\"] {",
     "fingerprint": "8b95a20533f239b046ae57c0acbcfdc53a6d579ecffb00bff39f3eb810d06e64"
   },
   {
     "file": "renderer/src/workbench.css",
     "kind": "css",
-    "snippet": ".settings-confirm-dialog [data-slot=\"dialog-footer\"] [data-slot=\"button\"] {",
-    "fingerprint": "ff8b53827e5254f07412573e103465105030abae70b1f2f586bfe3a03c066684"
-  },
-  {
-    "file": "renderer/src/workbench.css",
-    "kind": "css",
-    "snippet": ".review-comment-card [data-slot=\"textarea\"] {",
-    "fingerprint": "53f601d4d7cdb5081e6d626d580aae98033f65df685182d709796a2d36e72f16"
-  },
-  {
-    "file": "renderer/src/workbench.css",
-    "kind": "css",
-    "snippet": ".review-comment-card [data-slot=\"textarea\"]:focus-visible {",
-    "fingerprint": "04a61989e64d6edfbc73f42a58b3a0fce813d735d7d170fdc9a38adb10f1b591"
-  },
-  {
-    "file": "renderer/src/workbench.css",
-    "kind": "css",
-    "snippet": ".review-comment-actions [data-slot=\"button\"] {",
-    "fingerprint": "d7e196e350e97d700a8eb8d92bd47b9b1d26a95712631e0a5ac39121cc15c538"
-  },
-  {
-    "file": "renderer/src/workbench.css",
-    "kind": "css",
-    "snippet": ".review-comment-actions [data-slot=\"button\"] {",
-    "fingerprint": "d923dca65934e3e877cfb9386588382d14904944d6960882a8b52b99f2453ca5"
-  },
-  {
-    "file": "renderer/src/workbench.css",
-    "kind": "css",
-    "snippet": ".review-comment-chip [data-slot=\"button\"] {",
-    "fingerprint": "55882e086db3e748324b2981e6b142fe4ecaa28c179991418adeffaf70662263"
-  },
-  {
-    "file": "renderer/src/workbench.css",
-    "kind": "css",
-    "snippet": ".sent-review-comments [data-slot=\"button\"] > svg {",
-    "fingerprint": "fa927f55097ef4b87156323affda9201c4eda294c3c41c4654dd767732c14014"
-  },
-  {
-    "file": "renderer/src/workbench.css",
-    "kind": "css",
-    "snippet": ".sent-review-comments [data-slot=\"button\"] {",
-    "fingerprint": "dc62d59ee7e2c3a6c329a92e29c27d608037a5bb312c3d4e944968299f883ec0"
-  },
-  {
-    "file": "renderer/src/workbench.css",
-    "kind": "css",
-    "snippet": ".sent-review-comments [data-slot=\"button\"]:hover {",
-    "fingerprint": "8eb3fd2b7ac77a5ebca3bc91b9baa53f89d2450e74e49fa423c2d369a7a0d126"
-  },
-  {
-    "file": "renderer/src/workbench.css",
-    "kind": "css",
-    "snippet": ".sent-review-comments [data-slot=\"button\"] > span {",
-    "fingerprint": "b0333e5a5ec72df8551ef91c21115e0c9b75bd3863780ca305e901143a618f05"
-  },
-  {
-    "file": "renderer/src/workbench.css",
-    "kind": "css",
-    "snippet": ".review-file-controls .review-file-actions [data-slot=\"button\"] {",
-    "fingerprint": "6601e1fc8b387ce8b165d1fc1e72eefea81666a934d312cf139620f9fa3927dc"
-  },
-  {
-    "file": "renderer/src/workbench.css",
-    "kind": "css",
-    "snippet": ".review-file-controls [data-slot=\"dropdown-menu-trigger\"] {",
-    "fingerprint": "f059c42ed5fe255965afdfe4b58055add9ae0eae9eab60b011fb808b6bcc6122"
-  },
-  {
-    "file": "renderer/src/workbench.css",
-    "kind": "css",
-    "snippet": ".review-file-controls [data-slot=\"button\"]:hover {",
-    "fingerprint": "243fc8767af55f838e0cb536a07fcd175cd32b3c454ba9e1e695b3a91fc0e329"
-  },
-  {
-    "file": "renderer/src/workbench.css",
-    "kind": "css",
-    "snippet": ".review-index-actions [data-slot=\"button\"] {",
-    "fingerprint": "bac1c83704188136cecfae39fd0e7a8c739f2dc20666801b38d03c2933ba31b8"
-  },
-  {
-    "file": "renderer/src/workbench.css",
-    "kind": "css",
-    "snippet": ".review-index-actions [data-slot=\"button\"] svg {",
-    "fingerprint": "8429a0180ebd5b8ea51b27bb110f80e68c075b7ea159ebe0bd4adedbeda5a40b"
-  },
-  {
-    "file": "renderer/src/workbench.css",
-    "kind": "css",
     "snippet": ".fork-target-dialog [data-slot=\"dialog-title\"] {",
     "fingerprint": "72cad79361050a90a1e6a0c82fb0b2d54941a6de3e3d8bf7ee59792a68d02555"
-  },
-  {
-    "file": "renderer/src/workbench.css",
-    "kind": "css",
-    "snippet": ".preview-device-controls [data-slot=\"select-trigger\"] {",
-    "fingerprint": "3029052f297013c6ed690f30663b4d970a3f1a0b44ea9677136681a7a8eb1f4d"
   }
 ]

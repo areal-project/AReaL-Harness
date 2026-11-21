@@ -282,6 +282,32 @@
       ],
       "internalSelectors": [],
       "enforces": []
+    },
+    {
+      "id": "button",
+      "contract": "clients/gui/packages/ui/src/components/button/button.md",
+      "styles": [],
+      "internalSelectors": ["[data-slot=\"button\"]"],
+      "enforces": []
+    },
+    {
+      "id": "tabs",
+      "contract": "clients/gui/packages/ui/src/components/tabs/tabs.md",
+      "styles": [],
+      "internalSelectors": [
+        "[data-slot=\"tabs\"]",
+        "[data-slot=\"tabs-list\"]",
+        "[data-slot=\"tabs-trigger\"]",
+        "[data-slot=\"tabs-content\"]"
+      ],
+      "enforces": []
+    },
+    {
+      "id": "textarea",
+      "contract": "clients/gui/packages/ui/src/components/textarea/textarea.md",
+      "styles": [],
+      "internalSelectors": ["[data-slot=\"textarea\"]"],
+      "enforces": []
     }
   ],
   "rules": [

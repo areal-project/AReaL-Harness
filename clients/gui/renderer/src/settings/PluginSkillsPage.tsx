@@ -583,6 +583,7 @@ export function PluginSkillsPage({
           items={owners}
           value={activeScope}
           onValueChange={setScopeId}
+          scrollable
         />
       </div>
       {preview(

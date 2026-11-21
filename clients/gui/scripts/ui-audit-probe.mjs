@@ -51,7 +51,7 @@ const browser = await chromium.launch({ headless: true });
 async function openRoute(
   context,
   route,
-  { dark = false, width = 1280, height = 800, fontSize = 14 } = {},
+  { dark = false, width = 1280, height = 800, fontSize = 14, locale = "zh-CN" } = {},
 ) {
   const page = await context.newPage({ viewport: { width, height }, deviceScaleFactor: 2 });
   const errors = [];
@@ -61,7 +61,7 @@ async function openRoute(
   });
 
   await page.addInitScript(
-    ({ dark, fontSize }) => {
+    ({ dark, fontSize, locale }) => {
       window.__clsTotal = 0;
       window.__clsEntries = [];
       try {
@@ -96,11 +96,16 @@ async function openRoute(
       try {
         localStorage.setItem(
           "areal:application-preferences",
-          JSON.stringify({ theme: dark ? "dark" : "light", fontSize, chatFontSize: fontSize }),
+          JSON.stringify({
+            theme: dark ? "dark" : "light",
+            fontSize,
+            chatFontSize: fontSize,
+            locale,
+          }),
         );
       } catch {}
     },
-    { dark, fontSize },
+    { dark, fontSize, locale },
   );
 
   await page.emulateMedia({ colorScheme: dark ? "dark" : "light" });
@@ -157,6 +162,7 @@ async function measureLayout(page, label) {
     }
     return {
       label,
+      lang: document.documentElement.lang,
       docOverflowX,
       clsTotal: Number((window.__clsTotal || 0).toFixed(4)),
       clippedButtonsCount: clippedButtons.length,
@@ -261,6 +267,46 @@ try {
       fontSize: 18,
       caption: "Settings | Dark 420 18px",
     },
+    {
+      id: "settings-en-light-wide",
+      route: "?settings-exercise",
+      dark: false,
+      width: 1280,
+      height: 800,
+      fontSize: 14,
+      locale: "en",
+      caption: "Settings (en) | Light 1280 14px",
+    },
+    {
+      id: "settings-en-dark-wide",
+      route: "?settings-exercise",
+      dark: true,
+      width: 1280,
+      height: 800,
+      fontSize: 14,
+      locale: "en",
+      caption: "Settings (en) | Dark 1280 14px",
+    },
+    {
+      id: "content-en-light-390",
+      route: "?content-system",
+      dark: false,
+      width: 390,
+      height: 844,
+      fontSize: 14,
+      locale: "en",
+      caption: "Content (en) | Light 390px",
+    },
+    {
+      id: "settings-en-dark-390",
+      route: "?settings-exercise",
+      dark: true,
+      width: 390,
+      height: 844,
+      fontSize: 14,
+      locale: "en",
+      caption: "Settings (en) | Dark 390px",
+    },
   ];
 
   const captured = [];
@@ -312,7 +358,7 @@ try {
 
   const sheetPath = await buildContactSheet(context, {
     filename: "contact-sheet-overview.png",
-    title: "UI Audit Overview — Light/Dark & Wide(14px)/Narrow(420px, 18px)",
+    title: "UI Audit Overview — Light/Dark · zh-CN/en · Wide(1280)/Narrow(420px 18px, 390px)",
     cols: 2,
     items: captured,
   });

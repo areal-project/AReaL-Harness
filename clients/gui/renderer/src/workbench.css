@@ -938,11 +938,6 @@ button.composer-project:hover > svg,
   overflow: auto;
   margin: var(--spacing-inline) 0;
 }
-.interaction button:not([data-slot="button"]) {
-  padding: calc(var(--spacing-inline) * 3 / 4) var(--spacing-inline);
-  border: var(--border-width-default) solid var(--color-border);
-  border-radius: var(--radius-compact);
-}
 /* 遮罩归入共享层级阶梯（layer-dialog），不再自带一个更大的裸值；否则它长期压在共享
  * Dialog／Popover／Tooltip 之上，嵌套顺序无法由控件本身推导。 */
 .dialog-backdrop {
@@ -1185,9 +1180,6 @@ button.composer-project:hover > svg,
 }
 .settings-confirm-dialog [data-slot="dialog-footer"] {
   margin-top: calc(var(--spacing-inline) / 2);
-}
-.settings-confirm-dialog [data-slot="dialog-footer"] [data-slot="button"] {
-  min-width: 5.5rem;
 }
 .settings-form {
   display: flex;
@@ -3177,42 +3169,12 @@ button[aria-label="停止"] {
   gap: var(--spacing-inline);
   padding: calc(var(--spacing-inline) * 3 / 2);
 }
-.review-comment-editor [data-slot="textarea"],
-.review-comment-card [data-slot="textarea"] {
-  min-height: 1.625em;
-  max-height: 200px;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  outline: none;
-  background: transparent;
-  box-shadow: none;
-  font-size: var(--content-font-size, var(--text-fixed-body));
-  font-weight: 430;
-  line-height: 1.625;
-}
-@media (forced-colors: active) {
-  .review-comment-editor [data-slot="textarea"]:focus-visible,
-  .review-comment-card [data-slot="textarea"]:focus-visible {
-    outline: var(--border-width-default) solid Highlight;
-  }
-}
 .review-comment-actions {
   display: flex;
   justify-content: flex-end;
   gap: var(--spacing-inline);
   flex-wrap: wrap;
   padding: var(--spacing-inline) calc(var(--spacing-inline) * 3 / 2);
-}
-.review-comment-actions [data-slot="button"] {
-  height: var(--spacing-control-sm);
-  padding: 0 var(--spacing-inline);
-  border: var(--border-width-default) solid transparent;
-  border-radius: var(--radius-navigation);
-  font-family: var(--font-sans);
-  font-size: var(--text-ui-sm);
-  font-weight: 430;
-  line-height: 1.333333;
 }
 .review-comment-actions .review-comment-menu {
   width: var(--spacing-control-sm);
@@ -3237,9 +3199,6 @@ button[aria-label="停止"] {
 .review-comment-actions .review-comment-delete-editing:hover {
   background: color-mix(in srgb, var(--color-destructive) 20%, transparent);
 }
-.review-comment-actions [data-slot="button"] {
-  corner-shape: superellipse(1.5);
-}
 .review-comment-actions [data-variant="default"] {
   background-clip: border-box;
   border-color: var(--color-border);
@@ -3250,11 +3209,6 @@ button[aria-label="停止"] {
   border-radius: var(--radius-pill);
   background: var(--color-background);
   box-shadow: 0 0 0 1px var(--color-border);
-}
-.review-comment-chip [data-slot="button"] {
-  border-radius: var(--radius-pill);
-  font-size: var(--text-ui-caption);
-  font-weight: 500;
 }
 .review-comment-attachment {
   padding: 0 calc(var(--spacing-inline) / 2) calc(var(--spacing-inline) * 3 / 4);
@@ -3280,8 +3234,7 @@ button[aria-label="停止"] {
 .review-comment-attachment-trigger:hover {
   background: var(--color-history-comment-hover, var(--color-card));
 }
-.review-comment-attachment-trigger > svg,
-.sent-review-comments [data-slot="button"] > svg {
+.review-comment-attachment-trigger > svg {
   width: var(--icon-size-control);
   height: var(--icon-size-control);
   color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
@@ -3299,23 +3252,6 @@ button[aria-label="停止"] {
   padding: var(--border-width-default);
   background: transparent;
   box-shadow: none;
-}
-.sent-review-comments [data-slot="button"] {
-  height: auto;
-  padding: calc(var(--spacing-inline) * 3 / 4) var(--spacing-inline);
-  gap: calc(var(--spacing-inline) / 2);
-  font-size: var(--text-ui-caption);
-  font-weight: 430;
-  line-height: 1.428571;
-  background: var(--color-history-comment, var(--color-card));
-  border-color: var(--color-menu-border, var(--color-border));
-}
-.sent-review-comments [data-slot="button"]:hover {
-  background: var(--color-history-comment-hover, var(--color-card));
-}
-.sent-review-comments [data-slot="button"] > span {
-  padding-inline-end: calc(var(--spacing-inline) / 2);
-  font-weight: 500;
 }
 /* Confirmed result layout; rows and totals still use verified Core receipts. */
 .turn-file-summary {
@@ -3728,21 +3664,6 @@ button[aria-label="停止"] {
 .review-file-disclosure[aria-expanded="true"] svg {
   transform: rotate(90deg);
 }
-.review-file-controls .review-file-actions [data-slot="button"] {
-  color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
-}
-.review-file-controls [data-slot="button"],
-.review-file-controls [data-slot="dropdown-menu-trigger"] {
-  width: var(--spacing-control-xs);
-  height: var(--spacing-control-xs);
-  padding: 0;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--color-foreground-subtle);
-}
-.review-file-controls [data-slot="button"]:hover {
-  color: var(--color-foreground);
-}
 
 /* Review uses the observed Pierre layout while respecting code font settings. */
 .workspace-review {
@@ -3773,18 +3694,6 @@ button[aria-label="停止"] {
   color: var(--color-foreground);
   pointer-events: auto;
   text-align: center;
-}
-.review-index-actions [data-slot="button"] {
-  pointer-events: auto;
-  height: var(--spacing-control-sm);
-  padding: 0 var(--spacing-inline);
-  border-radius: var(--radius-pill);
-  font-size: var(--text-ui-caption);
-  line-height: 18px;
-}
-.review-index-actions [data-slot="button"] svg {
-  width: var(--icon-size-control);
-  height: var(--icon-size-control);
 }
 /* Diff colors must not replace the theme's destructive-action color. */
 .dark .workspace-review {

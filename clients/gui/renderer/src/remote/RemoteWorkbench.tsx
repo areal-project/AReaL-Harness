@@ -1,4 +1,5 @@
 import { projectedTurns } from "./session-projection.js";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import { ComposerActionButton } from "@areal/ui/experimental";
 import { DelayedVisible } from "@areal/ui";
 import { ApplicationIntlProvider, useZCodeIntl } from "../i18n/IntlProvider.js";
@@ -275,7 +276,7 @@ function Session({ view, api }: { view: View; api: API }) {
   const control = async (operation: string, values: Data, revision: number) => {
     const result = await api.control(operation, values, revision);
     if (result?.admissionState !== "accepted")
-      throw new Error(result?.error?.message ?? "结果未确认，请先核对原操作");
+      throw new Error(currentErrorText(result?.error) || "操作结果尚未确认，请先检查原请求");
     return result;
   };
   // Remote 仅处理 manage 与 queueEdit；其余 Action 重载保持明确拒绝。
@@ -320,7 +321,7 @@ function Session({ view, api }: { view: View; api: API }) {
         if (live.current) api.draft("");
       } else await api.send(running);
     } catch (error) {
-      setLocalError((error as Error).message);
+      setLocalError(currentErrorText(error));
     }
     return false;
   }
@@ -406,7 +407,7 @@ function Session({ view, api }: { view: View; api: API }) {
           modelDisabled={disabled || running || !!editing || !config}
           onConfigureModel={(values) => {
             void control("configure", values, s.configRevision).catch((error) =>
-              setLocalError(error.message),
+              setLocalError(currentErrorText(error)),
             );
           }}
           workspacePath=""
@@ -465,7 +466,7 @@ function Session({ view, api }: { view: View; api: API }) {
                 onChange={(mode) => {
                   const options = permissionOptions(mode, config?.options);
                   void control("configure", { options }, s.configRevision).catch((error) =>
-                    setLocalError(error.message),
+                    setLocalError(currentErrorText(error)),
                   );
                 }}
                 onClose={() => apiRef.current?.focus()}

@@ -199,7 +199,7 @@ function ConversationContent() {
                     size="sm"
                     className="mt-3"
                     onClick={() => {
-                      surfaces.setSettingsTab("高级诊断");
+                      surfaces.setSettingsTab("diagnostics");
                       surfaces.setSettingsOpen(true);
                     }}
                   >

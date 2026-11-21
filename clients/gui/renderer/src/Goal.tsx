@@ -191,7 +191,7 @@ function loadDraft(key: string, goal: Goal | null): { base: Draft; draft: Draft 
   return { base: current, draft: current };
 }
 export function GoalEditor({ project, thread, action }: Props) {
-  const { t } = useI18n();
+  const { t, intl } = useI18n();
   const { goal, revision } = stateOf(thread);
   const draftKey = `areal-gui:goal-draft:${project.id}:${thread.id}:${goal?.id ?? "new"}`;
   const [initial] = useState(() => loadDraft(draftKey, goal));
@@ -262,7 +262,7 @@ export function GoalEditor({ project, thread, action }: Props) {
       />
       {goal && (
         <p className="goal-editor-notice">
-          {goal.usage.tokensUsed.toLocaleString()} Token 已使用 · {goal.usage.turnsStarted} 轮 ·{" "}
+          {intl.formatNumber(goal.usage.tokensUsed)} Token 已使用 · {goal.usage.turnsStarted} 轮 ·{" "}
           {duration(goal.usage.timeUsedSeconds)}
         </p>
       )}

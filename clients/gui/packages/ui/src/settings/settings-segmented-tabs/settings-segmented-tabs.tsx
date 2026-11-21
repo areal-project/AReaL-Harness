@@ -13,6 +13,7 @@ export function SettingsSegmentedTabs<TValue extends string>({
   onValueChange,
   activateOnFocus = false,
   disabled = false,
+  scrollable = false,
   ariaLabel,
 }: {
   items: readonly SettingsSegmentedTabItem<TValue>[];
@@ -21,12 +22,15 @@ export function SettingsSegmentedTabs<TValue extends string>({
   /** 设置里的分段选择只在点按或回车、空格时生效，方向键只移动焦点。 */
   activateOnFocus?: boolean;
   disabled?: boolean;
+  /** 单行横向滚动紧凑模式，避免标签换行。 */
+  scrollable?: boolean;
   ariaLabel?: string;
 }) {
   return (
     <Tabs
       value={value}
       onValueChange={(nextValue) => onValueChange(nextValue as TValue)}
+      data-scrollable={scrollable ? "true" : undefined}
       className="settings-segmented-tabs gap-0"
     >
       <TabsList

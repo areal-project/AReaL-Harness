@@ -47,3 +47,14 @@
   color: var(--color-foreground);
   background: var(--color-surface-elevated);
 }
+
+.settings-segmented-tabs[data-scrollable="true"] [data-slot="tabs-list"] {
+  flex-wrap: nowrap;
+  max-width: none;
+  width: max-content;
+  gap: var(--spacing-inline);
+}
+
+.settings-segmented-tabs[data-scrollable="true"] [data-slot="tabs-trigger"] {
+  font-size: var(--text-ui-fine);
+}

@@ -7,7 +7,9 @@ import { useCallback, useEffect, useRef } from "react";
 import type { ILink, ILinkHandler, ITheme, IWindowsPty } from "@xterm/xterm";
 import type { TerminalServices as IServiceAccessor } from "./coreTerminalService.js";
 type IDisposable = { dispose(): void };
+import { observeResize } from "@areal/ui/observe-resize";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { currentErrorText } from "@/errors/currentErrorText.js";
 import { logger } from "@/logger.js";
 import {
   ContextMenu,
@@ -370,12 +372,11 @@ export function TerminalSession({
           attributeFilter: ["class"],
         });
         let reuseResizeRAF = 0;
-        const reuseResizeObserver = new ResizeObserver(() => {
+        const disconnectReuseResize = observeResize(el, () => {
           if (!isVisibleRef.current) return;
           if (reuseResizeRAF) cancelAnimationFrame(reuseResizeRAF);
           reuseResizeRAF = requestAnimationFrame(() => scheduleFitAndResize("observer"));
         });
-        reuseResizeObserver.observe(el);
         try {
           resizeRequestStatsRef.current.fit += 1;
           existingEntry.fitAddon.fit();
@@ -392,7 +393,7 @@ export function TerminalSession({
         return () => {
           detached = true;
           reuseThemeObserver.disconnect();
-          reuseResizeObserver.disconnect();
+          disconnectReuseResize();
           if (reuseResizeRAF) cancelAnimationFrame(reuseResizeRAF);
           sidePaneTerminalSessionRegistry.detachDom(persistentKey);
           // 不 dispose：term/PTY/订阅都留在 registry 供下次复用
@@ -723,7 +724,7 @@ export function TerminalSession({
         .catch((error) => {
           if (ptyCancelled) return;
           createErrorRef.current?.(error);
-          const message = error instanceof Error ? error.message : String(error);
+          const message = currentErrorText(error);
           logger.error("[Terminal] persistent create failed:", error);
           term.write(`\r\n[Terminal failed to start]\r\n${message}\r\n`);
           // PTY 创建失败必须释放 registry 中本次占位的 entry。
@@ -743,12 +744,11 @@ export function TerminalSession({
 
       // 组件局部：resize observer
       let resizeRAF = 0;
-      const resizeObserver = new ResizeObserver(() => {
+      const disconnectResize = observeResize(el, () => {
         if (!isVisibleRef.current) return;
         if (resizeRAF) cancelAnimationFrame(resizeRAF);
         resizeRAF = requestAnimationFrame(() => scheduleFitAndResize("observer"));
       });
-      resizeObserver.observe(el);
 
       logger.debug("[Terminal] persistent create", {
         terminalTabId: sessionId,
@@ -757,7 +757,7 @@ export function TerminalSession({
 
       return () => {
         themeObserver.disconnect();
-        resizeObserver.disconnect();
+        disconnectResize();
         if (resizeRAF) cancelAnimationFrame(resizeRAF);
         for (const d of localDisposers) {
           try {
@@ -1064,23 +1064,22 @@ export function TerminalSession({
         // 之前没有接住 create() 的拒绝态，终端启动失败会直接变成 Uncaught Promise。
         // 这里显式记录错误，并在终端区域提示用户，方便定位到底是 shell 还是 cwd 出了问题。
         if (disposed) return;
-        const message = error instanceof Error ? error.message : String(error);
+        const message = currentErrorText(error);
         logger.error("[Terminal] failed to create terminal:", error);
         term.write(`\r\n[Terminal failed to start]\r\n${message}\r\n`);
       });
 
     let resizeRAF = 0;
-    const resizeObserver = new ResizeObserver(() => {
+    const disconnectResize = observeResize(el, () => {
       if (!isVisibleRef.current) return;
       if (resizeRAF) cancelAnimationFrame(resizeRAF);
       resizeRAF = requestAnimationFrame(() => scheduleFitAndResize("observer"));
     });
-    resizeObserver.observe(el);
 
     return () => {
       disposed = true;
       observer.disconnect();
-      resizeObserver.disconnect();
+      disconnectResize();
       clearResizeThrottleTimer();
       if (resizeRAF) cancelAnimationFrame(resizeRAF);
       if (resizeRAFRef.current) cancelAnimationFrame(resizeRAFRef.current);

@@ -48,7 +48,7 @@ export function BugReportDialog({
   onClose: () => void;
   services: PlatformServices;
 }) {
-  const { t } = useI18n();
+  const { t, intl } = useI18n();
   const [id, setId] = useState(() => crypto.randomUUID());
   const [description, setDescription] = useState("");
   const [screenshots, setScreenshots] = useState<string[]>([]);
@@ -147,7 +147,12 @@ export function BugReportDialog({
                   key={report.id}
                 >
                   <div>
-                    <time>{new Date(report.createdAt).toLocaleString()}</time>
+                    <time>
+                      {intl.formatDate(new Date(report.createdAt), {
+                        dateStyle: "short",
+                        timeStyle: "medium",
+                      })}
+                    </time>
                     <p>
                       {t("bugReport.summary", {
                         count: report.screenshotCount,

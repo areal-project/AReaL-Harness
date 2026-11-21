@@ -158,12 +158,6 @@
   {
     "file": "renderer/src/workbench.css",
     "kind": "tint",
-    "snippet": "color-mix(in srgb, var(--color-foreground) 50%, transparent)",
-    "fingerprint": "b8b1ab3487dc41f45e9ae42c511db5ca89cfc670a79502847cd2e76d678812dc"
-  },
-  {
-    "file": "renderer/src/workbench.css",
-    "kind": "tint",
     "snippet": "color-mix(in srgb, var(--color-foreground) 49.5%, transparent)",
     "fingerprint": "f36932ddac732f3387efcd6b22a313195ae1e3151056f08bc15f706420dc7d2d"
   },

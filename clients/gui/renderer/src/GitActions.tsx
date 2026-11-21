@@ -199,6 +199,8 @@ export function GitActions({
               <Button
                 variant="secondary"
                 size="sm"
+                shape="pill"
+                className="pointer-events-auto"
                 disabled={busy || !indexReview.enabled}
                 onClick={onChanged}
               >
@@ -211,6 +213,8 @@ export function GitActions({
                 <Button
                   variant="secondary"
                   size="sm"
+                  shape="pill"
+                  className="pointer-events-auto"
                   title={state.root}
                   disabled={disabled || !indexReview.enabled}
                   onClick={() =>

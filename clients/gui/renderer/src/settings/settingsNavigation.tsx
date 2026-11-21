@@ -126,7 +126,7 @@ export function settingsSubtitle(name: string, t: ReturnType<typeof useI18n>["t"
 }
 
 export function settingsLabel(name: string, t: ReturnType<typeof useI18n>["t"]) {
-  if (name === "高级诊断") return t("settings.service.title");
+  if (name === "diagnostics") return t("settings.service.title");
   const item = settingsNavigationGroups
     .flatMap((group) => group.items.map((item) => ({ id: item.id, label: item.label })))
     .find((item) =>

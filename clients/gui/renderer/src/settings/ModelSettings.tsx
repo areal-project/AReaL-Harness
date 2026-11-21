@@ -1032,11 +1032,17 @@ export function ModelSettings({
         >
           <Feedback error={error} />
           <DialogFooter>
-            <Button variant="outline" disabled={busy} onClick={() => setRemove(null)}>
+            <Button
+              variant="outline"
+              className="min-w-22"
+              disabled={busy}
+              onClick={() => setRemove(null)}
+            >
               {t("settings.modelSettings.cancel")}
             </Button>
             <Button
               variant="destructive"
+              className="min-w-22"
               disabled={busy}
               onClick={() =>
                 void run(async () => {

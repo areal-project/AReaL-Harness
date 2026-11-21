@@ -95,7 +95,7 @@ export function WorkbenchSettings({
       title={settingsLabel(settingsTab, t)}
       subtitle={settingsSubtitle(settingsTab, t)}
     >
-      {settingsTab !== "高级诊断" && snapshot.connection?.state === "unavailable" && (
+      {settingsTab !== "diagnostics" && snapshot.connection?.state === "unavailable" && (
         <BackendServiceStatus
           connection={snapshot.connection}
           update={snapshot.backendUpdate}
@@ -123,7 +123,7 @@ export function WorkbenchSettings({
           action={resourceAction}
           connected={snapshot.connection?.state === "ready"}
           updates={Boolean(services.updateState)}
-          onDiagnostics={() => setSettingsTab("高级诊断")}
+          onDiagnostics={() => setSettingsTab("diagnostics")}
         />
       ) : settingsTab === "SnapShots" ? (
         <SnapShotSettings
@@ -182,7 +182,7 @@ export function WorkbenchSettings({
         />
       ) : settingsTab === "Labs" ? (
         <LabsSettings />
-      ) : ["高级诊断", "后台服务"].includes(settingsTab) ? (
+      ) : ["diagnostics", "后台服务"].includes(settingsTab) ? (
         <>
           <Button variant="ghost" onClick={() => setSettingsTab("常规")}>
             {t("settings.diagnostics.back")}

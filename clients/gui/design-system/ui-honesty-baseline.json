@@ -1,17 +1,5 @@
 [
   {
-    "file": "renderer/src/i18n/messages/automation.ts",
-    "kind": "internal-term",
-    "snippet": "settings.computer.screenRecordingDescription: 观察",
-    "fingerprint": "3bd30312385123bb576ec99969ab01bd7f73b373c7bd2b9886274f36f37c9482"
-  },
-  {
-    "file": "renderer/src/i18n/messages/automation.ts",
-    "kind": "internal-term",
-    "snippet": "settings.computer.helperDescription: 观察",
-    "fingerprint": "d4162b2b444716fc40dce93306aef49be26eec208a4bb37a4dcc6ed59286d6d9"
-  },
-  {
     "file": "renderer/src/i18n/messages/common.ts",
     "kind": "internal-term",
     "snippet": "common.browserVerification.trialActive: 观察",
@@ -1004,12 +992,6 @@
   {
     "file": "renderer/src/App.tsx",
     "kind": "cjk-identifier",
-    "snippet": "高级诊断",
-    "fingerprint": "fa75e6703ff2f141061813639852d0ba27c69dda61ec0b09d354465c508c07a0"
-  },
-  {
-    "file": "renderer/src/App.tsx",
-    "kind": "cjk-identifier",
     "snippet": "模型服务",
     "fingerprint": "d93f2386cc203274796f9474ca2fc37bdcdd230a5e4f065a041674b9649ee755"
   },
@@ -1024,12 +1006,6 @@
     "kind": "cjk-identifier",
     "snippet": "数据飞轮",
     "fingerprint": "839f68944d599567911a7039aa77e1fe1b010996c2d3451daebbd717b5d9e1c1"
-  },
-  {
-    "file": "renderer/src/BugReportDialog.tsx",
-    "kind": "unlocalized-date",
-    "snippet": ".toLocaleString()",
-    "fingerprint": "7d3d47e6930e046cd464e64e96144517d2826750cf15bcd1a4a5a8971a161efc"
   },
   {
     "file": "renderer/src/Composer.tsx",
@@ -1054,18 +1030,6 @@
     "kind": "cjk-identifier",
     "snippet": "会话",
     "fingerprint": "2e52c30b97b498746eea4d11456e93da3b4cb9b591b92dc92db866fb4062a5c0"
-  },
-  {
-    "file": "renderer/src/ContextPane.tsx",
-    "kind": "unlocalized-date",
-    "snippet": ".toLocaleString()",
-    "fingerprint": "f72dd3084124d2b531fc77407cdbd4a80061e16d228f54ad2d9f3355eb7cec7f"
-  },
-  {
-    "file": "renderer/src/ContextPane.tsx",
-    "kind": "unlocalized-date",
-    "snippet": ".toLocaleString()",
-    "fingerprint": "ad48f03c4f232ae6f23971d0f31af7cc8d423e1ea24421190eb42c12497fafac"
   },
   {
     "file": "renderer/src/ConversationStatusCard.tsx",
@@ -1162,24 +1126,6 @@
     "kind": "cjk-identifier",
     "snippet": "在文件管理器中显示",
     "fingerprint": "4d1d4abc1d87237915a7dc04125b6f554ab4bba1f3e41ad72a5efb73cc4c476d"
-  },
-  {
-    "file": "renderer/src/Goal.tsx",
-    "kind": "unlocalized-date",
-    "snippet": ".toLocaleString()",
-    "fingerprint": "e5a1443196cec08671399ee164d92b66607c5a3660b277c7a79581b857f85cb2"
-  },
-  {
-    "file": "renderer/src/GoalUsage.tsx",
-    "kind": "unlocalized-date",
-    "snippet": ".toLocaleString()",
-    "fingerprint": "a574242b8d89172321ecf6f223d958aa79203ff870238b634eaea9ff2ec9b25d"
-  },
-  {
-    "file": "renderer/src/TaskCenter.tsx",
-    "kind": "unlocalized-date",
-    "snippet": ".toLocaleString()",
-    "fingerprint": "2b5085ad00a3d3a617994936ec4381f63d94fe764d0b5028a287ba2d69c62ee1"
   },
   {
     "file": "renderer/src/TurnExecution.tsx",
@@ -1294,24 +1240,6 @@
     "kind": "cjk-identifier",
     "snippet": "功能",
     "fingerprint": "73a25a9f574b2218a0950db9c85025424e5b07a2dff61ca93c8359d93b3d652d"
-  },
-  {
-    "file": "renderer/src/remote/RemoteWorkbench.tsx",
-    "kind": "raw-error-text",
-    "snippet": "error?.message",
-    "fingerprint": "3bb922579ba3a3fd0989c36367d323c8ad801fcef6096728d2175331bac47b52"
-  },
-  {
-    "file": "renderer/src/remote/RemoteWorkbench.tsx",
-    "kind": "raw-error-text",
-    "snippet": "error.message",
-    "fingerprint": "b14941a9b12725a5505e1eec94621b57e3ef4cab896e9f5a268204bcbaa1b04d"
-  },
-  {
-    "file": "renderer/src/remote/RemoteWorkbench.tsx",
-    "kind": "raw-error-text",
-    "snippet": "error.message",
-    "fingerprint": "f0cf03154ded8104c434a9bb1d47973250229cd2666ce0fedb58d8315c705cbc"
   },
   {
     "file": "renderer/src/reviewComments.ts",
@@ -1524,30 +1452,6 @@
     "fingerprint": "9e6b49417e7c84681a58fe5c5590ca1ff8206b30140e9057af747f0ff5868675"
   },
   {
-    "file": "renderer/src/terminal/TerminalSession.tsx",
-    "kind": "raw-error-text",
-    "snippet": "error.message",
-    "fingerprint": "b943e585687df619df8deb47886be61ff9e799f2d1584c7bec02471b43726d6a"
-  },
-  {
-    "file": "renderer/src/terminal/TerminalSession.tsx",
-    "kind": "raw-error-text",
-    "snippet": "String(error)",
-    "fingerprint": "318f1a7c6d8c0501b1f62648e94e8a3bdd7fd1b74f064d23dc70cae3a0d90c5b"
-  },
-  {
-    "file": "renderer/src/terminal/TerminalSession.tsx",
-    "kind": "raw-error-text",
-    "snippet": "error.message",
-    "fingerprint": "226c7ffd2739c96022580d504be04998f2279d6b3b1ca3e8a177c67b3d6379b1"
-  },
-  {
-    "file": "renderer/src/terminal/TerminalSession.tsx",
-    "kind": "raw-error-text",
-    "snippet": "String(error)",
-    "fingerprint": "c649c384a1b50d63da8a00a92c8ed49dc415a8a51102b94869335d502bbc30b3"
-  },
-  {
     "file": "renderer/src/views/ConversationWorkspace.tsx",
     "kind": "cjk-identifier",
     "snippet": "改动",
@@ -1610,12 +1514,6 @@
   {
     "file": "renderer/src/views/WorkbenchSettings.tsx",
     "kind": "cjk-identifier",
-    "snippet": "高级诊断",
-    "fingerprint": "a72f0e0e7a2aba76643ee1c2a70977fdb7356fbeccbaef3f0c7a5471867b89e6"
-  },
-  {
-    "file": "renderer/src/views/WorkbenchSettings.tsx",
-    "kind": "cjk-identifier",
     "snippet": "常规",
     "fingerprint": "1d7c380f63911d92799f1a1f702e799086d10a5e4151a97bbd0f76de37695dfc"
   },
@@ -1642,12 +1540,6 @@
     "kind": "cjk-identifier",
     "snippet": "浏览器",
     "fingerprint": "c823e316a15c1c4e560d92995a2adef382c1f92ded14ca72c36deb4fa69a4abb"
-  },
-  {
-    "file": "renderer/src/views/WorkbenchSettings.tsx",
-    "kind": "cjk-identifier",
-    "snippet": "电脑控制",
-    "fingerprint": "12616322f3534644436da2fb47f41dcf90b8c2f2db3b74539a72ceefa6e7e090"
   },
   {
     "file": "renderer/src/views/WorkbenchSettings.tsx",
@@ -1876,12 +1768,6 @@
     "kind": "stale-text-assertion",
     "snippet": "【插件第48段】",
     "fingerprint": "519c534b58418c286e83e656c3c029418414b104bd57f757b94a3499f67f3963"
-  },
-  {
-    "file": "scripts/task-conversation-smoke.mjs",
-    "kind": "stale-text-assertion",
-    "snippet": "读取失败 · 上次读取",
-    "fingerprint": "9854fecf8f5b12c03f42d13f4dd8f7adf88410480a1e0d32ca84fd001beecd4e"
   },
   {
     "file": "scripts/trajectory-ui-smoke.mjs",
