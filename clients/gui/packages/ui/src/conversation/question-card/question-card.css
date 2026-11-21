@@ -29,22 +29,29 @@
   display: flex;
   align-items: flex-start;
   gap: var(--spacing-inline);
-  padding: var(--spacing-inline);
+  padding: var(--spacing-inline) var(--composer-inset);
   margin-inline: 0;
   min-height: var(--spacing-control);
+  border: var(--border-width-default) solid var(--color-border-hairline);
   border-radius: var(--radius-control);
+  background: var(--color-surface-fog);
   cursor: var(--interactive-cursor, pointer);
   font-size: var(--text-ui-base);
   font-weight: var(--font-weight-medium);
   line-height: var(--line-height-ui);
   overflow-wrap: anywhere;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
 }
 .ask-user-option:hover,
 .ask-user-option:focus-within {
   background: var(--color-hover);
+  border-color: var(--color-border);
 }
 .ask-user-option[data-selected="true"] {
   background: var(--color-selected);
+  border-color: var(--color-border-hover);
 }
 .ask-user-option:has(input:focus-visible) {
   outline: var(--focus-width) solid var(--color-foreground-subtle);
@@ -62,9 +69,10 @@
   height: var(--line-height-ui);
   display: grid;
   place-items: center;
-  border: var(--border-width-default) solid var(--color-border);
+  border: var(--border-width-default) solid var(--color-border-hairline);
   border-radius: var(--radius-inline);
-  background: var(--color-hover);
+  background: var(--color-card);
+  box-shadow: var(--shadow-inset-control);
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-sm);
   font-variant-numeric: tabular-nums;

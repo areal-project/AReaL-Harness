@@ -1,9 +1,10 @@
 .decision-card {
   margin-bottom: var(--spacing-inline);
-  padding: var(--composer-inset);
-  border: var(--border-width-default) solid var(--color-border);
+  padding: var(--spacing-field);
+  border: var(--border-width-default) solid var(--color-border-hairline);
   border-radius: var(--radius-card);
-  background: var(--color-composer-catalog);
+  background: var(--color-card);
+  box-shadow: var(--shadow-popover-overlay);
   color: var(--color-foreground);
   font-size: var(--text-ui-base);
   line-height: var(--line-height-ui);
@@ -21,7 +22,9 @@
   align-items: center;
   gap: var(--spacing-inline);
   color: var(--color-foreground-subtle);
-  font-size: var(--text-ui-base);
+  font-size: var(--text-ui-caption);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: var(--tracking-ui-subtle);
 }
 .decision-card-label > svg {
   width: var(--icon-size-control);

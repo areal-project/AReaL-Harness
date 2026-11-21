@@ -70,9 +70,9 @@ export function ThreadSummaryPanel({
           <span className="areal-thread-summary-chevron" aria-hidden="true">
             {effectiveOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </span>
-          <span className="areal-thread-summary-title text-fade-truncate">{title}</span>
+          <span className="areal-thread-summary-title">{title}</span>
           {summary && !effectiveOpen && (
-            <span className="areal-thread-summary-inline-meta text-fade-truncate">{summary}</span>
+            <span className="areal-thread-summary-inline-meta">{summary}</span>
           )}
         </Button>
         <span
@@ -135,7 +135,7 @@ export function ThreadSummaryItem({
           {icon}
         </span>
       )}
-      <span className="areal-thread-summary-item-label text-fade-truncate">{label}</span>
+      <span className="areal-thread-summary-item-label">{label}</span>
       {meta && <span className="areal-thread-summary-item-meta">{meta}</span>}
     </>
   );
