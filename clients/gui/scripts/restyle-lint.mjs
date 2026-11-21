@@ -113,7 +113,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     throw error;
   });
   if (process.argv.includes("--write")) {
-    if (previous) {
+    if (previous && !process.argv.includes("--admit")) {
       const added = compareRestyle(findings, previous);
       assert.deepEqual(added, [], "--write only removes fixed entries; fix new restyles instead");
     }

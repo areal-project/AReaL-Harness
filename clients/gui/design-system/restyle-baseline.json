@@ -1,1 +1,1346 @@
-[]
+[
+  {
+    "file": "renderer/src/app-shell/SidePaneTabOverview.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"bg-transparent p-0 text-foreground\"",
+    "fingerprint": "1378e742a25b2022aed7b22fe46756dfa5ee508f612bac516f56b067fee1e9da"
+  },
+  {
+    "file": "renderer/src/app-shell/SidePaneTabOverview.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"border-border border-b p-1 last:border-b-0 **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-2 **:[[cmdk-group-heading]]:text-ui-base **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-foreground-subtle\"",
+    "fingerprint": "cdbdf13ee48c982d94662c0bab4da5dc815f385201d58c6722150a6347ea3a76"
+  },
+  {
+    "file": "renderer/src/app-shell/SidePaneTabOverview.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"px-4 py-5 text-foreground-subtle\"",
+    "fingerprint": "1d1c9e0435969a142b9f46da0940c398f25ef68838ed0b8178ec528439e0ea48"
+  },
+  {
+    "file": "renderer/src/app-shell/SidePaneTabOverview.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"border-border border-b p-1 last:border-b-0 **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-2 **:[[cmdk-group-heading]]:text-ui-base **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-foreground-subtle\"",
+    "fingerprint": "88d4c7219c2604320dfb42cba00695e3681fc497d3b7efb093e77b1c4c6b31f2"
+  },
+  {
+    "file": "renderer/src/app-shell/SidePaneTabOverview.tsx",
+    "kind": "jsx",
+    "snippet": "className={cn( \"min-h-8 min-w-0 flex-1 cursor-pointer gap-2 px-2 text-ui-base\", isActive && \"bg-selected data-selected:bg-selected\", )}",
+    "fingerprint": "28446af96e2c4eee8d5e487b802d35c1ac524612fa779d8da67c73f122adfacb"
+  },
+  {
+    "file": "renderer/src/app-shell/SidePaneTabOverview.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"size-6 min-h-6 shrink-0 justify-center p-0 text-foreground-subtle\"",
+    "fingerprint": "fa3bd3440bf223dee0a94fe0f13dc39a9293aa9a066aee3a2c8f0b7b0c183352"
+  },
+  {
+    "file": "renderer/src/app-shell/SidePaneTabOverview.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"border-border border-b p-1 last:border-b-0 **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-2 **:[[cmdk-group-heading]]:text-ui-base **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-foreground-subtle\"",
+    "fingerprint": "dc82342abca08a5e2d97c8138593dbca84d1318d75d18f38cc3c01510250a8ae"
+  },
+  {
+    "file": "renderer/src/app-shell/SidePaneTabOverview.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mb-0.5 min-h-8 cursor-pointer gap-2 px-2 text-ui-base last:mb-0\"",
+    "fingerprint": "325623376115eab6620d6fd184e689b8aff7a6547a2396b9a78fedb03b7777c6"
+  },
+  {
+    "file": "renderer/src/app-shell/SidePane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"side-pane-tabs-root\"",
+    "fingerprint": "7380c371c872b364be2b9b33d6db285c243700ef8d79ded63c191c4e5275504c"
+  },
+  {
+    "file": "renderer/src/app-shell/SidePane.tsx",
+    "kind": "jsx",
+    "snippet": "style={{ width: Math.max(0, tabs.length * 240 - 2 + (fullView ? 220 : 0)) }}",
+    "fingerprint": "51f4fb79f7b80378f4fe6758bf27f3d0afa60eedd38a7589bf122190113b5e15"
+  },
+  {
+    "file": "renderer/src/app-shell/SidePane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"side-pane-tabs-scroll\"",
+    "fingerprint": "91a7a57f203f470841fe646b1ac519f0d1c222fc93b1202eb5ac9bea3eee3a46"
+  },
+  {
+    "file": "renderer/src/app-shell/SidePane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"side-pane-conversation-tab\"",
+    "fingerprint": "797ab59d787f2f097be53f3d8dd0c6fdd116a9c7b4b3bae7a4f0ba84fca131b4"
+  },
+  {
+    "file": "renderer/src/app-shell/SidePane.tsx",
+    "kind": "jsx",
+    "snippet": "className={workspaceView ? undefined : \"ml-auto\"}",
+    "fingerprint": "815def165448dd6bef7b7a267030f5ab3dd70e309a65891937926ec08e81bdcf"
+  },
+  {
+    "file": "renderer/src/GitPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"review-scope-trigger min-w-0 max-w-full\"",
+    "fingerprint": "93c7589640438e1b0616d801ab7b23fa05c1f72717d814a41256a40518fae674"
+  },
+  {
+    "file": "renderer/src/GitPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"max-w-72 whitespace-normal font-normal\"",
+    "fingerprint": "1adb541c4ff21e86321c9202811b140ba34f847d31f67a1a5b0cebb67f7b9726"
+  },
+  {
+    "file": "renderer/src/GitPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"max-w-72 whitespace-normal font-normal text-foreground-subtle\"",
+    "fingerprint": "8ff0c6e6dc60362176df11692dc1af17e5162597e6e81b70e3a7648243b68a31"
+  },
+  {
+    "file": "renderer/src/GitPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"review-scope-trigger min-w-0\"",
+    "fingerprint": "34406ec2fd7af77ad9fa0d75481423472f177a8480d77b077714c2697c847837"
+  },
+  {
+    "file": "renderer/src/GitPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"bg-transparent p-0 text-foreground\"",
+    "fingerprint": "bd45404b6ab36a64e9cfab9d2fa5f6f4f2b5cc3c89f9bf0e1fb5f73798a525f1"
+  },
+  {
+    "file": "renderer/src/GitPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"border-t border-border\"",
+    "fingerprint": "efcfbb1f99e9ef3e130c2ce1d6a960207790f89507b71f96a94ee426c62ac9f5"
+  },
+  {
+    "file": "renderer/src/bots/BotMessages.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"bot-activity-toggle\"",
+    "fingerprint": "10b3e8c28311eb3dd3660d8709e68a758484795d4cc9924c4c95ce7ba15df66c"
+  },
+  {
+    "file": "renderer/src/bots/BotMessages.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"bot-msg-action\"",
+    "fingerprint": "2206d1e07e1c57b765198938e8e7d4c4abc9f573bf064d42001b4210b10739d1"
+  },
+  {
+    "file": "renderer/src/bots/BotMessages.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"bot-starter-chip\"",
+    "fingerprint": "6bfb350f5590cbb6ff0fe1da15184dd3e4a0a2408b404a476d27879eb26b290d"
+  },
+  {
+    "file": "renderer/src/app-shell/ApplicationNavigation.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"application-rail-button\"",
+    "fingerprint": "2fed9309bc98021e0434aac6e51f0cc5223a80a4425a79723bc468573c02927e"
+  },
+  {
+    "file": "renderer/src/app-shell/ApplicationNavigation.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"sidebar-section-toggle\"",
+    "fingerprint": "c667c29711a2038021c0e086b2adce61af24d4d80a97a3ff6910cd39661f91b0"
+  },
+  {
+    "file": "renderer/src/settings/ProviderTemplatePicker.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"flex min-h-16 min-w-0 items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3 text-left transition-colors outline-none hover:border-border-hover hover:bg-hover focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 disabled:opacity-60\"",
+    "fingerprint": "44660f2524279ef9b8e23c9903ee89561df9e0f6ffb0bde0bd5cf97a8596dc8f"
+  },
+  {
+    "file": "renderer/src/bots/BotSidebar.tsx",
+    "kind": "jsx",
+    "snippet": "className={`bot-arena-pill ${arena?.ready ? \"is-ready\" : \"is-unconfigured\"}`}",
+    "fingerprint": "e29f998df14445c57c5730ab5653262e561aaadaad4420cf4e8991f62e117453"
+  },
+  {
+    "file": "renderer/src/bots/BotSidebar.tsx",
+    "kind": "jsx",
+    "snippet": "className={`bot-list-item ${selected ? \"is-selected\" : \"\"}`}",
+    "fingerprint": "29c282fdfdfde5a71b9698123fd297012400d1831aa4fca42093e006fa16073e"
+  },
+  {
+    "file": "renderer/src/ComposerModelMenu.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-model-trigger composer-model-empty\"",
+    "fingerprint": "1b44fdf83f8e7ae0f2b8ca769a92ec77b90ee2c06ead36a36187d0dfc3738a9f"
+  },
+  {
+    "file": "renderer/src/ComposerModelMenu.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-model-trigger\"",
+    "fingerprint": "9a7fe2220fe50d7582289ac6c515aafc51b6c1bb72b589a4ae3b666030290081"
+  },
+  {
+    "file": "renderer/src/ComposerModelMenu.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-model-menu\"",
+    "fingerprint": "7c3fa587d202f3e3d7489828390a1287d225d012f5f5c4088af897e1871c6e88"
+  },
+  {
+    "file": "renderer/src/ComposerModelMenu.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-model-browser\"",
+    "fingerprint": "a0ce380ca1d375ef51e5b2a0373bc659e6d2019d34cffc7dc9b26a2cac34fa1c"
+  },
+  {
+    "file": "renderer/src/ComposerModelMenu.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-provider-list\"",
+    "fingerprint": "3fe0f36c99599302ffef5de982988b6c9f53e86c5cb39835ef7d40e5d376912d"
+  },
+  {
+    "file": "renderer/src/ComposerModelMenu.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-provider-option\"",
+    "fingerprint": "0f8995e108f9716414b0ecf50d6c94b10ca7966587b9e6219ddb566821d54ca7"
+  },
+  {
+    "file": "renderer/src/ComposerModelMenu.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-model-list\"",
+    "fingerprint": "7b966292cfdc9eab5603f891471f239470e6599f26a34fe96812f87e00e074a8"
+  },
+  {
+    "file": "renderer/src/ComposerModelMenu.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-model-trigger composer-effort-trigger\"",
+    "fingerprint": "2a8ebb839c313d004d83a3b3cb5e21943e2a7145b1795df5daaba64269bc97af"
+  },
+  {
+    "file": "renderer/src/ComposerModelMenu.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-effort-menu\"",
+    "fingerprint": "6fce49e9c92df2483a666671a58009ad64dcc44f362e237a24daa61abc32fc1b"
+  },
+  {
+    "file": "renderer/src/ComposerModelMenu.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-fast-toggle\"",
+    "fingerprint": "3e0088167829ef1f1daa37fa72def29ec7267119205e3145e6b60f97664838c8"
+  },
+  {
+    "file": "renderer/src/ComposerModelMenu.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-slider-option\"",
+    "fingerprint": "70aef7bc20a956656f8573835dc461c05f4658b90b7161dfde359e8d124b6030"
+  },
+  {
+    "file": "renderer/src/ComposerModelMenu.tsx",
+    "kind": "jsx",
+    "snippet": "style={{ left: sliderPosition(i) }}",
+    "fingerprint": "142d1d25332411a75b072abfef9d85652a7aa13d6724de369e06a9d0537e044e"
+  },
+  {
+    "file": "renderer/src/views/ConversationNavigation.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"project-label\"",
+    "fingerprint": "ed67093d3a8db1e985876535b372e764ff70b850077b8f52aa84e44946d82112"
+  },
+  {
+    "file": "renderer/src/views/ConversationNavigation.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"project-actions\"",
+    "fingerprint": "63cdca0cb54037dc344183601de3b978e4abf892e7293e3c1c895882cfed6b98"
+  },
+  {
+    "file": "renderer/src/views/ConversationNavigation.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"icon-button\"",
+    "fingerprint": "6bd72ef71c0e9b994fd393ca706fff937a396ff0bdfee296cd267a1de2c8c8aa"
+  },
+  {
+    "file": "renderer/src/views/ConversationNavigation.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"icon-button\"",
+    "fingerprint": "58b411535929a1e752e77ac28d742666610cc452c2781a2aa1198dd210b88454"
+  },
+  {
+    "file": "renderer/src/views/ConversationNavigation.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"project-show-more\"",
+    "fingerprint": "954254878267fa2c5cacbf254a323e1929c81b2d00b6b71e6518c8492976e8eb"
+  },
+  {
+    "file": "renderer/src/views/ConversationNavigation.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"section-action-btn\"",
+    "fingerprint": "282708e84a1738c06a1eaae32a25598fc8c9d97f06b7362e82496bcf984f8288"
+  },
+  {
+    "file": "renderer/src/views/ConversationNavigation.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"section-action-btn\"",
+    "fingerprint": "e8f8273ed2eb56f77d80e8d7ddd4ee895e476234c324b0673dce82b966225143"
+  },
+  {
+    "file": "renderer/src/views/ConversationNavigation.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"icon-button\"",
+    "fingerprint": "78d5200d8b657cddf8affff10ab66eceb111d48e5a688fba48abac41dfa00bb1"
+  },
+  {
+    "file": "renderer/src/ReviewCommentViews.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"review-comment-delete-editing\"",
+    "fingerprint": "21e5a3707677863c3e1fe3b8a2e6bdd889cb3a1e60e7bbe860351b86db6e14b4"
+  },
+  {
+    "file": "renderer/src/ReviewCommentViews.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"review-comment-menu\"",
+    "fingerprint": "cd234d1d2d9082508dd6ba3a6f59681852546f8edf867dd06a5e09a3e43e32ab"
+  },
+  {
+    "file": "renderer/src/ReviewCommentViews.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"review-comment-attachment-trigger\"",
+    "fingerprint": "268c466f398ddc7cc99aee19ffc6c4b98fa733d4f0dc16dbde157cbfa1d4c024"
+  },
+  {
+    "file": "renderer/src/bots/BotSettingsPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"bot-avatar-trigger\"",
+    "fingerprint": "51c330352afa16d16222d4f0623ba3c71899b0b23a1da9a5bbee77c848f6b9af"
+  },
+  {
+    "file": "renderer/src/bots/BotSettingsPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"bot-inline-title-input\"",
+    "fingerprint": "f4bd1edc892f505c63f49fc261899f6c8438ade56461e7d00721913c4ec3b1a0"
+  },
+  {
+    "file": "renderer/src/bots/BotSettingsPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"bot-inline-desc-input\"",
+    "fingerprint": "ed8a58e7dba27942a6622dbd29a85cec18577c3284fc2ee4e4263b09b5c1ce78"
+  },
+  {
+    "file": "renderer/src/bots/BotSettingsPane.tsx",
+    "kind": "jsx",
+    "snippet": "className={`bot-avatar-preset ${avatar === emoji ? \"is-selected\" : \"\"}`}",
+    "fingerprint": "91bfec5806ee19d7a8003e30f784e86f64d4ee3c10a11a6e315b1d45bbb71703"
+  },
+  {
+    "file": "renderer/src/bots/BotSettingsPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"bot-avatar-custom-input\"",
+    "fingerprint": "3ea78440772ec8a9aed68f3134e463db505b5f8599eeb9a03255d189910b3771"
+  },
+  {
+    "file": "renderer/src/bots/BotSettingsPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"bot-row-disclosure\"",
+    "fingerprint": "bf34de9895122f4cef2862aac78cbe655f30f186653de870ff9399cbdbf3609b"
+  },
+  {
+    "file": "renderer/src/bots/BotSettingsPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"bot-instructions-textarea\"",
+    "fingerprint": "2606609fb5bbbc875ea95f52e9a4025d2edf3d08ccecc52450a38f5904b33941"
+  },
+  {
+    "file": "renderer/src/bots/BotSettingsPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"bot-row-disclosure\"",
+    "fingerprint": "4fb90ca17c18836d312bac148b1482d3d2044abec27dc00edba5d940d9b28c44"
+  },
+  {
+    "file": "renderer/src/bots/BotSettingsPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"bot-mini-icon-btn\"",
+    "fingerprint": "e12f53dfc77c49d700ac8429ea94dc810c9a3cfe7527c6d3596c2481a664eabc"
+  },
+  {
+    "file": "renderer/src/bots/BotSettingsPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"bot-danger-button\"",
+    "fingerprint": "d723b0e3fbbde4ec01a029126d829e9ee5acf91370c913fa4b7b50c25b9a19da"
+  },
+  {
+    "file": "renderer/src/BrowserVerificationCard.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"h-auto max-w-full justify-start truncate px-1\"",
+    "fingerprint": "018ff08d7bf830bfdb8a5941c0420122bfb698007253c3f76d6ad6fcc4b0ee20"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchChrome.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"application-rail-button relative\"",
+    "fingerprint": "88f248aa5a0dce02292f76c66341cb745350ff27994e3b04995e598cf344b41d"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchChrome.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"icon-button\"",
+    "fingerprint": "68ed2ece30a34c99e91e328a663477be38c2e0247b7c07140109c9e2666c7541"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchChrome.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"icon-button\"",
+    "fingerprint": "5ec719ed42087a977f62258ff8fa6258a76d808ba509389b91a527d690eaf317"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchChrome.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"icon-button\"",
+    "fingerprint": "d4533763cd5387bdf1865fe2a4cf220925365e1699cd6b619f076248ac64425a"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchChrome.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"icon-button\"",
+    "fingerprint": "c023042d144ce1f9018cd8ba01fc109ed8701e71e1613cab6b729a4a05007654"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchChrome.tsx",
+    "kind": "jsx",
+    "snippet": "className={`icon-button ${panel ? \"active\" : \"\"}`}",
+    "fingerprint": "e41885fc6066d1e56b00e9231bba4da13420cbc48c5bc6f3e47929ea91249be8"
+  },
+  {
+    "file": "renderer/src/bots/BotsWorkspace.tsx",
+    "kind": "jsx",
+    "snippet": "className={settingsOpen ? \"is-active\" : undefined}",
+    "fingerprint": "7db38bfec0543690f22c6af5ad29b19d92d9eb2fda3319888057c9363b8ef54b"
+  },
+  {
+    "file": "renderer/src/bots/BotsWorkspace.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"bot-send-button\"",
+    "fingerprint": "3e422715d9bdef78e3ea49c8e3d54a0b37722223a199ee327aa06cb12fd0b9b5"
+  },
+  {
+    "file": "renderer/src/bots/BotsWorkspace.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"bot-send-button\"",
+    "fingerprint": "d79ea6b78f08adc0e71d100fc81bda1d9665e656879b8af901033af07d68015d"
+  },
+  {
+    "file": "renderer/src/bots/BotDialogs.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"bot-dialog\"",
+    "fingerprint": "bbc11c1df80e5aeec1bc2214458efc625d79889566a158ebc4edb4ef08407866"
+  },
+  {
+    "file": "renderer/src/bots/BotDialogs.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"bot-dialog\"",
+    "fingerprint": "e0fb0291843d86829fbd4f25047b8f470237a8357bd235eb08355c22ffecfbd5"
+  },
+  {
+    "file": "renderer/src/views/ConversationWorkspace.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"icon-button\"",
+    "fingerprint": "4de5096353348e2f674e84ba384dc6402148775bf40be29e5eab05ee08312b5e"
+  },
+  {
+    "file": "renderer/src/views/ConversationWorkspace.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-project\"",
+    "fingerprint": "f3b6be1c0e4ff0ef41c410b5c2b6f44eb16543561f4e0f6ff5889055f240d0cc"
+  },
+  {
+    "file": "renderer/src/views/ConversationWorkspace.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"project-picker-menu\"",
+    "fingerprint": "a1aa5763fccaf49348589cab8bcd88663bdc77843ee11a9d370ff291b3b449f9"
+  },
+  {
+    "file": "renderer/src/ConversationSelectionReferences.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"conversation-selection-reference-trigger\"",
+    "fingerprint": "1496ade37fc89869ac4d003f845102190c4bbdf382e822d75de50cc8ece3b9f8"
+  },
+  {
+    "file": "renderer/src/ConversationSelectionReferences.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"conversation-selection-remove-all\"",
+    "fingerprint": "6edc45041c9b7a267ecee47128a1c7eb9dc431043b6e4e4a81ebe8788fff50e6"
+  },
+  {
+    "file": "renderer/src/ConversationSelectionReferences.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"conversation-selection-details\"",
+    "fingerprint": "352f39572228e044d21a1bf1ef45f3ffe37a1fb627e6ef148ded78f392421fd0"
+  },
+  {
+    "file": "renderer/src/ConversationSelectionReferences.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"conversation-selection-remove\"",
+    "fingerprint": "df7553952a52e7c093c7e836bec1816b70d7af2ae4d9d4c55757a17c08abdc9e"
+  },
+  {
+    "file": "renderer/src/views/TaskWorkspace.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"icon-button\"",
+    "fingerprint": "f9cb5b63407da6f6c5937bb856f548628a8c77849a55b57f013078f04e20c1a9"
+  },
+  {
+    "file": "renderer/src/views/TaskWorkspace.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"icon-button\"",
+    "fingerprint": "fff72942fc11b433ec8afe90bc689cc40fc810c76c14382a29c06c2216100a62"
+  },
+  {
+    "file": "renderer/src/ComposerQueue.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-queue-menu\"",
+    "fingerprint": "7ada0416278188a9a9a2cf61d5d08280f54d043b02474b293e38d9961aabdf82"
+  },
+  {
+    "file": "renderer/src/UserFeedback.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"icon-button\"",
+    "fingerprint": "dda3126b9a838e1116cadd2984d6c002240aea9d289c8ee946e76879765b3083"
+  },
+  {
+    "file": "renderer/src/UserFeedback.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"icon-button\"",
+    "fingerprint": "4669b9f2d7978d009c023c2fb67b81f63d463e0e5eeaeb45b6ff2bb078ff3194"
+  },
+  {
+    "file": "renderer/src/UserFeedback.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"icon-button\"",
+    "fingerprint": "6671037464ab10a01c24eeba9af189d1099987e4db5eb03a71a3bfe40f6e0afa"
+  },
+  {
+    "file": "renderer/src/ApprovalRequest.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"decision-button\"",
+    "fingerprint": "78f4acaa2914572559603813feb42919e2a2a6ec6603edac9893b849de547a65"
+  },
+  {
+    "file": "renderer/src/ApprovalRequest.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"decision-button\"",
+    "fingerprint": "e4067fc55c92cfe37209728a331772708907f2a7aa33a48a740956901654fa53"
+  },
+  {
+    "file": "renderer/src/ApprovalRequest.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"decision-button decision-primary\"",
+    "fingerprint": "46d00b4444ba3780f373185d36a12e030d99964a77b8e9665e3c891fc44ada55"
+  },
+  {
+    "file": "renderer/src/ApprovalRequest.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"decision-button approval-scope-trigger\"",
+    "fingerprint": "5a796e73e429d78b43b30869beec1d0b9d8ac1a759e88795be950f0adb33ad00"
+  },
+  {
+    "file": "renderer/src/ApprovalRequest.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"approval-scope-menu\"",
+    "fingerprint": "1f2ca0d1e33a83b6dab1ece1e243b3100b7d2e01f33c79570ade3fa4574bebea"
+  },
+  {
+    "file": "renderer/src/ApprovalRequest.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"decision-button decision-primary\"",
+    "fingerprint": "b4898a56bff230e43c15a4e2a301e92a2c7876b71186bb47b9aade68e2a0dba9"
+  },
+  {
+    "file": "renderer/src/TurnUsage.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"turn-usage-trigger\"",
+    "fingerprint": "d6a21be32e2ce8a7be534cc11b3cf641b1d8e227898855ae48def39a47b1c45b"
+  },
+  {
+    "file": "renderer/src/TurnUsage.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"context-usage-popover\"",
+    "fingerprint": "c8b25f65e5a8e7a3506d7de5d94230d0448dc18cfb9372ec1d28a55b5d9e3043"
+  },
+  {
+    "file": "renderer/src/Goal.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"goal-summary\"",
+    "fingerprint": "839e76e639b0ea84bd13641c824bdc604e496e1b3eb6308900ef97c2426c90cd"
+  },
+  {
+    "file": "renderer/src/TurnFileSummary.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"turn-file-summary-review-action\"",
+    "fingerprint": "5e3d94c201150953a1399232cc8626638cd675e79ed8013d7f36642af9c41997"
+  },
+  {
+    "file": "renderer/src/TurnFileSummary.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"turn-file-summary-disclosure\"",
+    "fingerprint": "cf56b0b90e25702d3ad7b4998fb892ca2047e1d4e90fbf67ab9821c65cca9dde"
+  },
+  {
+    "file": "renderer/src/WorkgroupsPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"h-auto justify-start whitespace-normal text-left\"",
+    "fingerprint": "264998fad35607990775f8bd7418b9b1a59e49cecd0312dcb2018ff67e4da019"
+  },
+  {
+    "file": "renderer/src/AnnotationNoteEditor.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"browser-annotation-confirm\"",
+    "fingerprint": "162d91128d5f8d05eb2f74201fa8ba20d5a02c2abc8ecf9a2f0787a5453a566b"
+  },
+  {
+    "file": "renderer/src/AnnotationNoteEditor.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"browser-annotation-confirm\"",
+    "fingerprint": "6baf1a82918bf24ab6562f60d410b8debcab042de614fba9c29956829a999306"
+  },
+  {
+    "file": "renderer/src/TimelineBottomButton.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"timeline-bottom-button transition-opacity delay-150 duration-0 starting:opacity-0\"",
+    "fingerprint": "c380344ed2bf22694cd2d4e8413b659d6efa8ca6f740ae27864609c39451eb88"
+  },
+  {
+    "file": "renderer/src/ReviewFileTree.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"review-file-filter-input\"",
+    "fingerprint": "d9a1a977e60f8e2a9ec4416e14ecf7ba171af1798d23fe884cf1e2354b26f371"
+  },
+  {
+    "file": "renderer/src/ReviewFileTree.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"review-file-tree-row\"",
+    "fingerprint": "646bd4af84a96f6f2215df091634e486e4d162a54a4db9529b117d674a507954"
+  },
+  {
+    "file": "renderer/src/ReviewFileTree.tsx",
+    "kind": "jsx",
+    "snippet": "style={{ paddingLeft: `calc(var(--spacing-inline) / 2 + var(--icon-size-control) * 3 / 4 * ${ancestors.length})`, }}",
+    "fingerprint": "3ae9bcc0da522ba1ecb1bc5e93055f73f645fea45b937e8db1f6cd8b23f3072e"
+  },
+  {
+    "file": "renderer/src/ImageAnnotationViews.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"browser-annotation-marker image-annotation-marker\"",
+    "fingerprint": "8ad7f33df81f301a6858ddd09edbe4bf679a7fd9754264e8a49e39ec74a6d599"
+  },
+  {
+    "file": "renderer/src/ImageAnnotationViews.tsx",
+    "kind": "jsx",
+    "snippet": "style={{ left: `${value.x * 100}%`, top: `${value.y * 100}%` }}",
+    "fingerprint": "666657fcb2f50405ad9b8cc188cf450651cac63311e2adb7dd85aa9f809240d1"
+  },
+  {
+    "file": "renderer/src/snapshots/SnapShotAttachment.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"h-full w-full cursor-zoom-in\"",
+    "fingerprint": "9a6e30d7adc366272be2e5218356a18b3d4a39f7e76d5a7794abc0fc9642af51"
+  },
+  {
+    "file": "renderer/src/snapshots/SnapShotAttachment.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"pointer-events-auto flex size-5 items-center justify-center rounded-sm bg-media-overlay/30 text-media-overlay-foreground\"",
+    "fingerprint": "81912d6200962f1a4c40889831de2699468eaac8b9dc5305d0f1957bcb11cf31"
+  },
+  {
+    "file": "renderer/src/snapshots/SnapShotAttachment.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"absolute right-1 top-1 flex size-5 items-center justify-center rounded-full bg-media-overlay/65 text-media-overlay-foreground\"",
+    "fingerprint": "73fb9016e1b8a7c43dde0ab35f046e83f04b6eec58e7f313f672916a76c42cd7"
+  },
+  {
+    "file": "renderer/src/ComposerPermissionMenu.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"min-h-[var(--size-touch-target)] h-auto w-full justify-start gap-inline whitespace-normal text-start\"",
+    "fingerprint": "fc02d869d6a8e35e1b0f4b409fa77ae6ee79aa1663361951bda7dbc6b4156295"
+  },
+  {
+    "file": "renderer/src/ComposerPermissionMenu.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"group/permission size-7 gap-1 rounded-navigation p-0 text-ui-caption text-foreground-subtle @xl/composer:w-auto @xl/composer:px-2 data-[composer-compact=true]:w-7 data-[composer-compact=true]:px-0\"",
+    "fingerprint": "bd6702bda6e6fba744acef96e5e892dcc2989b5b956b072a81ae5a7fc2a5cf10"
+  },
+  {
+    "file": "renderer/src/ComposerPermissionMenu.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-permission-menu w-[300px]\"",
+    "fingerprint": "7b0aff3a802cbdba8b5e0f20de5f6258748fc26ac0245499bfaccd030c135e16"
+  },
+  {
+    "file": "renderer/src/ComposerPermissionMenu.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"permission-choice items-start gap-2 text-ui-caption [&_[data-slot=dropdown-menu-radio-item-indicator]]:top-1/2 [&_[data-slot=dropdown-menu-radio-item-indicator]]:-translate-y-1/2\"",
+    "fingerprint": "cb74a95d541bebc1fb684bc0fc6e6182520ef818472763aef1cdcd1d74e4c016"
+  },
+  {
+    "file": "renderer/src/BugReportDialog.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"bug-report-dialog w-[min(640px,calc(100vw-32px))] max-w-[calc(100vw-32px)] max-h-[calc(100dvh-48px)] flex flex-col gap-[var(--spacing-field)]\"",
+    "fingerprint": "e8931172d42eb9ac7b19646c446240ddae4439860dcedfb0186dc36884e75506"
+  },
+  {
+    "file": "renderer/src/BugReportDialog.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"bug-report-image-button cursor-zoom-in focus-visible:outline-2 focus-visible:outline-[var(--color-brand)] focus-visible:outline-offset-2\"",
+    "fingerprint": "49e9c7830097acee43a00168b598659eed85b4491d1df04daefc636bba5049ae"
+  },
+  {
+    "file": "renderer/src/ProcessesPane.tsx",
+    "kind": "jsx",
+    "snippet": "className={`rounded-control border border-border p-2 text-left ${selected === p.id ? \"bg-selected\" : \"hover:bg-hover\"}`}",
+    "fingerprint": "06c6cd9cebfc8218282267ec887794b0acda77b6d664ad5036740020e9b4835f"
+  },
+  {
+    "file": "renderer/src/ProcessesPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"w-fit max-w-full truncate\"",
+    "fingerprint": "8ac9e87c294d783cf9f683e3009b741c07c872a2b940cc3e7b9bca4bf48c2691"
+  },
+  {
+    "file": "renderer/src/TurnHookStats.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"icon-button\"",
+    "fingerprint": "bd44926ed8333910971cb63f7822e4d09795403f344cc4bb3d048032dc63631a"
+  },
+  {
+    "file": "renderer/src/TurnHookStats.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"hook-stats-dialog\"",
+    "fingerprint": "c0b3323849bc3de2e2ad8ab9fcd9f24a0d8a46e5ced5fc586113300f4e26cd84"
+  },
+  {
+    "file": "renderer/src/TurnHookStats.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"hook-stats-title\"",
+    "fingerprint": "4456ea10b7d0606efd4da93cafae3cab396bbe53df86a70ae94960dfc7d80005"
+  },
+  {
+    "file": "renderer/src/TurnHookStats.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"hook-stats-scope\"",
+    "fingerprint": "da26e294e7f14a199cffdf8018e356d3e30aa6a7e0c26d3d906fdd3ca46321e4"
+  },
+  {
+    "file": "renderer/src/settings/ScopedSkillsSettings.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"resource-card\"",
+    "fingerprint": "b263de1a38a653016d33ab086dc290dbb8ec963562e2de6bf06fe5816183d98e"
+  },
+  {
+    "file": "renderer/src/WorkspaceMedia.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"block max-w-full cursor-zoom-in overflow-hidden rounded-xl border border-border bg-surface\"",
+    "fingerprint": "65db921f3d6e32066e069ec190987faa34733548aaceb813218cfa9c184cd547"
+  },
+  {
+    "file": "renderer/src/settings/ConnectionMethodPicker.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"provider-method-card\"",
+    "fingerprint": "f49b88b7ec22ba7abc59a0dc6b60d7d1a8753e53d9cdbc8ca45119b09380c28f"
+  },
+  {
+    "file": "renderer/src/WorktreeStarter.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"worktree-picker-trigger\"",
+    "fingerprint": "b8a46f6a0bba4b74812eac6cb5a66bdb05716ead0a942184284a4ec79aaec447"
+  },
+  {
+    "file": "renderer/src/WorktreeStarter.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"worktree-picker\"",
+    "fingerprint": "fc814764d1e88e6470cd8b523d76736f748fecd1a54047f871c1c67c6592fdec"
+  },
+  {
+    "file": "renderer/src/WorktreeStarter.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"worktree-picker-configure\"",
+    "fingerprint": "85623b6d441c4ea76a164548ae11e3e289ac574548857cc42cd9d3f15aee0f11"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanels.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"icon-button\"",
+    "fingerprint": "591b59eb1ff78868a82cddf6904ab27cd543ec9f0c0f56d9d8782c5223e878a2"
+  },
+  {
+    "file": "renderer/src/settings/ResourceSettings.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"resource-card\"",
+    "fingerprint": "83c5ab4dbdb1eb3d41f4b77c23dc0b73e416e6fd24d084a188efb065d73779b6"
+  },
+  {
+    "file": "renderer/src/WorkspaceFilePane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"file-preview-control\"",
+    "fingerprint": "da5c915d3a3f6eaf9a55c9e07c2f9f7cb4457bea1f2c7f15aa6e658e559598a0"
+  },
+  {
+    "file": "renderer/src/WorkspaceFilePane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"file-preview-control file-preview-icon\"",
+    "fingerprint": "f2d13a7869436b5d6cd62737cd07ec3b049400d45f5caa449ba5ac6bce240a8a"
+  },
+  {
+    "file": "renderer/src/WorkspaceFilePane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"file-preview-control file-preview-open\"",
+    "fingerprint": "d316880f53e0ab0618a494cd66e0fbbfa83f3ee855a3fe733f92c606767f2133"
+  },
+  {
+    "file": "renderer/src/WorkspaceFilePane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"file-preview-control file-preview-open-options\"",
+    "fingerprint": "3e1b2cc562fe415a3182f7988a0dc39a924cd23a174e84de2107da67f3465c96"
+  },
+  {
+    "file": "renderer/src/WorkspaceFilePane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"workspace-markdown-copy\"",
+    "fingerprint": "a74985802d4af0e3f9a7704fc068c8efe1710b826ec07a860e4bb91bf4fe72ee"
+  },
+  {
+    "file": "renderer/src/ToolEvent.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"agent-spawn-link\"",
+    "fingerprint": "c1705aa4147400647d68bd89cfd640b15faa6cb7d37336429268f530359f775f"
+  },
+  {
+    "file": "renderer/src/ToolEvent.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"agent-spawn-record\"",
+    "fingerprint": "776cab470cf819f6a8fffe1165e8c0f9e28516d1340546b7f17d7552c24c1f3c"
+  },
+  {
+    "file": "renderer/src/ToolEvent.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"agent-spawn-link\"",
+    "fingerprint": "af0ab206b310add04f6eb3a2c449a77d08473ce94923863c896ebf096d596748"
+  },
+  {
+    "file": "renderer/src/ToolEvent.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"agent-spawn-record\"",
+    "fingerprint": "e39f8ea5dcaeaf59acea6768a8b414314746dd8de6fe013f7f550cee88326c84"
+  },
+  {
+    "file": "renderer/src/ToolEvent.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"agent-spawn-record\"",
+    "fingerprint": "2cc36c97b582edda7ffdde34d6e775766ce8767826c17f00377250ec87848159"
+  },
+  {
+    "file": "renderer/src/ToolEvent.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"tool-file-link\"",
+    "fingerprint": "44f7a20b56667e1e275431909f7e9852d0433c402e0ed9d8dcde9a5073653438"
+  },
+  {
+    "file": "renderer/src/ToolEvent.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"tool-file-diff-toggle\"",
+    "fingerprint": "a59f4af0c3f3f4c51bb85758b8180c1d1479d704bf641039e54cd437ae79b549"
+  },
+  {
+    "file": "renderer/src/ToolEvent.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"tool-file-record\"",
+    "fingerprint": "8f0727b215493b289581d0e2c90da09151fe4d1df22d801c75c8d98333bf2d13"
+  },
+  {
+    "file": "renderer/src/ToolEvent.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"tool-file-link\"",
+    "fingerprint": "a56fdb2cbd62ab4cbf165e6c185cda24603be8a20a59b932b1be873e5cc14d49"
+  },
+  {
+    "file": "renderer/src/TaskCenter.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"icon-button\"",
+    "fingerprint": "0d537ba9848f6886087edb01d94d102ff47fa8e732c286ec421932dc17efa0fe"
+  },
+  {
+    "file": "renderer/src/TaskCenter.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"icon-button\"",
+    "fingerprint": "44699a4af6e560f5180226a0c9f75faf2ebe4a607ffde3f2179ae191da717098"
+  },
+  {
+    "file": "renderer/src/TaskCenter.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"task-new\"",
+    "fingerprint": "9da82093483b917cdcfc000fee973105a2c4e8bd57ea71aefd0baf6d6bb3f66e"
+  },
+  {
+    "file": "renderer/src/ComposerPlanMode.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"gap-1 rounded-full px-2 text-ui-caption leading-[18px] text-foreground-subtle\"",
+    "fingerprint": "d54841e1695e1c2fcd606e46f2a85d0e7f84bc59b7c2a14db6571d3b5f725c47"
+  },
+  {
+    "file": "renderer/src/settings/SessionSettings.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"w-20 text-center\"",
+    "fingerprint": "cdb0840ffd08267c1915e205c9284fa926262342f6403881c37d627412e1b6d5"
+  },
+  {
+    "file": "renderer/src/settings/SessionSettings.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"w-24 text-center\"",
+    "fingerprint": "278240fcc132faaa07e6940917ebf0b6027e13c6fa42b522a5edda382f702c32"
+  },
+  {
+    "file": "renderer/src/settings/SessionSettings.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"w-24 text-center\"",
+    "fingerprint": "858efef78923fc7e518d1c76f210d862766ddcc45e3fa86ed5dd0292bfd365df"
+  },
+  {
+    "file": "renderer/src/settings/PluginSkillsPage.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"plugin-row-info\"",
+    "fingerprint": "aa5658d9228d1d03f2c07db6f2a9d1e1e9ce615cb610f97c3e82a811f5b62076"
+  },
+  {
+    "file": "renderer/src/settings/PluginSkillsPage.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"plugin-skills-more\"",
+    "fingerprint": "0b6931c4aae93857feb350623035621b8286671738373e66bb59f02a4123860b"
+  },
+  {
+    "file": "renderer/src/settings/WorktreesSettings.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"settings-segmented-tabs worktrees-script-tabs\"",
+    "fingerprint": "e0b11e77351ab0e02443837dd82ed721be63739ec7f76bb676006cedabd0b2da"
+  },
+  {
+    "file": "renderer/src/settings/WorktreesSettings.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"worktrees-script-input\"",
+    "fingerprint": "914577032ca0216cfcabf854759d96b08b22c39f8d019b3d197c24004e30df78"
+  },
+  {
+    "file": "renderer/src/settings/WorktreesSettings.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"worktrees-variables\"",
+    "fingerprint": "1278ab7bc26f9d3229f83ae5e478aba350a6918d0c3838a31da8c7aedc424e68"
+  },
+  {
+    "file": "renderer/src/settings/WorktreesSettings.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"worktrees-refresh\"",
+    "fingerprint": "edde2e58a3cfb8d7aa332ee75dd3015076c909376e4026b5ad535219059eb4a6"
+  },
+  {
+    "file": "renderer/src/settings/WorktreesSettings.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"worktrees-root-input\"",
+    "fingerprint": "2d7e26477b2550ec481a4d0dd7dc296d9ed0a65541c4224da94bca4d0c2d436d"
+  },
+  {
+    "file": "renderer/src/settings/WorktreesSettings.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"worktrees-count-input\"",
+    "fingerprint": "592195144f7098572fb1f4be6ec7d1d5f5b3e756be9f7712a646740f8f062bdf"
+  },
+  {
+    "file": "renderer/src/settings/WorktreesSettings.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"worktrees-delete-environment\"",
+    "fingerprint": "04f8935dd9139abe2d6174bee3e4d44169abe307ccdc4b2ffbf5d38c842dd2e7"
+  },
+  {
+    "file": "renderer/src/views/TaskResourcesPopover.tsx",
+    "kind": "jsx",
+    "snippet": "className={`icon-button task-resources-trigger ${open ? \"active\" : \"\"}`}",
+    "fingerprint": "e1807a7127ec57c144ab885ff271a4cfdc9f6f2dd1c40acfca434282e135a395"
+  },
+  {
+    "file": "renderer/src/views/TaskResourcesPopover.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"task-resources-popup\"",
+    "fingerprint": "ec5dcc3751edd605ab6c358ada88aede311db7fe5b37a82ca25db6e2ddd2ea69"
+  },
+  {
+    "file": "renderer/src/v4/ConversationUserInputBody.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"rounded-full bg-background shadow-sm backdrop-blur-sm transition-colors\"",
+    "fingerprint": "d0e0b3326ab81a0ea16240b6a3674836c774942eb38dbfa7ca7d93a77b12c0e7"
+  },
+  {
+    "file": "renderer/src/NewTaskButtonGroup.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"new-task-shortcut\"",
+    "fingerprint": "08a22f253a34d1bd4bcc0d82821143fc10165e8da3989dd8cb5c7fe0b3673856"
+  },
+  {
+    "file": "renderer/src/ComposerSkills.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-skill-preview-trigger\"",
+    "fingerprint": "518bcc87243948bbcb879c250970db39f659f90104e599d22df77def09d9372e"
+  },
+  {
+    "file": "renderer/src/ComposerSkills.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-skill-preview\"",
+    "fingerprint": "6fca11e6617cc2dca194ef28d4c94ba1ac12099922520cd9cde6caa9269aad22"
+  },
+  {
+    "file": "renderer/src/settings/TrajectoryToggle.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"trajectory-toggle\"",
+    "fingerprint": "736ad369de010042440690e28ae89b2855d97b328217b5838cc03c46bc498afe"
+  },
+  {
+    "file": "renderer/src/Composer.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-primary-action composer-stop-action\"",
+    "fingerprint": "d46b5d31f0615c80e351b3d7a29f8bc13538ca2c5814f7af8d8b080db4e8e58c"
+  },
+  {
+    "file": "renderer/src/settings/DisplaySettings.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"w-16 text-center\"",
+    "fingerprint": "ae6c91f3d703ad3a94667a39642ead2f50817b8ac692a6ae18955f1a9fe45e9a"
+  },
+  {
+    "file": "renderer/src/settings/ModelSettings.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"provider-catalog-row\"",
+    "fingerprint": "612f1764c6f527baef9115cc278e8b0ce4be531cc9711625862c8ae24fb89d66"
+  },
+  {
+    "file": "renderer/src/settings/ModelSettings.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"provider-catalog-add\"",
+    "fingerprint": "008a1dd6945735185f5e47ee18ad91c95c53fb861b97e9d019b62bdc81e54129"
+  },
+  {
+    "file": "renderer/src/settings/ModelSettings.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"flex-1 font-semibold\"",
+    "fingerprint": "2566d9b16b182ef13ca630a4e9d877407abc2546cae9a4c65cedeb336cec8fed"
+  },
+  {
+    "file": "renderer/src/remote/RemoteWorkbench.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"remote-project-row\"",
+    "fingerprint": "f198e3fbbf1ad140fa89f34dbc293b17a5622855f6336f8eecb77593f83226c6"
+  },
+  {
+    "file": "renderer/src/remote/RemoteWorkbench.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"remote-project-create\"",
+    "fingerprint": "809840fd50a130d9ba6c2b81c67d3eaf0aea18e024cafdd0adda3b7daa5d5f77"
+  },
+  {
+    "file": "renderer/src/remote/RemoteWorkbench.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"remote-session-row\"",
+    "fingerprint": "2e54b02b588b49d306e928d5e3e6bca5059fe45d9251ee15920d861cadd09b0e"
+  },
+  {
+    "file": "renderer/src/remote/RemoteWorkbench.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"remote-session-more\"",
+    "fingerprint": "da42d6d9b2a2faf4bf4f6251beeae95bc51841ce3bef3b4859430da4c433b137"
+  },
+  {
+    "file": "renderer/src/remote/RemoteWorkbench.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"remote-session-more\"",
+    "fingerprint": "0a85e5393dfeac29b317b710f1a0698973bdcb3eca2f798c9bd7b7dead70c4d9"
+  },
+  {
+    "file": "renderer/src/remote/RemoteWorkbench.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-primary-action composer-stop-action\"",
+    "fingerprint": "7a107a968468b4e2f7ac964219ee89c594b575ea8514debf20a3a66c69c4c665"
+  },
+  {
+    "file": "renderer/src/UserPromptEdit.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"icon-button\"",
+    "fingerprint": "5354fad2766865aa7d39d9eaef053258fc504025714b25ba797dc44c4a9fecb5"
+  },
+  {
+    "file": "renderer/src/UserPromptEdit.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"user-prompt-edit-cancel\"",
+    "fingerprint": "eb68364287cadbfeba5304db7b19ba37f4c7aa51914e32f6588b66857d32dd58"
+  },
+  {
+    "file": "renderer/src/UserPromptEdit.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"user-prompt-edit-send\"",
+    "fingerprint": "d290d584734cf0be270d77bcdd6958d0d6054ce2f77d898e8c349e0dd7dd6786"
+  },
+  {
+    "file": "renderer/src/settings/model-provider-section/ApiKeyInput.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"pr-10 h-9\"",
+    "fingerprint": "6bda909ab54a45f6f49b52e78d1eff806bcab8e9b81be71c7684e76ab53f14d7"
+  },
+  {
+    "file": "renderer/src/settings/model-provider-section/ApiKeyInput.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"absolute top-1/2 right-1.5 -translate-y-1/2\"",
+    "fingerprint": "6b3c5dad4fa7e174902a31b22e481e513e116b4cd2ca9a381123469ad212256b"
+  },
+  {
+    "file": "renderer/src/app-shell/SidePaneTabTrigger.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"h-full min-w-0 flex-1 justify-start gap-[calc(var(--spacing-inline)/2)] border-0 bg-transparent py-0 pl-[calc(var(--spacing-inline)*1.25)] pr-[calc(var(--spacing-control-xs)+var(--spacing-inline))] text-ui-caption text-inherit data-active:bg-transparent after:hidden\"",
+    "fingerprint": "fcc7e54ae27ca2ffb59fa69e17f57f36d80c45e0acd10c80b93be9c34dcb112a"
+  },
+  {
+    "file": "renderer/src/app-shell/SidePaneTabTrigger.tsx",
+    "kind": "jsx",
+    "snippet": "className={cn( \"absolute right-[calc(var(--spacing-inline)*3/4)] top-1/2 -translate-y-1/2\", !isActive && \"pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100\", )}",
+    "fingerprint": "0ea0f9ba4de22783cf50436e46b6c3b0d47bb195e0aaacc7320fa839de504773"
+  },
+  {
+    "file": "renderer/src/ConversationStatusCard.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"task-resource-row\"",
+    "fingerprint": "69264584ce55371991fd786d01b28fca769cc1ae8cc3affc09cd6c31beb9109e"
+  },
+  {
+    "file": "renderer/src/settings/ThemeSharing.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"appearance-text-action\"",
+    "fingerprint": "d55bd542cdd2f4ecb4a626224494253804a5168ffd22f3b09ebf87b9fe02a631"
+  },
+  {
+    "file": "renderer/src/settings/ThemeSharing.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"appearance-text-action\"",
+    "fingerprint": "528b25259d649ade586ccd276360dfc59bb591b0f14e239c9dbbf0c9e5303b30"
+  },
+  {
+    "file": "renderer/src/settings/ThemeSharing.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"min-h-28 font-mono\"",
+    "fingerprint": "1a14f3545ad4ab9dc62e35d5cbdfe0edc94d8792017621dd9dc49226a4b7a56c"
+  },
+  {
+    "file": "renderer/src/ScheduledTaskEditDialog.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"scheduled-edit max-w-md\"",
+    "fingerprint": "49ff5a4fbad81eb26af5d04a5f5dcdf1b27e8a86419459609ad79cfb5f906bf8"
+  },
+  {
+    "file": "renderer/src/GitActions.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"pointer-events-auto\"",
+    "fingerprint": "f8c4e36693388ef5e2f351e089a8ae4e8b628b1588b276f5b82489cf6442b491"
+  },
+  {
+    "file": "renderer/src/GitActions.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"pointer-events-auto\"",
+    "fingerprint": "a8bba29f8a38618c1d2cd25b36eec3ba6f764cc489396f6da576347f818f5dba"
+  },
+  {
+    "file": "renderer/src/settings/PluginCenter.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"plugin-center-manage\"",
+    "fingerprint": "1d523833576b2c1077ad56d7ce5731cc27a7e4466c3fef92850136aa2e5835ea"
+  },
+  {
+    "file": "renderer/src/settings/PluginCenter.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"plugin-row-info\"",
+    "fingerprint": "078f89e7a285f6fdc67fa28435b155fb37e7797009eed9cebb1b254c9cc03780"
+  },
+  {
+    "file": "renderer/src/settings/PluginCenter.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"plugin-row-action\"",
+    "fingerprint": "ec47a246517f72c434c9aeef70b1560c27df25b592a805aa67a0f57b5828158a"
+  },
+  {
+    "file": "renderer/src/settings/PluginCenter.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"plugin-skill-link\"",
+    "fingerprint": "ae1b296e39ae828da794940d61a6047cfbb221f1706244468365b9f83f509ce7"
+  },
+  {
+    "file": "renderer/src/prompt-editor/ChatPromptActionMenu.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"gap-1 rounded-lg text-ui-base\"",
+    "fingerprint": "40a8d4c4d9a84ec5c549efd43aa436dbc50db0eaca812f46dcc30e568782ae41"
+  },
+  {
+    "file": "renderer/src/prompt-editor/ChatPromptActionMenu.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-add-menu w-(--anchor-width) max-w-(--available-width) max-h-80 p-1\"",
+    "fingerprint": "ef5a04f1571846c33935a13d74718b8481c84b25ad75afc1ac6e7bae99933f87"
+  },
+  {
+    "file": "renderer/src/prompt-editor/ChatPromptActionMenu.tsx",
+    "kind": "jsx",
+    "snippet": "style={{ gap: 0 }}",
+    "fingerprint": "c156cab7b71fe62f7692ac7aad4196f1f712cc9ff75d83f2605ec00bfbc39bff"
+  },
+  {
+    "file": "renderer/src/prompt-editor/ChatPromptActionMenu.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"flex w-full items-center gap-2 rounded-[15px] px-2 py-[5px] text-left text-ui-caption leading-[1.42857] hover:bg-hover focus-visible:bg-hover outline-none\"",
+    "fingerprint": "3909cae7c253eb2d02b8d87f39b6ad1834b6d157a196f5cee96a6f1580cbb813"
+  },
+  {
+    "file": "renderer/src/prompt-editor/ChatPromptActionMenu.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"flex w-full items-center gap-2 rounded-[15px] px-2 py-[5px] text-left text-ui-caption leading-[1.42857] hover:bg-hover focus-visible:bg-hover outline-none disabled:opacity-50 disabled:cursor-not-allowed\"",
+    "fingerprint": "3f8d5edf4c01a6d1f1f723eb0e739ed2e1900cfe46963c2fa9116217650cf8c7"
+  },
+  {
+    "file": "renderer/src/EmbeddedBrowserPaneParts.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"browser-annotation-trigger\"",
+    "fingerprint": "73448c0541d94b68e50a5b8d7c780dbc7aeeee12d90a79a767d0c4cde2cf09d9"
+  },
+  {
+    "file": "renderer/src/EmbeddedBrowserPaneParts.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"browser-address\"",
+    "fingerprint": "36216b903ed68d8ab3d62603cc4505eda475b178f4d92b062e04b0892e20821b"
+  },
+  {
+    "file": "renderer/src/AskUserQuestion.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"decision-deferred\"",
+    "fingerprint": "7d43e43c4ec0d96dd5f38cf9b18fe17a0546e0410f2a7f44e86eefe38769b47c"
+  },
+  {
+    "file": "renderer/src/AskUserQuestion.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"decision-button\"",
+    "fingerprint": "fea578ec5b1d3381199367ab5a22bc3aad1feb3e879352698deef2bf9c19c9ff"
+  },
+  {
+    "file": "renderer/src/AskUserQuestion.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"decision-button ask-user-defer\"",
+    "fingerprint": "704b41f4dddb25cbfa713716942c8e0a1f22848f06fb98a9f6f83fa4a594d68a"
+  },
+  {
+    "file": "renderer/src/AskUserQuestion.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"decision-button decision-primary\"",
+    "fingerprint": "874b4dda9d72ddf470c9a20f7521c8fbd61621571f1e1a2cc56322d918763497"
+  },
+  {
+    "file": "renderer/src/GitPaneChangeCard.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"review-file-identity min-w-0 flex-1 overflow-hidden text-left\"",
+    "fingerprint": "56115ef3278ccac59d2c42db93083cb120cd67fa287cf0a9715642ec91fb81bc"
+  },
+  {
+    "file": "renderer/src/GitPaneChangeCard.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"review-file-disclosure\"",
+    "fingerprint": "f5c63735c2f8b322b192266d3ed72b8b0a64a45c9da39ab9400d1d9bf1469153"
+  },
+  {
+    "file": "renderer/src/ForkTargetDialog.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"fork-target-dialog\"",
+    "fingerprint": "7b2e82bb3864d03466bdf1dc511952750c7c8f0ef29b195f478da930e32fdd0f"
+  },
+  {
+    "file": "renderer/src/ForkTargetDialog.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"fork-workspace-choice\"",
+    "fingerprint": "2349c109ec4f0175c34338e30e3d1b851fd983a983b1ad1cf59fc3bee9f8dd09"
+  },
+  {
+    "file": "renderer/src/MessageAttachment.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"task-resource-row\"",
+    "fingerprint": "c075bfa42253529835a54ed81769fe5530f6e1e06fcbf148bd8f8e2a212f2fab"
+  },
+  {
+    "file": "renderer/src/MessageAttachment.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"absolute inset-0 rounded-[inherit] focus-visible:-outline-offset-2\"",
+    "fingerprint": "f25f9254e32ce386fb3b493f8075e1e81867475a9f3475ebb981869eef5c2d8b"
+  },
+  {
+    "file": "renderer/src/MessageAttachment.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"image-inspection-dialog h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-none overflow-hidden border-0 bg-transparent shadow-none [app-region:no-drag]\"",
+    "fingerprint": "e81e08348c2e2f8c59dab0f140c8765f539f0f5729f871c908eccaeca9ea858e"
+  },
+  {
+    "file": "renderer/src/MessageAttachment.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"absolute right-4 top-4 z-10 rounded-full border border-border bg-background text-foreground\"",
+    "fingerprint": "70d285282a4caf7511036fe40cbe75c6b8e2a775757d6efe57af8d88b2cc27ed"
+  },
+  {
+    "file": "renderer/src/MessageAttachment.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"absolute bottom-4 left-1/2 -translate-x-1/2\"",
+    "fingerprint": "d000fec2e2ac4713519564c0593005dc295f59d39f9a7932c57d423a5ebca157"
+  },
+  {
+    "file": "renderer/src/Messages.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"turn-fork-trigger\"",
+    "fingerprint": "60189fda3771d667e21dfa04b6c33baaa647e28bbbe075e44a5eb524ea3e06d1"
+  },
+  {
+    "file": "renderer/src/Messages.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"side-bring-action\"",
+    "fingerprint": "b01253180bf1b1ca4a39cb9221ef55f93b817ac039813fff94ea7fd08ff0d764"
+  },
+  {
+    "file": "renderer/src/Messages.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"w-auto flex-row gap-inline p-1\"",
+    "fingerprint": "d7b9df75e93065a2c3499bdd674159dd487c997c6c519683c6e61c774753a2fa"
+  },
+  {
+    "file": "renderer/src/ContextMeter.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"context-meter-trigger\"",
+    "fingerprint": "8423ddb5c6de3c1a5282d93b3c60a3a77ebf1d4ae9240168122c1915845edc4b"
+  },
+  {
+    "file": "renderer/src/ContextMeter.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"context-usage-popover context-meter-popover\"",
+    "fingerprint": "14544af84747ad6986ecaaac41af0d7059f5199b5e1efd5c6686d6a477f79262"
+  },
+  {
+    "file": "renderer/src/ContextMeter.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"context-usage-close\"",
+    "fingerprint": "245f8826e7b356026ac081abff04a1bc820632914d40d6922d71283a8d2a6faf"
+  },
+  {
+    "file": "renderer/src/SideChatPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"side-chat-related\"",
+    "fingerprint": "e5e57ae2452a07c13878b14f6b1846f384565477aabf7dfd5fd8c339376f45db"
+  },
+  {
+    "file": "renderer/src/SideChatPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"side-bring-action\"",
+    "fingerprint": "c2883b87c1383fcd7eee99668716b10c3b4f66f8941d09bcb73cbd54969dab06"
+  },
+  {
+    "file": "renderer/src/SideChatPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"side-bring-action\"",
+    "fingerprint": "277a94f2d7ad1aa05a4c3e1e7b2a83e9fc72e6b0a6e2a9ec61623ea6653e64c7"
+  },
+  {
+    "file": "renderer/src/SideChatPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-primary-action composer-stop-action\"",
+    "fingerprint": "a8d281aed2d3b0d602d2d0c87f5b65cf213843f444658611b3e05b510250ef54"
+  }
+]

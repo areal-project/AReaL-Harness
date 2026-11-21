@@ -418,6 +418,26 @@ describe("no-restyle", () => {
     expect(result.status).toBe(1);
     expect(result.output).toContain("R-CHECK-022");
   });
+  test("tracks renderer components/ui re-export wrappers", () => {
+    const wrapperHeader =
+      'import { Button } from "./components/ui/button.js";\nimport { DialogContent } from "../components/ui/dialog.js";\n';
+    expect(
+      lint("no-restyle", `${wrapperHeader}export const A = () => <Button className="w-full" />;`)
+        .status,
+    ).toBe(0);
+    const badButton = lint(
+      "no-restyle",
+      `${wrapperHeader}export const A = () => <Button className="icon-button" />;`,
+    );
+    expect(badButton.status).toBe(1);
+    expect(badButton.output).toContain("R-CHECK-022");
+    const badDialog = lint(
+      "no-restyle",
+      `${wrapperHeader}export const A = () => <DialogContent className="custom-dialog" />;`,
+    );
+    expect(badDialog.status).toBe(1);
+    expect(badDialog.output).toContain("R-CHECK-022");
+  });
 });
 
 describe("no-unchecked-array-method", () => {

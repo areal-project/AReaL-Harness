@@ -4,6 +4,11 @@ import { defineRule } from "@oxlint/plugins";
 const LAYOUT =
   /^-?(?:m[trblxyse]?-|w-|h-|size-|min-[wh]-|max-[wh]-|flex|grow|shrink|basis-|order-|self-|justify-self-|place-self-|col-|row-|grid-(?:cols|rows)-|gap-|space-[xy]-|overflow|inset|top-|left-|right-|bottom-|start-|end-|z-|aspect-)|^(?:absolute|relative|fixed|sticky|static|hidden|block|inline|inline-block|inline-flex|contents|isolate|sr-only)$/;
 const EXEMPT_MODULES = new Set(["@areal/ui/icons", "@areal/ui/observe-resize", "@areal/ui/theme"]);
+const UI_WRAPPER_IMPORT = /(?:^|\/)components\/ui\/[^/]+$/;
+
+const isOwnedModule = (source: string) =>
+  (source.startsWith("@areal/ui") && !EXEMPT_MODULES.has(source)) ||
+  (UI_WRAPPER_IMPORT.test(source) && !source.endsWith(".css"));
 
 const isLayout = (token: string) => LAYOUT.test(token.replace(/^!/, "").split(":").at(-1) ?? "");
 
@@ -63,7 +68,7 @@ export default defineRule({
     return {
       ImportDeclaration(node) {
         const source = String(node.source.value);
-        if (!source.startsWith("@areal/ui") || EXEMPT_MODULES.has(source)) return;
+        if (!isOwnedModule(source)) return;
         if (node.importKind === "type") return;
         for (const specifier of node.specifiers) owned.add(specifier.local.name);
       },
