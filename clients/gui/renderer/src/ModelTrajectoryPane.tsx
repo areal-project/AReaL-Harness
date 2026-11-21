@@ -527,10 +527,10 @@ export function ModelTrajectoryPane({
                     />
                   )}
                   <Button
-                    unstyled
-                    data-slot={undefined}
+                    variant="ghost"
+                    size="sm"
+                    className="w-full"
                     type="button"
-                    className="trajectory-entry"
                     aria-expanded={shown}
                     onClick={() => setOpen((values) => ({ ...values, [id]: !shown }))}
                   >

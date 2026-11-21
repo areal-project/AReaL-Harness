@@ -272,7 +272,7 @@ export function ToolEvent({
           ))}
         </div>
       ) : images.length && action && projectId && threadId ? (
-        <ActivityRow className="tool-summary-row tool-image-row">
+        <ActivityRow variant="image">
           <ImageDisclosure
             label={t("chat.tool.images", { count: images.length })}
             state="available"
@@ -305,10 +305,7 @@ export function ToolEvent({
           </Button>
         </ActivityRow>
       ) : file ? (
-        <ActivityRow
-          className="tool-summary-row tool-file-row"
-          icon={<ActivityIcon kind={readOnly ? "read" : "edit"} />}
-        >
+        <ActivityRow variant="file" icon={<ActivityIcon kind={readOnly ? "read" : "edit"} />}>
           <span className="areal-activity-row-action">{toolActionText(item, "done", t)}</span>
           <ActivityRowHint hint={file.path}>
             <Button
@@ -360,7 +357,6 @@ export function ToolEvent({
       ) : (
         <ActivityRowButton
           type="submit"
-          className="tool-summary-row"
           aria-expanded={open}
           onClick={toggle}
           icon={<ActivityIcon kind={view.icon} />}

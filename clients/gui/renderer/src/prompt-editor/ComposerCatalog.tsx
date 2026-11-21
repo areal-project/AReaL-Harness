@@ -206,11 +206,13 @@ export function ComposerCatalog({
                   id={`${id}-${i}`}
                   key={row.value}
                   type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="w-full"
                   role="option"
                   aria-selected={i === index}
                   aria-disabled={row.disabled}
                   tabIndex={-1}
-                  className="composer-catalog-row"
                   onMouseDown={(event) => event.preventDefault()}
                   onMouseMove={() => onIndex(i)}
                   onClick={() => {

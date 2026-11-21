@@ -1400,7 +1400,6 @@ export function Composer({
                     !input.files.length &&
                     !queueEditor.edit.attachments.length)
                 }
-                className="composer-primary-action"
                 onClick={() => void saveQueueEdit()}
               >
                 <SendMessageIcon className="size-5" />
@@ -1468,7 +1467,6 @@ export function Composer({
                   data-testid="chat-continue-button"
                   aria-describedby={desktopUnsupported ? compatibilityDescription : undefined}
                   disabled={disabled || desktopUnsupported}
-                  className="composer-primary-action"
                   onClick={() => void continueExecution()}
                 >
                   <ContinueExecutionIcon className="size-5" />

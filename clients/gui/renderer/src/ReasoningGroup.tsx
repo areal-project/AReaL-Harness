@@ -30,7 +30,7 @@ export function ReasoningGroup({
   return (
     <div className="reasoning-group" data-testid="reasoning-group">
       <ActivityRowButton
-        className="tool-summary-row reasoning-summary"
+        variant="reasoning"
         aria-label={t("common.turn.reasoning")}
         title={t("common.turn.reasoningCount", { count })}
         aria-expanded={open}

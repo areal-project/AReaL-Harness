@@ -501,16 +501,17 @@ export function WorkspaceFilePane({
               />
             </Suspense>
           ) : doc?.editing ? (
-            <Textarea
-              unstyled
-              data-slot={undefined}
-              className="workspace-file-editor"
-              aria-label={`编辑 ${path}`}
-              spellCheck={false}
-              disabled={busy}
-              value={doc.text}
-              onChange={(e) => update({ ...doc, text: e.target.value })}
-            />
+            <div className="workspace-file-editor flex min-h-0 flex-1">
+              <Textarea
+                variant="bare"
+                className="h-full w-full flex-1"
+                aria-label={`编辑 ${path}`}
+                spellCheck={false}
+                disabled={busy}
+                value={doc.text}
+                onChange={(e) => update({ ...doc, text: e.target.value })}
+              />
+            </div>
           ) : doc ? (
             markdown && isDelimited ? (
               <WorkspaceDelimitedPreview

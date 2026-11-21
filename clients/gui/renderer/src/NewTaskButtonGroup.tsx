@@ -18,10 +18,9 @@ export function NewTaskButtonGroup({
       <TooltipTrigger
         render={
           <Button
-            unstyled
-            data-slot={undefined}
+            variant="ghost"
+            className="w-full"
             type="button"
-            className="navigation-task-row new-task-action"
             aria-label={label}
             aria-keyshortcuts={mac ? "Meta+N" : "Control+N"}
             disabled={disabled}

@@ -40,17 +40,18 @@ export function MessageTime({ createdAt }: { createdAt?: number }) {
   );
   return (
     <ControlHintTooltip title={full}>
-      <Button
-        unstyled
-        data-slot={undefined}
-        type="button"
-        className="message-time"
-        aria-label={t("chat.timeline.messageTime", { time: full })}
-      >
-        <time dateTime={date.toISOString()}>
-          {new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(date)}
-        </time>
-      </Button>
+      <span className="message-time">
+        <Button
+          variant="ghost"
+          size="xs"
+          type="button"
+          aria-label={t("chat.timeline.messageTime", { time: full })}
+        >
+          <time dateTime={date.toISOString()}>
+            {new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(date)}
+          </time>
+        </Button>
+      </span>
     </ControlHintTooltip>
   );
 }

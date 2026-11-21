@@ -1976,10 +1976,8 @@ export function TaskCenter({
           </header>
           {searching && (
             <Input
-              unstyled
-              data-slot={undefined}
+              size="sm"
               autoFocus
-              className="task-search"
               aria-label={t("operations.schedules.search")}
               placeholder={t("operations.schedules.search")}
               value={search}

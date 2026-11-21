@@ -100,9 +100,9 @@ export function ChatGPTSubscription({
   };
   const disabled = busy || resource.loading;
   return (
-    <div data-subscription-kind="openai">
+    <div data-subscription-kind="openai" className="subscription-settings">
       <SettingsSection
-        className="subscription-settings"
+        className="gap-field"
         title={t("settings.chatGPTSubscription.chatgptSubscription")}
 
         action={

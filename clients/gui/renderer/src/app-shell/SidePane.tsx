@@ -279,7 +279,8 @@ export function SidePane({
     <SidePaneFrame
       ref={panel}
       data-open={Boolean(active)}
-      style={{ flexBasis: `${width}%`, display: active ? undefined : "none" }}
+      open={Boolean(active)}
+      widthPercent={width}
     >
       <div
         className="side-pane-resize"

@@ -73,10 +73,9 @@ export function TurnElapsed({
       <div className="turn-progress-label">
         {disclosure ? (
           <Button
-            unstyled
-            data-slot={undefined}
+            variant="ghost"
+            size="sm"
             type="button"
-            className="turn-progress-summary"
             aria-label={t("chat.progress.accessibleLabel", {
               label: label ?? t("chat.progress.defaultLabel"),
             })}

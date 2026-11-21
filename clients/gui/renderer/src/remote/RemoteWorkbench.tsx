@@ -510,7 +510,6 @@ function Session({ view, api }: { view: View; api: API }) {
                   <ComposerActionButton
                     type="button"
                     size="icon"
-                    className="composer-primary-action"
                     aria-label="发送"
                     data-testid="remote-chat-send"
                     disabled={disabled}

@@ -4,10 +4,9 @@ import * as React from "react";
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { cn } from "../../lib/utils.js";
 
-type StyledProps<T extends React.ElementType> = Omit<
-  React.ComponentProps<T>,
-  "className"
-> & { className?: string };
+type StyledProps<T extends React.ElementType> = Omit<React.ComponentProps<T>, "className"> & {
+  className?: string;
+};
 const Popover = PopoverPrimitive.Root;
 const PopoverTrigger = PopoverPrimitive.Trigger;
 
@@ -60,10 +59,7 @@ function PopoverHeader({ className, ...props }: React.ComponentProps<"div">) {
     />
   );
 }
-function PopoverTitle({
-  className,
-  ...props
-}: StyledProps<typeof PopoverPrimitive.Title>) {
+function PopoverTitle({ className, ...props }: StyledProps<typeof PopoverPrimitive.Title>) {
   return (
     <PopoverPrimitive.Title
       data-slot="popover-title"
@@ -74,21 +70,20 @@ function PopoverTitle({
 }
 function PopoverDescription({
   className,
+  tone = "muted",
   ...props
-}: StyledProps<typeof PopoverPrimitive.Description>) {
+}: StyledProps<typeof PopoverPrimitive.Description> & { tone?: "muted" | "foreground" }) {
   return (
     <PopoverPrimitive.Description
       data-slot="popover-description"
-      className={cn("text-muted-foreground", className)}
+      className={cn(
+        tone === "foreground"
+          ? "text-ui-sm leading-normal wrap-anywhere text-foreground"
+          : "text-muted-foreground",
+        className,
+      )}
       {...props}
     />
   );
 }
-export {
-  Popover,
-  PopoverContent,
-  PopoverDescription,
-  PopoverHeader,
-  PopoverTitle,
-  PopoverTrigger,
-};
+export { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger };
