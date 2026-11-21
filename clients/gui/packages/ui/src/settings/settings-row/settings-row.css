@@ -51,9 +51,9 @@
   line-height: var(--line-height-ui);
   border-radius: var(--radius-panel);
   border: var(--border-width-default) solid var(--color-border-hairline);
-  background-color: var(--color-settings-card);
+  background-color: var(--color-surface-card);
   overflow: hidden;
-  box-shadow: var(--shadow-raised-control);
+  box-shadow: var(--shadow-card-codex);
 }
 
 .settings-group-content {

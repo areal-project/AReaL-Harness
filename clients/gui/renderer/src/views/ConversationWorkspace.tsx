@@ -3,7 +3,7 @@ import {
   useConversationSubmitReadOnly,
   useConversationCreateReadOnly,
 } from "../PlatformReadContext.js";
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import { DelayedVisible } from "@areal/ui";
 import { ThreadSummaryItem, ThreadSummaryPanel } from "@areal/ui/compositions";
 import { projectUserState } from "../state/userStates.js";
@@ -314,6 +314,24 @@ function ActiveConversation() {
   const { t } = useI18n();
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [summaryPinned, setSummaryPinned] = useState(true);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.isComposing || event.defaultPrevented) return;
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        setSummaryPinned((prev) => {
+          if (!prev) {
+            setSummaryOpen(true);
+            return true;
+          }
+          setSummaryOpen((open) => !open);
+          return prev;
+        });
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
   const pendingSide =
     project && thread ? sideChats.pendingCreation(project.id, thread.id) : undefined;
   const sideError = project && thread ? sideChats.creationError(project.id, thread.id) : undefined;

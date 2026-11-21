@@ -21,4 +21,17 @@ describe("ComposerToolbar contract (R-COMPOSERTOOLBAR-002, R-COMPOSERTOOLBAR-004
     expect(html).toContain('aria-label="Send"');
     expect(html).toContain("disabled");
   });
+
+  it("renders send and stop SVG morph icons when mode is supplied without children", () => {
+    const sendHtml = renderToStaticMarkup(
+      createElement(ComposerActionButton, { mode: "send", "aria-label": "发送" }),
+    );
+    const stopHtml = renderToStaticMarkup(
+      createElement(ComposerActionButton, { mode: "stop", "aria-label": "停止" }),
+    );
+    expect(sendHtml).toContain('data-action-mode="send"');
+    expect(sendHtml).toContain("<path");
+    expect(stopHtml).toContain('data-action-mode="stop"');
+    expect(stopHtml).toContain("<rect");
+  });
 });

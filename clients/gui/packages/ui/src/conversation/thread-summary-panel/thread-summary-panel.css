@@ -4,7 +4,7 @@
   z-index: 2;
   width: 100%;
   border-radius: var(--radius-panel);
-  background: var(--color-card);
+  background: var(--color-surface-card);
   box-shadow: var(--shadow-popover-overlay);
   overflow: hidden;
   transition:
@@ -14,8 +14,9 @@
 
 .areal-thread-summary-panel[data-variant="compact"] {
   border-radius: var(--radius-pill);
-  background: var(--color-surface-fog);
-  box-shadow: 0 0 0 var(--border-width-default) var(--color-border-hairline);
+  background: var(--color-surface-popover);
+  box-shadow: var(--shadow-card-codex);
+  backdrop-filter: var(--material-overlay-filter);
 }
 
 .areal-thread-summary-header {

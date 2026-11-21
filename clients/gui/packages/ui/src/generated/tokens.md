@@ -134,6 +134,7 @@
 | `--shadow-leading-panel` | `-8px 0 16px -8px #0000002e` | 侧面板起始边投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
 | `--shadow-compact-overlay` | `0 3px 12px #0003` | 紧凑浮层投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
 | `--shadow-popover-overlay` | `0 0 0 0.5px var(--color-border-hairline), 0 10px 28px -6px rgb(0 0 0 / 14%)（暗色 0 0 0 0.5px var(--color-border-hairline), 0 12px 32px -4px rgb(0 0 0 / 42%)）` | 带 0.5px 极细描边的轻盈浮层阴影，用于 Popover、置顶摘要卡与浮起侧栏 |
+| `--shadow-card-codex` | `0 0 0 0.5px var(--color-border-hairline), 0 4px 16px 0 rgb(0 0 0 / 5%)（暗色 0 0 0 0.5px var(--color-border-hairline), 0 4px 16px 0 rgb(0 0 0 / 28%)）` | Codex 精细卡片阴影（0.5px 极细描边 + 柔和 16px 扩散），用于设置卡片、Composer 与任务卡 |
 
 ## 状态色与语义色
 
@@ -171,6 +172,11 @@
 | `--color-syntax-error` | `#f44747` | 代码语法配色（AReaL Light / AReaL Dark 代码主题）：语法错误与非法记号；明暗相同 |
 | `--color-surface-fog` | `color-mix(in oklab, var(--color-foreground) 3%, transparent)（暗色 color-mix(in oklab, var(--color-foreground) 5%, transparent)）` | 极轻雾化表面层，用于分段控件底轨、摘要条与柔和分组底色 |
 | `--color-border-hairline` | `color-mix(in oklab, var(--color-foreground) 8%, transparent)（暗色 color-mix(in oklab, var(--color-foreground) 11%, transparent)）` | 精细 oklab 语义描边色，用于浮层与内嵌表面边界 |
+| `--color-surface-under` | `#f9f9f9（暗色 #131313）` | 最底层外壳与停靠侧栏基底（Codex 灰阶 50：亮色 #f9f9f9 / 暗色 #131313） |
+| `--color-surface-card` | `#ffffff（暗色 #212121）` | 抬升卡片表面（Codex 灰阶 200：亮色 #ffffff / 暗色 #212121），用于设置组、审批卡、Ask User 与置顶摘要卡 |
+| `--color-surface-composer` | `#ffffff（暗色 #282828）` | 输入区主表面（Codex 灰阶 250：亮色 #ffffff / 暗色 #282828），高于主阅读画布一层 |
+| `--color-surface-popover` | `#ffffff（暗色 #303030）` | 浮层、折叠侧栏弹层与灵动摘要条表面（Codex 灰阶 300：亮色 #ffffff / 暗色 #303030） |
+| `--color-surface-docked-sidebar` | `color-mix(in oklab, var(--color-surface-under) 82%, transparent)（暗色 color-mix(in oklab, var(--color-surface-under) 85%, transparent)）` | 停靠侧栏轻透表面，对齐 Codex Docked Sidebar 层次 |
 
 ## 动效与层级
 

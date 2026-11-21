@@ -197,6 +197,12 @@
   --color-border-hairline: color-mix(in oklab, var(--color-foreground) 8%, transparent);
   --shadow-popover-overlay: 0 0 0 0.5px var(--color-border-hairline), 0 10px 28px -6px rgb(0 0 0 / 14%);
   --corner-shape: round;
+  --color-surface-under: #f9f9f9;
+  --color-surface-card: #ffffff;
+  --color-surface-composer: #ffffff;
+  --color-surface-popover: #ffffff;
+  --color-surface-docked-sidebar: color-mix(in oklab, var(--color-surface-under) 82%, transparent);
+  --shadow-card-codex: 0 0 0 0.5px var(--color-border-hairline), 0 4px 16px 0 rgb(0 0 0 / 5%);
 }
 .dark {
   --color-destructive: #ff5c5c;
@@ -221,6 +227,12 @@
   --color-surface-fog: color-mix(in oklab, var(--color-foreground) 5%, transparent);
   --color-border-hairline: color-mix(in oklab, var(--color-foreground) 11%, transparent);
   --shadow-popover-overlay: 0 0 0 0.5px var(--color-border-hairline), 0 12px 32px -4px rgb(0 0 0 / 42%);
+  --color-surface-under: #131313;
+  --color-surface-card: #212121;
+  --color-surface-composer: #282828;
+  --color-surface-popover: #303030;
+  --color-surface-docked-sidebar: color-mix(in oklab, var(--color-surface-under) 85%, transparent);
+  --shadow-card-codex: 0 0 0 0.5px var(--color-border-hairline), 0 4px 16px 0 rgb(0 0 0 / 28%);
 }
 :root[data-reduced-motion="true"] { --motion-fast: 0ms; --motion-normal: 0ms; --motion-slow: 0ms; --motion-emphasis: 0ms; --motion-reveal: 0ms; --motion-cycle: 0ms; --motion-cycle-slow: 0ms; --motion-loop: 0; }
 @media (prefers-reduced-motion: reduce) { :root:not([data-reduced-motion="false"]) { --motion-fast: 0ms; --motion-normal: 0ms; --motion-slow: 0ms; --motion-emphasis: 0ms; --motion-reveal: 0ms; --motion-cycle: 0ms; --motion-cycle-slow: 0ms; --motion-loop: 0; } }

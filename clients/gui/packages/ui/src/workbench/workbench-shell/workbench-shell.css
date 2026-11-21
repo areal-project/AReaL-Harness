@@ -13,7 +13,7 @@
   display: flex;
   /* Page frame inset belongs to the shell, including every pane and footer. */
   padding: 0 calc(var(--spacing-inline) / 2) calc(var(--spacing-inline) / 2) 0;
-  background: var(--color-shell);
+  background: var(--color-surface-under);
   color: var(--color-foreground);
   overflow: hidden;
   border-radius: var(--radius-overlay);
@@ -58,7 +58,15 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  background: var(--color-sidebar);
+  background: var(--color-surface-docked-sidebar);
+  transition:
+    background-color var(--motion-normal) var(--ease-standard),
+    box-shadow var(--motion-normal) var(--ease-standard);
+}
+.sidebar[data-popover="true"] {
+  background: var(--color-surface-popover);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-popover-overlay);
 }
 .sidebar-body {
   display: flex;
