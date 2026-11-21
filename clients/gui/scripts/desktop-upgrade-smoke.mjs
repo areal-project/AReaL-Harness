@@ -13,10 +13,9 @@ import { readCoreThread } from "./support/core-observation.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 import { captureSmokeFailure } from "./smoke-navigation.mjs";
 import {
-  assertApplicationStopped,
   closeSmokeApplication,
   cleanupSyntheticHostKeychain,
-  stopFixtureHost,
+  settleFixtureHostAfterQuit,
 } from "./application-cleanup.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -545,7 +544,10 @@ try {
   }
 } finally {
   let cleanupFailed = false;
+  let cleanupHost;
+  const cleanupGuiPid = app?.process()?.pid;
   try {
+    cleanupHost = await hostDescriptor();
     await quit();
     result.cleanup.gui = "exited";
   } catch (error) {
@@ -553,21 +555,22 @@ try {
     result.cleanup.gui = error.message;
   }
   try {
-    const descriptor = await hostDescriptor();
-    if (descriptor && alive(descriptor.pid)) {
-      const adapter = await adapterDescriptor();
-      const receipt = await stopFixtureHost(activeCore, home, scratch);
-      assert.ok(receipt);
-      await assertApplicationStopped(activeCore, env, { ...adapter, hostPid: descriptor.pid });
-      result.cleanup.host = "original stop receipt completed; Host and Core stopped";
-    } else {
-      assert.ok(!alive(oldHost?.pid), "original Host is stopped");
-      assert.ok(
-        oldServices.every((record) => !alive(record.corePid)),
-        "original Core is stopped",
-      );
-      result.cleanup.host = descriptor ? "already exited" : "not started";
-    }
+    const descriptor = cleanupHost ?? (await hostDescriptor());
+    const adapter = await adapterDescriptor();
+    const receipt = await settleFixtureHostAfterQuit(activeCore, env, scratch, {
+      host: descriptor,
+      pid: cleanupGuiPid,
+    });
+    if (descriptor) assert.equal(receipt?.state, "completed", "original Host stop confirmed");
+    assert.ok(!alive(adapter?.pid), "isolated adapter is stopped");
+    assert.ok(!alive(oldHost?.pid), "original Host is stopped");
+    assert.ok(
+      oldServices.every((record) => !alive(record.corePid)),
+      "original Core is stopped",
+    );
+    result.cleanup.host = receipt
+      ? "original stop receipt completed; Host and Core stopped"
+      : "not started";
   } catch (error) {
     cleanupFailed = true;
     result.cleanup.host = error.stack || String(error);
