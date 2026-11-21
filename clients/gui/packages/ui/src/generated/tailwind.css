@@ -81,6 +81,13 @@
   --height-toolbar: 46px;
   --tracking-conversation: 0.025em;
   --tracking-heading-tight: -0.02em;
+  --tracking-ui-tight: -0.01em;
+  --tracking-ui-subtle: -0.15px;
+  --reading-width-compact: 640px;
+  --reading-width-expanded: 672px;
+  --color-surface-fog: color-mix(in oklab, var(--color-foreground) 3%, transparent);
+  --color-border-hairline: color-mix(in oklab, var(--color-foreground) 8%, transparent);
+  --shadow-popover-overlay: 0 0 0 0.5px var(--color-border-hairline), 0 10px 28px -6px rgb(0 0 0 / 14%);
 }
 @theme {
   --color-surface-elevated: color-mix(in oklab, #1a1c1f 4%, #ffffff);

@@ -56,6 +56,8 @@
 | `--line-height-toolbar` | `1.5` | 输入框工具栏里模型与强度入口的行高倍数 |
 | `--line-height-title` | `1.2` | 首页迎宾标题等大标题的行高倍数 |
 | `--tracking-heading-tight` | `-0.02em` | 首页迎宾大标题与页面主标题的紧凑负字距 |
+| `--tracking-ui-tight` | `-0.01em` | 紧凑界面标签、按钮与 Tooltip 的精细负字距 |
+| `--tracking-ui-subtle` | `-0.15px` | 常规表单项与界面说明的微调负字距 |
 
 ## 间距与尺寸
 
@@ -71,6 +73,8 @@
 | `--spacing-field` | `16px` | 内容块与内侧留白 |
 | `--spacing-section` | `24px` | 分区间距 |
 | `--spacing-panel` | `16px` | 面板内留白 |
+| `--reading-width-compact` | `640px` | 窄窗口或分屏工作区下对话流与 Composer 的紧凑阅读宽度上限 |
+| `--reading-width-expanded` | `672px` | 常规桌面窗口下对话流的推荐收束阅读宽度上限 |
 
 ## 圆角
 
@@ -129,6 +133,7 @@
 | `--shadow-elevated-chip` | `0 1px 4px #0003, 0 0 0 1px #0000000d` | 悬浮小控件投影与外描边。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
 | `--shadow-leading-panel` | `-8px 0 16px -8px #0000002e` | 侧面板起始边投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
 | `--shadow-compact-overlay` | `0 3px 12px #0003` | 紧凑浮层投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
+| `--shadow-popover-overlay` | `0 0 0 0.5px var(--color-border-hairline), 0 10px 28px -6px rgb(0 0 0 / 14%)（暗色 0 0 0 0.5px var(--color-border-hairline), 0 12px 32px -4px rgb(0 0 0 / 42%)）` | 带 0.5px 极细描边的轻盈浮层阴影，用于 Popover、置顶摘要卡与浮起侧栏 |
 
 ## 状态色与语义色
 
@@ -164,6 +169,8 @@
 | `--color-syntax-regexp` | `#001bcb（暗色 #3d8dff）` | 代码语法配色（AReaL Light / AReaL Dark 代码主题）：正则表达式 |
 | `--color-syntax-decorator` | `#1a85d4（暗色 #69b1ff）` | 代码语法配色（AReaL Light / AReaL Dark 代码主题）：装饰器 |
 | `--color-syntax-error` | `#f44747` | 代码语法配色（AReaL Light / AReaL Dark 代码主题）：语法错误与非法记号；明暗相同 |
+| `--color-surface-fog` | `color-mix(in oklab, var(--color-foreground) 3%, transparent)（暗色 color-mix(in oklab, var(--color-foreground) 5%, transparent)）` | 极轻雾化表面层，用于分段控件底轨、摘要条与柔和分组底色 |
+| `--color-border-hairline` | `color-mix(in oklab, var(--color-foreground) 8%, transparent)（暗色 color-mix(in oklab, var(--color-foreground) 11%, transparent)）` | 精细 oklab 语义描边色，用于浮层与内嵌表面边界 |
 
 ## 动效与层级
 
@@ -231,6 +238,7 @@
 | `--sidebar-default-width` | `320px` | 侧栏默认宽度；用户可拖动调整 |
 | `--font-weight-strong` | `600` | 侧栏工作区名称等强调标题的字重 |
 | `--font-weight-medium` | `500` | 卡片标题与选项文字的中等字重 |
+| `--corner-shape` | `round` | 控件与浮层的圆角曲率形状，支持 superellipse 的宿主通过 CSS @supports 渐进增强 |
 
 ## 派生参数与来源
 

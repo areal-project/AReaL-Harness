@@ -35,3 +35,42 @@
 @theme {
   --animate-spin: spin var(--motion-cycle) linear var(--motion-loop);
 }
+
+/* 渐进启用超椭圆圆角：仅在支持的 Chromium/Electron 宿主生效，回退为普通圆角。 */
+@supports (corner-shape: superellipse(1.5)) {
+  :root {
+    --corner-shape: superellipse(1.5);
+  }
+  .ui-popup,
+  .composer-surface,
+  [data-slot="button"],
+  [data-slot="dropdown-menu-content"],
+  [data-slot="popover-content"],
+  [data-slot="tooltip-content"] {
+    corner-shape: var(--corner-shape);
+  }
+}
+
+/* 静默滚动条：非高对比度模式下默认隐去，悬停或键盘聚焦内部时显现。 */
+@media not all and ((prefers-contrast: more) or (forced-colors: active)) {
+  .scrollbar-on-hover {
+    scrollbar-color: transparent transparent;
+  }
+  .scrollbar-on-hover:hover,
+  .scrollbar-on-hover:focus-within {
+    scrollbar-color: var(--color-border-hover) transparent;
+  }
+}
+
+/* 单行尾部渐隐截断：用于摘要条、导航项等高密度文本，替代生硬省略号。 */
+.text-fade-truncate {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  mask-image: linear-gradient(
+    to right,
+    var(--color-foreground) calc(100% - var(--spacing-section)),
+    transparent 100%
+  );
+}

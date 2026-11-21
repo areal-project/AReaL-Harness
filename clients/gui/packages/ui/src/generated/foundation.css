@@ -189,6 +189,14 @@
   --font-weight-medium: 500;
   --line-height-title: 1.2;
   --tracking-heading-tight: -0.02em;
+  --tracking-ui-tight: -0.01em;
+  --tracking-ui-subtle: -0.15px;
+  --reading-width-compact: 640px;
+  --reading-width-expanded: 672px;
+  --color-surface-fog: color-mix(in oklab, var(--color-foreground) 3%, transparent);
+  --color-border-hairline: color-mix(in oklab, var(--color-foreground) 8%, transparent);
+  --shadow-popover-overlay: 0 0 0 0.5px var(--color-border-hairline), 0 10px 28px -6px rgb(0 0 0 / 14%);
+  --corner-shape: round;
 }
 .dark {
   --color-destructive: #ff5c5c;
@@ -210,6 +218,9 @@
   --color-syntax-function: #b06dff;
   --color-syntax-regexp: #3d8dff;
   --color-syntax-decorator: #69b1ff;
+  --color-surface-fog: color-mix(in oklab, var(--color-foreground) 5%, transparent);
+  --color-border-hairline: color-mix(in oklab, var(--color-foreground) 11%, transparent);
+  --shadow-popover-overlay: 0 0 0 0.5px var(--color-border-hairline), 0 12px 32px -4px rgb(0 0 0 / 42%);
 }
 :root[data-reduced-motion="true"] { --motion-fast: 0ms; --motion-normal: 0ms; --motion-slow: 0ms; --motion-emphasis: 0ms; --motion-reveal: 0ms; --motion-cycle: 0ms; --motion-cycle-slow: 0ms; --motion-loop: 0; }
 @media (prefers-reduced-motion: reduce) { :root:not([data-reduced-motion="false"]) { --motion-fast: 0ms; --motion-normal: 0ms; --motion-slow: 0ms; --motion-emphasis: 0ms; --motion-reveal: 0ms; --motion-cycle: 0ms; --motion-cycle-slow: 0ms; --motion-loop: 0; } }

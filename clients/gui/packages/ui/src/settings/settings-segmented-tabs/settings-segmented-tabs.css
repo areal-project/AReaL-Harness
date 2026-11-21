@@ -11,10 +11,10 @@
   height: auto;
   min-height: var(--spacing-control-sm);
   max-width: 100%;
-  padding: 0;
+  padding: calc(var(--spacing-inline) / 4);
   gap: calc(var(--spacing-inline) / 4);
   border-radius: var(--radius-full);
-  background: transparent;
+  background: var(--color-surface-fog);
   border: 0;
 }
 
@@ -27,6 +27,7 @@
   font-size: var(--text-ui-caption);
   line-height: var(--line-height-ui-sm);
   font-weight: var(--font-weight-toolbar);
+  letter-spacing: var(--tracking-ui-subtle);
   color: var(--color-settings-secondary);
   background: transparent;
   box-shadow: none;
@@ -34,13 +35,15 @@
   user-select: none;
   transition:
     background-color var(--motion-fast) var(--ease-standard),
-    color var(--motion-fast) var(--ease-standard);
+    color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
 }
 
 /* Base UI exposes data-active by presence, not a string boolean. */
 .settings-segmented-tabs [data-slot="tabs-trigger"][data-active] {
-  background: var(--color-surface-tertiary);
+  background: var(--color-card);
   color: var(--color-foreground);
+  box-shadow: var(--shadow-raised-control);
 }
 
 .settings-segmented-tabs [data-slot="tabs-trigger"]:hover:not([data-active]) {
