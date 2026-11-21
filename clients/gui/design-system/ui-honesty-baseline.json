@@ -1,11 +1,5 @@
 [
   {
-    "file": "renderer/src/i18n/messages/apps.ts",
-    "kind": "internal-term",
-    "snippet": "settings.mcpAppsWorkspace.theOriginalFormResponseIsBeingChecked: 核对",
-    "fingerprint": "de120a7256c2cea8baf158b68f398c62255793c8c8efd87973d07758b9720be5"
-  },
-  {
     "file": "renderer/src/i18n/messages/automation.ts",
     "kind": "internal-term",
     "snippet": "settings.computer.screenRecordingDescription: 观察",
@@ -16,48 +10,6 @@
     "kind": "internal-term",
     "snippet": "settings.computer.helperDescription: 观察",
     "fingerprint": "d4162b2b444716fc40dce93306aef49be26eec208a4bb37a4dcc6ed59286d6d9"
-  },
-  {
-    "file": "renderer/src/i18n/messages/browser.ts",
-    "kind": "internal-term",
-    "snippet": "browser.details.reconcile: 核对",
-    "fingerprint": "0f6521cbac90e7e7216333c0f4cd0b42000ed771861cffebfd9d24118e7afaee"
-  },
-  {
-    "file": "renderer/src/i18n/messages/browser.ts",
-    "kind": "internal-term",
-    "snippet": "browser.loadError.hint: 核对",
-    "fingerprint": "b4eeca8710869f18567036fb000c86f5ab41381252d53541a77af3c81da11381"
-  },
-  {
-    "file": "renderer/src/i18n/messages/browser.ts",
-    "kind": "internal-term",
-    "snippet": "browser.failure.operationHint: 核对",
-    "fingerprint": "81f8a785286f8cd0d1321fd5c6fe1e8d46d920e539e7129d70ee3a5b29e882b3"
-  },
-  {
-    "file": "renderer/src/i18n/messages/browser.ts",
-    "kind": "internal-term",
-    "snippet": "browser.failure.unknownHint: 核对",
-    "fingerprint": "059069b211e9cc47f16b3fdb5cf926d519f6cd1aed801494eb8b9abe046c2267"
-  },
-  {
-    "file": "renderer/src/i18n/messages/browser.ts",
-    "kind": "internal-term",
-    "snippet": "browser.failure.inspectAction: 核对",
-    "fingerprint": "0cb269946531cf8a682e9029f9f1e86c9f4a04c193881ef479a8999383032641"
-  },
-  {
-    "file": "renderer/src/i18n/messages/browserHost.ts",
-    "kind": "internal-term",
-    "snippet": "browserHost.unavailable: Host",
-    "fingerprint": "811d22d1107750a811504f5d2dfd7df065077a7b9ef5b8f4c5d10fe5f8b4f88d"
-  },
-  {
-    "file": "renderer/src/i18n/messages/browserHost.ts",
-    "kind": "internal-term",
-    "snippet": "hostRead.status: Host",
-    "fingerprint": "311e63b75438bbc72def2ea365a8e6b91d98ca4c09bfdd425d2d514d570b67d9"
   },
   {
     "file": "renderer/src/i18n/messages/common.ts",
@@ -86,32 +38,14 @@
   {
     "file": "renderer/src/i18n/messages/common.ts",
     "kind": "internal-term",
-    "snippet": "common.processes.scriptHelp: Core",
-    "fingerprint": "98c6731eaaa25ac9fb29cdfa94c06adfcc40ad287dc1a1f54be38d9347286d2d"
-  },
-  {
-    "file": "renderer/src/i18n/messages/common.ts",
-    "kind": "internal-term",
     "snippet": "common.workgroups.compatibilityHelp: 核对",
     "fingerprint": "17331a57cc88d702043d62bbb123d8e8b6dfd4fcf458a214c10078e1e18d1d2e"
   },
   {
     "file": "renderer/src/i18n/messages/common.ts",
     "kind": "internal-term",
-    "snippet": "chat.usage.confirmedNote: Core",
-    "fingerprint": "560b753bc0500c1aeb52a1ecbdf3aee53ec4eef2f1d1eff8ae0243d48cfae328"
-  },
-  {
-    "file": "renderer/src/i18n/messages/common.ts",
-    "kind": "internal-term",
     "snippet": "backend.operationUnconfirmed: 核对",
     "fingerprint": "aa7d5acb3833e9cde05c2428d4b0b4330984b044fa9aa1f8ce283798937395b6"
-  },
-  {
-    "file": "renderer/src/i18n/messages/common.ts",
-    "kind": "internal-term",
-    "snippet": "recovery.creationNotAdmitted: Core",
-    "fingerprint": "63faf26ed6b79aef8309cd9381c1b0d7917fb127421f7d5287fc9d7a62902dc2"
   },
   {
     "file": "renderer/src/i18n/messages/common.ts",
@@ -146,12 +80,6 @@
   {
     "file": "renderer/src/i18n/messages/common.ts",
     "kind": "internal-term",
-    "snippet": "chat.side.missingIdentity: 回执",
-    "fingerprint": "98055b92032782154fabd4ed65a6d3de8116bea78ab2ef2d822a063dba7c43e4"
-  },
-  {
-    "file": "renderer/src/i18n/messages/common.ts",
-    "kind": "internal-term",
     "snippet": "chat.side.closeUnconfirmed: 核对",
     "fingerprint": "96ddebe833431c08bef4b8e4a72837b5943fdec0abccd761d86c90d007591b14"
   },
@@ -172,12 +100,6 @@
     "kind": "internal-term",
     "snippet": "cloud.acknowledgeUnknown: 核对",
     "fingerprint": "d8f758fd44d60781004842ade7cb634c40c817277a1f33132a87d60b1376876f"
-  },
-  {
-    "file": "renderer/src/i18n/messages/composerPriority.ts",
-    "kind": "internal-term",
-    "snippet": "chat.composer.attachmentUnknown: 核对",
-    "fingerprint": "9ddba3d76141274d510f0827e96df64ee6ea6bfec82adc11a4dcadf9b4a174f3"
   },
   {
     "file": "renderer/src/i18n/messages/general.ts",
@@ -296,30 +218,6 @@
   {
     "file": "renderer/src/i18n/messages/operations.ts",
     "kind": "internal-term",
-    "snippet": "operations.runNowUnsupported: Core",
-    "fingerprint": "e2e83c4f668468b2c50e15cc539ed148e9f78c88ddcb6701924fd74e7393f708"
-  },
-  {
-    "file": "renderer/src/i18n/messages/operations.ts",
-    "kind": "internal-term",
-    "snippet": "operations.recentOnly: Core",
-    "fingerprint": "b849fc2f18f9e6bcd4f0d1ab4a9779577a1aea9414265c8fb4c2bf4b47d7daef"
-  },
-  {
-    "file": "renderer/src/i18n/messages/operations.ts",
-    "kind": "internal-term",
-    "snippet": "operations.admissionUnknown: 受理",
-    "fingerprint": "d588d32c47f7208edd6d1b6c22d7821bc525bb491a59b470b4e5b8e71504decb"
-  },
-  {
-    "file": "renderer/src/i18n/messages/operations.ts",
-    "kind": "internal-term",
-    "snippet": "operations.checkAdmission: 受理",
-    "fingerprint": "431081c37bd2f0671b7cb5593c90d093095a5f976a44cfecf1c5217b1576a5ae"
-  },
-  {
-    "file": "renderer/src/i18n/messages/operations.ts",
-    "kind": "internal-term",
     "snippet": "operations.installSnapshot: 快照",
     "fingerprint": "1229c2aa2088afb7232dc774be85301ea52750e6f4b3b1a08496b4fd106a0abb"
   },
@@ -350,20 +248,8 @@
   {
     "file": "renderer/src/i18n/messages/operations.ts",
     "kind": "internal-term",
-    "snippet": "operations.schedules.check: 受理",
-    "fingerprint": "36a16de4fd7f9ba3c8b1334e490d8eeeb291c0103b686d40494e00f2c9bb5eff"
-  },
-  {
-    "file": "renderer/src/i18n/messages/operations.ts",
-    "kind": "internal-term",
     "snippet": "operations.schedules.retryCreation: 核对",
     "fingerprint": "344d02dca198aeb2cf23cf85c3ab619202007aef74a1bcaccf56c30583254bf9"
-  },
-  {
-    "file": "renderer/src/i18n/messages/operations.ts",
-    "kind": "internal-term",
-    "snippet": "operations.schedules.statusQueued: 受理",
-    "fingerprint": "ffbb4b5922d5a72b6bb69b3f8db3224a7c4dc5962fc2ae5048c763be94c8358a"
   },
   {
     "file": "renderer/src/i18n/messages/plugins.ts",
@@ -1120,18 +1006,6 @@
     "kind": "internal-term",
     "snippet": "settings.mobileConnect.stepReview: 核对",
     "fingerprint": "670f8ed5520f7d6b9e5085da9ed2921c4817de5d6db9cad175d2d675c3cdbd9d"
-  },
-  {
-    "file": "renderer/src/i18n/messages/snapshots.ts",
-    "kind": "internal-term",
-    "snippet": "snapshots.localCleanupFailed: 核对",
-    "fingerprint": "03a770075508277979635b748c0b359855e81223841ead1600777d20356e4b24"
-  },
-  {
-    "file": "renderer/src/i18n/messages/timeline.ts",
-    "kind": "internal-term",
-    "snippet": "chat.timeline.interruption.coreRecovery: Core",
-    "fingerprint": "17ce4cee9a1117849c8603ad3c40fa5e598c0f5081a69f812df5363763cad31d"
   },
   {
     "file": "renderer/src/i18n/messages/worktrees.ts",

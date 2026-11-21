@@ -113,8 +113,8 @@ export const operationMessages = {
     en: "View current run",
   },
   "operations.runNowUnsupported": {
-    "zh-CN": "当前 Core 尚不支持立即运行。",
-    en: "This Core does not support Run now.",
+    "zh-CN": "当前后台版本尚不支持立即运行。",
+    en: "This background service version does not support Run now.",
   },
   "operations.runHistory": {
     "zh-CN": "运行记录",
@@ -129,8 +129,8 @@ export const operationMessages = {
     en: "Show all {count, plural, one {# run} other {# runs}}",
   },
   "operations.recentOnly": {
-    "zh-CN": "当前 Core 仅提供最近运行窗口。更新 Core 后可读取更早记录。",
-    en: "This Core provides only recent runs. Update Core to read earlier records.",
+    "zh-CN": "当前仅提供最近运行记录，更新后可读取更早记录。",
+    en: "Only recent runs are available. Update the app to read earlier records.",
   },
   "operations.loadingNotification": {
     "zh-CN": "正在读取通知运行…",
@@ -169,12 +169,12 @@ export const operationMessages = {
     en: "Load earlier runs",
   },
   "operations.admissionUnknown": {
-    "zh-CN": "提交结果尚未确认，请核对受理结果。",
+    "zh-CN": "提交结果尚未确认，请查看提交状态。",
     en: "Submission is unconfirmed. Check whether it was accepted.",
   },
   "operations.checkAdmission": {
-    "zh-CN": "核对受理结果",
-    en: "Check acceptance",
+    "zh-CN": "查看提交状态",
+    en: "Check submission",
   },
   "operations.schedulePreview": {
     "zh-CN": "后续执行预览",
@@ -412,7 +412,7 @@ export const operationMessages = {
     "zh-CN": "操作结果尚未确认，不会自动重发。",
     en: "The operation is unconfirmed and will not be replayed.",
   },
-  "operations.schedules.check": { "zh-CN": "核对受理状态", en: "Check acceptance" },
+  "operations.schedules.check": { "zh-CN": "查看任务状态", en: "Check status" },
   "operations.schedules.threadLabel": {
     "zh-CN": "本会话定时任务",
     en: "Schedules in this conversation",
@@ -546,8 +546,8 @@ export const operationMessages = {
   },
   "operations.schedules.showMore": { "zh-CN": "展开显示", en: "Show more" },
   "operations.schedules.statusQueued": {
-    "zh-CN": "已受理，等待开始",
-    en: "Accepted, waiting to start",
+    "zh-CN": "已收到，等待开始",
+    en: "Received, waiting to start",
   },
   "operations.schedules.statusRunning": { "zh-CN": "运行中", en: "Running" },
   "operations.schedules.statusWaitingInput": { "zh-CN": "等待回答", en: "Waiting for an answer" },

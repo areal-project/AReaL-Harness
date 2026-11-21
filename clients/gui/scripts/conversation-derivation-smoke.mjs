@@ -976,7 +976,7 @@ try {
     globalThis.__scfLoseNextForkResponse = true;
   });
   await forkDialog.getByRole("button", { name: "创建分支", exact: true }).click();
-  await forkDialog.getByRole("button", { name: "核对受理结果", exact: true }).waitFor();
+  await forkDialog.getByRole("button", { name: "查看提交状态", exact: true }).waitFor();
   await forkDialog.getByRole("alert").filter({ hasText: "请先核对原提交" }).waitFor();
   assert.equal(await forkDialog.getByRole("button", { name: "创建分支", exact: true }).count(), 0);
   const lostResult = (await page.evaluate(() => globalThis.__scfMutations)).find(

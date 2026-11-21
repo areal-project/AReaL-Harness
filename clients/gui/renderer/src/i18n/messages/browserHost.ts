@@ -20,8 +20,8 @@ export const browserHostMessages = {
     en: "The approval request expired. Start a new request to continue.",
   },
   "browserHost.unavailable": {
-    "zh-CN": "浏览器认证不可用。请确认 Host 正在运行后重试。",
-    en: "Browser authentication is unavailable. Check that Host is running, then retry.",
+    "zh-CN": "浏览器认证不可用。请确认后台服务正在运行后重试。",
+    en: "Browser authentication is unavailable. Check that the background service is running, then retry.",
   },
   "browserHost.retry": {
     "zh-CN": "重试",
@@ -32,8 +32,8 @@ export const browserHostMessages = {
     en: "areal host web approve {requestId}",
   },
   "hostRead.status": {
-    "zh-CN": "Host 状态：{status}",
-    en: "Host status: {status}",
+    "zh-CN": "服务状态：{status}",
+    en: "Service status: {status}",
   },
   "hostRead.state.ready": { "zh-CN": "已连接", en: "Connected" },
   "hostRead.state.running": { "zh-CN": "运行中", en: "Running" },

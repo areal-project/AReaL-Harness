@@ -261,9 +261,8 @@ export const commonMessages = {
     en: "· Manual control only; use region annotations for iframes",
   },
   "common.processes.scriptHelp": {
-    "zh-CN":
-      "在当前项目中以 /bin/sh 执行非交互脚本，不分配终端。最长运行 24 小时，权限由 Core 判定。",
-    en: "Run a non-interactive script with /bin/sh in the current project, without a terminal. The maximum duration is 24 hours. Core determines permissions.",
+    "zh-CN": "在当前项目中以 /bin/sh 执行脚本，不分配终端，最长 24 小时。",
+    en: "Run a non-interactive script with /bin/sh in the current project, without a terminal. Maximum duration is 24 hours.",
   },
   "common.processes.lifetimeHelp": {
     "zh-CN": "随本轮执行的进程在轮次结束时清理；随会话保留的进程需手动清理。",
@@ -414,8 +413,8 @@ export const commonMessages = {
   "chat.resources.panel": { "zh-CN": "任务资源面板", en: "Task resources panel" },
   "chat.usage.actual": { "zh-CN": "实际用量", en: "Actual usage" },
   "chat.usage.confirmedNote": {
-    "zh-CN": "Core 已确认的当前任务用量；未报告轮次的消费未知，以下数字不代表最终总消费。",
-    en: "Usage confirmed by Core for the current task. Usage for unreported turns is unknown. The figures below do not represent the final total usage.",
+    "zh-CN": "后台服务已确认的当前任务用量；未报告轮次的消费未知，不代表最终总消费。",
+    en: "Confirmed usage for the current task. Usage for unreported turns is unknown and may not reflect the final total.",
   },
   "chat.usage.inputTokens": { "zh-CN": "输入 Token", en: "Input tokens" },
   "chat.usage.cachedTokens": { "zh-CN": "缓存输入", en: "Cached input" },
@@ -654,8 +653,8 @@ export const commonMessages = {
     en: "Start a new chat in {project}",
   },
   "recovery.creationNotAdmitted": {
-    "zh-CN": "Core 已确认原会话创建未受理，草稿已保留。",
-    en: "Core confirmed that the original conversation creation was not admitted. Your draft is retained.",
+    "zh-CN": "后台已确认原会话未创建，草稿已保留。",
+    en: "Confirmed that the original conversation was not created. Your draft is retained.",
   },
   "recovery.creationRecords": {
     "zh-CN": "待核对的会话创建",
@@ -1059,8 +1058,8 @@ export const commonMessages = {
     en: "The initial request is not yet confirmed. Inspect the original request.",
   },
   "chat.side.missingIdentity": {
-    "zh-CN": "创建回执缺少会话标识，请核对原请求。",
-    en: "The creation receipt has no conversation ID. Inspect the original request.",
+    "zh-CN": "创建结果缺少会话标识，请查看原请求。",
+    en: "The creation result has no conversation ID. Inspect the original request.",
   },
   "chat.side.unknownCreation": {
     "zh-CN": "首问结果尚未确认，不会重新发送。",

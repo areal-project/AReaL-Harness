@@ -89,7 +89,7 @@ export const appMessages = {
     en: "Could not read pending forms",
   },
   "settings.mcpAppsWorkspace.theOriginalFormResponseIsBeingChecked": {
-    "zh-CN": "原表单回复正在核对，请勿重新提交",
+    "zh-CN": "原表单回复正在确认，请勿重新提交",
     en: "The original form response is being checked. Do not submit it again.",
   },
   "settings.mcpAppsWorkspace.thisFormHasExpired": {
