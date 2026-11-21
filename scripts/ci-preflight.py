@@ -387,6 +387,19 @@ def run_plan(
                                 "--plan=" + str(output / "plan.json"),
                                 "--item=" + item["id"],
                             ]
+                        if "journeyEvidence" in item:
+                            journey_report = (
+                                output / "children" / item["id"].replace(":", "_") / "report.json"
+                            )
+                            journey_report.parent.mkdir(parents=True, exist_ok=True)
+                            if journey_report.exists():
+                                raise ValueError(
+                                    "refusing to reuse an existing business journey report"
+                                )
+                            env["AREAL_JOURNEY_REPORT"] = str(journey_report.resolve())
+                            env["AREAL_VERIFICATION_IDENTITY"] = json.dumps(
+                                identity, sort_keys=True
+                            )
                         # 复用产物身份检查，在启动任何源码 GUI 场景前拒绝混用构建。
                         if item["group"] == "smoke":
                             startup = output / (item["id"].replace(":", "_") + "-startup.json")
@@ -419,6 +432,17 @@ def run_plan(
                             status="passed" if completed.returncode == 0 else "failed",
                             exitCode=completed.returncode,
                         )
+                        if "journeyEvidence" in item:
+                            result["journeyReport"] = str(journey_report.resolve())
+                            detail = verification_evidence.read_journey_report(
+                                journey_report, item["journeyEvidence"], identity
+                            )
+                            result["journeyEvidence"] = detail
+                            if detail["status"] != "passed":
+                                result.update(
+                                    status=detail["status"],
+                                    reason="business journey: " + str(detail["firstFailure"]),
+                                )
                         if "expectedTests" in item:
                             detail = json.loads(child.read_text())
                             if (

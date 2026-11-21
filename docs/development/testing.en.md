@@ -157,6 +157,20 @@ Before installing dependencies, the Linux mobile browser job points the hosted r
 
 The conversation design acceptance waits for the activity panel's opening transition and verifies that the list center is the actual pointer hit target before sending one real wheel input. `conversation-wheel.json` retains trusted-input, hit-target, and before/after scroll evidence. The assertion still requires that list to scroll; script-driven scrolling does not replace it.
 
+### Connection recovery verification pilot
+
+`test:connection-recovery` reuses the journey manifest, real Host/Core, a source Electron owner, the production web Renderer, and a local model. It reports six business facts: loading without false failure, automatic recovery after idle socket replacement, preserved draft and selection, continued submission with authoritative and visible completion, respected explicit stops, and no replay of the original UNKNOWN submission. Idle reclamation uses the production `ifIdle` stop path; it does not certify the 15-minute timer. This pilot also excludes installed packages, real providers, Host process replacement, and phones. Cleanup records a fixture-provided answer to the native quit confirmation; this is not acceptance of actual OS dialog interaction. Idle availability is checked through editing/sending and authoritative state. A `pending` activation only settles after the same connection catalog and Host agree on readiness.
+
+```sh
+python3 scripts/ci-preflight.py --base <base> --item smoke:test:connection-recovery --with-dependencies
+python3 scripts/verification-evidence.py <run>/report.json
+pnpm --dir clients/gui test:connection-recovery-counterexamples
+```
+
+The journey's optional `evidenceCheck` enables business-fact evidence without changing legacy journey semantics. Preflight supplies `AREAL_JOURNEY_REPORT` and the complete current `AREAL_VERIFICATION_IDENTITY`. The report must cover every `terminalFacts` entry, first failure, reached/unreached stages, and cleanup. Evidence must be regular files within the report directory; import computes SHA-256 hashes. A zero exit code cannot pass when business evidence is absent, facts are missing, identity differs, or cleanup is incomplete. Unselected checks remain pending; a focused pilot is not full CI acceptance.
+
+The counterexample command freezes HEAD plus the pilot changes in an isolated worktree and sequentially runs the correct implementation, the old loading projection, and the old hibernation guard. Each variant builds the Renderer, validates artifact identity, and runs the same real journey. Incorrect implementations must fail their target business fact with successful cleanup; build/startup failures do not count as detections. Reports retain patch hashes, original reports, screenshots, and first failures. The fixed three samples measure detection of two known defects, false positives on the correct implementation, and evidence completeness. These metrics do not establish detection of all unknown defects or reduced human time. Without paired measurements, human minutes remain unknown; use directly decidable report facts and remaining interventions to decide whether to expand the pilot.
+
 ## Local verification artifacts and startup diagnostics
 
 After Cargo succeeds, `make build` / `make release` writes `target/<profile>/verification-build.json`, binding the existing Core `inputHash`, build revision and SHA-256 of the complete Core/Runtime set. GUI builds extend the existing bundle analysis plugin with `renderer/dist/verification-build.json`, recording GUI inputs and output hashes; source changes during a build fail it.

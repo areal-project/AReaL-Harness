@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -63,7 +64,12 @@ class ArchitectureAndJourneys(unittest.TestCase):
         )
         self.assertEqual(
             journeys.affected(["core/host/src/client.rs"]),
-            ["conversation-submit", "unknown-receipt-recovery", "host-stop-reopen"],
+            [
+                "conversation-submit",
+                "unknown-receipt-recovery",
+                "host-stop-reopen",
+                "connection-recovery",
+            ],
         )
 
     def test_shared_boundaries_select_existing_journey_checks_and_dependencies(self):
@@ -316,6 +322,224 @@ class ArchitectureAndJourneys(unittest.TestCase):
         self.assertIn("realJourneyEvidence", report["rows"][0]["newProcess"])
         self.assertIn("blockReasons", report["rows"][0]["newProcess"]["realJourneyEvidence"][0])
         self.assertFalse(report["conclusion"]["canConfirmHumanTimeReduction"])
+
+    def fact_fixture(self):
+        plan, report = self.evidence_fixture()
+        contract = {"journeyId": "submit", "terminalFacts": ["visibleResult", "noReplay"]}
+        plan["journeyEvidence"] = {"submit": {"check": "smoke:send", **contract}}
+        plan["items"][0]["journeyEvidence"] = contract
+        detail = {
+            "schemaVersion": 1,
+            "journeyId": "submit",
+            "identity": report["identity"],
+            "status": "passed",
+            "facts": [
+                {"id": name, "status": "passed", "evidence": ["observation.json"]}
+                for name in contract["terminalFacts"]
+            ],
+            "firstFailure": None,
+            "reached": ["send", "recover"],
+            "unreached": [],
+            "cleanup": {"status": "passed", "evidence": ["cleanup.json"]},
+        }
+        return plan, report, contract, detail
+
+    def test_successful_process_without_business_evidence_cannot_pass(self):
+        plan, _report, _contract, _detail = self.fact_fixture()
+        for item in plan["items"]:
+            item.update(
+                command=[sys.executable, "-c", "pass"],
+                group="early",
+                requires=[],
+                dependsOn=[],
+                platforms=[sys.platform],
+            )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            report = preflight.run_plan(
+                plan, root, plan["items"][:1], root / "attempt", input_probe=lambda: "inputs"
+            )
+            self.assertEqual(report["results"][0]["status"], "failed")
+            self.assertEqual(report["evidence"]["journeys"][0]["status"], "failed")
+
+    def test_fact_report_rejects_missing_duplicate_stale_and_false_success(self):
+        _plan, report, contract, detail = self.fact_fixture()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "report.json"
+            (root / "observation.json").write_text('{"requestId":"original"}')
+            (root / "cleanup.json").write_text('{"processesExited":true}')
+            for mutation in (
+                "missing",
+                "duplicate",
+                "unknown",
+                "identity",
+                "failed",
+                "cleanup",
+                "unreached",
+                "missing-file",
+                "bad-status",
+                "bad-fact-status",
+                "escape",
+                "symlink",
+            ):
+                broken = copy.deepcopy(detail)
+                if mutation == "missing":
+                    broken["facts"].pop()
+                elif mutation == "duplicate":
+                    broken["facts"] *= 2
+                elif mutation == "unknown":
+                    broken["facts"][0]["id"] = "other"
+                elif mutation == "identity":
+                    broken["identity"]["ciAttempt"] = "old"
+                elif mutation == "failed":
+                    broken["facts"][0]["status"] = "failed"
+                elif mutation == "cleanup":
+                    broken["cleanup"]["status"] = "failed"
+                elif mutation == "unreached":
+                    broken["unreached"] = ["later"]
+                elif mutation == "missing-file":
+                    broken["facts"][0]["evidence"] = ["missing.json"]
+                elif mutation == "bad-status":
+                    broken["status"] = {}
+                elif mutation == "bad-fact-status":
+                    broken["facts"][0]["status"] = []
+                elif mutation == "escape":
+                    broken["facts"][0]["evidence"] = ["../outside.json"]
+                else:
+                    (root / "link.json").symlink_to(root / "observation.json")
+                    broken["facts"][0]["evidence"] = ["link.json"]
+                path.write_text(json.dumps(broken))
+                with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                    evidence.read_journey_report(path, contract, report["identity"])
+
+    def test_fact_evidence_preserves_failure_and_artifact_digests(self):
+        plan, report, contract, detail = self.fact_fixture()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "observation.json").write_text('{"requestId":"original"}')
+            (root / "cleanup.json").write_text('{"processesExited":true}')
+            path = root / "report.json"
+            for status in ("passed", "failed"):
+                detail["status"] = status
+                detail["facts"][0]["status"] = status
+                detail["firstFailure"] = None if status == "passed" else "visibleResult"
+                path.write_text(json.dumps(detail))
+                imported = evidence.read_journey_report(path, contract, report["identity"])
+                self.assertEqual(len(imported["artifacts"]["observation.json"]), 64)
+                report["results"][0].update(
+                    journeyEvidence=imported, status=status, exitCode=0 if status == "passed" else 1
+                )
+                report["results"].append({"id": "smoke:read", "status": "passed", "exitCode": 0})
+                summary = evidence.build(plan, report)["journeys"][0]
+                self.assertEqual(summary["status"], status)
+                self.assertEqual(summary["facts"][0]["status"], status)
+                report["results"].pop()
+
+    def test_preflight_imports_business_report_from_its_assigned_run_directory(self):
+        plan, _report, _contract, template = self.fact_fixture()
+        for item in plan["items"]:
+            item.update(
+                command=["synthetic-runner"],
+                group="early",
+                requires=[],
+                dependsOn=[],
+                platforms=[sys.platform],
+            )
+        for state in ("passed", "failed"):
+            with self.subTest(state=state), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+
+                def runner(command, cwd, env):
+                    path = Path(env["AREAL_JOURNEY_REPORT"])
+                    self.assertTrue(path.is_relative_to((root / "attempt").resolve()))
+                    detail = copy.deepcopy(template)
+                    detail["identity"] = json.loads(env["AREAL_VERIFICATION_IDENTITY"])
+                    detail["status"] = detail["facts"][0]["status"] = state
+                    detail["firstFailure"] = None if state == "passed" else "visibleResult"
+                    (path.parent / "observation.json").write_text('{"requestId":"original"}')
+                    (path.parent / "cleanup.json").write_text('{"processesExited":true}')
+                    path.write_text(json.dumps(detail))
+                    return subprocess.CompletedProcess(command, 0)
+
+                report = preflight.run_plan(
+                    plan,
+                    root,
+                    plan["items"][:1],
+                    root / "attempt",
+                    runner=runner,
+                    input_probe=lambda: "inputs",
+                )
+                result = report["results"][0]
+                self.assertEqual(result["status"], state)
+                self.assertEqual(result["journeyEvidence"]["identity"], report["identity"])
+                self.assertEqual(
+                    result["journeyEvidence"]["firstFailure"],
+                    None if state == "passed" else "visibleResult",
+                )
+                evidence.validate(report, plan)
+
+    def test_invalid_report_preserves_business_failure_in_diagnostic(self):
+        _plan, report, contract, detail = self.fact_fixture()
+        detail["status"] = "failed"
+        detail["facts"][0]["status"] = "failed"
+        detail["firstFailure"] = {"stage": "automaticRecovery", "reason": "old owner retained"}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "report.json"
+            path.write_text(json.dumps(detail))
+            with self.assertRaisesRegex(ValueError, "automaticRecovery"):
+                evidence.read_journey_report(path, contract, report["identity"])
+
+    def test_plan_binds_business_evidence_to_its_registered_check(self):
+        registry = journeys.load_manifest()
+        manifest = json.loads((ROOT / "clients/gui/scripts/test-manifest.json").read_text())
+        contract = registry["journeys"][0]
+        contract["evidenceCheck"] = contract["checks"][0]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "journeys.json"
+            path.write_text(json.dumps(registry))
+            with patch.object(scope, "JOURNEY_MANIFEST", path):
+                plan = scope.build_plan(
+                    ["clients/gui/renderer/src/DraftComposer.tsx"],
+                    {"baseRevision": "base"},
+                    manifest,
+                )
+        item = next(item for item in plan["items"] if item["id"] == contract["evidenceCheck"])
+        self.assertEqual(item["journeyEvidence"]["terminalFacts"], contract["terminalFacts"])
+        self.assertEqual(plan["journeyEvidence"][contract["id"]]["check"], item["id"])
+
+    def test_connection_recovery_selects_only_its_business_contract(self):
+        registry = journeys.load_manifest()
+        manifest = json.loads((ROOT / "clients/gui/scripts/test-manifest.json").read_text())
+        for path in (
+            "clients/gui/renderer/src/host-snapshot.ts",
+            "clients/gui/renderer/src/state/useSessionNavigation.ts",
+        ):
+            with self.subTest(path=path):
+                plan = scope.build_plan([path], {"baseRevision": "base"}, manifest)
+                self.assertEqual(plan["affectedJourneys"], ["connection-recovery"])
+                contract = plan["journeyEvidence"]["connection-recovery"]
+                self.assertEqual(contract["check"], "smoke:test:connection-recovery")
+                self.assertEqual(
+                    contract["terminalFacts"],
+                    [
+                        "loadingWithoutFalseFailure",
+                        "automaticRecovery",
+                        "draftAndSelectionPreserved",
+                        "continuedSubmission",
+                        "explicitStopRespected",
+                        "unknownNotReplayed",
+                    ],
+                )
+        self.assertEqual(
+            [entry["id"] for entry in registry["journeys"] if "evidenceCheck" in entry],
+            ["connection-recovery"],
+        )
+
+    def test_gate_rejects_exit_zero_without_required_business_report(self):
+        plan, report, _contract, _detail = self.fact_fixture()
+        with self.assertRaisesRegex(ValueError, "missing required business evidence"):
+            evidence.build(plan, report)
 
 
 if __name__ == "__main__":

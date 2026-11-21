@@ -310,6 +310,15 @@ def build_plan(paths, source, manifest):
         if journey["id"] in affected_journeys
     }
     required_journey_checks = {check for checks in journey_checks.values() for check in checks}
+    journey_evidence = {
+        journey["id"]: {
+            "journeyId": journey["id"],
+            "check": journey["evidenceCheck"],
+            "terminalFacts": journey["terminalFacts"],
+        }
+        for journey in journeys
+        if journey["id"] in affected_journeys and "evidenceCheck" in journey
+    }
 
     def add(
         name,
@@ -785,6 +794,14 @@ def build_plan(paths, source, manifest):
                     platforms=tuple(p for p in entry["platforms"] if p == "darwin"),
                 )
     journey_registry.validate_checks(registry, items, affected_journeys)
+    for contract in journey_evidence.values():
+        item = next(item for item in items if item["id"] == contract["check"])
+        if "journeyEvidence" in item:
+            raise ValueError("a business evidence runner must belong to one journey")
+        item["journeyEvidence"] = {
+            "journeyId": contract["journeyId"],
+            "terminalFacts": contract["terminalFacts"],
+        }
     production_tasks = {
         "macos:desktop": "desktop-build",
         "macos:ui": "ui-build",
@@ -804,6 +821,7 @@ def build_plan(paths, source, manifest):
         "affectedJourneys": affected_journeys,
         "journeyAuthorities": journey_authorities,
         "journeyChecks": journey_checks,
+        "journeyEvidence": journey_evidence,
         "items": items,
     }
     plan["planHash"] = hashlib.sha256(

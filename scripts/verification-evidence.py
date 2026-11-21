@@ -1,24 +1,142 @@
 """Validate the shared verification evidence envelope."""
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
 
 STATUSES = {"passed", "failed", "blocked", "pending", "running", "invalidated", "cancelled"}
+FACT_STATUSES = {"passed", "failed", "blocked", "pending"}
+
+
+def validate_journey_report(detail, contract, identity, imported=False):
+    if not isinstance(detail, dict) or not all(
+        key in detail for key in ("facts", "firstFailure", "reached", "unreached", "cleanup")
+    ):
+        raise ValueError("journey report is missing its business evidence envelope")
+    if (
+        detail.get("schemaVersion") != 1
+        or detail.get("journeyId") != contract["journeyId"]
+        or detail.get("identity") != identity
+    ):
+        raise ValueError("journey report identity differs from its current plan/run")
+    if (
+        not isinstance(detail["facts"], list)
+        or any(not isinstance(row, dict) for row in detail["facts"])
+        or not isinstance(detail["cleanup"], dict)
+    ):
+        raise ValueError("journey facts and cleanup must be records")
+    facts = indexed(detail["facts"], "business fact")
+    if set(facts) != set(contract["terminalFacts"]):
+        raise ValueError("journey report does not cover the exact required business facts")
+    if not isinstance(detail.get("status"), str) or detail["status"] not in FACT_STATUSES:
+        raise ValueError("invalid journey report status")
+    cleanup = detail.get("cleanup", {})
+    rows = [*facts.values(), cleanup]
+    paths = set()
+    for row in rows:
+        if (
+            not isinstance(row.get("status"), str)
+            or row["status"] not in FACT_STATUSES
+            or not isinstance(row.get("evidence"), list)
+        ):
+            raise ValueError("business facts and cleanup require status and evidence")
+        if row["status"] == "passed" and not row["evidence"]:
+            raise ValueError("passed business facts and cleanup require evidence")
+        for name in row["evidence"]:
+            if (
+                not isinstance(name, str)
+                or not name
+                or Path(name).is_absolute()
+                or ".." in Path(name).parts
+                or name == "."
+            ):
+                raise ValueError("journey evidence path must remain inside its report directory")
+            paths.add(name)
+    for key in ("reached", "unreached"):
+        entries = detail.get(key)
+        if (
+            not isinstance(entries, list)
+            or any(not isinstance(entry, str) or not entry for entry in entries)
+            or len(entries) != len(set(entries))
+        ):
+            raise ValueError("journey report requires unique reached and unreached stages")
+    if set(detail["reached"]) & set(detail["unreached"]):
+        raise ValueError("journey stages cannot be both reached and unreached")
+    if detail["status"] == "passed":
+        if (
+            any(row["status"] != "passed" for row in rows)
+            or detail.get("firstFailure") is not None
+            or detail["unreached"]
+        ):
+            raise ValueError("passed journey has failed, pending or unreached obligations")
+    elif not detail.get("firstFailure"):
+        raise ValueError("unsuccessful journey requires its first failure")
+    if imported:
+        artifacts = detail.get("artifacts", {})
+        if (
+            not isinstance(artifacts, dict)
+            or set(artifacts) != paths
+            or any(
+                not isinstance(value, str)
+                or len(value) != 64
+                or any(char not in "0123456789abcdef" for char in value)
+                for value in artifacts.values()
+            )
+        ):
+            raise ValueError("journey artifacts do not match its evidence references")
+    return paths
+
+
+def read_journey_report(path, contract, identity):
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("journey runner did not produce a regular report file")
+    detail = json.loads(path.read_text())
+    try:
+        paths = validate_journey_report(detail, contract, identity)
+        root = path.parent.resolve()
+        artifacts = {}
+        for name in sorted(paths):
+            artifact = root / name
+            if (
+                not artifact.is_file()
+                or not artifact.resolve().is_relative_to(root)
+                or any(
+                    candidate.is_symlink()
+                    for candidate in (artifact, *artifact.parents)
+                    if candidate != root and candidate.is_relative_to(root)
+                )
+            ):
+                raise ValueError(
+                    "journey evidence is missing or escapes its report directory: " + name
+                )
+            digest = hashlib.sha256()
+            with artifact.open("rb") as source:
+                for block in iter(lambda: source.read(1024 * 1024), b""):
+                    digest.update(block)
+            artifacts[name] = digest.hexdigest()
+        return {**detail, "artifacts": artifacts}
+    except (OSError, ValueError) as error:
+        # 无效附件仍阻断验收，但保留 runner 的首个业务失败，避免只能人工翻日志。
+        failure = detail.get("firstFailure") if isinstance(detail, dict) else None
+        suffix = (
+            "; runner firstFailure: " + json.dumps(failure, ensure_ascii=False) if failure else ""
+        )
+        raise ValueError(str(error) + suffix) from error
 
 
 def indexed(rows, label):
     values = {}
     for row in rows:
         name = row.get("id")
-        if not name or name in values:
+        if not isinstance(name, str) or not name or name in values:
             raise ValueError(f"duplicate or missing {label} id: {name}")
         values[name] = row
     return values
 
 
-def summarize(plan, results, report_status=None):
+def summarize(plan, results, report_status=None, identity=None):
     by_id = indexed(results, "result")
     journeys = []
     for name in plan.get("affectedJourneys", []):
@@ -51,6 +169,38 @@ def summarize(plan, results, report_status=None):
         if report_status in {"invalidated", "cancelled"}:
             states.append(report_status)
             reasons.append("report: " + report_status)
+        fact_summary = {}
+        contract = plan.get("journeyEvidence", {}).get(name)
+        if contract:
+            owner = by_id.get(contract["check"])
+            detail = owner.get("journeyEvidence") if owner else None
+            if detail:
+                validate_journey_report(detail, contract, identity, imported=True)
+                if owner["status"] == "passed" and detail["status"] != "passed":
+                    raise ValueError("passed runner has unsuccessful business evidence")
+                states.append(detail["status"])
+                fact_summary = {
+                    "facts": detail["facts"],
+                    "firstFailure": detail["firstFailure"],
+                    "reached": detail["reached"],
+                    "unreached": detail["unreached"],
+                    "cleanup": detail["cleanup"],
+                    "artifacts": detail["artifacts"],
+                    "report": owner.get("journeyReport"),
+                }
+                if detail["status"] != "passed":
+                    reasons.append("business journey: " + str(detail["firstFailure"]))
+            else:
+                if owner and owner["status"] == "passed":
+                    raise ValueError("passed runner is missing required business evidence")
+                states.append("pending")
+                reasons.append("business evidence unavailable: " + contract["check"])
+                fact_summary = {
+                    "facts": [
+                        {"id": fact, "status": "pending", "evidence": []}
+                        for fact in contract["terminalFacts"]
+                    ]
+                }
         status = next(
             (
                 state
@@ -67,6 +217,7 @@ def summarize(plan, results, report_status=None):
                 "missingChecks": missing,
                 "blockReasons": reasons,
                 "status": status,
+                **fact_summary,
             }
         )
     return journeys
@@ -91,7 +242,7 @@ def build(plan, report):
         "schemaVersion": 1,
         "source": dict(identity),
         "platform": report["platform"],
-        "journeys": summarize(plan, report["results"], report["status"]),
+        "journeys": summarize(plan, report["results"], report["status"], identity),
         "authorities": sorted(
             {
                 authority

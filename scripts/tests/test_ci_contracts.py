@@ -616,6 +616,38 @@ class CiContracts(unittest.TestCase):
                     {"script": script, "status": "passed", "passed": True, "exitCode": 0}
                     for script in item["expectedTests"][platform]
                 ]
+            if "journeyEvidence" in item:
+                contract = item["journeyEvidence"]
+                # 门禁单测使用合成观察文件，仍走生产报告导入路径。
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / "report.json"
+                    (path.parent / "observation.json").write_text('{"fixture": true}')
+                    path.write_text(
+                        json.dumps(
+                            {
+                                "schemaVersion": 1,
+                                "journeyId": contract["journeyId"],
+                                "identity": report["identity"],
+                                "status": "passed",
+                                "facts": [
+                                    {
+                                        "id": name,
+                                        "status": "passed",
+                                        "evidence": ["observation.json"],
+                                    }
+                                    for name in contract["terminalFacts"]
+                                ],
+                                "firstFailure": None,
+                                "reached": ["fixture"],
+                                "unreached": [],
+                                "cleanup": {"status": "passed", "evidence": ["observation.json"]},
+                            }
+                        )
+                    )
+                    result["journeyReport"] = str(path)
+                    result["journeyEvidence"] = preflight.verification_evidence.read_journey_report(
+                        path, contract, report["identity"]
+                    )
             report["results"].append(result)
         for report in grouped.values():
             report["evidence"] = preflight.verification_evidence.build(plan, report)

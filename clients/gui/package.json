@@ -204,7 +204,10 @@
     "lint:workbench-boundary": "node scripts/workbench-boundary.mjs",
     "report:knip": "knip --no-progress --no-exit-code --reporter compact",
     "test:host-activation": "node scripts/host-activation-smoke.mjs",
-    "test:host-scheduled-hibernation": "node scripts/host-scheduled-hibernation-smoke.mjs"
+    "test:host-scheduled-hibernation": "node scripts/host-scheduled-hibernation-smoke.mjs",
+    "test:connection-recovery": "node scripts/connection-recovery-smoke.mjs",
+    "test:connection-recovery-counterexamples": "node scripts/connection-recovery-counterexample.mjs",
+    "test:connection-recovery-contracts": "node --test scripts/connection-recovery-counterexample.test.mjs"
   },
   "devDependencies": {
     "@areal/remote-client": "workspace:*",

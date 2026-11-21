@@ -63,6 +63,32 @@
         "cleanupSettled"
       ],
       "checks": ["smoke:test:stop-reopen"]
+    },
+    {
+      "id": "connection-recovery",
+      "title": "正常加载、空闲后自动恢复并安全继续提交",
+      "surfaces": ["web"],
+      "paths": [
+        "clients/gui/renderer/src/host-snapshot.ts",
+        "clients/gui/renderer/src/state/useSessionNavigation.ts",
+        "clients/gui/renderer/src/state/useStartupRecovery.ts",
+        "clients/gui/renderer/src/views/StartupScreen.tsx",
+        "clients/gui/scripts/connection-recovery-smoke.mjs",
+        "clients/gui/scripts/connection-recovery-counterexample.mjs",
+        "clients/gui/scripts/journey-manifest.json"
+      ],
+      "authorities": ["host", "core"],
+      "terminalFacts": [
+        "loadingWithoutFalseFailure",
+        "automaticRecovery",
+        "draftAndSelectionPreserved",
+        "continuedSubmission",
+        "explicitStopRespected",
+        "unknownNotReplayed"
+      ],
+      "checks": ["smoke:test:connection-recovery"],
+      "evidenceCheck": "smoke:test:connection-recovery",
+      "boundaries": ["request-admission", "host-lifecycle", "history-projection"]
     }
   ],
   "boundaries": [

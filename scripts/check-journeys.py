@@ -29,10 +29,16 @@ def load_manifest(path=MANIFEST):
         if journey["id"] in seen:
             raise ValueError(f"duplicate journey: {journey['id']}")
         seen.add(journey["id"])
-        for key in ("checks", "boundaries"):
+        for key in ("checks", "boundaries", "terminalFacts"):
             entries = journey.get(key, [])
-            if not isinstance(entries, list) or len(entries) != len(set(entries)):
+            if (
+                not isinstance(entries, list)
+                or any(not isinstance(entry, str) or not entry for entry in entries)
+                or len(entries) != len(set(entries))
+            ):
                 raise ValueError(f"journey {journey['id']} has invalid or duplicate {key}")
+        if "evidenceCheck" in journey and journey["evidenceCheck"] not in journey["checks"]:
+            raise ValueError(f"journey {journey['id']} evidence check must be a required check")
         if set(journey.get("boundaries", [])) - boundaries.keys():
             raise ValueError(f"journey {journey['id']} references an unknown boundary")
     return value

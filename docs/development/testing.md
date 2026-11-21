@@ -155,6 +155,20 @@ Linux 移动浏览器 job 安装依赖前，将托管 runner 的 Ubuntu mirror l
 
 对话流设计验收先等待活动面板的展开过渡结束，并确认列表中心是实际鼠标命中区域，再发送一次真实滚轮输入。`conversation-wheel.json` 保留可信输入、命中和滚动前后位置；仍要求该列表真实滚动，不用脚本改滚动位置替代滚轮断言。
 
+### 连接恢复验证试点
+
+`test:connection-recovery` 复用现有 journey manifest、真实 Host/Core、源码 Electron owner、生产网页 Renderer 和本地模型。它逐项输出六个业务事实：正常加载不误报失败、空闲后 socket 换代自动恢复、草稿与选择保留、继续提交有权威及可见终态、显式停止不被自动恢复、UNKNOWN 原提交不重放。空闲步骤调用生产 `ifIdle` 停止路径，不代表已验证 15 分钟计时器；本试点也不证明安装包、真实供应商、Host 进程换代或手机验收。退出时仅由夹具代答原生确认选择，保留选择记录，不能算作真实系统弹窗交互验收。空闲状态按可编辑/可发送及权威状态验收；激活的 `pending` 只有在后续同连接目录与 Host 一致就绪后才能结算。
+
+```sh
+python3 scripts/ci-preflight.py --base <base> --item smoke:test:connection-recovery --with-dependencies
+python3 scripts/verification-evidence.py <run>/report.json
+pnpm --dir clients/gui test:connection-recovery-counterexamples
+```
+
+旅程的 `evidenceCheck` 是逐业务事实报告的可选接入，旧旅程保持原语义。preflight 给 runner 传入 `AREAL_JOURNEY_REPORT` 和本次完整 `AREAL_VERIFICATION_IDENTITY`；报告必须覆盖全部 `terminalFacts`、首个失败、已到达/未到达阶段与清理。证据文件只能是报告目录内的普通文件，导入时计算 SHA-256。退出码为零但缺业务报告、事实缺失、身份不符或清理未完成，均不能成为通过证据。未选检查继续显示 pending；不把局部试点说成完整 CI 通过。
+
+反证入口冻结 HEAD 与本次试点改动，在隔离 worktree 顺序运行正确实现、恢复旧加载投影、恢复旧休眠 guard。每轮构建 Renderer、核对产物身份并运行同一个真实旅程；错误实现必须在对应业务事实处失败且清理成功，构建/启动失败不计检出。报告保留补丁摘要、原始报告、截图和首个失败。固定三个样本用于衡量两项已知缺陷的检出、正确实现误报和证据完整性；这些指标不等于发现全部未知缺陷或减少人工时间。人工分钟数缺少配对实测时保持未知，先根据报告直接可判定的事实和仍需介入的问题决定是否扩大试点。
+
 ## 本地验证产物与启动诊断
 
 `make build` / `make release` 在 Cargo 成功后写入 `target/<profile>/verification-build.json`，绑定现有 Core `inputHash`、构建提交和整套 Core/Runtime 的 SHA-256。GUI 构建沿用 bundle 分析插件，在 `renderer/dist/verification-build.json` 中记录 GUI 输入摘要与输出文件哈希；构建期间源码改变则失败。

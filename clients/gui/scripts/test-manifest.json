@@ -1159,5 +1159,47 @@
     "areas": ["lifecycle", "tasks"],
     "requires": ["core-binary"],
     "notes": "Release hibernates an idle Core with a future schedule; Host timer wakes it and Core completes exactly one original occurrence without Workbench."
+  },
+  {
+    "script": "test:connection-recovery",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "areas": ["recovery", "lifecycle", "conversation"],
+    "requires": [
+      "electron",
+      "playwright-chromium",
+      "core-binary",
+      "native-runtime",
+      "gui-build",
+      "git",
+      "python3"
+    ],
+    "platformReason": "First pilot uses the macOS Electron owner and native runtime.",
+    "notes": "Real Host/Core and production web Renderer; request-bound faults and six business facts. No installed-package or 15-minute timer claim."
+  },
+  {
+    "script": "test:connection-recovery-counterexamples",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "areas": ["testing", "recovery"],
+    "requires": [
+      "electron",
+      "playwright-chromium",
+      "core-binary",
+      "native-runtime",
+      "gui-build",
+      "git",
+      "python3"
+    ],
+    "platformReason": "Builds isolated macOS Renderer variants with a native Electron owner.",
+    "notes": "Opt-in fixed baseline and two known defect mutations; not a required smoke or full CI result."
+  },
+  {
+    "script": "test:connection-recovery-contracts",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["testing", "recovery"],
+    "requires": [],
+    "notes": "Mutation applicability and report verdict classification; no product acceptance claim."
   }
 ]
