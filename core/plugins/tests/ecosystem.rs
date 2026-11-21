@@ -712,12 +712,15 @@ fn dependencies_and_user_configuration_never_reach_execution_documents() {
 fn portable_host_requirements_are_exact_metadata_and_unknown_versions_reject() {
     let f = Fixture::new();
     skill(f.corpus.path(), "pkg/skills/alpha", "Alpha");
-    let mut manifest = json!({"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"sample","extensions":{"org.areal":{"hostRequirements":{"version":1,"tools":["browser_v1","computer_v1"]}}}});
+    let mut manifest = json!({"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"sample","extensions":{"org.areal":{"hostRequirements":{"version":1,"tools":["browser_v1","fixture_missing_tool"]}}}});
     write(f.corpus.path(), "pkg/plugin.json", &manifest.to_string());
     f.catalog(json!([{"name":"sample","source":"./pkg"}]));
     let store = f.open();
     let selected = store.read("sample@ecosystem").unwrap();
-    assert_eq!(selected.required_tools, vec!["browser_v1", "computer_v1"]);
+    assert_eq!(
+        selected.required_tools,
+        vec!["browser_v1", "fixture_missing_tool"]
+    );
     assert_eq!(selected.skills[0].required_tools, selected.required_tools);
     install(&store, &selected);
     assert_eq!(

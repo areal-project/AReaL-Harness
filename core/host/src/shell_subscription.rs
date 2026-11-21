@@ -112,7 +112,13 @@ impl ReadModels {
                 )
             })
             .collect::<BTreeMap<_, _>>();
-        let stamp = json!({"projects":status.projects,"sources":source_stamps,"revisions":revisions,"models":model_revisions,"epoch":self.epoch.get(),
+        let cloud = host
+            .gateway
+            .workbench
+            .cloud
+            .sessions
+            .catalog(host, &sources)?;
+        let stamp = json!({"cloud":cloud,"projects":status.projects,"sources":source_stamps,"revisions":revisions,"models":model_revisions,"epoch":self.epoch.get(),
                 "observations":self.online.borrow().iter().map(|(id,online)|json!([id,online.revision,online.epoch])).collect::<Vec<_>>()});
         if let Some((previous, view)) = &*self.cached.borrow()
             && *previous == stamp
@@ -161,6 +167,7 @@ impl ReadModels {
                 }
             }
         }
+        view.projects.extend(cloud);
         *self.cached.borrow_mut() = Some((stamp, view.clone()));
         Ok(view)
     }
@@ -469,8 +476,18 @@ fn restrict(
     mut view: ShellView,
     (projects, source): &(std::collections::BTreeSet<String>, String),
 ) -> ShellView {
-    view.projects
-        .retain(|project| projects.contains(&project.project_id));
+    view.projects.retain(|project| {
+        projects.contains(&project.project_id)
+            || (super::cloud_sessions::CloudSessions::is_virtual(&project.project_id)
+                && project
+                    .logical_project_id
+                    .as_ref()
+                    .is_some_and(|logical| projects.contains(logical))
+                && project
+                    .alias
+                    .as_ref()
+                    .is_some_and(|alias| alias.source_id == *source))
+    });
     view.navigation
         .retain(|navigation| navigation.source_id == *source);
     for navigation in &mut view.navigation {
@@ -642,6 +659,29 @@ mod tests {
             .expect("the local shell snapshot must not wait for Core lifecycle readiness")
             .unwrap();
         assert_eq!(snapshot["snapshot"]["projects"][0]["projectId"], "project");
+        assert!(!host.bin.exists());
+    }
+
+    #[tokio::test]
+    async fn stopped_project_suppression_changes_publish_without_waking_core() {
+        let root = tempfile::tempdir().unwrap();
+        let host = super::super::schedules::tests::fixture(root.path());
+        host.slots.borrow_mut().get_mut("project").unwrap().state = "stopped".into();
+        let (mut subscription, first) = Subscription::open(&host, "connection").await.unwrap();
+        assert_eq!(
+            first["snapshot"]["projects"][0]["scheduleActivationSuppressed"],
+            false
+        );
+        host.schedules.suppress("project", true).unwrap();
+        let changed = subscription.refresh(&host).await.unwrap().unwrap();
+        assert_eq!(
+            changed["delta"]["projects"]["upsert"][0]["state"],
+            "stopped"
+        );
+        assert_eq!(
+            changed["delta"]["projects"]["upsert"][0]["scheduleActivationSuppressed"],
+            true
+        );
         assert!(!host.bin.exists());
     }
 

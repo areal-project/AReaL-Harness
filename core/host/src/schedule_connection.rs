@@ -49,6 +49,32 @@ impl CoreObservation {
     pub(super) fn service(&self) -> &Service {
         &self.session.service
     }
+    pub(super) async fn remote_media(
+        &self,
+        host: &Host,
+        reference: &super::conversation_media::MediaReference,
+    ) -> Result<Option<Vec<u8>>> {
+        use base64::Engine;
+        let Some(token) = &self.session.remote_token else {
+            return Ok(None);
+        };
+        let result = super::conversation_media::remote_blob(
+            &self.session.service.endpoint,
+            token,
+            &json!({"operation":"read","threadId":reference.source_thread_id,"uri":reference.uri}),
+            || {
+                ensure!(self.current(host), "RESYNC_REQUIRED");
+                Ok(())
+            },
+        )
+        .await?;
+        let encoded = result["base64"].as_str().context("RESOURCE_UNAVAILABLE")?;
+        Ok(Some(
+            base64::engine::general_purpose::STANDARD
+                .decode(encoded)
+                .context("RESOURCE_UNAVAILABLE")?,
+        ))
+    }
     pub fn current(&self, host: &Host) -> bool {
         self.session.shared_current(host)
     }
@@ -110,7 +136,6 @@ pub(super) struct Connections {
     sessions: RefCell<BTreeMap<String, Rc<CoreSession>>>,
     terminals: RefCell<BTreeMap<String, Rc<CoreSession>>>,
     terminal_connecting: Cell<usize>,
-    terminal_epoch: Cell<u64>,
     frontends: RefCell<BTreeMap<String, workbench_frontend::Frontend>>,
     pub changed: Notify,
 }
@@ -120,7 +145,6 @@ impl Default for Connections {
             sessions: RefCell::new(BTreeMap::new()),
             terminals: RefCell::new(BTreeMap::new()),
             terminal_connecting: Cell::new(0),
-            terminal_epoch: Cell::new(0),
             frontends: RefCell::new(BTreeMap::new()),
             changed: Notify::new(),
         }
@@ -153,6 +177,75 @@ impl Connections {
             previous.close();
         }
         Ok(Box::new(move || session.close()))
+    }
+
+    /// 原会话只请求更新，项目连接任务拥有持久化排空、停止、重启和插件恢复。
+    pub(super) async fn refresh_gui(&self, host: &Rc<Host>, id: &str) -> Result<()> {
+        let registration = host
+            .slots
+            .borrow()
+            .get(id)
+            .context("RESOURCE_UNAVAILABLE")?
+            .registration
+            .clone();
+        let Some(candidate) = super::gui_project::refresh_inputs(host, &registration).await? else {
+            return Ok(());
+        };
+        let current_inputs = inputs(host, id)?;
+        if super::gui_project::same_inputs(&current_inputs, &candidate)? {
+            return Ok(());
+        }
+        ensure!(
+            !host.schedules.suppressed(id) && !host.schedules.import_blocked(id),
+            unavailable()
+        );
+        let session = self
+            .sessions
+            .borrow()
+            .get(id)
+            .cloned()
+            .context("RESOURCE_UNAVAILABLE")?;
+        session.require_current(host)?;
+        let status = session.request("areal/server/status", json!({})).await?;
+        ensure!(
+            status["restartSafe"] == true,
+            "配置已保存，请在当前任务和终端结束后创建新任务"
+        );
+        session.require_current(host)?;
+        session.request_refresh_inputs(candidate.clone())?;
+        tokio::time::timeout(Duration::from_secs(30), async {
+            loop {
+                let changed = self.changed.notified();
+                host.admission()?;
+                ensure!(
+                    !host.schedules.suppressed(id) && !host.schedules.import_blocked(id),
+                    unavailable()
+                );
+                if let Ok(identity) = self.shared_identity(host, id) {
+                    if identity.1 != session.service.identity.generation {
+                        let restarted_inputs = inputs(host, id)?;
+                        ensure!(
+                            super::gui_project::same_inputs(&restarted_inputs, &candidate)?,
+                            "RESYNC_REQUIRED"
+                        );
+                        return Ok(());
+                    }
+                } else if let Some(error) = host.schedules.error(id) {
+                    anyhow::bail!("{error}");
+                }
+                changed.await;
+            }
+        })
+        .await
+        .context("RESOURCE_UNAVAILABLE")?
+    }
+
+    pub(super) fn observation_can_keep_identity(&self, host: &Host, id: &str) -> bool {
+        // 首次连接前，服务监督仍可证明归属；已有连接失效则不能沿用缓存身份。
+        self.sessions
+            .borrow()
+            .get(id)
+            .is_none_or(|session| session.shared_current(host))
     }
 
     pub(super) fn shared_identity(
@@ -314,6 +407,41 @@ impl Connections {
             session.shared_current(host) && session.service.identity.generation == generation,
             unavailable()
         );
+        self.observe_session(host, session, options).await
+    }
+    pub(super) async fn cloud_observe(
+        &self,
+        host: &Host,
+        id: &str,
+        lease: &str,
+        generation: &str,
+        thread: &str,
+        max_bytes: usize,
+    ) -> Result<(Value, u64, CoreObservation)> {
+        let session = self.workbench_session(host, id, lease)?;
+        ensure!(
+            session.host_owned.get()
+                && session.remote_source.is_some()
+                && session.service.identity.generation == generation,
+            "RESYNC_REQUIRED"
+        );
+        self.observe_session(
+            host,
+            session,
+            areal_protocol::desktop::ObserveThread {
+                thread_id: thread.into(),
+                mode: Some(areal_protocol::desktop::ObservationMode::Conversation),
+                max_bytes: Some(max_bytes),
+            },
+        )
+        .await
+    }
+    async fn observe_session(
+        &self,
+        host: &Host,
+        session: Rc<CoreSession>,
+        options: areal_protocol::desktop::ObserveThread,
+    ) -> Result<(Value, u64, CoreObservation)> {
         if options.mode.is_some() {
             let capabilities = session
                 .conversation_capabilities
@@ -349,7 +477,7 @@ impl Connections {
             .sessions
             .borrow()
             .values()
-            .filter(|session| session.shared_current(host))
+            .filter(|session| session.remote_source.is_none() && session.shared_current(host))
             .cloned()
             .collect();
         for session in sessions {
@@ -404,6 +532,9 @@ fn unavailable() -> anyhow::Error {
 }
 
 fn task_connection_ready(host: &Rc<Host>, session: &Rc<CoreSession>) {
+    host.schedules
+        .connections
+        .frontend_project_ready(host, &session.project_id);
     if host.gateway.workbench.active_source().is_some() {
         let host = host.clone();
         let project = session.project_id.clone();
@@ -418,28 +549,18 @@ fn task_connection_ready(host: &Rc<Host>, session: &Rc<CoreSession>) {
             }
         });
     }
-    if let Some(body) = super::task_catalog::accept_event(
+    super::task_catalog::accept_event(
         host,
         &session.project_id,
         &session.connection_id,
         &json!({"method":"host/connectionReady","params":{}}),
-    ) {
-        host.gateway
-            .workbench
-            .tasks_event(host, &session.project_id, body);
-    }
+    );
 }
 
 fn emit_workbench_event(host: &Host, project: &str, lease: &str, event: &Value) {
-    if !host
-        .schedules
+    host.schedules
         .connections
-        .frontend_event(project, lease, event)
-    {
-        host.gateway
-            .workbench
-            .backend_core_event(project, lease, event);
-    }
+        .frontend_event(project, lease, event);
 }
 
 fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
@@ -464,7 +585,29 @@ fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
             shared.model_revision.set(shared.model_revision.get() + 1);
         }
     }
-    if value["method"] == "areal/task/updated" {
+    let method = value["method"].as_str();
+    let notice_event = matches!(
+        method,
+        Some("areal/owner/invalidated" | "areal/owner/resetRequired")
+    );
+    let turn_event = matches!(method, Some("turn/started" | "turn/completed"));
+    let current_shared = (notice_event || turn_event)
+        && connection.shared_current(host)
+        && host
+            .schedules
+            .connections
+            .sessions
+            .borrow()
+            .get(&connection.project_id)
+            .is_some_and(|current| Rc::ptr_eq(current, connection));
+    // 目录观察覆盖所有任务，逐任务订阅只覆盖已打开的任务。
+    let task_directory_changed = current_shared
+        && (method == Some("areal/owner/resetRequired")
+            || (method == Some("areal/owner/invalidated")
+                && value["params"]["changedTasks"]
+                    .as_array()
+                    .is_some_and(|tasks| !tasks.is_empty())));
+    if method == Some("areal/task/updated") || task_directory_changed {
         connection
             .task_revision
             .set(connection.task_revision.get() + 1);
@@ -479,7 +622,7 @@ fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
             shared.task_revision.set(shared.task_revision.get() + 1);
         }
     }
-    if changes_shell(&value) {
+    if changes_shell(&value) || task_directory_changed {
         connection
             .shell_revision
             .set(connection.shell_revision.get() + 1);
@@ -509,17 +652,7 @@ fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
         }
         return;
     }
-    let current_turn = matches!(
-        value["method"].as_str(),
-        Some("turn/started" | "turn/completed")
-    ) && connection.shared_current(host)
-        && host
-            .schedules
-            .connections
-            .sessions
-            .borrow()
-            .get(&connection.project_id)
-            .is_some_and(|current| Rc::ptr_eq(current, connection));
+    let current_turn = current_shared && turn_event;
     if current_turn
         && value["method"] == "turn/started"
         && let (Some(thread), Some(turn)) = (
@@ -554,15 +687,21 @@ fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
             connection.observed_progress.borrow_mut().remove(thread);
         }
     }
-    if let Some(body) = super::task_catalog::accept_event(
+    super::task_catalog::accept_event(
         host,
         &connection.project_id,
         &connection.connection_id,
         &value,
-    ) {
-        host.gateway
-            .workbench
-            .tasks_event(host, &connection.project_id, body);
+    );
+    if current_shared && notice_event {
+        host.schedules
+            .connections
+            .frontend_notice(host, &connection.project_id, &value);
+        if value["method"] == "areal/owner/resetRequired" {
+            host.schedules
+                .connections
+                .frontend_watch_notices(host, &connection.project_id);
+        }
     }
     host.gateway
         .workbench
@@ -631,12 +770,28 @@ struct CoreSession {
     desktop: Cell<bool>,
     remote_source: Option<String>,
     remote_token: Option<String>,
+    remote_revision: Cell<Option<u64>>,
+    host_owned: Cell<bool>,
     conversation_capabilities: tokio::sync::OnceCell<Value>,
     refresh: Notify,
     refresh_requested: Cell<bool>,
+    refresh_inputs: RefCell<Option<LaunchInputs>>,
     driver: RefCell<Option<AbortHandle>>,
 }
 impl CoreSession {
+    fn request_refresh_inputs(&self, candidate: LaunchInputs) -> Result<()> {
+        if let Some(pending) = self.refresh_inputs.borrow().as_ref() {
+            ensure!(
+                super::gui_project::same_inputs(pending, &candidate)?,
+                "configuration update already pending"
+            );
+        }
+        *self.refresh_inputs.borrow_mut() = Some(candidate);
+        self.refresh_requested.set(true);
+        self.refresh.notify_one();
+        Ok(())
+    }
+
     fn defer_removals(&self, threads: Vec<String>) -> Vec<String> {
         if self.workbench_creations.get() == 0 {
             return threads;
@@ -687,6 +842,11 @@ impl CoreSession {
     fn shared_current(&self, host: &Host) -> bool {
         !self.closed.get()
             && host.admission().is_ok()
+            && self.remote_revision.get().is_none_or(|revision| {
+                self.remote_source.as_deref().is_some_and(|source| {
+                    host.migration.vault.cloud_revision(source).ok() == Some(revision)
+                })
+            })
             && (self.remote_source.is_some()
                 || host
                     .slots
@@ -1010,10 +1170,13 @@ async fn connect_authorized(
         observer: Cell::new(false),
         desktop: Cell::new(false),
         remote_token: remote_source.as_ref().map(|_| token.clone()),
+        remote_revision: Cell::new(None),
+        host_owned: Cell::new(false),
         remote_source,
         conversation_capabilities: tokio::sync::OnceCell::new(),
         refresh: Notify::new(),
         refresh_requested: Cell::new(false),
+        refresh_inputs: RefCell::new(None),
         driver: RefCell::new(None),
     });
     let connection = session.clone();
@@ -1161,13 +1324,7 @@ async fn callback(
         )?);
     }
     connection.require_current(host)?;
-    if matches!(
-        method,
-        "item/tool/call"
-            | "areal/browser/prepare"
-            | "areal/computer/prepare"
-            | "areal/cua/turnEnded"
-    ) {
+    if matches!(method, "item/tool/call" | "areal/browser/prepare") {
         let lease = connection
             .workbench_lease
             .borrow()
@@ -1176,16 +1333,19 @@ async fn callback(
         if let Some(result) = host
             .schedules
             .connections
-            .frontend_callback(&connection.project_id, &lease, method, params, request_id)
+            .frontend_callback(
+                host,
+                &connection.project_id,
+                &lease,
+                method,
+                params,
+                request_id,
+            )
             .await
         {
             return result;
         }
-        return host
-            .gateway
-            .workbench
-            .backend_core_callback(&connection.project_id, &lease, method, params, request_id)
-            .await;
+        anyhow::bail!("desktop tool host unavailable");
     }
     ensure!(method == "areal/task/prepare", unavailable());
     let registrations = host
@@ -1208,6 +1368,14 @@ async fn callback(
         return Ok(json!({}));
     }
     let inputs = inputs(host, &connection.project_id)?;
+    if let Some(candidate) = super::gui_project::refresh_inputs(host, &project.registration).await?
+    {
+        if !super::gui_project::same_inputs(&inputs, &candidate)? {
+            connection.require_current(host)?;
+            connection.request_refresh_inputs(candidate)?;
+            return std::future::pending().await;
+        }
+    }
     let mut result = json!({"dynamicTools":[]});
     match &inputs.schedule_preparation {
         Some(crate::SchedulePreparation::External {
@@ -1294,7 +1462,12 @@ pub(super) async fn activation_pending(host: &Host, id: &str) -> Result<bool> {
 
 async fn capture_refresh(host: &Host, session: &CoreSession) -> Result<Refresh> {
     session.require_current(host)?;
-    let mut inputs = inputs(host, &session.project_id)?;
+    let mut inputs = session
+        .refresh_inputs
+        .borrow()
+        .clone()
+        .map(Ok)
+        .unwrap_or_else(|| inputs(host, &session.project_id))?;
     let registration = host.slots.borrow()[&session.project_id]
         .registration
         .clone();

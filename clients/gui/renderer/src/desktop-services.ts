@@ -5,7 +5,6 @@ import {
   readSnapShotEvent,
 } from "@areal/workbench/desktop-contract/snapshots";
 import { commandResponseError } from "@areal/workbench/desktop-contract/transport";
-import { ProjectionReader } from "@areal/workbench/state-projection";
 import type { DesktopBridge, PreviewRequest } from "@areal/workbench/desktop-contract";
 import type { PlatformServices, Snapshot, Data } from "./services.js";
 import {
@@ -14,7 +13,6 @@ import {
   readFileOpenResult,
   readInstallation,
   readProject,
-  readProjectionMessage,
   readPreviewResult,
   readProjectlessDirectory,
   readSnapshot,
@@ -22,7 +20,6 @@ import {
   readTheme,
   readUpdateState,
 } from "./desktop-response.js";
-import type { McpFormOwner, McpFormResource } from "./mcp-app-services.js";
 export type { DesktopBridge } from "@areal/workbench/desktop-contract";
 export type {
   CommandName,
@@ -30,7 +27,6 @@ export type {
   CommandResponse,
   DesktopError,
   DesktopResult,
-  McpAppDeepLink,
   NotificationTarget,
   OwnedPreviewRequest,
   PreviewRequest,
@@ -80,11 +76,6 @@ export type {
   PluginStoreOperation,
 } from "@areal/workbench/desktop-contract/management";
 export { generationStats, modelUsage } from "@areal/workbench/desktop-contract/management-context";
-export {
-  validateMcpPageCall,
-  validateMcpPageDeclaration,
-  validateMcpPageReply,
-} from "@areal/workbench/desktop-contract/mcp-page";
 export type {
   ChatGPTStatus,
   DiscoveryConnection,
@@ -127,68 +118,27 @@ let nativeDroppedFilePath: DesktopBridge["droppedFilePath"];
 
 export function createDesktopServices(bridge: DesktopBridge): PlatformServices {
   nativeDroppedFilePath = bridge.droppedFilePath;
-  let reader = new ProjectionReader(),
-    nextRequest = 0,
-    recovering = false;
   const listeners = new Set<(snapshot: Snapshot) => void>();
-  const pending = new Map<
-    number,
-    {
-      resolve(value: Snapshot): void;
-      reject(error: unknown): void;
-      timer: ReturnType<typeof setTimeout>;
-    }
-  >();
-  function snapshot(): Promise<Snapshot> {
-    const id = ++nextRequest;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        pending.delete(id);
-        reject(new Error("Desktop snapshot timed out"));
-      }, 15000);
-      pending.set(id, { resolve, reject, timer });
-      bridge.requestProjection(id);
-    });
+  let latest: Snapshot | undefined;
+  async function snapshot(): Promise<Snapshot> {
+    const before = latest;
+    const baseline = await bridge.nativeState();
+    return latest && latest !== before ? latest : readSnapshot(baseline);
   }
-  const unsubscribe = bridge.onProjection((raw) => {
-    let value: Snapshot, requestId: number | undefined;
+  const unsubscribe = bridge.onNativeState((raw) => {
+    let value: Snapshot;
     try {
-      const message = readProjectionMessage(raw);
-      requestId = message.requestId;
-      value = readSnapshot(reader.read(message.frame));
-    } catch (error) {
-      if (recovering) return;
-      for (const request of pending.values()) {
-        clearTimeout(request.timer);
-        request.reject(error);
-      }
-      pending.clear();
-      recovering = true;
-      reader = new ProjectionReader();
-      void snapshot()
-        .finally(() => {
-          recovering = false;
-        })
-        .catch(() => {});
+      value = readSnapshot(raw);
+    } catch {
       return;
     }
-    const request = requestId === undefined ? undefined : pending.get(requestId);
-    if (request && requestId !== undefined) {
-      pending.delete(requestId);
-      clearTimeout(request.timer);
-      request.resolve(value);
-    }
+    latest = value;
     for (const listener of listeners) listener(value);
   });
   window.addEventListener(
     "pagehide",
     () => {
       unsubscribe();
-      for (const request of pending.values()) {
-        clearTimeout(request.timer);
-        request.reject(new Error("Desktop document closed"));
-      }
-      pending.clear();
       listeners.clear();
     },
     { once: true },
@@ -199,24 +149,6 @@ export function createDesktopServices(bridge: DesktopBridge): PlatformServices {
     const value = await bridge.preview(request);
     if (value === null && request.operation === "show") return null;
     return readPreviewResult(value);
-  }
-  async function mcpFormResource(
-    operation: "pick",
-    request: McpFormOwner,
-  ): Promise<{ resources: McpFormResource[] }>;
-  async function mcpFormResource(
-    operation: "release",
-    request: McpFormOwner & { uri: string },
-  ): Promise<unknown>;
-  async function mcpFormResource(
-    operation: "pick" | "release",
-    request: McpFormOwner & { uri?: string },
-  ): Promise<unknown> {
-    const { createMcpFormResourceCommand } = await import("./mcp-app-response.js");
-    const command = createMcpFormResourceCommand(bridge.mcpFormResource);
-    if (operation === "pick") return command(operation, request);
-    if (typeof request.uri !== "string") throw new Error("Invalid form resource URI");
-    return command(operation, { ...request, uri: request.uri });
   }
   const snapShots: PlatformServices["snapShots"] = bridge.getSnapShotState
     ? {
@@ -310,26 +242,6 @@ export function createDesktopServices(bridge: DesktopBridge): PlatformServices {
     onWindowOpened: bridge.onWindowOpened,
     onQuitProgress: bridge.onQuitProgress,
     onNotificationOpen: bridge.onNotificationOpen,
-    onMcpAppDeepLink: bridge.onMcpAppDeepLink,
-    mcpApp: async (request) => {
-      const { createMcpAppCommand } = await import("./mcp-app-response.js");
-      return createMcpAppCommand(bridge.mcpApp)(request);
-    },
-    mcpFormResource,
-    onMcpAppEvent(listener) {
-      let active = true;
-      const unsubscribe = bridge.onMcpAppEvent((value) => {
-        void import("./mcp-app-response.js")
-          .then(({ readMcpAppEvent }) => {
-            if (active) listener(readMcpAppEvent(value));
-          })
-          .catch(() => {});
-      });
-      return () => {
-        active = false;
-        unsubscribe();
-      };
-    },
   };
 }
 

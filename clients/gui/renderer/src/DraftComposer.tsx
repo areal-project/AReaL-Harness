@@ -51,7 +51,6 @@ import {
   clearComposerSkills,
   readComposerSkills,
 } from "./ComposerSkills.js";
-import { ComposerMcp } from "./ComposerMcp.js";
 import { composerFeatureEntries } from "./composerFeatures.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { CircleAlert } from "lucide-react";
@@ -157,7 +156,6 @@ export function DraftComposer({
   const annotationBlocked = imageAnnotationBlocked(key, input.files);
   const chosenProfile = resolveDraftProfile(project, profileSelection);
   const [menuAnchor, setMenuAnchor] = useState<HTMLDivElement | null>(null);
-  const [mcpOpen, setMcpOpen] = useState(false);
   const setPlanMode = (enabled: boolean) => {
     setPlan(enabled);
     localStorage.setItem(`${key}:plan`, String(enabled));
@@ -676,9 +674,13 @@ export function DraftComposer({
       const result = await readAction("workspace", {
         projectId: project.id,
         operation: "worktreeCancel",
-        requestId: current.requestId,
+        requestId: crypto.randomUUID(),
+        worktreeRequestId: current.requestId,
       });
       const record = result;
+      if (record.requestId !== current.requestId || record.projectId !== project.id)
+        throw new Error(t("recovery.createUnconfirmed"));
+      setObservedCreation(record);
       if (record.state !== "cancelled") {
         localStorage.setItem(`${key}:pending-create`, current.requestId);
         setUnknown(current.requestId);
@@ -711,11 +713,54 @@ export function DraftComposer({
       mode: "source",
     });
   }, [sourceRetry, busy, cancellingCreation]);
+  const readCreationProgress = useRef(readAction);
+  readCreationProgress.current = readAction;
+  const [observedCreation, setObservedCreation] = useState<Data>();
+  const progressRequest = busy && activeCreation?.worktree ? activeCreation.requestId : undefined;
+  const progressProject = project.id;
+  useEffect(() => {
+    if (!progressRequest) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = async () => {
+      try {
+        const record = await readCreationProgress.current("workspace", {
+          projectId: progressProject,
+          operation: "worktreeRead",
+          requestId: progressRequest,
+          snapshotOnly: true,
+        });
+        if (!active) return;
+        if (
+          "requestId" in record &&
+          record.requestId === progressRequest &&
+          record.projectId === progressProject
+        ) {
+          setObservedCreation((previous) =>
+            previous?.requestId === record.requestId &&
+            previous?.projectId === record.projectId &&
+            previous.recordRevision > (("recordRevision" in record && record.recordRevision) || 0)
+              ? previous
+              : record,
+          );
+          if (["ready", "failed", "cancelled"].includes(record.state)) return;
+        }
+      } catch {
+        // 短暂断线保留最后一次观察，原提交独立结算。
+      }
+      if (active) timer = setTimeout(refresh, 500);
+    };
+    void refresh();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [progressProject, progressRequest]);
   const creationStatus =
-    activeCreation &&
-    project.worktreeOperations?.findLast(
-      (item: Data) => item.requestId === activeCreation.requestId,
-    );
+    observedCreation?.requestId === activeCreation?.requestId &&
+    observedCreation?.projectId === progressProject
+      ? observedCreation
+      : undefined;
   return (
     <div className="composer-dock" data-v4-composer-dock="true">
       {outgoing && (
@@ -731,6 +776,7 @@ export function DraftComposer({
             </div>
           </div>
           <WorktreeStatus
+            events={creationStatus?.events}
             current={{
               ...(creationStatus ?? {
                 requestId: activeCreation.requestId,
@@ -893,15 +939,6 @@ export function DraftComposer({
                     if (!editLocked) upload.current?.click();
                   },
                 },
-                mcp:
-                  project.id !== "projectless"
-                    ? {
-                        disabled: !executionReady,
-                        run: () => {
-                          if (executionReady) setMcpOpen(true);
-                        },
-                      }
-                    : undefined,
                 files: project.root
                   ? {
                       disabled: !executionReady,
@@ -1076,16 +1113,6 @@ export function DraftComposer({
           {preferenceNotice}
         </p>
       )}
-      <ComposerMcp
-        projectId={project.id}
-        action={readAction}
-        open={executionReady && mcpOpen}
-        anchor={menuAnchor}
-        onClose={() => {
-          setMcpOpen(false);
-          api.current?.focus();
-        }}
-      />
     </div>
   );
 }

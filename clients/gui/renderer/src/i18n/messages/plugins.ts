@@ -190,10 +190,6 @@ export const pluginMessages = {
     "zh-CN": "当前宿主未提供所需工具：{tools}。",
     en: "Required tools are unavailable in this host: {tools}.",
   },
-  "settings.pluginCenter.enableNativeComputerProvider": {
-    "zh-CN": "请在设置中明确启用原生电脑控制提供方。LCU 不提供 computer_v1。",
-    en: "Enable the native computer control provider in Settings. LCU does not provide computer_v1.",
-  },
   "settings.pluginCenter.hostReadinessUnavailable": {
     "zh-CN": "无法确认当前安装快照的工具可用性，请刷新插件详情。",
     en: "Could not confirm tool availability for this installed snapshot. Refresh plugin details.",
@@ -1762,66 +1758,6 @@ export const pluginMessages = {
   "settings.resourceSettings.backToSKILLMd": {
     "zh-CN": "返回 SKILL.md",
     en: "Back to SKILL.md",
-  },
-  "settings.mcpAppsSettings.thisAppUsesAnUnsupportedSettingsFormat": {
-    "zh-CN": "此应用的设置格式不受支持，未应用任何更改。",
-    en: "This app uses an unsupported settings format. No changes were applied.",
-  },
-  "settings.mcpAppsSettings.otherSettings": {
-    "zh-CN": "其他设置",
-    en: "Other settings",
-  },
-  "settings.mcpAppsSettings.settings": {
-    "zh-CN": "设置",
-    en: "Settings",
-  },
-  "settings.mcpAppsSettings.checkTheValueOfValue": {
-    "zh-CN": "请检查“{value0}”的值。",
-    en: "Check the value of “{value0}”.",
-  },
-  "settings.mcpAppsSettings.theSettingsUpdateIsUnconfirmedRefreshAnd": {
-    "zh-CN": "设置更新未确认。请刷新核对后再修改。",
-    en: "The settings update is unconfirmed. Refresh and check before making more changes.",
-  },
-  "settings.mcpAppsSettings.valueSettings": {
-    "zh-CN": "{value0} 设置",
-    en: "{value0} settings",
-  },
-  "settings.mcpAppsSettings.runValue": {
-    "zh-CN": "运行 {value0}",
-    en: "Run {value0}",
-  },
-  "settings.mcpAppsSettings.theOperationDidNotCompleteTryAgain": {
-    "zh-CN": "操作未完成，请重试。",
-    en: "The operation did not complete. Try again.",
-  },
-  "settings.mcpAppsSettings.run": {
-    "zh-CN": "运行",
-    en: "Run",
-  },
-  "settings.mcpAppsSettings.working": {
-    "zh-CN": "处理中…",
-    en: "Working…",
-  },
-  "settings.mcpAppsSettings.saveSettings": {
-    "zh-CN": "保存设置",
-    en: "Save settings",
-  },
-  "settings.mcpAppsSettings.appEntryPoints": {
-    "zh-CN": "应用入口",
-    en: "App entry points",
-  },
-  "settings.mcpAppsSettings.couldNotSearchThisAppTryAgain": {
-    "zh-CN": "无法搜索此应用，请重试。",
-    en: "Could not search this app. Try again.",
-  },
-  "settings.mcpAppsSettings.appReferences": {
-    "zh-CN": "应用引用",
-    en: "App references",
-  },
-  "settings.mcpAppsSettings.searchReferences": {
-    "zh-CN": "搜索引用",
-    en: "Search references",
   },
   "settings.mcpConfigEditor.form": {
     "zh-CN": "表单",

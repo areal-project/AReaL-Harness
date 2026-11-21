@@ -26,6 +26,7 @@ import {
   type JsonObject,
   type MediaSource,
   type MediaBytes,
+  type Fresh,
 } from "./read-state.js";
 export { readHostBootstrap, type HostBootstrap } from "./bootstrap.js";
 export type * from "./read-state.js";
@@ -111,7 +112,6 @@ export class HostClient {
   #reads: ReadSnapshot = { shell: { state: "loading" }, session: { state: "unavailable" } };
   #listeners = new Set<() => void>();
   #readListeners = new Set<() => void>();
-  #pageListeners = new Set<(event: unknown) => void>();
   #botListeners = new Set<(event: unknown) => void>();
   #epoch = 0;
   #selection = 0;
@@ -164,12 +164,6 @@ export class HostClient {
       this.#readListeners.delete(listener);
     };
   };
-  subscribePageEvents = (listener: (event: unknown) => void) => {
-    this.#pageListeners.add(listener);
-    return () => {
-      this.#pageListeners.delete(listener);
-    };
-  };
   subscribeBotEvents = (listener: (event: unknown) => void) => {
     this.#botListeners.add(listener);
     return () => {
@@ -187,6 +181,9 @@ export class HostClient {
   /** 在选中会话之外再观察一个会话（如侧边讨论）；返回的函数结束观察。 */
   watchSession(target: { projectId: string; threadId: string }) {
     return this.#watched.watch(target);
+  }
+  captureWatchedSession<T>(target: { projectId: string; threadId: string }, snapshot: () => T) {
+    return this.#watched.capture(target, snapshot);
   }
   #pruneSessionCache() {
     clearTimeout(this.#cacheTimer);
@@ -445,6 +442,72 @@ export class HostClient {
         : this.#commandContext(projectId),
     );
   }
+  async attachment(projectId: string, threadId: string, uri: string): Promise<MediaBytes> {
+    const transport = this.#transport;
+    const state = this.#state;
+    const context = this.#commandContext(projectId);
+    const request = this.#mediaQueue.then(async () => {
+      if (!transport?.write || state.connection !== "ready" || !this.writable("attachment.read"))
+        throw new Error("Attachment read unavailable");
+      const current = () => {
+        const active = this.#commandContext(projectId);
+        const connection = this.#state;
+        if (
+          transport !== this.#transport ||
+          active.serviceGeneration !== context.serviceGeneration ||
+          connection.connection !== "ready" ||
+          connection.identity.connectionId !== state.identity.connectionId ||
+          connection.identity.gatewayGeneration !== state.identity.gatewayGeneration
+        )
+          throw new Error("Attachment identity changed");
+      };
+      const parts: Uint8Array[] = [];
+      let offset = 0;
+      let total: number | undefined;
+      let mime: string | undefined;
+      const chunkSize = 256 * 1024;
+      do {
+        current();
+        const value = await transport.write("attachment.read", { threadId, uri, offset }, context);
+        current();
+        if (
+          !record(value) ||
+          value.projectId !== projectId ||
+          value.threadId !== threadId ||
+          value.uri !== uri ||
+          value.serviceGeneration !== context.serviceGeneration ||
+          value.offset !== offset ||
+          typeof value.totalBytes !== "number" ||
+          !Number.isSafeInteger(value.totalBytes) ||
+          value.totalBytes < 0 ||
+          value.totalBytes > 16 * 1024 * 1024 ||
+          typeof value.mimeType !== "string" ||
+          !value.mimeType ||
+          typeof value.base64 !== "string" ||
+          value.base64.length > Math.ceil(chunkSize / 3) * 4 ||
+          (total !== undefined && (value.totalBytes !== total || value.mimeType !== mime))
+        )
+          throw new Error("Invalid attachment chunk");
+        total = value.totalBytes;
+        mime = value.mimeType;
+        const bytes = Uint8Array.from(atob(value.base64), (char) => char.charCodeAt(0));
+        const end = offset + bytes.length;
+        if (
+          bytes.length !== Math.min(chunkSize, total - offset) ||
+          value.nextOffset !== (end < total ? end : null)
+        )
+          throw new Error("Invalid attachment range");
+        parts.push(bytes);
+        offset = end;
+      } while (offset < total);
+      return { mime, bytes: joinChunks(parts, total) };
+    });
+    this.#mediaQueue = request.then(
+      () => {},
+      () => {},
+    );
+    return request;
+  }
   /**
    * 附件分块交给 Host，再由 Host 存进 Core；返回 areal://blob/ 引用。
    * Host 校验重发块与已收内容一致，所以传输失败时同一块可以原样重发一次。
@@ -614,7 +677,7 @@ export class HostClient {
       if (this.#opening === opening) this.#opening = undefined;
     }
   }
-  async #readSession() {
+  async #readSession(): Promise<void> {
     const transport = this.#transport,
       target = this.#target,
       selection = ++this.#selection;
@@ -701,6 +764,31 @@ export class HostClient {
         void this.retry();
         return;
       }
+      if (persisted && selection === this.#selection) {
+        const latest = previous(this.#reads.shell)?.snapshot.projects.find(
+          (value) => value.projectId === target.projectId,
+        );
+        if (
+          latest?.state === "ready" &&
+          latest.serviceGeneration &&
+          this.#target?.projectId === target.projectId &&
+          this.#target?.threadId === target.threadId
+        ) {
+          this.#target.persisted = false;
+          return this.#readSession();
+        }
+        if (
+          latest?.state === "starting" &&
+          previousSession?.projectId === target.projectId &&
+          previousSession?.threadId === target.threadId
+        ) {
+          this.#publishReads({
+            ...this.#reads,
+            session: { state: "stale", value: previousSession },
+          });
+          return;
+        }
+      }
       this.#publishReads({
         ...this.#reads,
         session: stale(
@@ -762,14 +850,22 @@ export class HostClient {
       throw new Error("History identity changed");
     return result.page;
   }
-  media(source: MediaSource, signal?: AbortSignal): Promise<MediaBytes> {
+  media(
+    source: MediaSource,
+    signal?: AbortSignal,
+    target?: { projectId: string; threadId: string },
+  ): Promise<MediaBytes> {
     if (!/^areal:\/\/blob\/[a-f0-9]{64}$/.test(source.uri))
       return Promise.reject(new Error("Conversation media unavailable"));
     const selection = this.#selection;
+    const key = target && `${target.projectId}:${target.threadId}`;
+    const observed = () => (key ? this.#watched.view.get(key) : this.#reads.session);
+    const initial = observed();
     const request = this.#mediaQueue.then(() => {
-      if (signal?.aborted || selection !== this.#selection)
+      if (signal?.aborted || (!key && selection !== this.#selection))
         throw new DOMException("Media read cancelled", "AbortError");
-      return this.#readMedia(source, signal);
+      if (initial?.state !== "fresh") throw new Error("Conversation unavailable");
+      return this.#readMedia(source, initial.value, observed, signal);
     });
     this.#mediaQueue = request.then(
       () => {},
@@ -777,18 +873,27 @@ export class HostClient {
     );
     return request;
   }
-  async #readMedia(source: MediaSource, signal?: AbortSignal): Promise<MediaBytes> {
-    const state = this.#reads.session,
-      transport = this.#transport,
-      selection = this.#selection;
-    if (state.state !== "fresh" || !transport) throw new Error("Conversation unavailable");
-    const owner = state.value,
-      parts: Uint8Array[] = [];
+  async #readMedia(
+    source: MediaSource,
+    owner: SessionRead,
+    observed: () => Fresh<SessionRead> | undefined,
+    signal?: AbortSignal,
+  ): Promise<MediaBytes> {
+    const transport = this.#transport;
+    if (!transport) throw new Error("Conversation unavailable");
+    const parts: Uint8Array[] = [];
     let offset = 0,
       totalBytes: number | undefined,
       mime: string | undefined;
     const current = () => {
-      if (signal?.aborted || selection !== this.#selection || transport !== this.#transport)
+      const state = observed();
+      if (
+        signal?.aborted ||
+        transport !== this.#transport ||
+        state?.state !== "fresh" ||
+        state.value.subscriptionId !== owner.subscriptionId ||
+        state.value.connectionId !== owner.connectionId
+      )
         throw new DOMException("Media read cancelled", "AbortError");
     };
     do {
@@ -815,28 +920,6 @@ export class HostClient {
     return { mime: mime!, bytes: joinChunks(parts, totalBytes!) };
   }
   #onEvent(event: unknown) {
-    if (record(event) && event.event === "pages.event") {
-      const state = this.#state;
-      if (
-        this.#closed ||
-        state.connection !== "ready" ||
-        event.connectionId !== state.identity.connectionId ||
-        event.gatewayGeneration !== state.identity.gatewayGeneration ||
-        typeof event.token !== "string" ||
-        !event.token ||
-        !record(event.notification)
-      )
-        return;
-      const pageEvent = {
-        event: "pages.event",
-        connectionId: state.identity.connectionId,
-        gatewayGeneration: state.identity.gatewayGeneration,
-        token: event.token,
-        notification: event.notification,
-      };
-      for (const listener of this.#pageListeners) listener(pageEvent);
-      return;
-    }
     if (record(event) && event.event === "bots.event") {
       const state = this.#state;
       if (
@@ -906,6 +989,22 @@ export class HostClient {
       event.view !== "conversation" ||
       event.event === "session.invalidated"
     ) {
+      if (current.access?.kind === "persisted" && event.event === "session.invalidated") {
+        const currentProject = previous(this.#reads.shell)?.snapshot.projects.find(
+          (value) => value.projectId === current.projectId,
+        );
+        if (currentProject?.state === "starting") {
+          this.#publishReads({ ...this.#reads, session: stale(session) });
+          return;
+        }
+        if (
+          currentProject?.state === "ready" &&
+          this.#target?.projectId === current.projectId &&
+          this.#target?.persisted === true
+        ) {
+          this.#target.persisted = false;
+        }
+      }
       this.#publishReads({ ...this.#reads, session: stale(session) });
       const selectedProject = previous(this.#reads.shell)?.snapshot.projects.find(
         (project) => project.projectId === this.#target?.projectId,
@@ -967,7 +1066,6 @@ export class HostClient {
     this.options.events?.removeEventListener("pageshow", this.#restore);
     this.#listeners.clear();
     this.#readListeners.clear();
-    this.#pageListeners.clear();
   }
 }
 export { createNoiseReadTransport, remoteCapabilities, remoteReadConnection } from "./noise.js";

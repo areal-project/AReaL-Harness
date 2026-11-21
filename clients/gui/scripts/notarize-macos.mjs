@@ -378,9 +378,10 @@ async function main() {
     timings.measureSync("verify-signed-app", assertApp);
     // 外层签名不得改变已签 Core 的字节；在任何 Apple 上传前检查，失败保留现场。
     timings.measureSync("verify-core-bundle", () =>
-      require(
-        join(desktop, "../../services/workbench/src/desktop/core/bundle.cjs"),
-      ).verifyCoreBundle(join(app, "Contents/Resources"), { hashes: true }),
+      require(join(desktop, "packages/workbench/node/bundle.cjs")).verifyCoreBundle(
+        join(app, "Contents/Resources"),
+        { hashes: true },
+      ),
     );
     if (!state.noNotarize)
       timings.measureSync("archive-app-submission", () =>
@@ -524,9 +525,10 @@ async function main() {
       run("/usr/sbin/spctl", ["--assess", "--type", "execute", "--verbose=2", app]);
     }
     timings.measureSync("verify-core-bundle", () =>
-      require(
-        join(desktop, "../../services/workbench/src/desktop/core/bundle.cjs"),
-      ).verifyCoreBundle(join(app, "Contents/Resources"), { hashes: true }),
+      require(join(desktop, "packages/workbench/node/bundle.cjs")).verifyCoreBundle(
+        join(app, "Contents/Resources"),
+        { hashes: true },
+      ),
     );
     if (options["skip-tests"] || state.skipTests || state.noNotarize) {
       state.packagedGui = "skipped-by-request";

@@ -7,8 +7,19 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { selectConversation, captureSmokeFailure } from "./smoke-navigation.mjs";
-import { assertApplicationStopped } from "./application-cleanup.mjs";
+import {
+  createProjectConversation,
+  selectConversation,
+  captureSmokeFailure,
+} from "./smoke-navigation.mjs";
+import { readCoreThread } from "./support/core-observation.mjs";
+import { installHostTransportBarrier } from "./support/host-transport-barrier.mjs";
+import {
+  closeSmokeApplication,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
+} from "./application-cleanup.mjs";
+import { applicationFixture } from "./application-fixture.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 
 // 主流程与失败方式：同页截图、多条确认、跨聊天隔离、上传拒绝保留、显式重试及历史回取。
@@ -16,10 +27,6 @@ const gui = resolve(dirname(fileURLToPath(import.meta.url)), ".."),
   root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const { ServiceConnection, waitForServiceExit } = require(
-  join(gui, "app/src/core/service-client.cjs"),
-);
-const { desktopExecutables } = require(join(gui, "app/src/core/desktop-executables.cjs"));
 const scratch = await makeTempDir("areal-browser-annotations-");
 const workspace = join(scratch, "workspace"),
   user = join(scratch, "user");
@@ -53,10 +60,17 @@ const model = createServer(async (request, response) => {
   for await (const chunk of request) raw += chunk;
   const body = JSON.parse(raw);
   if (respondToSessionName(body, response)) return;
-  requests.push(body);
+  const prediction = body.messages.some(
+    (message) =>
+      message.role === "system" &&
+      typeof message.content === "string" &&
+      message.content.startsWith("Predict the next user prompt from the conversation data."),
+  );
+  if (!prediction) requests.push(body);
+  const reply = prediction ? "" : "ANNOTATIONS_RECEIVED";
   response.writeHead(200, { "Content-Type": "text/event-stream" });
   response.end(
-    `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "ANNOTATIONS_RECEIVED" }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+    `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: reply }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
   );
 });
 await new Promise((resolve) => model.listen(0, "127.0.0.1", resolve));
@@ -79,23 +93,28 @@ await writeFile(
   }),
 );
 const packagedExecutable = process.env.AREAL_GUI_EXECUTABLE;
-const env = {
-  ...process.env,
+const env = { ...process.env };
+for (const key of Object.keys(env))
+  if (/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) || key === "ELECTRON_RUN_AS_NODE") delete env[key];
+Object.assign(env, {
+  HOME: user,
   AREAL_GUI_USER_DATA: join(scratch, "electron"),
   AREAL_CORE_HOME: join(scratch, "core"),
   AREAL_CORE_USER_HOME: user,
+  AREAL_HARNESS_HOME: join(scratch, "harness"),
   AREAL_CORE_CONFIG: join(user, ".areal/config.toml"),
   AREAL_HARNESS_SERVICE_HOME: join(scratch, "registry"),
   AREAL_CORE_DESKTOP_CONFIG: deployment,
   AREAL_CORE_BIN: process.env.AREAL_CORE_BIN || join(root, "target/debug/areal"),
-};
-for (const key of ["AREAL_CORE_WORKSPACE", "AREAL_HARNESS_HOME", "AREAL_HARNESS_CONFIG"])
-  delete env[key];
+  NO_PROXY: [env.NO_PROXY, "127.0.0.1,localhost,::1"].filter(Boolean).join(","),
+  no_proxy: [env.no_proxy, "127.0.0.1,localhost,::1"].filter(Boolean).join(","),
+});
 if (packagedExecutable) delete env.AREAL_CORE_BIN;
 const testedCore = packagedExecutable
   ? join(dirname(dirname(packagedExecutable)), "Resources/areal-core/bin/areal")
   : env.AREAL_CORE_BIN;
-let app,
+let fixture,
+  app,
   page,
   passed = false;
 const errors = [],
@@ -126,18 +145,13 @@ const settlePopup = async (name = "待发送的标注") => {
     .locator(".browser-annotation-attachment-card img")
     .evaluateAll((images) => Promise.all(images.map((image) => image.decode())));
 };
-const command = async (name, params) => {
-  const result = await page.evaluate(
-    ({ name, params }) => window.arealDesktop.command(name, params),
-    { name, params },
-  );
-  assert.equal(result.ok, true, JSON.stringify(result));
-  return result.value;
-};
+const observeThread = (threadId) =>
+  readCoreThread({ binary: testedCore, env, gui, threadId, workspace });
 try {
+  if (!packagedExecutable) fixture = await applicationFixture(gui, join(scratch, "app"));
   app = await electron.launch({
     executablePath: packagedExecutable || require("electron"),
-    args: packagedExecutable ? [] : [join(gui, "app")],
+    args: fixture ? [fixture.path] : [],
     env,
     timeout: 120000,
   });
@@ -156,20 +170,39 @@ try {
     },
     { workspace, origin: new URL(url).origin },
   );
-  await page.evaluate(() => window.arealDesktop.chooseProject());
+  await page.locator(".composer-project").click();
+  await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
   const project = await until(
     async () => (await state()).projects.find((p) => p.root === workspace),
-    "project",
+    "Workspace registered",
   );
-  // 人工批注不要求模型工具包；Core 仍处理消息与媒体。
-  const first = await command("create", {
-    projectId: project.id,
-    profile: { id: "fixture", revision: "v1" },
-  });
-  const other = await command("create", {
-    projectId: project.id,
-    profile: { id: "fixture", revision: "v1" },
-  });
+  const workbench = page.getByTestId("areal-workbench");
+  await until(
+    async () => (await workbench.getAttribute("data-project-id")) === project.id,
+    "Workspace selected",
+  );
+  const seed = async (text, previousThreadId) => {
+    await page.getByRole("button", { name: "选择模型", exact: true }).click();
+    await page.getByRole("tab", { name: "fixture", exact: true }).click();
+    await page.locator('[data-model-value="fixture/fixture"]').getByRole("radio").click();
+    await page.keyboard.press("Escape");
+    await page.getByTestId("chat-input").fill(text);
+    await page.getByTestId("chat-send-button").click();
+    const threadId = await until(async () => {
+      const id = await workbench.getAttribute("data-thread-id");
+      return id && id !== previousThreadId && id;
+    }, "Native conversation created");
+    await until(async () => {
+      const turn = (await observeThread(threadId)).turns.at(-1);
+      return turn?.status === "completed";
+    }, "Core seed Turn completed");
+    return { threadId };
+  };
+  const first = await seed("Annotation fixture conversation");
+  await createProjectConversation(page, "workspace");
+  const other = await seed("Other fixture conversation", first.threadId);
+  const seedRequestCount = requests.length;
+  assert.equal(seedRequestCount, 2, "The fixture creates two distinct seed Turns");
   const identity = { projectId: project.id, threadId: first.threadId };
   await selectConversation(page, first.threadId);
   await app.evaluate(({ app, BrowserWindow }) => {
@@ -307,22 +340,30 @@ try {
   const box = await image.boundingBox();
   assert.ok(box?.width && box.height);
   // 在现有 IPC 边界拒绝一次元素选择，随后通过真实工具栏切换区域模式。
-  await app.evaluate(({ ipcMain }) => {
+  await app.evaluate(({ ipcMain }, identity) => {
     const handlers = ipcMain._invokeHandlers;
     const original = handlers.get("areal-core:preview");
     handlers.set("areal-core:preview", (event, request) => {
-      if (request.operation === "selectElement") {
+      if (
+        request.operation === "selectElement" &&
+        request.projectId === identity.projectId &&
+        request.threadId === identity.threadId
+      ) {
         handlers.set("areal-core:preview", original);
+        globalThis.__annotationSelectionFailure = {
+          threadId: request.threadId,
+          captureId: request.captureId,
+        };
         throw new Error("测试：元素选择失败");
       }
       return original(event, request);
     });
-  });
+  }, identity);
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await page
-    .getByText(/元素选择失败/)
-    .first()
-    .waitFor();
+  await page.getByText("浏览器操作未完成", { exact: true }).waitFor();
+  facts.elementFailure = await app.evaluate(() => globalThis.__annotationSelectionFailure);
+  assert.equal(facts.elementFailure?.threadId, first.threadId);
+  assert.ok(facts.elementFailure.captureId);
   await region.getByRole("button", { name: "框选区域" }).click();
   await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.2);
   await page.mouse.down();
@@ -421,52 +462,71 @@ try {
   checks.push(
     "Thread navigation isolates and restores annotations; each comment is editable beside its crop",
   );
-  // 在现有 RPC 的上传边界暂停并明确拒绝，验证锁定期间不能移除正在发送的标注。
-  await app.evaluate(({ app }) => {
-    const req = process
-      .getBuiltinModule("module")
-      .createRequire(app.getAppPath() + "/package.json");
-    const { ServiceConnection } = req("./src/core/service-client.cjs");
-    const original = ServiceConnection.prototype.request;
-    globalThis.__annotationUploadGate = { entered: false };
-    ServiceConnection.prototype.request = function (method, params, ...rest) {
+  // 暂停原附件块，在同一 Host 通道释放一份会被拒绝的请求来验证失败前后的草稿。
+  await page.evaluate(installHostTransportBarrier);
+  await page.evaluate((threadId) => {
+    globalThis.__annotationUploadGate = {};
+    globalThis.__annotationBarrier = globalThis.createHostTransportBarrier((frame) => {
+      const gate = globalThis.__annotationUploadGate;
       if (
-        method === "command" &&
-        params?.name === "media" &&
-        !globalThis.__annotationUploadGate.entered
-      ) {
-        globalThis.__annotationUploadGate.entered = true;
-        return new Promise((_, reject) => {
-          globalThis.__annotationUploadGate.release = () => {
-            ServiceConnection.prototype.request = original;
-            reject(new Error("测试：延迟上传拒绝"));
-          };
-        });
-      }
-      return original.call(this, method, params, ...rest);
-    };
-  });
+        gate.requestId ||
+        frame.method !== "attachment.upload" ||
+        frame.params?.threadId !== threadId ||
+        frame.params.offset !== 0
+      )
+        return null;
+      Object.assign(gate, {
+        holdRequest: true,
+        data: JSON.stringify({ ...frame, params: { ...frame.params, base64: "" } }),
+        onResponse(reply) {
+          gate.replyId = reply.id;
+          gate.errorCode = reply.error?.code;
+        },
+      });
+      return gate;
+    });
+  }, first.threadId);
   await page.getByTestId("chat-send-button").click();
   await until(
-    () => app.evaluate(() => globalThis.__annotationUploadGate.entered),
-    "gated media upload",
+    () => page.evaluate(() => globalThis.__annotationUploadGate.requestHit),
+    "Original attachment upload reached the gate",
   );
-  await page.getByRole("button", { name: "2 条标注", exact: true }).click();
-  await settlePopup();
-  assert.equal(await page.getByRole("textbox", { name: "标注 1 内容" }).isDisabled(), true);
+  await page.getByText("正在发送消息", { exact: true }).waitFor();
+  assert.equal(await page.getByTestId("chat-send-button").isDisabled(), true);
+  assert.equal(await page.getByRole("button", { name: "2 条标注", exact: true }).count(), 0);
   assert.equal(
     await page
       .locator(".browser-annotation-attachment-card")
-      .getByRole("button", { name: /移除附件/ })
+      .getByRole("button", { name: /删除标注|移除附件/ })
       .count(),
     0,
     "locked thumbnail cannot expose an active remove control",
   );
-  await page.keyboard.press("Escape");
-  await app.evaluate(() => globalThis.__annotationUploadGate.release());
-  await page.getByRole("alert").filter({ hasText: "延迟上传拒绝" }).waitFor();
+  await page.evaluate(() => globalThis.__annotationUploadGate.releaseRequest());
+  facts.rejectedUpload = await until(
+    () =>
+      page.evaluate(() => {
+        const { requestHit, replyId, errorCode } = globalThis.__annotationUploadGate;
+        return replyId === requestHit && { requestHit, replyId, errorCode };
+      }),
+    "Host rejects the original attachment block",
+  );
+  assert.equal(facts.rejectedUpload.errorCode, "INVALID_PARAMS");
+  const admissionNotice = page
+    .locator(".composer-dock")
+    .getByTestId("feedback-notice")
+    .getByRole("alert");
+  await admissionNotice.waitFor();
   await page.getByRole("button", { name: "2 条标注", exact: true }).waitFor();
-  assert.equal(requests.length, 0, "rejected upload cannot submit");
+  assert.equal(requests.length, seedRequestCount, "rejected upload cannot submit");
+  assert.equal((await observeThread(first.threadId)).turns.length, 1);
+  await page.getByRole("button", { name: "2 条标注", exact: true }).click();
+  await settlePopup();
+  assert.equal(
+    await page.getByRole("textbox", { name: "标注 2 内容" }).inputValue(),
+    "ANNOTATION_COMMENT_2_EDITED",
+  );
+  await page.keyboard.press("Escape");
   checks.push(
     "Pending upload locks thumbnail removal; known upload refusal retains both annotation files and comments for explicit retry",
   );
@@ -476,9 +536,9 @@ try {
     buffer: Buffer.alloc(17 * 1024 * 1024),
   });
   await page.getByTestId("chat-send-button").click();
-  await page.locator("p.notice[role=alert]").filter({ hasText: "oversize.bin" }).waitFor();
+  await admissionNotice.filter({ hasText: "oversize.bin" }).waitFor();
   await page.getByRole("button", { name: "2 条标注", exact: true }).waitFor();
-  assert.equal(requests.length, 0, "upload refusal cannot submit the message");
+  assert.equal(requests.length, seedRequestCount, "upload refusal cannot submit the message");
   await page.getByRole("button", { name: "移除附件 oversize.bin", exact: true }).click();
   await page.getByRole("button", { name: "2 条标注", exact: true }).waitFor();
   await page.getByTestId("chat-send-button").click();
@@ -487,10 +547,9 @@ try {
     .waitFor({ timeout: 60000 });
   assert.equal(await page.getByTestId("browser-annotation-attachments").count(), 0);
   const history = await until(async () => {
-    const thread = (await state()).projects.find((p) => p.id === project.id)?.state?.threads?.[
-      first.threadId
-    ];
-    return thread?.turns?.at(-1)?.status === "completed" ? thread : null;
+    const thread = await observeThread(first.threadId);
+    const turn = thread.turns.at(-1);
+    return thread.turns.length === 2 && turn?.status === "completed" ? thread : null;
   }, "accepted Core history");
   facts.history = history;
   const annotationUser = history.turns.at(-1).items.find((item) => item.type === "userMessage");
@@ -509,6 +568,7 @@ try {
     "annotated human model request",
   );
   const modelUser = annotatedUser(modelBody);
+  assert.equal(requests.length, seedRequestCount + 1, "Only explicit retry reaches the model");
   assert.ok(
     Array.isArray(modelUser.content),
     "Annotated human model message retains structured text and image parts",
@@ -553,98 +613,42 @@ try {
   if (page) await captureSmokeFailure(page, scratch, e);
   throw e;
 } finally {
-  // Origin 确认桩不用于退出确认；只关闭本次隔离 GUI，并结算其确切服务。
-  const launch = app
-    ? await app
-        .evaluate(() => ({ executable: process.execPath, resourcesPath: process.resourcesPath }))
-        .catch(() => null)
-    : null;
-  const executable = launch
-    ? desktopExecutables({ packaged: !!packagedExecutable, ...launch }).service
-    : null;
-  const home = join(scratch, "core");
-  const metadata = await readFile(join(home, "service.json"), "utf8")
-    .then(JSON.parse)
-    .catch((error) => {
-      if (error.code === "ENOENT") return null;
-      throw error;
-    });
+  let originalHost;
+  try {
+    originalHost = await readFixtureHost(env);
+  } catch (error) {
+    errors.push("Host identity: " + error.message);
+    passed = false;
+  }
+  const guiPid = app?.process().pid;
   if (app) {
+    await page?.evaluate(() => globalThis.__annotationBarrier?.restore()).catch(() => {});
     await app
       .evaluate(({ dialog }) => {
-        globalThis.__annotationUploadGate?.release?.();
         dialog.showMessageBox = async () => ({ response: 1 });
       })
       .catch(() => {});
-    await app.close();
+    await closeSmokeApplication(app).catch((error) => {
+      errors.push("Electron cleanup: " + error.message);
+      passed = false;
+    });
   }
   try {
-    const alive =
-      metadata &&
-      (() => {
-        try {
-          process.kill(metadata.pid, 0);
-          return true;
-        } catch (error) {
-          if (error.code === "ESRCH") return false;
-          throw error;
-        }
-      })();
-    if (alive) {
-      assert.equal(
-        execFileSync("/bin/ps", ["-p", String(metadata.pid), "-o", "command="], {
-          encoding: "utf8",
-        }).trim(),
-        `${executable}${packagedExecutable ? "" : " " + join(gui, "app")} --areal-core-service`,
-      );
-      const connection = new ServiceConnection();
-      await connection.connect(metadata);
-      try {
-        await connection.request("hello", {
-          protocol: metadata.protocol,
-          identity: metadata.identity,
-        });
-        const resources = await connection.request("resources", { operation: "inspect" });
-        assert.ok(
-          resources.every((p) => !p.activeTurns && !p.unresolvedTools && !p.resources.length),
-        );
-        facts.cleanup = {
-          pid: metadata.pid,
-          resources: resources.map((p) => ({
-            activeTurns: p.activeTurns,
-            unresolvedTools: p.unresolvedTools,
-            resources: p.resources.length,
-          })),
-          stopACK: await until(async () => {
-            try {
-              return await connection.request(
-                "stopService",
-                { protocol: metadata.protocol, forUpdate: false },
-                true,
-              );
-            } catch (error) {
-              if (error.message === "后台仍有任务、可执行的排队消息或操作，完成或暂停队列后重试")
-                return null;
-              throw error;
-            }
-          }, "isolated adapter close operations settle before safe stop"),
-        };
-      } finally {
-        connection.close();
-      }
-      await waitForServiceExit(home, metadata);
-    }
-    await assertApplicationStopped(testedCore, env, metadata);
-    facts.cleanup = { ...facts.cleanup, pid: metadata?.pid ?? null, serviceExited: true };
-  } catch (e) {
-    try {
-      await assertApplicationStopped(testedCore, env, metadata);
-      facts.cleanup = { ...facts.cleanup, pid: metadata?.pid ?? null, serviceExited: true };
-    } catch (stoppedError) {
-      errors.push("Cleanup: " + e.message + "; " + stoppedError.message);
-      passed = false;
-    }
+    const stop = await settleFixtureHostAfterQuit(testedCore, env, scratch, {
+      host: originalHost,
+      pid: guiPid,
+    });
+    facts.cleanup = {
+      guiPid,
+      hostPid: originalHost?.pid,
+      stopRequestId: stop?.requestId,
+      serviceExited: true,
+    };
+  } catch (error) {
+    errors.push("Host cleanup: " + error.message);
+    passed = false;
   }
+  await fixture?.close();
   for (const server of [site, model]) {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
@@ -686,11 +690,12 @@ try {
         coreBinarySHA256: createHash("sha256")
           .update(await readFile(testedCore))
           .digest("hex"),
-        scope: `${packagedExecutable ? "packaged" : "source"} Electron/Main + adapter + recorded Core binary + local deterministic model; trusted GUI/navigation fixture and synthetic IME event; no OS dialog/focus, human, cross-origin grant or real-provider acceptance`,
+        scope: `${packagedExecutable ? "packaged" : "source"} Electron/Main + native Host + recorded Core binary + local deterministic model; trusted GUI/navigation fixture and synthetic IME event; no OS dialog/focus, human, cross-origin grant or real-provider acceptance`,
       },
       null,
       2,
     ),
   );
   console.log(JSON.stringify({ passed, evidence: scratch, checks, errors }));
+  if (!passed) process.exitCode = 1;
 }

@@ -18,6 +18,8 @@ export const ERROR_CODES = {
   CAPABILITY_UNAVAILABLE: { action: "retry", retryable: true },
   CORE_UNAVAILABLE: { action: "retry", retryable: true },
   CORE_INCOMPATIBLE: { action: "none", retryable: false },
+  CLOUD_IMPORT_REQUIRED: { action: "openSettings", retryable: false },
+  SOURCE_CHANGED: { action: "refresh", retryable: false },
   CONFLICT: { action: "none", retryable: false },
   RESYNC_REQUIRED: { action: "refresh", retryable: false },
   INVALID_PARAMS: { action: "refresh", retryable: false },
@@ -31,6 +33,11 @@ export const ERROR_CODES = {
   CAPACITY_EXCEEDED: { action: "retry", retryable: true },
   COMMAND_CONFLICT: { action: "retry", retryable: false },
   RESOURCE_UNAVAILABLE: { action: "refresh", retryable: false },
+  RESOURCE_OBSERVATION_INVALID: {
+    message: "errors.INVALID_RESPONSE",
+    action: "refresh",
+    retryable: false,
+  },
   RESOURCE_BUSY: { action: "retry", retryable: true },
   // 后台连接恢复期间命令直接回流，没有发出；等恢复完成再试即可。
   RECONNECTING: { action: "retry", retryable: true },

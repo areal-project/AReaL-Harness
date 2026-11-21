@@ -14,56 +14,12 @@ const compiled = ts.transpileModule(source, {
 const { sideStartConfiguration } = await import(
   `data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`
 );
-const appRequire = createRequire(new URL("../app/package.json", import.meta.url));
-const { CoreBackend } = appRequire("../../../services/workbench/src/desktop/core/backend.cjs");
-const { WorktreeAdmission } = appRequire(
-  "../../../services/workbench/src/desktop/core/worktree-admission.cjs",
-);
-test("historical anchor A with current source C: renderer default intent reaches adapter as inherit, default B and explicit C remain distinct", async () => {
-  const project = {
-    configurations: { source: { model: { providerId: "p", modelId: "C" } } },
-    client: { capabilities: { methods: ["areal/side/start"] } },
-  };
-  for (const [draft, expected] of [
-    [null, {}],
-    [{ model: null }, { resetModel: true }],
-    [{ model: { providerId: "p", modelId: "C" } }, { model: { providerId: "p", modelId: "C" } }],
-  ]) {
-    let sent;
-    const backend = Object.assign(Object.create(CoreBackend.prototype), {
-      closing: false,
-      worktrees: { assertAvailable() {}, records: new Map() },
-      start: async () => project,
-      submit: async (_project, method, params) => {
-        assert.equal(method, "areal/side/start");
-        sent = params;
-        return { thread: { id: "side" }, turn: { id: "first" }, requestId: "receipt" };
-      },
-      openThread: async () => {},
-      listThreads: async () => {},
-    });
-    backend.worktreeAdmission = new WorktreeAdmission(backend);
-    await CoreBackend.prototype.executeCommand.call(backend, "side", {
-      projectId: "p",
-      operation: "start",
-      sourceThreadId: "source",
-      workspaceAccess: "none",
-      requestId: "receipt",
-      text: "question",
-      anchor: { kind: "turn", turnId: "A-turn", boundary: "after" },
-      ...sideStartConfiguration(draft),
-    });
-    assert.deepEqual(
-      {
-        ...(sent.model ? { model: sent.model } : {}),
-        ...(sent.resetModel ? { resetModel: sent.resetModel } : {}),
-      },
-      expected,
-    );
-    assert.equal(
-      sent.parameters,
-      undefined,
-      "untouched source C parameters must not override historical anchor",
-    );
-  }
+test("side start distinguishes historical inheritance, project default and explicit model", () => {
+  const model = { providerId: "p", modelId: "C" };
+  assert.deepEqual(sideStartConfiguration(null), {});
+  assert.deepEqual(sideStartConfiguration({ model: null }), { resetModel: true });
+  assert.deepEqual(sideStartConfiguration({ model }), { model });
+  assert.deepEqual(sideStartConfiguration({ parameters: { temperature: 0.2 } }), {
+    parameters: { temperature: 0.2 },
+  });
 });

@@ -617,42 +617,6 @@ if keep.contains(&name){retained+=e.metadata()?.len();}else{reclaimed+=e.metadat
         }).await?
     }
 
-    pub(crate) async fn publish_gen_ui(
-        &self,
-        artifact_id: &str,
-        name: &str,
-        digest: &str,
-    ) -> Result<String> {
-        anyhow::ensure!(
-            artifact_id.len() == 64 && artifact_id.bytes().all(|c| c.is_ascii_hexdigit()),
-            "invalid artifact identity"
-        );
-        anyhow::ensure!(
-            !name.is_empty()
-                && name.len() <= 80
-                && name.split('-').all(|part| !part.is_empty()
-                    && part
-                        .bytes()
-                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())),
-            "invalid artifact name"
-        );
-        let source = self.blob_path(digest)?;
-        let directory = self.root.join("gen-ui-output").join(artifact_id);
-        let path = directory.join(format!("{name}.html"));
-        tokio::task::spawn_blocking(move || {
-            std::fs::create_dir_all(&directory)?;
-            match std::fs::hard_link(source, &path) {
-                Ok(()) => {}
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
-                Err(error) => return Err(error.into()),
-            }
-            #[cfg(unix)]
-            File::open(directory)?.sync_all()?;
-            Ok(path.to_string_lossy().into_owned())
-        })
-        .await?
-    }
-
     #[cfg(test)]
     pub(crate) fn pause_next_catalog_write(
         &self,

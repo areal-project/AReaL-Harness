@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { HostClientOptions, ShellProject, SourceNavigation } from "@areal/client";
-import { createHostReadServices } from "./host-services.js";
+import type { HostClientOptions, JsonObject, ShellProject, SourceNavigation } from "@areal/client";
+import { createHostReadServices, disposeHostReadServices } from "./host-services.js";
 import {
   configurationIdentity,
   createHostSnapshotProjector,
   settleHostCommand,
 } from "./host-snapshot.js";
 import { currentErrorText } from "./errors/currentErrorText.js";
-import type { Action, PlatformServices, Snapshot } from "./services.js";
+import { call, type Action, type PlatformServices, type Snapshot } from "./services.js";
 import { PlatformReadProvider } from "./PlatformReadContext.js";
 import { useConversationHistory } from "./ConversationHistory.js";
 import { draftModelOptions, draftModelSelection } from "./lib/draftModelSelection.js";
@@ -203,6 +203,155 @@ function options(factory: NonNullable<HostClientOptions["transport"]>): HostClie
     transport: factory,
   };
 }
+
+it("writes the file-opening preference once through Host and returns the selected application", async () => {
+  const page = new EventTarget();
+  vi.stubGlobal("window", page);
+  const wire = transport();
+  const fileOpen = vi.fn(async () => ({
+    targets: [{ id: "finder", label: "Finder" }],
+    preferred: "system",
+    preferredLabel: "System",
+  }));
+  const write = vi.fn(async (method, _params, _context, commandId) => ({
+    method,
+    commandId,
+    admissionState: "accepted",
+    submissionUnknown: false,
+    receipt: { ...navigation, settings: { fileOpenTarget: "finder" } },
+  }));
+  const services = createHostReadServices(
+    {
+      snapshot: async () => ({ projects: [] }),
+      onState: () => () => {},
+      chooseProject: async () => null,
+      command: async () => {
+        throw new Error("Unexpected desktop mutation");
+      },
+      theme: async () => ({ dark: false, id: "light" }),
+      onTheme: () => () => {},
+      preview: async () => {
+        throw new Error("Unexpected preview");
+      },
+      fileOpen,
+    },
+    options(async (lifecycle) => {
+      const base = await wire.factory(lifecycle);
+      return {
+        ...base,
+        identity: { ...base.identity, writeMethods: ["library.command"] },
+        transport: { ...base.transport, write },
+      };
+    }),
+  );
+  try {
+    await until(services);
+    await expect(
+      services.fileOpen!({ operation: "setDefault", target: "finder" }),
+    ).resolves.toMatchObject({ preferred: "finder", preferredLabel: "Finder" });
+    expect(fileOpen.mock.calls).toEqual([[{ operation: "targets" }]]);
+    expect(write.mock.calls).toEqual([
+      [
+        "library.command",
+        { operation: "settings", key: "fileOpenTarget", value: "finder" },
+        null,
+        expect.any(String),
+      ],
+    ]);
+  } finally {
+    page.dispatchEvent(new Event("pagehide"));
+    vi.unstubAllGlobals();
+  }
+});
+
+it("reads queued attachment bytes from the original Host project in bounded chunks", async () => {
+  const page = new EventTarget();
+  vi.stubGlobal("window", page);
+  const wire = transport();
+  const uri = `areal://blob/${"a".repeat(64)}`;
+  const limit = 256 * 1024;
+  const offsets: number[] = [];
+  const services = createHostReadServices(
+    undefined,
+    options(async (lifecycle) => {
+      const base = await wire.factory(lifecycle);
+      return {
+        ...base,
+        identity: { ...base.identity, writeMethods: ["attachment.read"] },
+        transport: {
+          ...base.transport,
+          async write(method, params, context) {
+            expect(method).toBe("attachment.read");
+            expect(context).toEqual({ projectId: "canonical", serviceGeneration: "core-gen" });
+            expect(params).toMatchObject({ threadId: "thread", uri });
+            const offset = Number(params.offset);
+            offsets.push(offset);
+            return {
+              ...context,
+              threadId: "thread",
+              uri,
+              mimeType: "application/octet-stream",
+              offset,
+              totalBytes: limit + 1,
+              nextOffset: offset === 0 ? limit : null,
+              base64: btoa(offset === 0 ? "A".repeat(limit) : "Z"),
+            };
+          },
+        },
+      };
+    }),
+  );
+  try {
+    await until(services);
+    const result = await call(services, "media", {
+      projectId: "alias",
+      threadId: "thread",
+      operation: "read",
+      uri,
+    });
+    expect(offsets).toEqual([0, limit]);
+    expect(result.mime).toBe("application/octet-stream");
+    expect(result.bytes).toHaveLength(limit + 1);
+    expect(result.bytes[limit - 1]).toBe(65);
+    expect(result.bytes[limit]).toBe(90);
+  } finally {
+    page.dispatchEvent(new Event("pagehide"));
+    vi.unstubAllGlobals();
+  }
+});
+
+it("registers a browser-selected project through Host and refreshes the Shell", async () => {
+  vi.stubGlobal("prompt", () => " /fixture/workspace ");
+  const wire = transport();
+  const register = vi.fn().mockResolvedValue({ projectId: "browser-project" });
+  const services = createHostReadServices(
+    undefined,
+    options(async (lifecycle) => {
+      const base = await wire.factory(lifecycle);
+      return {
+        ...base,
+        identity: { ...base.identity, writeMethods: ["worktree.project.add"] },
+        transport: { ...base.transport, write: register },
+      };
+    }),
+  );
+  try {
+    await until(services);
+    const previous = wire.requests.filter((call) => call.method === "shell.subscribe").length;
+    expect(await services.chooseProject()).toBe("browser-project");
+    expect(register).toHaveBeenCalledWith(
+      "worktree.project.add",
+      { root: "/fixture/workspace" },
+      null,
+      undefined,
+    );
+    expect(wire.requests.filter((call) => call.method === "shell.subscribe")).toHaveLength(
+      previous + 1,
+    );
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
 
 it("projects a failed initial read with its owner and clears it on a successful retry", async () => {
   const page = new EventTarget();
@@ -544,6 +693,10 @@ describe("Host renderer read authority", () => {
           if (backgroundRefresh === "desktop-leave") await services.reads!.selectSession(null);
           desktopState = {
             projects: [],
+            verifiedDesktopHost: {
+              hostId: connection.hostId,
+              generation: connection.hostGeneration,
+            },
             connection: {
               state: backgroundRefresh === "desktop-unavailable" ? "unavailable" : "ready",
             },
@@ -686,6 +839,118 @@ describe("Host renderer read authority", () => {
       vi.unstubAllGlobals();
     }
   });
+  it.each([
+    {
+      name: "fork",
+      params: {
+        projectId: "alias",
+        sourceThreadId: "thread",
+        anchor: { turnId: "latest-turn", boundary: "after" },
+      },
+      shouldActivate: true,
+    },
+    {
+      name: "editMessage",
+      params: {
+        projectId: "alias",
+        threadId: "thread",
+        text: "edited",
+        requestId: crypto.randomUUID(),
+      },
+      shouldActivate: true,
+    },
+    {
+      name: "side",
+      params: {
+        operation: "create",
+        projectId: "alias",
+        sourceThreadId: "thread",
+        requestId: crypto.randomUUID(),
+      },
+      shouldActivate: true,
+    },
+    {
+      name: "side",
+      params: { operation: "closeOwned" },
+      shouldActivate: false,
+    },
+  ])(
+    "routes persisted wake for $name (shouldActivate=$shouldActivate)",
+    async ({ name, params, shouldActivate }) => {
+      const page = new EventTarget();
+      vi.stubGlobal("window", page);
+      let phase = "stopped";
+      const events: string[] = [];
+      const wire = transport(observation);
+      const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+        const base = await wire.factory(lifecycle);
+        return {
+          ...base,
+          identity: {
+            ...base.identity,
+            persistedHistory: true,
+            writeMethods: ["project.activate", "session.send"],
+          },
+          transport: {
+            ...base.transport,
+            async request(method, reqParams, context) {
+              if (method === "shell.subscribe") {
+                return {
+                  ...identity,
+                  subscriptionId: "shell",
+                  snapshot: {
+                    projects: [
+                      {
+                        ...project,
+                        state: phase,
+                        serviceGeneration: phase === "ready" ? "core-gen" : undefined,
+                      },
+                    ],
+                    navigation: [navigation],
+                  },
+                };
+              }
+              if (method === "session.openPersisted") {
+                return {
+                  ...identity,
+                  ...context,
+                  serviceGeneration: "old-gen",
+                  threadId: reqParams.threadId,
+                  snapshot: observation,
+                  access: { kind: "persisted", readOnly: true, snapshotId: "saved" },
+                };
+              }
+              if (method === "session.open") events.push("live-read");
+              return base.transport.request(method, reqParams, context);
+            },
+            async write(method) {
+              if (method === "project.activate") {
+                events.push("project.activate");
+                phase = "ready";
+                return { projectId: "canonical", state: "ready", serviceGeneration: "core-gen" };
+              }
+              return { admissionState: "accepted" };
+            },
+          },
+        };
+      };
+      const services = createHostReadServices(undefined, options(factory));
+      try {
+        await until(services);
+        await services.reads!.selectSession({
+          projectId: "alias",
+          threadId: "thread",
+          persisted: true,
+        });
+        const result = await services.writes!.route(name, params);
+        expect(result).toBeUndefined();
+        expect(events).toEqual(shouldActivate ? ["project.activate", "live-read"] : []);
+      } finally {
+        page.dispatchEvent(new Event("pagehide"));
+        vi.unstubAllGlobals();
+      }
+    },
+  );
   it("projects a stopped project's persisted history as read-only without marking it connected", async () => {
     const page = new EventTarget();
     vi.stubGlobal("window", page);
@@ -874,8 +1139,6 @@ describe("Host renderer read authority", () => {
                   "tasks.read",
                   "manage.command",
                   "providers.read",
-                  "pages.command",
-                  "pages.resource",
                   "bots.read",
                   "bots.command",
                 ]
@@ -894,7 +1157,6 @@ describe("Host renderer read authority", () => {
           library: permitted,
           taskCatalog: permitted,
           taskManage: permitted,
-          pages: permitted,
           bots: permitted,
           settings: permitted ? ["模型服务"] : [],
           mutations: false,
@@ -1473,7 +1735,6 @@ describe("Host renderer read authority", () => {
       library: false,
       taskCatalog: false,
       taskManage: false,
-      pages: false,
       bots: false,
       settings: [],
     });
@@ -1535,7 +1796,7 @@ describe("Host renderer read authority", () => {
       (await services.snapshot()).projects[0].state.threads.thread.turns[0].items[0].type,
     ).toBe("historyDeferred");
   });
-  it("loads a watched child tool body through that child's subscription", async () => {
+  it("loads a watched child's older history and tool body on its own subscription", async () => {
     const body = {
       sourceThreadId: "child",
       sourceTurnId: "child-turn",
@@ -1567,7 +1828,7 @@ describe("Host renderer read authority", () => {
           },
         ],
       },
-      history: { snapshotId: "child-history", complete: true, nextCursor: null },
+      history: { snapshotId: "child-history", complete: false, nextCursor: "child-older" },
     };
     const wire = transport();
     let holdHistory = false;
@@ -1601,21 +1862,31 @@ describe("Host renderer read authority", () => {
                   snapshotId: "child-history",
                   complete: true,
                   nextCursor: null,
-                  data: [
-                    {
-                      sourceThreadId: "child",
-                      sourceTurnId: "child-turn",
-                      sourceItemId: "tool",
-                      sourceTurnStatus: "completed",
-                      fragment: {
-                        text,
-                        offsetUtf8: 0,
-                        nextOffsetUtf8: totalBytes,
-                        totalBytes,
-                        version: "v1",
-                      },
-                    },
-                  ],
+                  data:
+                    params.cursor === "child-older"
+                      ? [
+                          {
+                            ...entry,
+                            sourceThreadId: "child",
+                            sourceTurnId: "older-turn",
+                            turn: { id: "older-turn", status: "completed" },
+                          },
+                        ]
+                      : [
+                          {
+                            sourceThreadId: "child",
+                            sourceTurnId: "child-turn",
+                            sourceItemId: "tool",
+                            sourceTurnStatus: "completed",
+                            fragment: {
+                              text,
+                              offsetUtf8: 0,
+                              nextOffsetUtf8: totalBytes,
+                              totalBytes,
+                              version: "v1",
+                            },
+                          },
+                        ],
                 },
               };
             }
@@ -1627,6 +1898,12 @@ describe("Host renderer read authority", () => {
     const services = createHostReadServices(undefined, options(factory));
     await until(services);
     await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
+    const opened = await call(services, "open", { projectId: "alias", threadId: "child" });
+    expect(opened.projects[0].state?.threads.child.id).toBe("child");
+    expect(opened.projects[0].state?.threads.thread.id).toBe("thread");
+    expect((await services.snapshot()).projects[0].state.threads.child).toBeUndefined();
+    const listed = await call(services, "list", { projectId: "alias" });
+    expect(listed.projects[0].state?.threads.thread.id).toBe("thread");
     const release = services.reads!.watch!({ projectId: "alias", threadId: "child" });
     try {
       await vi.waitFor(async () =>
@@ -1637,6 +1914,15 @@ describe("Host renderer read authority", () => {
         (await services.snapshot()).projects[0].state.threads.child.turns[0].items[0],
       ).toMatchObject({ type: "dynamicToolCall", arguments: { path: "child" } });
       expect((await services.snapshot()).projects[0].state.threads.thread.id).toBe("thread");
+      const projected = (await services.snapshot()).projects[0].state.threads.child;
+      expect(projected.displayHistory).toMatchObject({ supported: true, complete: false });
+      await services.reads!.loadOlder(undefined, projected.displayHistory.viewGeneration);
+      const paged = (await services.snapshot()).projects[0].state.threads;
+      expect(paged.child.turns.map((turn: { id: string }) => turn.id)).toEqual([
+        "older-turn",
+        "child-turn",
+      ]);
+      expect(paged.thread.turns.map((turn: { id: string }) => turn.id)).toEqual(["latest-turn"]);
       holdHistory = true;
       const pending = services.reads!.loadItem("tool", { projectId: "alias", threadId: "child" });
       await vi.waitFor(() => expect(releaseHistory).toBeDefined());
@@ -1715,6 +2001,29 @@ describe("Host renderer read authority", () => {
     expect(thread.executionCore.serviceGeneration).toBe("execution-gen");
     expect(thread.worktree.branch).toBe("feature");
   });
+  it("preserves Cloud ownership after reading the remote thread", async () => {
+    const execution = {
+      ...project,
+      projectId: "cloud-session:source:record",
+      logicalProjectId: "canonical",
+      alias: { sourceId: "source", projectId: "record" },
+      workspace: "cloud://record",
+      summaries: {
+        state: "fresh",
+        items: [{ ...project.summaries.items[0], cloud: { sessionId: "record", connected: true } }],
+      },
+    };
+    const wire = transport(observation, undefined, {
+      projects: [{ ...project, summaries: { state: "fresh", items: [] } }, execution],
+      navigation: [navigation],
+    });
+    const services = createHostReadServices(undefined, options(wire.factory));
+    await until(services);
+    await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
+    const thread = (await services.snapshot()).projects[0].state.threads.thread;
+    expect(thread.cloud).toEqual({ sessionId: "record", connected: true });
+    expect(thread.executionProjectId).toBe("record");
+  });
   it("retains unrelated project projections during a native session delta", async () => {
     const other = {
       ...project,
@@ -1752,6 +2061,91 @@ describe("Host renderer read authority", () => {
     expect(next.projects[1]).toBe(previous);
     expect(next.projects[0].state.threads.thread.turns[0].items[0].text).toBe("changed");
   });
+  it("sends a saved task draft through its Host task owner", async () => {
+    const wire = transport({
+      ...observation,
+      thread: {
+        ...observation.thread,
+        desktop: {
+          configuration: {
+            revision: 7,
+            options: { appendInstructions: "AREAL_TASK_DRAFT_V1\nTime zone: Asia/Shanghai\n" },
+          },
+        },
+      },
+    });
+    let loseReply = false;
+    const write = vi.fn(async (method: string, params: JsonObject, ..._binding: unknown[]) => {
+      if (method === "command.read")
+        return { commandId: params.commandId, admissionState: "notFound" };
+      if (method === "tasks.read")
+        return {
+          requestId: params.requestId,
+          submissionUnknown: false,
+          receipt: { threadId: "thread", turnId: "turn" },
+        };
+      if (loseReply) throw new Error("connection closed");
+      return { threadId: "thread", turnId: "turn" };
+    });
+    const services = createHostReadServices(
+      undefined,
+      options(async (lifecycle) => {
+        const opened = await wire.factory(lifecycle);
+        return {
+          ...opened,
+          identity: {
+            ...opened.identity,
+            writeMethods: ["desktop.command", "session.send", "command.read", "tasks.read"],
+          },
+          transport: {
+            ...opened.transport,
+            async write(method, params, context, commandId) {
+              if (
+                method === "desktop.command" &&
+                (params.request as JsonObject)?.operation === "inspect"
+              )
+                return {};
+              return write(method, params, context, commandId);
+            },
+          },
+        };
+      }),
+    );
+    await until(services);
+    await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
+    const { call } = await import("./services.js");
+    const requestId = "11111111-1111-4111-8111-111111111111";
+    const message = { projectId: "alias", threadId: "thread", requestId, text: "Adjust weekdays" };
+    expect(await call(services, "send", message)).toEqual({ threadId: "thread", turnId: "turn" });
+    expect(write).toHaveBeenCalledExactlyOnceWith(
+      "desktop.command",
+      {
+        command: "manage",
+        request: { ...message, operation: "taskDraftSend", timeZone: "Asia/Shanghai" },
+      },
+      null,
+      undefined,
+    );
+    loseReply = true;
+    const original = "22222222-2222-4222-8222-222222222222";
+    await expect(call(services, "send", { ...message, requestId: original })).rejects.toMatchObject(
+      {
+        requestId: original,
+        submissionUnknown: true,
+      },
+    );
+    expect(
+      await call(services, "reconcile", { projectId: "alias", requestId: original }),
+    ).toMatchObject({
+      outcomes: { [original]: { accepted: true, threadId: "thread", turnId: "turn" } },
+    });
+    expect(write.mock.calls.map(([method]) => method)).toEqual([
+      "desktop.command",
+      "desktop.command",
+      "command.read",
+      "tasks.read",
+    ]);
+  });
   it("routes complete conversation inputs and preserves unknown drafts without replay", async () => {
     const wire = transport({
       ...observation,
@@ -1765,6 +2159,8 @@ describe("Host renderer read authority", () => {
     }> = [];
     let admissionState = "accepted";
     let failShellRefresh = false;
+    let heldShellRefresh: Promise<void> | undefined;
+    let shellRefreshHeld = false;
     const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
       const opened = await wire.factory(lifecycle);
       return {
@@ -1776,6 +2172,10 @@ describe("Host renderer read authority", () => {
         transport: {
           ...opened.transport,
           async request(method, params, context) {
+            if (method === "shell.subscribe" && heldShellRefresh) {
+              shellRefreshHeld = true;
+              await heldShellRefresh;
+            }
             if (failShellRefresh && method === "shell.subscribe")
               throw new Error("catalog unavailable");
             return opened.transport.request(method, params, context);
@@ -1821,6 +2221,22 @@ describe("Host renderer read authority", () => {
       },
     });
     expect(writes.at(-1)?.params).not.toHaveProperty("projectId");
+    let releaseShell!: () => void;
+    heldShellRefresh = new Promise<void>((resolve) => {
+      releaseShell = resolve;
+    });
+    const heldRequestId = "33333333-3333-4333-8333-333333333333";
+    try {
+      const result = await Promise.race([
+        call(services, "create", { ...creation, requestId: heldRequestId }),
+        new Promise((resolve) => setTimeout(() => resolve("blocked by shell"), 0)),
+      ]);
+      expect(shellRefreshHeld).toBe(true);
+      expect(result).toEqual({ threadId: "thread", requestId: heldRequestId });
+    } finally {
+      heldShellRefresh = undefined;
+      releaseShell();
+    }
     failShellRefresh = true;
     await expect(
       call(services, "create", { ...creation, requestId: "22222222-2222-4222-8222-222222222222" }),
@@ -1922,13 +2338,25 @@ describe("Host renderer read authority", () => {
       params: { commandId: original.requestId },
     });
     expect(writes.filter((write) => write.method === "session.send")).toHaveLength(2);
-    admissionState = "notFound";
-    expect(
-      await services.writes!.route("reconcile", {
-        projectId: "alias",
-        requestId: "workbench-original",
-      }),
-    ).toBeUndefined();
+    const plugin = {
+      pluginId: "example@local",
+      componentId: "commands/review.md",
+      installedDigest: "installed",
+      arguments: "file with spaces.ts --strict",
+    };
+    await call(services, "send", {
+      projectId: "alias",
+      threadId: "thread",
+      text: "",
+      command: plugin,
+      requestId,
+    });
+    expect(writes.at(-1)).toEqual({
+      method: "session.send",
+      projectId: "canonical",
+      commandId: requestId,
+      params: { threadId: "thread", expectedConfigRevision: 7, text: "", command: plugin },
+    });
     expect(services.capabilities).toMatchObject({
       mutations: false,
       conversationSubmit: true,
@@ -1936,7 +2364,60 @@ describe("Host renderer read authority", () => {
     });
   });
 
-  it("routes stop and approvals through Host receipts and falls back only when Host declines", async () => {
+  it("checks the exact original native configuration when the gateway has no receipt", async () => {
+    const wire = transport(observation);
+    const requestId = "44444444-4444-4444-8444-444444444444";
+    const outcome = {
+      status: "completed",
+      accepted: true,
+      threadId: "thread",
+      operation: {
+        method: "areal/thread/configure",
+        requestId,
+        target: { kind: "thread" as const, threadId: "thread" },
+      },
+    };
+    const writes: Array<{ method: string; params: Record<string, unknown> }> = [];
+    const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+      const opened = await wire.factory(lifecycle);
+      return {
+        ...opened,
+        identity: { ...opened.identity, writeMethods: ["command.read", "desktop.command"] },
+        transport: {
+          ...opened.transport,
+          async write(method, params) {
+            writes.push({ method, params });
+            if (method === "command.read")
+              return { commandId: requestId, admissionState: "notFound", submissionUnknown: true };
+            return { outcomes: { [requestId]: outcome } };
+          },
+        },
+      };
+    };
+    const services = createHostReadServices(undefined, options(factory));
+    await until(services);
+    const { call } = await import("./services.js");
+    await expect(call(services, "reconcile", { projectId: "alias", requestId })).resolves.toEqual({
+      outcomes: { [requestId]: outcome },
+    });
+    expect(writes).toEqual([
+      { method: "command.read", params: { commandId: requestId } },
+      {
+        method: "desktop.command",
+        params: { command: "reconcile", request: { projectId: "alias", requestId } },
+      },
+    ]);
+    expect(
+      recoveredOutcome(
+        (await services.snapshot()).projects[0],
+        requestId,
+        "thread",
+        outcome.operation,
+      ),
+    ).toEqual(outcome);
+  });
+
+  it("routes stop and approvals through Host receipts without retrying a declined stop", async () => {
     const pending = {
       threadId: "thread",
       requestId: "approval",
@@ -1973,7 +2454,6 @@ describe("Host renderer read authority", () => {
         },
       };
     };
-    // 只核对是否退回桌面路径；桌面回执结构由桌面契约测试覆盖。
     const native_ = vi.fn(async () => ({ ok: false as const, error: { message: "desktop path" } }));
     const desktop: PlatformServices = {
       snapshot: async () => ({ projects: [] }),
@@ -1997,15 +2477,30 @@ describe("Host renderer read authority", () => {
     await call(services, "stop", stop);
     expect(writes.at(-1)).toMatchObject({
       method: "turn.stop",
+      commandId: stop.requestId,
       params: { threadId: "thread", expectedTurnId: "latest-turn" },
     });
     expect(native_).not.toHaveBeenCalled();
     stopReply = { admissionState: "unknown", commandId: "lost" };
-    await expect(call(services, "stop", stop)).rejects.toMatchObject({ submissionUnknown: true });
+    await expect(call(services, "stop", stop)).rejects.toMatchObject({
+      requestId: stop.requestId,
+      submissionUnknown: true,
+      outcome: {
+        kind: "unconfirmed",
+        operation: { method: "turn/interrupt", requestId: stop.requestId },
+      },
+    });
+    stopReply = { admissionState: "pending" };
+    await expect(call(services, "stop", stop)).rejects.toMatchObject({
+      submissionUnknown: true,
+      requestId: stop.requestId,
+    });
     expect(native_).not.toHaveBeenCalled();
     stopReply = Object.assign(new Error("workflow"), { code: "TASK_CONTROL_REQUIRED" });
-    await expect(call(services, "stop", stop)).rejects.toThrow("desktop path");
-    expect(native_).toHaveBeenCalledTimes(1);
+    await expect(call(services, "stop", stop)).rejects.toMatchObject({
+      code: "TASK_CONTROL_REQUIRED",
+    });
+    expect(native_).not.toHaveBeenCalled();
     await call(services, "respond", {
       projectId: "alias",
       threadId: "thread",
@@ -2024,7 +2519,7 @@ describe("Host renderer read authority", () => {
       },
     });
     expect(writes.filter((entry) => entry.method === "attention.read")).toHaveLength(2);
-    expect(native_).toHaveBeenCalledTimes(1);
+    expect(native_).not.toHaveBeenCalled();
   });
 });
 
@@ -2101,7 +2596,7 @@ it("preserves safe Host rejection detail and reason for diagnosis", () => {
   ).toThrow("expectedRevision does not match");
 });
 
-it("keeps local execution unavailable until desktop and Host agree on the Core generation", () => {
+it("uses the native attachment identity and Host state as the execution authority", () => {
   const client = {
     snapshot: () => ({ connection: "ready", identity: connection }),
     readsSnapshot: () => ({ session: { state: "fresh" } }),
@@ -2115,47 +2610,169 @@ it("keeps local execution unavailable until desktop and Host agree on the Core g
     new Map(),
     new Map(),
   );
-  const shell = { snapshot: { projects: [project], navigation: [navigation] } };
   const extras = {
     watched: new Map(),
     tasks: new Map(),
     historyVersion: 0,
     commandOutcomes: new Map(),
   };
-  const projectState = (desktopGeneration: string, connected: boolean, suppressed: boolean) =>
-    projector(shell as never, true, undefined, undefined, {
-      ...extras,
-      desktopSnapshot: {
-        connection: { state: "ready" },
-        verifiedDesktopHost: { hostId: connection.hostId, generation: connection.hostGeneration },
-        projects: [
-          {
-            id: "alias",
-            core: { serviceGeneration: desktopGeneration },
-            state: { connected },
-            scheduling: { suppressed },
-          },
-        ],
-      },
-    } as never).snapshot.projects[0];
-  expect(projectState("old", true, true)).toMatchObject({
+  const projectState = (
+    hostGeneration: string,
+    state: ShellProject["state"],
+    suppressed: boolean,
+  ) =>
+    projector(
+      {
+        snapshot: {
+          projects: [{ ...project, state, scheduleActivationSuppressed: suppressed }],
+          navigation: [navigation],
+        },
+      } as never,
+      true,
+      undefined,
+      undefined,
+      {
+        ...extras,
+        desktopSnapshot: {
+          connection: { state: "ready" },
+          verifiedDesktopHost: { hostId: connection.hostId, generation: hostGeneration },
+          // 原生 Main 不再维护 Node 项目镜像，过期镜像不能改变 Host 的可执行事实。
+          projects: [
+            { id: "alias", state: { connected: false }, scheduling: { suppressed: true } },
+          ],
+        },
+      } as never,
+    ).snapshot.projects[0];
+  expect(projectState("old-host", "ready", false)).toMatchObject({
+    localExecutionReady: false,
+    state: { connected: false },
+    scheduling: { suppressed: false },
+  });
+  expect(projectState(connection.hostGeneration, "stopped", false)).toMatchObject({
+    localExecutionReady: false,
+    state: { connected: false, hostState: "stopped" },
+    scheduling: { suppressed: false },
+  });
+  expect(projectState(connection.hostGeneration, "stopped", true)).toMatchObject({
     localExecutionReady: false,
     state: { connected: false },
     scheduling: { suppressed: true },
   });
-  expect(projectState("core-gen", false, true)).toMatchObject({
-    localExecutionReady: false,
-    state: { connected: false },
-    scheduling: { suppressed: true },
-  });
-  expect(projectState("core-gen", true, true)).toMatchObject({
-    localExecutionReady: false,
-    state: { connected: false },
-    scheduling: { suppressed: true },
-  });
-  expect(projectState("core-gen", true, false)).toMatchObject({
+  expect(projectState(connection.hostGeneration, "ready", false)).toMatchObject({
     localExecutionReady: true,
     state: { connected: true },
     scheduling: { suppressed: false },
   });
+});
+it.each([false, true])(
+  "connects a foreground project through native Host (resume=%s)",
+  async (resumeScheduling) => {
+    const page = new EventTarget();
+    vi.stubGlobal("window", page);
+    let phase = "stopped";
+    const wire = transport();
+    const activated: unknown[] = [];
+    const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+      const base = await wire.factory(lifecycle);
+      return {
+        ...base,
+        identity: { ...base.identity, writeMethods: ["project.activate", "desktop.command"] },
+        transport: {
+          ...base.transport,
+          async request(method, params, context) {
+            if (method === "shell.subscribe")
+              return {
+                ...identity,
+                subscriptionId: "shell",
+                sequence: 0,
+                snapshot: {
+                  projects: [
+                    {
+                      ...project,
+                      state: phase,
+                      serviceGeneration: phase === "ready" ? "core-gen" : undefined,
+                    },
+                  ],
+                  navigation: [navigation],
+                },
+              };
+            return base.transport.request(method, params, context);
+          },
+          async write(method, params, context) {
+            expect(method).toBe(resumeScheduling ? "desktop.command" : "project.activate");
+            activated.push({ params, context });
+            phase = "ready";
+            return { projectId: "canonical", state: "ready", serviceGeneration: "core-gen" };
+          },
+        },
+      };
+    };
+    const services = createHostReadServices(undefined, options(factory));
+    try {
+      await until(services);
+      const result = await call(services, "connect", {
+        projectId: "alias",
+        ...(resumeScheduling ? { resumeScheduling: true } : {}),
+      });
+      expect(result).toMatchObject({ projects: [{ id: "alias", state: { connected: true } }] });
+      expect(activated).toEqual(
+        resumeScheduling
+          ? [
+              {
+                params: {
+                  sourceId: "source",
+                  command: "connect",
+                  request: { projectId: "alias", resumeScheduling: true },
+                },
+                context: null,
+              },
+            ]
+          : [{ params: {}, context: { projectId: "canonical" } }],
+      );
+    } finally {
+      page.dispatchEvent(new Event("pagehide"));
+      vi.unstubAllGlobals();
+    }
+  },
+);
+
+it("browser Host services apply explicit light/dark theme choices and react to system changes", async () => {
+  let systemDark = false;
+  const listeners = new Set<() => void>();
+  const originalMatchMedia = globalThis.matchMedia;
+  globalThis.matchMedia = ((query: string) =>
+    ({
+      matches: query.includes("dark") ? systemDark : false,
+      media: query,
+      addEventListener: (_event: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_event: string, listener: () => void) => listeners.delete(listener),
+    }) as unknown as MediaQueryList) as typeof globalThis.matchMedia;
+  const services = createHostReadServices(undefined, {
+    bootstrap: async () => {
+      throw new Error("unused");
+    },
+    origin: "http://127.0.0.1",
+    transport: () => {
+      throw new Error("unused");
+    },
+  });
+  try {
+    expect(await services.theme("data-dense")).toEqual({ dark: true, id: "data-dense" });
+    expect(await services.theme("soft-glass")).toEqual({ dark: false, id: "soft-glass" });
+    expect(await services.theme("system")).toEqual({ dark: false, id: "soft-glass" });
+    const observed: { dark: boolean; id: string }[] = [];
+    const unsubscribe = services.onTheme((next) => observed.push(next));
+    systemDark = true;
+    for (const listener of listeners) listener();
+    expect(observed).toEqual([{ dark: true, id: "data-dense" }]);
+    // 显式选择浅色后，系统配色变化不再覆盖用户选择。
+    await services.theme("soft-glass");
+    systemDark = false;
+    for (const listener of listeners) listener();
+    expect(observed).toHaveLength(1);
+    unsubscribe();
+  } finally {
+    disposeHostReadServices(services);
+    globalThis.matchMedia = originalMatchMedia;
+  }
 });

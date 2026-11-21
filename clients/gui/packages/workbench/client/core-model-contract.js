@@ -1,15 +1,16 @@
 // @ts-check
 /** Types for the fields the rebuildable model reads; opaque Core extensions remain unknown. */
-/** @typedef {import('./state-projection.cjs').ProjectionNode & {type?:string,text?:unknown,summary?:unknown[],content?:unknown[]}} CoreItem */
-/** @typedef {import('./state-projection.cjs').ProjectionNode & {trace?:{activities?:Record<string,unknown>[],[key:string]:unknown},status?:string,items?:CoreItem[]|null,modelRetry?:{purpose:string,retry:number,delayMs?:number}}} CoreTurn */
+/** @typedef {{id:string,[key:string]:unknown}} CoreNode */
+/** @typedef {CoreNode & {type?:string,text?:unknown,summary?:unknown[],content?:unknown[]}} CoreItem */
+/** @typedef {CoreNode & {trace?:{activities?:Record<string,unknown>[],[key:string]:unknown},status?:string,items?:CoreItem[]|null,modelRetry?:{purpose:string,retry:number,delayMs?:number}}} CoreTurn */
 /** @typedef {{revision:number,eventSequence?:number,goal?:unknown,[key:string]:unknown}} CoreGoals */
 /** @typedef {{revision:number,steps:unknown[],[key:string]:unknown}} CorePlan */
 /** @typedef {Record<string,unknown> & {id?:string,status?:string,input?:unknown[]}} CoreQueueItem */
 /** @typedef {{revision:number,items:CoreQueueItem[],[key:string]:unknown}} CoreQueue */
 /** @typedef {{threadId:string,requestId:string,[key:string]:unknown}} CoreInteraction */
 /** @typedef {{revision:number,data:CoreInteraction[],[key:string]:unknown}} CoreInteractions */
-/** @typedef {import('./state-projection.cjs').ProjectionNode & {revision:number,channelSequence?:number}} CoreTask */
-/** @typedef {import('./state-projection.cjs').ProjectionNode & {turns?:CoreTurn[]|null,toolsetRevision?:number,dynamicTools?:unknown[],goals?:CoreGoals,desktop?:({plan?:CorePlan|null,[key:string]:unknown})|null,conversation?:({kind?:string,[key:string]:unknown})|null}} CoreThread */
+/** @typedef {CoreNode & {revision:number,channelSequence?:number}} CoreTask */
+/** @typedef {CoreNode & {turns?:CoreTurn[]|null,toolsetRevision?:number,dynamicTools?:unknown[],goals?:CoreGoals,desktop?:({plan?:CorePlan|null,[key:string]:unknown})|null,conversation?:({kind?:string,[key:string]:unknown})|null}} CoreThread */
 /** @typedef {{connected:boolean,error:string|null,threads:Record<string,CoreThread>,interactions:Record<string,CoreInteractions>,queues:Record<string,CoreQueue>,tasks?:Record<string,CoreTask>}} CoreModelState */
 
 /** @param {unknown} value @returns {value is Record<string,unknown>} */

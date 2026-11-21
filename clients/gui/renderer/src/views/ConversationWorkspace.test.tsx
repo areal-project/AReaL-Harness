@@ -87,7 +87,6 @@ it.each(["draft", "saved history"] as const)("renders a disconnected project's %
           view: { workspaceView: "conversation" },
           removeTerminalTab: vi.fn(),
         } as unknown as Parameters<typeof ConversationWorkspace>[0]["workspacePanels"],
-        mcpWorkspace: {} as Parameters<typeof ConversationWorkspace>[0]["mcpWorkspace"],
         side: {
           sideChats: { pendingCreation: vi.fn(), creationError: vi.fn() },
         } as unknown as Parameters<typeof ConversationWorkspace>[0]["side"],
@@ -179,7 +178,6 @@ it("hides the composer project bar on non-empty threads during idle hibernation,
             view: { workspaceView: "conversation" },
             removeTerminalTab: vi.fn(),
           } as unknown as Parameters<typeof ConversationWorkspace>[0]["workspacePanels"],
-          mcpWorkspace: {} as Parameters<typeof ConversationWorkspace>[0]["mcpWorkspace"],
           side: {
             sideChats: { pendingCreation: vi.fn(), creationError: vi.fn() },
           } as unknown as Parameters<typeof ConversationWorkspace>[0]["side"],

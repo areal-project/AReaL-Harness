@@ -63,7 +63,7 @@ def tracked():
     output = subprocess.check_output(
         ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"], cwd=ROOT
     ).decode()
-    return [path for path in output.split("\0") if path]
+    return [path for path in output.split("\0") if path and (ROOT / path).exists()]
 
 
 def matches(pattern, files, base):
@@ -100,7 +100,7 @@ def references(path, files):
     for token in tokens:
         result |= matches(token, files, base)
         # package.json 的命令在包目录下运行；工作流和 Makefile 也常写 --dir 后的相对路径。
-        for prefix in ("clients/gui/", "clients/gui/app/", "services/workbench/"):
+        for prefix in ("clients/gui/", "clients/gui/app/"):
             result |= matches(prefix + token.lstrip("./"), files, None)
     return result
 

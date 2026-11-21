@@ -460,7 +460,6 @@ impl Engine {
         Ok(())
     }
     async fn revoke_plugin_mcp(&self, id: &str) -> Result<()> {
-        let app_guard = self.desktop.mcp_apps.mutation.lock().await;
         self.desktop.plugin_mcp.live.write().unwrap().remove(id);
         self.desktop
             .plugin_mcp
@@ -482,9 +481,7 @@ impl Engine {
             .filter(|owner| owner.view.plugin == id)
             .flat_map(|owner| owner.view.servers.iter().map(|server| server.generation()))
             .collect();
-        self.revoke_plugin_apps_without_mutation_lock(id, &generations)
-            .await?;
-        drop(app_guard);
+        self.revoke_mcp_interaction_settings(&generations);
         // Losing a failed startup/drain handle is not proof of process exit.
         // A later Disconnect must retain the UNKNOWN gate instead of clearing it
         // merely because there are no remaining owners to join.
@@ -585,7 +582,6 @@ impl Engine {
             }
             revoked.insert(owner.plugin);
         }
-        self.retire_changed_page_tools().await?;
         let configuration_retired: Vec<_> = self
             .desktop
             .plugin_mcp
@@ -649,7 +645,6 @@ impl Engine {
                 }
             }
         }
-        active.extend(self.desktop.mcp_apps.generations());
         let live: BTreeSet<_> = self
             .desktop
             .plugin_mcp
@@ -752,7 +747,7 @@ impl Engine {
             };
             rows.push(json!({"pluginId":c.id,"installedDigest":c.digest,"state":state,"authenticationTiming":c.policy["authentication"],"trusted":self.desktop.plugin_mcp.trusted.read().unwrap().get(&c.id)==Some(&c.digest),"servers":configs.iter().map(|(name,cfg)|{
                 let state=if !cfg.policy().enabled {"disabled"} else if installation_auth.contains(name) {"authRequired"} else if let Some(server)=live.as_ref().and_then(|g|g.servers.iter().find(|s|s.name()==name)){if server.authentication_required(){"authRequired"}else{"connected"}}else{match outcomes.get(name).map(String::as_str).unwrap_or("disconnected") {"startup"|"discovery"=>"failed","authentication"=>"authRequired",state=>state}};
-                json!({"serverId":name,"projectEnabled":!c.disabled_mcp_servers.contains(name),"state":state,"config":cfg.redacted_view(),"policy":cfg.policy(),"authenticationTiming":c.policy["authentication"],"authentication":match cfg.auth_policy().map(|p|p.mode()){Some("mixed")=>"optional",Some(_)=>"required",None=>"none"}})
+                json!({"serverId":name,"generation":live.as_ref().and_then(|generation|generation.servers.iter().find(|server|server.name()==name && !server.is_revoked())).map(|server|server.generation()),"projectEnabled":!c.disabled_mcp_servers.contains(name),"state":state,"config":cfg.redacted_view(),"policy":cfg.policy(),"authenticationTiming":c.policy["authentication"],"authentication":match cfg.auth_policy().map(|p|p.mode()){Some("mixed")=>"optional",Some(_)=>"required",None=>"none"}})
             }).collect::<Vec<_>>(),"connectors":connector_ids(&c).iter().map(|id|json!({"id":id,"state":self.connector_state(&c,id)})).collect::<Vec<_>>(),"diagnostics":diagnostics}));
         }
         Ok(json!({"data":rows}))
@@ -1095,7 +1090,6 @@ impl Engine {
                 .write()
                 .unwrap()
                 .insert(server.generation(), (id.clone(), false));
-            self.spawn_mcp_resource_updates(server.clone());
         }
         self.desktop.plugin_mcp.owners.lock().await.push(Owned {
             view: generation.clone(),
@@ -1360,32 +1354,6 @@ impl Engine {
             }
             _ => Err(invalid("unsupported authentication operation")),
         }
-    }
-    pub(crate) async fn mcp_result_source(
-        &self,
-        tool: &McpTool,
-        thread_id: &str,
-        cwd: &str,
-    ) -> Option<super::mcp_apps::ResultProvenance> {
-        let owners = self.desktop.plugin_mcp.owners.lock().await;
-        let owner = owners.iter().find(|owner| {
-            owner.view.tools.iter().any(|original| {
-                original.server_name() == tool.server_name()
-                    && original.generation() == tool.generation()
-                    && original.original_name() == tool.original_name()
-            })
-        })?;
-        Some(super::mcp_apps::ResultProvenance {
-            version: 1,
-            apps_epoch: self.desktop.mcp_apps.runtime_epoch.clone(),
-            thread_id: thread_id.into(),
-            cwd: cwd.into(),
-            plugin_id: owner.view.plugin.clone(),
-            installed_digest: owner.view.digest.clone(),
-            server_id: tool.server_name().into(),
-            generation: tool.generation(),
-            original_tool_name: tool.original_name().into(),
-        })
     }
     pub(super) async fn plugin_server(
         &self,
@@ -1730,7 +1698,7 @@ mod connector_input_tests {
             while let Some(done) = jobs.join_next().await {
                 done??;
             }
-            let apps = engine.mcp_apps_list(None).await?;
+            let generations = engine.desktop.plugin_mcp.generations();
             let tool = engine
                 .desktop
                 .plugin_mcp
@@ -1744,7 +1712,7 @@ mod connector_input_tests {
             } else {
                 None
             };
-            Ok::<_, anyhow::Error>((apps, callable))
+            Ok::<_, anyhow::Error>((generations, callable))
         })
         .await;
         if let Some(release) = release.take() {
@@ -1753,13 +1721,13 @@ mod connector_input_tests {
         jobs.abort_all();
         while jobs.join_next().await.is_some() {}
         engine.shutdown().await;
-        let (apps, callable) = result.unwrap().unwrap();
-        assert_eq!(apps["data"].as_array().unwrap().len(), 1, "{apps}");
+        let (generations, callable) = result.unwrap().unwrap();
+        assert_eq!(generations.len(), 1);
         let callable =
             serde_json::to_value(callable.expect("new generation lost its callable tool")).unwrap();
         assert_ne!(callable["isError"], true);
         assert_eq!(callable["structuredContent"], json!({"v":1}));
-        assert_eq!(apps["data"][0]["pluginId"], "sample@local");
+        assert_eq!(generations[0].plugin, "sample@local");
     }
     #[tokio::test]
     async fn disabling_a_plugin_does_not_wait_for_its_handshake() {
@@ -1825,7 +1793,7 @@ mod connector_input_tests {
             connection.abort();
             let _ = connection.await;
         }
-        let apps = engine.mcp_apps_list(None).await;
+        let tools = engine.desktop.plugin_mcp.tools();
         engine.shutdown().await;
         disabled.unwrap().unwrap();
         assert!(
@@ -1836,7 +1804,7 @@ mod connector_input_tests {
             connected.unwrap().unwrap().is_err(),
             "disabled plugin published a connection"
         );
-        assert_eq!(apps.unwrap()["data"], json!([]));
+        assert!(tools.is_empty());
     }
     #[tokio::test]
     async fn cleanup_failure_survives_context_and_blocks_retry_classification() {

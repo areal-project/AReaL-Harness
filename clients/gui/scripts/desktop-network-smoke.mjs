@@ -164,7 +164,7 @@ async function desktopNetworkSmoke() {
       await Promise.all(
         [
           "clients/gui/scripts/desktop-network-smoke.mjs",
-          "services/workbench/src/desktop/core/desktop-network.cjs",
+          "clients/gui/packages/workbench/node/desktop-network.cjs",
           "clients/gui/packages/chatgpt-provider/network.js",
         ].map(async (path) => [
           path,
@@ -200,9 +200,7 @@ async function desktopNetworkSmoke() {
     return response.text();
   }
   try {
-    const {
-      resolveDesktopNetwork,
-    } = require("@areal/workbench-service/desktop/core/desktop-network.cjs");
+    const { resolveDesktopNetwork } = require("@areal/workbench/node/desktop-network");
     const emptySource = {
       NO_PROXY: "",
       no_proxy: "",

@@ -16,7 +16,6 @@ export default defineConfig({
     jsPlugins: ["./oxlint-plugin-areal/index.ts"],
     rules: {
       "areal/require-suppression-reason": "error",
-      "areal/no-workbench-core-owner": "error",
     },
     overrides: [
       {
@@ -74,20 +73,15 @@ export default defineConfig({
         },
       },
     },
-    ignorePatterns: [
-      "**/dist/**",
-      "**/vendor/**",
-      "**/generated/**",
-      "packages/gen-ui/assets/**",
-      "renderer/public/**",
-    ],
+    ignorePatterns: ["**/dist/**", "**/vendor/**", "**/generated/**", "renderer/public/**"],
   },
   fmt: {
     ignorePatterns: [
+      // 第三方资产保持原始摘要，文件完整性由公开分发检查验证。
+      "packages/workbench/assets/builtin-skills/**",
       "**/dist/**",
       "**/vendor/**",
       "**/generated/**",
-      "packages/gen-ui/assets/**",
       "renderer/public/**",
       "pnpm-lock.yaml",
       "patches/**",
@@ -143,32 +137,18 @@ export default defineConfig({
         },
       },
       "desktop-build": {
-        command: "node build.mjs",
-        cwd: "packages/gen-ui",
+        command: 'node -e ""',
         dependsOn: ["browser-automation-build", "browser-data-build", "snapshots-build"],
-        cache: {
-          input: [
-            { pattern: "packages/gen-ui/*.ts", base: "workspace" },
-            { pattern: "packages/gen-ui/build.mjs", base: "workspace" },
-            { pattern: "packages/gen-ui/assets/**", base: "workspace" },
-            { pattern: "packages/gen-ui/*.json", base: "workspace" },
-            { pattern: "pnpm-lock.yaml", base: "workspace" },
-          ],
-          output: [{ pattern: "packages/gen-ui/dist/**", base: "workspace" }],
-        },
+        cache: false,
       },
       "snapshots-build": {
         command: "node scripts/build-snapshots.mjs",
         cache: false,
       },
-      "computer-helper-build": {
-        command: "node scripts/build-computer-helper.mjs",
-        cache: false,
-      },
       "build-suite": {
         command: "vp build",
         cwd: "renderer",
-        dependsOn: ["ui-build", "desktop-build", "computer-helper-build"],
+        dependsOn: ["ui-build", "desktop-build"],
         cache: false,
       },
       "design-build": {
@@ -187,8 +167,7 @@ export default defineConfig({
           "node scripts/test-manifest.mjs",
           "node scripts/design-system-audit.mjs",
           "node scripts/a11y-lint.mjs",
-          "node scripts/state-projection-smoke.mjs",
-          "node --test scripts/conversation-content.test.mjs scripts/activity-runs.test.mjs scripts/bundle.test.mjs scripts/provider-affinity.test.mjs scripts/provider-status.test.cjs scripts/side-restore.test.mjs scripts/operation-contract.test.cjs scripts/side-model-intent.test.mjs scripts/startup-recovery.test.mjs scripts/service-connection-recovery.test.mjs scripts/core-read-recovery.test.mjs scripts/bounded-history-client.test.mjs scripts/desktop-projection-transport.test.mjs scripts/lifecycle-bounded-history.test.mjs scripts/backend-status.test.mjs scripts/system-proxy.test.mjs scripts/history.test.mjs scripts/macos-service.test.mjs scripts/macos-signing-paths.test.mjs scripts/application-cleanup.test.mjs scripts/feedback.test.mjs",
+          "node --test scripts/conversation-content.test.mjs scripts/activity-runs.test.mjs scripts/bundle.test.mjs scripts/provider-affinity.test.mjs scripts/side-restore.test.mjs scripts/operation-contract.test.cjs scripts/side-model-intent.test.mjs scripts/core-read-recovery.test.mjs scripts/bounded-history-client.test.mjs scripts/backend-status.test.mjs scripts/system-proxy.test.mjs scripts/history.test.mjs scripts/macos-signing-paths.test.mjs scripts/application-cleanup.test.mjs scripts/feedback.test.mjs",
           "pnpm test:worktree",
           "pnpm test:health",
           "pnpm test:manifest",
@@ -217,7 +196,6 @@ export default defineConfig({
       },
       "types-suite": {
         command: [
-          "pnpm --filter @areal/gen-ui typecheck",
           "pnpm --filter @areal/gui-renderer typecheck",
           "pnpm --filter @areal/gui-renderer exec tsc --ignoreConfig --project ../app/tsconfig.json",
           "pnpm --filter @areal/gui-renderer exec tsc --ignoreConfig --allowJs --checkJs --noEmit --skipLibCheck --target ES2022 --module NodeNext ../packages/workbench/client/desktop-contract.cjs",

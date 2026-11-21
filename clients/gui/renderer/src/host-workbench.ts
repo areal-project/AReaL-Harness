@@ -91,17 +91,12 @@ export const DESKTOP_COMMANDS = new Set([
   "continue",
   "dismissRecovery",
   "editMessage",
-  "feedback",
   "fork",
-  "history",
-  "list",
   "manage",
   "media",
-  "open",
   "prediction",
   "prepareCreator",
   "projectless",
-  "providers",
   "queue",
   "queueEdit",
   "recovery",
@@ -109,20 +104,8 @@ export const DESKTOP_COMMANDS = new Set([
   "remoteControl",
   "resources",
   "side",
-  "tasks",
-  "trajectory",
   "workspace",
 ]);
-/** 只有桌面窗口才有的设置页：电脑控制要本机系统权限。 */
-const DESKTOP_ONLY_SETTINGS = new Set(["电脑控制"]);
-
-// 命令通道是 JSON：后台返回的 Uint8Array 到这里成了按下标排的对象，还原后界面才能当字节用。
-function reviveBytes<T>(value: T): T {
-  const bytes = (value as { bytes?: unknown } | null)?.bytes;
-  if (!bytes || typeof bytes !== "object" || Array.isArray(bytes) || bytes instanceof Uint8Array)
-    return value;
-  return { ...value, bytes: Uint8Array.from(Object.values(bytes as Record<string, number>)) };
-}
 /** 本机网页的桌面命令通道；返回 undefined 表示该命令只能在桌面窗口里执行。 */
 export function hostDesktopCommand(
   client: HostClient,
@@ -133,10 +116,20 @@ export function hostDesktopCommand(
     if (!DESKTOP_COMMANDS.has(name) || !client.writable("desktop.command"))
       throw new Error("此功能需要桌面应用");
     try {
-      const value = await client.workbench("desktop.command", {
+      let value = await client.workbench("desktop.command", {
         command: name,
         request: params as Parameters<HostClient["workbench"]>[1],
       });
+      if (
+        name === "remoteControl" &&
+        "operation" in params &&
+        params.operation === "pair" &&
+        object(value) &&
+        typeof value.payload === "string"
+      ) {
+        const { toDataURL } = await import("qrcode");
+        value = { ...value, qr: await toDataURL(value.payload) };
+      }
       if (
         value &&
         typeof value === "object" &&
@@ -145,8 +138,9 @@ export function hostDesktopCommand(
       ) {
         onSnapshot?.(value as Record<string, unknown>);
       }
+      if (name === "cloudSession") await client.refreshShell();
       if (name === "providers") modelServiceObserved(client, value);
-      return { ok: true, value: reviveBytes(value) };
+      return { ok: true, value };
     } catch (error) {
       return {
         ok: false,
@@ -339,13 +333,6 @@ export function openingAuthorization(run: Run, open: (url: string) => Promise<vo
 export function desktopKeepsCommand(name: string, params: Record<string, unknown>) {
   const operation = String(params.operation ?? "");
   if (name === "providers") return operation === "revealKey";
-  if (name === "library")
-    return (
-      operation === "settings" &&
-      ["computerControlEnabled", "computerControlProvider", "computerControlExecutable"].includes(
-        String(params.key),
-      )
-    );
   if (name === "manage")
     return (
       operation.startsWith("process") ||
@@ -361,14 +348,6 @@ const FALLBACK = new Set(["CAPABILITY_UNAVAILABLE", "methodNotFound", "FORBIDDEN
 /** Host 明确未受理（服务没起来、方法未开放、无权限），可以安全改走桌面原路径。 */
 export function declinedCode(code: unknown) {
   return FALLBACK.has(String(code));
-}
-
-function declined(error: unknown) {
-  return (
-    error !== null &&
-    typeof error === "object" &&
-    FALLBACK.has(String((error as { code?: unknown }).code))
-  );
 }
 
 function backendUnavailable(message: string) {
@@ -467,16 +446,6 @@ export function createWorkbenchRoutes(
       // 原生进程的连接租约归 Main；其薄适配仍经 Host 访问 Core。
       if (desktop && name === "manage" && String(params.operation).startsWith("process"))
         return undefined;
-      if (name === "manage" && params.operation === "mcpApps") {
-        if (!client.writable("pages.command")) return undefined;
-        return {
-          value: await client.workbench("pages.command", {
-            operation: "catalog",
-            projectId: params.projectId,
-            ...(params.threadId ? { threadId: params.threadId } : {}),
-          } as Parameters<HostClient["workbench"]>[1]),
-        };
-      }
       if (name === "manage") {
         const operation = String(params.operation);
         const read = operation === "plugins" || operation === "plugin" || operation === "mcp";
@@ -614,14 +583,10 @@ export function createWorkbenchRoutes(
           );
         }
       }
-      if (name !== "analytics" || !client.writable("analytics.read")) return undefined;
+      if (name !== "analytics") return undefined;
       const method = params.operation === "sync" ? "analytics.sync" : "analytics.read";
-      try {
-        return { value: await client.workbench(method) };
-      } catch (error) {
-        if (declined(error)) return undefined;
-        throw error;
-      }
+      if (!client.writable(method)) throw backendUnavailable("用量服务尚未就绪，请重新连接");
+      return { value: await client.workbench(method) };
     },
   };
 }
@@ -640,18 +605,13 @@ export function hostPlatformCapabilities(
       (client.writable("session.send") && client.writable("session.control")),
     conversationCreate: desktop !== undefined || client.writable("session.create"),
     native: desktop !== undefined,
-    pages:
-      desktop !== undefined ||
-      (client.writable("pages.command") && client.writable("pages.resource")),
     bots: client.writable("bots.read") && client.writable("bots.command"),
     library: desktop !== undefined || available("library.command"),
     ...(desktop === undefined && {
       taskCatalog: available("tasks.read"),
       taskManage: available("manage.command"),
       settings: commands
-        ? settingsNavigationGroups
-            .flatMap((group) => group.items.map((item) => item.id))
-            .filter((id) => !DESKTOP_ONLY_SETTINGS.has(id))
+        ? settingsNavigationGroups.flatMap((group) => group.items.map((item) => item.id))
         : [
             ...(available("providers.read") ? ["模型服务"] : []),
             ...(available("worktree.read") ? ["Worktrees"] : []),
@@ -666,6 +626,28 @@ export async function openInBrowser(url: string) {
   if (!window.open(url, "_blank", "noopener,noreferrer")) throw new Error("浏览器拦截了新窗口");
 }
 
+const HOST_ONLY_DESKTOP_COMMANDS = new Set([
+  "cloud",
+  "cloudSession",
+  "chatgpt",
+  "configure",
+  "continue",
+  "dismissRecovery",
+  "editMessage",
+  "fork",
+  "manage",
+  "media",
+  "prediction",
+  "queue",
+  "queueEdit",
+  "reconcile",
+  "recovery",
+  "remoteControl",
+  "side",
+  "stop",
+  "workspace",
+]);
+
 /**
  * 桌面与网页同走 Host 的后台命令；只有 Main 加了本机行为的、或资料库来源未就绪时仍走 Main。
  * 过渡：到 0.2.0 删（来源去掉、Main 附加行为迁走后整条走 Host）
@@ -678,11 +660,32 @@ export function routeDesktopCommand(
   if (!desktop) return hostCommand as Run;
   const native = desktop.command as Run;
   return async (name, params) => {
-    // 非原生资料库操作必须先经过 workbench 的回执路径，不能旁路派发。
-    if (name === "library" && !desktopKeepsCommand(name, params))
-      throw backendUnavailable("资料库操作入口尚未就绪，请重新连接");
-    if (!DESKTOP_COMMANDS.has(name) || desktopKeepsCommand(name, params) || !hostReady())
-      return native(name, params);
+    if (desktopKeepsCommand(name, params)) return native(name, params);
+    // 这些域只接受各自的 Host 方法，桌面 IPC 不再承接旧别名。
+    if (
+      [
+        "library",
+        "trajectory",
+        "feedback",
+        "analytics",
+        "tasks",
+        "providers",
+        "open",
+        "list",
+        "history",
+      ].includes(name)
+    )
+      throw backendUnavailable("Host 操作入口尚未就绪，请重新连接");
+    if (!DESKTOP_COMMANDS.has(name)) return native(name, params);
+    if (HOST_ONLY_DESKTOP_COMMANDS.has(name)) {
+      if (!hostReady())
+        return {
+          ok: false,
+          error: { code: "CAPABILITY_UNAVAILABLE", message: "桌面后台尚未就绪，请稍后再试" },
+        } as Awaited<ReturnType<Run>>;
+      return (hostCommand as Run)(name, params);
+    }
+    if (!hostReady()) return native(name, params);
     const result = await (hostCommand as Run)(name, params);
     // 窗口刚打开时 Main 可能还没把后台交给 Host；Host 明确拒绝（未受理）时走 Main，Main 会等后台就绪。
     return !result.ok && declinedCode(result.error.code) ? native(name, params) : result;

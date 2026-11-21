@@ -53,6 +53,7 @@ pub(crate) struct ShellProject {
     pub projectless: bool,
     pub workspace: PathBuf,
     pub state: String,
+    pub schedule_activation_suppressed: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub service_generation: Option<String>,
     pub summaries: Summaries,
@@ -100,9 +101,19 @@ pub(crate) enum Attention {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct CloudSummary {
+    pub session_id: String,
+    pub connected: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct NavigationSummary {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cloud: Option<CloudSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_thread_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -301,6 +312,7 @@ pub(crate) fn snapshot(
                     projectless: false,
                     workspace: status.registration.workspace.clone(),
                     state: status.state.clone(),
+                    schedule_activation_suppressed: status.schedule_activation_suppressed,
                     service_generation: status
                         .service
                         .as_ref()
@@ -415,6 +427,7 @@ pub(crate) fn snapshot(
                     .filter_map(|key| key.strip_prefix(&prefix))
                     .map(|id| NavigationSummary {
                         id: id.into(),
+                        cloud: None,
                         parent_thread_id: None,
                         conversation: None,
                         name: None,
@@ -818,6 +831,23 @@ mod tests {
     }
     fn write(home: &Path, name: &str, value: Value) {
         std::fs::write(home.join(name), serde_json::to_vec(&value).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn stopped_shell_distinguishes_explicit_stop_from_idle_hibernation() {
+        let mut stopped = status("project");
+        let idle = snapshot(&[stopped.clone()], &[]).unwrap();
+        assert_eq!(idle.projects[0].state, "stopped");
+        assert!(!idle.projects[0].schedule_activation_suppressed);
+        stopped.schedule_activation_suppressed = true;
+        let explicit = snapshot(&[stopped], &[]).unwrap();
+        assert_eq!(explicit.projects[0].state, "stopped");
+        assert!(explicit.projects[0].schedule_activation_suppressed);
+        assert_ne!(idle, explicit);
+        assert_eq!(
+            serde_json::to_value(explicit).unwrap()["projects"][0]["scheduleActivationSuppressed"],
+            true
+        );
     }
 
     #[test]

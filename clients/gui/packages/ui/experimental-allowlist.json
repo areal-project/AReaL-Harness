@@ -42,12 +42,6 @@
     "exitCondition": "Evaluate AttachmentCard against its component contract and Base admission before graduation, or remove this consumer."
   },
   {
-    "file": "renderer/src/McpComposerAttachments.tsx",
-    "symbol": "AttachmentCard",
-    "owner": "renderer/src/McpComposerAttachments.tsx",
-    "exitCondition": "Evaluate AttachmentCard against its component contract and Base admission before graduation, or remove this consumer."
-  },
-  {
     "file": "renderer/src/ConversationContentView.tsx",
     "symbol": "NativeContent",
     "owner": "renderer/src/ConversationContentView.tsx",

@@ -26,6 +26,7 @@ import { insertSideAnswer, makeBringBackPreview, sideSourceAdvanced } from "./si
 import { composerDraftStorage } from "./composerDraftStorage.js";
 import { sideStartConfiguration } from "./side-model-intent.js";
 import { createSideRestore, type SideRestoreState } from "./side-restore.js";
+import { usePlatformReads } from "./PlatformReadContext.js";
 import type { Action, Data } from "./services.js";
 import {
   attachedReviewComments,
@@ -202,6 +203,10 @@ function SideChatEditor({
   const previewKey = `${owner}:selection-preview`;
   const workspaceAccessKey = `${owner}:workspace-access`;
   const sideId = selected.kind === "side" ? selected.id : "";
+  const platformReads = usePlatformReads();
+  useEffect(() => {
+    if (sideId) return platformReads?.watch?.({ projectId: project.id, threadId: sideId });
+  }, [platformReads, project.id, sideId]);
   const reviewKey = reviewCommentKey(project.id, sideId || "new");
   const reviewDraft = useReviewComments(reviewKey);
   const reviewComments = attachedReviewComments(reviewDraft.draft);
@@ -591,35 +596,6 @@ function SideChatEditor({
       if (mounted.current && workspace.isCurrent(token, generation)) setBusy(false);
     }
   };
-  const submitGenUi = async (question: string) => {
-    if (
-      executionBlocked ||
-      busy ||
-      pendingId ||
-      unsettled ||
-      active ||
-      !project.state?.connected ||
-      !sideId ||
-      !validSide ||
-      side.desktop?.archived
-    )
-      throw Error("Side conversation is not available");
-    const token = workspace.capture(generation);
-    setBusy(true);
-    setError("");
-    try {
-      if (!mounted.current || !workspace.isCurrent(token, generation))
-        throw Error("Side conversation changed");
-      await action("side", {
-        projectId: project.id,
-        operation: "send",
-        threadId: sideId,
-        text: question,
-      });
-    } finally {
-      if (mounted.current && workspace.isCurrent(token, generation)) setBusy(false);
-    }
-  };
   const configure = async (values: Data) => {
     if (
       busy ||
@@ -834,7 +810,6 @@ function SideChatEditor({
         )}
         {validSide && (
           <Messages
-            onGenUiFollowUp={submitGenUi}
             key={`${owner}:${sideId}`}
             project={project}
             thread={side}

@@ -254,7 +254,6 @@ def artifacts(item, root):
     if item["id"].endswith(":desktop"):
         # 将同一构建的桌面模块连同摘要交付给消费者，禁止重新编译混入新输出。
         for relative in (
-            "packages/gen-ui/dist",
             "packages/browser-automation/dist",
             "packages/browser-data/dist",
             "app/src/core/snapshots/build",
@@ -272,11 +271,6 @@ def artifacts(item, root):
             *sorted((directory / "assets").glob("*.js")),
             *sorted((directory / "assets").glob("*.css")),
         ]
-    if item["id"] == "computer-helper":
-        directory = root / "clients/gui/native/computer-helper/build/AReaL Computer Helper.app"
-        files = [path for path in sorted(directory.rglob("*")) if path.is_file()]
-        if not files:
-            raise ValueError("computer helper build did not produce its signed app")
     return {str(path.relative_to(root)): digest(path) for path in files}
 
 
@@ -582,7 +576,7 @@ def main():
     fresh = scope.input_key(ROOT, plan["source"]["baseRevision"]) == plan["source"]["inputHash"]
     ready = fresh and all(
         any(result["id"] == name and result["status"] == "passed" for result in report["results"])
-        for name in ("macos:renderer", "gui-core-build", "gui-design-build", "computer-helper")
+        for name in ("macos:renderer", "gui-core-build", "gui-design-build")
     )
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as stream:

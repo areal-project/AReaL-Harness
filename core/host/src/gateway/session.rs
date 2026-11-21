@@ -10,7 +10,7 @@ mod create;
 #[path = "interaction_tests.rs"]
 mod interaction_tests;
 #[path = "models.rs"]
-mod models;
+pub(super) mod models;
 #[path = "observer.rs"]
 mod observer;
 #[path = "overview.rs"]
@@ -230,7 +230,7 @@ pub(crate) fn error_code(message: &str) -> &str {
     }
 }
 pub(crate) const LOCAL_PEER: &str = "local-desktop";
-pub(crate) use send::{GUI_WRITE_PENDING_BYTES, write_limits};
+pub(crate) use send::{GUI_WRITE_PENDING_BYTES, rich_message_input_with_command, write_limits};
 
 pub(crate) struct Session {
     pub(crate) host: Rc<Host>,
@@ -249,6 +249,7 @@ pub(crate) struct Session {
     local: bool,
     browser_device: Option<String>,
     uploads: uploads::Uploads,
+    download: Option<Box<uploads::Download>>,
     token_key: [u8; 32],
 }
 struct SessionSlot {
@@ -266,7 +267,10 @@ impl Drop for SessionSlot {
                 .set(self.host.gateway.pending.get() - 1);
         }
         if let Some(connection) = &self.connection {
-            self.host.gateway.workbench.disconnect_pages(connection);
+            self.host
+                .gateway
+                .workbench
+                .disconnect_connection(&self.host, connection);
             if let Some(active) = self.host.gateway.active.borrow_mut().remove(connection) {
                 self.host
                     .gateway
@@ -540,6 +544,7 @@ impl Session {
             local: false,
             browser_device: None,
             uploads: Default::default(),
+            download: None,
             transport: admission.transport,
             kind: admission.kind,
             source_id: config["sourceId"]
@@ -828,6 +833,7 @@ impl Session {
             local: true,
             browser_device: None,
             uploads: Default::default(),
+            download: None,
             transport: String::new(),
             kind: gateway_owner::TransportKind::Direct,
             source_id: String::new(),
@@ -835,6 +841,7 @@ impl Session {
         })
     }
     /// 浏览器沿用本机项目 ID，但每次副作用前检查独立设备授权，回执不与 Main 共用。
+    #[cfg(test)]
     pub(crate) fn browser(host: Rc<Host>, connection: String, device: String) -> Result<Self> {
         Self::browser_with_key(host, connection, device, Self::random_token_key()?)
     }
@@ -885,8 +892,23 @@ impl Session {
                 "FORBIDDEN"
             );
         }
+        let cloud_owner = project
+            .filter(|id| crate::server::cloud_sessions::CloudSessions::is_virtual(id))
+            .map(|id| {
+                self.host
+                    .gateway
+                    .workbench
+                    .cloud
+                    .sessions
+                    .owner(&self.host, id)
+            })
+            .transpose()?;
         if self.local {
             if let Some(project) = project {
+                let project = cloud_owner
+                    .as_ref()
+                    .map(|(_, id, _)| id.as_str())
+                    .unwrap_or(project);
                 ensure!(self.host.slots.borrow().contains_key(project), "FORBIDDEN");
             }
             return Ok(());
@@ -913,6 +935,12 @@ impl Session {
             "FORBIDDEN"
         );
         if let Some(project) = project {
+            let project = if let Some((source, _, alias)) = &cloud_owner {
+                ensure!(source == &self.source_id, "FORBIDDEN");
+                alias.as_str()
+            } else {
+                project
+            };
             ensure!(
                 current["projectIds"]
                     .as_array()
@@ -946,6 +974,10 @@ impl Session {
         }
     }
     fn project_id(&self, alias: &str) -> Result<String> {
+        if crate::server::cloud_sessions::CloudSessions::is_virtual(alias) {
+            self.authorize(Some(alias), "observe")?;
+            return Ok(alias.into());
+        }
         self.bindings()?
             .into_iter()
             .find(|(_, candidate)| candidate == alias)
@@ -955,6 +987,16 @@ impl Session {
     }
     fn project(&self, alias: &str) -> Result<(String, String)> {
         let id = self.project_id(alias)?;
+        if crate::server::cloud_sessions::CloudSessions::is_virtual(&id) {
+            let scope = self
+                .host
+                .gateway
+                .workbench
+                .cloud
+                .sessions
+                .scope(&self.host, &id)?;
+            return Ok((id, scope.identity.1));
+        }
         let slots = self.host.slots.borrow();
         let slot = slots.get(&id).context("FORBIDDEN")?;
         let service = slot
@@ -974,6 +1016,19 @@ impl Session {
         self.authorize(Some(alias), "observe")?;
         let (id, current) = self.project(alias)?;
         ensure!(current == generation, "RESYNC_REQUIRED");
+        if crate::server::cloud_sessions::CloudSessions::is_virtual(&id) {
+            let result = self
+                .host
+                .gateway
+                .workbench
+                .cloud
+                .sessions
+                .request(&self.host, &id, method, params)
+                .await;
+            self.authorize(Some(alias), "observe")?;
+            ensure!(self.project(alias)?.1 == generation, "RESYNC_REQUIRED");
+            return result;
+        }
         let (service_id, current, connection_id) = self
             .host
             .schedules
@@ -1101,6 +1156,7 @@ impl Session {
     fn interaction_body(item: &Value) -> Value {
         json!({"tool":item["tool"],"generation":item["generation"],"effectiveArguments":item["effectiveArguments"],"effectivePermissions":item["effectivePermissions"],"questions":item.get("questions").cloned().unwrap_or(json!([]))})
     }
+    // 领域执行状态放在堆上，避免通用网关 future 内联携带创建、管理与模型准备的整棵状态机。
     async fn request(&mut self, request: &Value) -> Result<Value> {
         ensure!(
             exact(request, &["id", "method", "context", "params", "commandId"])
@@ -1113,57 +1169,6 @@ impl Session {
         let params = &request["params"];
         ensure!(params.is_object(), "INVALID_PARAMS");
         self.authorize(None, "observe")?;
-        if matches!(method, "pages.command" | "pages.resource") {
-            ensure!(self.local && self.gui_write, "FORBIDDEN");
-            self.authorize(None, "manage")?;
-            ensure!(
-                request.get("context").is_none() && request.get("commandId").is_none(),
-                "INVALID_PARAMS"
-            );
-            // 手动打开会执行入口工具；不能用 manage 绕过 submit。
-            if method == "pages.command"
-                && matches!(params["operation"].as_str(), Some("open" | "request"))
-            {
-                self.authorize(None, "submit")?;
-            }
-            let params = if method == "pages.command" {
-                serde_json::to_value(
-                    serde_json::from_value::<areal_protocol::host::WorkbenchPageCommandParams>(
-                        params.clone(),
-                    )
-                    .context("INVALID_PARAMS")?,
-                )?
-            } else {
-                serde_json::to_value(
-                    serde_json::from_value::<areal_protocol::host::WorkbenchPageResourceParams>(
-                        params.clone(),
-                    )
-                    .context("INVALID_PARAMS")?,
-                )?
-            };
-            let mut value = self
-                .host
-                .gateway
-                .workbench
-                .request(
-                    &self.host,
-                    method,
-                    params,
-                    json!({"principal":self.peer,"connection":self.connection}),
-                )
-                .await?;
-            if method == "pages.command" {
-                let descriptor = if value["status"] == "open" {
-                    &mut value["app"]
-                } else {
-                    &mut value
-                };
-                if descriptor.get("frameUrl").is_some() {
-                    descriptor["frameUrl"] = json!(self.host.loopback.page_proxy_url()?);
-                }
-            }
-            return Ok(value);
-        }
         if matches!(
             method,
             "library.command"
@@ -1196,9 +1201,41 @@ impl Session {
             }
             if method.ends_with(".read") {
                 ensure!(request.get("commandId").is_none(), "INVALID_PARAMS");
-                return workbench_route::backend_read(&self.host, &self.peer, &request).await;
+                return Box::pin(workbench_route::backend_read(
+                    &self.host, &self.peer, &request,
+                ))
+                .await;
             }
-            return workbench_route::backend_command(&self.host, &self.peer, &request).await;
+            return Box::pin(workbench_route::backend_command(
+                &self.host, &self.peer, &request,
+            ))
+            .await;
+        }
+        if method == "worktree.project.add" {
+            ensure!(self.local && self.gui_write, "FORBIDDEN");
+            self.authorize(None, "manage")?;
+            ensure!(
+                request.get("context").is_none() && request.get("commandId").is_none(),
+                "INVALID_PARAMS"
+            );
+            let input: areal_protocol::host::RemoteWorktreeProjectAddParams =
+                serde_json::from_value(params.clone()).context("INVALID_PARAMS")?;
+            ensure!(
+                (1..=32768).contains(&input.root.len()) && !input.root.contains('\0'),
+                "INVALID_PARAMS"
+            );
+            let workbench = &self.host.gateway.workbench;
+            workbench.restore_source(&self.host)?;
+            let source = workbench
+                .active_source()
+                .context("CAPABILITY_UNAVAILABLE")?;
+            ensure!(input.source_id.is_none_or(|id| id == source), "FORBIDDEN");
+            return Box::pin(crate::server::worktree_catalog::add_project(
+                &self.host,
+                &source,
+                json!({"root":input.root}),
+            ))
+            .await;
         }
         if method == "desktop.command"
             || crate::server::plugins::METHODS.contains(&method)
@@ -1209,13 +1246,16 @@ impl Session {
             ensure!(request.get("context").is_none(), "INVALID_PARAMS");
             let (host, peer) = (&self.host, &self.peer);
             if method == "desktop.command" {
+                if let Some(capability) = workbench_route::desktop_command_capability(params) {
+                    self.authorize(None, capability)?;
+                }
                 return workbench_route::desktop_command(host, peer, &self.connection, request)
                     .await;
             }
             if crate::server::bots::METHODS.contains(&method) {
-                return crate::server::bots::gateway(host, method, request).await;
+                return Box::pin(crate::server::bots::gateway(host, method, request)).await;
             }
-            return crate::server::plugins::gateway(host, method, request).await;
+            return Box::pin(crate::server::plugins::gateway(host, method, request)).await;
         }
         if method == "command.read" && self.local && request.get("context").is_none() {
             ensure!(exact(params, &["commandId"]), "INVALID_PARAMS");
@@ -1228,7 +1268,7 @@ impl Session {
                 return Ok(receipt);
             }
         }
-        if workbench_route::METHODS.contains(&method) {
+        if method.starts_with("analytics.") && workbench_route::METHODS.contains(&method) {
             ensure!(self.local, "FORBIDDEN");
             ensure!(
                 request.get("context").is_none() && request.get("commandId").is_none(),
@@ -1239,7 +1279,7 @@ impl Session {
                 .host
                 .gateway
                 .workbench
-                .request(&self.host, method, params.clone(), context)
+                .analytics_request(&self.host, method, params, &context)
                 .await;
         }
         if shared_reads::METHODS.contains(&method) {
@@ -1301,7 +1341,40 @@ impl Session {
             && (params["view"] == "conversation"
                 || (method == "session.history" && params.get("subscriptionId").is_some())
                 || (method == "subscription.close" && self.conversation_active()));
-        let project = if native {
+        let supplied = request["context"]["projectId"].as_str();
+        let cloud =
+            supplied.filter(|id| crate::server::cloud_sessions::CloudSessions::is_virtual(id));
+        let project = if let Some(id) = cloud {
+            self.authorize(Some(id), "observe")?;
+            ensure!(
+                [
+                    "project.activate",
+                    "project.models",
+                    "session.open",
+                    "session.history",
+                    "session.body",
+                    "subscription.close",
+                    "session.send",
+                    "turn.stop",
+                    "attachment.upload",
+                    "attachment.read",
+                    "artifact.read",
+                    "command.read",
+                    "interaction.respond",
+                ]
+                .contains(&method),
+                "FORBIDDEN"
+            );
+            if let Some(thread) = params["threadId"].as_str() {
+                self.host
+                    .gateway
+                    .workbench
+                    .cloud
+                    .sessions
+                    .bound_thread(&self.host, id, thread)?;
+            }
+            id.to_owned()
+        } else if native {
             self.native_alias(text(&request["context"], "projectId")?)?
         } else if self.gui_write {
             // 共享清单给出 Host ID；旧远程调用仍可用别名，授权和 journal 统一回到来源别名。
@@ -1316,7 +1389,7 @@ impl Session {
         };
         self.authorize(Some(&project), "observe")?;
         if method == "project.activate" {
-            return self.activate_project(&project, request).await;
+            return Box::pin(self.activate_project(&project, request)).await;
         }
         if method == "artifact.read" && native {
             let generation = text(&request["context"], "serviceGeneration")?;
@@ -1326,6 +1399,9 @@ impl Session {
             return self.command_read(&project, params).await;
         }
         if uploads::METHODS.contains(&method) {
+            if method == "attachment.read" {
+                return Box::pin(self.read_attachment(&project, request)).await;
+            }
             let generation = text(&request["context"], "serviceGeneration")?.to_owned();
             return self.upload_attachment(&project, &generation, request).await;
         }
@@ -1359,7 +1435,7 @@ impl Session {
             error
         })?;
         match method {
-            "project.models" => self.project_models(&project, &generation, request).await,
+            "project.models" => Box::pin(self.project_models(&project, &generation, request)).await,
             "work.list" | "attention.list" => {
                 self.overview(&project, &generation, method, params).await
             }
@@ -1378,9 +1454,9 @@ impl Session {
             "attention.read" => self.attention_read(&project, &generation, params).await,
             "session.create" | "session.send" => {
                 let result = if method == "session.create" {
-                    self.create_session(&project, &generation, request).await
+                    Box::pin(self.create_session(&project, &generation, request)).await
                 } else {
-                    self.send_session(&project, &generation, request).await
+                    Box::pin(self.send_session(&project, &generation, request)).await
                 };
                 let Err(error) = result else { return result };
                 if error.to_string() == "RESYNC_REQUIRED"

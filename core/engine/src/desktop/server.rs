@@ -102,6 +102,7 @@ impl Engine {
         let mut compacting = Vec::new();
         let mut active_goals = Vec::new();
         let mut pending_queue_items = 0usize;
+        let mut queues = Vec::new();
         let mut latest_activity = 0i64;
         for cell in &cells {
             if let Some(scope) = self.hook_task_unknown(cell).await {
@@ -134,6 +135,22 @@ impl Engine {
                 active.push(json!({"threadId":s.thread.id,"turnId":a.id}));
             }
             if let Some(d) = &s.thread.desktop {
+                let pending = d
+                    .queue
+                    .items
+                    .iter()
+                    .filter(|item| item.status == "pending")
+                    .count();
+                let running = d
+                    .queue
+                    .items
+                    .iter()
+                    .filter(|item| item.status == "running")
+                    .count();
+                if pending + running > 0 {
+                    queues.push(json!({"threadId":s.thread.id,"paused":d.queue.paused,"pending":pending,"running":running}));
+                }
+                pending_queue_items += pending + running;
                 for hook in &d.hook_runs {
                     if hook.outcome == "running" {
                         resources.push(json!({"threadId":s.thread.id,"id":hook.id,"kind":"hook","state":"running"}));
@@ -145,12 +162,6 @@ impl Engine {
                         );
                     }
                 }
-                pending_queue_items += d
-                    .queue
-                    .items
-                    .iter()
-                    .filter(|item| matches!(item.status.as_str(), "pending" | "running"))
-                    .count();
                 for p in &d.processes {
                     if !p.cleanup_confirmed {
                         resources.push(json!({"threadId":s.thread.id,"id":p.id,"state":p.state,"epoch":p.runtime_epoch}));
@@ -246,6 +257,7 @@ impl Engine {
         }
         let mut status = json!({"readReady":!self.is_closed(),"executionReady":self.desktop.lifecycle.execution_enabled.load(Ordering::Acquire),"configuration":self.configuration_status.read().unwrap().clone(),"activeTasks":active_tasks,"activeGoals":active_goals,"pendingQueueItems":pending_queue_items,"compactions":compacting,"workgroups":groups,"apiVersion":API_VERSION,"stateVersion":crate::store::STATE_VERSION,"productVersion":env!("CARGO_PKG_VERSION"),"draining":self.desktop.lifecycle.draining.load(Ordering::Acquire),"closed":self.is_closed(),"acceptingWork":self.accepting_work(),"activeTurns":active,"resources":resources,"unresolvedTools":unknown,"runtime":runtime,"capacity":{"threads":cells.len(),"maxThreads":self.limits.max_threads,"activeTurns":self.limits.max_active_turns-self.active_turns.available_permits(),"maxActiveTurns":self.limits.max_active_turns,"historyBytesPerThread":self.limits.max_history_bytes,"blobBytes":512*1024*1024u64}});
         status["lifecycle"] = lifecycle_assessment(&status, unsettled, uninspected_outcomes);
+        status["queues"] = json!(queues);
         status["restartSafe"] = status["lifecycle"]["settled"]["allowed"].clone();
         // 观察、轮询和 WebSocket 心跳不延长空闲时间；活动工作与持久 Turn 时间才计入。
         let mut idle_clock = self.desktop.lifecycle.idle_clock.lock().unwrap();

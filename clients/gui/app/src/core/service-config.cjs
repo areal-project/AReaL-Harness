@@ -27,8 +27,7 @@ function serviceHome(app) {
 function serviceOptions(app) {
   // 配置文件参与后台身份；环境变量选择也必须固定，避免新窗口复用另一份配置的后台。
   const config = process.env.AREAL_CORE_CONFIG || process.env.AREAL_HARNESS_CONFIG;
-  const bundledProfile = require("@areal/workbench-service/desktop/core/desktop-profile.json")
-    .profiles[0];
+  const bundledProfile = require("@areal/workbench/desktop-profile").profiles[0];
   // 开发工作树的 Host 与凭据命名空间独立，不能接管安装版后台。
   const defaultHostHome =
     app.isPackaged === false
@@ -56,9 +55,7 @@ function serviceOptions(app) {
       process.env.AREAL_HARNESS_SERVICE_HOME || process.env.AREAL_HARNESS_HOME || defaultHostHome,
     ),
     applicationOwner: process.env.AREAL_GUI_OWNER
-      ? require("@areal/workbench-service/desktop/core/application-owner.cjs").parseOwner(
-          process.env.AREAL_GUI_OWNER,
-        )
+      ? require("@areal/workbench/node/application-owner").parseOwner(process.env.AREAL_GUI_OWNER)
       : undefined,
     // macOS Unix socket 长度有限，注册目录不能嵌入较长的 userData 路径。
     harnessHome:
@@ -83,13 +80,11 @@ function serviceOptions(app) {
     workgroupPolicy: process.env.AREAL_CORE_WORKGROUP_POLICY,
     workgroupToolchain: process.env.AREAL_CORE_WORKGROUP_TOOLCHAIN,
     desktopConfig:
-      process.env.AREAL_CORE_DESKTOP_CONFIG ||
-      require.resolve("@areal/workbench-service/desktop/core/desktop-profile.json"),
+      process.env.AREAL_CORE_DESKTOP_CONFIG || require.resolve("@areal/workbench/desktop-profile"),
     desktopProcesses: true,
     defaultProfile: !process.env.AREAL_CORE_DESKTOP_CONFIG
       ? { id: bundledProfile.id, revision: bundledProfile.revision }
       : undefined,
   };
 }
-const { serviceIdentity } = require("@areal/workbench-service/desktop/core/service-identity.cjs");
-module.exports = { ...bootstrap, configureUserData, serviceHome, serviceOptions, serviceIdentity };
+module.exports = { ...bootstrap, configureUserData, serviceHome, serviceOptions };

@@ -285,7 +285,7 @@ async fn scheduled_run_keeps_scheduler_when_gui_disconnects_without_adopting_suc
     engine
         .register_schedule_tools(
             TaskToolsReady {
-                bundles: vec![DesktopToolBundle::Browser, DesktopToolBundle::Computer],
+                bundles: vec![DesktopToolBundle::Browser],
             },
             gui.clone(),
         )
@@ -302,7 +302,7 @@ async fn scheduled_run_keeps_scheduler_when_gui_disconnects_without_adopting_suc
     let visible = engine
         .visible_tools(&cell, &Default::default(), true, &thread)
         .await;
-    for name in ["browser_v1", "computer_v1"] {
+    for name in ["browser_v1"] {
         assert!(visible.iter().any(|tool| tool["function"]["name"] == name));
     }
     let ordinary = engine.create_configured("owner".into(), serde_json::from_value(json!({"requestId":"ordinary-tools","cwd":"/workspace","dynamicTools":[areal_protocol::desktop::browser_v1_tool()]})).unwrap(), gui.clone()).await.unwrap();
@@ -311,7 +311,7 @@ async fn scheduled_run_keeps_scheduler_when_gui_disconnects_without_adopting_suc
     engine
         .register_schedule_tools(
             TaskToolsReady {
-                bundles: vec![DesktopToolBundle::Browser, DesktopToolBundle::Computer],
+                bundles: vec![DesktopToolBundle::Browser],
             },
             successor,
         )
@@ -328,10 +328,11 @@ async fn scheduled_run_keeps_scheduler_when_gui_disconnects_without_adopting_suc
     let visible = engine
         .visible_tools(&cell, &Default::default(), true, &thread)
         .await;
-    assert!(!visible.iter().any(|tool| matches!(
-        tool["function"]["name"].as_str(),
-        Some("browser_v1" | "computer_v1")
-    )));
+    assert!(
+        !visible
+            .iter()
+            .any(|tool| matches!(tool["function"]["name"].as_str(), Some("browser_v1")))
+    );
     let bindings = cell.bindings.read().await;
     assert_eq!(bindings.host.as_ref().unwrap().id(), "gui");
     assert_eq!(bindings.schedule_host.as_ref().unwrap().id(), "scheduler");
@@ -368,7 +369,7 @@ async fn prepared_schedule_restart_preserves_catalog_and_only_binds_compatible_p
         engine
             .register_schedule_tools(
                 TaskToolsReady {
-                    bundles: vec![DesktopToolBundle::Browser, DesktopToolBundle::Computer],
+                    bundles: vec![DesktopToolBundle::Browser],
                 },
                 ScheduleConnection::new("old-gui", "owner"),
             )
@@ -394,9 +395,9 @@ async fn prepared_schedule_restart_preserves_catalog_and_only_binds_compatible_p
             .await
             .unwrap();
         let bundles = if compatible {
-            vec![DesktopToolBundle::Browser, DesktopToolBundle::Computer]
-        } else {
             vec![DesktopToolBundle::Browser]
+        } else {
+            vec![]
         };
         engine
             .register_schedule_tools(
@@ -419,7 +420,7 @@ async fn prepared_schedule_restart_preserves_catalog_and_only_binds_compatible_p
                 .iter()
                 .map(|tool| tool.name.as_str())
                 .collect::<Vec<_>>(),
-            ["browser_v1", "computer_v1"]
+            ["browser_v1"]
         );
         let cell = engine.cell(thread_id).await.unwrap();
         let bindings = cell.bindings.read().await;
@@ -897,6 +898,73 @@ async fn interrupted_schedule_explicit_resume_keeps_run_and_thread_with_a_fresh_
         "resumed-gui"
     );
     engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn foreground_task_advances_after_a_full_batch_of_future_schedules() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+    engine.task_modes.started.store(true, Ordering::Release);
+    let anchor = engine.create("/workspace".into()).await.unwrap();
+    let future = engine
+        .task_create(
+            "owner".into(),
+            serde_json::from_value(json!({
+                "requestId":"future","mode":"scheduled","objective":"wait for the next date",
+                "threadId":anchor.id,"schedule":{"at":now()+3600}
+            }))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let source = engine.create("/workspace".into()).await.unwrap();
+    let queued = engine
+        .task_create(
+            "owner".into(),
+            serde_json::from_value(json!({
+                "requestId":"foreground","mode":"foreground","objective":"inspect the workspace",
+                "threadId":source.id
+            }))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let task_id = queued["id"].as_str().unwrap();
+    {
+        let mut state = engine.task_modes.state.lock().await;
+        let future = state
+            .tasks
+            .get(future["id"].as_str().unwrap())
+            .unwrap()
+            .clone();
+        for i in 0..32 {
+            let id = format!("00000000-0000-4000-8000-{i:012x}");
+            assert!(id.as_str() < task_id);
+            let mut task = future.clone();
+            task.id = id.clone();
+            state.tasks.insert(id, task);
+        }
+    }
+    let (before, mut events) = engine.task_snapshot_and_subscribe(task_id).await.unwrap();
+    assert_eq!(before["runs"][0]["status"], "queued");
+    engine.task_modes.started.store(false, Ordering::Release);
+    engine.start_task_scheduler();
+    let observed = tokio::time::timeout(Duration::from_secs(4), async {
+        loop {
+            let event = events.recv().await.unwrap();
+            if event["params"]["taskId"] == task_id {
+                let run = &event["params"]["task"]["runs"][0];
+                if run["status"] != "queued" {
+                    return run.clone();
+                }
+            }
+        }
+    })
+    .await;
+    engine.shutdown().await;
+    let run = observed.expect("foreground dispatch after future tasks");
+    assert_eq!(run["status"], "running");
+    assert_eq!(run["id"], before["runs"][0]["id"]);
 }
 
 #[tokio::test]

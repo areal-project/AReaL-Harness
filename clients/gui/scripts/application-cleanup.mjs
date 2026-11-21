@@ -3,12 +3,78 @@ import { once } from "node:events";
 import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { execFile, spawnSync } from "node:child_process";
-import { readFile, readdir, realpath, writeFile } from "node:fs/promises";
+import { chmod, readFile, readdir, realpath, writeFile } from "node:fs/promises";
 import { join, relative, isAbsolute } from "node:path";
 import { promisify } from "node:util";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
 const executeFile = promisify(execFile);
 const require = createRequire(new URL("../app/package.json", import.meta.url));
+
+function readOptionalJson(path) {
+  return readFile(path, "utf8")
+    .then(JSON.parse)
+    .catch((error) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+}
+
+export function readFixtureHost(env) {
+  return readOptionalJson(join(env.AREAL_HARNESS_SERVICE_HOME, "host", "host.json"));
+}
+
+export async function settleFixtureHostAfterQuit(binary, env, evidence, { host, pid }) {
+  const home = env.AREAL_HARNESS_SERVICE_HOME;
+  const current = await readFixtureHost(env);
+  host ??= current;
+  if (!host) {
+    await assertApplicationStopped(binary, env, { pid });
+    return null;
+  }
+  assert.ok(Number.isSafeInteger(host.pid) && host.pid > 1, "fixture Host PID is available");
+  assert.ok(
+    !current || (current.hostId === host.hostId && current.generation === host.generation),
+    "fixture cleanup must address the original Host generation",
+  );
+  const [control, stopped, release] = await Promise.all([
+    readOptionalJson(join(env.AREAL_GUI_USER_DATA, "service-control.json")),
+    readOptionalJson(join(home, "host", "stop.json")),
+    readOptionalJson(join(home, "host", "release.json")),
+  ]);
+  const belongsToHost = (record) =>
+    record?.hostId === host.hostId && record.generation === host.generation;
+  const original =
+    (belongsToHost(stopped) ? stopped : null) ??
+    control?.references?.findLast((entry) => entry.kind === "stopHost" && belongsToHost(entry));
+  const idleStop = release?.generation === host.generation ? release.stopRequestId : null;
+  if (!original && !idleStop) {
+    assert.ok(current, "the original Host exited without stop evidence");
+    return stopAndAssertFixtureHost(binary, env, evidence, { pid });
+  }
+
+  const reference = {
+    kind: "stopHost",
+    home,
+    hostId: host.hostId,
+    generation: host.generation,
+    requestId: original?.requestId ?? idleStop,
+    strategy: original?.strategy ?? "ifIdle",
+  };
+  await writeFile(join(evidence, "host-stop-reference.json"), JSON.stringify(reference, null, 2));
+  await assertApplicationStopped(binary, env, { pid, hostPid: host.pid });
+  const { readOfflineHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
+  const receipt = await readOfflineHostReceipt(binary, reference);
+  await writeFile(join(evidence, "host-stop.json"), JSON.stringify(receipt ?? null, null, 2));
+  assert.equal(receipt?.state, "completed", "original fixture Host stop remains UNKNOWN");
+  return receipt;
+}
+
+export async function makeFixtureDirectoriesWritable(directory) {
+  await chmod(directory, 0o700);
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (entry.isDirectory()) await makeFixtureDirectoriesWritable(join(directory, entry.name));
+  }
+}
 
 export async function stopFixtureHost(binary, home, evidence) {
   const descriptor = await readFile(join(home, "host", "host.json"), "utf8")

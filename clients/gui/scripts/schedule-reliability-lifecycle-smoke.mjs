@@ -144,9 +144,6 @@ require("electron").dialog.showMessageBox=async (...args)=>{
 const {SharedCoreBackend}=require(${JSON.stringify(join(gui, "app/src/core/service-client.cjs"))});
 const stop=SharedCoreBackend.prototype.requestHostStop;
 SharedCoreBackend.prototype.requestHostStop=async function(...args){const result=await stop.apply(this,args);record({kind:"stop-receipt",result});return result;};
-const {CoreBackend}=require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
-const start=CoreBackend.prototype.startProject;
-CoreBackend.prototype.startProject=function(projectId,...args){fs.appendFileSync(${JSON.stringify(traceFile)},JSON.stringify({kind:"owner_start",projectId,at:Date.now(),pid:process.pid})+"\\n");return start.call(this,projectId,...args);};
 `,
 );
 const runId = randomUUID();
@@ -608,6 +605,7 @@ try {
         receipt = (await host.operation(requestId)).operation;
       }
       assert.equal(receipt.state, "completed");
+      assert.deepEqual((await host.operation(requestId)).operation, receipt);
       const stoppedAt = Date.now();
       assert.ok(
         stoppedAt < task.nextRunAt * 1000,
@@ -617,16 +615,21 @@ try {
       await new Promise((resolve) =>
         setTimeout(resolve, Math.max(0, task.nextRunAt * 1000 + 3000 - Date.now())),
       );
-      const trace = (await readFile(traceFile, "utf8"))
-        .trim()
-        .split("\n")
-        .filter(Boolean)
-        .map(JSON.parse);
-      assert.deepEqual(
-        trace.filter((event) => event.projectId === owner.projectId && event.at > stoppedAt),
-        [],
-        "passive directory and coordinator do not undo explicitstop",
+      const stopped = (await host.status()).projects.find(
+        (item) => item.registration?.projectId === target.registration.projectId,
       );
+      assert.equal(stopped?.state, "stopped", "passive observation leaves the project stopped");
+      assert.equal(stopped.scheduleActivationSuppressed, true);
+      const inventory = JSON.parse(
+        execFileSync(binary, ["service", "list", "--json"], { env, encoding: "utf8" }),
+      ).filter((item) => item.serviceId === target.service.serviceId);
+      assert.equal(inventory.length, 1);
+      assert.equal(inventory[0].generation, target.service.generation, "no successor Core started");
+      assert.equal(inventory[0].state, "stopped");
+      for (const pid of [target.service.hostPid, target.service.corePid]) {
+        assert.ok(Number.isSafeInteger(pid) && pid > 1);
+        assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+      }
       assert.equal(
         (await persisted(owner)).task.runCount,
         beforeCount,

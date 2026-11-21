@@ -222,10 +222,11 @@ pub(super) async fn add_project(host: &Rc<Host>, source: &str, params: Value) ->
     }
     // 受理登记可 await；整表合并必须在它之后同步读最新文件，不能回写调用方旧快照。
     merge_project_metadata(&home, row)?;
+    super::gui_project::initialize(host, source, &project(host, source, &alias)?).await?;
     host.changed();
     Ok(json!({"projectId":alias}))
 }
-fn project(host: &Host, source: &str, alias: &str) -> Result<ProjectRegistration> {
+pub(super) fn project(host: &Host, source: &str, alias: &str) -> Result<ProjectRegistration> {
     if source == "host" {
         return host
             .slots
@@ -251,6 +252,86 @@ fn project(host: &Host, source: &str, alias: &str) -> Result<ProjectRegistration
         .into_iter()
         .find(|registration| registration.project_id == matches[0].0)
         .context("RESOURCE_UNAVAILABLE")
+}
+
+/// 会话操作沿既有归属索引与创建记录定位执行工作树，不把逻辑项目当成执行实例。
+pub(super) async fn thread_project(
+    host: &Host,
+    source: &str,
+    requested: &str,
+    thread: &str,
+) -> Result<String> {
+    let home = super::library_store::source_home(host, source)?;
+    let rows = saved_projects(&home)?;
+    let original = rows
+        .iter()
+        .find(|row| row["id"] == requested)
+        .context("RESOURCE_UNAVAILABLE")?;
+    let logical = original["logicalProjectId"].as_str().unwrap_or(requested);
+    let logical_of = |row: &Value| {
+        row["logicalProjectId"]
+            .as_str()
+            .or_else(|| row["id"].as_str())
+            .map(str::to_owned)
+    };
+    let mut matches = BTreeSet::new();
+    let library = super::library_store::read_source(host, source)?;
+    let shell = host.read_models.shell(host).await?;
+    for row in &rows {
+        let alias = row["id"].as_str().unwrap();
+        let indexed = if alias.len() == 24 && alias.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            storage::read_optional::<Vec<String>>(
+                &home.join("thread-owners").join(format!("{alias}.json")),
+            )?
+            .is_some_and(|ids| ids.iter().any(|id| id == thread))
+        } else {
+            false
+        };
+        let cached = library["projects"][alias]["navigationSummaries"]
+            .as_array()
+            .is_some_and(|items| items.iter().any(|item| item["id"] == thread));
+        let observed =
+            shell.projects.iter().any(|project| {
+                project.alias.as_ref().is_some_and(|binding| {
+                    binding.source_id == source && binding.project_id == alias
+                }) && match &project.summaries {
+                    crate::shell::Summaries::Fresh { items }
+                    | crate::shell::Summaries::Cached { items }
+                    | crate::shell::Summaries::Unknown { items } => {
+                        items.iter().any(|item| item.id == thread)
+                    }
+                }
+            });
+        if indexed || cached || observed {
+            ensure!(logical_of(row).as_deref() == Some(logical), "FORBIDDEN");
+            matches.insert(alias.to_owned());
+        }
+    }
+    for record in operations(&home)? {
+        if record["projectId"] == logical
+            && record["threadId"] == thread
+            && let Some(alias) = record["executionProjectId"].as_str()
+        {
+            let row = rows
+                .iter()
+                .find(|row| row["id"] == alias)
+                .context("RESOURCE_UNAVAILABLE")?;
+            ensure!(logical_of(row).as_deref() == Some(logical), "FORBIDDEN");
+            matches.insert(alias.into());
+        }
+    }
+    ensure!(matches.len() <= 1, "RESOURCE_UNAVAILABLE");
+    if let Some(alias) = matches.into_iter().next() {
+        return Ok(alias);
+    }
+    ensure!(
+        rows.iter()
+            .filter(|row| logical_of(row).as_deref() == Some(logical))
+            .count()
+            == 1,
+        "RESOURCE_UNAVAILABLE"
+    );
+    Ok(logical.into())
 }
 async fn request(host: &Rc<Host>, id: &str, method: &str, params: Value) -> Result<Value> {
     let connections = &host.schedules.connections;
@@ -296,15 +377,9 @@ fn persist(home: &Path, value: &mut Value) -> Result<()> {
     storage::write_bytes(&path, &serde_json::to_vec(value)?)
 }
 
-async fn persist_and_notify(
-    host: &Host,
-    source: &str,
-    home: &Path,
-    value: &mut Value,
-) -> Result<()> {
+fn persist_and_notify(host: &Host, home: &Path, value: &mut Value) -> Result<()> {
     persist(home, value)?;
     host.changed();
-    host.gateway.workbench.worktree_changed(source).await;
     Ok(())
 }
 
@@ -353,15 +428,105 @@ fn begin_cancel(value: &mut Value) -> bool {
         return false;
     }
     value["intent"] = json!("cancel");
-    if value["state"] != "failed"
-        || !matches!(
-            value["setup"]["status"].as_str(),
-            Some("running" | "unknown")
-        )
-    {
+    if !setup_unsettled(value) {
         cancel_transition(value);
     }
     true
+}
+fn setup_unsettled(value: &Value) -> bool {
+    matches!(
+        value["setup"]["status"].as_str(),
+        Some("running" | "unknown")
+    )
+}
+
+async fn cancel_setup(
+    host: &Rc<Host>,
+    source: &str,
+    home: &Path,
+    mut value: Value,
+    id: &str,
+) -> Result<Value> {
+    let creation = required(&value, "requestId")?.to_owned();
+    let logical = required(&value, "projectId")?.to_owned();
+    let thread = required(&value, "threadId")?.to_owned();
+    let target = project(host, source, required(&value, "executionProjectId")?)?;
+    ensure!(
+        value["setup"]["terminateRequestId"].is_null(),
+        "SUBMISSION_UNKNOWN"
+    );
+    value["setup"]["terminateRequestId"] = json!(id);
+    persist_and_notify(host, home, &mut value)?;
+    if value["setup"]["processId"].is_null() {
+        // 取消可能早于 start 的答复，只核对原启动回执。
+        let start = required(&value["setup"], "requestId")?.to_owned();
+        let receipt = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                let receipts = request(
+                    host,
+                    &target.project_id,
+                    "areal/request/read",
+                    json!({"threadId":thread,"requestId":start}),
+                )
+                .await?;
+                if let Some(receipt) =
+                    receipt_result(&receipts, &start, "areal/process/start", Some(&thread))
+                    && receipt["id"].is_string()
+                {
+                    return Ok::<_, anyhow::Error>(receipt);
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        })
+        .await
+        .context("SUBMISSION_UNKNOWN")??;
+        value = record(home, &creation, &logical)?;
+        if value["state"] == "cancelled" {
+            return Ok(value);
+        }
+        value["setup"]["processId"] = receipt["id"].clone();
+        value["setup"]["receipt"] = receipt;
+        persist_and_notify(host, home, &mut value)?;
+    }
+    let process = required(&value["setup"], "processId")?.to_owned();
+    let _ = request(
+        host,
+        &target.project_id,
+        "areal/process/terminate",
+        json!({"requestId":id,"threadId":thread,"id":process}),
+    )
+    .await;
+    // 回执可以丢失，只有原进程退出和两层清理证据才结束取消。
+    let observed = request(
+        host,
+        &target.project_id,
+        "areal/process/get",
+        json!({"threadId":thread,"id":process}),
+    )
+    .await?;
+    ensure!(
+        observed["runtime"]["state"] == "exited"
+            && observed["runtime"]["cleanupConfirmed"] == true
+            && observed["process"]["cleanupConfirmed"] == true,
+        "SUBMISSION_UNKNOWN"
+    );
+    value = record(home, &creation, &logical)?;
+    ensure!(
+        value["intent"] == "cancel"
+            && value["setup"]["processId"] == process
+            && value["setup"]["terminateRequestId"] == id,
+        "SUBMISSION_UNKNOWN"
+    );
+    if value["state"] != "cancelled" {
+        value["setup"]["runtime"] = observed["runtime"].clone();
+        value["setup"]["managed"] = observed["process"].clone();
+        value["setup"]["exitCode"] = observed["runtime"]["exitCode"].clone();
+        value["setup"]["finishedAt"] = json!(timestamp());
+        value["setup"]["status"] = json!("cancelled");
+        cancel_transition(&mut value);
+        persist_and_notify(host, home, &mut value)?;
+    }
+    Ok(value)
 }
 fn open_record(value: &mut Value, execution: &str) {
     value["executionProjectId"] = json!(execution);
@@ -409,6 +574,9 @@ pub(super) async fn read(host: &Rc<Host>, source: &str, mut params: Value) -> Re
                 return Ok(json!({"state":"missing"}));
             }
             let mut value = record(&home, id, logical)?;
+            if params["snapshotOnly"] == true {
+                return Ok(value);
+            }
             if matches!(
                 value["setup"]["status"].as_str(),
                 Some("running" | "unknown")
@@ -467,7 +635,7 @@ pub(super) async fn read(host: &Rc<Host>, source: &str, mut params: Value) -> Re
                             .unwrap()
                             .extend(fields.clone());
                     }
-                    persist_and_notify(host, source, &home, &mut value).await?;
+                    persist_and_notify(host, &home, &mut value)?;
                     host.changed();
                 }
             }
@@ -621,7 +789,7 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
                 value["environmentRevision"] = json!(environment_revision);
             }
             initial_checkout(&mut value);
-            persist_and_notify(host, source, &home, &mut value).await?;
+            persist_and_notify(host, &home, &mut value)?;
             host.changed();
             Ok(value)
         }
@@ -632,26 +800,10 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
             if !begin_cancel(&mut value) {
                 return Ok(value);
             }
-            if (value["setup"]["status"] == "running" || value["setup"]["status"] == "unknown")
-                && let (Some(execution), Some(thread), Some(process)) = (
-                    value["executionProjectId"].as_str().map(str::to_owned),
-                    value["threadId"].as_str().map(str::to_owned),
-                    value["setup"]["processId"].as_str().map(str::to_owned),
-                )
-            {
-                let target = project(host, source, &execution)?;
-                value["setup"]["terminateRequestId"] = json!(id);
-                persist_and_notify(host, source, &home, &mut value).await?;
-                let _ = request(
-                    host,
-                    &target.project_id,
-                    "areal/process/terminate",
-                    json!({"requestId":id,"threadId":thread,"id":process}),
-                )
-                .await;
+            if setup_unsettled(&value) {
+                return cancel_setup(host, source, &home, value, &id).await;
             }
-            persist_and_notify(host, source, &home, &mut value).await?;
-            host.changed();
+            persist_and_notify(host, &home, &mut value)?;
             Ok(value)
         }
         "worktreeOpen" => {
@@ -678,7 +830,7 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
                 return Ok(finished);
             }
             finished["parameters"] = json!({});
-            persist_and_notify(host, source, &home, &mut finished).await?;
+            persist_and_notify(host, &home, &mut finished)?;
             Ok(
                 json!({"projectId":alias,"root":root,"threadId":result["threadId"],"requestId":creation}),
             )
@@ -701,7 +853,7 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
                 return Ok(value);
             }
             value["deletion"] = json!({"requestId":id,"status":"running","blockers":[],"stopRequestId":stable_id(&format!("{id}:stop"))});
-            persist_and_notify(host, source, &home, &mut value).await?;
+            persist_and_notify(host, &home, &mut value)?;
             let mut dispatched = false;
             let outcome = async {
                 request(host,&source_project.project_id,"areal/worktree/read",json!({"operation":"worktreeInspect","requestId":creation,"legacyOperation":value,"allowDirty":true})).await?;
@@ -813,7 +965,6 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
                         .get(&execution.project_id)
                         .and_then(|slot| slot.service.clone())
                         .context("RESOURCE_UNAVAILABLE")?;
-                    let desktop_generation = deletion_generation(host, source).await?;
                     let stop_id = stable_id(&format!("{id}:stop"));
                     let mut target = json!({"projectId":execution_alias,"serviceId":service.identity.service_id,"generation":service.identity.generation,"dataDir":execution.data_dir,"requestId":stop_id,"phase":"acceptedPending"});
                     dispatched = true;
@@ -830,9 +981,9 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
                     dispatched = false;
                     ensure!(operation["projectId"] == execution.project_id, "LIFECYCLE_RECEIPT_INVALID");
                     super::workbench_lifecycle::host_receipt(&mut target, &operation, false)?;
-                    let receipt = deletion_stop_receipt(&stop_id, &desktop_generation, &host.home, target)?;
+                    let receipt = deletion_stop_receipt(&stop_id, &host.identity.generation, &host.home, target)?;
                     value["deletion"]["stopReceipt"] = receipt.clone();
-                    persist_and_notify(host, source, &home, &mut value).await?;
+                    persist_and_notify(host, &home, &mut value)?;
                     ensure!(
                         receipt["phase"] == "completed",
                         "worktree Core stop remains unconfirmed"
@@ -872,7 +1023,7 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
                 value["deletion"]["status"] = json!(if uncertain { "unknown" } else { "blocked" });
                 value["deletion"]["blockers"] = json!([error.to_string()]);
             }
-            persist_and_notify(host, source, &home, &mut value).await?;
+            persist_and_notify(host, &home, &mut value)?;
             host.changed();
             Ok(value)
         }
@@ -1046,44 +1197,14 @@ fn validate_script(value: &Value) -> Result<()> {
     Ok(())
 }
 
-async fn deletion_generation(host: &Rc<Host>, source: &str) -> Result<String> {
-    if source == "host" {
-        return Ok(host.identity.generation.clone());
-    }
-    if host.gateway.workbench.backend_has_source(source) {
-        return super::workbench_lifecycle::current_generation(source)
-            .context("CAPABILITY_UNAVAILABLE");
-    }
-    let owner = host
-        .gateway
-        .workbench
-        .worktree_backend_identity(source)
-        .context("CAPABILITY_UNAVAILABLE")?;
-    let dependencies = host
-        .gateway
-        .workbench
-        .backend_private("lifecycle.dependencies", json!({}))
-        .await?;
-    ensure!(
-        host.gateway
-            .workbench
-            .worktree_backend_identity(source)
-            .as_ref()
-            == Some(&owner),
-        "RESYNC_REQUIRED"
-    );
-    let generation = required(&dependencies, "lifecycleGeneration")?;
-    uuid::Uuid::parse_str(generation).context("LIFECYCLE_RECEIPT_INVALID")?;
-    Ok(generation.to_owned())
-}
-
 fn deletion_stop_receipt(
     request: &str,
-    generation: &str,
+    host_generation: &str,
     home: &Path,
     target: Value,
 ) -> Result<Value> {
-    let value = json!({"version":1,"requestId":request,"desktopGeneration":generation,"kind":"stopProject","mode":"ifIdle","targets":[target.clone()],"phase":target["phase"],"desktopExit":"notRequested","sharedHost":true,"harnessHome":home});
+    // 保留已落盘的回执字段，代次来自实际签发停止回执的 Host。
+    let value = json!({"version":1,"requestId":request,"desktopGeneration":host_generation,"kind":"stopProject","mode":"ifIdle","targets":[target.clone()],"phase":target["phase"],"desktopExit":"notRequested","sharedHost":true,"harnessHome":home});
     serde_json::from_value::<areal_protocol::host::WorkbenchLifecycleReceipt>(value.clone())
         .context("LIFECYCLE_RECEIPT_INVALID")?;
     Ok(value)
@@ -1145,7 +1266,7 @@ async fn environment_attempt(
             attempt["actionId"] = json!(action);
         }
         *attempt_slot(value, slot, id) = attempt.clone();
-        persist_and_notify(host, source, home, value).await?;
+        persist_and_notify(host, home, value)?;
         let source_project = project(host, source, required(value, "projectId")?)?;
         let argv = json!([
             "/usr/bin/env",
@@ -1172,7 +1293,7 @@ async fn environment_attempt(
                     attempt["finishedAt"]=json!(timestamp());
                     *attempt_slot(value, slot, id)=attempt.clone();
                     if slot == "setup" { event(value,"failed"); }
-                    persist_and_notify(host, source, home,value).await?;
+                    persist_and_notify(host, home,value)?;
                     host.changed();
                     return Ok(attempt);
                 }
@@ -1183,7 +1304,7 @@ async fn environment_attempt(
             },
         }
         *attempt_slot(value, slot, id) = attempt.clone();
-        persist_and_notify(host, source, home, value).await?;
+        persist_and_notify(host, home, value)?;
     }
     if attempt["processId"].as_str().is_none() {
         let receipts = request(
@@ -1249,7 +1370,7 @@ async fn environment_attempt(
                     let close = stable_id(&format!("{id}:close"));
                     attempt["closeRequestId"] = json!(close);
                     *attempt_slot(value, slot, id) = attempt.clone();
-                    persist_and_notify(host, source, home, value).await?;
+                    persist_and_notify(host, home, value)?;
                     let _ = request(
                         host,
                         &execution.project_id,
@@ -1297,7 +1418,7 @@ async fn environment_attempt(
                     },
                 );
             }
-            persist_and_notify(host, source, home, value).await?;
+            persist_and_notify(host, home, value)?;
             host.changed();
             if slot == "setup" && attempt["status"] == "succeeded" {
                 host.gateway
@@ -1316,7 +1437,7 @@ async fn environment_attempt(
                 attempt["status"] = json!("unknown");
                 attempt["message"] = json!("环境脚本超时后的清理结果尚未确认");
                 *attempt_slot(value, slot, id) = attempt.clone();
-                persist_and_notify(host, source, home, value).await?;
+                persist_and_notify(host, home, value)?;
                 break;
             }
             request(
@@ -1400,7 +1521,13 @@ async fn register_target(
         .join(storage::digest(source_project.project_id.as_bytes()))
         .join("inputs.json");
     let launch: LaunchInputs = storage::read(&template_path)?;
-    let launch = target_launch_inputs(launch, &root, &target_data, home, &execution_alias)?;
+    let mut launch = target_launch_inputs(launch, &root, &target_data, home, &execution_alias)?;
+    if launch.schedule_preparation.is_some() {
+        let registration = host.slots.borrow()[&execution_id].registration.clone();
+        let resources = crate::schedule_resources::materialize(&host.home, &registration, &launch)?;
+        launch.deployment_path = Some(resources.deployment_path.clone());
+        launch.options.desktop_config = Some(resources.deployment_path);
+    }
     let credentials = host
         .slots
         .borrow()
@@ -1433,7 +1560,7 @@ async fn register_target(
     storage::write_bytes(&home.join("projects.json"), &serde_json::to_vec(&rows)?)?;
     open_record(value, saved_alias);
     freeze_prepared_core(host, source, &execution_id, value)?;
-    persist_and_notify(host, source, home, value).await?;
+    persist_and_notify(host, home, value)?;
 
     Ok(prepared_projection(
         value,
@@ -1478,6 +1605,19 @@ fn target_launch_inputs(
     Ok(launch)
 }
 
+fn creation_owner(host: &Host, source: &str) -> Result<Value> {
+    if source == "host" {
+        return Ok(Value::Null);
+    }
+    ensure!(
+        host.gateway.workbench.active_source().as_deref() == Some(source),
+        "RESYNC_REQUIRED"
+    );
+    Ok(
+        json!({"hostId":host.identity.host_id,"generation":host.identity.generation,"sourceId":source}),
+    )
+}
+
 fn freeze_prepared_core(
     host: &Rc<Host>,
     source: &str,
@@ -1488,18 +1628,16 @@ fn freeze_prepared_core(
         .schedules
         .connections
         .shared_identity(host, execution)?;
-    let backend = if source == "host" {
-        Value::Null
-    } else {
-        host.gateway
-            .workbench
-            .worktree_backend_identity(source)
-            .context("CAPABILITY_UNAVAILABLE")?
-    };
+    let backend = creation_owner(host, source)?;
     let inputs = super::schedule_connection::inputs(host, execution)?;
     let resources = prepared_resources(&inputs)?;
-    value["preparedCore"] = json!({"projectId":execution,"instanceId":scope.0,"generation":scope.1,"connectionId":scope.2,"backend":backend,
+    let binding = json!({"projectId":execution,"instanceId":scope.0,"generation":scope.1,"connectionId":scope.2,"backend":backend,
         "resourceProfile":resources["profile"],"resourceFingerprint":resources["fingerprint"]});
+    if let Some(original) = value.get("preparedCore") {
+        ensure!(*original == binding, "RESYNC_REQUIRED");
+    } else {
+        value["preparedCore"] = binding;
+    }
     Ok(())
 }
 fn prepared_resources(inputs: &LaunchInputs) -> Result<Value> {
@@ -1544,39 +1682,12 @@ fn prepared_core(host: &Rc<Host>, source: &str, value: &Value) -> Result<(String
     );
     if source != "host" {
         ensure!(
-            host.gateway
-                .workbench
-                .worktree_backend_identity(source)
-                .as_ref()
-                == Some(&expected["backend"]),
+            creation_owner(host, source)? == expected["backend"],
             "RESYNC_REQUIRED"
         );
     }
     Ok(scope)
 }
-pub(super) fn validate_private_binding(
-    host: &Rc<Host>,
-    source: &str,
-    params: &Value,
-) -> Result<()> {
-    let logical = required(params, "projectId")?;
-    let id = required(params, "requestId")?;
-    let value = record(
-        &super::library_store::source_home(host, source)?,
-        id,
-        logical,
-    )?;
-    let expected = &value["preparedCore"];
-    let scope = prepared_core(host, source, &value)?;
-    ensure!(
-        params["executionProjectId"] == expected["projectId"]
-            && params["coreInstanceId"] == scope.0
-            && params["coreGeneration"] == scope.1,
-        "RESYNC_REQUIRED"
-    );
-    Ok(())
-}
-
 fn thread_signature(request: &Value) -> Value {
     let mut signature = json!({});
     for key in [
@@ -1617,7 +1728,7 @@ fn thread_checkout_params(logical: &str, id: &str, worktree: &Value) -> Result<V
     }
     Ok(params)
 }
-/// 只准备归属与目录，不执行会话创建；供应商和页面工具仍由原 JS 宿主准备。
+/// 准备归属与目录，不执行会话创建；首次准备先应用当前 Host 资源配置。
 pub(super) async fn prepare_thread_target(
     host: &Rc<Host>,
     source: &str,
@@ -1628,6 +1739,18 @@ pub(super) async fn prepare_thread_target(
     let home = super::library_store::source_home(host, source)?;
     let id = uuid::Uuid::parse_str(required(&input, "requestId")?)?.to_string();
     let signature = thread_signature(&input);
+    if !home
+        .join("worktree-requests")
+        .join(format!("{id}.json"))
+        .try_exists()?
+    {
+        let registration = project(host, source, logical)?;
+        super::session_commands::ensure_project(host, &registration.project_id).await?;
+        host.schedules
+            .connections
+            .refresh_gui(host, &registration.project_id)
+            .await?;
+    }
     let mut value = match record(&home, &id, logical) {
         Ok(value) => {
             ensure!(
@@ -1657,7 +1780,7 @@ pub(super) async fn prepare_thread_target(
                 value["parameters"] = signature.clone();
                 value["intent"] = json!("continue");
                 value["usesSource"] = json!(false);
-                persist_and_notify(host, source, &home, &mut value).await?;
+                persist_and_notify(host, &home, &mut value)?;
                 value
             } else {
                 ensure!(
@@ -1665,7 +1788,7 @@ pub(super) async fn prepare_thread_target(
                     "environment scripts require an isolated worktree"
                 );
                 let mut value = json!({"kind":"thread","requestId":id,"projectId":logical,"parameters":signature,"state":"created","executionProjectId":logical,"usesSource":true,"intent":"continue","events":[],"createdAt":timestamp()});
-                persist_and_notify(host, source, &home, &mut value).await?;
+                persist_and_notify(host, &home, &mut value)?;
                 value
             }
         }
@@ -1693,7 +1816,7 @@ pub(super) async fn prepare_thread_target(
         )
         .await?;
         freeze_prepared_core(host, source, &registration.project_id, &mut value)?;
-        persist_and_notify(host, source, &home, &mut value).await?;
+        persist_and_notify(host, &home, &mut value)?;
         return Ok(prepared_projection(
             &value,
             json!({"projectId":registration.project_id,"alias":logical,"root":registration.workspace,"requestId":id}),
@@ -1721,7 +1844,18 @@ pub(super) async fn bind_thread_target(
     source: &str,
     logical: &str,
     id: &str,
+    core_params: Value,
+) -> Result<Value> {
+    bind_thread_target_with_lease(host, source, logical, id, core_params, None).await
+}
+
+pub(super) async fn bind_thread_target_with_lease(
+    host: &Rc<Host>,
+    source: &str,
+    logical: &str,
+    id: &str,
     mut core_params: Value,
+    browser_lease: Option<&str>,
 ) -> Result<Value> {
     let home = super::library_store::source_home(host, source)?;
     let mut value = record(&home, id, logical)?;
@@ -1758,21 +1892,59 @@ pub(super) async fn bind_thread_target(
     } else {
         ensure!(value["state"] == "created", "SUBMISSION_UNKNOWN");
         host.admission()?;
+        if let Some(candidate) = super::gui_project::refresh_inputs(host, &execution).await? {
+            ensure!(
+                super::gui_project::same_inputs(
+                    &super::schedule_connection::inputs(host, &execution.project_id)?,
+                    &candidate
+                )?,
+                "配置已变化，原创建请求已保留，请重新确认"
+            );
+        }
         let scope = prepared_core(host, source, &value)?;
-        value["bindingParams"] = core_params.clone();
-        event(&mut value, "binding");
-        persist_and_notify(host, source, &home, &mut value).await?;
-        let started = host
-            .schedules
-            .connections
-            .remote_request(
+        if let Some(lease) = browser_lease {
+            let browser = host.schedules.connections.workbench_identity(
                 host,
                 &execution.project_id,
-                (&scope.0, &scope.1, &scope.2),
-                "areal/thread/start",
-                core_params,
-            )
-            .await;
+                lease,
+            )?;
+            ensure!(
+                browser.0 == scope.0 && browser.1 == scope.1,
+                "RESYNC_REQUIRED"
+            );
+        }
+        value["bindingParams"] = core_params.clone();
+        event(&mut value, "binding");
+        persist_and_notify(host, &home, &mut value)?;
+        let started = if let Some(lease) = browser_lease {
+            let response = host
+                .schedules
+                .connections
+                .workbench_request(
+                    host,
+                    &execution.project_id,
+                    lease,
+                    "areal/thread/start",
+                    core_params,
+                )
+                .await?;
+            if let Some(error) = response.get("error") {
+                Err(crate::server::schedule_connection::RpcFailure(error.clone()).into())
+            } else {
+                response.get("result").cloned().context("INVALID_RESPONSE")
+            }
+        } else {
+            host.schedules
+                .connections
+                .remote_request(
+                    host,
+                    &execution.project_id,
+                    (&scope.0, &scope.1, &scope.2),
+                    "areal/thread/start",
+                    core_params,
+                )
+                .await
+        };
         match started {
             Ok(reply) => reply,
             Err(error) => {
@@ -1788,7 +1960,7 @@ pub(super) async fn bind_thread_target(
                     value["bindingAdmissionState"] = json!("rejected");
                     value["bindingError"] = failure.0.clone();
                     event(&mut value, "failed");
-                    persist_and_notify(host, source, &home, &mut value).await?;
+                    persist_and_notify(host, &home, &mut value)?;
                     host.changed();
                     return Ok(
                         json!({"state":"failed","admissionState":"rejected","error":failure.0,"requestId":id}),
@@ -1807,15 +1979,15 @@ pub(super) async fn bind_thread_target(
     let script = platform_script(&value["environment"]["setup"])?;
     if script.is_empty() {
         event(&mut value, "ready");
-        persist_and_notify(host, source, &home, &mut value).await?;
+        persist_and_notify(host, &home, &mut value)?;
     } else {
         if recovered && value.get("setup").is_none() {
             event(&mut value, "unknown");
-            persist_and_notify(host, source, &home, &mut value).await?;
+            persist_and_notify(host, &home, &mut value)?;
             anyhow::bail!("SUBMISSION_UNKNOWN");
         }
         event(&mut value, "settingUp");
-        persist_and_notify(host, source, &home, &mut value).await?;
+        persist_and_notify(host, &home, &mut value)?;
         let attempt = environment_attempt(
             host,
             source,
@@ -2034,10 +2206,12 @@ mod tests {
         let mut cancelled = original.clone();
         assert!(!begin_cancel(&mut cancelled));
         assert_eq!(cancelled, original);
-        let mut active = json!({"state":"failed","setup":{"status":"running"},"events":[]});
-        assert!(begin_cancel(&mut active));
-        assert_eq!(active["state"], "failed", "活动 setup 仍须走原进程终止确认");
-        assert_eq!(active["events"], json!([]));
+        for state in ["settingUp", "failed"] {
+            let mut active = json!({"state":state,"setup":{"status":"running"},"events":[]});
+            assert!(begin_cancel(&mut active));
+            assert_eq!(active["state"], state, "活动 setup 仍须走原进程终止确认");
+            assert_eq!(active["events"], json!([]));
+        }
     }
     #[test]
     fn deletion_receipt_survives_desktop_restart_and_keeps_unknown_phase() {
@@ -2052,9 +2226,11 @@ mod tests {
             let mut target = json!({"projectId":"execution-alias","requestId":request,"serviceId":"core","generation":"generation","dataDir":home.path().join("execution/state")});
             super::super::workbench_lifecycle::host_receipt(&mut target, &operation, false)
                 .unwrap();
+            let host_generation = uuid::Uuid::new_v4().to_string();
             let receipt =
-                deletion_stop_receipt(request, "desktop-owner", home.path(), target).unwrap();
+                deletion_stop_receipt(request, &host_generation, home.path(), target).unwrap();
             assert_eq!(receipt["phase"], phase);
+            assert_eq!(receipt["desktopGeneration"], host_generation);
             assert_eq!(
                 receipt["targets"][0]["dataDir"],
                 json!(home.path().join("execution/state"))

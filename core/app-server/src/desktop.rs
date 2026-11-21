@@ -266,12 +266,12 @@ pub(crate) async fn create_side(
     engine: &Arc<Engine>,
     identity: &str,
     params: Value,
-    host: Option<Arc<dyn areal_engine::tools::DynamicToolHost>>,
+    can_inherit_browser: bool,
 ) -> Result<Value, RpcError> {
     let request: SideCreate = parse(params)?;
     let request_id = request.request_id.clone();
     let (mut thread, mut turn) = engine
-        .side_create(identity.into(), request, host)
+        .side_create(identity.into(), request, can_inherit_browser)
         .await
         .map_err(map_error)?;
     thread.turns.clear();
@@ -290,7 +290,7 @@ async fn dispatch_inner(
     params: Value,
 ) -> Result<Value, RpcError> {
     let result = match method {
-        "areal/side/create" => return create_side(engine, identity, params, None).await,
+        "areal/side/create" => return create_side(engine, identity, params, false).await,
         "areal/side/close" => engine.side_close(identity.into(), parse(params)?).await,
         "areal/side/start" => {
             let request: SideStart = parse(params)?;

@@ -43,6 +43,7 @@ struct Upstream {
     refreshes: Cell<usize>,
     catalogs: Cell<usize>,
     posts: Cell<usize>,
+    ordinary_requests: RefCell<Vec<Value>>,
     changed: Notify,
     hold_refresh: Cell<bool>,
     refresh_gate: Semaphore,
@@ -50,6 +51,9 @@ struct Upstream {
     stream_gate: Semaphore,
     unauthorized: Cell<bool>,
     catalog_unauthorized: Cell<bool>,
+    hold_catalog: Cell<bool>,
+    fail_catalog: Cell<bool>,
+    catalog_gate: Semaphore,
     terminal: Cell<bool>,
     missing_type: Cell<bool>,
     invalid_stream: Cell<bool>,
@@ -66,6 +70,7 @@ impl Upstream {
             refreshes: Cell::new(0),
             catalogs: Cell::new(0),
             posts: Cell::new(0),
+            ordinary_requests: RefCell::new(Vec::new()),
             changed: Notify::new(),
             hold_refresh: Cell::new(false),
             refresh_gate: Semaphore::new(0),
@@ -73,6 +78,9 @@ impl Upstream {
             stream_gate: Semaphore::new(0),
             unauthorized: Cell::new(false),
             catalog_unauthorized: Cell::new(false),
+            hold_catalog: Cell::new(false),
+            fail_catalog: Cell::new(false),
+            catalog_gate: Semaphore::new(0),
             terminal: Cell::new(false),
             missing_type: Cell::new(false),
             invalid_stream: Cell::new(false),
@@ -136,14 +144,30 @@ async fn upstream(
         ("GET", "/api.openai.com/v1/models") => {
             state.catalogs.set(state.catalogs.get() + 1);
             state.changed.notify_waiters();
+            if state.hold_catalog.get() {
+                state.catalog_gate.acquire().await.unwrap().forget();
+            }
             if state.catalog_unauthorized.replace(false) {
                 json_response(401, json!({"error":{"code":"invalid_token"}}))
+            } else if state.fail_catalog.get() {
+                json_response(503, json!({"error":{"code":"fixture_catalog_unavailable"}}))
             } else {
                 json_response(
                     200,
                     json!({"models":[{"slug":"fixture","visibility":"list","use_responses_lite":true,"support_verbosity":true,"default_verbosity":"low"}]}),
                 )
             }
+        }
+        ("POST", "/ordinary/responses") => {
+            state
+                .ordinary_requests
+                .borrow_mut()
+                .push(serde_json::from_slice(&body).unwrap());
+            bytes_response(
+                200,
+                Bytes::from([FIRST, LAST].concat()),
+                Some("text/event-stream"),
+            )
         }
         ("POST", "/api.openai.com/v1/responses") => {
             state.posts.set(state.posts.get() + 1);
@@ -249,6 +273,7 @@ impl Server {
     }
     async fn close(self) {
         self.state.refresh_gate.add_permits(100);
+        self.state.catalog_gate.add_permits(100);
         self.state.stream_gate.add_permits(100);
         self.cancel.cancel();
         self.task.await.unwrap();
@@ -481,6 +506,411 @@ async fn logout_cancels_old_epoch_and_late_refresh_cannot_resurrect_account() {
                     .is_err()
             );
             assert_eq!(rig.server.state.refreshes.get(), 1);
+            rig.close().await;
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn native_inference_completes_while_catalog_is_held_and_refresh_recovers() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let rig = Rig::new(false).await;
+            let state = &rig.server.state;
+            rig.source.refresh_catalog(false).await.unwrap();
+            let original = rig.source.snapshot().unwrap();
+            state.hold_catalog.set(true);
+            state.fail_catalog.set(true);
+            let source = rig.source.clone();
+            let discovery =
+                tokio::task::spawn_local(async move { source.refresh_catalog(true).await });
+            state.count(&state.catalogs, 2).await;
+
+            let response = tokio::time::timeout(Duration::from_secs(5), async {
+                let response = rig.request().send().await.unwrap();
+                assert_eq!(response.status(), 200);
+                response.bytes().await.unwrap()
+            })
+            .await
+            .expect("configured inference completes before catalog release");
+            assert_eq!(response.as_ref(), [FIRST, LAST].concat());
+            assert_eq!(state.posts.get(), 1);
+            assert_eq!(state.catalogs.get(), 2);
+            assert!(!discovery.is_finished());
+
+            state.hold_catalog.set(false);
+            state.catalog_gate.add_permits(1);
+            assert!(discovery.await.unwrap().is_err());
+            let rejected = rig.source.snapshot().unwrap();
+            assert_eq!(rejected["models"], original["models"]);
+            assert_eq!(
+                rejected["catalog"]["fetchedAt"],
+                original["catalog"]["fetchedAt"]
+            );
+            assert_eq!(rejected["catalog"]["fresh"], false);
+            assert!(rejected["modelError"].is_string());
+
+            let input = json!([
+                {"role":"user","content":"hello"},
+                {"role":"assistant","content":"first"},
+                {"role":"user","content":"continue after catalog failure"}
+            ]);
+            let continued = rig
+                .request()
+                .json(&json!({"model":"fixture","stream":true,"input":input}))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(continued.status(), 200);
+            assert_eq!(
+                continued.bytes().await.unwrap().as_ref(),
+                [FIRST, LAST].concat()
+            );
+            assert_eq!(state.posts.get(), 2);
+            assert_eq!(
+                state.catalogs.get(),
+                2,
+                "sending cannot start catalog discovery"
+            );
+            let received = state.received.borrow()[1]["input"].clone();
+            assert!(
+                received
+                    .to_string()
+                    .contains("continue after catalog failure")
+            );
+            assert!(received.to_string().contains("hello"));
+            assert!(rig.source.snapshot().unwrap()["modelError"].is_string());
+
+            state.fail_catalog.set(false);
+            rig.source.refresh_catalog(false).await.unwrap();
+            let catalog = rig.source.discover(false).await.unwrap();
+            assert_eq!(catalog.len(), 1);
+            assert_eq!(catalog[0]["id"], "fixture");
+            assert_eq!(state.catalogs.get(), 3);
+            assert_eq!(state.posts.get(), 2);
+            let recovered = rig.source.snapshot().unwrap();
+            assert_eq!(recovered["catalog"]["fresh"], true);
+            assert!(recovered["modelError"].is_null());
+            rig.close().await;
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn core_sends_once_on_the_original_thread_across_subscription_catalog_failure() {
+    use areal_engine::{
+        Engine, Limits,
+        model::{HttpModel, ModelProtocol},
+    };
+    use areal_protocol::{
+        Input, Item, TurnStatus,
+        desktop::{ClientOptions, ConfigureThread, EffectiveConfig},
+    };
+    use std::sync::Arc;
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let rig = Rig::new(false).await;
+            let state = &rig.server.state;
+            let workspace = tempfile::tempdir().unwrap();
+            let core = tempfile::tempdir().unwrap();
+            let open = || {
+                let model = HttpModel::with_protocol(
+                    rig.transport.endpoint.clone(),
+                    "fixture".into(),
+                    Some("fixture-loopback".into()),
+                    ModelProtocol::Responses,
+                )
+                .unwrap();
+                Engine::open(core.path(), Arc::new(model), Limits::default()).unwrap()
+            };
+            rig.source.refresh_catalog(false).await.unwrap();
+            let engine = open();
+            let thread = engine
+                .create(workspace.path().to_str().unwrap().into())
+                .await
+                .unwrap();
+            // 只统计原会话的两次执行，不发起独立的标题推理。
+            engine
+                .configure_thread(ConfigureThread {
+                    thread_id: thread.id.clone(),
+                    expected_revision: thread.desktop.as_ref().map_or_else(
+                        || EffectiveConfig::default().revision,
+                        |desktop| desktop.configuration.revision,
+                    ),
+                    options: Some(ClientOptions {
+                        automatic_session_name: Some(false),
+                        ..Default::default()
+                    }),
+                    request_id: None,
+                    agent_profile: None,
+                    model: None,
+                    reset_model: false,
+                    parameters: None,
+                    selected_skills: None,
+                })
+                .await
+                .unwrap();
+
+            state.hold_catalog.set(true);
+            state.fail_catalog.set(true);
+            let source = rig.source.clone();
+            let discovery =
+                tokio::task::spawn_local(async move { source.refresh_catalog(true).await });
+            state.count(&state.catalogs, 2).await;
+
+            let first = engine
+                .start(
+                    &thread.id,
+                    vec![Input::text("Original subscription question")],
+                )
+                .await
+                .unwrap();
+            let finished = tokio::time::timeout(Duration::from_secs(5), engine.wait(&thread.id))
+                .await
+                .expect("Core completes before catalog release")
+                .unwrap();
+            assert_eq!(finished.turns[0].id, first.id);
+            assert_eq!(finished.turns[0].status, TurnStatus::Completed);
+            assert_eq!(state.posts.get(), 1);
+            assert!(!discovery.is_finished());
+            engine.shutdown().await;
+            drop(engine);
+
+            state.hold_catalog.set(false);
+            state.catalog_gate.add_permits(1);
+            assert!(discovery.await.unwrap().is_err());
+
+            let restored = open();
+            let history = restored.read(&thread.id, true).await.unwrap();
+            assert_eq!(history.turns.len(), 1);
+            assert_eq!(history.turns[0].id, first.id);
+            assert_eq!(
+                state.posts.get(),
+                1,
+                "reading History cannot replay inference"
+            );
+            let follow_up = restored
+                .start(
+                    &thread.id,
+                    vec![Input::text("Continue the original question")],
+                )
+                .await
+                .unwrap();
+            let finished = tokio::time::timeout(Duration::from_secs(5), restored.wait(&thread.id))
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(finished.turns.len(), 2);
+            assert_eq!(finished.turns[1].id, follow_up.id);
+            for turn in &finished.turns {
+                assert_eq!(turn.status, TurnStatus::Completed);
+                assert!(turn.items.iter().any(
+                    |item| matches!(item, Item::AgentMessage { text, .. } if text == "first")
+                ));
+            }
+            assert_eq!(
+                state.catalogs.get(),
+                2,
+                "inference cannot discover a catalog"
+            );
+            assert_eq!(
+                state.posts.get(),
+                2,
+                "each original Turn posts exactly once"
+            );
+            {
+                let requests = state.received.borrow();
+                let input = requests[1]["input"].as_array().unwrap();
+                let users: Vec<_> = input
+                    .iter()
+                    .filter(|message| message["role"] == "user")
+                    .filter_map(|message| message["content"][0]["text"].as_str())
+                    .collect();
+                assert_eq!(
+                    users,
+                    [
+                        "Original subscription question",
+                        "Continue the original question"
+                    ]
+                );
+            }
+            restored.shutdown().await;
+            rig.close().await;
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn worktree_first_turns_keep_ordinary_and_subscription_models_independent() {
+    use areal_engine::{
+        Engine, Limits,
+        model::{HttpModel, ModelProtocol},
+    };
+    use areal_protocol::desktop::{ClientOptions, ConfigureThread, EffectiveConfig};
+    use areal_protocol::{Input, Item, TurnStatus};
+    use std::{path::Path, process::Command, sync::Arc};
+
+    fn git(repository: &Path, args: &[&str]) {
+        let result = Command::new("git")
+            .args(args)
+            .current_dir(repository)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let rig = Rig::new(false).await;
+            let state = &rig.server.state;
+            let root = tempfile::tempdir().unwrap();
+            let repository = root.path().join("repository");
+            std::fs::create_dir(&repository).unwrap();
+            git(&repository, &["init", "-b", "main"]);
+            git(
+                &repository,
+                &[
+                    "-c",
+                    "user.email=fixture@example.invalid",
+                    "-c",
+                    "user.name=Fixture",
+                    "commit",
+                    "--allow-empty",
+                    "-m",
+                    "Seed worktree commit",
+                ],
+            );
+            let ordinary_workspace = root.path().join("ordinary");
+            let subscription_workspace = root.path().join("subscription");
+            for workspace in [&ordinary_workspace, &subscription_workspace] {
+                git(
+                    &repository,
+                    &["worktree", "add", "--detach", workspace.to_str().unwrap()],
+                );
+            }
+
+            state.hold_catalog.set(true);
+            let source = rig.source.clone();
+            let discovery =
+                tokio::task::spawn_local(async move { source.refresh_catalog(true).await });
+            state.count(&state.catalogs, 1).await;
+
+            for (workspace, model, prompt, endpoint, key) in [
+                (
+                    &ordinary_workspace,
+                    "ordinary",
+                    "first ordinary worktree turn",
+                    rig.server
+                        .route
+                        .join("/ordinary/responses")
+                        .unwrap()
+                        .to_string(),
+                    None,
+                ),
+                (
+                    &subscription_workspace,
+                    "fixture",
+                    "first subscription worktree turn",
+                    rig.transport.endpoint.clone(),
+                    Some("fixture-loopback".into()),
+                ),
+            ] {
+                if model == "fixture" {
+                    assert!(!discovery.is_finished());
+                    assert_eq!(state.ordinary_requests.borrow().len(), 1);
+                    assert_eq!(state.posts.get(), 0);
+                    state.hold_catalog.set(false);
+                    state.catalog_gate.add_permits(1);
+                }
+                let http =
+                    HttpModel::with_protocol(endpoint, model.into(), key, ModelProtocol::Responses)
+                        .unwrap();
+                let engine = Engine::open(
+                    &root.path().join(format!("{model}-store")),
+                    Arc::new(http),
+                    Limits::default(),
+                )
+                .unwrap();
+                if model == "fixture" {
+                    // 用源的权威读取等首份目录完成；共享同一个已经发出的 GET。
+                    let models = rig.source.discover(false).await.unwrap();
+                    assert_eq!(models[0]["id"], model);
+                }
+                let target = workspace.canonicalize().unwrap();
+                let thread = engine
+                    .create(target.to_str().unwrap().into())
+                    .await
+                    .unwrap();
+                // 这个夹具仅计执行轮次的请求，关闭独立的自动命名推理。
+                engine
+                    .configure_thread(ConfigureThread {
+                        thread_id: thread.id.clone(),
+                        expected_revision: thread.desktop.as_ref().map_or_else(
+                            || EffectiveConfig::default().revision,
+                            |desktop| desktop.configuration.revision,
+                        ),
+                        options: Some(ClientOptions {
+                            automatic_session_name: Some(false),
+                            ..Default::default()
+                        }),
+                        request_id: None,
+                        agent_profile: None,
+                        model: None,
+                        reset_model: false,
+                        parameters: None,
+                        selected_skills: None,
+                    })
+                    .await
+                    .unwrap();
+                let turn = engine
+                    .start(&thread.id, vec![Input::text(prompt)])
+                    .await
+                    .unwrap();
+                let saved = tokio::time::timeout(Duration::from_secs(10), engine.wait(&thread.id))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(saved.cwd, target.to_str().unwrap());
+                assert_eq!(saved.turns.len(), 1);
+                assert_eq!(saved.turns[0].id, turn.id);
+                assert_eq!(saved.turns[0].status, TurnStatus::Completed);
+                assert!(saved.turns[0].items.iter().any(
+                    |item| matches!(item, Item::AgentMessage { text, .. } if text == "first")
+                ));
+                engine.shutdown().await;
+            }
+            discovery.await.unwrap().unwrap();
+            assert_eq!(state.catalogs.get(), 1);
+            assert_eq!(state.posts.get(), 1);
+            let check_request = |requests: &[Value], model: &str, prompt: &str| {
+                assert_eq!(requests.len(), 1);
+                assert_eq!(requests[0]["model"], model);
+                let users: Vec<_> = requests[0]["input"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|message| message["role"] == "user")
+                    .map(|message| message["content"][0]["text"].as_str().unwrap())
+                    .collect();
+                assert_eq!(users, [prompt]);
+            };
+            check_request(
+                &state.ordinary_requests.borrow(),
+                "ordinary",
+                "first ordinary worktree turn",
+            );
+            check_request(
+                &state.received.borrow(),
+                "fixture",
+                "first subscription worktree turn",
+            );
             rig.close().await;
         })
         .await;

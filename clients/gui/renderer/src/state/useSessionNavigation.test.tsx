@@ -48,6 +48,7 @@ function fixture(
   connect: (resume: boolean) => Promise<void>,
   recoveryOnly = false,
   persistedHistory = false,
+  selectedThreadId = owner.threadId,
 ) {
   seed.snapshot ??= {
     connection: { state: "ready" },
@@ -58,7 +59,7 @@ function fixture(
       key === "areal-gui:project"
         ? owner.projectId
         : key === `areal-gui:thread:${owner.projectId}`
-          ? owner.threadId
+          ? selectedThreadId
           : null,
     setItem: () => {},
   });
@@ -740,4 +741,31 @@ it("opens the new live generation when Core acquires the store during a saved re
   await f.navigation.selectConversation(owner.projectId, owner.threadId);
   expect(f.events.filter((event) => event !== "library")).toEqual(["refresh", "live"]);
   expect(seed.restoration).toMatchObject({ pending: false, error: "" });
+});
+
+it("connects the foreground empty project without submitting an empty thread ID", async () => {
+  const f = fixture(true, async () => {}, false, false, "");
+  await f.navigation.restoreConversation({ ...owner, threadId: "" }, "connect");
+  expect(f.command).toHaveBeenCalledWith("connect", { projectId: owner.projectId });
+  expect(f.selectSession).toHaveBeenCalledExactlyOnceWith(null);
+});
+
+it("explicitly resumes an empty project without adding an empty thread identity", async () => {
+  const f = fixture(
+    true,
+    async (resume) => {
+      expect(resume).toBe(true);
+    },
+    false,
+    false,
+    "",
+  );
+  await f.navigation.restoreConversation({ ...owner, threadId: "" }, "connect", {
+    resumeScheduling: true,
+  });
+  expect(f.command).toHaveBeenCalledWith("connect", {
+    projectId: owner.projectId,
+    resumeScheduling: true,
+  });
+  expect(f.selectSession).toHaveBeenCalledExactlyOnceWith(null);
 });

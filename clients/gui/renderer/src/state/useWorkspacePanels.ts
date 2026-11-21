@@ -26,7 +26,6 @@ export function useWorkspacePanels() {
   const [fileLocation, setFileLocation] = useState<FileLocation>();
   const panelViews = useRef(new Map<string, PanelView>());
   const activePanelOwner = useRef("");
-  const mcpPendingReveal = useRef<{ tab: string; owner: string } | null>(null);
   const commands = useMemo(() => {
     const revealSide = (tab: SideChatTab, narrow: boolean) => {
       const owner = `${tab.projectId}:${tab.parentId}`;
@@ -152,28 +151,6 @@ export function useWorkspacePanels() {
       openSideResource,
       removeSideResource,
       removeSide,
-      revealApp(tab: string, owner: { projectId: string; threadId: string }) {
-        if (activePanelOwner.current !== `${owner.projectId}:${owner.threadId}`) {
-          mcpPendingReveal.current = { tab, owner: `${owner.projectId}:${owner.threadId}` };
-          return false;
-        }
-        setWorkspaceView("split");
-        setPanelTabs((tabs) => (tabs.includes(tab) ? tabs : [...tabs, tab]));
-        setPanel(tab);
-        return true;
-      },
-      removeApp(tab: string) {
-        for (const [owner, view] of panelViews.current)
-          panelViews.current.set(owner, {
-            ...view,
-            tabs: view.tabs.filter((item) => item !== tab),
-            panel: view.panel === tab ? "" : view.panel,
-            lastPanel: view.lastPanel === tab ? undefined : view.lastPanel,
-          });
-        if (mcpPendingReveal.current?.tab === tab) mcpPendingReveal.current = null;
-        setPanelTabs((tabs) => tabs.filter((item) => item !== tab));
-        setPanel((current) => (current === tab ? "" : current));
-      },
       reconcileBrowser(
         panelOwner: string,
         browserWorkspace: {
@@ -226,24 +203,19 @@ export function useWorkspacePanels() {
         activePanelOwner.current = panelOwner;
         setWorkspaceView("split");
         const remembered = panelViews.current.get(panelOwner);
-        const appReveal =
-          mcpPendingReveal.current?.owner === panelOwner ? mcpPendingReveal.current.tab : null;
-        if (appReveal) mcpPendingReveal.current = null;
         // Only the terminal owner can supply live IDs; the view cache owns no PTY.
         setPanelTabs([
           ...new Set([
             ...(remembered?.tabs.filter((id) => id !== "任务资源" && !isTerminalTab(id)) ?? []),
             ...ids,
-            ...(appReveal ? [appReveal] : []),
           ]),
         ]);
         setPanel(
-          appReveal ??
-            (remembered &&
+          remembered &&
             remembered.panel !== "任务资源" &&
             (!isTerminalTab(remembered.panel) || ids.includes(remembered.panel))
-              ? remembered.panel
-              : ""),
+            ? remembered.panel
+            : "",
         );
         setFilesOpen(remembered?.filesOpen ?? false);
         setRevealedFile(remembered?.revealedFile ?? "");

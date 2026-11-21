@@ -1,7 +1,5 @@
 import { SnapShotSettings } from "../snapshots/SnapShotSettings.js";
 import { BackendServiceStatus } from "../BackendStatusNotice.js";
-// 过渡：到 0.1.21 删，设置页标识统一后移除旧标识模块引用。
-import { legacyServiceSettingsIds } from "../lib/legacySettingsIds.js";
 import { lazy, Suspense, type ReactNode } from "react";
 import { Button } from "../components/ui/button.js";
 import { useI18n } from "../i18n/IntlProvider.js";
@@ -13,8 +11,6 @@ import type {
 } from "../services.js";
 import { BrowserSettings } from "../settings/BrowserSettings.js";
 import { CloudSettings } from "../settings/CloudSettings.js";
-import { ComputerSettings } from "../settings/ComputerSettings.js";
-import { CreationRecoverySettings } from "../settings/CreationRecoverySettings.js";
 import { CoreCapabilitiesSettings } from "../settings/CoreCapabilitiesSettings.js";
 import { PluginDoctorSummary } from "../settings/PluginDoctorSummary.js";
 import { AppearanceSettings, GeneralSettings } from "../settings/DisplaySettings.js";
@@ -99,18 +95,16 @@ export function WorkbenchSettings({
       title={settingsLabel(settingsTab, t)}
       subtitle={settingsSubtitle(settingsTab, t)}
     >
-      {/* 过渡：到 0.1.21 删，旧服务页标识仍由专属面板展示连接状态。 */}
-      {!legacyServiceSettingsIds.includes(settingsTab) &&
-        snapshot.connection?.state === "unavailable" && (
-          <BackendServiceStatus
-            connection={snapshot.connection}
-            update={snapshot.backendUpdate}
-            lifecycle={snapshot.lifecycle}
-            pending={backendActionPending}
-            error={backendActionError}
-            onAction={(kind) => void runBackendAction(kind)}
-          />
-        )}
+      {settingsTab !== "高级诊断" && snapshot.connection?.state === "unavailable" && (
+        <BackendServiceStatus
+          connection={snapshot.connection}
+          update={snapshot.backendUpdate}
+          lifecycle={snapshot.lifecycle}
+          pending={backendActionPending}
+          error={backendActionError}
+          onAction={(kind) => void runBackendAction(kind)}
+        />
+      )}
       {settingsTab === "外观" ? (
         <AppearanceSettings
           theme={theme}
@@ -146,12 +140,6 @@ export function WorkbenchSettings({
         />
       ) : settingsTab === "Cloud" ? (
         <CloudSettings action={resourceAction} />
-      ) : settingsTab === "电脑控制" ? (
-        <ComputerSettings
-          settings={library.settings}
-          action={resourceAction}
-          connected={snapshot.connection?.state === "ready"}
-        />
       ) : settingsTab === "Worktrees" ? (
         <WorktreesSettings
           onAddProject={async () => {
@@ -221,11 +209,6 @@ export function WorkbenchSettings({
             onConnect={reconnectService}
             onTask={initialReleased ? onTask : undefined}
             onOpen={initialReleased ? onOpen : undefined}
-          />
-          <CreationRecoverySettings
-            projects={snapshot.projects}
-            connected={snapshot.connection?.state === "ready"}
-            action={resourceAction}
           />
           <CoreCapabilitiesSettings
             projects={snapshot.projects}

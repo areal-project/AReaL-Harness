@@ -31,8 +31,6 @@ export function ApprovalRequest({
   const [error, setError] = useState("");
   const canRemember = item.effectivePermissions?.rememberAllowed === true;
   const isBrowser = item.tool === "browser_v1";
-  const isComputer = item.tool === "computer_v1";
-  const computerPlan = isComputer ? item.effectiveArguments?.plan : null;
   const browserPlan = isBrowser ? item.effectiveArguments?.plan : null;
   const respond = async (decision: "deny" | "allowOnce" | "allowSession" | "allowProject") => {
     if (inFlight.current || submitted || unknown) return;
@@ -82,15 +80,7 @@ export function ApprovalRequest({
   return (
     <DecisionCard
       kind="approval"
-      label={
-        isComputer
-          ? t("chat.approval.computer")
-          : isBrowser
-            ? "浏览器"
-            : item.effectiveArguments?.command
-              ? "终端"
-              : "工具"
-      }
+      label={isBrowser ? "浏览器" : item.effectiveArguments?.command ? "终端" : "工具"}
       icon={isBrowser ? <Globe /> : <SquareTerminal />}
       busy={busy}
       error={error}
@@ -136,146 +126,130 @@ export function ApprovalRequest({
               )}
           </dl>
 
-          {computerPlan && (
-            <div className="approval-preview">
+          {browserPlan ? (
+            <div className="approval-preview approval-browser-preview">
               <p>
-                {t("chat.approval.computerTarget")} ·{" "}
-                {computerPlan.target?.app?.name ?? computerPlan.target?.name ?? computerPlan.origin}
+                页面：{browserPlan.url}
+                {browserPlan.origin ? `（${browserPlan.origin}）` : ""}
               </p>
-              <pre>
-                {JSON.stringify(
-                  { operation: computerPlan.operation, parameters: computerPlan.parameters },
-                  null,
-                  2,
-                )}
-              </pre>
+              <p>
+                操作：{browserPlan.action?.kind ?? browserPlan.operation}
+                {browserPlan.target
+                  ? ` · ${browserPlan.target.role} ${browserPlan.target.name} [${browserPlan.target.ref}]`
+                  : ""}
+              </p>
+              {browserPlan.operation === "command" && (
+                <pre>
+                  {JSON.stringify(
+                    {
+                      command: browserPlan.parameters?.command,
+                      pages: browserPlan.target?.pages,
+                    },
+                    null,
+                    2,
+                  )}
+                </pre>
+              )}
+              {Array.isArray(browserPlan.steps) && (
+                <ol aria-label="本次批准的浏览步骤" className="list-decimal pl-5">
+                  {browserPlan.steps.map((step: Data, index: number) => (
+                    <li key={index}>
+                      {step.action?.kind ?? step.operation}
+                      {step.target?.ref
+                        ? ` · ${step.target.role} ${step.target.name} [${step.target.ref}]`
+                        : ""}
+                      {step.action?.kind === "wait"
+                        ? ` · ${step.action.timeoutMs} 毫秒 · ${step.action.condition ? JSON.stringify(step.action.condition) : "固定延时"}`
+                        : ""}
+                      {step.action?.kind === "scroll"
+                        ? ` · 滚动视口：${step.action.deltaX}, ${step.action.deltaY}`
+                        : ""}
+                      {step.action?.kind === "selectOption"
+                        ? ` · 选项值：${step.action.value}`
+                        : ""}
+                      {step.action?.kind === "setChecked"
+                        ? ` · 选中：${step.action.checked ? "是" : "否"}`
+                        : ""}
+                      {step.action?.kind === "fill" ? ` · 填写：${step.action.value}` : ""}
+                      {["press", "pressAt"].includes(step.action?.kind)
+                        ? ` · 按键：${step.action.key}`
+                        : ""}
+                      {["clickAt", "pressAt"].includes(step.action?.kind)
+                        ? ` · 截图坐标：${step.action.x}, ${step.action.y}`
+                        : ""}
+                      {step.action?.kind === "drag"
+                        ? ` · 截图拖动：${step.action.fromX}, ${step.action.fromY} → ${step.action.toX}, ${step.action.toY}`
+                        : ""}
+                    </li>
+                  ))}
+                </ol>
+              )}
+              {browserPlan.operation === "openDocument" && browserPlan.document?.scope && (
+                <div>
+                  <p>
+                    {t("operations.documentFile")}
+                    {browserPlan.document.scope.canonicalFile}
+                  </p>
+                  <p>
+                    {browserPlan.document.scope.kind === "workspaceDirectory"
+                      ? `${t("operations.documentDirectory")}${browserPlan.document.scope.canonicalRoot}`
+                      : t("operations.documentExactFile")}
+                  </p>
+                  {browserPlan.document.scope.kind === "workspaceDirectory" && (
+                    <p>{t("operations.documentStaticScope")}</p>
+                  )}
+                </div>
+              )}
+              {browserPlan.targetUrl && (
+                <p>
+                  目标地址：{browserPlan.targetUrl}（{browserPlan.targetOrigin}）
+                </p>
+              )}
+              {browserPlan.action?.kind === "wait" && (
+                <p>
+                  等待：{browserPlan.action.timeoutMs} 毫秒 ·{" "}
+                  {browserPlan.action.condition
+                    ? JSON.stringify(browserPlan.action.condition)
+                    : "固定延时"}
+                </p>
+              )}
+              {browserPlan.action?.kind === "scroll" && (
+                <p>
+                  {t("operations.scrollViewport")}
+                  {browserPlan.action.deltaX}, {browserPlan.action.deltaY}
+                </p>
+              )}
+              {browserPlan.action?.kind === "selectOption" && (
+                <p>
+                  {t("operations.optionValue")}
+                  {browserPlan.action.value}
+                </p>
+              )}
+              {browserPlan.action?.kind === "setChecked" && (
+                <p>
+                  {t("operations.checked")}
+                  {browserPlan.action.checked ? t("operations.yes") : t("operations.no")}
+                </p>
+              )}
+              {browserPlan.action?.kind === "fill" && <p>填写：{browserPlan.action.value}</p>}
+              {browserPlan.action?.kind === "press" && <p>按键：{browserPlan.action.key}</p>}
+              {browserPlan.target?.semantics?.kind === "public_search" && (
+                <div>
+                  <p>搜索内容：{browserPlan.target.semantics.query}</p>
+                  <SettingsDisclosure title="本次提交的表单字段">
+                    <pre>
+                      {JSON.stringify(browserPlan.target.semantics.submittedFields, null, 2)}
+                    </pre>
+                  </SettingsDisclosure>
+                </div>
+              )}
+              <p>目标页面或控件变化后，本次批准会失效。</p>
             </div>
+          ) : (
+            <pre className="approval-preview">
+              {JSON.stringify(item.effectiveArguments, null, 2)}
+            </pre>
           )}
-          {!isComputer &&
-            (browserPlan ? (
-              <div className="approval-preview approval-browser-preview">
-                <p>
-                  页面：{browserPlan.url}
-                  {browserPlan.origin ? `（${browserPlan.origin}）` : ""}
-                </p>
-                <p>
-                  操作：{browserPlan.action?.kind ?? browserPlan.operation}
-                  {browserPlan.target
-                    ? ` · ${browserPlan.target.role} ${browserPlan.target.name} [${browserPlan.target.ref}]`
-                    : ""}
-                </p>
-                {browserPlan.operation === "command" && (
-                  <pre>
-                    {JSON.stringify(
-                      {
-                        command: browserPlan.parameters?.command,
-                        pages: browserPlan.target?.pages,
-                      },
-                      null,
-                      2,
-                    )}
-                  </pre>
-                )}
-                {Array.isArray(browserPlan.steps) && (
-                  <ol aria-label="本次批准的浏览步骤" className="list-decimal pl-5">
-                    {browserPlan.steps.map((step: Data, index: number) => (
-                      <li key={index}>
-                        {step.action?.kind ?? step.operation}
-                        {step.target?.ref
-                          ? ` · ${step.target.role} ${step.target.name} [${step.target.ref}]`
-                          : ""}
-                        {step.action?.kind === "wait"
-                          ? ` · ${step.action.timeoutMs} 毫秒 · ${step.action.condition ? JSON.stringify(step.action.condition) : "固定延时"}`
-                          : ""}
-                        {step.action?.kind === "scroll"
-                          ? ` · 滚动视口：${step.action.deltaX}, ${step.action.deltaY}`
-                          : ""}
-                        {step.action?.kind === "selectOption"
-                          ? ` · 选项值：${step.action.value}`
-                          : ""}
-                        {step.action?.kind === "setChecked"
-                          ? ` · 选中：${step.action.checked ? "是" : "否"}`
-                          : ""}
-                        {step.action?.kind === "fill" ? ` · 填写：${step.action.value}` : ""}
-                        {["press", "pressAt"].includes(step.action?.kind)
-                          ? ` · 按键：${step.action.key}`
-                          : ""}
-                        {["clickAt", "pressAt"].includes(step.action?.kind)
-                          ? ` · 截图坐标：${step.action.x}, ${step.action.y}`
-                          : ""}
-                        {step.action?.kind === "drag"
-                          ? ` · 截图拖动：${step.action.fromX}, ${step.action.fromY} → ${step.action.toX}, ${step.action.toY}`
-                          : ""}
-                      </li>
-                    ))}
-                  </ol>
-                )}
-                {browserPlan.operation === "openDocument" && browserPlan.document?.scope && (
-                  <div>
-                    <p>
-                      {t("operations.documentFile")}
-                      {browserPlan.document.scope.canonicalFile}
-                    </p>
-                    <p>
-                      {browserPlan.document.scope.kind === "workspaceDirectory"
-                        ? `${t("operations.documentDirectory")}${browserPlan.document.scope.canonicalRoot}`
-                        : t("operations.documentExactFile")}
-                    </p>
-                    {browserPlan.document.scope.kind === "workspaceDirectory" && (
-                      <p>{t("operations.documentStaticScope")}</p>
-                    )}
-                  </div>
-                )}
-                {browserPlan.targetUrl && (
-                  <p>
-                    目标地址：{browserPlan.targetUrl}（{browserPlan.targetOrigin}）
-                  </p>
-                )}
-                {browserPlan.action?.kind === "wait" && (
-                  <p>
-                    等待：{browserPlan.action.timeoutMs} 毫秒 ·{" "}
-                    {browserPlan.action.condition
-                      ? JSON.stringify(browserPlan.action.condition)
-                      : "固定延时"}
-                  </p>
-                )}
-                {browserPlan.action?.kind === "scroll" && (
-                  <p>
-                    {t("operations.scrollViewport")}
-                    {browserPlan.action.deltaX}, {browserPlan.action.deltaY}
-                  </p>
-                )}
-                {browserPlan.action?.kind === "selectOption" && (
-                  <p>
-                    {t("operations.optionValue")}
-                    {browserPlan.action.value}
-                  </p>
-                )}
-                {browserPlan.action?.kind === "setChecked" && (
-                  <p>
-                    {t("operations.checked")}
-                    {browserPlan.action.checked ? t("operations.yes") : t("operations.no")}
-                  </p>
-                )}
-                {browserPlan.action?.kind === "fill" && <p>填写：{browserPlan.action.value}</p>}
-                {browserPlan.action?.kind === "press" && <p>按键：{browserPlan.action.key}</p>}
-                {browserPlan.target?.semantics?.kind === "public_search" && (
-                  <div>
-                    <p>搜索内容：{browserPlan.target.semantics.query}</p>
-                    <SettingsDisclosure title="本次提交的表单字段">
-                      <pre>
-                        {JSON.stringify(browserPlan.target.semantics.submittedFields, null, 2)}
-                      </pre>
-                    </SettingsDisclosure>
-                  </div>
-                )}
-                <p>目标页面或控件变化后，本次批准会失效。</p>
-              </div>
-            ) : (
-              <pre className="approval-preview">
-                {JSON.stringify(item.effectiveArguments, null, 2)}
-              </pre>
-            ))}
           {canRemember && (
             <SettingsDisclosure className="approval-scope-details" title="授权范围说明">
               <p>
@@ -382,20 +356,15 @@ export function ApprovalRequest({
       }
     >
       <h3 className="decision-card-title">
-        {summary ||
-          (isComputer
-            ? t("chat.approval.computerQuestion")
-            : `是否允许${isBrowser ? "执行浏览器操作" : `执行 ${item.tool}`}？`)}
+        {summary || `是否允许${isBrowser ? "执行浏览器操作" : `执行 ${item.tool}`}？`}
       </h3>
       <p className="approval-target">
-        {isComputer
-          ? (computerPlan?.target?.app?.name ?? computerPlan?.target?.name ?? computerPlan?.origin)
-          : isBrowser
-            ? (browserPlan?.document?.scope?.canonicalFile ??
-              browserPlan?.targetOrigin ??
-              browserPlan?.origin ??
-              browserPlan?.url)
-            : (item.effectiveArguments?.cwd ?? item.effectiveArguments?.path)}
+        {isBrowser
+          ? (browserPlan?.document?.scope?.canonicalFile ??
+            browserPlan?.targetOrigin ??
+            browserPlan?.origin ??
+            browserPlan?.url)
+          : (item.effectiveArguments?.cwd ?? item.effectiveArguments?.path)}
       </p>
       {command && (
         <pre className="approval-command-summary" aria-label={t("decision.commandPreview")}>

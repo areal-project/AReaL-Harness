@@ -1212,9 +1212,11 @@ P1 首期明确只接受原来源仍可验证、原 MCP 连接代次仍有效的
 
 #### UI-03B 页面提供的有限工具
 
+本节保留历史规格；MCP Apps 与页面工具已退役，不作为当前实施或验收要求。
+
 **首个 fixture**：`getSelection()` 返回页面文档 revision 与选择范围；`applyPatch({expectedDocumentRevision, patch})` 只修改该页文档。过期 revision 返回冲突，不猜测重定位。页面仅能声明规定 schema/大小和数量以内的工具；不得借此提供任意 JS、shell、网络代理或工具名覆盖。
 
-**实施契约**：固定 `areal/mcp/app/tools/register`、`revoke`、`claim`、`resolve` 四个接口。resolve 统一接受完成、明确未执行与 UNKNOWN，避免独立 reject 和外层工具回复形成多条结算路径。具体类型与预算见[桌面 API](../api/desktop.md#有限页面工具)。Core 复用普通目录、审批和 ToolCall journal，不建立页面执行账本。以下身份在准入后冻结：
+**实施契约**：固定 `areal/mcp/app/tools/register`、`revoke`、`claim`、`resolve` 四个接口。resolve 统一接受完成、明确未执行与 UNKNOWN，避免独立 reject 和外层工具回复形成多条结算路径。Core 复用普通目录、审批和 ToolCall journal，不建立页面执行账本。以下身份在准入后冻结：
 
 ```ts
 type AppToolBinding = {

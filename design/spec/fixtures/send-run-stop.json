@@ -220,12 +220,6 @@
       "draft": "",
       "settings": "Cloud"
     },
-    "window.settings-computer": {
-      "screen": "window",
-      "conversation": "thread-idle",
-      "draft": "",
-      "settings": "电脑控制"
-    },
     "window.settings-worktrees": {
       "screen": "window",
       "conversation": "thread-idle",
@@ -492,11 +486,6 @@
             "label": "浏览器",
             "icon": "settings-browser",
             "keywords": "浏览器登录与数据、Cookie"
-          },
-          {
-            "label": "电脑控制",
-            "icon": "settings-computer",
-            "keywords": "系统授权、控制进程、辅助功能、屏幕录制"
           }
         ]
       },
@@ -910,7 +899,11 @@
   "settingsBackend": {
     "$comment": "设置各页的示例后台数据：today 固定，截图不随真实日期变化。",
     "today": "2026-11-07",
-    "feedback": { "enabled": true, "connected": true, "opted_in": true },
+    "feedback": {
+      "enabled": true,
+      "connected": true,
+      "opted_in": true
+    },
     "usage": {
       "days": [
         180000, 240000, 0, 320000, 410000, 150000, 260000, 380000, 90000, 300000, 450000, 220000,
@@ -964,10 +957,6 @@
     ],
     "cloud": {
       "baseURL": "https://cloud.example.com"
-    },
-    "computer": {
-      "accessibility": "granted",
-      "screenRecording": "denied"
     },
     "mobile": {
       "relay": "https://relay.example.com",

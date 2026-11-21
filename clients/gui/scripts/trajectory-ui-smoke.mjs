@@ -188,39 +188,27 @@ try {
         sections: [],
       },
     };
-    let projectionListener,
-      projectionSequence = 0;
-    const emitSnapshot = (requestId) =>
-      projectionListener?.({
-        requestId,
-        frame: {
-          projection: 1,
-          stream: "trajectory-fixture",
-          sequence: ++projectionSequence,
-          kind: "full",
-          snapshot: structuredClone(snapshot),
-        },
-      });
+    let nativeStateListener;
+    const emitSnapshot = () => nativeStateListener?.(structuredClone(snapshot));
     window.setTestState = (value) => {
       snapshot = value;
       emitSnapshot();
     };
     window.setConnection = (state) => window.setTestState({ ...snapshot, connection: { state } });
     window.arealDesktop = {
-      onProjection: (listener) => {
-        projectionListener = listener;
+      nativeState: async () => structuredClone(snapshot),
+      onNativeState: (listener) => {
+        nativeStateListener = listener;
         return () => {
-          projectionListener = undefined;
+          nativeStateListener = undefined;
         };
       },
-      requestProjection: emitSnapshot,
       theme: async () => ({ platform: "darwin", dark: false, id: "light" }),
       onTheme: (listener) => {
         window.setTestTheme = listener;
         return () => {};
       },
       setInterfaceLocale: () => {},
-      onMcpAppEvent: () => () => {},
       onPreviewEvent: () => () => {},
       onUpdate: () => () => {},
       updateState: async () => ({ enabled: false, status: "idle" }),

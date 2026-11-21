@@ -300,37 +300,108 @@ pub(super) fn apply(state: &mut Value, request: &Value, view: &ContextView) -> R
         }
         "settings" => {
             let key = text(request, "key")?;
-            ensure!(navigation_setting(key), "无效偏好设置");
             let value = &request["value"];
-            ensure!(
-                if key.starts_with("sidebarSort") {
-                    value
-                        .as_str()
-                        .is_some_and(|v| ["manual", "priority", "updated_at"].contains(&v))
-                } else {
-                    value.is_boolean()
-                },
-                "INVALID_PARAMS"
-            );
-            if key.starts_with("sidebarSort")
-                && value == "manual"
-                && state["sidebarThreadOrder"].as_array().unwrap().is_empty()
-            {
-                let available = view.threads();
-                let order = ids(&request["order"])?;
+            if navigation_setting(key) {
                 ensure!(
-                    unique(order.clone()).len() == order.len()
-                        && order.iter().all(|id| available.contains(id)),
-                    "排序列表已变化，请刷新"
+                    if key.starts_with("sidebarSort") {
+                        value
+                            .as_str()
+                            .is_some_and(|v| ["manual", "priority", "updated_at"].contains(&v))
+                    } else {
+                        value.is_boolean()
+                    },
+                    "INVALID_PARAMS"
                 );
-                state["sidebarThreadOrder"] = json!(unique(order.into_iter().chain(available)));
+                if key.starts_with("sidebarSort")
+                    && value == "manual"
+                    && state["sidebarThreadOrder"].as_array().unwrap().is_empty()
+                {
+                    let available = view.threads();
+                    let order = ids(&request["order"])?;
+                    ensure!(
+                        unique(order.clone()).len() == order.len()
+                            && order.iter().all(|id| available.contains(id)),
+                        "排序列表已变化，请刷新"
+                    );
+                    state["sidebarThreadOrder"] = json!(unique(order.into_iter().chain(available)));
+                }
+                state["settings"][key] = value.clone();
+            } else {
+                state["settings"][key] = validate_non_navigation_setting(key, value)?;
             }
-            state["settings"][key] = value.clone();
         }
         "dropSidebar" => drop_sidebar(state, request, view)?,
         _ => bail!("不支持的整理操作"),
     }
     Ok(())
+}
+
+fn validate_non_navigation_setting(key: &str, value: &Value) -> Result<Value> {
+    if matches!(
+        key,
+        "permissionNotifications"
+            | "questionNotifications"
+            | "preventSleep"
+            | "showInMenuBar"
+            | "betaUpdates"
+            | "terminalInheritSystemProfile"
+            | "hardwareAcceleration"
+            | "taskNotifications"
+            | "browserFullAddress"
+    ) {
+        ensure!(value.is_boolean(), "INVALID_PARAMS");
+        return Ok(value.clone());
+    }
+    let allowed: Option<&[&str]> = match key {
+        "busyEnter" => Some(&["queue", "steer"]),
+        "turnNotifications" => Some(&["always", "unfocused", "never"]),
+        "notificationSound" => Some(&["default", "silent"]),
+        "fileOpenTarget" => Some(&["system", "finder", "zed", "vscode", "cursor"]),
+        "browserLinkTarget" | "browserLocalTarget" => Some(&["internal", "external"]),
+        _ => None,
+    };
+    if let Some(allowed) = allowed {
+        let choice = value.as_str().context("INVALID_PARAMS")?;
+        ensure!(allowed.contains(&choice), "INVALID_PARAMS");
+        return Ok(value.clone());
+    }
+    match key {
+        "terminalFontFamily" => {
+            let font = value.as_str().context("INVALID_PARAMS")?;
+            ensure!(
+                font.chars().count() <= 256 && !font.chars().any(char::is_control),
+                "INVALID_PARAMS"
+            );
+            Ok(json!(font.trim()))
+        }
+        "httpProxy" | "httpProxyNoProxy" | "httpProxyCaCertPath" => {
+            let text = value.as_str().context("INVALID_PARAMS")?;
+            let normalized = crate::network::validate_setting(key, text)
+                .map_err(|_| anyhow::anyhow!("INVALID_PARAMS"))?;
+            Ok(json!(normalized))
+        }
+        "snapShot" => validate_snapshot_setting(value),
+        _ => bail!("INVALID_PARAMS"),
+    }
+}
+
+fn validate_snapshot_setting(value: &Value) -> Result<Value> {
+    serde_json::from_value::<areal_protocol::host::WorkbenchSnapShotSettings>(value.clone())
+        .map_err(|_| anyhow::anyhow!("INVALID_PARAMS"))?;
+    let shortcut = &value["snapShotShortcut"];
+    if shortcut.get("kind").is_none() {
+        let key = shortcut["key"].as_str().context("INVALID_PARAMS")?;
+        ensure!(
+            !key.is_empty()
+                && key.chars().count() <= 64
+                && !key.chars().any(char::is_control)
+                && ["metaKey", "ctrlKey", "shiftKey", "altKey", "modKey"]
+                    .iter()
+                    .any(|modifier| shortcut[*modifier] == true),
+            "INVALID_PARAMS"
+        );
+    }
+    Ok(value.clone())
 }
 
 fn group(state: &Value, view: &ContextView, field: &str, id: &str) -> String {

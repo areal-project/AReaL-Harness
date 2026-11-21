@@ -57,7 +57,7 @@ pub(super) async fn reveal_key(host: &Host, input: RevealKey) -> Result<Value> {
 
 pub(super) fn import_saved_configuration(host: &Host, source: &str, options: &Value) -> Result<()> {
     let metadata = host.migration.source_credential_metadata(source)?;
-    // 过渡：到 0.1.21 删；旧桌面配置完成停机导入后移除此来源读取。
+    // 过渡：到 0.1.22 删；本次 Rust 切换仍需停机导入已发布 Node 桌面配置，完成升级窗口后移除此来源读取。
     let Some(saved) = metadata.get("legacyProviders") else {
         return Ok(());
     };

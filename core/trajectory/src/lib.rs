@@ -77,13 +77,23 @@ fn persisted_control(root: &Path) -> Result<Option<TrajectoryConfig>> {
 
 /// 写入无秘密的控制快照；运行中的上传器会在下一次发送前重新读取。
 /// 不等待网络，不验证远端连通性。停用保留历史和未上传数据。
+/// 轨迹导出 worker 启动所需的显式可执行文件与扩展环境变量（例如 Vault 解出的请求头）。
+pub type WorkerRuntime<'a> = (
+    &'a Path,
+    &'a std::collections::BTreeMap<std::ffi::OsString, std::ffi::OsString>,
+);
+
 pub fn configure(config: &TrajectoryConfig) -> Result<()> {
-    configure_inner(config, false)
+    configure_inner(config, false, None)
+}
+
+pub fn configure_with_runtime(config: &TrajectoryConfig, runtime: WorkerRuntime<'_>) -> Result<()> {
+    configure_inner(config, false, Some(runtime))
 }
 
 // 后台初始化不能覆盖脚本刚暂停或更新的控制；校验与写入持有同一队列锁。
 pub fn configure_on_startup(config: &TrajectoryConfig) -> Result<()> {
-    configure_inner(config, true)
+    configure_inner(config, true, None)
 }
 
 fn same_settings(left: &TrajectoryConfig, right: &TrajectoryConfig) -> bool {
@@ -122,7 +132,11 @@ fn source_revision(path: &Path) -> Result<String> {
     Ok(format!("{:x}", hash.finalize()))
 }
 
-fn configure_inner(config: &TrajectoryConfig, startup: bool) -> Result<()> {
+fn configure_inner(
+    config: &TrajectoryConfig,
+    startup: bool,
+    runtime: Option<WorkerRuntime<'_>>,
+) -> Result<()> {
     if !config.enabled && !config.spool_dir.exists() {
         return Ok(());
     }
@@ -164,7 +178,7 @@ fn configure_inner(config: &TrajectoryConfig, startup: bool) -> Result<()> {
         queue::save_stats(root, &totals)?;
     }
     if config.enabled && endpoint(config).is_ok() {
-        ensure_worker(root, !startup)?;
+        ensure_worker_with_runtime(root, !startup, runtime)?;
     }
     Ok(())
 }
@@ -183,6 +197,14 @@ fn worker_running(root: &Path) -> bool {
     matches!(file.try_lock_exclusive(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock)
 }
 fn ensure_worker(root: &Path, explicit: bool) -> Result<()> {
+    ensure_worker_with_runtime(root, explicit, None)
+}
+
+fn ensure_worker_with_runtime(
+    root: &Path,
+    explicit: bool,
+    runtime: Option<WorkerRuntime<'_>>,
+) -> Result<()> {
     if cfg!(test) {
         return Ok(());
     }
@@ -208,16 +230,23 @@ fn ensure_worker(root: &Path, explicit: bool) -> Result<()> {
         let _queue = queue::lock(root, ".queue.lock", true)?;
         queue::atomic(root, "spawned_at.json", &serde_json::to_vec(&now())?)?;
     }
+    let exe = match runtime {
+        Some((binary, _)) => binary.to_path_buf(),
+        None => std::env::current_exe()?,
+    };
     #[cfg(target_os = "macos")]
     let mut command = {
         // 与可信 launcher 保持相同的 macOS 启动路径；Python 持有实际 Rust 子进程。
         let mut c = Command::new("/usr/bin/python3");
         c.args(["-I","-S","-c","import subprocess,sys; p=subprocess.run(sys.argv[1:]); sys.exit(p.returncode if p.returncode>=0 else 128-p.returncode)"])
-            .arg(std::env::current_exe()?);
+            .arg(&exe);
         c
     };
     #[cfg(not(target_os = "macos"))]
-    let mut command = Command::new(std::env::current_exe()?);
+    let mut command = Command::new(&exe);
+    if let Some((_, env)) = runtime {
+        command.envs(env);
+    }
     command
         .arg("trajectory-worker")
         .arg("--spool-dir")
@@ -348,15 +377,33 @@ pub fn status(config: &TrajectoryConfig) -> Result<Value> {
 }
 
 pub fn retry_failed(config: &TrajectoryConfig) -> Result<Value> {
-    requeue_failed(config, true)
+    requeue_failed(config, true, None)
+}
+
+pub fn retry_failed_with_runtime(
+    config: &TrajectoryConfig,
+    runtime: WorkerRuntime<'_>,
+) -> Result<Value> {
+    requeue_failed(config, true, Some(runtime))
 }
 
 /// 用户重新开启时补传仍保留的失败副本；不缩短接收端已要求的等待时间。
 pub fn resume_retained(config: &TrajectoryConfig) -> Result<Value> {
-    requeue_failed(config, false)
+    requeue_failed(config, false, None)
 }
 
-fn requeue_failed(config: &TrajectoryConfig, reset_backoff: bool) -> Result<Value> {
+pub fn resume_retained_with_runtime(
+    config: &TrajectoryConfig,
+    runtime: WorkerRuntime<'_>,
+) -> Result<Value> {
+    requeue_failed(config, false, Some(runtime))
+}
+
+fn requeue_failed(
+    config: &TrajectoryConfig,
+    reset_backoff: bool,
+    runtime: Option<WorkerRuntime<'_>>,
+) -> Result<Value> {
     if !config.spool_dir.exists() {
         return status(config);
     }
@@ -388,6 +435,6 @@ fn requeue_failed(config: &TrajectoryConfig, reset_backoff: bool) -> Result<Valu
         totals.last_error = None;
         queue::save_stats(&config.spool_dir, &totals)?;
     }
-    configure(config)?;
+    configure_inner(config, false, runtime)?;
     status(config)
 }

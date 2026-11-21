@@ -114,7 +114,6 @@ export async function guiBuildInput(root) {
       "--exclude-standard",
       "-z",
       "clients/gui",
-      "services/workbench",
       "services/remote-relay",
       "core/sdk-typescript",
       "core/host/src/page_proxy.html",

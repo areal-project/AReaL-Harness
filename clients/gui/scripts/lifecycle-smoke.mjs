@@ -1,539 +1,370 @@
-import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { createServer } from "node:http";
-import { createHash, randomUUID } from "node:crypto";
-import { execFileSync } from "node:child_process";
-const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+import { join, resolve } from "node:path";
+import { respondToSessionName } from "./model-fixture.mjs";
+import {
+  assertApplicationStopped,
+  closeSmokeApplication,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
+} from "./application-cleanup.mjs";
+import { captureSmokeFailure, selectConversation } from "./smoke-navigation.mjs";
+import { makeTempDir } from "./support/temp.mjs";
+import { openProjectInDesktop, sendReady } from "./support/journey-fixture.mjs";
+import { withCore } from "./support/core-observation.mjs";
+
+const gui = resolve(import.meta.dirname, "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const {
-  ServiceConnection,
-  waitForServiceProcessExit,
-} = require("../app/src/core/service-client.cjs");
-const { DesktopLifecycle } = require("../app/src/core/lifecycle.cjs");
-const binary = process.env.AREAL_CORE_BIN || resolve(gui, "../../target/debug/areal");
-const scratch = await makeTempDir("al-");
-const workspace = join(scratch, "workspace"),
-  home = join(scratch, "core");
+const { readOfflineHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
+const { HostClient } = require("@areal/client/node");
+const { nativeText } = require("@areal/workbench/node/native-i18n");
+const binary = resolve(process.env.AREAL_CORE_BIN || join(gui, "../../target/debug/areal"));
+const scratch = await makeTempDir("areal-lifecycle-");
+const workspace = join(scratch, "demo");
+const userHome = join(scratch, "user");
 await mkdir(workspace);
-await mkdir(join(scratch, "user/.areal"), { recursive: true });
-execFileSync("git", ["init", "-b", "main"], { cwd: workspace, stdio: "ignore" });
+await mkdir(userHome);
 const checks = [],
   errors = [],
   requests = [],
-  held = new Set(),
-  dialogs = [];
-const model = createServer(async (req, res) => {
+  stops = [];
+let application, page, originalHost, electronPid, threadId, finalStop;
+const model = createServer(async (request, response) => {
   try {
     let raw = "";
-    for await (const chunk of req) raw += chunk;
-    const body = JSON.parse(raw);
-    requests.push(body);
-    res.writeHead(200, { "Content-Type": "text/event-stream" });
-    const send = (delta, finish_reason = null) =>
-      res.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason }] })}\n\n`);
-    const tool = (name, args) => {
-      send({
-        tool_calls: [
-          {
-            index: 0,
-            id: randomUUID(),
-            type: "function",
-            function: { name, arguments: JSON.stringify(args) },
-          },
-        ],
-      });
-      send({}, "tool_calls");
-      res.write(
-        `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 } })}\n\n`,
-      );
-      res.end("data: [DONE]\n\n");
-    };
-    const texts = body.messages.map((m) =>
-      typeof m.content === "string"
-        ? m.content
-        : (m.content ?? []).map((p) => p.text ?? "").join("\n"),
-    );
-    const context = texts.filter((t) => t.includes("Current authoritative goal: ")).at(-1);
-    if (context) {
-      const goalText = context.split("Current authoritative goal: ").at(-1);
-      let view;
-      try {
-        view = JSON.parse(goalText);
-      } catch (error) {
-        throw new Error("Invalid fixture goal context; see model-requests.json", { cause: error });
-      }
-      if (view.goal.limitsPending) {
-        tool("goal_set_limits", { expectedRevision: view.revision, sources: {} });
-        return;
-      }
-      const asked = body.messages.some((m) =>
-        m.tool_calls?.some((c) => c.function.name === "ask_user_question"),
-      );
-      if (!asked) {
-        tool("ask_user_question", {
-          mode: "async",
-          questions: [
-            {
-              id: "continue",
-              title: "Continue the isolated fixture?",
-              options: ["Continue", "Wait"],
-            },
-          ],
-        });
-        return;
-      }
-      tool("task_wait", {});
-      return;
-    }
-    send({ content: "Lifecycle fixture is running." });
-    held.add(res);
-    res.on("close", () => held.delete(res));
+    for await (const chunk of request) raw += chunk;
+    const input = JSON.parse(raw);
+    if (respondToSessionName(input, response)) return;
+    requests.push({ count: input.messages.length });
+    response.writeHead(200, { "Content-Type": "text/event-stream" });
+    const delta = { content: "Lifecycle fixture is running." };
+    response.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta }] })}\n\n`);
+    // Core 取消原轮次时关闭此响应；测试不会人为完成正在运行的业务。
   } catch (error) {
-    errors.push("model fixture: " + error.stack);
-    res.destroy(error);
+    errors.push(error.message);
+    response.destroy();
   }
 });
-await new Promise((r) => model.listen(0, "127.0.0.1", r));
-const config = join(scratch, "config.toml"),
-  secondConfig = join(scratch, "second-config.toml");
-const toml = `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\n`;
-await writeFile(config, toml);
-await writeFile(secondConfig, toml);
-const env = {
-  ...process.env,
+await new Promise((ready) => model.listen(0, "127.0.0.1", ready));
+const config = join(scratch, "config.toml");
+await writeFile(
+  config,
+  `schema_version=1\n[model]\ncatalog_version=1\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\nmodels=[{id="fixture",enabled=true}]\n`,
+);
+const env = Object.fromEntries(
+  Object.entries(process.env).filter(
+    ([key]) => !/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) && key !== "ELECTRON_RUN_AS_NODE",
+  ),
+);
+Object.assign(env, {
+  HOME: userHome,
   AREAL_CORE_BIN: binary,
   AREAL_CORE_CONFIG: config,
-  AREAL_CORE_HOME: home,
+  AREAL_CORE_HOME: join(scratch, "core"),
+  AREAL_CORE_USER_HOME: userHome,
   AREAL_GUI_USER_DATA: join(scratch, "electron"),
-  AREAL_CORE_USER_HOME: join(scratch, "user"),
+  AREAL_HARNESS_HOME: join(scratch, "configuration"),
   AREAL_HARNESS_SERVICE_HOME: join(scratch, "registry"),
-};
-for (const key of [
-  "AREAL_CORE_WORKSPACE",
-  "AREAL_HARNESS_HOME",
-  "AREAL_HARNESS_CONFIG",
-  "AREAL_CORE_DESKTOP_CONFIG",
-])
-  delete env[key];
-const crashUpdate = process.env.AREAL_LIFECYCLE_CRASH_UPDATE === "1";
-let crashDialogs = [];
-const testApp = join(scratch, "app");
-await mkdir(testApp);
-await writeFile(
-  join(testApp, "package.json"),
-  JSON.stringify({ name: "areal-lifecycle-fixture", main: "bootstrap.cjs" }),
-);
-await writeFile(
-  join(testApp, "bootstrap.cjs"),
-  `
-if (process.env.AREAL_LIFECYCLE_AUTO_RECOVERY === '1') {
-  const {dialog} = require('electron');
-  globalThis.__lifecycleDialogs = [];
-  dialog.showMessageBox = async (...args) => {
-    const options = args.at(-1); globalThis.__lifecycleDialogs.push(options);
-    if (options.message === '确认取消后台任务？') return {response:1};
-    return {response:options.buttons.indexOf('取消任务并重启')};
-  };
-}
-if (process.env.AREAL_LIFECYCLE_CRASH_UPDATE === '1' && !process.argv.includes('--areal-core-service')) {
-  const {ServiceConnection}=require(${JSON.stringify(join(gui, "app/src/core/service-client.cjs"))});
-  const original=ServiceConnection.prototype.request;
-  ServiceConnection.prototype.request=async function(method,params,mutation){
-    const receipt=await original.call(this,method,params,mutation);
-    if(method==='lifecycleRequest' && params.kind==='updateDesktop'){
-      require('node:fs').writeFileSync(${JSON.stringify(join(scratch, "update-accepted-before-gui-crash.json"))},JSON.stringify({requestId:params.requestId,desktopGeneration:params.expectedDesktopGeneration,receipt,dialogs:globalThis.__updateRecoveryDialogs}));
-      process.kill(process.pid,'SIGKILL');
-      await new Promise(()=>{});
-    }
-    return receipt;
-  };
-}
-require(${JSON.stringify(join(gui, "app/src/main.cjs"))});
-`,
-);
-let app,
-  page,
-  pid,
-  tid,
-  passed = false;
-const until = async (fn, label, timeout = 60000) => {
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
-    const value = await fn();
+  NO_PROXY: "127.0.0.1,localhost",
+  no_proxy: "127.0.0.1,localhost",
+});
+const binarySha256 = createHash("sha256")
+  .update(await readFile(binary))
+  .digest("hex");
+async function until(read, label) {
+  const end = Date.now() + 30000;
+  do {
+    const value = await read();
     if (value) return value;
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  throw new Error("Timeout: " + label);
-};
-const state = () => page.evaluate(() => window.arealDesktop.snapshot());
-const call = async (name, params) => {
-  const result = await page.evaluate(
-    ({ name, params }) => window.arealDesktop.command(name, params),
-    { name, params },
-  );
-  assert.equal(result.ok, true, JSON.stringify(result));
-  return result.value;
-};
-const queue = (s) => s.projects.find((p) => p.id === pid)?.state.queues[tid];
-async function launch({ recovery = false } = {}) {
-  app = await electron.launch({
-    executablePath: require("electron"),
-    args: [testApp],
-    env: { ...env, AREAL_LIFECYCLE_AUTO_RECOVERY: recovery ? "1" : "0" },
-    timeout: 120000,
-  });
-  await writeFile(
-    join(scratch, "run.json"),
-    JSON.stringify({ guiPid: app.process().pid, testApp, home }),
-  );
-  page = await app.firstWindow();
-  page.setDefaultTimeout(20000);
-  page.on("pageerror", (error) => errors.push(error.message));
-  await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
+    await new Promise((resolve) => setTimeout(resolve, 60));
+  } while (Date.now() < end);
+  throw Error(`Timeout: ${label}`);
 }
-async function closeGui() {
-  if (app) {
-    await app.close();
-    app = null;
+const workbench = () => page.getByTestId("areal-workbench");
+const command = (name, params) =>
+  page.evaluate(({ name, params }) => window.arealDesktop.command(name, params), { name, params });
+async function coreState() {
+  return withCore({ binary, env, gui, workspace, threadId }, async (client) => {
+    const [{ thread }, queue] = await Promise.all([
+      client.request("thread/read", { threadId, includeTurns: true }),
+      client.request("areal/queue/list", { threadId }),
+    ]);
+    assert.equal(thread.id, threadId);
+    return { thread, queue };
+  });
+}
+async function projectStatus() {
+  const client = new HostClient();
+  try {
+    await client.connect(env.AREAL_HARNESS_SERVICE_HOME);
+    return (await client.status()).projects.find(
+      ({ registration }) => registration.workspace === workspace,
+    );
+  } finally {
+    client.close();
   }
+}
+async function menuStop(confirm) {
+  return application.evaluate(
+    async ({ dialog, Menu }, { confirm, stopMenu, defaultLabel }) => {
+      const dialogs = [];
+      const show = dialog.showMessageBox;
+      const menu = Menu.getApplicationMenu().items.flatMap((item) => item.submenu?.items ?? []);
+      const target = menu.find(({ label }) => [stopMenu, defaultLabel].includes(label));
+      if (!target) throw Error("Native stop menu unavailable");
+      dialog.showMessageBox = async (...args) => {
+        const { message, buttons } = args.at(-1);
+        dialogs.push({ message, buttons });
+        return { response: confirm ? 1 : 0 };
+      };
+      try {
+        await target.click(target);
+        return dialogs;
+      } finally {
+        dialog.showMessageBox = show;
+      }
+    },
+    { confirm, stopMenu: nativeText("host.stopMenu"), defaultLabel: "Stop background…" },
+  );
+}
+async function verifyStop(host, { replacing = false } = {}) {
+  const stopped = await until(async () => {
+    const path = join(env.AREAL_HARNESS_SERVICE_HOME, "host", "stop.json");
+    const receipt = await readFile(path, "utf8")
+      .then(JSON.parse)
+      .catch((error) => {
+        if (error.code === "ENOENT") return null;
+        throw error;
+      });
+    return receipt?.generation === host.generation && receipt.state === "completed"
+      ? receipt
+      : null;
+  }, "original Host stop receipt");
+  const reference = {
+    kind: "stopHost",
+    home: env.AREAL_HARNESS_SERVICE_HOME,
+    hostId: host.hostId,
+    generation: host.generation,
+    requestId: stopped.requestId,
+    strategy: "cancel",
+    pid: host.pid,
+  };
+  stops.push(reference);
+  if (!replacing) await assertApplicationStopped(binary, env, { hostPid: host.pid });
+  await until(() => {
+    try {
+      process.kill(host.pid, 0);
+      return false;
+    } catch (error) {
+      if (error.code !== "ESRCH") throw error;
+      return true;
+    }
+  }, "original Host process exits");
+  assert.equal((await readOfflineHostReceipt(binary, reference))?.state, "completed");
+  return stopped;
 }
 console.log("Lifecycle evidence:", scratch);
 try {
-  await launch();
-  await app.evaluate(({ dialog }, path) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
-  }, workspace);
-  await page.evaluate(() => window.arealDesktop.chooseProject());
-  pid = (
-    await until(
-      async () => (await state()).projects.find((p) => p.root === workspace && p.state?.connected),
-      "connected project",
-    )
-  ).id;
-  await page.getByTestId("chat-input").fill("hold lifecycle");
-  await page.getByRole("button", { name: "发送", exact: true }).click();
-  tid = await until(
-    () => page.getByTestId("areal-workbench").getAttribute("data-thread-id"),
-    "created Thread identity",
-  );
-  await until(
-    async () =>
-      requests.length &&
-      (await state()).projects[0].state.threads[tid]?.turns.at(-1)?.status === "inProgress",
-    "held turn",
-  );
+  application = await electron.launch({
+    executablePath: require("electron"),
+    args: [
+      join(gui, "app"),
+      ...(process.platform === "darwin" ? ["-ApplePersistenceIgnoreState", "YES"] : []),
+    ],
+    env,
+    timeout: 120000,
+  });
+  electronPid = application.process().pid;
+  page = await application.firstWindow();
+  page.setDefaultTimeout(30000);
+  page.on("pageerror", (error) => errors.push(error.message));
+  await workbench().waitFor({ timeout: 120000 });
+  await application.context().addInitScript(() => {
+    const key = "areal-gui:application-preferences";
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        ...JSON.parse(localStorage.getItem(key) ?? "{}"),
+        locale: "zh-CN",
+        followUp: "queue",
+        nextPromptSuggestions: false,
+      }),
+    );
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.locator('[data-startup-ready="true"][data-testid="areal-workbench"]').waitFor();
+  originalHost = await readFixtureHost(env);
+  assert.ok(originalHost?.pid > 1);
+  await openProjectInDesktop(application, page, workspace);
+  await page.getByRole("button", { name: "选择模型", exact: true }).click();
+  await page.getByRole("radio", { name: "fixture", exact: true }).click();
+  const input = page.getByTestId("chat-input");
+  const send = page.getByTestId("chat-send-button");
+  await input.fill("hold lifecycle");
+  await sendReady(page);
+  await send.click();
+  threadId = await until(() => workbench().getAttribute("data-thread-id"), "original thread");
+  await page.getByText("Lifecycle fixture is running.", { exact: true }).waitFor();
+  const originalProject = await projectStatus();
+  assert.ok(originalProject?.service?.generation);
+  const originalTurn = (await coreState()).thread.turns.at(-1);
+  assert.equal(originalTurn.status, "inProgress");
+
   for (const text of ["preserved first", "preserved second"]) {
-    await page.getByTestId("chat-input").fill(text);
-    await page.getByRole("button", { name: "发送", exact: true }).click();
+    await input.fill(text);
+    await send.click();
     await until(
-      async () => queue(await state())?.items.some((i) => i.input.some((p) => p.text === text)),
-      "queued input",
+      async () =>
+        (await coreState()).queue.items.some((item) =>
+          item.input.some((part) => part.text === text),
+        ),
+      "original queue item",
     );
   }
-  const original = structuredClone(queue(await state()).items);
+  const originalQueue = (await coreState()).queue.items;
   const preservedDraft = "unsent lifecycle draft";
-  await page.getByTestId("chat-input").fill(preservedDraft);
-  const originalThread = structuredClone(
-    (await state()).projects.find((p) => p.id === pid).state.threads[tid],
-  );
-  const metadata = JSON.parse(await readFile(join(home, "service.json"), "utf8"));
-  for (const request of [
-    { name: "stop", params: { projectId: pid, threadId: tid } },
-    { name: "serviceLifecycle", params: { operation: "stop", expectedTargets: [] } },
+  await input.fill(preservedDraft);
+
+  const alias = await workbench().getAttribute("data-project-id");
+  assert.ok(alias);
+  for (const [name, params] of [
+    ["stop", { projectId: alias, threadId }],
+    ["serviceLifecycle", { operation: "stop", expectedTargets: [] }],
   ]) {
-    const rejected = await page.evaluate(
-      ({ name, params }) => window.arealDesktop.command(name, params),
-      request,
-    );
+    const rejected = await command(name, params);
     assert.equal(rejected.ok, false);
     assert.equal(rejected.error.code, "INVALID_DESKTOP_REQUEST");
   }
-  await call("serviceLifecycle", { operation: "check" });
-  assert.equal(
-    (await state()).projects.find((p) => p.id === pid).state.threads[tid].turns.at(-1).status,
-    "inProgress",
-  );
-  assert.deepEqual(JSON.parse(await readFile(join(home, "service.json"), "utf8")), metadata);
-  checks.push(
-    "Main rejects missing pause identity and untrusted lifecycle fields; check is read-only",
-  );
-  await page.screenshot({ path: join(scratch, "01-live-queue.png") });
-  const cancelFromMenu = async (confirm) =>
-    app.evaluate(async ({ Menu, dialog }, confirm) => {
-      const seen = [];
-      dialog.showMessageBox = async (...args) => {
-        const options = args.at(-1);
-        seen.push(options);
-        return { response: options.message === "确认取消后台任务？" && confirm ? 1 : 0 };
-      };
-      Menu.getApplicationMenu()
-        .items[0].submenu.items.find((i) => i.label === "停止后台 Core 服务…")
-        .click();
-      const deadline = Date.now() + 10000;
-      while (!seen.length && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
-      await new Promise((r) => setTimeout(r, 200));
-      return seen;
-    }, confirm);
-  const declined = await cancelFromMenu(false);
-  dialogs.push(...declined);
+  assert.equal((await command("serviceLifecycle", { operation: "check" })).ok, true);
+  assert.equal((await projectStatus()).service.generation, originalProject.service.generation);
+  assert.equal((await coreState()).thread.turns.at(-1)?.status, "inProgress");
+  checks.push("checking and invalid lifecycle commands preserve the original active Core");
+
+  const declined = await menuStop(false);
   assert.equal(declined.length, 1);
-  assert.equal(declined[0].message, "确认取消后台任务？");
-  assert.equal(await page.getByTestId("chat-input").innerText(), preservedDraft);
-  assert.deepEqual(queue(await state()).items, original);
-  assert.equal((await state()).projects[0].state.threads[tid].turns.at(-1).status, "inProgress");
-  checks.push(
-    "native menu recovery declined confirmation preserves the running turn and both queued inputs",
-  );
-  const confirmed = await cancelFromMenu(true);
-  assert.equal(confirmed.length, 1);
-  assert.equal(confirmed[0].message, "确认取消后台任务？");
-  dialogs.push(...confirmed);
-  await waitForServiceProcessExit(home, metadata);
-  assert.equal(requests.length, 1, "cancel never dispatches pending input");
-  checks.push("native menu confirmed cancel exits the original Desktop and Core safely");
-  await page.getByRole("button", { name: "重新连接后台", exact: true }).click();
-  await until(
-    async () => (await state()).projects.find((p) => p.id === pid)?.state?.connected,
-    "explicit reconnect",
-  );
-  await call("open", { projectId: pid, threadId: tid });
-  await until(async () => queue(await state())?.items.length === 2, "restored queue");
-  assert.equal(queue(await state()).paused, true);
-  assert.deepEqual(queue(await state()).items, original);
-  assert.equal(requests.length, 1);
-  assert.equal(await page.getByTestId("chat-input").innerText(), preservedDraft);
-  assert.deepEqual(
-    (await state()).projects.find((p) => p.id === pid).state.threads[tid].turns.map((t) => t.id),
-    originalThread.turns.map((t) => t.id),
-  );
-  await page.screenshot({ path: join(scratch, "02-reopened-paused.png") });
-  checks.push(
-    "explicit reconnect preserves Queue identities, bodies and order, remains paused and sends no model request",
+  assert.equal(await input.innerText(), preservedDraft);
+  assert.deepEqual((await coreState()).queue.items, originalQueue);
+  assert.equal((await coreState()).thread.turns.at(-1)?.status, "inProgress");
+  assert.equal(
+    await readFixtureHost(env).then(({ generation }) => generation),
+    originalHost.generation,
   );
 
-  const scheduled = await call("manage", {
-    projectId: pid,
-    operation: "taskCreate",
-    mode: "scheduled",
-    objective: "Wait for an explicit lifecycle answer.",
-    interactionMode: "asynchronous",
-    schedule: { at: Math.floor(Date.now() / 1000) + 2, timeZone: "UTC" },
+  const confirmed = await menuStop(true);
+  assert.deepEqual(confirmed, declined);
+  await verifyStop(originalHost);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await workbench().waitFor();
+  const ticket = await page.evaluate(async () => {
+    try {
+      await window.arealDesktop.getHostTicket();
+      return "issued";
+    } catch {
+      return "unavailable";
+    }
   });
-  const task = () => call("manage", { projectId: pid, operation: "task", taskId: scheduled.id });
-  await until(
-    async () => (await task()).runs.at(-1)?.status === "waitingForInput",
-    "scheduled Run waiting without an active turn",
-  );
-  const server = await call("manage", { projectId: pid, operation: "server" });
-  assert.equal(server.activeTurns.length, 0);
-  assert.ok(server.activeGoals.length > 0);
-  assert.ok(server.activeTasks > 0);
-  const old = JSON.parse(await readFile(join(home, "service.json"), "utf8"));
-  const modelRequestsBeforeReopen = requests.length;
-  await closeGui();
-  env.AREAL_CORE_CONFIG = secondConfig;
-  await launch({ recovery: true });
-  await until(
-    async () => (await state()).connection?.state === "ready",
-    "reattach with original launch configuration",
-  );
-  const startupDialogs = await app.evaluate(() => globalThis.__lifecycleDialogs ?? []);
-  dialogs.push(...startupDialogs);
-  assert.deepEqual(startupDialogs, []);
-  const reattached = JSON.parse(await readFile(join(home, "service.json"), "utf8"));
-  assert.deepEqual(
-    reattached,
-    old,
-    "changing the requested config must not replace the running service",
-  );
-  await until(
-    async () => (await state()).backendUpdate?.state === "pending",
-    "nonblocking pending update",
-  );
-  await page.getByRole("button", { name: "更新后台…", exact: true }).waitFor();
-  await call("open", { projectId: pid, threadId: tid });
-  await until(async () => queue(await state())?.items.length === 2, "queue after startup recovery");
-  assert.deepEqual(queue(await state()).items, original);
-  assert.equal(queue(await state()).paused, true);
-  assert.equal(await page.getByTestId("chat-input").innerText(), preservedDraft);
-  const restored = await task();
-  assert.equal(restored.id, scheduled.id);
-  assert.equal(restored.paused, false);
-  assert.equal(restored.runs.at(-1).status, "waitingForInput");
-  assert.equal(
-    requests.length,
-    modelRequestsBeforeReopen,
-    "reopening must not run the scheduled task again",
-  );
-  await page.screenshot({ path: join(scratch, "03-startup-recovered.png") });
-  checks.push(
-    "reopen with a different config path retains the original service, waiting Run and Queue without dialogs or replay, and shows the original-config notice",
-  );
-  const updateMetadata = JSON.parse(await readFile(join(home, "service.json"), "utf8"));
-  await app.evaluate(({ dialog }) => {
-    globalThis.__updateRecoveryDialogs = [];
+  assert.equal(ticket, "unavailable", "document reload and ticket retry cannot start another Host");
+  assert.equal(await readFixtureHost(env), null);
+  assert.equal(requests.length, 1, "stop never sends queued input");
+  checks.push("native menu cancellation and confirmed stop preserve queued input without replay");
+
+  const reconnect = page.getByRole("button", { name: "重新连接后台", exact: true }).first();
+  await reconnect.click();
+  const successor = await until(async () => {
+    const current = await readFixtureHost(env);
+    return current?.generation !== originalHost.generation && current;
+  }, "successor Host generation");
+  originalHost = successor;
+  await selectConversation(page, threadId);
+  const opened = await command("connect", { projectId: alias, threadId });
+  assert.equal(opened.ok, true, JSON.stringify(opened));
+  const reopened = await projectStatus();
+  assert.notEqual(reopened.service.generation, originalProject.service.generation);
+  const retained = await coreState();
+  assert.equal(retained.thread.turns.at(-1).id, originalTurn.id);
+  assert.equal(retained.thread.turns.at(-1).status, "interrupted");
+  assert.equal(retained.queue.paused, true);
+  assert.deepEqual(retained.queue.items, originalQueue);
+  assert.equal(requests.length, 1);
+  assert.equal(await input.innerText(), preservedDraft);
+  await page.screenshot({ path: join(scratch, "reopened-paused.png") });
+  checks.push("explicit reconnect preserves original turn, paused queue and draft");
+
+  await application.evaluate(({ dialog }) => {
+    globalThis.lifecycleUpdatePrompts = [];
     dialog.showMessageBox = async (...args) => {
-      const options = args.at(-1);
-      globalThis.__updateRecoveryDialogs.push(options);
-      return { response: options.message === "确认取消后台任务？" ? 1 : 0 };
+      globalThis.lifecycleUpdatePrompts.push(args.at(-1).message);
+      return { response: 1 };
     };
   });
-  const updatingGui = app.process();
-  await page
-    .getByRole("button", { name: "更新后台…", exact: true })
-    .click()
-    .catch((error) => {
-      if (!crashUpdate || !/closed|disconnected/i.test(error.message)) throw error;
-    });
-  if (crashUpdate) {
-    await until(
-      () => updatingGui.exitCode !== null || updatingGui.signalCode !== null,
-      "only GUI crashes after accepted update",
-    );
-    app = null;
-    const crashed = JSON.parse(
-      await readFile(join(scratch, "update-accepted-before-gui-crash.json"), "utf8"),
-    );
-    assert.equal(crashed.receipt.desktopExit, "requested");
-    const control = JSON.parse(
-      await readFile(join(env.AREAL_GUI_USER_DATA, "service-control.json"), "utf8"),
-    );
-    assert.equal(control.references.at(-1).requestId, crashed.requestId);
-    crashDialogs = crashed.dialogs;
-    await waitForServiceProcessExit(home, updateMetadata);
-    await launch({ recovery: true });
-    await page.getByRole("button", { name: "更新后台…", exact: true }).waitFor();
-    assert.equal(
-      (await state()).lifecycle.requestId,
-      crashed.requestId,
-      "reopen reads the original request",
-    );
-    assert.equal(
-      (await state()).lifecycle.phase,
-      "completed",
-      "replacement requires confirmed original exit",
-    );
-    assert.equal(requests.length, modelRequestsBeforeReopen);
-    const operationsBefore = (await import("node:fs/promises")).readdir;
-    const journalNames = await operationsBefore(join(home, "lifecycle-operations"));
-    await page.getByRole("button", { name: "更新后台…", exact: true }).click();
-    await until(
-      async () => (await state()).connection?.state === "ready" && !(await state()).backendUpdate,
-      "finish original update after GUI crash",
-    );
-    assert.deepEqual(
-      await operationsBefore(join(home, "lifecycle-operations")),
-      journalNames,
-      "finishing the original update never submits another stop",
-    );
-    checks.push(
-      "forced GUI exit after accepted update retains the original request/generation and finishes replacement without a repeated stop or confirmation",
-    );
+  const updated = await command("serviceLifecycle", { operation: "update" });
+  assert.equal(updated.ok, true, JSON.stringify(updated));
+  assert.equal(updated.value.stopped, true);
+  const afterUpdate = await readFixtureHost(env);
+  assert.ok(afterUpdate && afterUpdate.generation !== successor.generation);
+  originalHost = afterUpdate;
+  const updateReceipt = await verifyStop(successor, { replacing: true });
+  assert.equal(updateReceipt.requestId, updated.value.operation.requestId);
+  assert.equal((await application.evaluate(() => globalThis.lifecycleUpdatePrompts)).length, 1);
+  for (const pid of [reopened.service.hostPid, reopened.service.corePid]) {
+    assert.ok(Number.isSafeInteger(pid) && pid > 1);
+    assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
   }
-  await waitForServiceProcessExit(home, updateMetadata);
-  await until(
-    async () => (await state()).connection?.state === "ready" && !(await state()).backendUpdate,
-    "updated replacement connected",
-  );
-  const replacement = JSON.parse(await readFile(join(home, "service.json"), "utf8"));
-  assert.notEqual(replacement.pid, updateMetadata.pid);
-  await call("open", { projectId: pid, threadId: tid });
-  await until(async () => queue(await state())?.items.length === 2, "queue retained after update");
-  assert.deepEqual(queue(await state()).items, original);
-  assert.equal(queue(await state()).paused, true);
-  assert.equal(await page.getByTestId("chat-input").innerText(), preservedDraft);
-  const updatedTask = await task();
-  assert.equal(updatedTask.id, restored.id);
-  assert.equal(updatedTask.paused, restored.paused);
-  assert.deepEqual(
-    updatedTask.runs.map((run) => run.id),
-    restored.runs.map((run) => run.id),
-  );
-  assert.equal(updatedTask.runs.at(-1).status, "paused");
-  assert.equal(
-    requests.length,
-    modelRequestsBeforeReopen,
-    "update must not replay queued input or waiting scheduled Run",
-  );
-  await page.screenshot({ path: join(scratch, "04-updated-preserved.png") });
-  const updateDialogs = crashUpdate
-    ? crashDialogs
-    : await app.evaluate(() => globalThis.__updateRecoveryDialogs);
-  dialogs.push(...updateDialogs);
-  assert.equal(updateDialogs.length, 1);
-  assert.equal(updateDialogs[0].message, "确认取消后台任务？");
-  checks.push(
-    "explicit GUI update confirms once, exits the original backend, connects the replacement, and preserves task/run/queue/history identities and unsent draft without replay; no package download/install",
-  );
-  assert.deepEqual(errors, []);
-  passed = true;
+  const resumed = await command("connect", { projectId: alias, threadId, resumeScheduling: true });
+  assert.equal(resumed.ok, true, JSON.stringify(resumed));
+  await selectConversation(page, threadId);
+  const afterUpdateThread = await coreState();
+  assert.equal(afterUpdateThread.thread.turns.at(-1).id, originalTurn.id);
+  assert.deepEqual(afterUpdateThread.queue.items, originalQueue);
+  assert.equal(afterUpdateThread.queue.paused, true);
+  assert.equal(await input.innerText(), preservedDraft);
+  assert.equal(requests.length, 1);
+  checks.push("explicit update replaces the original Host after one confirmed stop without replay");
 } catch (error) {
-  errors.push(error.stack);
-  await writeFile(
-    join(scratch, "failure-state.json"),
-    JSON.stringify(await state().catch(() => null), null, 2),
-  );
-  if (page) await page.screenshot({ path: join(scratch, "failure.png") }).catch(() => {});
-  process.exitCode = 1;
+  errors.push(error.stack ?? String(error));
+  if (page && !page.isClosed()) await captureSmokeFailure(page, scratch, error);
 } finally {
-  await closeGui().catch((error) => {
-    errors.push(error.message);
-    passed = false;
-  });
-  const connection = new ServiceConnection();
-  try {
-    const metadata = JSON.parse(await readFile(join(home, "service.json"), "utf8"));
-    await connection.connect(metadata);
-    await connection.request("hello", { protocol: metadata.protocol, identity: metadata.identity });
-    const lifecycle = new DesktopLifecycle({
-      connection,
-      metadata,
-      home,
-      notify: async () => ({ response: 1 }),
-    });
-    await until(
-      async () => !(await lifecycle.observe()).blockers.length,
-      "cleanup waits for accepted adapter operations",
-    );
-    await lifecycle.stop({ mode: "cancel" });
-  } catch (error) {
-    if (error.code !== "ENOENT") {
-      errors.push("cleanup: " + error.message);
-      passed = false;
+  if (application) {
+    try {
+      await application.evaluate(({ dialog }) => {
+        dialog.showMessageBox = async () => ({ response: 1 });
+      });
+      await closeSmokeApplication(application, 30000);
+    } catch (error) {
+      errors.push(`Electron cleanup: ${error.message}`);
     }
-  } finally {
-    connection.close();
   }
-  for (const response of held) response.destroy();
+  try {
+    const current = originalHost ?? (await readFixtureHost(env));
+    if (current)
+      finalStop = await settleFixtureHostAfterQuit(binary, env, scratch, {
+        host: current,
+        pid: electronPid,
+      });
+    else
+      await assertApplicationStopped(binary, env, { pid: electronPid, hostPid: originalHost?.pid });
+  } catch (error) {
+    errors.push(`Host cleanup: ${error.message}`);
+  }
   model.closeAllConnections();
-  await new Promise((r) => model.close(r));
-  await writeFile(join(scratch, "model-requests.json"), JSON.stringify(requests, null, 2));
-  if (!passed) process.exitCode = 1;
-  await writeFile(
-    join(scratch, "manifest.json"),
-    JSON.stringify(
-      {
-        passed,
-        checks,
-        errors,
-        dialogs,
-        crashUpdate,
-        source: execFileSync("git", ["rev-parse", "HEAD"]).toString().trim(),
-        binary,
-        binarySha256: createHash("sha256")
-          .update(await readFile(binary))
-          .digest("hex"),
-        boundary:
-          "real Electron menu/startup + Desktop/Core/Runtime; local model; native dialogs injected; no update download/install",
-      },
-      null,
-      2,
-    ),
-  );
-  console.log(JSON.stringify({ passed, evidence: scratch, checks, errors }));
+  await new Promise((close) => model.close(close));
+  const manifest = {
+    passed: errors.length === 0,
+    checks,
+    errors,
+    requests,
+    stops,
+    finalStop: finalStop?.requestId,
+    electronPid,
+    threadId,
+    binarySha256,
+    evidence: scratch,
+  };
+  await writeFile(join(scratch, "manifest.json"), JSON.stringify(manifest, null, 2));
+  console.log(JSON.stringify(manifest));
+  if (!manifest.passed) process.exitCode = 1;
 }

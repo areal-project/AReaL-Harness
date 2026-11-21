@@ -115,21 +115,22 @@ export async function collectUiHonesty() {
   const registered = new Set([...registry.matchAll(/^ {2}(\w+): \{/gm)].map((match) => match[1]));
   const hostCodes = new Set();
   for (const path of await files(resolve(root, "../../core/host/src"), (p) => p.endsWith(".rs")))
-    if (!/_tests?\.rs$|\/tests?\//.test(path))
-      for (const match of (await readFile(path, "utf8"))
-        .split("#[cfg(test)]")[0]
-        .matchAll(HOST_CODE))
+    if (!/_tests?\.rs$|\/tests?\//.test(path)) {
+      const source = (await readFile(path, "utf8")).split("#[cfg(test)]")[0];
+      for (const match of source.matchAll(HOST_CODE))
         hostCodes.add(match[1] ?? match[2] ?? match[3]);
+      for (const match of code(source).matchAll(/["'`]([^"'`\n]*\p{Script=Han}[^"'`\n]*)["'`]/gu))
+        copy.add(match[1]);
+    }
   for (const hostCode of [...hostCodes].sort())
     if (!registered.has(hostCode))
       add("renderer/src/errors/errorCopy.ts", "unregistered-error-code", hostCode);
   // 后台与原生外壳的文案同样会上屏。
-  for (const dir of ["../../services/workbench/src", "app/src"])
-    for (const path of await files(resolve(root, dir), (p) => /\.(?:c?js|ts)$/.test(p)))
-      for (const match of code(await readFile(path, "utf8")).matchAll(
-        /["'`]([^"'`\n]*\p{Script=Han}[^"'`\n]*)["'`]/gu,
-      ))
-        copy.add(match[1]);
+  for (const path of await files(resolve(root, "app/src"), (p) => /\.(?:c?js|ts)$/.test(p)))
+    for (const match of code(await readFile(path, "utf8")).matchAll(
+      /["'`]([^"'`\n]*\p{Script=Han}[^"'`\n]*)["'`]/gu,
+    ))
+      copy.add(match[1]);
   // 验收脚本按文字断言时，文字必须仍在产品里；否则测试在守护一段已删的文案。
   // 脚本自己造的夹具文字（在脚本里出现不止一次）和带插值的模板不算。
   const shipped = [...copy].join("\n");

@@ -10,12 +10,6 @@ import type {
   ChatGPTStatus,
   SnapShotServices,
 } from "./desktop-services.js";
-import type {
-  McpAppCommand,
-  McpAppDeepLink,
-  McpAppEvent,
-  McpFormResourceCommand,
-} from "./mcp-app-services.js";
 export type { CommandName, CommandParams, CommandResponse, PreviewRequest };
 export type {
   Attachment,
@@ -29,7 +23,6 @@ export type {
   ManagementRequestMap,
   ManagementResponse,
   ManagementResponseMap,
-  McpAppDeepLink,
   ModelParameters,
   ObservedCatalogOwner,
   OwnedPreviewRequest,
@@ -64,9 +57,6 @@ export {
   sideAnchor,
   sideSelection,
   snapShotShortcutModifierPair,
-  validateMcpPageCall,
-  validateMcpPageDeclaration,
-  validateMcpPageReply,
 } from "./desktop-services.js";
 export type Data = Record<string, any>;
 export type FileOpenTargets = {
@@ -85,6 +75,7 @@ export type FileOpenRequest =
     }
   | {
       operation: "open" | "reveal" | "saveAs" | "readImage" | "readPdf";
+      target?: string;
       projectId: string;
       threadId?: string;
       path: string;
@@ -144,7 +135,6 @@ export interface Snapshot {
     }[];
   };
   library?: Data;
-  computerControl?: Data | null;
 }
 export interface UpdateState {
   enabled: boolean;
@@ -175,14 +165,18 @@ export interface PlatformReadServices {
   ): Promise<void>;
   /** 在选中会话之外再观察一个会话（侧边讨论）；返回的函数结束观察。 */
   watch?(target: { projectId: string; threadId: string }): () => void;
-  history(options: {
-    view: "own" | "inherited" | "reference";
-    cursor?: string;
-    maxBytes?: number;
-  }): Promise<import("./host-services.js").HostHistoryPage>;
+  history(
+    options: {
+      view: "own" | "inherited" | "reference";
+      cursor?: string;
+      maxBytes?: number;
+    },
+    target?: { projectId: string; threadId: string },
+  ): Promise<import("./host-services.js").HostHistoryPage>;
   media(
     source: import("@areal/client").MediaSource,
     signal?: AbortSignal,
+    target?: { projectId: string; threadId: string },
   ): Promise<import("@areal/client").MediaBytes>;
   acquire(viewId: string, generation: string): Promise<void>;
   release(viewId: string, generation: string): Promise<void>;
@@ -198,7 +192,7 @@ export interface PlatformReadServices {
     anchor: Pick<import("./readingViews.js").ReadingAnchor, "turnId" | "itemId">,
     generation: string,
   ): Promise<"ready" | import("./conversationReading.js").ReadingBlock>;
-  loadOlder(pageId?: string): Promise<void>;
+  loadOlder(pageId?: string, generation?: string): Promise<void>;
   loadItem(itemId: string, target?: { projectId: string; threadId: string }): Promise<void>;
 }
 export interface PlatformServices {
@@ -210,7 +204,6 @@ export interface PlatformServices {
     library?: boolean;
     taskCatalog?: boolean;
     taskManage?: boolean;
-    pages?: boolean;
     bots?: boolean;
     settings?: readonly string[];
   };
@@ -220,7 +213,9 @@ export interface PlatformServices {
     route(
       name: string,
       params: Record<string, unknown>,
-    ): Promise<{ routed: true; value?: unknown } | undefined>;
+    ): Promise<
+      { routed: true; value?: unknown } | { routed: true; snapshot: Snapshot } | undefined
+    >;
   };
   /** 按领域切到 Host 工作台服务的命令；返回 undefined 表示仍走桌面原路径。 */
   workbench?: {
@@ -232,10 +227,6 @@ export interface PlatformServices {
   recoverPersistedHistory?(target: { projectId: string; threadId: string } | null): Promise<void>;
   getHostTicket?(): Promise<unknown>;
   snapShots?: SnapShotServices;
-  mcpApp?: McpAppCommand;
-  onMcpAppEvent?(listener: (event: McpAppEvent) => void): () => void;
-  onMcpAppDeepLink?(listener: (link: McpAppDeepLink) => Promise<void> | void): () => void;
-  mcpFormResource?: McpFormResourceCommand;
   /** The themed initial window has painted; desktop may reveal before backend or history restoration. */
   presentReady?(): Promise<void>;
   installCommandLineTools?(): Promise<{ started: boolean; message?: string }>;
@@ -291,8 +282,8 @@ const READ_OPERATIONS: Readonly<Record<string, ReadonlySet<string>>> = {
     "taskHistoryCapabilities",
   ]),
   providers: new Set(["list"]),
-  manage: new Set(["inspect", "list"]),
-  workspace: new Set(["list", "read", "status", "worktreeList", "worktreeStatus"]),
+  manage: new Set(["inspect", "list", "context"]),
+  workspace: new Set(["list", "read", "info", "status", "worktreeList", "worktreeStatus"]),
 };
 type ServiceReadGuard = {
   inFlightExact: Map<string, Promise<unknown>>;
@@ -358,10 +349,11 @@ async function executeCall<N extends CommandName, P extends CommandParams<N>>(
   }
   const written = await services.writes?.route(name, params as Record<string, unknown>);
   if (written) {
+    if ("snapshot" in written) return written.snapshot as CommandResponse<N, P>;
     const value =
       "value" in written
         ? written.value
-        : name === "respond" || name === "steer"
+        : name === "connect" || name === "respond" || name === "steer"
           ? await services.snapshot()
           : { stopped: true };
     if ("value" in written) await contract.validateCommandResponse(name, params, value);

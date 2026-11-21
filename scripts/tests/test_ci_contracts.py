@@ -199,7 +199,6 @@ class CiContracts(unittest.TestCase):
             "macos:ui",
             "macos:renderer",
             "macos:bundle",
-            "computer-helper",
             "smoke:test:composer-files",
         }
         self.assertTrue(expensive <= full)
@@ -400,13 +399,13 @@ class CiContracts(unittest.TestCase):
             "clients/gui/app/assets/builtin-skills/sample/SKILL.md",
             "core/config/prompt.md",
             "examples/plugin-marketplace/sample/skills/sample/SKILL.md",
-            "services/workbench/src/host-core-client.ts",
+            "services/workbench/src/host-core-client.mts",
         ):
             with self.subTest(path=path):
                 impact = scope.impact([path])
                 self.assertTrue(impact["shared"] or impact["gui"])
         self.assertEqual(
-            scope.impact(["services/workbench/src/host-core-client.ts"])["unknown"], []
+            scope.impact(["services/workbench/src/host-core-client.mts"])["unknown"], []
         )
         for path in (
             "README.md",
@@ -626,7 +625,7 @@ class CiContracts(unittest.TestCase):
         for path in (
             "clients/gui/scripts/support/core-observation.mjs",
             "clients/gui/scripts/support/host-transport-barrier.mjs",
-            "services/workbench/src/backend-main.cjs",
+            "core/host/src/gateway/stop.rs",
             "core/host/src/gateway/session.rs",
         ):
             with self.subTest(path=path):
@@ -634,7 +633,7 @@ class CiContracts(unittest.TestCase):
                 portable = next(item for item in plan["items"] if item["id"] == "gui-portable")
                 for platform in ("darwin", "linux"):
                     self.assertIn("test:script-units", portable["expectedTests"][platform])
-                    self.assertIn("test:workbench-errors", portable["expectedTests"][platform])
+                    self.assertIn("test:host-client", portable["expectedTests"][platform])
                     self.assertNotIn("test:core-observation", portable["expectedTests"][platform])
                     core = [
                         script
@@ -650,14 +649,14 @@ class CiContracts(unittest.TestCase):
                             result["tests"] = [
                                 test
                                 for test in result["tests"]
-                                if test["script"] != "test:workbench-errors"
+                                if test["script"] != "test:host-client"
                             ]
                 self.assertIn(
                     "missing or duplicate runner tests: gui-portable",
                     gate.validate(plan, reports, scope.WORKFLOW_GROUPS["gui"], ("run", "2")),
                 )
 
-    def test_workbench_source_changes_require_the_core_boundary_check(self):
+    def test_retired_workbench_paths_require_the_absence_check(self):
         for path in (
             "services/workbench/src/desktop/core/project-connections.cjs",
             "services/workbench/src/new-owner.ts",
@@ -750,7 +749,6 @@ class CiContracts(unittest.TestCase):
             outputs = [
                 root / "clients/gui" / relative / "fixture.cjs"
                 for relative in (
-                    "packages/gen-ui/dist",
                     "packages/browser-automation/dist",
                     "packages/browser-data/dist",
                     "app/src/core/snapshots/build",
@@ -859,7 +857,7 @@ class CiContracts(unittest.TestCase):
         self.assertEqual(gate.validate_jobs(plan, "gui", jobs), [])
 
     def test_gui_plan_preserves_every_current_production_build_prerequisite(self):
-        plan, _ = self.gate_fixture(("clients/gui/native/computer-helper/Sources/main.swift",))
+        plan, _ = self.gate_fixture(("clients/gui/renderer/src/App.tsx",))
         config = (ROOT / "clients/gui/vite.config.mts").read_text()
         block = config.split('"build-suite": {', 1)[1].split('"design-build": {', 1)[0]
         dependencies = json.loads(re.search(r"dependsOn: (\[[^\]]+\])", block).group(1))
@@ -867,11 +865,6 @@ class CiContracts(unittest.TestCase):
             item.get("productionTask") for item in plan["items"] if item["group"] == "gui-build"
         }
         self.assertTrue(set(dependencies) <= tasks)
-        helper = next(item for item in plan["items"] if item["id"] == "computer-helper")
-        self.assertEqual(
-            helper["command"], ["node", "clients/gui/scripts/build-computer-helper.mjs"]
-        )
-        self.assertIn("xcode", helper["requires"])
 
     def test_native_dmg_contract_has_one_declared_mac_owner(self):
         plan, _ = self.gate_fixture()

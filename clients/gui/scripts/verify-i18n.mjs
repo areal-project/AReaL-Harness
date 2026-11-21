@@ -86,9 +86,7 @@ for (const entry of (await readdir(join(gui, "renderer/src/i18n/messages"))).sor
   visit(source);
 }
 
-const { nativeMessages } = require(
-  join(gui, "../../services/workbench/src/desktop/core/native-i18n.cjs"),
-);
+const { nativeMessages } = require(join(gui, "packages/workbench/node/native-i18n.cjs"));
 const nativeExamples = {
   "browser.frameQuestion": { origin: "https://example.test:4317" },
   "browser.developmentQuestion": { origin: "http://localhost:4317" },
@@ -349,7 +347,6 @@ const settingsFiles = (await walk("renderer/src/settings")).filter(
   (file) => !file.endsWith("provider-ui-state.js"),
 );
 const shared = [
-  "renderer/src/McpAppsWorkspace.tsx",
   "renderer/src/components/ui/dialog.tsx",
   "renderer/src/components/ui/feedback.tsx",
   "renderer/src/app-shell/WorkbenchShell.tsx",

@@ -37,6 +37,32 @@ impl Session {
             )
         )
     }
+    async fn prepare_creation_scope(
+        &self,
+        project: &str,
+        id: &str,
+        original: &(String, String, String),
+    ) -> Result<(String, String, String)> {
+        // 配置刷新可以重启 Core，但尚未准入的创建仍绑定原项目和服务身份。
+        // 刷新后的代际成为本次准入目标，后续准备与提交继续严格核对该快照。
+        self.host
+            .schedules
+            .connections
+            .refresh_gui(&self.host, id)
+            .await
+            .inspect_err(|error| {
+                crate::server::execution_preparation::trace_failure("gateway.create.refresh", error)
+            })?;
+        self.authorize(Some(project), "submit")?;
+        ensure!(self.project_id(project)? == id, "RESYNC_REQUIRED");
+        let current = self
+            .host
+            .schedules
+            .connections
+            .shared_identity(&self.host, id)?;
+        ensure!(current.0 == original.0, "RESYNC_REQUIRED");
+        Ok(current)
+    }
     pub(super) async fn create_session(
         &self,
         project: &str,
@@ -161,6 +187,7 @@ impl Session {
             .schedules
             .connections
             .shared_identity(&self.host, &id)?;
+        ensure!(scope.1 == generation, "RESYNC_REQUIRED");
         if [
             "requestId",
             "parameters",
@@ -189,6 +216,14 @@ impl Session {
             uuid::Uuid::parse_str(&operation).map_err(|_| fail("INVALID_PARAMS"))?;
             let mut original = params.clone();
             original["requestId"] = json!(operation);
+            let scope = self.prepare_creation_scope(project, &id, &scope).await?;
+            if let Some(record) = self.command_record(project, &command)? {
+                ensure!(
+                    record["remote"]["semanticDigest"] == digest,
+                    "COMMAND_CONFLICT"
+                );
+                return self.command_result(project, Some(&record), &command).await;
+            }
             let mut execution = self
                 .host
                 .gateway
@@ -200,7 +235,13 @@ impl Session {
                     "workbench/thread/create",
                     original.clone(),
                 )
-                .await?
+                .await
+                .inspect_err(|error| {
+                    crate::server::execution_preparation::trace_failure(
+                        "gateway.create.prepare",
+                        error,
+                    )
+                })?
                 // 桌面仍在进程内跑后台时 Host 够不到它，模型与工作树选项无处可落，明确拒绝而不是丢掉选项。
                 .ok_or_else(|| {
                     crate::wire::error(
@@ -263,6 +304,19 @@ impl Session {
             };
             self.authorize(Some(project), "submit")?;
             return Ok(Self::command_view(Some(&settled), &command));
+        }
+        let scope = if self.uses_workbench_execution() {
+            self.prepare_creation_scope(project, &id, &scope).await?
+        } else {
+            scope
+        };
+        let generation = scope.1.as_str();
+        if let Some(record) = self.command_record(project, &command)? {
+            ensure!(
+                record["remote"]["semanticDigest"] == digest,
+                "COMMAND_CONFLICT"
+            );
+            return self.command_result(project, Some(&record), &command).await;
         }
         let caps = self
             .rpc(project, generation, "areal/capabilities", json!({}))

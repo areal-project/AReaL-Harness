@@ -10,8 +10,6 @@ use std::collections::BTreeMap;
 pub enum DesktopToolBundle {
     #[serde(rename = "areal.browser.v1")]
     Browser,
-    #[serde(rename = "areal.computer.v1")]
-    Computer,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
@@ -746,6 +744,7 @@ pub struct OwnerInvalidation {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum OwnerNoticeKind {
+    TurnCompleted,
     TaskCompleted,
     QuestionPending,
     InteractionPending,
@@ -754,6 +753,8 @@ pub enum OwnerNoticeKind {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OwnerNoticeFact {
     pub kind: OwnerNoticeKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>,
     pub task_id: Option<String>,
     pub run_id: Option<String>,
     pub thread_id: Option<String>,

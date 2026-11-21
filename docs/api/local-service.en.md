@@ -72,6 +72,8 @@ The response contains `version: 2`, `target: {workspace, dataDir, instanceId}`, 
 
 A published catalog does not establish execution liveness, full-store recoverability, or acceptance of an unknown submission. It does not restore runs, so saved status and revisions can differ from the subsequently started Core. The shared GUI owner cache retains published provenance and unobserved execution status. Task-center and sidebar reads do not start cold Core instances. A separate activation coordinator connects execution owners with enabled schedules while the App runs. Previews do not enter the full Task model or supply revisions for management operations. Live results replace previews; late previews cannot replace live results. A failed live read retains an unconfirmed notice and retry action.
 
+The trusted local GUI can use the `receipt` operation of `tasks.read` with the original `projectId` and `requestId` to read the task receipt for the same caller identity. Host reads the original submission and returns `submissionUnknown: true` when its outcome is still undetermined.
+
 See the [Task API](tasks.en.md#bounded-directory-and-owner-updates) for live bounded queries, owner watch, paging, stream recovery, and notification baselines. The summary pack, Tasks, receipts, and ownership references commit through one root. Publication errors must not become empty catalogs or reverse an already confirmed operation.
 
 ## Inspectable stop operations

@@ -50,17 +50,15 @@ struct Skill {
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
-struct Metadata {
-    name: String,
-    description: String,
+pub(crate) struct Metadata {
+    pub(crate) name: String,
+    pub(crate) description: String,
 }
 
 #[derive(Default, Deserialize)]
-struct ResourceState {
-    revision: u64,
-    skills: BTreeMap<String, BTreeMap<String, bool>>,
-    #[serde(rename = "mcp")]
-    _mcp: Vec<Value>,
+pub(crate) struct ResourceState {
+    pub(crate) revision: u64,
+    pub(crate) skills: BTreeMap<String, BTreeMap<String, bool>>,
 }
 
 pub fn materialize(
@@ -120,16 +118,16 @@ pub fn materialize(
         .homedir
         .as_ref()
         .context("managed schedule preparation requires the user home")?;
-    let mut selected = scan(homedir, user_managed_skills_root, "user", false, &state)?;
-    for (id, skill) in scan(
-        &registration.workspace,
-        project_managed_skills_root,
-        project_resource_scope,
-        true,
-        &state,
-    )? {
-        selected.insert(id, skill);
-    }
+    let selected = selected_rows(
+        scan_rows(homedir, user_managed_skills_root, "user", false, &state)?,
+        scan_rows(
+            &registration.workspace,
+            project_managed_skills_root,
+            project_resource_scope,
+            true,
+            &state,
+        )?,
+    );
     let mut deployment: Value = serde_json::from_slice(&fs::read(source)?)?;
     let profiles = deployment["profiles"]
         .as_array()
@@ -149,7 +147,10 @@ pub fn materialize(
         .clone();
     let builtin_root = source.parent().unwrap().join(&builtin.root);
     bounded(&builtin_root.join("SKILL.md"), 1).context("saved builtin skill is unreadable")?;
-    let mut skills: Vec<_> = selected.into_values().flatten().collect();
+    let mut skills = selected
+        .into_values()
+        .map(skill_from_row)
+        .collect::<Result<Vec<_>>>()?;
     skills.push(builtin);
     let mut profile = base_profile.clone();
     profile["allowPluginSkills"] = json!(true);
@@ -221,13 +222,41 @@ fn comparable_profile(profile: &Value) -> Result<Value> {
     Ok(profile)
 }
 
-fn scan(
+// 预览和执行部署使用同一覆盖规则；无效或禁用的项目项也必须遮住用户项。
+pub(crate) fn selected_rows(
+    mut user: BTreeMap<String, Value>,
+    project: BTreeMap<String, Value>,
+) -> BTreeMap<String, Value> {
+    user.extend(project);
+    user.retain(|_, row| row["enabled"] == true && row.get("error").is_none());
+    user
+}
+
+fn skill_from_row(row: Value) -> Result<Skill> {
+    Ok(Skill {
+        id: row["id"].as_str().context("invalid skill id")?.into(),
+        revision: row["revision"]
+            .as_str()
+            .context("invalid skill revision")?
+            .into(),
+        root: PathBuf::from(row["root"].as_str().context("invalid skill root")?),
+        metadata: Metadata {
+            name: row["name"].as_str().context("invalid skill name")?.into(),
+            description: row["description"]
+                .as_str()
+                .context("invalid skill description")?
+                .into(),
+        },
+    })
+}
+
+pub(crate) fn scan_rows(
     base: &Path,
     managed: &Path,
     scope: &str,
     project: bool,
     state: &ResourceState,
-) -> Result<BTreeMap<String, Option<Skill>>> {
+) -> Result<BTreeMap<String, Value>> {
     let base = base.canonicalize()?;
     let mut roots = Vec::new();
     for relative in areal_config::skills::SKILL_SEARCH_DIRECTORIES {
@@ -291,17 +320,30 @@ fn scan(
                     root: directory,
                     metadata,
                 })
-            })()
-            .ok();
+            })();
             let enabled = state.skills.get(scope).and_then(|scope| scope.get(&id)) != Some(&false);
             // 无效或关闭的项目技能仍覆盖同名用户技能。
-            selected.insert(id, skill.filter(|_| enabled));
+            let mut row = json!({"id":id,"scope":if project {"project"}else{"user"},"managed":managed.canonicalize().ok().as_ref()==Some(root),"enabled":enabled});
+            match skill {
+                Ok(skill) => {
+                    row["root"] = json!(skill.root);
+                    row["name"] = json!(skill.metadata.name);
+                    row["description"] = json!(skill.metadata.description);
+                    row["revision"] = json!(skill.revision);
+                }
+                Err(error) => {
+                    row["name"] = json!(id);
+                    row["enabled"] = json!(false);
+                    row["error"] = json!(error.to_string());
+                }
+            }
+            selected.insert(id, row);
         }
     }
     Ok(selected)
 }
 
-fn valid_id(id: &str) -> bool {
+pub(crate) fn valid_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 128
         && !id.starts_with('.')
@@ -311,7 +353,7 @@ fn valid_id(id: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || b"_.:-".contains(&byte))
 }
 
-fn bounded(path: &Path, bytes: u64) -> Result<String> {
+pub(crate) fn bounded(path: &Path, bytes: u64) -> Result<String> {
     let file = OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
@@ -365,7 +407,7 @@ fn reject_yaml_aliases(header: &str) -> Result<()> {
     }
 }
 
-fn metadata(text: &str, id: &str) -> Result<Metadata> {
+pub(crate) fn metadata(text: &str, id: &str) -> Result<Metadata> {
     let lines: Vec<_> = text
         .split('\n')
         .map(|line| line.strip_suffix('\r').unwrap_or(line))
@@ -421,6 +463,19 @@ mod tests {
         home: PathBuf,
         registration: ProjectRegistration,
         inputs: LaunchInputs,
+    }
+    #[test]
+    fn minimal_gui_resource_state_is_valid_for_materialization() {
+        let fixture = Fixture::new();
+        let Some(SchedulePreparation::Managed {
+            resource_state_path,
+            ..
+        }) = &fixture.inputs.schedule_preparation
+        else {
+            unreachable!()
+        };
+        std::fs::write(resource_state_path, br#"{"revision":1,"skills":{}}"#).unwrap();
+        assert!(materialize(&fixture.home, &fixture.registration, &fixture.inputs).is_ok());
     }
     impl Fixture {
         fn new() -> Self {
@@ -743,37 +798,52 @@ mod tests {
     }
 
     #[test]
-    fn directory_and_retained_version_limits_fail_before_writing_a_deployment() {
+    fn directory_and_retained_version_limits_preserve_the_previous_deployment() {
         let fixture = Fixture::new();
         let managed = fixture.managed(true);
-        fs::create_dir_all(&managed).unwrap();
-        for index in 0..513 {
+        write_skill(&managed.join("valid"), "discoverable skill");
+        for index in 0..511 {
             fs::write(managed.join(format!("entry-{index}")), "raw entry").unwrap();
         }
+        let saved = fixture.prepare();
+        let original = fs::read(&saved.deployment_path).unwrap();
+        assert_eq!(
+            current_skills(&deployment(&saved)),
+            ["valid", BUILTIN_SKILL_ID]
+        );
+        fs::write(managed.join("entry-overflow"), "raw entry").unwrap();
         let failure = materialize(&fixture.home, &fixture.registration, &fixture.inputs)
             .err()
             .unwrap()
             .to_string();
         assert!(failure.contains("512 entries"));
-        assert!(!fixture.home.join("host/launch").exists());
+        assert_eq!(fs::read(&saved.deployment_path).unwrap(), original);
 
         let fixture = Fixture::new();
         let source = fixture.inputs.deployment_path.as_ref().unwrap();
         let mut value: Value = serde_json::from_slice(&fs::read(source).unwrap()).unwrap();
         let builtin = value["skills"][0].clone();
-        for index in 0..512 {
+        for index in 0..511 {
             let mut previous = builtin.clone();
             previous["id"] = json!("retained");
             previous["revision"] = json!(format!("revision-{index}"));
             value["skills"].as_array_mut().unwrap().push(previous);
         }
         fs::write(source, serde_json::to_vec(&value).unwrap()).unwrap();
+        let saved = fixture.prepare();
+        assert_eq!(deployment(&saved)["skills"].as_array().unwrap().len(), 512);
+        let original = fs::read(&saved.deployment_path).unwrap();
+        let mut overflow = builtin;
+        overflow["id"] = json!("retained");
+        overflow["revision"] = json!("overflow");
+        value["skills"].as_array_mut().unwrap().push(overflow);
+        fs::write(source, serde_json::to_vec(&value).unwrap()).unwrap();
         let failure = materialize(&fixture.home, &fixture.registration, &fixture.inputs)
             .err()
             .unwrap()
             .to_string();
         assert!(failure.contains("512 retained versions"));
-        assert!(!fixture.home.join("host/launch").exists());
+        assert_eq!(fs::read(&saved.deployment_path).unwrap(), original);
     }
 
     #[test]

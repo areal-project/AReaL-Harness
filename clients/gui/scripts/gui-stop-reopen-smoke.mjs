@@ -7,12 +7,14 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { makeTempDir } from "./support/temp.mjs";
 import { applicationFixture } from "./application-fixture.mjs";
+import { assertApplicationStopped, stopAndAssertFixtureHost } from "./application-cleanup.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
 const { HostClient } = require("@areal/client/node");
+const { readOfflineHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
 const mode = process.argv[2];
 assert.ok(["desktop", "host"].includes(mode), "choose desktop or host");
 const binary = process.env.AREAL_CORE_BIN;
@@ -43,21 +45,24 @@ Object.assign(env, {
 });
 await writeFile(env.AREAL_CORE_CONFIG, "schema_version=1\n");
 const eventsPath = join(scratch, "events.jsonl");
+const stopId = randomUUID();
 const bootstrap = `
 const { appendFileSync } = require('node:fs');
 const record = value => appendFileSync(${JSON.stringify(eventsPath)}, JSON.stringify(value) + '\\n');
 require('electron').dialog.showMessageBox = async (...args) => {
- const options = args.at(-1); const response = options.message === '退出 AReaL Harness？' ? 0 : 1; record({event:'dialog', options, response}); return {response};
+ const options = args.at(-1);
+ const response = {'退出 AReaL Harness？': 0, '停止所有项目的后台任务？': 1}[options.message];
+ if (response === undefined) throw new Error('Unexpected fixture dialog: ' + options.message);
+ record({event:'dialog', options, response}); return {response};
 };
 const { SharedCoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/service-client.cjs"))});
-for (const name of ['requestHostStop', 'stopService']) {
- const original = SharedCoreBackend.prototype[name];
- SharedCoreBackend.prototype[name] = async function(...args) {
-  record({event:'stop-request', name, args});
-  try { const result = await original.apply(this,args); record({event:'stop-receipt',name,result}); return result; }
-  catch (error) { record({event:'stop-error',name,message:error.message}); throw error; }
- };
-}
+const originalStop = SharedCoreBackend.prototype.requestHostStop;
+SharedCoreBackend.prototype.requestHostStop = async function(options) {
+ const request = {...options, requestId: ${JSON.stringify(stopId)}};
+ record({event:'stop-request', request});
+ try { const result = await originalStop.call(this,request); record({event:'stop-receipt',result}); return result; }
+ catch (error) { record({event:'stop-error',message:error.message}); throw error; }
+};
 `;
 const result = {
   mode,
@@ -70,9 +75,8 @@ const result = {
   cleanup: null,
 };
 const children = [],
-  hostPids = [],
-  workbenchPids = [];
-let application, app, page, child, host;
+  hosts = [];
+let application, app, page, child, originalStop;
 const until = async (fn, label, timeout = 60000) => {
   const end = Date.now() + timeout;
   while (Date.now() < end) {
@@ -84,17 +88,35 @@ const until = async (fn, label, timeout = 60000) => {
 };
 const events = async () =>
   (await readFile(eventsPath, "utf8").catch(() => "")).split("\n").filter(Boolean).map(JSON.parse);
-const service = async () => {
+const readHost = async () => {
   try {
-    const { pid, identity, desktopGeneration } = JSON.parse(
-      await readFile(join(env.AREAL_CORE_HOME, "service.json"), "utf8"),
+    const { pid, hostId, generation } = JSON.parse(
+      await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/host.json"), "utf8"),
     );
-    return { pid, identity, desktopGeneration };
+    return { pid, hostId, generation };
   } catch (error) {
-    if (error.code === "ENOENT") return { missing: true };
+    if (error.code === "ENOENT") return null;
     throw error;
   }
 };
+async function observeHost() {
+  const descriptor = await readHost();
+  assert.ok(Number.isSafeInteger(descriptor?.pid) && descriptor.pid > 1);
+  process.kill(descriptor.pid, 0);
+  const host = new HostClient();
+  try {
+    await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+    assert.equal(host.hostId, descriptor.hostId);
+    assert.equal(host.generation, descriptor.generation);
+    const backend = await host.request("backend.status", {});
+    assert.equal(backend.owned, false);
+    assert.equal(backend.service, null);
+    hosts.push(descriptor);
+    return descriptor;
+  } finally {
+    host.close();
+  }
+}
 const capture = async (name) => {
   if (page && !page.isClosed()) {
     await page.screenshot({ path: join(scratch, `${name}.png`) }).catch(() => {});
@@ -146,19 +168,15 @@ console.log("Stop/reopen evidence:", scratch);
 try {
   application = await applicationFixture(gui, join(scratch, "app"), bootstrap);
   await launch();
-  host = new HostClient();
-  await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
-  const firstHost = JSON.parse(
-    await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/host.json"), "utf8"),
-  );
-  hostPids.push(firstHost.pid);
-  const firstService = await service();
-  assert.ok(firstService.pid);
-  workbenchPids.push(firstService.pid);
-  result.before = {
-    hostPid: firstHost.pid,
-    hostGeneration: host.generation,
-    service: firstService,
+  const firstHost = await observeHost();
+  result.before = firstHost;
+  originalStop = {
+    kind: "stopHost",
+    requestId: stopId,
+    home: env.AREAL_HARNESS_SERVICE_HOME,
+    hostId: firstHost.hostId,
+    generation: firstHost.generation,
+    strategy: "cancel",
   };
   result.reached.push("first GUI ready");
   await capture("before-stop");
@@ -184,56 +202,29 @@ try {
   );
   assert.equal(receipt.result?.operation?.phase, "completed");
   assert.equal(receipt.result.stopped, true);
+  const requests = (await events()).filter((event) => event.event === "stop-request");
+  assert.deepEqual(
+    requests.map(({ request }) => request),
+    [{ strategy: "cancel", requestId: stopId }],
+  );
   result.receipt = receipt;
-  result.afterStop = await service();
   result.reached.push("stop receipt completed");
   await capture("after-stop");
   await quit();
   result.reached.push("GUI exited");
-  host.close();
-  host = null;
-  await until(() => {
-    try {
-      process.kill(firstHost.pid, 0);
-      return false;
-    } catch (error) {
-      if (error.code === "ESRCH") return true;
-      throw error;
-    }
-  }, "original Host exits");
-  const oldWorkbenchAlive = (() => {
-    try {
-      process.kill(firstService.pid, 0);
-      return true;
-    } catch (error) {
-      if (error.code === "ESRCH") return false;
-      throw error;
-    }
-  })();
-  result.beforeReopen = { oldHostAlive: false, oldWorkbenchAlive, service: await service() };
-  assert.equal(oldWorkbenchAlive, false, "original Workbench exits before GUI reopens");
-  assert.equal(result.beforeReopen.service.missing, true, "retired service metadata is removed");
+  const authoritative = await readOfflineHostReceipt(binary, originalStop);
+  assert.equal(authoritative?.state, "completed");
+  assert.deepEqual(authoritative, receipt.result.receipt);
+  await assertApplicationStopped(binary, env, { pid: child.pid, hostPid: firstHost.pid });
+  result.reached.push("original Host and project processes exited");
   await launch();
   result.reached.push("GUI reopened ready");
   await capture("after-reopen");
-  host = new HostClient();
-  await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
-  const secondHost = JSON.parse(
-    await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/host.json"), "utf8"),
-  );
-  hostPids.push(secondHost.pid);
-  const secondService = await service();
-  assert.ok(secondService.pid);
-  workbenchPids.push(secondService.pid);
-  result.afterReopen = {
-    hostPid: secondHost.pid,
-    hostGeneration: host.generation,
-    service: secondService,
-  };
-  assert.notEqual(host.generation, result.before.hostGeneration);
-  assert.notEqual(secondService.pid, firstService.pid);
-  assert.notEqual(secondService.desktopGeneration, firstService.desktopGeneration);
-  result.reached.push("successor Host and workbench observed");
+  const secondHost = await observeHost();
+  result.afterReopen = secondHost;
+  assert.notEqual(secondHost.pid, firstHost.pid);
+  assert.notEqual(secondHost.generation, firstHost.generation);
+  result.reached.push("successor Host observed");
 } catch (error) {
   result.firstFailure = error.stack;
   if (page && !page.isClosed())
@@ -247,78 +238,41 @@ try {
       .catch(() => null);
   await capture("failure");
 } finally {
-  if (app && child?.exitCode === null) {
-    await app.evaluate(({ app }) => app.exit(0)).catch(() => {});
-    await until(() => child.exitCode !== null || child.signalCode !== null, "GUI cleanup").catch(
-      () => {},
-    );
-  }
-  host?.close();
-  const observer = new HostClient();
   try {
-    const recordedHost = JSON.parse(
-      await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/host.json"), "utf8").catch(
-        () => "null",
-      ),
-    );
-    if (recordedHost?.pid && !hostPids.includes(recordedHost.pid)) hostPids.push(recordedHost.pid);
-    const recordedService = await service();
-    if (recordedService.pid && !workbenchPids.includes(recordedService.pid))
-      workbenchPids.push(recordedService.pid);
-    await observer.connect(env.AREAL_HARNESS_SERVICE_HOME);
-    const currentHost = JSON.parse(
-      await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/host.json"), "utf8"),
-    );
-    if (!hostPids.includes(currentHost.pid)) hostPids.push(currentHost.pid);
-    const currentService = await service();
-    if (currentService.pid && !workbenchPids.includes(currentService.pid))
-      workbenchPids.push(currentService.pid);
-    const receipt = await observer.stop(randomUUID(), observer.generation, "cancel");
-    assert.equal(receipt.state, "completed");
-  } catch (error) {
-    if (
-      !["ENOENT", "ECONNREFUSED"].includes(error.code) &&
-      !error.message.includes("connection closed")
-    )
-      result.cleanupError = error.stack;
-  } finally {
-    observer.close();
-  }
-  const alive = [];
-  for (const pid of [...hostPids, ...workbenchPids]) {
-    try {
-      await until(
-        () => {
-          try {
-            process.kill(pid, 0);
-            return false;
-          } catch (error) {
-            if (error.code === "ESRCH") return true;
-            throw error;
-          }
-        },
-        `process ${pid} exits`,
-        10000,
-      );
-    } catch {
-      alive.push(pid);
+    if (app) await quit();
+    const current = await readHost();
+    if (current && !hosts.some(({ pid }) => pid === current.pid)) hosts.push(current);
+    if (current) {
+      const originalRequested =
+        originalStop?.generation === current.generation &&
+        (await events()).some(({ event }) => event === "stop-request");
+      if (originalRequested) {
+        const receipt = await readOfflineHostReceipt(binary, originalStop);
+        assert.equal(receipt?.state, "completed", "original stop remains unconfirmed");
+      } else {
+        result.cleanupReceipt = await stopAndAssertFixtureHost(binary, env, scratch, {
+          pid: child?.pid,
+        });
+      }
     }
+    for (const host of hosts)
+      await assertApplicationStopped(binary, env, { pid: child?.pid, hostPid: host.pid });
+  } catch (error) {
+    result.cleanupError = error.stack;
   }
   await application?.close();
   result.cleanup = {
-    hostPids,
-    workbenchPids,
-    alive,
+    hosts,
     gui: children.map(({ pid, exitCode, signalCode }) => ({ pid, exitCode, signalCode })),
-    service: await service(),
   };
-  if (alive.length || result.cleanupError) result.firstFailure ??= "cleanup incomplete";
+  if (result.cleanupError) result.firstFailure ??= "cleanup incomplete";
   const stages = [
     "first GUI ready",
     "stop receipt completed",
     "GUI exited",
+    "original Host and project processes exited",
     "GUI reopened ready",
-    "successor Host and workbench observed",
+    "successor Host observed",
   ];
   result.unreached = stages.filter((stage) => !result.reached.includes(stage));
   for (const [name, hash] of Object.entries(hashes))

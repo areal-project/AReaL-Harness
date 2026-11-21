@@ -113,11 +113,7 @@ D/F/H 补充协议故障、观察链和历史数据形态；E/G/I 深化时间�
 
 **T3 依据。** [subscribeBeforeSnapshot.ts](https://github.com/pingdotgg/t3code/blob/93a9e079b107a13b0c312920b917b5f61a8f720c/apps/server/src/utils/subscribeBeforeSnapshot.ts) 有两种实现：共享 mutex 内先读快照再订阅，或无共享锁时先订阅再读快照；其[测试](https://github.com/pingdotgg/t3code/blob/93a9e079b107a13b0c312920b917b5f61a8f720c/apps/server/src/utils/subscribeBeforeSnapshot.test.ts) 在读取窗口中插入变化。[shell-sync.test.ts](https://github.com/pingdotgg/t3code/blob/93a9e079b107a13b0c312920b917b5f61a8f720c/packages/client-runtime/src/state/shell-sync.test.ts) 还检查旧异步保存、权威快照重置及缓存补全冲突。借鉴的是可执行的边界不变量，不能只照函数名复制顺序。
 
-**实现。** 继续使用 [state-projection.cjs](../../clients/gui/packages/workbench/client/state-projection.cjs) 的 stream、sequence、delta base 约束及 ServiceConnection 的连接归属守卫，在 [desktop-projection-transport.test.mjs](../../clients/gui/scripts/desktop-projection-transport.test.mjs) 增加真实本地 WebSocket 观察场景。覆盖重复/旧帧不回退、缺失 base 导致连接关闭、新连接读取完整权威基线，以及旧连接迟到帧不能覆盖新连接。
-
-现有背压合并、回执顺序和历史 acquire/release 的其他客户端隔离继续由同一入口保护。`node --test clients/gui/scripts/desktop-projection-transport.test.mjs` 共 7 项通过；恢复后的公开语义状态与服务快照核对，并检查没有自动重发用户写请求。
-
-sequence 的重置仍绑定新 stream/reader，未照搬 T3 的低序号重置语义。这里的证据覆盖 Desktop 传输及投影，完整 Core 历史、手机与 Relay 各自执行专项验收；测试出现真实契约缺陷时才扩展生产修复范围。
+**当前验证。** [Host 客户端契约](../../clients/gui/scripts/host-client.test.mjs) 用真实 WebSocket 检查序号缺口后重新订阅、旧订阅帧隔离、Core 代际切换和原写入断线后不重发。 [Renderer 历史测试](../../clients/gui/renderer/src/host-services.test.ts) 检查原生游标、分页与加载期间的旧窗口。
 
 ## G. 与 CI 共用范围判断的本地快检
 

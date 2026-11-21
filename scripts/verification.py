@@ -58,7 +58,6 @@ def gui_inputs(root):
                 "--exclude-standard",
                 "-z",
                 "clients/gui",
-                "services/workbench",
                 "schemas/provider-config",
             ],
             cwd=root,

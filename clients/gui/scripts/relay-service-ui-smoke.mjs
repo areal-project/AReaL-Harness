@@ -7,14 +7,25 @@ import { fileURLToPath } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync, execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { closeSmokeApplication, assertApplicationStopped } from "./application-cleanup.mjs";
+import {
+  assertApplicationStopped,
+  cleanupSyntheticHostKeychain,
+  closeSmokeApplication,
+  readFixtureHost,
+  stopFixtureHost,
+} from "./application-cleanup.mjs";
+import { openProjectInDesktop } from "./support/journey-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const gui = join(root, "clients/gui");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const { ServiceConnection } = require("../app/src/core/service-client.cjs");
+const { HostClient } = require("@areal/client/node");
+assert.ok(
+  process.platform !== "darwin" || process.env.AREAL_TEST_HOST_KEYCHAIN === "1",
+  "Set AREAL_TEST_HOST_KEYCHAIN=1 only with authorization for isolated test Keychain entries",
+);
 const binary = resolve(process.env.AREAL_CORE_BIN || join(root, "target/debug/areal"));
 const evidenceRoot = join(root, ".scratch/relay-service");
 await mkdir(evidenceRoot, { recursive: true });
@@ -52,13 +63,14 @@ const manifest = {
   diffSHA256: sha(execFileSync("git", ["diff", "--binary", "HEAD"], { cwd: root })),
   core: binary,
   coreSHA256: sha(await readFile(binary)),
-  scope: "source Electron, real private Core and Relay; no SSH deployment or mobile client",
+  scope:
+    "source Electron, isolated Rust Host and local Relay; external settings shown without deployment",
   evidence,
   checks,
   screenshots,
   errors,
 };
-let app, page, failure, cleanup, simulator, container, metadata;
+let app, page, failure, cleanup, simulator, container, host;
 const electronOutput = [];
 const run = promisify(execFile);
 const sim = async (...args) =>
@@ -76,8 +88,15 @@ const until = async (fn, label, timeout = 60000) => {
 };
 async function capture(name, action) {
   const path = join(evidence, `${name}.png`);
-  await page.screenshot({ path, animations: "disabled" });
-  await writeFile(join(evidence, `${name}.aria.txt`), await page.locator("body").ariaSnapshot());
+  const pairLink = page.getByLabel("配对链接", { exact: true });
+  const pairingVisible = await pairLink.isVisible();
+  await page.screenshot({
+    path,
+    animations: "disabled",
+    mask: [pairLink, page.getByRole("img", { name: "手机配对二维码" })],
+  });
+  if (!pairingVisible)
+    await writeFile(join(evidence, `${name}.aria.txt`), await page.locator("body").ariaSnapshot());
   const style = await page.evaluate(() => ({
     viewport: { width: innerWidth, height: innerHeight },
     dpr: devicePixelRatio,
@@ -109,12 +128,13 @@ try {
   page = await app.firstWindow();
   page.setDefaultTimeout(20000);
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
-  await page.waitForFunction(
-    () => window.arealDesktop.snapshot().then((s) => s.connection?.state === "ready"),
-    null,
-    { timeout: 120000 },
+  const ready = page.locator('[data-testid="areal-workbench"][data-startup-ready="true"]');
+  await ready.waitFor({ timeout: 120000 });
+  await page.evaluate(() =>
+    localStorage.setItem("areal-gui:application-preferences", JSON.stringify({ locale: "zh-CN" })),
   );
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await ready.waitFor();
   const identity = await app.evaluate(({ app, BrowserWindow }) => {
     const p = BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences();
     return {
@@ -131,39 +151,21 @@ try {
   assert.equal(identity.contextIsolation, true);
   assert.equal(identity.nodeIntegration, false);
   manifest.identity = identity;
-  metadata = await until(
-    () =>
-      readFile(join(state, "core/service.json"), "utf8")
-        .then(JSON.parse)
-        .catch(() => null),
-    "desktop service metadata",
-  );
-  assert.equal(metadata.applicationOwner.profile, env.AREAL_GUI_USER_DATA);
-  process.kill(metadata.pid, 0);
-  const service = new ServiceConnection();
+  host = await until(() => readFixtureHost(env), "original native Host");
+  const client = new HostClient();
   try {
-    await service.connect(metadata);
-    await service.request("hello", { protocol: metadata.protocol, identity: metadata.identity });
+    await client.connect(env.AREAL_HARNESS_SERVICE_HOME);
+    assert.equal(client.hostId, host.hostId);
+    assert.equal(client.generation, host.generation);
   } finally {
-    service.close();
+    client.close();
   }
-  manifest.service = { pid: metadata.pid, applicationOwner: metadata.applicationOwner };
-  const workspace = join(state, "workspace");
+  manifest.host = { pid: host.pid, hostId: host.hostId, generation: host.generation };
+  const workspace = join(state, "demo");
   await mkdir(workspace);
   execFileSync("git", ["init", "-b", "main"], { cwd: workspace, stdio: "ignore" });
-  await app.evaluate(({ BrowserWindow, dialog }, path) => {
-    BrowserWindow.getAllWindows()[0].setSize(1440, 960);
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
-  }, workspace);
-  await page.getByRole("button", { name: "不在项目中工作", exact: true }).click();
-  await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
-  await until(
-    async () =>
-      (await page.evaluate(() => window.arealDesktop.snapshot())).projects.some(
-        (p) => p.root === workspace && p.state?.connected,
-      ),
-    "project connected",
-  );
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 960));
+  await openProjectInDesktop(app, page, workspace);
   checks.push("通过隔离目录选择器添加真实项目");
   await page.getByRole("button", { name: "设置", exact: true }).click();
   await page.getByRole("button", { name: "手机连接", exact: true }).click();
@@ -248,7 +250,7 @@ try {
     }, "native pairing request");
     assert.ok(pending.peer);
     await page.getByRole("button", { name: "允许连接", exact: true }).waitFor({ timeout: 60000 });
-    await page.getByRole("checkbox", { name: "workspace", exact: true }).check();
+    await page.getByRole("checkbox", { name: "demo", exact: true }).check();
     await capture("05-review", "模拟器发送配对请求，桌面核对设备并选择隔离项目");
     await page.getByRole("button", { name: "允许连接", exact: true }).click();
     const result = await until(
@@ -333,30 +335,51 @@ try {
       errors.push(`simulator cleanup: ${e.stack}`);
     }
   }
+  host ??= await readFixtureHost(env);
+  if (host) {
+    try {
+      const current = await readFixtureHost(env);
+      assert.equal(current?.hostId, host.hostId);
+      assert.equal(current.generation, host.generation);
+      const stop = await stopFixtureHost(binary, env.AREAL_HARNESS_SERVICE_HOME, evidence);
+      assert.equal(stop?.state, "completed");
+      manifest.stopRequestId = stop.requestId;
+    } catch (error) {
+      errors.push(`Host stop: ${error.stack}`);
+    }
+  }
   if (app) {
     try {
-      await app.evaluate(({ dialog, Menu }) => {
-        dialog.showMessageBox = async () => ({ response: 1 });
-        const quit = Menu.getApplicationMenu().items[0].submenu.items.find(
-          (item) => item.label === "退出 AReaL Harness",
-        );
-        if (!quit) throw Error("quit menu missing");
-        quit.click();
+      await app.evaluate(({ dialog }) => {
+        dialog.showMessageBox = async () => ({ response: 0 });
       });
-      await closeSmokeApplication({ process: () => app.process(), close: () => app.close() });
-    } catch (e) {
-      errors.push(`quit: ${e.stack}`);
+      await closeSmokeApplication(app, 60000);
+    } catch (error) {
+      errors.push(`quit: ${error.stack}`);
     }
   }
   try {
-    const serviceLog = await readFile(join(state, "core/service.log"), "utf8").catch(() => "");
-    await writeFile(join(evidence, "service.log"), serviceLog);
+    const serviceLog = await readFile(
+      join(env.AREAL_HARNESS_SERVICE_HOME, "host.log"),
+      "utf8",
+    ).catch((error) => {
+      if (error.code === "ENOENT") return "";
+      throw error;
+    });
+    await writeFile(join(evidence, "host.log"), serviceLog);
     assert.equal(await readFile(join(state, ".owner"), "utf8"), owner);
-    assert.ok(metadata || !app, "Missing service identity; retaining state");
-    if (metadata) await assertApplicationStopped(binary, env, metadata);
+    await assertApplicationStopped(binary, env, { pid: app?.process().pid, hostPid: host?.pid });
+    if (host) {
+      assert.ok(manifest.stopRequestId, "Original Host stop must be confirmed");
+      const entries = await cleanupSyntheticHostKeychain(env.AREAL_HARNESS_SERVICE_HOME, state);
+      await writeFile(
+        join(evidence, "synthetic-keychain-cleanup.json"),
+        JSON.stringify(entries, null, 2),
+      );
+    }
     assert.equal(sha(await readFile(binary)), manifest.coreSHA256);
     await rm(state, { recursive: true });
-    cleanup = { adapterExited: true, coreStopped: true, stateRemoved: true };
+    cleanup = { hostExited: true, coreStopped: true, stateRemoved: true };
   } catch (error) {
     cleanup = { stateRetained: state, error: String(error) };
     errors.push(`cleanup: ${error.stack}`);

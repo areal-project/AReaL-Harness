@@ -1,4 +1,4 @@
-import { Beaker, Camera, Cpu, Database, GitFork, Monitor, Server, Smartphone } from "lucide-react";
+import { Beaker, Camera, Cpu, Database, GitFork, Server, Smartphone } from "lucide-react";
 import type { useI18n } from "../i18n/IntlProvider.js";
 import {
   SettingsAppearanceIcon,
@@ -10,7 +10,6 @@ import {
   SettingsUsageIcon,
 } from "./settingsNavIcons.js";
 import type { SettingsNavigationGroup } from "./SettingsWorkspace.js";
-import { legacyServiceSettingsIds } from "../lib/legacySettingsIds.js";
 export const settingsNavigationGroups = [
   {
     id: "personal",
@@ -52,12 +51,6 @@ export const settingsNavigationGroups = [
         keywords: "settings.search.browser",
         label: "settings.browser.title",
         icon: <SettingsBrowserIcon />,
-      },
-      {
-        id: "电脑控制",
-        keywords: "settings.search.computer",
-        label: "settings.computer.title",
-        icon: <Monitor strokeWidth={1.5} />,
       },
     ],
   },
@@ -133,7 +126,7 @@ export function settingsSubtitle(name: string, t: ReturnType<typeof useI18n>["t"
 }
 
 export function settingsLabel(name: string, t: ReturnType<typeof useI18n>["t"]) {
-  if (legacyServiceSettingsIds.includes(name)) return t("settings.service.title");
+  if (name === "高级诊断") return t("settings.service.title");
   const item = settingsNavigationGroups
     .flatMap((group) => group.items.map((item) => ({ id: item.id, label: item.label })))
     .find((item) =>

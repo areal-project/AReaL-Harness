@@ -626,12 +626,6 @@
   {
     "file": "renderer/src/i18n/messages/plugins.ts",
     "kind": "internal-term",
-    "snippet": "settings.mcpAppsSettings.theSettingsUpdateIsUnconfirmedRefreshAnd: 核对",
-    "fingerprint": "13068d2f20643280ef2cc9d30099c1e95465bf3b8cfc25499b97dcc74ce1d466"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
     "snippet": "settings.hooksSettings.theBackendReconnectedCheckTheLoadStatus: 核对",
     "fingerprint": "67d3f4363f6cd3f9af73efe235d4efd0840ad2158978f677aefae04e6845d68f"
   },
@@ -1102,12 +1096,6 @@
     "kind": "cjk-identifier",
     "snippet": "进程",
     "fingerprint": "7a0de0a8725ed145bdc5b1c1dd19e5d5467f6d9dd87d90b585bbb3427aaa31b5"
-  },
-  {
-    "file": "renderer/src/DraftComposer.tsx",
-    "kind": "cjk-identifier",
-    "snippet": "会话配置",
-    "fingerprint": "fd5169aa4b8cca3268efc131c8c3610f845c419f9dcaf086e70e8f176af83fed"
   },
   {
     "file": "renderer/src/DraftComposer.tsx",
@@ -1888,30 +1876,6 @@
     "kind": "stale-text-assertion",
     "snippet": "已复制隐私政策链接。",
     "fingerprint": "839e1a5f0a1b23410c46882f01d0bd137306173f458fdcebd5192f85cc369af4"
-  },
-  {
-    "file": "scripts/plugin-p1-p3-smoke.mjs",
-    "kind": "stale-text-assertion",
-    "snippet": "我已核对以上来源、版本和内容摘要",
-    "fingerprint": "52bdcfc68f144670584f9cb77b03a82ee0b5317d73241445855a739bf9f5c294"
-  },
-  {
-    "file": "scripts/plugin-p1-p3-smoke.mjs",
-    "kind": "stale-text-assertion",
-    "snippet": "我信任此已安装快照并允许启动其 MCP 服务器",
-    "fingerprint": "fb2252c4922aacc5116b46c755dfdd3bdc5c09a59b219509438563df098e32d4"
-  },
-  {
-    "file": "scripts/plugin-p3-uploads-smoke.mjs",
-    "kind": "stale-text-assertion",
-    "snippet": "我已核对以上来源、版本和内容摘要",
-    "fingerprint": "57dcd81f6fd8bc01803b043792dc226902d5a66b4000a195fde631c589d5101e"
-  },
-  {
-    "file": "scripts/plugin-p3-uploads-smoke.mjs",
-    "kind": "stale-text-assertion",
-    "snippet": "我信任此已安装快照并允许启动其 MCP 服务器",
-    "fingerprint": "61c18174db959a27bbc4658d2e43d00dcae9fe664b1f0011d914f0ac824a5d2d"
   },
   {
     "file": "scripts/plugin-resource-smoke.mjs",

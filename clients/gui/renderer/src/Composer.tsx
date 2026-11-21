@@ -35,7 +35,6 @@ import { parseSideSlashCommand } from "./sideSlashCommand.js";
 import { composerDraftStorage, flushComposerDrafts } from "./composerDraftStorage.js";
 import { composerPending } from "./composerPending.js";
 import { useComposerWorkspaceFiles } from "./lib/workspaceFileComposer.js";
-import { stripGenUiModelContext } from "@areal/gen-ui/contract";
 import { UiMessageError, useI18n } from "./i18n/IntlProvider.js";
 import { errorText, presentError, rawText, type PresentedError } from "./errors/errorCopy.js";
 import { FeedbackNotice } from "./FeedbackNotice.js";
@@ -46,8 +45,6 @@ import { useComposerPrediction } from "./useComposerPrediction.js";
 import { ContextMeter } from "./ContextMeter.js";
 import { isOrdinaryConversation, interruptedConversationTurn } from "./ordinaryConversation.js";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
-import { McpComposerAttachments, useMcpDraft } from "./McpComposerAttachments.js";
-import { clearMcpDraft } from "./mcp-app-draft.js";
 import {
   setApplicationPreferences,
   useApplicationPreferences,
@@ -90,9 +87,7 @@ import {
 } from "./ComposerAttachments.js";
 import { useComposerPlugins } from "./ComposerPlugins.js";
 import { useComposerSkills } from "./ComposerSkills.js";
-import { ComposerMcpIcon } from "./ComposerIcons.js";
 import { composerFeatureEntries } from "./composerFeatures.js";
-import { ComposerMcp } from "./ComposerMcp.js";
 import type { ComposerCatalogEntry } from "./prompt-editor/ComposerCatalog.js";
 import {
   conversationReferenceEntries,
@@ -151,8 +146,6 @@ export function Composer({
   onPanel,
   onOpenTask,
   onSide,
-  onMcpMention,
-  appEntries = [],
   conversationReferences = [],
   onAnnotate,
   surfaceLayout = "default",
@@ -173,8 +166,6 @@ export function Composer({
   onNew: () => void;
   onOpenTask?: (target: { projectId: string; taskId: string; runId: string }) => void;
   onSide?: (draft: string) => Promise<void>;
-  onMcpMention?: () => void;
-  appEntries?: readonly ComposerCatalogEntry[];
   conversationReferences?: readonly ConversationReference[];
   onAnnotate?: (target: ImageAnnotationTarget) => void;
 }) {
@@ -194,7 +185,6 @@ export function Composer({
   const uploadOwner = composerUploadOwner(project, thread.id);
   const selectionScope = conversationSelectionScope(project.id, thread.id);
   const references = useConversationSelections(selectionScope);
-  const mcpDraft = useMcpDraft(key);
   const reviewKey = reviewCommentKey(project.id, thread.id);
   const reviewDraft = useReviewComments(reviewKey);
   const comments = attachedReviewComments(reviewDraft.draft);
@@ -352,7 +342,6 @@ export function Composer({
     await queueEditor.save();
   };
   const config = project.configurations?.[thread.id];
-  const [mcpOpen, setMcpOpen] = useState(false);
 
   const skills = useComposerSkills({
     project,
@@ -375,7 +364,6 @@ export function Composer({
     draftKey: key,
     text: input.text,
     action: readAction,
-    onMcpMention,
   });
   const taskManagement =
     config?.options?.appendInstructions?.startsWith("AREAL_TASK_DRAFT_V1\n") === true;
@@ -383,7 +371,6 @@ export function Composer({
   const sideContextCount =
     comments.length +
     skills.selected.length +
-    mcpDraft.length +
     references.length +
     parseMentionMarkdown(input.text).filter(
       (part) => part.type !== "text" && part.type !== "command",
@@ -397,7 +384,6 @@ export function Composer({
     !input.files.length &&
     !comments.length &&
     !skills.selected.length &&
-    !mcpDraft.length &&
     !references.length;
   const nextPrompt = useComposerPrediction({
     project,
@@ -417,10 +403,8 @@ export function Composer({
     !input.files.length &&
     !comments.length &&
     !skills.selected.length &&
-    !mcpDraft.length &&
     !references.length &&
-    !annotationEditing &&
-    !mcpOpen;
+    !annotationEditing;
   const canContinue =
     !readOnly && !!interrupted && emptyDraft && !creatingGoal && !queueEditor.edit;
   const planActive = permissionMode(config ?? {}) === "plan";
@@ -452,7 +436,6 @@ export function Composer({
     forgetComposerUploads(uploadOwner, files.filter(isComposerFile));
     skills.clear();
     plugins.clear();
-    clearMcpDraft(key);
     consumeConversationSelections(selectionScope, references);
     void consumeSnapShotFiles(files.filter(isComposerFile));
     setAdmissionError("");
@@ -574,7 +557,6 @@ export function Composer({
       !submittedInput.files.length &&
       !comments.length &&
       !skills.selected.length &&
-      !mcpDraft.length &&
       !references.length
     )
       return;
@@ -598,7 +580,7 @@ export function Composer({
         !creatingGoal &&
         !taskManagement &&
         !matchMedia("(max-width: 640px)").matches,
-      appEntries.map((entry) => entry.value),
+      [],
     );
     const steer = !taskManagement && !!running && shouldSteer(prefs.followUp, invert);
     const enqueue = !taskManagement && !!running && !steer;
@@ -760,47 +742,30 @@ export function Composer({
     !taskManagement &&
     !matchMedia("(max-width: 640px)").matches
       ? // /btw 是 /side 的别名，菜单只列一项，输入 /btw 仍可搜到并照常解析。
-        ["side"]
-          .filter(
-            () => !appEntries.some((entry) => ["side", "btw"].includes(entry.value.toLowerCase())),
-          )
-          .map((name) => ({
-            value: name,
-            label: `/${name}`,
-            keywords: ["btw", t("chat.side.title"), t("chat.side.btw")],
-            description: t("chat.side.newDescription"),
-            icon: <SideChatIcon />,
-            group: "commands" as const,
-            preserveInputUntilAccepted: true,
-            disabled: disabled || !!queueEditor.edit,
-            run: async () => {
-              try {
-                await onSide("");
-              } catch (cause) {
-                showDeliveryNotice(cause);
-                throw cause;
-              }
-            },
-          }))
-      : []),
-    ...(onMcpMention
-      ? [
-          {
-            value: "app-mention",
-            label: "@ 应用引用",
-            description: "搜索应用中的文件、工单或其他资源",
-            icon: <ComposerMcpIcon />,
-            group: "功能" as const,
-            run: onMcpMention,
+        ["side"].map((name) => ({
+          value: name,
+          label: `/${name}`,
+          keywords: ["btw", t("chat.side.title"), t("chat.side.btw")],
+          description: t("chat.side.newDescription"),
+          icon: <SideChatIcon />,
+          group: "commands" as const,
+          preserveInputUntilAccepted: true,
+          disabled: disabled || !!queueEditor.edit,
+          run: async () => {
+            try {
+              await onSide("");
+            } catch (cause) {
+              showDeliveryNotice(cause);
+              throw cause;
+            }
           },
-        ]
+        }))
       : []),
     ...snapShotCommandEntries(snapshotCapture, t, (message) =>
       setDeliveryNotice(message ? { message } : null),
     ),
     ...composerFeatureEntries(t, {
       upload: { run: () => upload.current?.click() },
-      mcp: { run: () => setMcpOpen(true) },
       files: { run: () => onPanel("文件") },
       plan: {
         active: planActive,
@@ -1110,7 +1075,6 @@ export function Composer({
             (!!files.length ||
               !!comments.length ||
               !!skills.selected.length ||
-              !!mcpDraft.length ||
               !!references.length ||
               !!queueEditor.edit?.attachments.length)
           }
@@ -1164,7 +1128,6 @@ export function Composer({
             entries: [
               ...catalogActions.filter((entry) => !readOnly || entry.value !== "plan"),
               ...referenceEntries,
-              ...appEntries,
               ...skills.catalog.entries,
             ].map((entry) => ({
               ...entry,
@@ -1172,7 +1135,7 @@ export function Composer({
                 entry.disabled ||
                 (!!queueEditor.edit &&
                   entry.group !== "会话" &&
-                  !["upload", "files", "mcp"].includes(entry.value)),
+                  !["upload", "files"].includes(entry.value)),
             })),
           }}
           onChange={(value) => {
@@ -1335,13 +1298,6 @@ export function Composer({
                     onRemove={() => detachReviewComments(reviewKey)}
                   />
                 )}
-                {!queueEditor.edit && (
-                  <McpComposerAttachments
-                    draftKey={key}
-                    entries={mcpDraft}
-                    disabled={editorDisabled}
-                  />
-                )}
               </div>
             </div>
           }
@@ -1357,12 +1313,10 @@ export function Composer({
                   ),
               )
               .map((i: Data) =>
-                stripGenUiModelContext(
-                  (i.content ?? [])
-                    .filter((p: Data) => p.type === "text")
-                    .map((p: Data) => p.text)
-                    .join("\n"),
-                ),
+                (i.content ?? [])
+                  .filter((p: Data) => p.type === "text")
+                  .map((p: Data) => p.text)
+                  .join("\n"),
               ),
           )}
           leadingActions={
@@ -1456,7 +1410,6 @@ export function Composer({
               !input.files.length &&
               !comments.length &&
               !skills.selected.length &&
-              !mcpDraft.length &&
               !references.length ? (
               <ControlHintTooltip title={ordinary ? "暂停执行" : "停止"} shortcut="Esc">
                 <Button
@@ -1495,7 +1448,6 @@ export function Composer({
                       !input.files.length &&
                       !comments.length &&
                       !skills.selected.length &&
-                      !mcpDraft.length &&
                       !references.length)
                   }
                   onClick={(event) =>
@@ -1526,16 +1478,6 @@ export function Composer({
           }
         />
       </div>
-      <ComposerMcp
-        projectId={project.id}
-        action={readAction}
-        open={mcpOpen}
-        anchor={menuAnchor}
-        onClose={() => {
-          setMcpOpen(false);
-          api.current?.focus();
-        }}
-      />
       <div className="composer-caption sr-only">
         {prefs.sendShortcut === "enter" ? "Enter" : "⌘/Ctrl+Enter"} 发送 · Shift+Enter 换行 · / 命令
       </div>

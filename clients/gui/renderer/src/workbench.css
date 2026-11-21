@@ -4030,9 +4030,6 @@ button[aria-label="停止"] {
   padding: 0;
   max-width: 100%;
 }
-.composer-attachment-row .composer-mcp-card {
-  order: 3;
-}
 .composer-model-empty {
   display: block;
   min-width: 0;

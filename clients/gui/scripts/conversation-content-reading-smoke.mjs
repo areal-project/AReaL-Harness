@@ -1,14 +1,15 @@
 import { until } from "./support/desktop-fixture.mjs";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { execFile, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
-import { promisify } from "node:util";
 import { makeTempDir } from "./support/temp.mjs";
+import { closeSmokeApplication, stopAndAssertFixtureHost } from "./application-cleanup.mjs";
 import { applicationFixture } from "./application-fixture.mjs";
+import { sendReady } from "./support/journey-fixture.mjs";
 import {
   captureSmokeFailure,
   createProjectConversation,
@@ -18,9 +19,6 @@ import {
 const gui = resolve(import.meta.dirname, "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const { ServiceConnection } = require("../app/src/core/service-client.cjs");
-const { DesktopLifecycle } = require("../app/src/core/lifecycle.cjs");
-const execute = promisify(execFile);
 const binary = process.env.AREAL_CORE_BIN || resolve(gui, "../../.local/dev-bin/areal");
 const state = await makeTempDir("acr-");
 const evidence = process.env.AREAL_CONTENT_READING_EVIDENCE || state;
@@ -29,7 +27,8 @@ const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const binaryHash = hash(await readFile(binary));
 const checks = [],
   errors = [],
-  requests = [];
+  requests = [],
+  hostCommands = [];
 const table = [
   "| 名称 | 链接 | 代码 | 第四列 | 第五列 | 第六列 | 第七列 | 第八列 | 第九列 | 第十列 |",
   "| :--- | :---: | ---: | --- | --- | --- | --- | --- | --- | --- |",
@@ -84,7 +83,6 @@ Object.assign(env, {
   AREAL_HARNESS_HOME: join(state, "config-home"),
   AREAL_HARNESS_SERVICE_HOME: join(state, "registry"),
   AREAL_CORE_CONFIG: join(state, "config.toml"),
-  AREAL_CORE_DESKTOP_CONFIG: join(state, "desktop.json"),
   NO_PROXY: "127.0.0.1,localhost,::1",
   no_proxy: "127.0.0.1,localhost,::1",
 });
@@ -92,6 +90,7 @@ const workspace = join(state, "workspace");
 let fixture,
   app,
   page,
+  electronPid,
   passed = false;
 console.log(`Evidence: ${evidence}`);
 try {
@@ -101,20 +100,7 @@ try {
   await new Promise((resolve) => model.listen(0, "127.0.0.1", resolve));
   await writeFile(
     join(state, "config.toml"),
-    `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\n`,
-  );
-  await writeFile(
-    join(state, "desktop.json"),
-    JSON.stringify({
-      profiles: [
-        {
-          id: "fixture",
-          revision: "v1",
-          displayName: "Fixture",
-          instructions: "Respond to the task.",
-        },
-      ],
-    }),
+    `schema_version=1\n[model]\ncatalog_version=1\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\nmodels=[{id="fixture",enabled=true}]\n`,
   );
   fixture = await applicationFixture(gui, join(state, "app"));
   app = await electron.launch({
@@ -123,8 +109,31 @@ try {
     env,
     timeout: 120000,
   });
+  electronPid = app.process().pid;
   page = await app.firstWindow();
   page.setDefaultTimeout(30000);
+  page.on("websocket", (socket) => {
+    const pending = new Map();
+    socket.on("framesent", ({ payload }) => {
+      if (typeof payload !== "string") return;
+      const { id, method, commandId } = JSON.parse(payload);
+      if (method !== "session.create" && method !== "session.send") return;
+      const command = { method, commandId, response: null };
+      pending.set(id, command);
+      hostCommands.push(command);
+    });
+    socket.on("framereceived", ({ payload }) => {
+      if (typeof payload !== "string") return;
+      const { id, result, error } = JSON.parse(payload);
+      const command = pending.get(id);
+      if (!command) return;
+      pending.delete(id);
+      command.response = {
+        admission: result?.admissionState ?? null,
+        code: error?.code ?? result?.error?.code ?? null,
+      };
+    });
+  });
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
   await until(
     () =>
@@ -140,17 +149,6 @@ try {
   await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
   await until(
     () =>
-      page.evaluate(
-        async (root) =>
-          (await window.arealDesktop.snapshot()).projects.some(
-            (p) => p.root === root && p.state?.connected,
-          ),
-        workspace,
-      ),
-    "workspace connected",
-  );
-  await until(
-    () =>
       page.evaluate(async (root) => {
         const project = (await window.arealDesktop.snapshot()).projects.find(
           (p) => p.root === root,
@@ -164,8 +162,17 @@ try {
     "workspace selected",
   );
   await createProjectConversation(page, "workspace");
+  await page.getByRole("button", { name: "选择模型", exact: true }).click();
+  await page.getByRole("radio", { name: "fixture", exact: true }).click();
   await page.getByTestId("chat-input").fill("展示图表和表格");
+  await sendReady(page);
   await page.getByTestId("chat-send-button").click();
+  await until(() => {
+    for (const { method, commandId, response } of hostCommands) {
+      assert.ok(!response?.code, `${method} ${commandId} failed: ${response?.code}`);
+    }
+    return releaseStream !== undefined;
+  }, "the model starts the content-reading stream");
   const pendingDiagramButtons = page.getByRole("button", { name: "放大查看", exact: true });
   await pendingDiagramButtons.first().waitFor({ timeout: 120000 });
   assert.equal(await pendingDiagramButtons.count(), 1, "已闭合图形可放大，未闭合图形不提供入口");
@@ -316,77 +323,21 @@ try {
   if (page) await captureSmokeFailure(page, evidence, error);
 } finally {
   releaseStream?.();
-  const metadata = await readFile(join(state, "core/service.json"), "utf8")
-    .then(JSON.parse)
-    .catch(() => null);
   if (app) {
-    const processHandle = app.process();
-    await Promise.race([
-      app.close().catch(() => {}),
-      new Promise((resolve) => setTimeout(resolve, 5000)),
-    ]);
-    if (processHandle.exitCode === null && processHandle.signalCode === null)
-      processHandle.kill("SIGKILL");
-  }
-  const connection = new ServiceConnection();
-  try {
-    if (metadata) {
-      try {
-        process.kill(metadata.pid, 0);
-        await Promise.race([
-          connection.connect(metadata),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Desktop connection timeout")), 5000),
-          ),
-        ]);
-        await connection.request("hello", {
-          protocol: metadata.protocol,
-          identity: metadata.identity,
-        });
-        await Promise.race([
-          new DesktopLifecycle({
-            connection,
-            metadata,
-            home: join(state, "core"),
-            notify: async () => ({ response: 1 }),
-          }).stop({ mode: "cancel" }),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Desktop stop timeout")), 10000),
-          ),
-        ]);
-      } catch (error) {
-        try {
-          process.kill(metadata.pid, 0);
-          errors.push(`desktop cleanup: ${error.message}`);
-          passed = false;
-        } catch (status) {
-          if (status.code !== "ESRCH") {
-            errors.push(`desktop cleanup: ${status.message}`);
-            passed = false;
-          }
-        }
-      }
+    try {
+      await closeSmokeApplication(app);
+    } catch (error) {
+      errors.push(`Electron cleanup: ${error.message}`);
+      passed = false;
     }
-    for (const id of await readdir(join(state, "registry/services")).catch(() => [])) {
-      const record = await readFile(join(state, "registry/services", id, "service.json"), "utf8")
-        .then(JSON.parse)
-        .catch(() => null);
-      if (!record) continue;
-      assert.ok(record.dataDir.startsWith(join(state, "core") + "/"));
-      const run = (args) =>
-        execute(binary, ["service", ...args, "--instance", id, "--json"], {
-          env,
-          timeout: 30000,
-        }).then(({ stdout }) => JSON.parse(stdout));
-      if ((await run(["status"])).state !== "stopped") await run(["stop", "--cancel"]);
-      assert.equal((await run(["status"])).state, "stopped");
+    try {
+      await stopAndAssertFixtureHost(binary, env, evidence, { pid: electronPid });
+      checks.push("隔离 Host 的停止回执已完成，原进程已退出");
+    } catch (error) {
+      errors.push(`Host cleanup: ${error.stack || error}`);
+      passed = false;
     }
-    checks.push("隔离服务已停止");
-  } catch (error) {
-    errors.push(`cleanup: ${error.stack || error}`);
-    passed = false;
   }
-  connection.close();
   if (fixture) await fixture.close();
   model.closeAllConnections();
   await new Promise((resolve) => model.close(resolve));
@@ -405,9 +356,11 @@ try {
         passed,
         checks,
         errors,
+        hostCommands,
         binary,
         binaryHash,
         binaryAfter,
+        electronPid,
         rendererReceipt,
         commit: execFileSync("git", ["rev-parse", "HEAD"], { cwd: gui, encoding: "utf8" }).trim(),
         sourceDiffSHA256: hash(execFileSync("git", ["diff", "--binary", "HEAD"], { cwd: gui })),

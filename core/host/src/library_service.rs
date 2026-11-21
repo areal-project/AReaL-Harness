@@ -64,15 +64,67 @@ async fn summaries(host: &Host, project: &str) -> Result<Vec<Value>> {
     Ok(rows)
 }
 
+pub(super) fn desktop_network_settings(library: &Value) -> Value {
+    let settings = &library["settings"];
+    let setting = |key| settings[key].as_str().unwrap_or("");
+    // 旧资料库可能带含鉴权信息的代理 URL；窗口只接收当前准入允许的设置。
+    let proxy =
+        crate::network::validate_setting("httpProxy", setting("httpProxy")).unwrap_or_default();
+    let bypass = crate::network::validate_setting("httpProxyNoProxy", setting("httpProxyNoProxy"))
+        .unwrap_or_default();
+    let ca = setting("httpProxyCaCertPath");
+    let ca = if ca.len() <= 4096
+        && !ca.chars().any(char::is_control)
+        && std::path::Path::new(ca).is_absolute()
+    {
+        ca
+    } else {
+        ""
+    };
+    json!({"httpProxy":proxy,"httpProxyNoProxy":bypass,"httpProxyCaCertPath":ca})
+}
+
+#[cfg(test)]
+#[test]
+fn desktop_network_settings_only_publish_supported_fields() {
+    let library = json!({"settings":{
+        "httpProxy":"http://user:password@localhost:7890",
+        "httpProxyNoProxy":"localhost, 127.0.0.1",
+        "httpProxyCaCertPath":"/fixture/root.pem",
+        "unrelated":"private",
+    }});
+    assert_eq!(
+        desktop_network_settings(&library),
+        json!({"httpProxy":"","httpProxyNoProxy":"127.0.0.1,localhost","httpProxyCaCertPath":"/fixture/root.pem"})
+    );
+}
+
 pub(super) async fn command(host: &Rc<Host>, source: &str, params: Value) -> Result<Value> {
     ensure!(
         host.gateway.workbench.backend_has_source(source),
         "CAPABILITY_UNAVAILABLE"
     );
+    if params["operation"] == "settings"
+        && !params["key"]
+            .as_str()
+            .is_some_and(library_commands::navigation_setting)
+    {
+        let value = library_store::change(host, source, |state| {
+            library_commands::apply(state, &params, &ContextView::default())
+        })?;
+        if matches!(
+            params["key"].as_str(),
+            Some("httpProxy" | "httpProxyNoProxy" | "httpProxyCaCertPath")
+        ) {
+            host.schedules
+                .connections
+                .frontend_network_settings(source, desktop_network_settings(&value));
+        }
+        return Ok(value);
+    }
     let home = library_store::source_home(host, source)?;
     let projects = worktree_catalog::saved_projects(&home)?;
     let aliases = bindings(host, source)?;
-    let private = host.gateway.workbench.library_dependencies(source).await?;
     let current = library_store::read_source(host, source)?;
     let mut context = ContextView {
         projects,
@@ -114,9 +166,12 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, params: Value) -> Res
         }
         context.summaries.insert(id.to_owned(), ids);
     }
-    for cloud in private["cloudThreads"]
-        .as_array()
-        .context("INVALID_RESPONSE")?
+    for cloud in host
+        .gateway
+        .workbench
+        .cloud
+        .sessions
+        .dependencies(host, source)?
     {
         context.readable.push((
             cloud["projectId"]
@@ -150,14 +205,6 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, params: Value) -> Res
             params["projectId"].as_str().context("INVALID_PARAMS")?,
         )? {
             let id = owner["id"].as_str().context("INVALID_RESPONSE")?;
-            ensure!(
-                !private["pendingProjects"]
-                    .as_array()
-                    .context("INVALID_RESPONSE")?
-                    .iter()
-                    .any(|p| p == id),
-                "工作区仍有活动任务或排队消息，请先处理后再移出侧边栏"
-            );
             let canonical = &aliases
                 .iter()
                 .find(|(_, alias)| alias == id)
@@ -205,7 +252,6 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, params: Value) -> Res
     let value = library_store::change(host, source, |state| {
         library_commands::apply(state, &params, &context)
     })?;
-    host.gateway.workbench.library_changed().await;
     Ok(value)
 }
 
@@ -355,7 +401,6 @@ pub(super) fn record_thread_activity(
             rows.retain(|s| s["id"] != thread);
             rows.push(reply["thread"].clone());
             record_summaries(&host, &source, &alias, &rows)?;
-            host.gateway.workbench.library_changed().await;
             Ok(())
         }
         .await;
@@ -458,81 +503,5 @@ async fn record_scheduled(host: &Rc<Host>, project: &str, task: &Value) -> Resul
             Ok(())
         })?;
     }
-    host.gateway.workbench.library_changed().await;
     Ok(())
-}
-
-/// 桌面设置由原页面宿主校验，Host 只对有界字段作 CAS；不解释或重写其值。
-pub(super) fn patch(host: &Host, source: &str, input: &Value) -> Result<Value> {
-    let patches = input["patches"].as_array().context("INVALID_PARAMS")?;
-    ensure!(patches.len() <= 256, "LIMIT_EXCEEDED");
-    library_store::change(host, source, |state| {
-        for patch in patches {
-            let path = patch["path"].as_array().context("INVALID_PARAMS")?;
-            ensure!(path.iter().all(Value::is_string), "INVALID_PARAMS");
-            let field = path
-                .first()
-                .and_then(Value::as_str)
-                .context("INVALID_PARAMS")?;
-            let key = path
-                .last()
-                .and_then(Value::as_str)
-                .context("INVALID_PARAMS")?;
-            let target = if field == "settings" && path.len() == 2 {
-                ensure!(
-                    [
-                        "snapShot",
-                        "busyEnter",
-                        "turnNotifications",
-                        "permissionNotifications",
-                        "questionNotifications",
-                        "notificationSound",
-                        "preventSleep",
-                        "showInMenuBar",
-                        "betaUpdates",
-                        "fileOpenTarget",
-                        "terminalInheritSystemProfile",
-                        "hardwareAcceleration",
-                        "taskNotifications",
-                        "computerControlEnabled",
-                        "computerControlShowEntry",
-                        "computerControlProvider",
-                        "browserLinkTarget",
-                        "browserLocalTarget",
-                        "browserFullAddress",
-                        "terminalFontFamily",
-                        "httpProxy",
-                        "httpProxyNoProxy",
-                        "httpProxyCaCertPath",
-                        "computerControlExecutable",
-                        "blockPrivatePreviewNetworks",
-                        "projectlessDirectory",
-                        "worktrees",
-                        "worktreeRevision"
-                    ]
-                    .contains(&key),
-                    "FORBIDDEN"
-                );
-                &mut state["settings"]
-            } else {
-                ensure!(
-                    field == "projects"
-                        && path.len() == 3
-                        && ["worktreeEnvironments", "worktreeEnvironmentRevision"].contains(&key),
-                    "FORBIDDEN"
-                );
-                state["projects"]
-                    .as_object_mut()
-                    .unwrap()
-                    .entry(path[1].as_str().unwrap())
-                    .or_insert_with(|| json!({}))
-            };
-            ensure!(
-                target[key] == patch["before"],
-                crate::wire::error("conflict", "library changed since it was read")
-            );
-            target[key] = patch.get("after").context("INVALID_PARAMS")?.clone();
-        }
-        Ok(())
-    })
 }

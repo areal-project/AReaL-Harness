@@ -51,6 +51,7 @@ impl Engine {
         self.tasks.spawn(async move {
             let mut timer = tokio::time::interval(Duration::from_secs(1));
             timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            let mut last_dispatched = None;
             loop {
                 tokio::select! { biased;
                     _ = cancel.cancelled() => break,
@@ -69,7 +70,11 @@ impl Engine {
                     .keys()
                     .cloned()
                     .collect();
-                for id in ids {
+                // 任务按 ID 排序；名额用完时，下次从上次派发位置继续。
+                let start = last_dispatched
+                    .as_ref()
+                    .map_or(0, |last| ids.partition_point(|id| id <= last));
+                for id in ids[start..].iter().chain(&ids[..start]).cloned() {
                     if cancel.is_cancelled() {
                         break;
                     }
@@ -82,6 +87,7 @@ impl Engine {
                             continue;
                         }
                     }
+                    last_dispatched = Some(id.clone());
                     let lease = DispatchLease {
                         ids: engine.task_modes.dispatching.clone(),
                         id: id.clone(),

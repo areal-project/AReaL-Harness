@@ -416,7 +416,7 @@ test("TodoMVC Active rejects hidden incorrect or extra completed items and requi
 
 test("scripted control operations pass real command validators and require generated initial goals", () => {
   const require = createRequire(import.meta.url);
-  const { validToolInput } = require("@areal/workbench-service/desktop/core/browser-tool.cjs");
+  const { validToolInput } = require("../packages/browser-automation/src/host-tool.cjs");
   const { validateBrowserCommand } = createRequire(new URL("../app/package.json", import.meta.url))(
     "@areal/browser-automation",
   );

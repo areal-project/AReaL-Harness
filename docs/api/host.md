@@ -25,6 +25,8 @@ Host 默认监听 `127.0.0.1`，`AREAL_HOST_WEBSOCKET=0` 可关闭。首次选�
 
 已认证 Unix 连接调用 `web.ticket`，参数为 `{origin,expectedGeneration,profile?}`。origin 必须精确等于 `areal-ui://app` 或本代 HTTP origin；可选 profile 只选择已提交来源的导航偏好。结果包含上述身份、调用方 origin、`ticket`、`expiresAt` 和可选 `preferredSourceId`。32 随机字节票据只保存摘要，有效 30 秒，单次使用，最多保留 64 张。每次重连重新取票。
 
+Electron 申请票据时只连接现有 Host。显式停止后，重新加载窗口或 Renderer 的重试无法启动后继 Host。桌面 Main 根据原停止回执和显式重连动作决定何时启动后继代际。
+
 WS 只接受 `/host/socket`，拒绝 query，精确校验 Host authority 与单个 Origin。首帧为 `{version:1,id,method:"hello",params:{protocolVersions:[1],capabilities,ticket,expectedGeneration}}`。未协商时仅支持 `host.status`；加入 `gui-read-v1` 后返回协商能力、连接身份、方法与资源上限。Unix 的既有 hello 和未协商 Remote 客户端的方法、字段和限制保持原样。HTTP header 上限 8 KiB，升级、首帧和发送各限时 10 秒，连接最多 32 个，帧和消息最多 1 MiB。
 
 回环连接上的工作台查询可与业务命令并发，响应按 `id` 关联，不保证返回顺序；写操作仍保留同连接的受理顺序。等待后台请求时继续处理会话读取和事件。每个连接最多保留 16 个在途或排队的业务请求，超额请求在派发前返回 `CAPACITY_EXCEEDED`；这不改变已派发命令的回执与 UNKNOWN 恢复规则。
@@ -34,6 +36,8 @@ WS 只接受 `/host/socket`，拒绝 query，精确校验 Host authority 与单�
 `providers.revealKey` 仅供本机认证 Unix 连接显式查看单个供应商的 API Key。Main 绑定可信桌面 profile，传入供应商 ID、配置 revision 和 Host generation；Host 解析已提交来源，读取前后核对配置 revision。该接口不走 journal，不向网页或远程公布，也不启动 Node 或 Core。
 
 Remote 的新读方法和原生会话格式只在 hello 协商 `gui-read-v1` 后提供，仍受现有设备项目授权约束；基础方法表为 25 项（含 `project.activate`）。共享客户端通过 Noise 或本机 WS 使用同一读模型。具体消息、字段与边界见 `schemas/areal-host-protocol-v1.json`。
+
+`desktop.command` 的 `connect` 由 Host 按逻辑项目和 Thread 解析执行工作区。显式 `resumeScheduling:true` 复用原 `project.ensure` 受理记录清除调度停止意图；遇到未决启动时只核对原回执，返回原 `activationId`，不会重发启动。结果使用原生激活状态，客户端重读共享投影并校验 Core 代际。
 
 本机 WebSocket 协商 `persistedHistoryV1` 后，可对已登记且未运行的项目调用 `session.openPersisted`。Host 核对旧服务身份并取得启动、服务和 Store 锁，生成有大小上限的固定只读快照，不启动 Core 或 Runtime；响应标记 `access.readOnly` 和快照摘要，不改变项目状态或旧回执。历史分页及内容寻址附件绑定该订阅；不支持的继承视图和缺失资源明确返回错误。连接关闭、订阅关闭或项目归属改变后快照失效。此能力不授予发送、任务控制或项目接管权限。
 
@@ -49,8 +53,6 @@ Host 发布包内与 Electron 相同的 Renderer。`areal web` 打开公开 orig
 
 `areal host web devices` 列出设备身份、公钥指纹和已授予的范围；`areal host web revoke DEVICE_ID` 持久撤销该浏览器，未使用票据和活跃连接随之失效。撤销和批准只在已认证 Unix 连接上提供。私钥、凭据和票据不进入 URL、进程参数、日志或诊断。省略 `web.approve.params.scopes` 时仅授予 `observe`，既有授权不自动扩大。该本机接口可显式授予 Host 全部项目的 `observe`、`submit`、`approve`、`manage` 范围（必须包含 observe）；CLI 默认只读；例如 `areal host web approve REQUEST_ID --scope observe,manage` 仅开放查看和管理。新浏览器还须协商 `gui-write-v1`，hello 仅列出授权内的方法，服务端逐次校验。`submit` 包含提交、附件及停止；`approve` 包含审批与回答；`manage` 包含资料库整理、统计导入和有界的管理操作，不隐含前两者；其中会推动或停止在途工作的管理操作（终端写入、上下文压缩、立即运行任务、恢复本次运行、取消执行、停止 Run）分别另需 `submit` 或 `interrupt`。跨项目资料库通过 `library.command` 写入，以 `commandId` 查 `command.read`，未知结果不重放。后台启动与原生能力边界见[工作台服务](../design/workbench-service.md)。
 
-`pages.command/resource` 是绑定本机已鉴权连接的 MCP Apps/Gen-UI 页面入口，要求 `gui-write-v1` 与 manage，目录查询 `catalog` 不执行工具；手动打开 MCP App 与页面 JSON-RPC 请求另需 submit。Host 注入连接 owner，事件 `pages.event` 带 `connectionId` 与 `gatewayGeneration`；资源分块只对原 owner 返回，断开撤销实例和页面工具租约。固定公开代理 `/host/pages/proxy` 不承载用户 HTML。页面请求不进入通用 journal，不得因断连自动重放。远程 Noise 和仅有 submit 的设备尚未开放。
-
 `providers.read` 读取 Host 的公开供应商配置投影；`providers.command` 接受保存、应用、默认模型、删除、发现和探测，要求本机浏览器的 manage 授权。写入以 `commandId` 查询原回执；草稿凭据不进入 journal 参数，浏览器不能调用 `revealKey`。保存、默认模型、删除和显式应用由 Host 统一准入。保存先写规范配置，不等待在线 Core；每个项目独立在空闲时应用，并按原请求核查回执。UNKNOWN 不重发，明确失败后可显式重试；未运行项目使用下次启动的配置。Node 只核验应用证明，不再写配置或全局回滚；发现和探测也由 Host 执行，不启动 Node 或 Core；保留来源网络设置、代理绕过及证书验证，30 秒超时，发现响应最多 1 MiB 和 64 个模型，探测要求完整且非空的 SSE 文本成功终态。模型草稿的 `reportedContextWindowTokens` 保留上游报告的上下文窗口，取 1–2,000,000 的整数，与用户覆盖的 `parameters.contextWindowTokens` 分开保存。保存要求 API Key 但既无输入也无已配置引用时返回 `PROVIDER_CREDENTIAL_REQUIRED`，原命令确定拒绝，不留待核对的提交。
 
 `providerRevision` 同时覆盖应用证明的有效性：证明失效或重新有效时，即使证明内容相同也推进版本。保存回执是原命令的固定结果；界面按后续版本通知重读当前投影，不能用回执替代实时应用状态。
@@ -59,7 +61,7 @@ Host 发布包内与 Electron 相同的 Renderer。`areal web` 打开公开 orig
 
 工作台各域的读写（`library`、`worktree`、`tasks`、`trajectory`、`feedback`、`manage`、`providers`）与 `desktop.command` 都不需要客户端指定 `sourceId`：省略时 Host 用当前工作台后台的来源，后台未运行时返回 `CAPABILITY_UNAVAILABLE`；显式传入且不一致时返回 `FORBIDDEN`。
 
-资料库非原生操作（含非导航偏好）统一使用 `library.command` 和原 `commandId` 回执；`desktop.command` 不再接受 `library`。电脑控制的启用、provider、executable 三项设置仍使用本机 Main 权限入口。
+资料库非原生操作（含非导航偏好）统一使用 `library.command` 和原 `commandId` 回执。用量、任务目录、供应商、反馈和轨迹使用各自的 Host 方法。添加项目使用原生项目登记入口。 会话列表读取共享 Shell 目录。读取附加会话使用 `session.watch`，不改变主会话选择。
 
 ## 消息封装与公共类型
 
@@ -121,11 +123,35 @@ Host 发布包内与 Electron 相同的 Renderer。`areal web` 打开公开 orig
 
 Host 内部共享 Core 连接的监督器在状态探测暂时失败后，仍按原退避重新探测当前 Host 持有生命周期且启动结果已确定的服务，即使项目的定时激活已被抑制。恢复前重新核验服务身份与 owner；探测不调用 `project.ensure`，不启动新 Core，也不解除停止意图。已停止、失去生命周期持有权、owner 不匹配或启动结果未确定的项目不通过这条重试路径恢复。
 
+Main 默认启动先准备来源和配置，再连接原生附件与 Host 外壳快照，不启动 Node 工作台或读取其项目投影；重新连接也重新核对原来源。外壳订阅失败会撤销本次原生附件。来源公开不代表启动配置已经就绪，首次项目激活等待同来源的原生配置后继续原请求。
+
+本机 Main 通过 `desktop.core.subscribe` 绑定来源和经核验的启动选项；可选 `environmentCredentials` 只接受已配置的环境凭据名，值仅保留在 Host 内存，不进入启动记录。`desktop.core.event` 的工具回调携带原 `sourceId/projectId/lease/coreInstanceId/coreGeneration/connectionId`，以及用于原生预览的 `guiProjectId/workspacePath`；逻辑项目与执行工作树不能互换。`desktop.core.callback` 仅回复同一附件的原请求，媒体上传仍使用原执行项目和租约。附件断开撤销专用连接，不重放回调或提交。 Main 订阅既有就绪项目或 Core 后续就绪时，Host 在该附件的项目专用租约上发布 `areal.browser.v1` 调度工具；普通原生连接与会话准备复用同一租约。旧 Node 观察连接只撤销自身工具发布，不能接管原生工具宿主。 用户首次打开预览时，Main 经 `desktop.core.call` 的 `browser.scope` 查询 Thread 归属；Host 复用工作树解析并核对 Core 中的未归档 Thread，返回逻辑项目、执行目录和同一原生租约，无需先产生工具回调或打开旧 Node 投影。
+
+原生附件的订阅结果及 `host.networkSettings` 事件向当前本机来源提供 HTTP 代理、排除列表和 CA 路径。Host 保存有效变更后发布新值，拒绝旧资料库中带用户信息的代理 URL。浏览器共享快照继续屏蔽这三个字段。Main 的本地 `desktop.command` 使用当前附件标识，Host 从附件获取来源和所属连接，再交给桌面命令的同一 Rust 分发器。
+
+Main 在已附接的窗口通过 `desktop.core.call` 调用 `lifecycle.read`。冷启动核查通过已运行 Host 的认证 Unix 连接直接调用 `lifecycle.read`，由 Host 按已登记的 GUI `profile` 找到来源，无需启动桌面工作台。两种入口均按原 `requestId`、`desktopGeneration` 查找回执。核对只推进由 Rust Host 持有的回执，旧 Node 回执及其 UNKNOWN 状态原样保留。
+
+本机 GUI 和网页通过 `attachment.read` 读取尚无消息条目标识的附件及轨迹原始结果。需要 `gui-write-v1` 与 `manage` 授权。请求携带原执行项目和 Core 代际、`threadId`、`uri` 及从零开始的 `offset`。Core 验证原会话的内容引用，Host 核验摘要并在同一连接内每次返回最多 256 KiB 原始字节，响应中的 `nextOffset` 为空表示读完。已提交消息的媒体继续使用绑定订阅及条目的 `artifact.read`。清单和释放由 Host 定位到原执行项目，释放沿用 Core 回执，归档会话保持只读。
+
+本机网页通过 `worktree.project.add {root}` 登记用户选择的项目目录，需要 `gui-write-v1` 与 `manage` 授权。Host 核对当前 GUI 来源并规范目录，在同一来源重复登记同一路径返回同一 `projectId`。界面收到项目 ID 后刷新 Shell，登记失败时保留当前选择。
+
+GUI 来源的新项目登记由 Host 生成首次 `LaunchInputs`，不等待 Node 写入启动记录；已保存的输入继续沿原记录复用。首次准备带有绑定项目和输入摘要的只读空闲证明，实际启动准备前持久撤销；缺少证明的既有输入仍按未知启动历史处理。已导入但缺少启动记录的 GUI 项目可从同一来源经校验的启动选项准备；CLI 的首次激活仍须显式提供输入。配置根、执行目录与数据目录独立绑定，凭据值仍经 Host 内存通道注入。默认 Profile 和内置 Skill 来自共享资源，固定清单与摘要校验后物化；用户与项目 Skill 选择复用定时准备的同一物化器，显式外部部署保留自身契约。代理与补充证书使用来源设置，附加 CA 保留原系统信任根。资源、钩子或网络准备失败时，启动输入标记为仅历史模式，不因此开放执行。
+
+项目外目录的 `projectless` 命令与本机附件的 `projectless.command` 共用 Rust Host 所有者。Host 先将原 requestId 和规范目录写入来源的预约文件，再创建目录与登记项目；重复请求只能恢复原目录，不能改绑，已有普通项目目录不能被转成项目外任务。预约与登记跨异步调用串行处理。模型目录复用 Host 的配置与订阅投影，响应不含端点或凭据值。
+
+本机附件的 `terminal.command` 将 GUI 终端的创建、读取、控制与原提交核对交给 Host；执行目录沿已登记的 Thread 归属解析，专用 Core 租约只归原附件。GUI 的 turn/thread 回收选项仍映射到 Core 的连接生命周期，窗口断开即撤销租约。重复创建只核对原回执，不再次启动进程；退出前须确认已登记进程的清理状态。
+
+资源入口的 `inspect` 和 `status` 只读当前来源的 Host journal 与 Core 连接，不启动停止的项目。进程只公开可执行文件名；失效连接和不完整观察保留为 unavailable，未决提交公开原线程与等待状态。独立会话创建公开经核对的原请求 ID，诊断据此在原执行项目查询回执。诊断不包含提交参数或草稿。状态读取也能显示停机导入保留的原创建记录。它们只作诊断展示，不加入运行日志或后台活动判断。`status` 省略已退休 Node 后台的客户端数和活动命令数，不用控制连接数或空值冒充这些计数。
+
+远程设置的 `desktop.command(remoteControl)` 直接复用 Host Gateway 状态与控制回执。未启用时读取状态不创建身份或凭据；首次控制才准备身份并交接所有权。旧调用方的未决引用按原来源和回执核对，未知写入不重放，也不阻塞状态读取。配对结果返回 payload，由共享客户端生成二维码。
+
+Cloud 会话由 Rust Host 管理原来源的 `cloud-sessions.json` 绑定，并复用原生提交 journal。`desktop.core.call` 的 `cloud.session` 与 `desktop.command` 的 `cloudSession` 进入同一所有者。Shell 使用 `cloud-session:<sourceId>:<recordId>` 作为逻辑项目下的执行子项目，读取、附件和既有会话激活沿 Host 连接执行；远程授权只继承原来源和逻辑项目的 grant。凭据修订变化使旧观察与媒体失效；没有原创建受理证据的历史记录保持 UNKNOWN，不重新创建。Cloud 连接归 Host 生命周期，Node 投影退出不关闭它。
+
 ## 定时项目激活与准备
 
-`scheduledPreparation` 表示 Host 通过常驻认证连接注册 Core 调度宿主并处理 `areal/task/prepare`。普通 GUI 工具连接和调度连接可以不同，但必须属于同一认证身份；来源会话和执行锚点仍校验原连接与目录归属。Core 保留 Task、Run、准备结果及触发权威。Host 不为缺席的 Main 发布浏览器、计算机或 JavaScript 工具。
+`scheduledPreparation` 表示 Host 通过常驻认证连接注册 Core 调度宿主并处理 `areal/task/prepare`。普通 GUI 工具连接和调度连接可以不同，但必须属于同一认证身份；来源会话和执行锚点仍校验原连接与目录归属。Core 保留 Task、Run、准备结果及触发权威。Host 不为缺席的 Main 发布浏览器工具。
 
-GUI 在线时通过 Core `areal/task/tools/ready` 发布当前 Browser/Computer bundle。Run 的调度生命期绑定 Host，桌面工具绑定实际 GUI 连接；退出 GUI 不终止纯模型执行，旧工具调用也不转发给后来的连接。注册是连接级状态，不迁入 Host 的持久任务记录。
+GUI 在线时通过 Core `areal/task/tools/ready` 发布当前 Browser bundle。Run 的调度生命期绑定 Host，桌面工具绑定实际 GUI 连接；退出 GUI 不终止纯模型执行，旧工具调用也不转发给后来的连接。注册是连接级状态，不迁入 Host 的持久任务记录。
 
 `scheduledActivation` 能力表示 Host 承担定时项目激活。`host.status.projects` 的 `scheduleActivationSuppressed:boolean` 与可选 `scheduleActivationError:string` 是 GUI 的只读投影来源。错误仅包含领域错误码，不公开子进程 stderr 或秘密。
 
@@ -270,13 +296,13 @@ macOS 退役预检读取原 vault entry 时禁止弹出 Keychain 交互；需要
 
 配对 Host 声明 `ready.sessionCreateFirstMessage` 时，手机可通过 `session.create` 提交 `firstMessage: {text, model?, parameters?, options?}`，按设备授权选择模型、推理强度与权限预设。Core 将新 Thread 和首个 Turn 一起持久化。已受理回执包含 `threadId` 与 `turnId`。回复丢失后，使用原命令 ID 查询 `command.read`。查不到回执时保留未决状态。
 
-`project.activate` 只需目标项目的 `submit` 权限，接受空 `params` 与仅含 `projectId` 的 `context`。Host 用保存的可信启动输入唤醒执行实例，复用原 `project.ensure` 生命周期与回执；已有未决启动只核对原请求，不新建或重放。结果为 `{projectId,state:"ready"|"pending"|"blocked",activationId?,serviceGeneration?,reason?}`，`ready` 同时等待共享 Core 连接就绪。该操作不提交消息、不解除显式停止或调度抑制；消息在重新读取实时会话后走独立的原提交回执，启动待确认不能被当成消息已受理。
+`project.activate` 只需目标项目的 `submit` 权限，接受空 `params` 与仅含 `projectId` 的 `context`。Host 用保存的可信启动输入唤醒执行实例，复用原 `project.ensure` 生命周期与回执；客户端断开后，Host 继续结算已受理的原启动。已有未决启动只核对原请求，不新建或重放。结果为 `{projectId,state:"ready"|"pending"|"blocked",activationId?,serviceGeneration?,reason?}`，`ready` 同时等待共享 Core 连接就绪。该操作不提交消息、不解除显式停止或调度抑制；消息在重新读取实时会话后走独立的原提交回执，启动待确认不能被当成消息已受理。
 
 `project.models` 是仅需 `observe` 的只读方法，接受空 `params` 和仅含 `projectId` 的 `context`。返回 `{projectId,gatewayGeneration,grantRevision,serviceGeneration,models}`，最多 200 项、128 KiB；每项公开模型身份、名称、参数、能力、默认选择与凭据可用性；不公开端点、凭据引用或密钥。在线项目立即返回原连接已核验的内存目录；首次读取或模型目录版本变化时先返回 Host 本地配置目录，尚未核验的可用性保持 checking。共享 Core 连接在后台补齐模型、能力和配置档，仅原连接、代际及目录版本仍匹配时发布，并推进 `modelCatalogRevision` 触发客户端重读；读取失败在原连接内延迟重查，断连即取消。普通模型来自当前 Core 已应用目录；ChatGPT 名称、模型与可用性来自同一 source 的 Host 订阅 owner。仅已认证且目录 `checking` 时，补入当前 Core 的 `lastAcceptedModel` 和本连接已经观察的当前会话配置；候选省略 `available`，不宣称可用。此集合不恢复旧 GUI 曾加载的全部会话或跨项目历史偏好。读取前后核对授权、Gateway/Core 代际、共享连接和订阅目录；已停止项目直接解析 Host 保存的启动配置返回脱敏目录，不启动 Node 或 Core，不读取钥匙串；此时省略 `serviceGeneration` 和实时 `features`，安全存储凭据只标为检查中。变化返回 `RESYNC_REQUIRED`。读取不启动项目、不创建会话或观察订阅，也不要求 Core 刷新执行目录；旧 Host 不声明该方法。 `session.open` 和 `session.updated` 的 `snapshot.models` 复用后台核验的目录和公开字段投影，不额外等待 Core 模型读取；尚无核验缓存且本地模型配置损坏时，只省略候选模型，不阻塞历史正文，模型设置页仍报告配置错误。候选取自本次已观察的会话配置；发布前再次核对原观察连接，完整快照（含目录）仍受 192 KiB 限制。
 
-本机协商 `gui-write-v1` 且绑定工作台后台后，`session.create` 接受原桌面 `requestId/parameters/options/profile/model/worktree/browserEnabled`。Host 先在独立工作台命令 scope 保存完整原请求，再调用原 worktree 创建流程；项目原生 journal 仅由后台保存 typed Core 请求，同一 requestId 不变；不先创建再配置。`command.read` 只读原创建记录，未完成保持 UNKNOWN；完成回执的 `result.executionProjectId` 是 Host 登记的执行项目 ID。该入口的 `project.models` 读取共享连接后台核验的 Core 模型与配置档、已保存的默认配置，附带 `profiles/defaultProfile/lastAcceptedModel`、模型参数、能力和 `features`（按 Core 公开声明的方法与功能投影出界面入口，如侧边聊天、预测、进程；不据此授权），不公开 provider 端点或凭据；未协商客户端保留精简目录与空创建参数。`session.control` 的 `steer` 同样保留附件、引用与 MCP 内容，并在 journal 前冻结 Gen-UI 模型上下文。
+本机协商 `gui-write-v1` 且绑定 GUI 来源后，`session.create` 接受原桌面 `requestId/parameters/options/profile/model/worktree/browserEnabled`。Host 先在独立工作台命令 scope 保存完整原请求，再调用原 worktree 创建流程；Host 在项目原生 journal 保存 typed Core 请求，同一 requestId 不变；不先创建再配置。`command.read` 只读原创建记录，未完成保持 UNKNOWN；完成回执的 `result.executionProjectId` 是 Host 登记的执行项目 ID。该入口的 `project.models` 读取共享连接后台核验的 Core 模型与配置档、已保存的默认配置，附带 `profiles/defaultProfile/lastAcceptedModel`、模型参数、能力和 `features`（按 Core 公开声明的方法与功能投影出界面入口，如侧边聊天、预测、进程；不据此授权），不公开 provider 端点或凭据；未协商客户端保留精简目录与空创建参数。`session.control` 的 `steer` 同样保留附件、引用与 MCP 内容。
 
-`session.send` 沿用 `{threadId,expectedConfigRevision,text,enqueue?,expectedTurnId?}`，使用当前项目、Gateway、grant 与 Core 代际的写入 `context`。文本非空且最多 64 KiB；可选字段显式 `null` 非法，省略 `enqueue` 与显式 `false` 的命令语义摘要不同。Host 先核对普通会话所有权、配置 revision、活动 Turn 与队列，再由 Core 的 `ordinarySession` 准入 guard 原子核对。直接发送只允许 idle 且无待处理队列；排队必须绑定确切的原活动 `expectedTurnId`。忙碌、目标变化与不支持的 Workflow profile 分别保留 `TURN_BUSY`、`TARGET_CHANGED`、`UNSUPPORTED_PROFILE` 语义。 Core 在展开附件和上下文后拒绝超过 1 MiB 的输入时，原命令回执返回 `INPUT_LIMIT_EXCEEDED`；这与并发容量不足不同。
+`session.send` 沿用 `{threadId,expectedConfigRevision,text,enqueue?,expectedTurnId?}`，使用当前项目、Gateway、grant 与 Core 代际的写入 `context`。发布版远端客户端的正文非空，正文上限为 64 KiB。可选字段显式 `null` 非法，省略 `enqueue` 与显式 `false` 的命令语义摘要不同。Host 先核对普通会话所有权、配置 revision、活动 Turn 与队列，再由 Core 的 `ordinarySession` 准入 guard 原子核对。直接发送只允许 idle 且无待处理队列；排队必须绑定确切的原活动 `expectedTurnId`。忙碌、目标变化与不支持的 Workflow profile 分别保留 `TURN_BUSY`、`TARGET_CHANGED`、`UNSUPPORTED_PROFILE` 语义。 Core 在展开附件和上下文后拒绝超过 1 MiB 的输入时，原命令回执返回 `INPUT_LIMIT_EXCEEDED`；这与并发容量不足不同。
 
 `session.control` 支持 `configure`、`goalCreate/goalPause/goalResume/goalClear`、`queueUpdate/queueRemove/queueReorder/queuePause/queueResume/queueSteer` 和 `steer`，参数为 `{threadId,operation,expectedRevision,values}`，使用同样的写入 `context` 与 `submit` 授权。其中 `configure` 的 `values` 仅接受 `model`、仅含 `reasoningEffort` 的 `parameters`，及原 Remote 白名单 `options`。Host 核对普通会话、空闲轮次及预期配置 revision，并从同一 Core 的权威 `thread/inspect` 配置合并参数和选项，保留 Fast 等未改字段；Core 原子核对配置 revision。新命令摘要使用固定外层字段顺序与按键排序的 `values`，不依赖客户端 JSON 属性顺序；原操作写入现有 journal 后只派发一次。重复命令与 `command.read` 读取原结果，丢回复仅核查同存储、同 principal 与原 typed 摘要的 Core 回执。旧 JS configure 的原 `command.read` 保留原 semanticDigest；旧 pending 仅在已提交 source/migration/project/dataDir 与原 typed Core 回执一致时结算，不重新配置或补造派发绑定。手机恢复只查询原命令，不重新提交旧控制。目标控制除原生根会话条件外，还要求当前 Goal 来自同 Host、设备、项目的 accepted `goalCreate` 回执；观察投影与准入使用同一 journal 归属。队列编辑保留原队列 revision 和项目身份，拒绝改写有附件或已截断的排队正文；steer 绑定确切活动 Turn。Goal 与 queueSteer 使用原 typed Core 摘要，普通队列编辑使用去掉 requestId 的 management 摘要；旧 pending 同样只读相应原回执，保留 goalCreate 的 goalId/revision。`steer` 沿旧映射不添加原生 requestId，仅明确 Core 回答可结算；丢回复保持 UNKNOWN，原命令查询和副本都不再次追加输入。
 
@@ -303,9 +329,13 @@ macOS 退役预检读取原 vault entry 时禁止弹出 Keychain 交互；需要
 
 `turn.stop` 接受 `{threadId,expectedTurnId}` 与同样的写入 `context`，要求 `interrupt` 授权。Host 核对普通会话及确切活动 Turn，再由 Core 的 `turn/interrupt` 与 `ordinarySession` guard 原子核对原目标。命令先写入现有 journal；同 peer、同 `commandId` 的副本复用原操作。仅明确的 Core 回应确认 accepted 或 rejected；连接丢失继续 UNKNOWN，原 `command.read` 和重复命令都不再次停止。该 Core 方法没有独立受理回执，结果不暴露 `nativeRequestId`，不以 Turn 已结束推断本次停止已受理。项目离线仍可读取已保存的原结果；受理停止不代表 Runtime UNKNOWN 工具已经得到成功结算。
 
+带 gui-write-v1 能力的客户端可以在普通会话的 `session.send` 中传入已安装插件的 `command` 引用，正文可以为空。此时省略 `enqueue` 和 `expectedTurnId`，Core 在同一次原子提交中展开命令并决定直接发送或排队。原命令回执保留对应的 Turn 或队列项 ID。
+
 `session.send` 直接或排队发送时，Host journal 在派发前保存原 `operationId`、typed Core 请求摘要、来源项目/设备/手机 `commandId` 与 Core 存储绑定。同设备并发副本在最后一次前置异步读取后核对原关联，只派发一次；错误分支也以已存在的原关联为准。直接发送的受理结果保留原 `threadId`/`turnId`；排队结果保留原 `receipt.queueItemId`，不猜测将来的 Turn。`command.read` 在项目离线时仍能读取原日志；UNKNOWN 恢复只读原 `areal/request/read`，核对请求、方法、typed 摘要、目标与原存储身份。相同 serviceId、principal identity 与持久 journalEpoch 可跨 Core 代际查询原回执；存储不符、没有回执或证据不完整继续 UNKNOWN，不重新派发。同一会话还有未结算的非控制提交且无对应 outcome 时，即使 Core 当前 idle，新命令也返回 `SUBMISSION_UNKNOWN` 与 `submissionUnknown:true`；精确停止/交互控制按原关联识别，已结算 outcome 优先。会话创建的 outcome 持久化发生 I/O 错误后，只有重读到与原已持久化 pending 完全一致的记录时，才返回原 commandId/operationId 的 `admissionState:"unknown"` 与 `submissionUnknown:true`，不附带受理回执或 Thread。pending 未落盘、重读失败或记录已变化时保留错误，不推断未提交；授权仍在返回前复核。原发送仍在等待回复时，只读查询可显示 `pending`；进程退出不将这项临时等待状态当作受理证明。
 
 `session.create` 和 `session.send` 可在准入前返回明确拒绝。项目未就绪时，Host 只有在按原设备、项目和命令 ID 验证没有日志关联后才返回 `CORE_UNAVAILABLE` 与 `submissionUnknown:false`。过期的请求代际在确认没有原关联时返回 `admissionState:"rejected"` 与 `RESYNC_REQUIRED`。单独查询返回 `notFound` 时仍保持结果未知。
+
+本机客户端查询 `configure` 等 `desktop.command` 提交时，`command.read` 找不到原编号会转入同一 Host 的原请求 `reconcile`。精确核对返回该请求的工作台回执，仅使用原执行工作区的日志与已经就绪的 Core 连接。
 
 原生记录按原 typed 请求摘要和 Core 存储绑定恢复。升级采用停机导入：旧版待决提交属于在途工作，不带入新 journal；旧 JS 远程网关写下的远程记录（`nativeDigest` 与 `coreScope` 两字段都缺席）在导入和加载时丢弃，只保留作为长期授权事实的目标创建回执。Host 不再核查或恢复旧格式记录。
 
@@ -331,7 +361,7 @@ journal 快照为 `{version:1,pending:object[],outcomes:object}`，保留条目�
 
 ## 固定凭据槽
 
-`credentialVault` 只服务已发布 GUI 来源。槽位为 `{kind:"providerCredential",sourceId,reference}`、`{kind:"subscriptionAccount",sourceId,providerId}` 或 `{kind:"subscriptionTransport",sourceId}`。`reference` 使用原 `AREAL_CREDENTIAL_*` 名称。不同来源的同名引用独立。Remote 身份仍归 `remote.read/replace`；通过 vault 访问 `remoteIdentity` 返回 `remoteStateRequired`。
+`credentialVault` 只服务已发布 GUI 来源。槽位为 `{kind:"providerCredential",sourceId,reference}`、`{kind:"subscriptionAccount",sourceId,providerId}` 、`{kind:"subscriptionTransport",sourceId}` 或 `{kind:"cloudAccount",sourceId}`。`reference` 使用原 `AREAL_CREDENTIAL_*` 名称。不同来源的同名引用独立。Cloud 槽把服务地址与 token 保存在同一修订中，设置页只接收地址和是否已配置；连接时 Host 校验目标与原凭据修订，再发布远端 lease。旧 `cloud.json` 的一次解密导入由 Main 原生适配器执行，Host 校验原字节摘要且不覆盖已初始化槽，原密文保留。Remote 身份仍归 `remote.read/replace`；通过 vault 访问 `remoteIdentity` 返回 `remoteStateRequired`。
 
 | 方法            | 请求 params                                                  | result                                                                                                          |
 | --------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |

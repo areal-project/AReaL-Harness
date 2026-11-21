@@ -46,6 +46,25 @@ fn setting<'a>(settings: &'a Value, key: &str) -> Result<&'a str> {
     );
     Ok(text.trim())
 }
+/// 在不触发系统代理探测的情况下校验并归一化资料库里的网络设置项。
+pub(crate) fn validate_setting(key: &str, value: &str) -> Result<String> {
+    ensure!(
+        value.chars().count() <= 4096 && !value.chars().any(char::is_control),
+        "invalid network setting"
+    );
+    let text = value.trim();
+    match key {
+        "httpProxy" => proxy_setting(text),
+        "httpProxyNoProxy" => bypass_setting(text),
+        "httpProxyCaCertPath" => {
+            if !text.is_empty() {
+                ca_bundle(Path::new(text), true)?;
+            }
+            Ok(text.to_owned())
+        }
+        _ => anyhow::bail!("unknown network setting"),
+    }
+}
 fn proxy_setting(text: &str) -> Result<String> {
     if text.is_empty() {
         return Ok(String::new());
@@ -356,6 +375,58 @@ pub(super) fn apply_model_proxy(input: NetworkInput, environment: &mut BTreeMap<
         }
     }
     environment.insert(areal_config::proxy::MANAGED_PROXY.into(), "1".into());
+}
+
+/// 子进程使用同一代理规则；补充证书与原系统信任根合并，不能替换公共根。
+pub(crate) fn launch_environment(
+    input: NetworkInput,
+    directory: &Path,
+) -> Result<BTreeMap<String, String>> {
+    use areal_local_service::storage;
+    use base64::Engine;
+    ensure!(!input.proxy_unavailable, "system proxy unavailable");
+    let mut environment: BTreeMap<_, _> = input
+        .proxies
+        .into_iter()
+        .filter(|(name, _)| crate::launch::allowed_environment(name))
+        .collect();
+    // 准备与实际启动必须持有同一策略标记，否则首次刷新会误判配置变化并重启 Core。
+    environment.insert(areal_config::proxy::MANAGED_PROXY.into(), "1".into());
+    if !input.extra_ca_pem.is_empty() {
+        let native = rustls_native_certs::load_native_certs();
+        ensure!(
+            !native.certs.is_empty(),
+            "native certificate roots unavailable"
+        );
+        let mut roots = Vec::new();
+        for certificate in native.certs {
+            let encoded = base64::engine::general_purpose::STANDARD.encode(certificate.as_ref());
+            let body = encoded
+                .as_bytes()
+                .chunks(64)
+                .map(|line| std::str::from_utf8(line).unwrap())
+                .collect::<Vec<_>>()
+                .join("\n");
+            roots.push(format!(
+                "-----BEGIN CERTIFICATE-----\n{body}\n-----END CERTIFICATE-----"
+            ));
+        }
+        roots.extend(input.extra_ca_pem);
+        let combined = roots.join("\n");
+        storage::private_dir(directory)?;
+        let path = directory.join(format!("ca-{}.pem", storage::digest(combined.as_bytes())));
+        storage::write_bytes(&path, combined.as_bytes())?;
+        for name in [
+            "SSL_CERT_FILE",
+            "NODE_EXTRA_CA_CERTS",
+            "REQUESTS_CA_BUNDLE",
+            "CURL_CA_BUNDLE",
+            "GIT_SSL_CAINFO",
+        ] {
+            environment.insert(name.into(), path.to_string_lossy().into_owned());
+        }
+    }
+    Ok(environment)
 }
 
 #[cfg(test)]

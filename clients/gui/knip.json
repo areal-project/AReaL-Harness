@@ -12,7 +12,6 @@
     "**/fixtures/**",
     "**/*.snap",
     "app/src/vendor/**",
-    "packages/gen-ui/assets/**",
     "oxlint-plugin-areal/**"
   ],
   "ignoreDependencies": ["@axe-core/playwright", "ajv"],
@@ -37,8 +36,8 @@
       "project": ["src/**/*", "remote-web/remote.css", "vite*.ts"]
     },
     "packages/*": {
-      "entry": ["src/**/*.{js,jsx,mjs,cjs,ts,tsx}", "guest.ts"],
-      "project": ["src/**/*", "guest.ts"]
+      "entry": ["src/**/*.{js,jsx,mjs,cjs,ts,tsx}"],
+      "project": ["src/**/*"]
     }
   }
 }

@@ -103,7 +103,9 @@ AReaL uses one host-managed creation capability without adding a tool the model 
 Run the Git, host, and desktop-contract tests from the repository root:
 
 ```sh
-node --test clients/gui/scripts/worktree-git.test.cjs clients/gui/scripts/worktree-host.test.cjs clients/gui/scripts/worktree-contract.test.cjs clients/gui/scripts/worktree-admission.test.cjs clients/gui/scripts/worktree-task-routing.test.cjs clients/gui/scripts/schedule-admission.test.cjs
+node --test clients/gui/scripts/worktree-git.test.cjs clients/gui/scripts/worktree-contract.test.cjs clients/gui/scripts/worktree-task-routing.test.cjs
+cargo test --locked -p areal-host worktree_catalog
+cargo test --locked -p areal-host schedule_admission
 ```
 
 `node clients/gui/scripts/worktree-ui-smoke.mjs` checks production component interactions with Chromium and a deterministic desktop-action fixture. It is not native Electron, package, or macOS acceptance.

@@ -13,6 +13,20 @@ impl Session {
         self.authorize(Some(project), "submit")?;
         self.host.admission()?;
         let id = self.project_id(project)?;
+        if crate::server::cloud_sessions::CloudSessions::is_virtual(&id) {
+            let scope = self
+                .host
+                .gateway
+                .workbench
+                .cloud
+                .sessions
+                .activate(&self.host, &id)
+                .await?;
+            self.authorize(Some(project), "submit")?;
+            return Ok(
+                json!({"projectId":project,"state":"ready","serviceGeneration":scope.identity.1}),
+            );
+        }
         if self.host.schedules.suppressed(&id) {
             return Ok(json!({"projectId":project,"state":"blocked","reason":"explicitlyStopped"}));
         }
@@ -39,18 +53,15 @@ impl Session {
         let activation = uuid::Uuid::new_v4().to_string();
         let result = self
             .host
-            .ensure_cause(
-                crate::server::Ensure {
-                    request_id: activation.clone(),
-                    expected_generation: self.host.identity.generation.clone(),
-                    project_id: id,
-                    launch_inputs: None,
-                    credentials: Default::default(),
-                    no_auto_restart: false,
-                    resume_scheduling: false,
-                },
-                true,
-            )
+            .ensure_from_gateway(crate::server::Ensure {
+                request_id: activation.clone(),
+                expected_generation: self.host.identity.generation.clone(),
+                project_id: id,
+                launch_inputs: None,
+                credentials: Default::default(),
+                no_auto_restart: false,
+                resume_scheduling: false,
+            })
             .await;
         self.authorize(Some(project), "submit")?;
         if let Some(record) = self.host.receipt(&activation)? {

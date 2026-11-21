@@ -1001,3 +1001,37 @@ async fn duplicate_cached_identities_rebuild_from_facts_instead_of_remaining_dis
         engine.shutdown().await;
     }
 }
+
+#[tokio::test]
+async fn server_status_publishes_queue_counts_without_message_or_configuration_content() {
+    let root = tempfile::tempdir().unwrap();
+    let engine = open(root.path(), SessionCatalog::Memory);
+    let thread = engine.create("/workspace".into()).await.unwrap();
+    let cell = engine.cell(&thread.id).await.unwrap();
+    {
+        let mut state = cell.state.lock().await;
+        let desktop = state.thread.desktop.get_or_insert_with(Default::default);
+        desktop.queue.paused = true;
+        desktop.queue.items = ["pending", "running", "completed"]
+            .into_iter()
+            .enumerate()
+            .map(|(index, status)| areal_protocol::desktop::QueueItem {
+                queued_at_ms: None,
+                id: format!("queue-{index}"),
+                input: vec![Input::text("synthetic-private-message")],
+                configuration: Default::default(),
+                submitted_by: "owner".into(),
+                status: status.into(),
+                turn_id: None,
+            })
+            .collect();
+    }
+    let status = engine.server_status().await;
+    assert_eq!(
+        status["queues"],
+        serde_json::json!([{"threadId":thread.id,"paused":true,"pending":1,"running":1}])
+    );
+    assert_eq!(status["pendingQueueItems"], 2);
+    assert!(!status.to_string().contains("synthetic-private-message"));
+    engine.shutdown().await;
+}

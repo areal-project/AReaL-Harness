@@ -8,7 +8,7 @@ import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { pluginResourceReply, verifyPluginResourceSlice } from "./plugin-resource-smoke.mjs";
-import { assertApplicationStopped } from "./application-cleanup.mjs";
+import { readFixtureHost, settleFixtureHostAfterQuit } from "./application-cleanup.mjs";
 import {
   captureSmokeFailure,
   createProjectConversation,
@@ -250,11 +250,6 @@ async function settings() {
     .click();
   await page.getByRole("button", { name: "查看插件 hello@gui-p0", exact: true }).click();
 }
-const {
-  builtinSkill,
-  BUILTIN_SKILL_ID,
-} = require("@areal/workbench-service/desktop/core/builtin-skills.cjs");
-await builtinSkill(join(scratch, "core"), BUILTIN_SKILL_ID);
 try {
   app = await electron.launch({
     executablePath: require("electron"),
@@ -692,7 +687,6 @@ try {
   if (page) await captureSmokeFailure(page, scratch, e);
 } finally {
   const cleanup = {};
-  let metadata;
   if (manualCloseListeners) {
     app.removeListener("console", manualCloseListeners.onConsole);
     app.removeListener("close", manualCloseListeners.onClose);
@@ -707,11 +701,7 @@ try {
         errors.push("restore owned quit fixture: " + error.message);
     }
   }
-  try {
-    metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-  } catch (error) {
-    if (error.code !== "ENOENT") errors.push("read cleanup identity: " + error.message);
-  }
+  const host = await readFixtureHost(env);
   if (app) {
     let timer;
     try {
@@ -739,48 +729,14 @@ try {
       clearTimeout(timer);
     }
   }
-  if (metadata) {
-    try {
-      await assertApplicationStopped(coreBinary, env, metadata);
-      cleanup.applicationStopped = true;
-    } catch (error) {
-      errors.push("verify natural application cleanup: " + error.message);
-    }
-  }
-  if (metadata && !cleanup.applicationStopped) {
-    cleanup.assistedServiceStop = true;
-    const {
-      ServiceConnection,
-      waitForServiceProcessExit,
-    } = require("../app/src/core/service-client.cjs");
-    const connection = new ServiceConnection();
-    try {
-      await connection.connect(metadata);
-      const packet = await connection.request("hello", {
-        protocol: metadata.protocol,
-        identity: metadata.identity,
-      });
-      await connection
-        .request(
-          "stopService",
-          {
-            protocol: metadata.protocol,
-            cancel: true,
-            expectedDesktopGeneration: metadata.desktopGeneration,
-            expectedTargets: packet.service.targets,
-          },
-          true,
-        )
-        .catch((error) => {
-          if (!error.message.includes("已请求退出")) throw error;
-        });
-      await waitForServiceProcessExit(join(scratch, "core"), metadata);
-    } catch (error) {
-      if (!["ENOENT", "ECONNREFUSED", "ESRCH"].includes(error.code))
-        errors.push("fallback service cleanup: " + error.message);
-    } finally {
-      connection.close();
-    }
+  try {
+    cleanup.hostStop = await settleFixtureHostAfterQuit(coreBinary, env, scratch, {
+      host,
+      pid: appProcess?.pid,
+    });
+    cleanup.applicationStopped = true;
+  } catch (error) {
+    errors.push("verify application cleanup: " + error.message);
   }
   if (appProcess && appProcess.exitCode === null && appProcess.signalCode === null) {
     errors.push("forced Electron cleanup");

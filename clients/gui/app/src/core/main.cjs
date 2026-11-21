@@ -1,6 +1,6 @@
 // @ts-check
 "use strict";
-const { startupTrace } = require("@areal/workbench-service/desktop/core/startup-timing.cjs");
+const { startupTrace } = require("@areal/workbench/node/startup-timing");
 const startupTraceMain = startupTrace("gui.startup");
 startupTraceMain.advance("imports");
 
@@ -9,12 +9,10 @@ const {
   BrowserWindow,
   Menu,
   dialog,
-  protocol,
   nativeTheme,
   nativeImage,
   WebContentsView,
   shell,
-  powerMonitor,
   Notification,
   crashReporter,
   session,
@@ -29,46 +27,31 @@ const {
 } = require("./desktop-ipc.cjs");
 const { realpath, stat } = require("node:fs/promises");
 const { join, resolve } = require("node:path");
-const { randomUUID } = require("node:crypto");
 /** @type {typeof import("../ipc/window-close.js")} */
 const { WindowCloseGate } = require("../ipc/generated/window-close.cjs");
-const { ProjectionEncoder } = require("@areal/workbench/state-projection");
-const { createOwner } = require("@areal/workbench-service/desktop/core/application-owner.cjs");
+const { createOwner } = require("@areal/workbench/node/application-owner");
 const { setupUpdater } = require("../update/electron.cjs");
 const {
   showCoreNotification,
   readNotificationTarget,
-} = require("@areal/workbench-service/desktop/core/notifications.cjs");
+  nativeNotificationDelivery,
+} = require("@areal/workbench/node/native-notifications");
 const { MenuBar } = require("./menu-bar.cjs");
 const { fileOpen, fileWorkspace } = require("./file-open.cjs");
 const { normalizeNativeImage, exportDiagnostics: saveDiagnostics } = require("./bug-reports.cjs");
 const { PluginArchives } = require("./plugin-archives.cjs");
-const { McpFormResources } = require("./mcp-form-resources.cjs");
-const {
-  McpAppsHost,
-  parseDeepLink,
-} = require("@areal/workbench-service/desktop/core/mcp-apps.cjs");
 const { readCommandInvocation, desktopError } = require("@areal/workbench/desktop-contract");
 /** @type {typeof import("@areal/workbench/desktop-contract").validatePreview} */
 const validatePreview = require("@areal/workbench/desktop-contract").validatePreview;
 const { modelRecord } = require("@areal/workbench/core-model-contract");
-const { readBrowserHostRequest, browserHostFailure } = require("./browser-host-request.cjs");
 const { CorePreview, developmentApproval } = require("./preview.cjs");
-const { ComputerControl, readComputerSelection } = require("./computer-control.cjs");
-const { ExternalCua, nativeAppElicitation } = require("./external-cua.cjs");
-const diagnostics = require("@areal/workbench-service/desktop/core/diagnostics.cjs");
+const diagnostics = require("@areal/workbench/node/diagnostics");
 const { startSnapShots } = require("./snapshots/host.cjs");
 const cfg = require("./service-config.cjs");
-const { readLibraryStartupSettings } = require("@areal/workbench-service/desktop/core/library.cjs");
-const {
-  applyDesktopSessionNetworkPolicy,
-} = require("@areal/workbench-service/desktop/core/desktop-network.cjs");
+const { readLibraryStartupSettings } = require("@areal/workbench/node/library-startup");
+const { applyDesktopSessionNetworkPolicy } = require("@areal/workbench/node/desktop-network");
 const { SharedCoreBackend } = require("./service-client.cjs");
-const { recoverConnectedService } = require("./startup-recovery.cjs");
-const {
-  setNativeLocale,
-  nativeText,
-} = require("@areal/workbench-service/desktop/core/native-i18n.cjs");
+const { setNativeLocale, nativeText } = require("@areal/workbench/node/native-i18n");
 const { confirmHostQuit, confirmHostStop, hostActivityLabel } = require("./host-quit.cjs");
 const { loadThemes, desktopTheme } = require("../themes");
 
@@ -101,7 +84,7 @@ function startDesktop() {
   }
   if (process.argv.some((value) => value.startsWith("--areal-host-import-source="))) {
     const options = cfg.serviceOptions(app);
-    void require("@areal/workbench-service/desktop/core/gui-source.cjs")
+    void require("@areal/client/gui-source")
       .prepareGuiSource({
         app,
         guiUserData: applicationOwner.profile,
@@ -134,29 +117,6 @@ function startDesktop() {
   const guiRoot = app.isPackaged
     ? join(process.resourcesPath, "areal-gui")
     : resolve(__dirname, "../../../renderer/dist");
-  /** @type {InstanceType<typeof ComputerControl>|undefined} */
-  let computer;
-  /** @type {InstanceType<typeof ExternalCua>|undefined} */
-  let externalCua;
-  /** @type {unknown} */
-  let computerActivity = null;
-  let computerWasEnabled = false,
-    computerAdmissionSuspended = false,
-    computerUiAvailable = false,
-    computerSystemPaused = false;
-  /** @type {Map<number,AbortController>} */
-  const computerRequests = new Map();
-  const computerSelection = () => readComputerSelection(backend?.snapshot());
-  const computerAvailable = () =>
-    backend?.computerHostOwned === true &&
-    !quitting &&
-    !browserWindowClosed &&
-    computerUiAvailable &&
-    !computerSystemPaused &&
-    !computerAdmissionSuspended;
-  /** @param {string} reason */
-  const stopComputer = (reason) => Promise.all([computer?.stop(reason), externalCua?.stop(reason)]);
-  const closeComputer = () => Promise.all([computer?.close(), externalCua?.close()]);
   /** @type {Electron.BrowserWindow|undefined} */
   let window;
   /** @type {import("./snapshots/DesktopSnapShots.js").DesktopSnapShots|undefined} */
@@ -165,8 +125,6 @@ function startDesktop() {
   let backend;
   /** @type {InstanceType<typeof CorePreview>|undefined} */
   let preview;
-  /** @type {InstanceType<typeof McpAppsHost>|undefined} */
-  let mcpApps;
   /** @type {Awaited<ReturnType<typeof setupUpdater>>|undefined} */
   let updates;
   let quitting = false,
@@ -189,12 +147,12 @@ function startDesktop() {
   }
   /** @type {Map<string,()=>void>} */
   const previewSubscriptions = new Map();
-  /** @type {WeakMap<Electron.WebContents,{frame:Electron.WebFrameMain,encoder:InstanceType<typeof ProjectionEncoder>}>} */
-  const projections = new WeakMap();
+  /** @type {WeakMap<Electron.WebContents,{frame:Electron.WebFrameMain,last?:string}>} */
+  const nativeStateOwners = new WeakMap();
   let startupPresentation = "requested",
     startupPainted = false,
     startupReady = false;
-  /** @typedef {import('./service-client.cjs').LifecycleResult|{kind?:string,canceled:boolean}|{stopped:boolean,quitting:true}} QuitResult */
+  /** @typedef {import('@areal/workbench/desktop-contract/desktop-control').LifecycleResult|{kind?:string,canceled:boolean}|{stopped:boolean,quitting:true}} QuitResult */
   /** @typedef {{id:number,intent:string,owner:Electron.WebContents|null,frame:Electron.WebFrameMain|null,decide:((allowed:boolean)=>void)|null,approved:boolean,phase:'checking'|'stopping'|'finishing'|null,startedAt:number,promise:Promise<QuitResult>|null}} QuitAttempt */
   let focusRequested = false,
     quitRequestSequence = 0;
@@ -292,7 +250,7 @@ function startDesktop() {
         phase ? { state: "quitting", phase } : { state: "idle" },
       );
   }
-  /** @param {QuitAttempt} attempt @param {Extract<import("@areal/workbench-service/desktop/core/diagnostics.cjs").Incident,{type:"quit-stage"}>["stage"]} stage */
+  /** @param {QuitAttempt} attempt @param {Extract<import("@areal/workbench/node/diagnostics").Incident,{type:"quit-stage"}>["stage"]} stage */
   function recordQuitStage(attempt, stage) {
     if (quitAttempt !== attempt) return;
     diagnostics.record({
@@ -376,28 +334,11 @@ function startDesktop() {
       } else {
         recordQuitStage(attempt, "reconcile");
         await backend.checkLifecycle();
-        if (backend.foreignOwner)
-          throw Object.assign(new Error(nativeText("lifecycle.foreignOwner")), {
-            code: "APPLICATION_OWNER_MISMATCH",
-          });
-        if (
-          !backend.foreignOwner &&
-          !backend.serviceExited &&
-          (backend.status.connected || backend.metadata)
-        ) {
+        if (!backend.serviceExited && backend.status.connected) {
           recordQuitStage(attempt, "stop");
-          const result = await recoverConnectedService({
-            backend,
-            notify: async (options) => {
-              const answer = await notify(options);
-              if (answer.response === 1) {
-                beginQuit("stopping");
-                recordQuitStage(attempt, "stop");
-              }
-              return answer;
-            },
-            purpose: intent === "install" ? "update" : "quit",
-            forUpdate: intent === "install",
+          const result = await confirmHostStop(backend, notify, () => {
+            beginQuit("stopping");
+            recordQuitStage(attempt, "stop");
           });
           if (!("stopped" in result) || result.stopped !== true) {
             recordQuitStage(
@@ -420,12 +361,12 @@ function startDesktop() {
           profile: app.getPath("userData"),
         });
       recordQuitStage(attempt, "finalizing");
-      if (!backend.foreignOwner)
+      // 已确认停止的 Host 不再接受后台保留策略，退出时也不能把它交给后继代际。
+      if (intent === "install" || !stopped)
         await backend.completeApplicationQuit({ keepBackground: intent !== "install" });
       recordQuitStage(attempt, "disconnect");
       await backend.shutdown();
       await preview?.dispose();
-      await closeComputer();
       exitReady = true;
       recordQuitStage(attempt, "exit-ready");
       if (intent !== "install") setImmediate(() => app.quit());
@@ -469,6 +410,7 @@ function startDesktop() {
   /** @type {(import("@areal/workbench/desktop-contract").NotificationTarget & {id:number})|null} */
   let notificationTarget = null;
   let notificationSequence = 0;
+  const acceptNotice = nativeNotificationDelivery();
   /** @param {unknown} target */
   function openNotificationTarget(target) {
     const parsed = readNotificationTarget(target);
@@ -478,29 +420,6 @@ function startDesktop() {
     if (startupPresentation === "presented") revealWindow();
     sendDesktopEvent(window.webContents, "areal-core:notification-open");
   }
-  /** @type {(NonNullable<ReturnType<typeof parseDeepLink>>&{id:number})|null} */
-  let mcpAppDeepLink = null;
-  let mcpAppDeepLinkSequence = 0;
-  /** @param {string} raw */
-  function receiveMcpAppDeepLink(raw) {
-    try {
-      mcpAppDeepLink = { ...parseDeepLink(raw), id: ++mcpAppDeepLinkSequence };
-    } catch {
-      return false;
-    }
-    if (window && !window.isDestroyed())
-      sendDesktopEvent(window.webContents, "areal-core:mcp-app-deep-link");
-    return true;
-  }
-  app.on("open-url", (event, url) => {
-    if (receiveMcpAppDeepLink(url)) event.preventDefault();
-  });
-  app.on("second-instance", (_event, argv) => {
-    for (const arg of argv)
-      if (/^(areal|codex):\/\/plugins\//.test(arg)) receiveMcpAppDeepLink(arg);
-  });
-  for (const arg of process.argv)
-    if (/^(areal|codex):\/\/plugins\//.test(arg)) receiveMcpAppDeepLink(arg);
   const themes = loadThemes();
   app.on("second-instance", revealWindow);
 
@@ -535,18 +454,19 @@ function startDesktop() {
   function publish() {
     refreshHostMenu();
     preview?.releaseInvalidOwners();
-    mcpApps?.revokeInvalid();
     if (publishPending) return;
     publishPending = true;
     setImmediate(() => {
       publishPending = false;
       if (!window || window.isDestroyed()) return;
-      const owner = window.webContents,
-        projection = projections.get(owner);
-      if (projection?.frame === owner.mainFrame)
-        sendDesktopEvent(owner, "areal-core:projection", {
-          frame: projection.encoder.encode(desktopSnapshot()),
-        });
+      const owner = window.webContents;
+      const subscription = nativeStateOwners.get(owner);
+      if (!backend || subscription?.frame !== owner.mainFrame) return;
+      const snapshot = nativeState();
+      const fingerprint = JSON.stringify(snapshot);
+      if (subscription.last === fingerprint) return;
+      subscription.last = fingerprint;
+      sendDesktopEvent(owner, "areal-core:native-state-changed", snapshot);
     });
   }
   let diagnosticTopology = "";
@@ -574,12 +494,33 @@ function startDesktop() {
         ?.configure(state.library.settings?.snapShot)
         .catch((error) => console.error("SnapShots settings failed", error));
     }
-    const enabled = state.library?.settings?.computerControlEnabled === true;
-    const wasEnabled = computerWasEnabled;
-    computerWasEnabled = enabled;
-    if (wasEnabled && !enabled) void stopComputer("disabled").catch(() => {});
-    return { ...state, menuBar: menuBar?.snapshot() ?? null, computerControl: computerActivity };
+    return { ...state, menuBar: menuBar?.snapshot() ?? null };
   }
+  function nativeState() {
+    const snapshot = desktopSnapshot();
+    const settings = snapshot.library.settings;
+    return {
+      projects: [],
+      verifiedDesktopHost: snapshot.verifiedDesktopHost,
+      connection: snapshot.connection,
+      desktopCapabilities: snapshot.desktopCapabilities,
+      serviceSummary: snapshot.serviceSummary,
+      backendUpdate: snapshot.backendUpdate,
+      lifecycle: snapshot.lifecycle,
+      menuBar: snapshot.menuBar,
+      projectless: snapshot.projectless,
+      power: snapshot.power,
+      subscription: snapshot.subscription,
+      library: {
+        settings: {
+          httpProxy: settings.httpProxy,
+          httpProxyNoProxy: settings.httpProxyNoProxy,
+          httpProxyCaCertPath: settings.httpProxyCaCertPath,
+        },
+      },
+    };
+  }
+
   /** @param {Electron.IpcMainEvent|Electron.IpcMainInvokeEvent} event */
   function trustedSender(event) {
     if (
@@ -669,39 +610,24 @@ function startDesktop() {
         WebContentsView,
         (projectId, threadId) => backend.ownsThread(projectId, threadId),
         () => backend.snapshot().library?.settings ?? {},
-        (projectId, threadId) =>
-          backend.snapshot().projects.find((project) => project.id === projectId)?.state?.threads?.[
-            threadId
-          ]?.executionCore?.instanceId ??
-          backend.status.browserCore?.[projectId] ??
-          null,
-        () =>
-          [
-            backend.metadata && "endpoint" in backend.metadata
-              ? backend.metadata.endpoint
-              : undefined,
-            ...(backend.status.browserControlEndpoints ?? []),
-          ].filter((value) => typeof value === "string"),
+        (projectId, threadId) => backend.browserCoreIdentity(projectId, threadId),
+        () => backend.status.browserControlEndpoints ?? [],
         developmentApproval(
           createdWindow,
           () =>
-            !quitting && backend.status.connected === true && backend.computerHostOwned === true,
+            !quitting &&
+            backend.status.connected === true &&
+            backend.nativeBrowser?.closed === false,
           () => preview,
         ),
-        (projectId, threadId) => backend.retainsThreadResources(projectId, threadId),
+        undefined,
         (projectId, threadId) =>
           fileWorkspace(backend, { projectId, threadId, operation: "openDocument" }),
       );
-      preview.onRevoke = (identity) => {
-        void backend.browserRevoke(identity).catch(() => {});
-      };
       createdWindow.on("unresponsive", () => {
-        computerUiAvailable = false;
-        void stopComputer("ui_unresponsive").catch(() => {});
         diagnostics.record({ type: "renderer-unresponsive" });
       });
       createdWindow.on("responsive", () => {
-        computerUiAvailable = createdWindow.webContents.mainFrame.url.startsWith("areal-ui://app/");
         diagnostics.record({ type: "renderer-responsive" });
       });
       createdWindow.on("blur", () => snapShots?.setSnapShotShortcutSuppressed(false));
@@ -709,15 +635,11 @@ function startDesktop() {
       owner.on("did-start-navigation", (_event, _url, inPlace, mainFrame) => {
         if (mainFrame && !inPlace) {
           snapShots?.setSnapShotShortcutSuppressed(false);
-          computerUiAvailable = false;
-          void stopComputer("ui_navigation").catch(() => {});
-          projections.delete(owner);
-          mcpApps?.dispose();
+          nativeStateOwners.delete(owner);
         }
       });
       owner.on("did-finish-load", () => {
         diagnostics.record({ type: "window-ready", windows: BrowserWindow.getAllWindows().length });
-        computerUiAvailable = owner.mainFrame.url.startsWith("areal-ui://app/");
       });
       owner.on("console-message", (_event, _level, message) => {
         if (typeof message === "string" && message.startsWith("[startup-renderer] "))
@@ -725,24 +647,14 @@ function startDesktop() {
       });
       owner.on("destroyed", () => {
         snapShots?.setSnapShotShortcutSuppressed(false);
-        computerUiAvailable = false;
-        void stopComputer("ui_destroyed").catch(() => {});
-        projections.delete(owner);
+        nativeStateOwners.delete(owner);
       });
       owner.on("render-process-gone", () => {
         snapShots?.setSnapShotShortcutSuppressed(false);
-        computerUiAvailable = false;
-        void stopComputer("ui_crashed").catch(() => {});
-        projections.delete(owner);
-        mcpApps?.dispose();
+        nativeStateOwners.delete(owner);
       });
       createdWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
       createdWindow.webContents.on("will-navigate", (event) => event.preventDefault());
-      createdWindow.webContents.on("will-frame-navigate", (event) => {
-        const from = event.initiator?.url ?? event.frame?.url ?? "";
-        if (from.startsWith("areal-mcp:") && !event.url.startsWith("areal-mcp:"))
-          event.preventDefault();
-      });
       createdWindow.webContents.on("will-prevent-unload", (event) => {
         if (
           exitReady &&
@@ -768,11 +680,9 @@ function startDesktop() {
           focusRequested = false;
         }
         const owner = createdWindow;
-        void stopComputer("window_closed").catch(() => {});
         windowClosePromise = settleWindow(owner)
           .then(async () => {
             await preview?.dispose();
-            mcpApps?.dispose();
             if (!owner.isDestroyed()) owner.hide();
           })
           .catch((error) => {
@@ -812,10 +722,8 @@ function startDesktop() {
             ),
           );
           startupTraceMain.advance("protocol_setup");
-          const { registerHostTicket, hostPageProxy } = require("../ipc/generated/host-ticket.cjs");
-          registerHostTicket({
+          require("../ipc/generated/host-ticket.cjs").registerHostTicket({
             home: cfg.serviceOptions(app).hostHome,
-            binary: cfg.serviceOptions(app).binary,
             profile: app.getPath("userData"),
             trusted,
           });
@@ -828,20 +736,15 @@ function startDesktop() {
             ...cfg.serviceOptions(app),
             applicationOwner,
             onChange: publish,
-            onNotification: (notice) =>
-              showCoreNotification(Notification, window ?? null, notice, openNotificationTarget),
-            onNotificationOpen: openNotificationTarget,
-            onRecoveryAttention: (attention) => {
-              if (!Array.isArray(attention) || !attention.every((item) => typeof item === "string"))
-                throw new Error("Invalid recovery attention");
-              return showMessageBox({
-                type: "warning",
-                message: nativeText("recovery.attention"),
-                detail: attention.join("\n\n") + nativeText("recovery.attentionDetail"),
-                buttons: [nativeText("recovery.review")],
-                defaultId: 0,
-                cancelId: 0,
-              });
+            onNotification: (notice) => {
+              if (!backend || !window || window.isDestroyed() || quitting) return;
+              const delivery = acceptNotice(
+                notice,
+                backend.snapshot().library?.settings ?? {},
+                window.isFocused(),
+              );
+              if (delivery)
+                showCoreNotification(Notification, window, delivery, openNotificationTarget);
             },
           });
           backend = serviceBackend;
@@ -851,242 +754,38 @@ function startDesktop() {
             await serviceBackend.init({ automatic: connectedOnce });
             if (serviceBackend.status.connected) connectedOnce = true;
           };
-          const computerHost = (computer = new ComputerControl({
-            helperPath: app.isPackaged
-              ? join(process.resourcesPath, "computer-helper/AReaL Computer Helper.app")
-              : join(__dirname, "../../../native/computer-helper/build/AReaL Computer Helper.app"),
-            getEnabled: () =>
-              computerAvailable() &&
-              computerSelection().enabled &&
-              computerSelection().provider === "native",
-            onActivity: (status) => {
-              if (computerSelection().provider === "native") {
-                computerActivity = status;
-                publish();
-              }
+          /** @type {typeof import("./native-browser-tools")} */
+          const { NativeBrowserTools } = require("./generated/native-browser-tools.cjs");
+          const nativeBrowserTools = new NativeBrowserTools({
+            preview: () => {
+              if (quitting || !preview || !window || window.isDestroyed())
+                throw new Error("Browser host unavailable");
+              return preview;
             },
-          }));
-          const externalCuaHost = (externalCua = new ExternalCua({
-            getSelection: computerSelection,
-            getAvailable: computerAvailable,
-            onActivity: (status) => {
-              if (computerSelection().provider === "lcu") {
-                computerActivity = status;
-                publish();
-              }
-            },
-            onElicitation: nativeAppElicitation(
-              app,
-              computerAvailable,
-              () => window,
-              showMessageBox,
-            ),
-          }));
-          serviceBackend.onBrowserDisconnected = () => {
-            preview?.revokeAll();
-            for (const controller of computerRequests.values()) controller.abort();
-            void stopComputer("desktop_disconnected").catch(() => {});
-          };
-          serviceBackend.onBrowserCancel = (request) => {
-            if (!modelRecord(request) || typeof request.requestId !== "number") return;
-            if (request.tool === "computer_v1" || request.tool === "external_cua")
-              computerRequests.get(request.requestId)?.abort();
-            else if (
-              typeof request.projectId === "string" &&
-              typeof request.threadId === "string" &&
-              typeof request.hostGeneration === "number"
-            )
-              preview?.cancelRead({
-                projectId: request.projectId,
-                threadId: request.threadId,
-                requestId: request.requestId,
-                hostGeneration: request.hostGeneration,
-              });
-          };
-          serviceBackend.onBrowserRequest = async (request) => {
-            if (request.tool === "external_cua") {
-              const controller = new AbortController();
-              computerRequests.set(request.requestId, controller);
-              try {
-                const input = { ...request, tool: request.cuaTool, signal: controller.signal };
-                if (request.phase === "catalog")
-                  return await externalCuaHost.catalog({ ...input, threadId: "__catalog__" });
-                if (request.phase === "call") return await externalCuaHost.call(input);
-                if (request.phase === "endTurn") return await externalCuaHost.endTurn(input);
-                if (request.phase === "revokeProject") {
-                  await externalCuaHost.revokeProject(input);
-                  return {};
-                }
-                throw new Error("Unsupported external CUA request");
-              } catch (error) {
-                if (request.phase === "catalog") return { error: desktopError(error).message };
-                throw error;
-              } finally {
-                computerRequests.delete(request.requestId);
-              }
-            }
-            if (request.tool === "computer_v1") {
-              if (quitting || !window || window.isDestroyed() || browserWindowClosed)
-                throw new Error("Computer host unavailable");
-              const controller = new AbortController();
-              computerRequests.set(request.requestId, controller);
-              try {
-                const input = { ...request, signal: controller.signal };
-                return await (request.phase === "prepare"
-                  ? request.discardPreparedPlan === true
-                    ? computerHost.discard(input)
-                    : computerHost.prepare(input)
-                  : computerHost.execute(input));
-              } catch (error) {
-                const fields = modelRecord(error) ? error : {};
-                const details = desktopError(error);
-                if (request.phase === "prepare")
-                  return {
-                    ...(modelRecord(fields.structuredContent) ? fields.structuredContent : {}),
-                    code: details.code ?? "computer_unavailable",
-                    message: details.message,
-                    error: details.code ?? "computer_unavailable",
-                    dispatch: "not_sent",
-                    dispatch_status: "not_sent",
-                    action_sent: false,
-                  };
-                const dispatch = fields.dispatch_status ?? fields.dispatchStatus;
-                if (
-                  dispatch === "not_sent" &&
-                  fields.actionSent !== true &&
-                  fields.action_sent !== true
-                )
-                  return {
-                    isError: true,
-                    content: [{ type: "text", text: details.message }],
-                    structuredContent: {
-                      code: details.code ?? "computer_unavailable",
-                      dispatch_status: "not_sent",
-                      action_sent: false,
-                    },
-                  };
-                throw error;
-              } finally {
-                if (computerRequests.get(request.requestId) === controller)
-                  computerRequests.delete(request.requestId);
-              }
-            }
-            if (quitting || !preview || !window || window.isDestroyed())
-              throw new Error("Browser host unavailable");
-            const browserRequest = readBrowserHostRequest(request);
-            try {
-              if (browserRequest.operation === "describe") {
-                if (browserRequest.phase === "prepare")
-                  return preview.prepareDiscovery(browserRequest);
-                if (browserRequest.browserApproval?.plan) preview.consumeDiscovery(browserRequest);
-                const identity = await preview.ensureAgentPage(
-                  browserRequest.projectId,
-                  browserRequest.threadId,
-                );
-                try {
-                  if (
-                    !(
-                      modelRecord(browserRequest.browserApproval?.plan) &&
-                      browserRequest.browserApproval.plan.alreadyControlled
-                    )
-                  )
-                    await serviceBackend.browserClaim({
-                      ...identity,
-                      bootstrapRequestId: browserRequest.requestId,
-                    });
-                  const page = preview.page(
-                    browserRequest.projectId,
-                    browserRequest.threadId,
-                    identity.pageId,
-                  );
-                  if (
-                    !page ||
-                    !preview.pageStillOwned(page) ||
-                    page.control !== "agent" ||
-                    preview.page(browserRequest.projectId, browserRequest.threadId, undefined) !==
-                      page ||
-                    page.controlEpoch !== identity.controlEpoch ||
-                    page.pageGeneration !== identity.pageGeneration
-                  )
-                    throw new Error("Browser entry was revoked");
-                } catch (error) {
-                  const page = preview.page(
-                    browserRequest.projectId,
-                    browserRequest.threadId,
-                    identity.pageId,
-                  );
-                  if (page?.controlEpoch === identity.controlEpoch && page.control === "agent")
-                    preview.takeover(
-                      browserRequest.projectId,
-                      browserRequest.threadId,
-                      identity.pageId,
-                    );
-                  throw error;
-                }
-                if (!window.isDestroyed())
-                  sendDesktopEvent(window.webContents, "areal-core:preview-event", {
-                    kind: "reveal",
-                    projectId: browserRequest.projectId,
-                    threadId: browserRequest.threadId,
-                    pageId: identity.pageId,
-                  });
-                return {
-                  ...identity,
-                  coreGeneration: browserRequest.coreGeneration,
-                  turnId: browserRequest.turnId,
-                  callId: browserRequest.callId,
-                  claimed: true,
-                  controlPermit: preview.controlPermit(
-                    browserRequest.projectId,
-                    browserRequest.threadId,
-                    identity.pageId,
-                  ),
-                };
-              }
-              const result = await (browserRequest.phase === "prepare"
-                ? preview.prepare(browserRequest)
-                : preview.execute(browserRequest));
-              if (!modelRecord(result)) throw new Error("Invalid browser host result");
-              if (browserRequest.phase !== "prepare" && !result.error) {
-                result.controlPermit = preview.controlPermit(
-                  browserRequest.projectId,
-                  browserRequest.threadId,
-                  browserRequest.pageId,
-                );
-                if (
-                  modelRecord(result.createdPage) &&
-                  typeof result.createdPage.pageId === "string"
-                )
-                  result.controlPermits = [
-                    result.controlPermit,
-                    preview.controlPermit(
-                      browserRequest.projectId,
-                      browserRequest.threadId,
-                      result.createdPage.pageId,
-                    ),
-                  ];
-              }
-              if (
-                browserRequest.operation === "openDocument" &&
-                browserRequest.phase === "execute" &&
-                result.dispatch === "confirmed" &&
-                !window.isDestroyed()
-              )
+            current: (frame) =>
+              !quitting &&
+              !!window &&
+              !window.isDestroyed() &&
+              serviceBackend.nativeBrowserCurrent(frame),
+            call: (method, params) => serviceBackend.nativeBrowserCall(method, params),
+            reveal: (projectId, threadId, pageId) => {
+              if (window && !window.isDestroyed())
                 sendDesktopEvent(window.webContents, "areal-core:preview-event", {
                   kind: "reveal",
-                  projectId: browserRequest.projectId,
-                  threadId: browserRequest.threadId,
-                  pageId: browserRequest.pageId,
+                  projectId,
+                  threadId,
+                  pageId,
                 });
-              return result;
-            } catch (error) {
-              return browserHostFailure(request, error);
-            }
-          };
-          app.on("will-quit", () => {
-            mcpApps?.dispose();
-            void closeComputer().catch(() => {});
+            },
           });
+          serviceBackend.onNativeBrowserRequest = (frame, signal) =>
+            nativeBrowserTools.callback(frame, signal);
+          serviceBackend.onNativeBrowserRevoked = (projectId, threadId) =>
+            preview?.revokeThread(projectId, threadId);
+          serviceBackend.onBrowserDisconnected = () => {
+            preview?.revokeAll();
+          };
+          app.on("will-quit", () => {});
           /** @param {Parameters<InstanceType<typeof CorePreview>["openDocument"]>[0]} request */
           const openHtml = async (request) => {
             if (!preview || !window || window.isDestroyed())
@@ -1101,124 +800,6 @@ function startDesktop() {
               });
             return result;
           };
-          const mcpHost = (mcpApps = new McpAppsHost({
-            backend: serviceBackend,
-            ownerId: () =>
-              window && !window.isDestroyed() && !window.webContents.isDestroyed()
-                ? window.webContents.id
-                : undefined,
-            notify: (value) => {
-              if (window && !window.isDestroyed() && !window.webContents.isDestroyed())
-                sendDesktopEvent(window.webContents, "areal-core:mcp-app-event", value);
-            },
-            openFile: (request, current) =>
-              fileOpen(
-                {
-                  backend: serviceBackend,
-                  shell,
-                  home: app.getPath("home"),
-                  openHtml,
-                  authorize: current,
-                  chooseSave: (options) => showSaveDialog(options),
-                },
-                request,
-              ),
-          }));
-          serviceBackend.onMcpAppNotification = (event) => mcpHost.notification(event);
-          serviceBackend.onMcpPageToolNotice = (event) => {
-            void mcpHost.pageToolNotice(event).catch(() => {});
-          };
-          serviceBackend.onMcpPageToolsDisconnected = (event) =>
-            mcpHost.pageToolsDisconnected(event);
-          protocol.handle(
-            "areal-mcp",
-            (request) => hostPageProxy(request) ?? mcpHost.resource(request),
-          );
-          handleDesktopIpc("areal-core:mcp-app-deep-link-target", (event) => {
-            trusted(event);
-            return mcpAppDeepLink;
-          });
-          handleDesktopIpc("areal-core:mcp-app-deep-link-consumed", (event, id) => {
-            trusted(event);
-            if (mcpAppDeepLink?.id === id) mcpAppDeepLink = null;
-          });
-          const mcpFormResources = new McpFormResources({
-            backend: serviceBackend,
-            choose: (options) => showOpenDialog(options),
-            confirm: (options) => showMessageBox(options),
-          });
-          app.on("will-quit", () => mcpFormResources.dispose());
-          handleDesktopIpc("areal-core:mcp-form-resource", async (event, operation, request) => {
-            trusted(event);
-            const ownerWindow = trusted(event);
-            const current = () => {
-              trusted(event);
-              if (window !== ownerWindow || ownerWindow.isDestroyed())
-                throw new Error("Form window expired");
-            };
-            if (operation === "pick") return mcpFormResources.pick(request, current);
-            if (operation === "release") return mcpFormResources.release(request, current);
-            throw new Error("Invalid form resource operation");
-          });
-          handleDesktopIpc("areal-core:mcp-app", async (event, request) => {
-            trusted(event);
-            if (!modelRecord(request)) throw new Error("Invalid app request");
-            if (request.operation === "openGenUi")
-              return mcpHost.openGenUi(request, event.sender.id);
-            if (request.operation === "genUiVisibility")
-              return mcpHost.genUiVisibility(request, event.sender.id);
-            if (request.operation === "openFromResult")
-              return mcpHost.openFromResult(request, event.sender.id);
-            if (request.operation === "open")
-              return mcpHost.open(request, event.sender.id).catch(() => {
-                throw new Error("MCP App could not be opened");
-              });
-            if (request.operation === "close" && request.token === undefined) return {};
-            if (
-              ["request", "pageToolsReady", "pageToolsUnmount", "pageToolResult", "close"].includes(
-                String(request.operation),
-              ) &&
-              typeof request.token !== "string"
-            )
-              throw new Error("Invalid MCP App token");
-            if (request.operation === "request" && typeof request.token === "string")
-              return mcpHost.request(request.token, request.request, event.sender.id).catch(() => {
-                throw new Error("MCP App request rejected or incomplete");
-              });
-            if (
-              request.operation === "pageToolsReady" &&
-              typeof request.token === "string" &&
-              typeof request.mountId === "string"
-            )
-              return mcpHost.pageToolsReady(
-                request.token,
-                request.mountId,
-                request.declaration,
-                event.sender.id,
-              );
-            if (
-              request.operation === "pageToolsUnmount" &&
-              typeof request.token === "string" &&
-              typeof request.mountId === "string"
-            )
-              return mcpHost.pageToolsUnmount(request.token, request.mountId, event.sender.id);
-            if (
-              request.operation === "pageToolResult" &&
-              typeof request.token === "string" &&
-              typeof request.mountId === "string" &&
-              typeof request.callId === "string"
-            )
-              return mcpHost.pageToolResult(
-                request.token,
-                request.mountId,
-                request.callId,
-                request.reply,
-                event.sender.id,
-              );
-            if (request.operation === "close" && typeof request.token === "string")
-              return mcpHost.close(request.token, event.sender.id);
-            throw new Error("Unsupported app operation");
-          });
           handleDesktopIpc("areal-core:preview", async (event, request) => {
             const ownerWindow = trustedSender(event);
             validatePreview(request);
@@ -1298,19 +879,7 @@ function startDesktop() {
               );
             }
             if (request?.operation === "takeover") {
-              const value = activePreview.takeover(
-                request.projectId,
-                request.threadId,
-                request.pageId,
-              );
-              void serviceBackend
-                .browserRevoke({
-                  projectId: request.projectId,
-                  threadId: request.threadId,
-                  pageId: request.pageId,
-                })
-                .catch(() => {});
-              return value;
+              return activePreview.takeover(request.projectId, request.threadId, request.pageId);
             }
             try {
               return await activePreview.command(request);
@@ -1344,31 +913,14 @@ function startDesktop() {
             trusted(event);
             return result;
           });
-          onDesktopIpc("areal-core:projection-request", (event, requestId) => {
-            try {
-              trusted(event);
-            } catch {
-              return;
-            }
-            if (
-              typeof requestId !== "number" ||
-              !Number.isSafeInteger(requestId) ||
-              requestId <= 0 ||
-              !event.senderFrame
-            )
-              return;
-            let projection = projections.get(event.sender);
-            if (!projection || projection.frame !== event.senderFrame) {
-              projection = {
-                frame: event.senderFrame,
-                encoder: new ProjectionEncoder(randomUUID()),
-              };
-              projections.set(event.sender, projection);
-            }
-            sendDesktopEvent(event.sender, "areal-core:projection", {
-              requestId,
-              frame: projection.encoder.encode(desktopSnapshot(), true),
-            });
+          handleDesktopIpc("areal-core:native-state", (event) => {
+            const frame = trusted(event).webContents.mainFrame;
+            /** @type {{frame:Electron.WebFrameMain,last?:string}} */
+            const owner = { frame };
+            nativeStateOwners.set(event.sender, owner);
+            const snapshot = nativeState();
+            owner.last = JSON.stringify(snapshot);
+            return snapshot;
           });
           handleDesktopIpc("areal-core:present-ready", (event) => {
             trusted(event);
@@ -1495,72 +1047,6 @@ function startDesktop() {
                 trusted(event);
                 return { ok: true, value };
               }
-              if (name === "computerControl") {
-                let value;
-                if (computerSelection().provider === "lcu") {
-                  if (params.operation === "status") value = externalCuaHost.status();
-                  else if (params.operation === "restart") value = await externalCuaHost.check();
-                  else if (params.operation === "stop") {
-                    await externalCuaHost.stop("user_stop");
-                    value = externalCuaHost.status();
-                  } else
-                    throw new Error(
-                      "LCU installation and OS permissions are managed outside AReaL Harness",
-                    );
-                } else if (params.operation === "status") value = await computerHost.status();
-                else if (params.operation === "stop") {
-                  await computerHost.stop("user_stop");
-                  value = await computerHost.status();
-                } else if (params.operation === "restart") {
-                  await computerHost.restart();
-                  value = await computerHost.status();
-                } else {
-                  if (process.platform !== "darwin")
-                    throw new Error("Computer control is unavailable on this platform");
-                  if (params.operation === "requestAccess")
-                    value = await computerHost.requestAccess(params.capability);
-                  else {
-                    if (params.operation !== "openSettings")
-                      throw new Error("Invalid computer operation");
-                    const panes = {
-                      accessibility: "Privacy_Accessibility",
-                      screenRecording: "Privacy_ScreenCapture",
-                      inputMonitoring: "Privacy_ListenEvent",
-                    };
-                    await shell.openExternal(
-                      `x-apple.systempreferences:com.apple.preference.security?${panes[params.capability]}`,
-                    );
-                    value = await computerHost.status();
-                  }
-                }
-                trusted(event);
-                if (serviceBackend.computerHostOwned !== true)
-                  value = {
-                    ...value,
-                    ready: false,
-                    code: "host_busy",
-                    reason:
-                      "Computer control belongs to another GUI window. Reconnect after that host closes.",
-                  };
-                return { ok: true, value };
-              }
-              if (
-                name === "library" &&
-                params.operation === "settings" &&
-                [
-                  "computerControlEnabled",
-                  "computerControlProvider",
-                  "computerControlExecutable",
-                ].some((key) => key === params.key)
-              ) {
-                computerAdmissionSuspended = true;
-                try {
-                  await stopComputer("configuration_changed");
-                  return { ok: true, value: await serviceBackend.command(name, params) };
-                } finally {
-                  computerAdmissionSuspended = false;
-                }
-              }
               if (name === "providers" && params.operation === "revealKey") {
                 const value = await require("../ipc/generated/provider-key.cjs").revealProviderKey(
                   {
@@ -1589,8 +1075,6 @@ function startDesktop() {
                   ok: true,
                   value: await pluginArchives.command(params, () => trusted(event)),
                 };
-              if (name === "remoteControl")
-                return { ok: true, value: await serviceBackend.remoteControl(params) };
               if (name === "serviceLifecycle") {
                 if (params.operation === "quitInterface")
                   return { ok: true, value: await requestQuit() };
@@ -1604,9 +1088,7 @@ function startDesktop() {
                     : params.operation === "stop"
                       ? await requestStopService()
                       : params.operation === "recover"
-                        ? await serviceBackend.recoverBackend({
-                            notify: (options) => showMessageBox(options),
-                          })
+                        ? await serviceBackend.recoverBackend()
                         : await serviceBackend.checkLifecycle();
                 return { ok: true, value };
               }
@@ -1627,9 +1109,7 @@ function startDesktop() {
               if (name === "recoverResources")
                 return {
                   ok: true,
-                  value: await serviceBackend.recoverBackend({
-                    notify: (options) => showMessageBox(options),
-                  }),
+                  value: await serviceBackend.recoverBackend(),
                 };
               if (name === "connectService") {
                 await serviceBackend.init();
@@ -1658,21 +1138,12 @@ function startDesktop() {
               lifecycle?.operations?.some(
                 (operation) => !["completed", "blocked"].includes(operation.phase),
               );
-            return (
-              recoveryPending > 0 ||
-              unsettled ||
-              (!serviceBackend.serviceExited && !(await serviceBackend.observeLifecycle()).ifIdle)
-            );
+            return recoveryPending > 0 || unsettled || (await serviceBackend.hasUpdateWork());
           };
           const recoverInstall = async () => {
             recoveryPending++;
             try {
-              await recoverConnectedService({
-                backend: serviceBackend,
-                notify: (options) => showMessageBox(options),
-                purpose: "update",
-                forUpdate: true,
-              });
+              await confirmHostStop(serviceBackend, (options) => showMessageBox(options));
             } finally {
               recoveryPending--;
               if (recoveryPending === 0 && updates?.state().status === "deferred")
@@ -1794,49 +1265,17 @@ function startDesktop() {
           })();
           windowLoaded = createWindow(serviceBackend);
           await windowLoaded;
-          const activityPauses = new Set();
-          const reportWindowFocus = () => {
-            refreshHostMenu();
-            serviceBackend.reportWindowFocus({
-              focused:
-                !computerSystemPaused &&
-                !!window &&
-                !window.isDestroyed() &&
-                window.isFocused() &&
-                window.isVisible() &&
-                !window.isMinimized(),
-            });
-          };
-          const activityTimer = setInterval(reportWindowFocus, 5000);
+          const menuTimer = setInterval(refreshHostMenu, 5000);
           window
-            ?.on("focus", reportWindowFocus)
-            .on("blur", reportWindowFocus)
-            .on("hide", reportWindowFocus)
-            .on("minimize", reportWindowFocus)
-            .on("restore", reportWindowFocus);
-          /** @param {"suspend"|"lock-screen"} event */
-          const pauseActivity = (event) => {
-            computerSystemPaused = true;
-            void stopComputer(event).catch(() => {});
-            activityPauses.add(event);
-            reportWindowFocus();
-          };
-          powerMonitor
-            .on("suspend", () => pauseActivity("suspend"))
-            .on("lock-screen", () => pauseActivity("lock-screen"));
-          /** @param {"suspend"|"lock-screen"} pause */
-          const resumeActivity = (pause) => {
-            activityPauses.delete(pause);
-            computerSystemPaused = activityPauses.size > 0;
-            reportWindowFocus();
-          };
-          powerMonitor
-            .on("resume", () => resumeActivity("suspend"))
-            .on("unlock-screen", () => resumeActivity("lock-screen"));
-          app.on("will-quit", () => clearInterval(activityTimer));
-          reportWindowFocus();
+            ?.on("focus", refreshHostMenu)
+            .on("blur", refreshHostMenu)
+            .on("hide", refreshHostMenu)
+            .on("minimize", refreshHostMenu)
+            .on("restore", refreshHostMenu);
+          app.on("will-quit", () => clearInterval(menuTimer));
+          refreshHostMenu();
           await serviceStarted;
-          reportWindowFocus();
+          refreshHostMenu();
           return !!window && !window.isDestroyed() && serviceBackend.status.connected;
         },
         (ready) => (ready ? "ok" : "unknown"),

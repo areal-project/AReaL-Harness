@@ -18,11 +18,7 @@ struct ReleasePolicy {
 
 impl Host {
     pub(super) fn has_external_clients(&self) -> bool {
-        // 工作台是 Host 自己的子进程；只认启动时登记的 PID，不信任客户端声明的角色。
-        self.clients
-            .borrow()
-            .values()
-            .any(|pid| pid.is_none_or(|pid| !self.gateway.workbench.owns_client_process(pid)))
+        !self.clients.borrow().is_empty()
     }
     pub(super) fn retain_for_gui(&self) -> Result<()> {
         let path = self.home.join("host/release.json");
@@ -57,10 +53,21 @@ impl Host {
 pub(super) async fn release_unused(host: Rc<Host>) {
     let mut changes = host.changes.subscribe();
     let mut reported = String::new();
+    let mut transient_retries: u32 = 0;
     loop {
         let reason = match try_release(&host).await {
-            Err(error) => format!("error: {error}"),
-            Ok(reason) => reason.into(),
+            Err(error) => {
+                transient_retries = 0;
+                format!("error: {error}")
+            }
+            Ok(reason) => {
+                if reason == "activityUnknownOrBusy" && transient_retries < 8 {
+                    transient_retries += 1;
+                } else {
+                    transient_retries = 0;
+                }
+                reason.into()
+            }
         };
         if reason != reported {
             if reason != "unarmed" {
@@ -68,11 +75,20 @@ pub(super) async fn release_unused(host: Rc<Host>) {
             }
             reported = reason;
         }
+        let delay = if transient_retries > 0 {
+            transient_release_delay(transient_retries - 1)
+        } else {
+            Duration::from_secs(30)
+        };
         tokio::select! {
             _ = changes.changed() => {},
-            _ = tokio::time::sleep(Duration::from_secs(30)) => {},
+            _ = tokio::time::sleep(delay) => {},
         }
     }
+}
+
+fn transient_release_delay(retry: u32) -> Duration {
+    Duration::from_millis(200 * (1_u64 << retry.min(3)))
 }
 
 async fn try_release(host: &Rc<Host>) -> Result<&'static str> {
@@ -109,19 +125,6 @@ async fn try_release(host: &Rc<Host>) -> Result<&'static str> {
         }
     }
     host.migration.vault.idle()?;
-    let backend = host.gateway.workbench.backend_status(host).await?;
-    if backend["owned"] == true {
-        let dependencies = host
-            .gateway
-            .workbench
-            .backend_private("lifecycle.dependencies", json!({}))
-            .await?;
-        if dependencies["clients"].as_u64() != Some(0)
-            || dependencies["inflight"].as_u64() != Some(0)
-        {
-            return Ok("workbenchClientsOrWrites");
-        }
-    }
     let activity = host.activity().await;
     if !activity.complete
         || !activity.projects.iter().all(|project| {
@@ -208,7 +211,6 @@ pub(super) async fn run(host: Rc<Host>) {
         if host.admission().is_err() {
             continue;
         }
-        let release = release && workbench_idle(&host).await;
         // 未确认的停止只核查原请求，不为下一次巡检换 ID。
         for (project, request) in pending.clone() {
             match host.reconcile(&request).await {
@@ -312,25 +314,6 @@ pub(super) async fn run(host: Rc<Host>) {
             }
         }
     }
-}
-
-async fn workbench_idle(host: &Rc<Host>) -> bool {
-    let Ok(backend) = host.gateway.workbench.backend_status(host).await else {
-        return false;
-    };
-    if backend["owned"] != true {
-        return true;
-    }
-    host.gateway
-        .workbench
-        .backend_private("lifecycle.dependencies", json!({}))
-        .await
-        .is_ok_and(|value| {
-            value["clients"].as_u64() == Some(0)
-                && value["inflight"].as_u64() == Some(0)
-                && value["providerUpdating"] == false
-                && value["starting"].as_u64() == Some(0)
-        })
 }
 
 #[cfg(test)]
@@ -461,5 +444,49 @@ mod tests {
         window.reset();
         assert!(!window.observe(true, start + TTL * 3, TTL));
         assert!(window.observe(true, start + TTL * 4, TTL));
+    }
+
+    #[test]
+    fn transient_release_backoff_starts_at_200ms_and_caps_at_1600ms() {
+        assert_eq!(transient_release_delay(0), Duration::from_millis(200));
+        assert_eq!(transient_release_delay(1), Duration::from_millis(400));
+        assert_eq!(transient_release_delay(2), Duration::from_millis(800));
+        assert_eq!(transient_release_delay(3), Duration::from_millis(1600));
+        assert_eq!(transient_release_delay(7), Duration::from_millis(1600));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn release_unused_recovers_within_two_seconds_after_transient_busy_clears() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let root = tempfile::tempdir().unwrap();
+                let host = Rc::new(schedules::tests::fixture(root.path()));
+                {
+                    let mut slots = host.slots.borrow_mut();
+                    let slot = slots.get_mut("project").unwrap();
+                    slot.state = "starting".into();
+                    slot.uncertain_start = true;
+                }
+                host.dispatch(
+                    "host.release",
+                    json!({
+                        "requestId": uuid::Uuid::new_v4().to_string(),
+                        "expectedGeneration": host.identity.generation,
+                    }),
+                )
+                .await
+                .unwrap();
+                let worker = tokio::task::spawn_local(release_unused(host.clone()));
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                assert!(host.stop.borrow().is_none());
+                // Clear the transient blocker without sending host.changed() to verify the 200ms retry timer.
+                host.slots.borrow_mut().clear();
+                tokio::time::timeout(Duration::from_secs(2), host.exit.notified())
+                    .await
+                    .expect("release_unused should recover via short backoff without waiting 30s");
+                assert_eq!(host.stop.borrow().as_ref().unwrap()["state"], "completed");
+                worker.abort();
+            })
+            .await;
     }
 }

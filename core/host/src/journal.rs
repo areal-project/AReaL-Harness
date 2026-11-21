@@ -347,6 +347,29 @@ impl Journal {
             })
         })
     }
+    pub(crate) fn pending_read(&self, project_id: &str) -> Result<Vec<Value>> {
+        let path = self.record_path(project_id)?;
+        match std::fs::symlink_metadata(&path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            other => {
+                other?;
+            }
+        }
+        let record: Record = read_large(&path)?;
+        ensure!(
+            record.project_id == project_id,
+            "journal project identity mismatch"
+        );
+        record.snapshot.validate()?;
+        Ok(record
+            .snapshot
+            .pending
+            .into_iter()
+            .filter(|entry| {
+                !submission_id(entry).is_some_and(|id| record.snapshot.outcomes.contains_key(id))
+            })
+            .collect())
+    }
     pub(crate) fn native_replace(
         &self,
         project_id: &str,

@@ -1,4 +1,3 @@
-import { ComposerMcpIcon } from "./ComposerIcons.js";
 import { AttachmentIcon, FileTree, GoalIcon, PlanModeIcon } from "./interfaceIcons.js";
 import type { ComposerCatalogEntry } from "./prompt-editor/ComposerCatalog.js";
 import type { useI18n } from "./i18n/IntlProvider.js";
@@ -10,13 +9,12 @@ export function composerFeatureEntries(
   t: ReturnType<typeof useI18n>["t"],
   features: {
     upload: Feature;
-    mcp?: Feature;
     files?: Feature;
     plan: Feature & { active: boolean };
     goal?: Feature & { active: boolean };
   },
 ): ComposerCatalogEntry[] {
-  const { upload, mcp, files, plan, goal } = features;
+  const { upload, files, plan, goal } = features;
   return [
     {
       value: "upload",
@@ -26,18 +24,6 @@ export function composerFeatureEntries(
       group: "功能",
       ...upload,
     },
-    ...(mcp
-      ? [
-          {
-            value: "mcp",
-            label: "MCP",
-            description: t("chat.composer.mcpDescription"),
-            icon: <ComposerMcpIcon />,
-            group: "功能" as const,
-            ...mcp,
-          },
-        ]
-      : []),
     ...(files
       ? [
           {

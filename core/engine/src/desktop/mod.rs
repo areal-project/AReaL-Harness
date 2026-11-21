@@ -2,10 +2,9 @@
 mod agents;
 mod catalog;
 mod context;
-pub(crate) mod gen_ui;
 mod interactions;
 mod mcp;
-pub(crate) mod mcp_apps;
+pub(crate) mod mcp_interactions;
 pub(crate) mod mcp_tools;
 pub(crate) mod media;
 mod model_configuration;
@@ -45,7 +44,7 @@ pub(crate) struct Desktop {
     submissions: submissions::Submissions,
     pub(crate) lifecycle: server::Lifecycle,
     pub(crate) plugin_mcp: plugin_mcp::Manager,
-    pub(crate) mcp_apps: mcp_apps::Manager,
+    pub(crate) mcp_interactions: mcp_interactions::Manager,
     catalog: std::sync::RwLock<catalog::Catalog>,
     catalog_write: Mutex<()>,
     model_events: broadcast::Sender<Value>,
@@ -65,7 +64,7 @@ impl Desktop {
             worker_model: std::sync::atomic::AtomicBool::new(false),
             submissions: submissions::Submissions::open(root)?,
             plugin_mcp: plugin_mcp::Manager::open(root)?,
-            mcp_apps: mcp_apps::Manager::open(root)?,
+            mcp_interactions: mcp_interactions::Manager::open(root)?,
             lifecycle: Default::default(),
             catalog: std::sync::RwLock::new(catalog::Catalog::load(root)?),
             catalog_write: Mutex::new(()),
@@ -97,6 +96,25 @@ pub(crate) fn digest(value: &impl Serialize) -> Result<String> {
         Sha256::digest(serde_json::to_vec(value).map_err(invalid)?)
     ))
 }
+
+pub(crate) fn retire_removed_desktop_tools(thread: &mut Thread) {
+    // 过渡：到 0.2.0 删；仅识别旧部署的固定定义，保留其他同名客户端工具。
+    const REMOVED_COMPUTER: &str =
+        "d73942d3d47fd2c929e5888866efe8a2081bff8b500758fc91dc53e6eacaa3b4";
+    let was_external_cua = thread
+        .desktop
+        .as_ref()
+        .is_some_and(|data| data.configuration.options.retired_external_cua);
+    let count = thread.dynamic_tools.len();
+    thread.dynamic_tools.retain(|tool| {
+        !(tool.name == "computer_v1" && digest(tool).is_ok_and(|hash| hash == REMOVED_COMPUTER)
+            || was_external_cua && matches!(tool.name.as_str(), "js" | "js_reset"))
+    });
+    if thread.dynamic_tools.len() != count {
+        thread.toolset_revision = thread.toolset_revision.saturating_add(1);
+    }
+}
+
 fn valid_id(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 128

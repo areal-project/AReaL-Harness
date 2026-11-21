@@ -13,12 +13,11 @@ import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { stageCoreApp } from "./stage-app.mjs";
-import { stageMacOSService } from "./stage-macos-service.mjs";
 import { buildMacOSDmg } from "./macos-dmg.mjs";
 import { parseArgs } from "node:util";
-import relayResources from "@areal/workbench-service/desktop/core/relay-resources.cjs";
+import relayResources from "./relay-resources.cjs";
 import { signLocalMacOSApp } from "./macos-signing-paths.mjs";
-import { buildWorkbenchResources } from "./workbench-resources.mjs";
+import { checkIcon } from "./macos-icon.mjs";
 const gui = fileURLToPath(new URL("..", import.meta.url));
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
@@ -145,13 +144,11 @@ try {
   const guiOutputs = [
     "renderer/dist",
     "packages/ui/dist",
-    "packages/gen-ui/dist",
     "packages/browser-automation/dist",
     "packages/browser-data/dist",
     "app/src/core/snapshots/build",
     "app/src/ipc/generated",
-    "native/computer-helper/build/AReaL Computer Helper.app",
-    "../../services/workbench/src/generated",
+    "app/src/core/generated",
   ].map((path) => join(gui, path));
   // 依赖同步只执行一次；缓存只替代构建，不替代锁文件安装。
   await timings.measure("dependencies", () =>
@@ -174,14 +171,9 @@ try {
       );
       if (process.env.AREAL_GUI_RELAY_CA_CERT) {
         const caPath = resolve(process.env.AREAL_GUI_RELAY_CA_CERT);
-        const {
-          normalizeNetworkSetting,
-        } = require("@areal/workbench-service/desktop/core/desktop-network.cjs");
+        const { normalizeNetworkSetting } = require("@areal/workbench/node/desktop-network");
         normalizeNetworkSetting("httpProxyCaCertPath", caPath);
-        await cp(
-          caPath,
-          join(appStage, "node_modules/@areal/workbench-service/src/assets/relay-ca.pem"),
-        );
+        await cp(caPath, join(appStage, "node_modules/@areal/workbench/assets/relay-ca.pem"));
       }
       const { githubFeedUrl } = require(join(gui, "app/src/update/config.cjs"));
       const updateConfig = join(staged, "areal-update.json");
@@ -231,9 +223,7 @@ try {
           );
         }
       });
-      const { verifyCoreBundle } = require(
-        join(gui, "../../services/workbench/src/desktop/core/bundle.cjs"),
-      );
+      const { verifyCoreBundle } = require(join(gui, "packages/workbench/node/bundle.cjs"));
       const coreBundle = verifyCoreBundle(output, { hashes: true });
       if (release)
         assert.equal(
@@ -241,36 +231,13 @@ try {
           "release",
           "GUI release requires a release Core bundle",
         );
-      const iconset = join(staged, "app.iconset");
-      await mkdir(iconset);
-      for (const size of [16, 32, 128, 256, 512]) {
-        for (const scale of [1, 2]) {
-          execFileSync(
-            "/usr/bin/sips",
-            [
-              "-z",
-              String(size * scale),
-              String(size * scale),
-              join(gui, "app/assets/icon-1024.png"),
-              "--out",
-              join(iconset, `icon_${size}x${size}${scale === 2 ? "@2x" : ""}.png`),
-            ],
-            { stdio: "ignore" },
-          );
-        }
-      }
-      const icon = join(staged, "app.icns");
-      execFileSync("/usr/bin/iconutil", ["-c", "icns", iconset, "-o", icon]);
+      const icon = await checkIcon();
       const { build, Platform, Arch } = require("electron-builder");
       const relayBundle = await relayResources.buildRelayResources({
         source: join(root, "services/remote-relay"),
         site: join(gui, "renderer/dist"),
         destination: join(output, "areal-relay"),
         includeAssets: false,
-      });
-      const workbenchBundle = await buildWorkbenchResources({
-        source: join(root, "services/workbench"),
-        destination: join(output, "areal-workbench"),
       });
       await timings.measure("electron-package", () =>
         build({
@@ -298,15 +265,10 @@ try {
                 from: join(relayBundle.bundleDir, "node_modules"),
                 to: "areal-relay/node_modules",
               },
-              { from: workbenchBundle.bundleDir, to: "areal-workbench" },
               {
                 from: join(gui, "renderer/dist"),
                 to: "areal-gui",
                 filter: ["**/*", "!bundle-analysis.json"],
-              },
-              {
-                from: join(gui, "native/computer-helper/build/AReaL Computer Helper.app"),
-                to: "computer-helper/AReaL Computer Helper.app",
               },
               ...(release
                 ? [
@@ -330,14 +292,11 @@ try {
       const resources = join(app, "Contents/Resources");
       const desktopIdentity = createHash("sha256")
         .update(await readFile(join(resources, "app.asar")))
-        .update(await treeHash([join(resources, "areal-gui"), join(resources, "areal-workbench")]))
+        .update(await treeHash([join(resources, "areal-gui")]))
         .digest("hex");
       await writeFile(
         join(resources, "desktop-build.json"),
         JSON.stringify({ version: 1, identity: desktopIdentity }) + "\n",
-      );
-      const backgroundService = await timings.measure("service-bundle", () =>
-        stageMacOSService(app),
       );
       if (release) {
         const native = require("yaml").parse(
@@ -425,7 +384,6 @@ try {
             archive,
             dmg,
             dependencies,
-            backgroundService,
             builder: {
               node: process.version,
               executable: process.execPath,

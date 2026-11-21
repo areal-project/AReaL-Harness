@@ -61,8 +61,13 @@ impl Engine {
 
     pub async fn release_upload(self: &Arc<Self>, thread_id: String, uri: String) -> Result<Value> {
         self.mutate(move |engine| async move {
-            let cell = engine.cell(&thread_id).await?;
+            let cell = engine.raw_cell(&thread_id).await?;
             let mut state = cell.state.lock().await;
+            if state.thread.desktop.as_ref().is_some_and(|d| d.archived) {
+                return Err(invalid(
+                    "THREAD_ARCHIVED: archived sessions cannot release uploads",
+                ));
+            }
             if state.active.is_some() || state.compacting {
                 return Err(Error::Conflict);
             }

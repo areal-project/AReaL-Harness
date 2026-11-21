@@ -1,4 +1,7 @@
 export const operationMessages = {
+  "operations.openRunHistory": { "zh-CN": "查看完整运行历史", en: "Open full run history" },
+  "operations.closeRunHistory": { "zh-CN": "关闭完整运行历史", en: "Close full run history" },
+  "operations.loadingRunHistory": { "zh-CN": "正在读取运行历史…", en: "Loading run history…" },
   "operations.documentFile": { "zh-CN": "HTML 文件：", en: "HTML file: " },
   "operations.documentDirectory": { "zh-CN": "静态资源目录：", en: "Static asset directory: " },
   "operations.documentExactFile": {

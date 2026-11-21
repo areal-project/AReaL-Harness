@@ -113,6 +113,10 @@ impl Session {
         );
         self.authorize(Some(project), "observe")?;
         let id = self.project_id(project)?;
+        ensure!(
+            !crate::server::cloud_sessions::CloudSessions::is_virtual(&id),
+            "CORE_UNAVAILABLE"
+        );
         let registration = self.host.slots.borrow()[&id].registration.clone();
         let path = self
             .host
@@ -194,6 +198,9 @@ impl Session {
         self.authorize(Some(project), "observe")?;
         let (id, current) = self.project(project)?;
         ensure!(current == generation, "RESYNC_REQUIRED");
+        if crate::server::cloud_sessions::CloudSessions::is_virtual(&id) {
+            return self.cloud_models(project, generation).await;
+        }
         let metadata = self
             .host
             .schedules
@@ -291,6 +298,80 @@ impl Session {
         Ok(result)
     }
 
+    async fn cloud_models(&self, project: &str, generation: &str) -> Result<Value> {
+        let core = self
+            .rpc(project, generation, "areal/model/list", json!({}))
+            .await?;
+        let models = core["data"].as_array().context("CORE_UNAVAILABLE")?;
+        ensure!(models.len() <= 200, "LIMIT_EXCEEDED");
+        let models: Vec<_> = models
+            .iter()
+            .map(|model| {
+                projection::pick(
+                    model,
+                    &[
+                        "providerId",
+                        "modelId",
+                        "displayName",
+                        "reasoningEffortOptions",
+                        "available",
+                        "unavailableReason",
+                        "providerName",
+                        "providerRevision",
+                        "isDefault",
+                        "credentialState",
+                        "availability",
+                        "parameters",
+                        "contextWindowTokens",
+                        "maxOutputTokens",
+                        "capabilities",
+                    ],
+                )
+            })
+            .collect();
+        let profiles = self
+            .rpc(project, generation, "areal/profile/list", json!({}))
+            .await?;
+        let profiles = profiles["data"].as_array().context("CORE_UNAVAILABLE")?;
+        ensure!(profiles.len() <= 200, "LIMIT_EXCEEDED");
+        let profiles: Vec<_> = profiles
+            .iter()
+            .map(|profile| {
+                projection::pick(
+                    profile,
+                    &[
+                        "id",
+                        "revision",
+                        "displayName",
+                        "instructions",
+                        "model",
+                        "readOnly",
+                        "skills",
+                        "workflow",
+                        "toolAllowlist",
+                        "approvalTools",
+                        "allowThreadProcesses",
+                        "allowConnectionProcesses",
+                        "allowPluginSkills",
+                        "requiredModalities",
+                    ],
+                )
+            })
+            .collect();
+        let caps = self
+            .rpc(project, generation, "areal/capabilities", json!({}))
+            .await?;
+        let result = json!({"projectId":project,"gatewayGeneration":self.generation,
+            "grantRevision":self.grant["revision"],"serviceGeneration":generation,
+            "models":models,"profiles":profiles,"defaultProfile":null,
+            "lastAcceptedModel":core.get("lastAcceptedModel"),"features":public_features(&caps)});
+        ensure!(
+            serde_json::to_vec(&result)?.len() <= 128 * 1024,
+            "LIMIT_EXCEEDED"
+        );
+        Ok(result)
+    }
+
     fn accepted_model(&self, source: &str, mut accepted: Value) -> Result<Value> {
         if self.gui_read
             && let Some(home) = self.host.migration.power_sources()?.get(source)
@@ -313,6 +394,9 @@ impl Session {
         observed_model: impl FnOnce() -> Result<Option<Value>>,
     ) -> Result<Value> {
         let (id, _) = self.project(project)?;
+        if crate::server::cloud_sessions::CloudSessions::is_virtual(&id) {
+            return self.cloud_models(project, generation).await;
+        }
         let identity = self
             .host
             .schedules
@@ -399,6 +483,101 @@ fn mark_checking(models: &mut [Value]) {
             model["availability"] = json!("checking");
         }
     }
+}
+
+pub(crate) fn projectless_models(host: &Host, source: &str, options: &Value) -> Result<Value> {
+    let mut inputs = crate::server::workbench_utility::inputs(options)?;
+    for (name, value) in host.gateway.workbench.environment_credentials(source) {
+        inputs.env.insert(name.into(), value.into());
+    }
+    let references: Vec<_> = host
+        .migration
+        .vault
+        .provider_references(source)?
+        .into_iter()
+        .collect();
+    for name in &references {
+        inputs.env.remove(std::ffi::OsStr::new(name));
+    }
+    let config = areal_config::models::read(&inputs, &references)?;
+    let mut rows = configured_models(&config);
+    let effective = &config.effective["model"];
+    if let Some(name) = effective["name"].as_str().filter(|name| !name.is_empty()) {
+        let configured = rows
+            .iter()
+            .find(|row| row["providerId"] == effective["provider"] && row["modelId"] == name)
+            .cloned();
+        let mut parameters = json!({});
+        for (key, field) in [
+            ("temperature", "temperature"),
+            ("max_output_tokens", "maxOutputTokens"),
+            ("context_window_tokens", "contextWindowTokens"),
+            ("reasoning_effort", "reasoningEffort"),
+            ("service_tier", "serviceTier"),
+        ] {
+            if !effective[key].is_null() {
+                parameters[field] = effective[key].clone();
+            }
+        }
+        let available = configured
+            .as_ref()
+            .map(|row| row["available"] != false)
+            .unwrap_or_else(|| {
+                effective["endpoint"]
+                    .as_str()
+                    .is_some_and(|value| !value.is_empty())
+                    && effective["api_key_env"].as_str().is_none_or(|key| {
+                        inputs
+                            .env
+                            .get(std::ffi::OsStr::new(key))
+                            .is_some_and(|value| !value.is_empty())
+                    })
+            });
+        let mut row = json!({"providerId":null,"modelId":name,"displayName":configured.as_ref().map(|row|row["displayName"].clone()).unwrap_or(json!(name)),"available":available,"isDefault":!rows.iter().any(|row|row["isDefault"]==true),"parameters":parameters,"reasoningEffortOptions":configured.as_ref().map(|row|row["reasoningEffortOptions"].clone()).unwrap_or(json!([]))});
+        if let Some(caps) = configured.as_ref().and_then(|row| row.get("capabilities")) {
+            row["capabilities"] = caps.clone();
+        }
+        rows.insert(0, row);
+    }
+    let subscription = host.subscription_model_catalog(source)?;
+    let mut models = catalog(&rows, subscription.as_ref(), &[]);
+    for row in &mut models {
+        if row.get("available").is_none() {
+            row["available"] =
+                json!(row["credentialState"] == "checking" || row["providerId"] == "areal_openai");
+        }
+        if row.get("parameters").is_none() {
+            row["parameters"] = json!({});
+        }
+        if row["providerId"] == "areal_openai" {
+            row["isDefault"] = json!(
+                config
+                    .default_model
+                    .as_ref()
+                    .is_some_and(|selected| selected.provider_id == "areal_openai"
+                        && row["modelId"] == selected.model_id)
+            );
+        } else if row.get("isDefault").is_none() {
+            row["isDefault"] = json!(false);
+        }
+        if row.get("reasoningEffortOptions").is_none() {
+            row["reasoningEffortOptions"] = json!([]);
+        }
+    }
+    if models
+        .iter()
+        .any(|row| !row["providerId"].is_null() && row["isDefault"] == true)
+    {
+        for row in &mut models {
+            if row["providerId"].is_null() {
+                row["isDefault"] = json!(false);
+            }
+        }
+    }
+    let home = crate::server::library_store::source_home(host, source)?;
+    let accepted: Option<areal_protocol::host::WorkbenchCreationAcceptedModel> =
+        storage::read_optional(&home.join("model-selection.json"))?;
+    Ok(json!({"models":models,"lastAcceptedModel":accepted}))
 }
 
 fn configured_models(config: &areal_config::models::ModelConfiguration) -> Vec<Value> {

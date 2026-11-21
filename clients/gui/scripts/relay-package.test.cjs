@@ -9,10 +9,7 @@ const { pathToFileURL } = require("node:url");
 const { runInNewContext } = require("node:vm");
 const { createServer } = require("node:net");
 const { get } = require("node:http");
-const {
-  buildRelayResources,
-  prepareRelayResources,
-} = require("@areal/workbench-service/desktop/core/relay-resources.cjs");
+const { buildRelayResources, prepareRelayResources } = require("./relay-resources.cjs");
 const requireFromApp = createRequire(resolve(__dirname, "../app/package.json"));
 const requireFromBuilder = createRequire(requireFromApp.resolve("electron-builder"));
 const { getFileMatchers, copyFiles } = requireFromBuilder("app-builder-lib/out/fileMatcher.js");
@@ -27,16 +24,17 @@ test("packaged Relay resources retain every manifest file and load their own ws"
     destination: join(home, "bundle"),
   });
   const source = await readFile(join(__dirname, "package.mjs"), "utf8");
-  const resources = source.match(/extraResources: (\[[\s\S]*?\n\s*\]),/);
+  const resources = source.match(/^( +)extraResources: (\[[\s\S]*?\n\1\]),/m);
   assert.ok(resources, "package.mjs must define extraResources");
-  const extraResources = runInNewContext(`(${resources[1]})`, {
+  const stagedResources = runInNewContext(`(${resources[2]})`, {
     join,
     gui,
     relayBundle,
-    workbenchBundle: { bundleDir: join(home, "workbench") },
     bundle: join(home, "core"),
     release: false,
-  }).filter(
+  });
+  assert.ok(stagedResources.every(({ to }) => to !== "areal-workbench"));
+  const extraResources = stagedResources.filter(
     ({ to }) => to === "areal-gui" || to === "areal-relay" || to.startsWith("areal-relay/"),
   );
   assert.ok(extraResources.length > 0, "package.mjs must include Relay resources");

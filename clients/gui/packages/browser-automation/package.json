@@ -9,6 +9,14 @@
       "types": "./src/index.ts",
       "default": "./dist/index.cjs"
     },
+    "./host-tool": {
+      "types": "./src/host-tool.cjs",
+      "default": "./src/host-tool.cjs"
+    },
+    "./host-tool-types": {
+      "types": "./src/host-tool-types.cjs",
+      "default": "./src/host-tool-types.cjs"
+    },
     "./electron": {
       "types": "./src/electron.ts",
       "default": "./dist/electron.cjs"

@@ -1,23 +1,17 @@
-import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
 
-const require = createRequire(import.meta.url);
-const root = fileURLToPath(new URL("../", import.meta.url));
-const oxlint = join(
-  dirname(createRequire(require.resolve("vite-plus/package.json")).resolve("oxlint/package.json")),
-  "bin/oxlint",
+const retired = "@areal/workbench-service";
+const gui = new URL("../", import.meta.url);
+assert.equal(
+  existsSync(new URL("../../services/workbench", gui)),
+  false,
+  "The retired Node workbench directory must be absent",
 );
-const result = spawnSync(
-  process.execPath,
-  [
-    oxlint,
-    "--config",
-    "oxlint.workbench-boundary.json",
-    resolve(root, "../../services/workbench/src"),
-  ],
-  { cwd: root, stdio: "inherit" },
-);
-if (result.error) throw result.error;
-process.exitCode = result.status ?? 1;
+for (const file of ["package.json", "pnpm-workspace.yaml", "pnpm-lock.yaml"]) {
+  const source = readFileSync(new URL(file, gui), "utf8");
+  assert.ok(
+    !source.includes(retired) && !source.includes("services/workbench"),
+    `The retired Node workbench must not enter ${file}`,
+  );
+}

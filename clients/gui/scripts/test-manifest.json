@@ -1,27 +1,11 @@
 [
   {
-    "script": "test:workbench-errors",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["protocol", "provider"],
-    "requires": ["gui-build"],
-    "notes": "Actual Workbench process framing and typed error mapping, including the Host error-code inventory."
-  },
-  {
     "script": "test:core-observation",
     "layer": "contract",
     "platforms": ["darwin", "linux"],
     "areas": ["testing", "conversation"],
     "requires": ["core-binary", "native-runtime"],
     "notes": "Create and observe a real isolated Core thread, then verify cleanup of its original service generation."
-  },
-  {
-    "script": "test:workbench-backend",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["service", "lifecycle", "library"],
-    "requires": ["core-binary", "gui-build"],
-    "notes": "Isolated source Host and Node backend; WebSocket receipts, Main attach, crash recovery and Host shutdown. No Electron window or package; native secure storage remains a separate check."
   },
   {
     "script": "test:conversation-baseline-provider",
@@ -108,13 +92,6 @@
     "areas": ["diagnostics"],
     "requires": ["electron", "core-binary", "git", "gui-build", "python3"],
     "notes": "Mixed command; classified by highest browser or Electron boundary."
-  },
-  {
-    "script": "test:state-projection",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["projection"],
-    "requires": []
   },
   {
     "script": "test:recovery",
@@ -285,13 +262,6 @@
     "areas": ["lifecycle", "conversation"],
     "requires": ["electron", "core-binary", "native-runtime", "gui-build", "git", "python3"],
     "notes": "Isolated GUI-to-TUI approval handoff and shared history through a real PTY and local model. On macOS, requires authorized test Keychain writes and AREAL_TEST_HOST_KEYCHAIN=1, including for empty GUI configuration."
-  },
-  {
-    "script": "test:legacy-recovery",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["recovery"],
-    "requires": ["electron", "core-binary", "gui-build", "git"]
   },
   {
     "script": "test:side-chat-parity",
@@ -468,8 +438,8 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["history"],
-    "requires": ["browser", "core-binary", "gui-build"],
-    "notes": "Mixed command; classified by highest browser or Electron boundary."
+    "requires": ["electron", "core-binary", "native-runtime", "gui-build"],
+    "notes": "Native Electron writes and real Host/Core history with a local synthetic model."
   },
   {
     "script": "test:architecture",
@@ -522,7 +492,7 @@
     "layer": "contract",
     "platforms": ["darwin", "linux"],
     "areas": ["trajectory"],
-    "requires": ["core-binary"]
+    "requires": ["core-binary", "gui-build"]
   },
   {
     "script": "test:execution-trace-ui",
@@ -598,14 +568,14 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["browser"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
+    "requires": ["electron", "core-binary", "git", "gui-build", "python3"]
   },
   {
     "script": "test:browser-loading",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["browser"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
+    "requires": ["electron", "core-binary", "git", "gui-build", "python3"]
   },
   {
     "script": "test:image-annotations",
@@ -742,34 +712,6 @@
     "requires": ["git"]
   },
   {
-    "script": "test:mcp-app-lifecycle",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["mcp"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
-  },
-  {
-    "script": "test:mcp-platform",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["mcp"],
-    "requires": ["browser", "git", "gui-build"]
-  },
-  {
-    "script": "test:mcp-page-tools",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["mcp"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
-  },
-  {
-    "script": "test:mcp-page-tools-transport",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["mcp"],
-    "requires": []
-  },
-  {
     "script": "test:plugins",
     "notes": "Runs plugin presentation, offline read, configuration-secret, and ordinary command contracts before real Electron acceptance.",
     "layer": "e2e",
@@ -845,13 +787,6 @@
     "areas": ["recovery", "lifecycle"],
     "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
     "platformReason": "Runner explicitly asserts darwin and uses its existing macOS acceptance setup."
-  },
-  {
-    "script": "test:gen-ui",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["gen-ui"],
-    "requires": ["electron", "core-binary", "gui-build", "git"]
   },
   {
     "script": "test:conversation-derivation",
@@ -1047,7 +982,8 @@
     "platformReason": "Uses the macOS fixed Core runner and optional iOS Simulator.",
     "platforms": ["darwin"],
     "areas": ["remote", "mobile"],
-    "requires": ["electron", "gui-build", "core-build"]
+    "requires": ["electron", "gui-build", "core-build"],
+    "notes": "Native Host with isolated Keychain authorization (AREAL_TEST_HOST_KEYCHAIN=1). Optional iOS Simulator."
   },
   {
     "script": "test:snapshots",
@@ -1183,10 +1119,10 @@
     "script": "test:upgrade-guide-lifecycle",
     "layer": "e2e",
     "platforms": ["darwin"],
-    "platformReason": "Upgrade acceptance from 0.1.18 to 0.1.19 uses /private/tmp, packaged Electron and real legacy data layouts on macOS.",
+    "platformReason": "Native lifecycle probe for the macOS upgrade guide.",
     "areas": ["lifecycle", "service"],
-    "requires": ["electron", "core-binary", "gui-build"],
-    "notes": "Old Core stop receipt and Host takeover probe used by the upgrade guide; set AREAL_UPGRADE_OLD_CORE."
+    "requires": ["core-binary", "native-runtime"],
+    "notes": "Uses a fixed Core and an isolated Host-owned service to verify the original UNKNOWN stop receipt after service termination. Set AREAL_UPGRADE_OLD_CORE and AREAL_UPGRADE_OLD_CORE_SHA256."
   },
   {
     "script": "test:web-partial-migration",

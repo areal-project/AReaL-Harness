@@ -17,14 +17,23 @@ const binary = resolve(process.env.AREAL_CORE_BIN || "../../target/debug/areal")
 test("packaged build identity uses its sealed manifest without reading source trees", async () => {
   const home = await trackedMkdtemp(join(tmpdir(), "areal-build-identity-"));
   const manifest = join(home, "desktop-build.json");
+  const core = join(home, "areal");
+  const runtime = join(home, "areal-runtime");
+  await writeFile(core, "core executable");
+  await writeFile(runtime, "original runtime");
   await writeFile(manifest, JSON.stringify({ version: 1, identity: "a".repeat(64) }));
-  const first = await desktopBuildIdentity("service-a", [join(home, "absent")], manifest);
+  const first = await desktopBuildIdentity(core, [join(home, "absent")], manifest);
   assert.match(first, /^[a-f0-9]{64}$/);
-  assert.notEqual(first, await desktopBuildIdentity("service-b", [], manifest));
+  await writeFile(runtime, "replacement runtime");
+  assert.notEqual(first, await desktopBuildIdentity(core, [], manifest));
+  await writeFile(runtime, "original runtime");
+  await writeFile(core, "replacement core executable");
+  assert.notEqual(first, await desktopBuildIdentity(core, [], manifest));
+  await writeFile(core, "core executable");
   await writeFile(manifest, JSON.stringify({ version: 1, identity: "b".repeat(64) }));
-  assert.notEqual(first, await desktopBuildIdentity("service-a", [], manifest));
+  assert.notEqual(first, await desktopBuildIdentity(core, [], manifest));
   await writeFile(manifest, JSON.stringify({ version: 1, identity: "invalid" }));
-  await assert.rejects(desktopBuildIdentity("service-a", [], manifest), /构建清单/);
+  await assert.rejects(desktopBuildIdentity(core, [], manifest), /构建清单/);
 });
 
 async function waitFor(read, message) {
@@ -45,7 +54,7 @@ function alive(pid) {
   }
 }
 async function fixture(t) {
-  const home = await trackedMkdtemp("/private/tmp/areal-upgrade-");
+  const home = await trackedMkdtemp(join(tmpdir(), "agu-"));
   await mkdir(join(home, "user"), { mode: 0o700 });
   const old = new HostClient();
   await old.connectOrStart(home, process.env.AREAL_UPGRADE_OLD_BIN || binary);
@@ -69,7 +78,6 @@ async function fixture(t) {
   const options = {
     home,
     binary,
-    serviceIdentity: "fixture-service",
     buildIdentity: "fixture-build",
   };
   // 旧版缺少构建指纹；同一版本的工作台变更也必须触发整套切换。
@@ -119,6 +127,17 @@ test("a versioned Host without backend.status is replaced using its stop receipt
   assert.equal((await f.client.operation(record.requestId)).operation.state, "completed");
   assert.notEqual(f.client.generation, f.original.generation);
   await complete();
+});
+
+test("a versioned Host without stop operations is not replaced", async (t) => {
+  const f = await fixture(t);
+  await f.client.connect(f.home);
+  delete f.client.hello.executableDigest;
+  f.client.capabilities = f.client.capabilities.filter((value) => value !== "stopOperations");
+  f.client.stop = async () => assert.fail("Host without stop operations must not dispatch stop");
+  await assert.rejects(ensureDesktopHost(f.client, f.options), /用原版本安全停止后台/);
+  await assert.rejects(access(join(f.home, "host/desktop-upgrade.json")), { code: "ENOENT" });
+  assert.equal((await f.client.status()).state, "running");
 });
 
 test("a Host whose version cannot be checked does not receive a stop request", async (t) => {
@@ -192,6 +211,26 @@ test("startup resolves a crashed Host's undispatched stop without replaying it",
   assert.notEqual(f.client.generation, f.original.generation);
   assert.equal((await f.client.status()).stopIntent, false);
   await assert.rejects(access(path), { code: "ENOENT" });
+});
+
+test("a matching desktop build still retires a Host that reports an owned Node backend", async (t) => {
+  const f = await fixture(t);
+  await writeFile(
+    join(f.home, "host/desktop-build.json"),
+    JSON.stringify({ generation: f.original.generation, identity: f.options.buildIdentity }),
+    { mode: 0o600 },
+  );
+  const request = f.client.request.bind(f.client);
+  f.client.request = async (method, params) =>
+    method === "backend.status" && f.client.generation === f.original.generation
+      ? { owned: true, service: { identity: "obsolete-node" } }
+      : request(method, params);
+  const complete = await ensureDesktopHost(f.client, f.options);
+  assert.notEqual(f.client.generation, f.original.generation);
+  assert.equal(alive(f.original.pid), false);
+  const handoff = JSON.parse(await readFile(join(f.home, "host/desktop-upgrade.json")));
+  assert.equal((await f.client.operation(handoff.requestId)).operation.state, "completed");
+  await complete();
 });
 
 test("closing after stop resumes the original receipt without a second stop", async (t) => {

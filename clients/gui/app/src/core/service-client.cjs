@@ -1,14 +1,10 @@
 // @ts-check
 "use strict";
-const { requiresCurrentCommands } = require("./service-command-compatibility.cjs");
-const {
-  operationCore,
-  observedOperation,
-} = require("@areal/workbench-service/desktop/core/receipt-contract.cjs");
 const { commandSemantics, desktopError } = require("@areal/workbench/desktop-contract");
-const { startupTrace } = require("@areal/workbench-service/desktop/core/startup-timing.cjs");
+const { startupTrace } = require("@areal/workbench/node/startup-timing");
 const { createHash, randomUUID } = require("node:crypto");
-const { mkdir, readFile, realpath, rm } = require("node:fs/promises");
+const { mkdir, open, readFile, realpath, rm } = require("node:fs/promises");
+const { constants: fsConstants } = require("node:fs");
 const { join } = require("node:path");
 const { HostClient, executeHost } = require("@areal/client/node");
 const { hostUpdateReceipt } = require("@areal/workbench/desktop-contract/desktop-control");
@@ -17,13 +13,12 @@ const {
   projectHostReceipt,
   readOfflineHostReceipt,
 } = require("./host-lifecycle.cjs");
-const { NativeTerminalOwners } = require("@areal/workbench-service/native-host-transport");
-const { ServiceConnection } = require("./service-connection.cjs");
+/** @type {typeof import("./native-host-transport")} */
 const {
-  readServicePacket,
-  ownsThread,
-  retainsThreadResources,
-} = require("@areal/workbench-service/desktop/core/service-state.cjs");
+  NativeTerminalOwners,
+  createNativeHostTransport,
+  createNativeShellTransport,
+} = require("./generated/native-host-transport.cjs");
 const {
   readGuiProcesses,
   readGuiThreadIdentity,
@@ -31,16 +26,6 @@ const {
 } = require("./gui-resource-contract.cjs");
 const lifecycleControl = require("./service-control.cjs");
 const { desktopKind, needsOriginalCheck } = lifecycleControl;
-const {
-  PROTOCOL,
-  COMMAND_CONTRACT,
-  encodeMedia,
-  decodeMedia,
-} = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
-const {
-  genUiScope,
-  createGenUiState,
-} = require("@areal/workbench-service/desktop/core/gen-ui-state.cjs");
 const { checkHostPrerequisites } = require("./host-prerequisites.cjs");
 /** @param {number} ms */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -48,33 +33,6 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const uuid = (value) =>
   typeof value === "string" &&
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
-/** @param {string} home @param {{desktopGeneration?:unknown,token?:unknown}} metadata */
-async function waitForServiceExit(home, metadata) {
-  const deadline = Date.now() + 60000;
-  while (Date.now() < deadline) {
-    try {
-      /** @type {unknown} */
-      const current = JSON.parse(await readFile(join(home, "service.json"), "utf8"));
-      if (!record(current)) throw new Error("后台连接元数据无效");
-      if (
-        metadata.desktopGeneration
-          ? current.desktopGeneration !== metadata.desktopGeneration
-          : current.token !== metadata.token
-      )
-        return;
-    } catch (error) {
-      if (desktopError(error).code === "ENOENT") return;
-      throw error;
-    }
-    await sleep(100);
-  }
-  throw new Error("旧后台尚未完成退出，请稍后重新连接。未删除任何任务数据。");
-}
-/** @param {string} home @param {{pid:number,desktopGeneration?:unknown,token?:unknown}} metadata */
-async function waitForServiceProcessExit(home, metadata) {
-  await waitForServiceExit(home, metadata);
-  await waitForProcessExit(metadata.pid);
-}
 /** @param {number} pid */
 async function waitForProcessExit(pid) {
   const deadline = Date.now() + 15000;
@@ -90,40 +48,23 @@ async function waitForProcessExit(pid) {
   }
 }
 
-/** @typedef {import('./service-connection.cjs').ServiceMetadata|ReturnType<InstanceType<typeof import('@areal/workbench-service/desktop/core/service-protocol.cjs').DesktopService>['connectMain']>['metadata']} Metadata */
 /** @typedef {import('./service-control.cjs').LifecycleReference} Reference */
 /** @typedef {import('./service-control.cjs').LifecycleResponse} Receipt */
-/** @typedef {import('./lifecycle.cjs').RecoveryObservation} Observation */
-/** @typedef {import('@areal/workbench-service/desktop/core/resource-recovery.cjs').Notify} Notify */
+/** @typedef {import('./host-quit.cjs').Notify} Notify */
 /** @typedef {{projectId:string,threadId:string,id:string}} GuiTerminal */
-/** @typedef {{focused:boolean}} Activity */
-/** @typedef {{kind:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleKind,mode?:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleMode,observed?:Observation,projectId?:string,threadId?:string,turnId?:string,requestId?:string,migration?:unknown}} LifecycleOptions */
-/** @typedef {{stopped:boolean,operation:Receipt,kind?:string}} LifecycleResult */
 /** @typedef {{stopped:boolean,operation:import('@areal/workbench/desktop-contract/shared').LifecycleViewOperation,receipt?:import('./host-lifecycle.cjs').HostReceipt}} HostLifecycleResult */
 // GUI-local connection/projection only. Control intent lives in GUI userData;
 // shared Core history and execution state remain owned by the service.
-/** @typedef {Omit<Partial<import('@areal/workbench-service/desktop/core/backend.cjs').CoreBackendOptions>,'home'|'onChange'> & {home:string,configHome?:string,app:Pick<Electron.App,'getPath'> & Partial<Pick<Electron.App,'isPackaged'|'getAppPath'>>,onChange?:()=>void,onNotification?:(value:unknown)=>void,onNotificationOpen?:(value:unknown)=>void,onRecoveryAttention?:(value:unknown)=>void,prerequisiteCheck?:typeof checkHostPrerequisites}} SharedBackendOptions */
+/** @typedef {Omit<Partial<ReturnType<typeof import('./service-config.cjs').serviceOptions>>,'home'> & {home:string,configHome?:string,app:Pick<Electron.App,'getPath'> & Partial<Pick<Electron.App,'isPackaged'|'getAppPath'>>,onChange?:()=>void,onNotification?:(value:unknown)=>void,prerequisiteCheck?:typeof checkHostPrerequisites}} SharedBackendOptions */
 class SharedCoreBackend {
   /** @param {SharedBackendOptions} options */
   constructor({
     app,
     onChange = () => {},
     onNotification,
-    onNotificationOpen,
-    onRecoveryAttention,
     prerequisiteCheck = checkHostPrerequisites,
     ...options
   }) {
-    /** @type {InstanceType<typeof ServiceConnection>|null|undefined} */
-    this.connection = undefined;
-    /** @type {Metadata|undefined} */
-    this.metadata = undefined;
-    /** @type {Metadata|null|undefined} */
-    this.foreignOwner = undefined;
-    /** @type {InstanceType<typeof ServiceConnection>|null|undefined} */
-    this.stoppedConnection = undefined;
-    /** @type {Metadata|import("./service-control.cjs").DesktopIdentity|null|undefined} */
-    this.exitConfirmation = undefined;
     /** @type {Promise<void>|null|undefined} */
     this.connecting = undefined;
     /** @type {NodeJS.Timeout|null|undefined} */
@@ -140,10 +81,7 @@ class SharedCoreBackend {
     this.identity = undefined;
     /** @type {unknown} */
     this.controlState = undefined;
-    /** @type {Record<string,unknown>|null|undefined} */
-    this.legacyControl = undefined;
-    /** @type {{canRecover:boolean,projects:unknown[],message:string}|null|undefined} */
-    this.legacyRecoveryView = undefined;
+    this.unidentifiedStop = false;
     /** @type {string|null|undefined} */
     this.lifecycleError = undefined;
     /** @type {{state:string,message?:string}|undefined} */
@@ -154,33 +92,33 @@ class SharedCoreBackend {
     this.shutdownPromise = undefined;
     /** @type {Promise<unknown>|null|undefined} */
     this.recoveryInFlight = undefined;
-    /** @type {Activity|undefined} */
-    this.lastActivity = undefined;
-    /** @type {boolean|undefined} */
-    this.computerHostOwned = undefined;
     /** @type {(()=>void)|undefined} */
     this.onBrowserDisconnected = undefined;
-    /** @type {((event?:unknown)=>void)|undefined} */
-    this.onMcpPageToolsDisconnected = undefined;
-    /** @type {((request:Record<string,unknown>&{requestId:number})=>unknown)|undefined} */
-    this.onBrowserRequest = undefined;
-    /** @type {((request:unknown)=>void)|undefined} */
-    this.onBrowserCancel = undefined;
-    /** @type {((event:unknown)=>void)|undefined} */
-    this.onMcpAppNotification = undefined;
-    /** @type {((event:unknown)=>void)|undefined} */
-    this.onMcpPageToolNotice = undefined;
+    /** @type {Awaited<ReturnType<typeof createNativeHostTransport>>|undefined} */
+    this.nativeBrowser = undefined;
+    /** @type {Awaited<ReturnType<typeof createNativeShellTransport>>|undefined} */
+    this.nativeShell = undefined;
+    /** @type {ReturnType<typeof createNativeHostTransport>|undefined} */
+    this.nativeBrowserConnecting = undefined;
+    /** @type {object|undefined} */
+    this.nativeBrowserEpoch = undefined;
+    /** @type {string|undefined} */
+    this.nativeBrowserSource = undefined;
+    /** @type {Record<string,unknown>} */
+    this.nativeNetworkSettings = {};
+    /** @type {Map<string,import('./native-host-transport').DesktopThreadScope>} */
+    this.nativeBrowserScopes = new Map();
+    /** @type {((frame:import('./native-host-transport').DesktopCallback,signal:AbortSignal)=>Promise<unknown>)|undefined} */
+    this.onNativeBrowserRequest = undefined;
+    /** @type {((projectId:string,threadId:string)=>void)|undefined} */
+    this.onNativeBrowserRevoked = undefined;
     this.prerequisiteCheck = prerequisiteCheck;
     this.onNotification = onNotification;
-    this.onNotificationOpen = onNotificationOpen;
-    this.onRecoveryAttention = onRecoveryAttention;
     this.app = app;
     this.options = options;
-    this.applicationOwner = options.applicationOwner;
     this.home = options.home;
     this.onChange = onChange;
-    this.genUiState = createGenUiState(this.home);
-    /** @type {import("@areal/workbench-service/desktop/core/service-state.cjs").ServiceSnapshot} */
+    /** @type {import("@areal/workbench/desktop-contract/shared").DesktopSnapshot} */
     this.value = {
       library: {
         projects: {},
@@ -193,9 +131,8 @@ class SharedCoreBackend {
       },
       projects: [],
     };
-    /** @type {Partial<import('@areal/workbench-service/desktop/core/resource-observation.cjs').RecoveryService>} */
+    /** @type {Partial<import('@areal/workbench/desktop-contract/desktop-control-resources').RecoveryService>} */
     this.status = { connected: false };
-    this.sequence = -1;
     /** @type {{state:string,stage?:string,message?:string,recovery?:string,prerequisite?:unknown}} */
     this.connectionState = { state: "connecting" };
     /** @type {string|undefined} */
@@ -223,43 +160,233 @@ class SharedCoreBackend {
     /** @type {Map<string,Receipt>} */
     this.lifecycleReceipts = new Map();
   }
-  /** @param {import("@areal/workbench-service/desktop/core/gen-ui-state.cjs").GenUiProject} project @param {string} threadId */
-  genUiScope(project, threadId) {
-    return genUiScope(this.home, project, threadId);
-  }
-  /** @param {Activity} activity */
-  reportWindowFocus(activity) {
-    // 后台用窗口焦点选择系统通知的投递目标。
-    this.lastActivity = activity;
-    if (this.status.connected) void this.connection?.request("activity", activity).catch(() => {});
-  }
-  requireConnection() {
-    if (!this.status.connected || !this.connection)
-      throw new Error("后台尚未连接，请先处理后台连接提示");
-    return this.connection;
-  }
   get saved() {
     return this.value.projects;
   }
   /** @param {string} projectId @param {string} threadId */
+  nativeBrowserScope(projectId, threadId) {
+    const scope = this.nativeBrowserScopes.get(JSON.stringify([projectId, threadId]));
+    return scope && this.nativeBrowserEpoch && !this.disposed ? scope : undefined;
+  }
+  /** @param {import('./native-host-transport').DesktopCallback} frame */
+  nativeBrowserCurrent(frame) {
+    if (!this.nativeBrowserEpoch || this.disposed || !record(frame.params)) return false;
+    const scope = this.nativeBrowserScopes.get(
+      JSON.stringify([frame.guiProjectId, frame.params.threadId]),
+    );
+    return (
+      !!scope &&
+      scope.lease === frame.lease &&
+      scope.coreInstanceId === frame.coreInstanceId &&
+      scope.coreGeneration === frame.coreGeneration &&
+      scope.connectionId === frame.connectionId
+    );
+  }
+  /** @param {string} projectId @param {string} threadId */
+  browserCoreIdentity(projectId, threadId) {
+    return this.nativeBrowserScope(projectId, threadId)?.coreInstanceId ?? null;
+  }
+  /** @param {Record<string,unknown>} request */
+  nativeBrowserWorkspace(request) {
+    if (typeof request.projectId !== "string" || typeof request.threadId !== "string")
+      return undefined;
+    const scope = this.nativeBrowserScope(request.projectId, request.threadId);
+    if (!scope || !this.ownsThread(request.projectId, request.threadId)) return undefined;
+    const project = this.value.projects.find((project) => project.id === request.projectId);
+    return {
+      ...project,
+      id: request.projectId,
+      state: project?.state ?? null,
+      root: scope.workspacePath,
+      executionProjectId: scope.projectId,
+    };
+  }
+  /** @param {string} method @param {Record<string,unknown>} params */
+  async nativeBrowserCall(method, params) {
+    const epoch = this.nativeBrowserEpoch;
+    const transport = this.nativeBrowser ?? (await this.nativeBrowserConnecting);
+    if (!epoch || this.nativeBrowserEpoch !== epoch || !transport || transport.closed)
+      throw new Error("Native browser attachment unavailable");
+    return transport.call(method, params);
+  }
+
+  closeNativeBrowser() {
+    this.verifiedDesktopHost = undefined;
+    this.nativeBrowserEpoch = undefined;
+    this.nativeBrowserSource = undefined;
+    this.nativeNetworkSettings = {};
+    const original = this.nativeBrowser;
+    this.nativeBrowser = undefined;
+    this.nativeBrowserConnecting = undefined;
+    this.nativeBrowserScopes.clear();
+    this.nativeShell?.close();
+    this.nativeShell = undefined;
+    original?.close();
+    if (original) this.onBrowserDisconnected?.();
+  }
+  /** @param {InstanceType<typeof import('@areal/client/gui-source').GuiSourceSession>} source
+   * @param {Record<string,unknown>} options */
+  async connectNativeBrowser(source, options) {
+    this.closeNativeBrowser();
+    const epoch = {};
+    this.nativeBrowserEpoch = epoch;
+    this.nativeBrowserSource = source.sourceId;
+    this.nativeBrowserConnecting = createNativeHostTransport({
+      home: source.home,
+      sourceId: source.sourceId,
+      launch: { ...options, applicationOwner: undefined },
+      environmentCredentials: source.environmentCredentials,
+      onCallback: async (frame, signal) => {
+        if (
+          this.disposed ||
+          this.nativeBrowserEpoch !== epoch ||
+          !record(frame.params) ||
+          typeof frame.params.threadId !== "string"
+        )
+          throw new Error("Original native browser attachment unavailable");
+        this.nativeBrowserScopes.set(JSON.stringify([frame.guiProjectId, frame.params.threadId]), {
+          ...frame,
+          threadId: frame.params.threadId,
+        });
+        this.onChange();
+        if (!this.onNativeBrowserRequest) throw new Error("Native browser host unavailable");
+        return this.onNativeBrowserRequest(frame, signal);
+      },
+      onEvent: (frame) => {
+        if (this.nativeBrowserEpoch !== epoch) return;
+        for (const [key, scope] of this.nativeBrowserScopes) {
+          if (scope.lease !== frame.lease) continue;
+          if (
+            frame.method !== "host/connectionClosed" &&
+            !(
+              frame.method === "areal/thread/archived" &&
+              record(frame.params) &&
+              frame.params.threadId === scope.threadId
+            )
+          )
+            continue;
+          this.nativeBrowserScopes.delete(key);
+          this.onNativeBrowserRevoked?.(scope.guiProjectId, scope.threadId);
+        }
+      },
+      onNotice: (notice) => {
+        if (this.nativeBrowserEpoch === epoch && this.status.connected)
+          this.onNotification?.(notice);
+      },
+      onNetworkSettings: (settings) => {
+        if (this.nativeBrowserEpoch !== epoch || this.disposed) return;
+        this.nativeNetworkSettings = settings;
+        this.onChange();
+      },
+      onClosed: () => {
+        if (this.nativeBrowserEpoch !== epoch || this.disposed) return;
+        this.disconnected();
+      },
+    });
+    const transport = await this.nativeBrowserConnecting;
+    if (this.disposed || this.nativeBrowserEpoch !== epoch) {
+      transport.close();
+      throw new Error("Native browser attachment changed");
+    }
+    this.nativeBrowser = transport;
+    this.nativeBrowserConnecting = undefined;
+  }
+  /** @param {{home:string,sourceId:string}} source */
+  async connectNativeShell(source) {
+    const epoch = this.nativeBrowserEpoch;
+    const transport = this.nativeBrowser;
+    if (!epoch || !transport || !this.options.guiProfile)
+      throw new Error("Native source attachment unavailable");
+    const shell = await createNativeShellTransport({
+      home: source.home,
+      profile: this.options.guiProfile,
+      hostId: transport.hostId,
+      generation: transport.generation,
+      onShell: (value) => this.acceptNativeShell(value, source.sourceId, epoch),
+      onClosed: () => {
+        if (this.nativeBrowserEpoch === epoch && !this.disposed) this.disconnected();
+      },
+    });
+    if (this.nativeBrowserEpoch !== epoch || this.disposed) {
+      shell.close();
+      throw new Error("Original native source changed");
+    }
+    this.nativeShell = shell;
+    this.verifiedDesktopHost = { hostId: transport.hostId, generation: transport.generation };
+    this.identity = `${transport.hostId}:${transport.generation}`;
+  }
+  /** @param {string} projectId @param {string} threadId */
   ownsThread(projectId, threadId) {
-    return ownsThread(this.value, projectId, threadId);
+    return (
+      !this.value.library.projects[projectId]?.hidden &&
+      !!this.nativeBrowserScope(projectId, threadId)
+    );
   }
   /** @param {string} projectId @param {string} threadId */
   async ensureBrowserThread(projectId, threadId) {
-    if (!this.status.connected) await this.init();
-    if (this.ownsThread(projectId, threadId)) return;
-    const connection = this.requireConnection();
-    await this.command("open", { projectId, threadId });
-    const packet = await connection.request("snapshot");
-    if (connection !== this.connection || !this.status.connected)
-      throw new Error("后台连接已变化，请重试");
-    this.accept(packet);
-    if (!this.ownsThread(projectId, threadId)) throw new Error("请选择已连接 Core 的有效任务");
+    if (!this.nativeBrowserEpoch) await this.init();
+    const epoch = this.nativeBrowserEpoch;
+    const scope = await this.nativeBrowserCall("browser.scope", { projectId, threadId });
+    if (!epoch || this.nativeBrowserEpoch !== epoch || this.disposed)
+      throw new Error("Original native browser attachment changed");
+    if (
+      !record(scope) ||
+      scope.sourceId !== this.nativeBrowserSource ||
+      scope.guiProjectId !== projectId ||
+      scope.threadId !== threadId ||
+      ![
+        "projectId",
+        "workspacePath",
+        "lease",
+        "coreInstanceId",
+        "coreGeneration",
+        "connectionId",
+      ].every((key) => typeof scope[key] === "string" && scope[key])
+    )
+      throw new Error("Invalid native browser Thread scope");
+    this.nativeBrowserScopes.set(
+      JSON.stringify([projectId, threadId]),
+      /** @type {import('./native-host-transport').DesktopThreadScope} */ (scope),
+    );
+    this.onChange();
   }
-  /** @param {string} projectId @param {string} threadId */
-  retainsThreadResources(projectId, threadId) {
-    return retainsThreadResources(this.value, projectId, threadId);
+  /** @param {import('@areal/client').ShellView} shell @param {string} sourceId @param {object} epoch */
+  acceptNativeShell(shell, sourceId, epoch) {
+    if (this.disposed || this.nativeBrowserEpoch !== epoch || this.nativeBrowserSource !== sourceId)
+      return;
+    const navigation = shell.navigation.find((source) => source.sourceId === sourceId);
+    if (!navigation) throw new Error("Original native GUI navigation unavailable");
+    this.value = {
+      library:
+        navigation.state === "available"
+          ? {
+              projects: navigation.projects,
+              threads: navigation.threads,
+              projectOrder: navigation.projectOrder,
+              settings: navigation.settings,
+              sections: navigation.sections,
+              sidebarThreadOrder: navigation.sidebarThreadOrder,
+              sidebarRevision: navigation.sidebarRevision,
+            }
+          : this.value.library,
+      projects: shell.projects.flatMap((project) => {
+        const binding = navigation.bindings.find(
+          (binding) => binding.projectId === project.projectId,
+        );
+        if (!binding) return [];
+        return [
+          {
+            id: binding.alias,
+            root: project.workspace,
+            state: null,
+            summaries: project.summaries.items,
+            projectless: binding.projectless,
+            ...(binding.logicalProjectId ? { logicalProjectId: binding.logicalProjectId } : {}),
+          },
+        ];
+      }),
+    };
+    this.onChange();
   }
   /** @param {string|undefined} stage */
   setStartupStage(stage) {
@@ -269,7 +396,7 @@ class SharedCoreBackend {
   }
   snapshot() {
     const desktopCapabilities = {
-      currentCommands: this.status.commandContract === COMMAND_CONTRACT,
+      currentCommands: this.status.connected === true && this.nativeBrowser?.closed === false,
     };
     const baseConnection =
       this.initializing && this.connectionState.state === "ready"
@@ -282,6 +409,10 @@ class SharedCoreBackend {
     return {
       ...this.value,
       verifiedDesktopHost: this.verifiedDesktopHost,
+      library: {
+        ...this.value.library,
+        settings: { ...this.value.library.settings, ...this.nativeNetworkSettings },
+      },
       desktopCapabilities,
       serviceSummary: {
         state: this.status.connected ? "running" : this.serviceExited ? "stopped" : "unknown",
@@ -294,46 +425,20 @@ class SharedCoreBackend {
       connection,
     };
   }
-  /** @param {unknown} packet @param {unknown} [metadata] */
-  accept(packet, metadata = this.metadata) {
-    if (this.disposed) return;
-    const checked = readServicePacket(packet, metadata);
-    if (checked.sequence <= this.sequence) return;
-    this.clearReconnect();
-    this.reconnectAttempts = 0;
-    this.sequence = checked.sequence;
-    this.value = checked.snapshot;
-    this.status = {
-      ...require("@areal/workbench-service/desktop/core/resource-observation.cjs").readRecoveryService(
-        checked.service,
-      ),
-      ...checked.service,
-    };
-    this.connectionState = this.foreignOwner
-      ? {
-          state: "unavailable",
-          recovery: "check",
-          message: "原后台属于旧应用会话，仅供检查。请安全迁移后继续。",
-        }
-      : { state: "ready" };
-    this.onChange();
-  }
   disconnected() {
     this.verifiedDesktopHost = undefined;
+    this.closeNativeBrowser();
     this.terminalConnections.close();
-    this.computerHostOwned = false;
     this.onBrowserDisconnected?.();
-    this.onMcpPageToolsDisconnected?.();
-    const stopped = !!this.connection && this.stoppedConnection === this.connection;
-    const message = stopped ? "后台服务已停止，可按需重新连接" : "后台服务已断开，请重新连接";
+    const message = "后台服务已断开，请重新连接";
     this.connectionState = { state: "unavailable", message };
     this.status = { ...this.status, connected: false };
     this.value = {
       ...this.value,
       projects: this.value.projects.map((p) => ({
         ...p,
-        error: stopped ? null : message,
-        state: p.state ? { ...p.state, connected: false, error: stopped ? null : message } : null,
+        error: message,
+        state: p.state ? { ...p.state, connected: false, error: message } : null,
       })),
     };
     this.scheduleReconnect();
@@ -355,13 +460,7 @@ class SharedCoreBackend {
     );
   }
   scheduleReconnect() {
-    if (
-      this.metadata?.local === true ||
-      !(this.metadata?.identity ?? this.identity) ||
-      !this.canReconnect() ||
-      this.reconnectTimer
-    )
-      return;
+    if (!this.identity || !this.canReconnect() || this.reconnectTimer) return;
     this.connectionState = { state: "connecting" };
     const delay = Math.min(30000, 500 * 2 ** Math.min(this.reconnectAttempts ?? 0, 6));
     this.reconnectAttempts = (this.reconnectAttempts ?? 0) + 1;
@@ -395,193 +494,6 @@ class SharedCoreBackend {
         .finally(() => this.scheduleReconnect());
     }, delay);
     this.reconnectTimer.unref?.();
-  }
-  /** @param {unknown} [candidate] */
-  createConnection(candidate) {
-    this.terminalConnections.close();
-    this.terminalConnections = NativeTerminalOwners.forOwner(this);
-    const connection = new ServiceConnection(
-      (packet) => {
-        if (this.connection !== connection) return;
-        try {
-          this.accept(packet, candidate ?? this.metadata);
-        } catch {
-          this.connection = null;
-          connection.close();
-          this.disconnected();
-        }
-      },
-      () => {
-        if (this.connection === connection) this.disconnected();
-      },
-      (notice) => {
-        if (this.connection === connection) this.onNotification?.(notice);
-      },
-      (target) => {
-        if (this.connection === connection) this.onNotificationOpen?.(target);
-      },
-      (request) => {
-        if (this.connection !== connection || this.disposed)
-          throw new Error("Browser host is disconnected");
-        return (
-          this.onBrowserRequest?.(request) ?? Promise.reject(new Error("Browser host unavailable"))
-        );
-      },
-      (request) => {
-        if (this.connection === connection) this.onBrowserCancel?.(request);
-      },
-      (event) => {
-        if (this.connection === connection && !this.disposed) this.onMcpAppNotification?.(event);
-      },
-      (event) => {
-        if (this.connection === connection && !this.disposed) this.onMcpPageToolNotice?.(event);
-      },
-      (event) => {
-        if (this.connection === connection && !this.disposed)
-          this.onMcpPageToolsDisconnected?.(event);
-      },
-    );
-    return connection;
-  }
-  /** @param {{expectedIdentity?:string,passive?:boolean}} [options] */
-  async attach({ expectedIdentity, passive = false } = {}) {
-    const attachTrace = startupTrace("service.attach");
-    attachTrace.advance("read_metadata");
-    /** @type {unknown} */
-    let candidate;
-    try {
-      candidate = JSON.parse(await readFile(join(this.home, "service.json"), "utf8"));
-    } catch (e) {
-      attachTrace.finish("error", e);
-      if (desktopError(e).code === "ENOENT") return false;
-      throw e;
-    }
-    attachTrace.advance("ws_connect");
-    const connection = this.createConnection(candidate);
-    /** @type {import("./service-connection.cjs").ServiceMetadata} */
-    let metadata;
-    try {
-      metadata = await connection.connect(candidate);
-    } catch (e) {
-      attachTrace.finish("error", e);
-      connection.close();
-      if (desktopError(e).code === "DISCONNECTED") return false;
-      throw e;
-    }
-    attachTrace.advance("host_verify");
-    let hostOwned = false;
-    {
-      const host = new HostClient();
-      try {
-        if (!this.options.hostHome) throw new Error("Host 目录不可用");
-        await host.connect(this.options.hostHome);
-        const status = await host.request("backend.status", {});
-        hostOwned =
-          status.owned === true &&
-          status.hostId === host.hostId &&
-          status.generation === host.generation &&
-          status.service?.pid === metadata.pid &&
-          status.service?.identity === metadata.identity &&
-          status.service?.desktopGeneration === metadata.desktopGeneration;
-        if (!hostOwned) throw new Error("Host 未确认此后台的所有权，请检查原后台");
-      } catch (error) {
-        attachTrace.finish("error", error);
-        connection.close();
-        throw error;
-      } finally {
-        host.close();
-      }
-    }
-    this.foreignOwner = hostOwned ? null : metadata;
-    const identity =
-      expectedIdentity ??
-      (passive ? (this.metadata?.identity ?? this.identity) : metadata.identity);
-    if (this.disposed) {
-      attachTrace.finish("error");
-      connection.close();
-      throw new Error("GUI 连接已关闭");
-    }
-    if (passive && !this.canReconnect()) {
-      attachTrace.finish("skipped");
-      connection.close();
-      return false;
-    }
-    if (this.connection) this.onMcpPageToolsDisconnected?.();
-    this.connection?.close();
-    this.connection = connection;
-    this.sequence = -1;
-    attachTrace.advance("hello");
-    const helloTrace = startupTrace("service.hello", { servicePid: metadata.pid });
-    helloTrace.advance("hello");
-    try {
-      const deadline = Date.now() + 60000;
-      for (;;) {
-        try {
-          const packet = await connection.request("hello", {
-            protocol: PROTOCOL,
-            identity,
-            notifications: hostOwned && !!this.onNotification,
-            capabilities: hostOwned ? { computerHost: 1, projection: 1 } : {},
-          });
-          if (this.connection !== connection)
-            throw Object.assign(new Error("后台服务连接已变化，请重新连接"), {
-              code: "DISCONNECTED",
-            });
-          this.computerHostOwned = record(packet) && packet.computerHostOwned === true;
-          this.accept(packet, metadata);
-          // 成功握手覆盖此前升级或重连尝试留下的错误；错误只属于真正失败的连接，
-          // 后台恢复后不能再让它闪现在启动页。
-          this.lifecycleError = null;
-          break;
-        } catch (error) {
-          if (passive) throw error;
-          if (desktopError(error).code !== "SERVICE_STOPPING") throw error;
-          // Safety inspection can cancel retirement. Retry only the read-only
-          // handshake: attach if retained, rediscover when the old socket closes.
-          if (this.disposed || Date.now() >= deadline)
-            throw new Error("后台尚未完成退出检查，请稍后重新连接");
-          await sleep(100);
-        }
-      }
-    } catch (e) {
-      attachTrace.finish("error", e);
-      helloTrace.finish("error", e);
-      this.connection = null;
-      connection.close();
-      if (desktopError(e).code === "DISCONNECTED") return false; // Only a read-only handshake was attempted.
-      if (
-        expectedIdentity !== undefined &&
-        (desktopError(e).code === "SERVICE_INCOMPATIBLE" ||
-          desktopError(e).message.startsWith("后台服务版本或启动配置不兼容。"))
-      ) {
-        throw Object.assign(
-          new Error(
-            "当前后台使用了不同的启动配置，本次启动配置尚未生效。请重新连接，或安全停止后台后重试。",
-          ),
-          { code: "SERVICE_INCOMPATIBLE" },
-        );
-      }
-      throw e;
-    }
-    helloTrace.finish("ok");
-    attachTrace.finish("ok");
-    if (this.lastActivity) void connection.request("activity", this.lastActivity).catch(() => {});
-    this.metadata = metadata;
-    if (hostOwned) this.identity = metadata.identity;
-    this.exitConfirmation = null;
-    if (this.foreignOwner) {
-      this.backendUpdate = {
-        state: "pending",
-        message: "原后台属于旧应用会话，请检查并安全停止后迁移。",
-      };
-      this.connectionState = {
-        state: "unavailable",
-        recovery: "check",
-        message: "原后台仅供检查。请使用“检查后台资源”安全停止旧应用会话，再重新连接。",
-      };
-      this.onChange();
-    }
-    return true;
   }
   get controlPath() {
     return join(this.app.getPath("userData"), "service-control.json");
@@ -622,7 +534,7 @@ class SharedCoreBackend {
         this.status.connected &&
         !this.lifecycleReferences.size &&
         !this.hostReferences.size &&
-        !this.legacyControl
+        !this.unidentifiedStop
       )
         return;
       this.clearReconnect();
@@ -630,6 +542,14 @@ class SharedCoreBackend {
       this.verifiedDesktopHost = undefined;
       this.connectionState = { state: "connecting" };
       this.onChange();
+      if (this.unidentifiedStop) {
+        this.connectionState = {
+          state: "unavailable",
+          recovery: "check",
+          message: lifecycleControl.originalDesktopMessage,
+        };
+        return;
+      }
       let reconnectHost = false;
       if (this.hostReferences.size) {
         for (const reference of this.hostReferences.values()) await this.readHostStop(reference);
@@ -651,7 +571,7 @@ class SharedCoreBackend {
         }
         reconnectHost = true;
       }
-      if (this.lifecycleReferences.size || this.legacyControl) {
+      if (this.lifecycleReferences.size) {
         await this.checkLifecycle();
         const completedStop =
           this.lifecycleReferences.size > 0 &&
@@ -735,15 +655,15 @@ class SharedCoreBackend {
       throw error;
     }
   }
+  /** @param {{recover?:boolean,trace?:ReturnType<typeof startupTrace>}} [input] */
   async initializeHostBackend({ recover = false, trace = undefined } = {}) {
     const options = {
       ...this.options,
       home: this.home,
       userHome: this.options.userHome ?? this.app.getPath("home"),
     };
-    const hasHostConfig = Boolean(
-      options.binary && options.hostHome && options.guiProfile && options.harnessHome,
-    );
+    if (!options.binary || !options.hostHome || !options.guiProfile || !options.harnessHome)
+      throw new Error("Host 后台启动配置不完整");
     const { ensureDesktopHost, desktopBuildIdentity } = require("@areal/client/desktop-upgrade");
     // 依赖检查和指纹计算并行。依赖失败可以立即报出，启动 Host 必须等两者成功。
     this.setStartupStage(recover ? "identity" : "prerequisites");
@@ -760,27 +680,27 @@ class SharedCoreBackend {
           }
         })()
       : Promise.resolve();
-    const identityPromise = hasHostConfig
-      ? (async () => {
-          const identityTrace = startupTrace("service.build_identity");
-          try {
-            const serviceIdentity = await require("./service-config.cjs").serviceIdentity({
-              ...options,
-              binary: options.binary,
-            });
-            const buildIdentity = await desktopBuildIdentity(
-              serviceIdentity,
-              [join(__dirname, ".."), join(__dirname, "../../../renderer/dist")],
-              this.app.isPackaged ? join(process.resourcesPath, "desktop-build.json") : undefined,
-            );
-            identityTrace.finish("ok");
-            return { serviceIdentity, buildIdentity };
-          } catch (error) {
-            identityTrace.finish("error", error);
-            throw error;
-          }
-        })()
-      : Promise.resolve(null);
+    const binary = options.binary;
+    const identityPromise = (async () => {
+      const identityTrace = startupTrace("service.build_identity");
+      try {
+        const buildIdentity = await desktopBuildIdentity(
+          binary,
+          [
+            join(__dirname, ".."),
+            join(__dirname, "../../../renderer/dist"),
+            join(__dirname, "../../../packages/client/node"),
+            join(__dirname, "../../../packages/workbench/node"),
+          ],
+          this.app.isPackaged ? join(process.resourcesPath, "desktop-build.json") : undefined,
+        );
+        identityTrace.finish("ok");
+        return { buildIdentity };
+      } catch (error) {
+        identityTrace.finish("error", error);
+        throw error;
+      }
+    })();
     // 两个检查都可能失败。先处理依赖错误，同时接住指纹的提前或迟到失败。
     void identityPromise.catch(() => {});
     let identity;
@@ -793,12 +713,10 @@ class SharedCoreBackend {
       this.setStartupStage(undefined);
       throw error;
     }
-    const { serviceIdentity, buildIdentity } = identity;
+    const { buildIdentity } = identity;
     // 初次旧凭据导入仍由持有原单实例和 safeStorage 的 Main 完成。
-    const {
-      GuiHostProjects,
-    } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
-    const source = new GuiHostProjects({
+    const { GuiSourceSession } = require("@areal/client/gui-source");
+    const source = new GuiSourceSession({
       binary: options.binary,
       home: options.hostHome,
       source: {
@@ -815,88 +733,149 @@ class SharedCoreBackend {
       const completeUpgrade = await ensureDesktopHost(source.client, {
         home: options.hostHome,
         binary: options.binary,
-        serviceIdentity,
         buildIdentity,
         closed: () => this.disposed === true,
       });
-      // 读取历史不等工作台；只有同代 Host 能接收桌面的后台预热。
-      if (source.client.hostId && source.client.generation) {
-        this.verifiedDesktopHost = {
-          hostId: source.client.hostId,
-          generation: source.client.generation,
-        };
-        this.onChange();
-      }
-      // 保持交接验证用的连接，直到 backend.ensure 撤销同代次的空闲回收意图。
+      source.client.close();
+      await source.init({ deferCredentials: true });
       this.setStartupStage("workbench");
-      trace?.advance("source_init");
-      if (!recover) await source.init({ deferCredentials: true });
-      else if (!source.client.socket || source.client.socket.destroyed) {
-        source.client.close();
-        await source.client.connect(options.hostHome);
-      }
-      trace?.advance("ensure_backend");
-      const owner = await source.ensureBackend(options, process.env);
+      const prepared = await source.prepareNative(options, process.env);
       if (this.disposed) throw new Error("GUI 连接已关闭");
       this.setStartupStage("attach");
-      trace?.advance("attach");
-      if (!(await this.attach({ expectedIdentity: owner.identity })))
-        throw new Error("Host 后台尚未就绪");
-      // 旧 Host 退出期间可能短暂报告身份不匹配；新 Host 完成 attach 且身份确认后，
-      // 清掉这条过期错误，避免启动页继续停在失败状态。
+      await this.connectNativeBrowser(source, prepared.options);
+      await this.connectNativeShell(source);
+      this.status = { connected: true };
+      this.connectionState = { state: "ready" };
+      this.clearReconnect();
+      this.reconnectAttempts = 0;
+      // Cloud 导入未完成由该设置页显示，不能阻塞无关历史与已确认项目。
+      await this.importNativeCloud(source.sourceId).catch(() => {});
       this.lifecycleError = null;
       trace?.advance("complete_upgrade");
       await completeUpgrade();
       this.backendUpdate = undefined;
+    } catch (error) {
+      this.closeNativeBrowser();
+      this.status.connected = false;
+      throw error;
     } finally {
       this.setStartupStage(undefined);
       source.close();
     }
   }
+  /** @param {string} sourceId @param {{isEncryptionAvailable:()=>boolean,decryptString:(value:Buffer)=>string,getSelectedStorageBackend?:()=>string}} [encryption] */
+  // 过渡：到 0.2.0 删（Cloud 旧密文一次导入完成后移除）。
+  async importNativeCloud(sourceId, encryption = require("electron").safeStorage) {
+    const epoch = this.nativeBrowserEpoch;
+    const current = () =>
+      epoch &&
+      this.nativeBrowserEpoch === epoch &&
+      this.nativeBrowserSource === sourceId &&
+      !this.disposed;
+    if (!current()) throw new Error("Cloud import source changed");
+    let file;
+    try {
+      file = await open(
+        join(this.home, "cloud.json"),
+        fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK,
+      );
+    } catch (error) {
+      if (record(error) && error.code === "ENOENT") return;
+      throw error;
+    }
+    let raw;
+    try {
+      const stat = await file.stat();
+      if (!stat.isFile() || stat.size > 1024 * 1024) throw new Error("Invalid Cloud import source");
+      const bytes = Buffer.alloc(1024 * 1024 + 1);
+      const { bytesRead } = await file.read(bytes, 0, bytes.length, 0);
+      if (bytesRead > 1024 * 1024) throw new Error("Cloud import source exceeds limit");
+      raw = bytes.subarray(0, bytesRead);
+    } finally {
+      await file.close();
+    }
+    const value = JSON.parse(raw.toString("utf8"));
+    if (!record(value) || typeof value.secret !== "string" || !value.secret) return;
+    try {
+      await this.nativeBrowserCall("cloud.settings", { operation: "status" });
+      return;
+    } catch (error) {
+      if (!record(error) || error.code !== "CLOUD_IMPORT_REQUIRED") throw error;
+    }
+    if (!current()) throw new Error("Cloud import source changed");
+    if (
+      !encryption?.isEncryptionAvailable() ||
+      encryption.getSelectedStorageBackend?.() === "basic_text"
+    )
+      throw new Error("Cloud credential import requires unlocked system storage");
+    const token = encryption.decryptString(Buffer.from(value.secret, "base64"));
+    const sourceDigest = createHash("sha256").update(raw).digest("hex");
+    const identity = createHash("sha256")
+      .update(sourceId)
+      .update("\0")
+      .update(sourceDigest)
+      .digest("hex");
+    const requestId = `${identity.slice(0, 8)}-${identity.slice(8, 12)}-4${identity.slice(13, 16)}-a${identity.slice(17, 20)}-${identity.slice(20, 32)}`;
+    if (!current()) throw new Error("Cloud import source changed");
+    await this.nativeBrowserCall("cloud.import", { requestId, sourceDigest, token });
+  }
   /** @param {string} path @returns {Promise<unknown>} */
   async addProject(path) {
-    await this.init();
-    this.assertLifecycleScope("addProject");
-    const connection = this.requireConnection();
-    try {
-      return await connection.request("addProject", { path }, true);
-    } catch (error) {
-      if (
-        desktopError(error).submissionUnknown ||
-        ["admitted", "unconfirmed"].some((kind) => kind === desktopError(error).outcome?.kind)
-      )
-        throw error;
-      const packet = await connection.request("snapshot").catch(() => null);
-      if (!packet || connection !== this.connection || !this.status.connected) throw error;
-      this.accept(packet);
-      const project = this.value.projects.find(
-        (project) =>
-          project.root === path &&
-          !project.state?.connected &&
-          project.error &&
-          project.error === desktopError(error).message,
-      );
-      if (!project) throw error;
-      return project.id;
-    }
-  }
-  /** @param {Record<string,unknown>} request */
-  async mcpPageTools(request) {
-    if (!this.status.connected || !this.connection)
-      throw new Error("Page tool owner lease is disconnected");
-    return this.requireConnection().request("mcpPageTools", request, true);
+    if (!this.nativeBrowserEpoch) await this.init();
+    const epoch = this.nativeBrowserEpoch;
+    const result = await this.nativeBrowserCall("worktree.project.add", { root: path });
+    if (!epoch || this.nativeBrowserEpoch !== epoch || this.disposed)
+      throw Object.assign(new Error("Project source changed; read the original registration"), {
+        code: "RESYNC_REQUIRED",
+        submissionUnknown: false,
+      });
+    if (
+      !record(result) ||
+      typeof result.projectId !== "string" ||
+      !/^[a-f0-9]{24}$/.test(result.projectId)
+    )
+      throw new Error("Invalid native project registration");
+    return result.projectId;
   }
   /** @param {Record<string,unknown>} identity */
   async browserClaim(identity) {
     this.assertLifecycleScope("browserClaim");
-    if (!this.status.connected || !this.connection) throw new Error("后台尚未连接");
-    return this.requireConnection().request("browserClaim", identity, true);
+    if (typeof identity.projectId === "string" && typeof identity.threadId === "string") {
+      const scope = this.nativeBrowserScope(identity.projectId, identity.threadId);
+      if (scope) {
+        if (identity.coreInstanceId !== scope.coreInstanceId)
+          throw new Error("Browser Core changed");
+        return { claimed: true };
+      }
+    }
+    throw new Error("后台尚未连接");
   }
-  /** @param {Record<string,unknown>} identity */
-  async browserRevoke(identity) {
-    if (this.foreignOwner) return;
-    if (!this.status.connected || !this.connection) return;
-    return this.requireConnection().request("browserRevoke", identity, true);
+  /** @param {Record<string,unknown>} request */
+  async nativeGuiTerminalCommand(request) {
+    const epoch = this.nativeBrowserEpoch;
+    try {
+      const value = await this.nativeBrowserCall("terminal.command", {
+        ...request,
+        guiOwned: true,
+      });
+      if (!epoch || this.nativeBrowserEpoch !== epoch)
+        throw Object.assign(new Error("Original terminal attachment changed"), {
+          code: "RESYNC_REQUIRED",
+        });
+      return value;
+    } catch (error) {
+      const semantics = commandSemantics("manage", request);
+      if (semantics.effect === "mutation" && record(error)) {
+        error.requestId ??= request.requestId;
+        const code = String(error.code ?? "");
+        if (
+          !error.outcome &&
+          !["COMMAND_FAILED", "INVALID_PARAMS", "FORBIDDEN", "CORE_INCOMPATIBLE"].includes(code)
+        )
+          error.submissionUnknown = true;
+      }
+      throw error;
+    }
   }
   /** @param {string} name @param {Record<string,unknown>} request @returns {Promise<unknown>} */
   async command(name, request) {
@@ -907,190 +886,120 @@ class SharedCoreBackend {
     if (name === "connect" && !this.status.connected) await this.init();
     if (this.disposed) throw new Error("GUI 连接已关闭");
     if (!this.status.connected) throw new Error("后台尚未连接，请先处理后台连接提示");
-    if (this.foreignOwner) this.assertLifecycleScope(name, request);
-    if (name === "stop") {
-      if (
-        !uuid(request.requestId) ||
-        typeof request.turnId !== "string" ||
-        !request.turnId ||
-        typeof request.projectId !== "string" ||
-        typeof request.threadId !== "string"
-      )
-        throw Object.assign(new Error("暂停需要原轮次和操作身份，请刷新任务后重试"), {
-          code: "LIFECYCLE_INVALID_REQUEST",
-        });
-      return this.requestLifecycle({
-        kind: "interruptTurn",
-        mode: "cancel",
-        projectId: request.projectId,
-        threadId: request.threadId,
-        turnId: request.turnId,
-        requestId: request.requestId,
+    if (name === "stop")
+      throw Object.assign(new Error("请通过 Host 暂停当前轮次"), {
+        code: "CAPABILITY_UNAVAILABLE",
+        outcome: { kind: "noMutation" },
       });
-    }
     this.assertLifecycleScope(name, request);
-    if (
-      this.status.commandContract !== COMMAND_CONTRACT &&
-      requiresCurrentCommands(name, request)
-    ) {
-      throw Object.assign(
-        new Error(
-          "当前运行中的后台不支持此操作。现有任务继续运行，输入已保留；请在任务完成后安全停止后台并重新连接。",
-        ),
-        { code: "SERVICE_COMMAND_UNSUPPORTED" },
+    if (["projectless", "resources", "prepareCreator", "cloud", "cloudSession"].includes(name)) {
+      const epoch = this.nativeBrowserEpoch;
+      const value = await this.nativeBrowserCall(
+        name === "cloud"
+          ? "cloud.settings"
+          : name === "cloudSession"
+            ? "cloud.session"
+            : name === "resources"
+              ? "resources.command"
+              : name === "prepareCreator"
+                ? "resources.prepareCreator"
+                : "projectless.command",
+        request,
       );
+      if (!epoch || this.nativeBrowserEpoch !== epoch || this.disposed)
+        throw Object.assign(new Error("Original native source changed"), {
+          code: "RESYNC_REQUIRED",
+        });
+      return value;
     }
-    // Only explicitly GUI-owned shells are tied to this GUI's lifetime. Model
-    // tools and manually managed thread processes keep their Core lifetime.
-    const ownedStart =
-      name === "manage" && request.operation === "processStart" && request.guiOwned === true;
-    const ownedRecovery =
-      name === "manage" && request.operation === "processSubmission" && request.guiOwned === true;
-    const ownedScope = ownedStart || ownedRecovery ? readGuiThreadIdentity(request) : undefined;
-    const { guiOwned: _guiOwned, ...params } = request;
-    if (name === "connect" && this.status.selectedThreadObservation !== true)
-      delete params.threadId;
-    // 队列业务键跨 GUI/共享服务连接保留，外层丢失响应后也能只读核对。
-    const semantics = commandSemantics(name, params);
-    if (semantics.requestId) params[semantics.requestId] ??= randomUUID();
     if (
-      ["send", "steer", "editMessage"].includes(name) ||
-      (name === "side" && request.operation === "send")
+      name === "manage" &&
+      (request.guiOwned === true ||
+        (typeof request.id === "string" && this.guiTerminals.has(request.id)))
     ) {
-      const project = this.saved.find((project) => project.id === request.projectId);
-      if (project) {
-        if (typeof request.threadId !== "string")
-          throw Object.assign(new Error("无效桌面任务身份"), {
-            code: "INVALID_DESKTOP_REQUEST",
-          });
-        await this.genUiState.list(this.genUiScope(project, request.threadId));
+      const params = { ...request };
+      const semantics = commandSemantics(name, params);
+      if (semantics.requestId) params[semantics.requestId] ??= randomUUID();
+      const recovery = request.operation === "processSubmission";
+      const starting = request.operation === "processStart" || recovery;
+      const scope = starting ? readGuiThreadIdentity(request) : undefined;
+      const pending = this.nativeGuiTerminalCommand(params).then((value) => {
+        if (scope) {
+          const response = readGuiProcessResponse(value, params.requestId, recovery);
+          if (response.confirmed) this.guiTerminals.set(response.id, { ...scope, id: response.id });
+        }
+        return value;
+      });
+      if (starting) this.guiTerminalStarts.add(pending);
+      try {
+        return await pending;
+      } finally {
+        this.guiTerminalStarts.delete(pending);
       }
     }
-    const originalCore = operationCore(
-      this.value.projects.find((project) => project.id === params.projectId),
-      params,
-    );
-    const connection = this.requireConnection();
-    const ownedTerminal =
-      ownedStart ||
-      ownedRecovery ||
-      (name === "manage" &&
-        typeof params.operation === "string" &&
-        params.operation.startsWith("process") &&
-        typeof params.id === "string" &&
-        this.guiTerminals.has(params.id));
-    const pending = connection
-      .request(
-        ownedTerminal ? "guiTerminalCommand" : "command",
-        { name, request: name === "media" ? encodeMedia(params) : params },
-        semantics.effect === "mutation",
-      )
-      .then((value) => {
-        if (ownedScope) {
-          const response = readGuiProcessResponse(value, params.requestId, ownedRecovery);
-          if (response.confirmed)
-            this.guiTerminals.set(response.id, { ...ownedScope, id: response.id });
-        }
-        return name === "media" ? decodeMedia(value) : value;
+    const { guiOwned: _guiOwned, ...params } = request;
+    const semantics = commandSemantics(name, params);
+    const epoch = this.nativeBrowserEpoch;
+    const source = this.nativeBrowserSource;
+    const transport = this.nativeBrowser;
+    if (!epoch || !transport || transport.closed)
+      throw Object.assign(new Error("Host 操作入口尚未就绪，请重新连接"), {
+        code: "CAPABILITY_UNAVAILABLE",
+        outcome: { kind: "noMutation" },
       });
-    if (ownedStart || ownedRecovery) this.guiTerminalStarts.add(pending);
+    if (semantics.requestId) params[semantics.requestId] ??= randomUUID();
     try {
-      return await pending;
+      const value = await transport.command(name, params);
+      if (this.disposed || this.nativeBrowserEpoch !== epoch || this.nativeBrowserSource !== source)
+        throw Object.assign(new Error("Original native source changed"), {
+          code: "RESYNC_REQUIRED",
+          submissionUnknown: semantics.effect === "mutation",
+        });
+      return value;
     } catch (error) {
-      const details = desktopError(error);
-      if (semantics.requestId && record(error)) {
-        error.requestId ??= params[semantics.requestId];
-        if (
-          details.submissionUnknown &&
-          !details.outcome &&
-          typeof error.requestId === "string" &&
-          error.requestId === params[semantics.requestId]
-        ) {
-          if (connection === this.connection && this.status.connected) {
-            await connection
-              .request("snapshot")
-              .then((packet) => {
-                if (connection === this.connection && this.status.connected) this.accept(packet);
-              })
-              .catch(() => {});
-          }
-          const operation = observedOperation(
-            this.value.projects.find((project) => project.id === params.projectId),
-            originalCore,
-            params,
-            error.requestId,
-          );
-          if (operation) error.outcome = { kind: "unconfirmed", operation };
-        }
+      if (semantics.effect === "mutation" && record(error)) {
+        if (semantics.requestId) error.requestId ??= params[semantics.requestId];
+        // 无Host拒绝证据的传输错误保留原提交，不能重新发送。
+        if (error.code === "TASK_REJECTED") {
+          error.submissionUnknown = false;
+          error.outcome = { kind: "rejected" };
+        } else if (
+          !error.outcome &&
+          !["COMMAND_FAILED", "INVALID_PARAMS", "FORBIDDEN", "CORE_INCOMPATIBLE"].includes(
+            String(error.code ?? ""),
+          )
+        )
+          error.submissionUnknown = true;
       }
       throw error;
-    } finally {
-      this.guiTerminalStarts.delete(pending);
     }
   }
   /** @param {Record<string,unknown>} request @returns {Promise<unknown>} */
-  async resources(request) {
-    if (request.operation !== "inspect") this.assertApplicationWrite();
-    if (!this.status.connected)
-      throw new Error("后台尚未连接，请点击“重新连接后台”检查并恢复旧服务");
-    return this.requireConnection().request("resources", request, request.operation !== "inspect");
+  async nativeResourceRead(request) {
+    const epoch = this.nativeBrowserEpoch;
+    const value = await this.nativeBrowserCall("resources.command", request);
+    if (!epoch || this.nativeBrowserEpoch !== epoch || this.disposed)
+      throw Object.assign(new Error("Original native source changed"), { code: "RESYNC_REQUIRED" });
+    return value;
   }
-  /** @param {Record<string,unknown>} request */
-  async remoteControl(request) {
-    if (request.operation !== "status") this.assertApplicationWrite();
-    if (!this.status.connected) throw new Error("后台尚未连接");
-    return this.requireConnection().request(
-      "remoteControl",
-      request,
-      request.operation !== "status",
+  /** @param {Record<string,unknown>} request @returns {Promise<unknown>} */
+  async resources(request) {
+    return require("@areal/workbench/desktop-contract/desktop-control-resources").readResourceInspections(
+      await this.nativeResourceRead(request),
     );
   }
   async serviceStatus() {
     if (!this.status.connected) throw new Error("后台尚未连接");
-    const connection = this.requireConnection();
-    const projects =
-      require("@areal/workbench-service/desktop/core/resource-observation.cjs").readResourceInspections(
-        await this.resources({ operation: "inspect", includeTasks: true }),
-      );
-    const { service, snapshot } = readServicePacket(
-      await connection.request("snapshot"),
-      this.metadata,
-    );
-    if (connection !== this.connection || !this.status.connected)
-      throw new Error("后台连接已变化，请刷新状态");
-    // Only public lifecycle observations cross the renderer boundary, never the
-    // service descriptor, authentication token or resource command arguments.
-    const { recoveryView } = require("./lifecycle.cjs");
-    const visibleProjects = projects.map(
-      ({ serviceId: _serviceId, generation: _generation, lifecycle: _lifecycle, ...project }) =>
-        project,
-    );
-    return {
-      canStop: recoveryView(
-        require("@areal/workbench-service/desktop/core/resource-observation.cjs").readRecoveryService(
-          service,
-        ),
-        projects,
-      ).ifIdle,
-      connected: service.connected,
-      clients: service.clients,
-      busy: service.busy,
-      activeCommands: service.activeCommands,
-      starting: service.starting,
-      providerUpdating: service.providerUpdating,
-      projects: snapshot.projects.map((project) => ({
-        projectId: project.id,
-        root: project.root,
-        started: projects.some((item) => item.projectId === project.id),
-        ...visibleProjects.find((item) => item.projectId === project.id),
-      })),
-    };
+    const value = await this.nativeResourceRead({ operation: "status" });
+    /** @type {typeof import('@areal/workbench/desktop-contract/desktop-control').validateResponse} */
+    const validate = require("@areal/workbench/desktop-contract/desktop-control").validateResponse;
+    validate("serviceStatus", {}, value);
+    return value;
   }
   /** @param {'status'|'install'|'uninstall'} operation @param {()=>Promise<unknown>} [stop] @returns {Promise<import('@areal/workbench/desktop-contract/desktop-control').HostInstallation>} */
   async hostInstallation(operation, stop) {
     if (!this.options.binary || !this.options.hostHome) throw new Error("Host 程序尚未配置");
     if (operation !== "status") {
-      this.assertApplicationWrite();
       if (!this.hostUpdateReference) this.loadReferences(await this.readControl());
       if (this.hostUpdateInFlight || this.hostUpdateReference)
         throw new Error("请先核查原升级请求，再更改登录自启");
@@ -1143,22 +1052,41 @@ class SharedCoreBackend {
     };
   }
   get serviceExited() {
-    return !!this.exitConfirmation && this.exitConfirmation === this.metadata;
+    const original = [...this.hostReferences.values()].at(-1);
+    if (
+      this.status.connected ||
+      !original?.pid ||
+      this.hostReceipts.get(original.requestId)?.state !== "completed"
+    )
+      return false;
+    try {
+      process.kill(original.pid, 0);
+    } catch (error) {
+      return desktopError(error).code === "ESRCH";
+    }
+    return false;
   }
-  /** @param {boolean} [forUpdate] @param {{purpose?:string}} [options] */
-  async observeLifecycle(forUpdate = true, { purpose = "manage" } = {}) {
-    if (this.serviceExited) return { ifIdle: true, exited: true, blockers: [] };
-    if (!this.status.connected) return { ifIdle: false, blockers: ["disconnected"] };
-    const { DesktopLifecycle } = require("./lifecycle.cjs");
-    return new DesktopLifecycle({
-      connection: this.requireConnection(),
-      metadata: this.metadata,
-      home: this.home,
-      forUpdate,
-      purpose,
-    }).observe();
+  async hasUpdateWork() {
+    if (this.serviceExited) return false;
+    const original = [...this.hostReferences.values()].at(-1);
+    if (
+      !this.status.connected &&
+      original?.pid &&
+      this.hostReceipts.get(original.requestId)?.state === "completed"
+    ) {
+      try {
+        await waitForProcessExit(original.pid);
+        return this.status.connected || !this.serviceExited;
+      } catch {
+        return true;
+      }
+    }
+    try {
+      return (await this.serviceStatus()).canStop !== true;
+    } catch {
+      return true;
+    }
   }
-
   lifecycleProjection() {
     return lifecycleControl.lifecycleProjection.call(this);
   }
@@ -1205,11 +1133,7 @@ class SharedCoreBackend {
       connections.close();
       if (this.terminalConnections === connections) {
         this.guiTerminals.clear();
-        const connection = this.connection;
-        this.stoppedConnection = connection;
         this.disconnected();
-        this.connection = null;
-        connection?.close();
         this.connectionState = this.hostRecoveryState();
       }
     }
@@ -1319,6 +1243,7 @@ class SharedCoreBackend {
         hostId: client.hostId,
         generation: client.generation,
         strategy,
+        ...(this.nativeBrowserEpoch && client.identity ? { pid: client.identity.pid } : {}),
       };
       this.hostReferences.set(reference.requestId, reference);
       try {
@@ -1361,66 +1286,15 @@ class SharedCoreBackend {
   acceptLifecycleReceipt(reference, value) {
     return lifecycleControl.acceptLifecycleReceipt.call(this, reference, value);
   }
-  /** @param {Metadata|null} [source] */
-  assertMigrationProfile(source = this.foreignOwner) {
-    const owner = record(source?.applicationOwner) ? source.applicationOwner : undefined;
-    if (owner?.profile && owner.profile !== this.applicationOwner?.profile)
-      throw Object.assign(new Error(`原后台属于另一配置目录，请从 ${owner.profile} 退出原应用。`), {
-        code: "APPLICATION_OWNER_MISMATCH",
-      });
-  }
-  /** @param {unknown} [migration] */
-  assertApplicationWrite(migration) {
-    if (!this.foreignOwner) return;
-    this.assertMigrationProfile();
-    if (migration !== this.foreignOwner || migration !== this.metadata)
-      throw Object.assign(new Error("原后台仅供观察，请通过安全迁移入口处理原应用会话"), {
-        code: "APPLICATION_OWNER_MISMATCH",
-      });
-  }
-  /** @param {Notify} notify */
-  async recoverForeignOwner(notify) {
-    const source = this.foreignOwner;
-    this.assertMigrationProfile(source);
-    const answer = await notify({
-      type: "warning",
-      message: "安全停止旧应用会话并迁移？",
-      detail:
-        "原后台没有被本次应用接管。将核对原代际、任务和清理回执，停止成功后才启动本次应用的后台。未知操作不会重发。",
-      buttons: ["返回应用", "检查并迁移"],
-      defaultId: 0,
-      cancelId: 0,
-      noLink: true,
-    });
-    if (answer.response !== 1) return { canceled: true };
-    const result = await require("./startup-recovery.cjs").recoverConnectedService({
-      backend: this,
-      notify,
-      purpose: "stop",
-      migration: source,
-    });
-    if (!("stopped" in result) || !result.stopped) return result;
-    this.foreignOwner = null;
-    this.lifecycleReferences.clear();
-    this.lifecycleReceipts.clear();
-    await this.persistReferences();
-    this.connection?.close();
-    this.connection = null;
-    await this.initialize();
-    this.controlState = null;
-    this.reconnectBlocked = false;
-    return { recovered: true };
-  }
-  /** @param {{notify:Notify}} options @returns {Promise<unknown>} */
-  async recoverBackend({ notify }) {
-    this.assertMigrationProfile();
+  /** @returns {Promise<unknown>} */
+  async recoverBackend() {
     if (this.recoveryInFlight) return this.recoveryInFlight;
     this.recoveryInFlight = (async () => {
       await this.checkLifecycle();
-      if (this.foreignOwner && this.status.lifecycle?.version === 2)
-        return this.recoverForeignOwner(notify);
-      if (this.legacyControl || (this.status.stopReport && this.status.lifecycle?.version !== 2))
-        return require("./legacy-desktop-recovery.cjs").recover(this, notify);
+      if (this.unidentifiedStop || (this.status.stopReport && this.status.lifecycle?.version !== 2))
+        throw Object.assign(new Error(lifecycleControl.originalDesktopMessage), {
+          code: "LIFECYCLE_INCOMPLETE",
+        });
       const pending = [...this.lifecycleReferences.values()];
       if (!pending.length && this.hostReferences.size) {
         if (this.hostRecoveryState().recovery === "check")
@@ -1462,8 +1336,6 @@ class SharedCoreBackend {
   async checkLifecycle() {
     this.loadReferences(await this.readControl());
     this.clearReconnect();
-    if (!this.status.connected && (this.lifecycleReferences.size || !this.hostReferences.size))
-      await this.attach();
     for (const reference of Array.from(this.hostReferences.values()))
       await this.readHostStop(reference);
     if (
@@ -1474,17 +1346,6 @@ class SharedCoreBackend {
       this.connectionState = this.hostRecoveryState();
     for (const reference of Array.from(this.lifecycleReferences.values()))
       await this.readLifecycle(reference);
-    if (this.legacyControl || (this.status.stopReport && this.status.lifecycle?.version !== 2)) {
-      try {
-        await require("./legacy-desktop-recovery.cjs").inspect(this);
-      } catch (error) {
-        this.legacyRecoveryView = {
-          canRecover: false,
-          projects: [],
-          message: desktopError(error).message,
-        };
-      }
-    }
     this.lifecycleError = null;
     this.onChange();
     return this.lifecycleProjection();
@@ -1494,26 +1355,8 @@ class SharedCoreBackend {
   assertLifecycleScope(name, request = {}) {
     return lifecycleControl.assertLifecycleScope.call(this, name, request);
   }
-  /** @param {LifecycleOptions} options @returns {Promise<LifecycleResult>} */
-
-  requestLifecycle(options) {
-    return lifecycleControl.requestLifecycle.call(this, options);
-  }
-  /** @param {boolean} [forUpdate] @param {{kind?:import("@areal/workbench-service/desktop/core/lifecycle-operations.cjs").LifecycleKind,cancel?:boolean,observed?:Observation,migration?:unknown}} [options] */
-  async stopService(forUpdate = false, options = {}) {
-    return this.requestLifecycle({
-      kind: options.kind ?? (forUpdate ? "updateDesktop" : "stopDesktop"),
-      mode: options.cancel ? "cancel" : "ifIdle",
-      observed: options.observed,
-      migration: options.migration,
-    });
-  }
   /** @param {{notify?:Notify}} [options] */
   async applyUpdate({ notify } = {}) {
-    if (this.foreignOwner) {
-      if (!notify) throw new Error("后台迁移需要原生确认");
-      return this.recoverForeignOwner(notify);
-    }
     try {
       const pending = [...this.lifecycleReferences.values()].find(
         (reference) =>
@@ -1528,31 +1371,38 @@ class SharedCoreBackend {
           result = { stopped: operation?.phase === "completed", operation };
       }
       if (!result) {
-        require("./lifecycle.cjs").assertLifecycleSupport(this.status, "updateDesktop");
         if (!this.options.binary) throw new Error("Core 程序路径不可用");
+        if (!notify)
+          throw Object.assign(
+            new Error(
+              require("@areal/workbench/node/native-i18n").nativeText(
+                "lifecycle.confirmationRequired",
+              ),
+            ),
+            { code: "LIFECYCLE_CONFIRMATION_REQUIRED" },
+          );
         this.backendUpdate = { state: "applying" };
         this.onChange();
-        result = await require("./startup-recovery.cjs").recoverConnectedService({
-          backend: this,
-          notify,
-          purpose: "update",
-          forUpdate: true,
-        });
+        result = await require("./host-quit.cjs").confirmHostStop(this, notify);
       }
       if (!("stopped" in result) || !result.stopped) {
         this.backendUpdate = { state: "pending" };
         this.onChange();
         return result;
       }
-      this.connection?.close();
-      this.connection = null;
       this.reconnectBlocked = true;
       this.connectionState = { state: "connecting" };
       this.onChange();
       await this.initialize();
+      if (result.operation.kind === "stopHost") {
+        // 后继连接已就绪。原回执由 Host 保留，Main 结束这一次停止的写入限制。
+        this.hostReferences.delete(result.operation.requestId);
+        this.hostReceipts.delete(result.operation.requestId);
+      }
       for (const [requestId, reference] of this.lifecycleReferences) {
         if (
           desktopKind(reference.kind) &&
+          "desktopGeneration" in result.operation &&
           reference.desktopGeneration === result.operation.desktopGeneration
         ) {
           this.lifecycleReferences.delete(requestId);
@@ -1587,11 +1437,11 @@ class SharedCoreBackend {
           throw new Error("后台已断开，GUI 终端清理未确认，请从后台资源入口检查");
         /** @param {string} operation @param {boolean} [mutation] */
         const call = (operation, mutation = false) =>
-          this.requireConnection().request(
-            "guiTerminalCommand",
-            { name: "manage", request: { ...terminal, operation } },
-            mutation,
-          );
+          this.nativeGuiTerminalCommand({
+            ...terminal,
+            operation,
+            ...(mutation ? { requestId: randomUUID() } : {}),
+          });
         const before = readGuiProcesses(await call("processes")).find((p) => p.id === terminal.id);
         if (!before) throw new Error("找不到 GUI 终端，无法确认资源清理");
         if (!before.cleanupConfirmed) {
@@ -1670,19 +1520,6 @@ class SharedCoreBackend {
   }
   async waitForApplicationReady() {
     if (this.connecting) await this.connecting.catch(() => {});
-    const deadline = Date.now() + 20000;
-    while (this.status.connected) {
-      const { service } = readServicePacket(
-        await this.requireConnection().request("snapshot"),
-        this.metadata,
-      );
-      if (!service.starting && !service.activeCommands) return;
-      if (Date.now() >= deadline)
-        throw Object.assign(new Error("项目启动或已受理操作仍在完成，请稍后退出"), {
-          code: "LIFECYCLE_BLOCKED",
-        });
-      await sleep(100);
-    }
   }
   async prepareQuit() {
     await this.settleGuiTerminals();
@@ -1690,18 +1527,13 @@ class SharedCoreBackend {
   async shutdown() {
     if (this.shutdownPromise) return this.shutdownPromise;
     this.disposed = true;
-    this.genUiState.dispose();
     this.clearReconnect();
     return (this.shutdownPromise = (async () => {
       try {
         await this.settleGuiTerminals();
-        if (this.status.connected)
-          await this.requireConnection()
-            .request("activity", { focused: false })
-            .catch(() => {});
       } finally {
+        this.closeNativeBrowser();
         this.terminalConnections.close();
-        this.connection?.close();
       }
     })());
   }
@@ -1713,8 +1545,5 @@ function record(value) {
 
 module.exports = {
   SharedCoreBackend,
-  ServiceConnection,
-  waitForServiceExit,
-  waitForServiceProcessExit,
   waitForProcessExit,
 };

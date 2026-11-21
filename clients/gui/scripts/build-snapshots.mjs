@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-const require = createRequire(new URL("../packages/gen-ui/package.json", import.meta.url));
+const require = createRequire(new URL("../packages/browser-data/package.json", import.meta.url));
 const { build, transformSync } = require("esbuild");
 const gui = fileURLToPath(new URL("..", import.meta.url));
 // Main 的 TypeScript 都从这里构建成 CommonJS，产物进 src 内已忽略的 build/ 或 generated/，
@@ -46,17 +46,14 @@ results.push(
   await build({
     metafile: true,
     absWorkingDir: gui,
-    entryPoints: [
-      "../../services/workbench/src/host-core-client.ts",
-      "../../services/workbench/src/native-host-transport.ts",
-    ],
-    outdir: "../../services/workbench/src/generated",
+    entryPoints: ["app/src/core/native-host-transport.ts", "app/src/core/native-browser-tools.ts"],
+    outdir: "app/src/core/generated",
     outExtension: { ".js": ".cjs" },
     bundle: true,
     platform: "node",
     format: "cjs",
     target: "node22",
-    external: ["@areal/client/node"],
+    external: ["@areal/client/node", "@areal/browser-automation/host-tool"],
   }),
 );
 const built = new Set(results.flatMap((result) => Object.keys(result.metafile.inputs)));

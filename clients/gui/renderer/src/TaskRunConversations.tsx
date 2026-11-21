@@ -9,6 +9,7 @@ import { AskUserQuestion } from "./AskUserQuestion.js";
 import { Button } from "./components/ui/button.js";
 import type { Action, Data } from "./services.js";
 import type { TaskConversationRenderer } from "./TaskDraft.js";
+import { usePlatformReads } from "./PlatformReadContext.js";
 
 export const scheduleZone = (task: Data) =>
   task.scheduleV2?.rule?.timeZone ?? task.schedule?.timeZone;
@@ -39,7 +40,7 @@ const runReasons: Record<string, string> = {
   goalMissingOrReplaced: "执行目标已丢失，已记为失败",
   stopRequested: "已请求停止",
 };
-type ReadState = { status: "loading" | "ready" | "error"; error?: string };
+type ReadState = { status: "loading" | "ready" | "error"; error?: string; thread?: Data };
 
 export function TaskRunConversations({
   project,
@@ -55,6 +56,7 @@ export function TaskRunConversations({
   renderConversation: TaskConversationRenderer;
 }) {
   const { t } = useI18n();
+  const platformReads = usePlatformReads();
   // Core 的 runs 已按运行顺序排列；只去重，不重排或修改来源历史。
   const runs = [
     ...new Map<string, Data>((task.runs ?? []).map((run: Data) => [run.id, run])).values(),
@@ -62,7 +64,40 @@ export function TaskRunConversations({
   const threadIds = [
     ...new Set<string>(runs.flatMap((run) => (run.threadId ? [run.threadId] : []))),
   ];
-  const connected = !!project.state?.connected;
+  const connected = task.executionConnected ?? !!project.state?.connected;
+  const [historyView, setHistoryView] = useState<{
+    key: string;
+    threadId: string;
+    error?: string;
+  }>();
+  const generation = task.executionCore?.connectionGeneration ?? project.core?.connectionGeneration;
+  const historyKey = JSON.stringify([project.id, task.id, generation]);
+  const historyThreadId = historyView?.key === historyKey ? historyView.threadId : undefined;
+  // 历史 Run 保留单次快照，避免长任务占满附加会话的订阅名额。
+  const liveThreadId = runs.findLast(
+    (run) =>
+      run.threadId &&
+      ["running", "waitingForInput", "waitingForAgents", "paused"].includes(run.status),
+  )?.threadId;
+  useEffect(() => {
+    if (connected && liveThreadId)
+      return platformReads?.watch?.({ projectId: project.id, threadId: liveThreadId });
+  }, [connected, liveThreadId, platformReads, project.id]);
+  useEffect(() => {
+    if (!connected || !historyThreadId || historyThreadId === liveThreadId || !platformReads?.watch)
+      return;
+    const target = { projectId: project.id, threadId: historyThreadId };
+    const release = platformReads.watch(target);
+    let current = true;
+    void action("open", target).catch((cause) => {
+      if (current)
+        setHistoryView({ key: historyKey, threadId: historyThreadId, error: errorText(t, cause) });
+    });
+    return () => {
+      current = false;
+      release();
+    };
+  }, [action, connected, historyKey, historyThreadId, liveThreadId, platformReads, project.id, t]);
   const connection = useRef({ connected, epoch: 0 });
   if (connection.current.connected !== connected)
     connection.current = { connected, epoch: connection.current.epoch + 1 };
@@ -97,8 +132,10 @@ export function TaskRunConversations({
           setReads((previous) => ({ ...previous, [id]: { status: "loading" } }));
           try {
             // open 只观察执行会话，不导航，也不恢复执行；已有 taskWatch 保持不变。
-            await action("open", { projectId: project.id, threadId });
-            if (live) setReads((previous) => ({ ...previous, [id]: { status: "ready" } }));
+            const observed = await action("open", { projectId: project.id, threadId });
+            const thread = observed.projects?.find((owner) => owner.id === project.id)?.state
+              ?.threads?.[threadId];
+            if (live) setReads((previous) => ({ ...previous, [id]: { status: "ready", thread } }));
           } catch (cause) {
             if (live)
               setReads((previous) => ({
@@ -130,11 +167,29 @@ export function TaskRunConversations({
       <h3>执行记录</h3>
       {!runs.length && <p role="status">尚未运行</p>}
       {runs.map((run) => {
-        const thread = project.state?.threads?.[run.threadId];
+        const liveThread = project.state?.threads?.[run.threadId];
         const read = run.threadId ? reads[key(run.threadId)] : undefined;
+        const captured = read?.thread;
+        const thread =
+          liveThread ??
+          (captured?.displayHistory
+            ? {
+                ...captured,
+                displayHistory: {
+                  ...captured.displayHistory,
+                  supported: false,
+                  viewGeneration: undefined,
+                },
+              }
+            : captured);
         const interactions = project.state?.interactions?.[run.threadId];
         const readOnly =
-          disabled || !connected || read?.status !== "ready" || !!thread?.desktop?.archived;
+          disabled ||
+          !connected ||
+          !liveThread ||
+          run.threadId !== liveThreadId ||
+          read?.status !== "ready" ||
+          !!thread?.desktop?.archived;
         const pending = (interactions?.data ?? []).filter(
           (item: Data) => item.status === "pending" && item.threadId === run.threadId,
         );
@@ -208,6 +263,36 @@ export function TaskRunConversations({
                       重新读取
                     </Button>
                   </p>
+                )}
+                {captured && platformReads?.watch && run.threadId !== liveThreadId && (
+                  <div>
+                    <Button
+                      variant="ghost"
+                      disabled={!connected}
+                      onClick={() =>
+                        setHistoryView(
+                          historyThreadId === run.threadId
+                            ? undefined
+                            : { key: historyKey, threadId: run.threadId },
+                        )
+                      }
+                    >
+                      {t(
+                        historyThreadId === run.threadId
+                          ? "operations.closeRunHistory"
+                          : "operations.openRunHistory",
+                      )}
+                    </Button>
+                    {historyThreadId === run.threadId &&
+                      !liveThread &&
+                      (historyView?.error ? (
+                        <p role="alert">{historyView.error}</p>
+                      ) : (
+                        <DelayedVisible active={connected}>
+                          <p role="status">{t("operations.loadingRunHistory")}</p>
+                        </DelayedVisible>
+                      ))}
+                  </div>
                 )}
                 {thread &&
                   renderConversation(

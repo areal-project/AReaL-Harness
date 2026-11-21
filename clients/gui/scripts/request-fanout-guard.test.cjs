@@ -19,7 +19,6 @@ const HISTORICAL_LOOP_RPC_ALLOWLIST = Object.freeze({
   "clients/gui/renderer/src/ExecutionsPane.tsx::action:manage": 1,
   "clients/gui/renderer/src/ForkHistory.tsx::action:manage": 1,
   "clients/gui/renderer/src/Inbox.tsx::action:manage": 1,
-  "clients/gui/renderer/src/McpAppsWorkspace.tsx::action:manage": 1,
   "clients/gui/renderer/src/TaskCenter.tsx::action:manage": 2,
   "clients/gui/renderer/src/TaskCenter.tsx::action:connect": 2,
   "clients/gui/renderer/src/TaskCenter.tsx::action:tasks": 4,
@@ -27,18 +26,13 @@ const HISTORICAL_LOOP_RPC_ALLOWLIST = Object.freeze({
   "clients/gui/renderer/src/host-auxiliary-reads.ts::query:attention.read": 1,
   "clients/gui/renderer/src/host-auxiliary-reads.ts::query:project.models": 1,
   "clients/gui/renderer/src/host-auxiliary-reads.ts::workbench:desktop.command": 1,
-  "clients/gui/renderer/src/host-pages.ts::workbench:pages.resource": 3,
-  "clients/gui/renderer/src/host-pages.ts::workbench:pages.command": 1,
   "clients/gui/renderer/src/settings/PluginSkillsPage.tsx::action:manage": 1,
   "clients/gui/renderer/src/settings/PluginSkillsPage.tsx::action:resources": 2,
   "clients/gui/renderer/src/state/useConversationObservation.ts::action:prediction": 1,
   "clients/gui/renderer/src/terminal/coreTerminalService.ts::action:manage": 2,
   "clients/gui/renderer/src/trajectory-inspection.ts::action:manage": 14,
   "clients/gui/renderer/src/workspace-file-tree/WorkspaceFileTree.tsx::action:workspace": 1,
-  "clients/gui/app/src/core/mcp-form-resources.cjs::command:manage": 1,
   "clients/gui/app/src/core/service-client.cjs::command:side": 3,
-  "services/workbench/src/desktop/core/library.cjs::hostCall:library.patch": 1,
-  "services/workbench/src/desktop/core/service-protocol.cjs::command:history": 1,
 });
 
 // 冻结历史遗留的嵌套循环扇出基线（严禁任何新增 O(N^2) 嵌套循环请求）。
@@ -47,7 +41,6 @@ const HISTORICAL_NESTED_LOOP_ALLOWLIST = Object.freeze({
   "clients/gui/renderer/src/TaskCenter.tsx::action:connect": 2,
   "clients/gui/renderer/src/TaskCenter.tsx::action:tasks": 4,
   "clients/gui/renderer/src/host-auxiliary-reads.ts::workbench:desktop.command": 1,
-  "clients/gui/renderer/src/host-pages.ts::workbench:pages.resource": 2,
   "clients/gui/renderer/src/state/useConversationObservation.ts::action:prediction": 1,
   "clients/gui/renderer/src/trajectory-inspection.ts::action:manage": 10,
 });
@@ -298,7 +291,6 @@ test("production sources introduce no new O(N^2) nested-loop RPCs, N*2 loop dual
   const files = [
     ...walkProductionFiles(path.join(repoRoot, "clients/gui/renderer/src")),
     ...walkProductionFiles(path.join(repoRoot, "clients/gui/app/src")),
-    ...walkProductionFiles(path.join(repoRoot, "services/workbench/src")),
   ];
   const loopCounts = {};
   const nestedCounts = {};

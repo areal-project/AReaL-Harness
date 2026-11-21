@@ -7,11 +7,9 @@ import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 export function ConversationContentView({
   blocks,
   markdown,
-  interactive,
 }: {
   blocks: readonly ConversationContentBlock[];
   markdown: (text: string, offset: number) => ReactNode;
-  interactive: (block: Extract<ConversationContentBlock, { kind: "interactive" }>) => ReactNode;
 }) {
   const { t } = useI18n();
   return (
@@ -32,8 +30,6 @@ export function ConversationContentView({
               failedLabel={t("content.copyFailed")}
               dataLabel={t("content.data")}
             />
-          ) : block.kind === "interactive" ? (
-            interactive(block)
           ) : block.kind === "pending" ? (
             <p role="status" className="conversation-content-pending">
               {t("content.preparing")}

@@ -37,14 +37,14 @@ function observe(input: {
 it("debounces foreground readThread via resourceAction without invoking notice action", () => {
   vi.useFakeTimers();
   vi.stubGlobal("document", { hasFocus: () => true, visibilityState: "visible" });
-  const action = vi.fn<Action>(async () => undefined);
-  const resourceAction = vi.fn<Action>(async () => undefined);
+  const action = vi.fn(async () => undefined);
+  const resourceAction = vi.fn(async () => undefined);
 
   const first = observe({
     threadId: "t1",
     completionId: "c1",
-    action,
-    resourceAction,
+    action: action as unknown as Action,
+    resourceAction: resourceAction as unknown as Action,
   });
   const cancelFirst = first.markForegroundCompletionRead();
   expect(typeof cancelFirst).toBe("function");
@@ -59,8 +59,8 @@ it("debounces foreground readThread via resourceAction without invoking notice a
   const second = observe({
     threadId: "t2",
     completionId: "c2",
-    action,
-    resourceAction,
+    action: action as unknown as Action,
+    resourceAction: resourceAction as unknown as Action,
   });
   second.markForegroundCompletionRead();
   vi.advanceTimersByTime(150);

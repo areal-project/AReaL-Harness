@@ -130,7 +130,7 @@ T2 与 T3 固定基本消息，独立改变内部记录规模。T4 需要真实�
 | --- | --- | --- |
 | J1 输入意图 | 中文组词、候选确认、紧接的主动 Enter；Slash/Mention 选择与普通换行；核对正文及受理数 | D1；LexicalChatInput、ChatPromptEditor；`test:composer`。原生输入法人工验收另列，合成事件不代替。 |
 | J2 草稿恢复 | UI 添加文字、测试图片、文件/引用，A/B 往返后 reload，再单独测试重开；完整恢复或明确待重附 | D2、D4；Composer、composerDraftStorage、composerDraftAttachments；`test:composer-files` 可扩展，现有命令存在不表示已覆盖 reload。 |
-| J3 提交边界 | 受理前失败、受理后丢回执、双击发送、期间切换目标；核对同一 requestId 与独立受理记录 | D3、D4；Composer、submitMessage 和主进程受理所有者；`test:send-admission`。 |
+| J3 提交边界 | 受理前失败、受理后丢回执、双击发送、期间切换目标；核对同一 requestId 与独立受理记录 | D3、D4；Composer、submitMessage、Host 提交回执和 Core 历史；`test:send-admission`。 |
 | J4 执行介入 | 运行中追加/排队、审批、停止，同时保持后续事件到达；核对状态、归属和实际副作用 | D5；Composer、TurnActivity、Core/Runtime；`test:stop-turn`、`test:composer`。 |
 | J5 阅读控制 | 足够溢出的真实回复中上滑、选中旧段落；继续输出并完成；显式返回最新再恢复跟随 | C3、C6、D6；Messages、conversationReading、readingViews；`test:conversation-reading`、`test:reading-checkpoint`。 |
 | J6 结果使用 | 流式闭合图形放大、缩放/平移、完成后关闭；宽表横滚、长表固定表头、复制/下载 | D6、D7；Messages、MessageResponse、DiagramReader、MarkdownTable；`test:content-reading`。 |

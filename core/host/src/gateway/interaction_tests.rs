@@ -337,6 +337,7 @@ impl Fixture {
             local: false,
             browser_device: None,
             uploads: Default::default(),
+            download: None,
             token_key: [7; 32],
         }
     }
@@ -1647,6 +1648,8 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
             let command = uuid::Uuid::new_v4().to_string();
             let read = f.native_read_request("command.read", json!({"commandId":command}));
             let mut session = f.session("a");
+            let request_size = std::mem::size_of_val(&session.request(&read));
+            assert!(request_size < 64 * 1024, "Gateway request future must not embed domain execution state: {request_size} bytes");
             session.gui_read = true;
             assert_eq!(
                 session.request(&read).await.unwrap_err().to_string(),
@@ -1733,8 +1736,23 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
                 "FORBIDDEN"
             );
             // 桌面命令通道只给本机已批准写入的网页；手机和远程即使有 gui-write 也拒绝。
-            let desktop = json!({"id":"desktop","method":"desktop.command","params":{"sourceId":"source","command":"list","request":{}}});
+            let desktop = json!({"id":"desktop","method":"desktop.command","params":{"sourceId":"source","command":"media","request":{"operation":"list","projectId":"project","threadId":"thread"}}});
             assert_eq!(session.request(&desktop).await.unwrap_err().to_string(), "FORBIDDEN");
+            let reveal = json!({"operation":"revealKey","id":"fixture","expectedRevision":"revision"});
+            let reveal_method = f.request(
+                "providers.revealKey",
+                json!({"id":"fixture","expectedRevision":"revision"}),
+                None,
+            );
+            assert_eq!(
+                Box::pin(session.request(&reveal_method)).await.unwrap_err().to_string(),
+                "INVALID_PARAMS"
+            );
+            let reveal_command = json!({"id":"reveal","method":"desktop.command","params":{"command":"providers","request":reveal}});
+            assert_eq!(
+                Box::pin(session.request(&reveal_command)).await.unwrap_err().to_string(),
+                "FORBIDDEN"
+            );
             let mut local = f.session("a");
             local.local = true;
             assert_eq!(local.request(&desktop).await.unwrap_err().to_string(), "FORBIDDEN");
@@ -1745,15 +1763,10 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
                 error.downcast_ref::<crate::wire::Error>().map(|error| error.code),
                 Some("CAPABILITY_UNAVAILABLE")
             );
-            // 来源可省略（新装桌面登记来源前），由 Host 按当前后台认定，同样先要求后台在运行。
-            let unsourced = json!({"id":"desktop","method":"desktop.command","params":{"command":"list","request":{}}});
-            let error = local.request(&unsourced).await.unwrap_err();
-            assert_eq!(
-                error.downcast_ref::<crate::wire::Error>().map(|error| error.code),
-                Some("CAPABILITY_UNAVAILABLE")
-            );
-            // 元数据图片是页面入口的合法操作，不能被参数校验挡在 Host。
-            serde_json::from_value::<areal_protocol::host::WorkbenchPageCommandParams>(json!({"operation":"metadataImage","source":"https://example.invalid/icon.png","projectId":"project"})).unwrap();
+            // 已移除的命令在本机写会话中也不能再次派发。
+            let retired = json!({"id":"desktop","method":"desktop.command","params":{"command":"history","request":{"operation":"acquire","projectId":"project","threadId":"thread"}}});
+            assert_eq!(local.request(&retired).await.unwrap_err().to_string(), "INVALID_PARAMS");
+            // 省略来源时，Host 仍要求存在已登记的当前来源。
             let unsourced = json!({"id":"providers","method":"providers.read","params":{"operation":"list"}});
             assert_eq!(local.request(&unsourced).await.unwrap_err().to_string(), "CAPABILITY_UNAVAILABLE");
             f.grant("a", |grant| grant["projectIds"] = json!([]));
@@ -1868,114 +1881,71 @@ async fn local_desktop_principal_sends_through_the_shared_journal_without_device
 }
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "需要 GUI 的 Node 依赖；由 make host-protocol-check 运行"]
-async fn local_send_and_steer_freeze_authoritative_gen_ui_context_without_private_state() {
+async fn local_plugin_command_uses_the_original_send_receipt_for_turn_and_queue() {
     tokio::task::LocalSet::new().run_until(async {
         let mut f = Fixture::new().await;
-        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let runner = f.root.path().join("prepare.cjs");
-        let source = r#"
-const {createRequire} = require('node:module');
-const {join} = require('node:path');
-const fs = require('node:fs');
-const {once} = require('node:events');
-const appRequire = createRequire(join(REPO,'clients/gui/app/package.json'));
-const {CoreBackend} = appRequire('@areal/workbench-service/desktop/core/backend.cjs');
-const {DesktopService} = appRequire('@areal/workbench-service/desktop/core/service-protocol.cjs');
-const {prepareInput} = require(join(REPO,'services/workbench/src/pages.cjs'));
-const out = value => console.log(JSON.stringify({version:1,...value}));
-(async () => {
-  const home = process.env.AREAL_WORKBENCH_DATA;
-  const backend = new CoreBackend({home,binary:'/bin/true'});
-  const project = {id:PROJECT_ALIAS,root:PROJECT_ROOT,state:{threads:{thread:{id:'thread'}}}};
-  project.model = {state:project.state};
-  const socket = new (appRequire('ws'))(CORE_ENDPOINT,{headers:{Authorization:'Bearer original-owner-token'}});
-  await once(socket,'open');
-  let next = 0;
-  const calls = new Map();
-  socket.on('message', bytes => { const message = JSON.parse(bytes); const pending = calls.get(message.id);
-    if (!pending) return; calls.delete(message.id);
-    if (message.error) pending.reject(Object.assign(new Error(message.error.message),message.error));
-    else pending.resolve(message.result);
-  });
-  project.client = {closed:false, request:(method,params) => new Promise((resolve,reject) => {
-    const id = ++next; calls.set(id,{resolve,reject}); socket.send(JSON.stringify({id,method,params}));
-  })};
-  project.service = {serviceId:'original-service',generation:'core-generation'};
-  backend.projects.set(project.id,project);
-  backend.saved = [project];
-  const adapter = new DesktopService(backend,'fixture');
-  adapter.schedule = () => {};
-  const scope = {...backend.genUiScope(project,'thread'),path:'/artifacts/widget.html'};
-  const save = selection => backend.genUiState.set(scope,{modelContent:{selection},privateContent:{secret:'fixture-private'}});
-  await save(7);
-  let nextHost = 0;
-  const hostCalls = new Map();
-  const hostCall = (call, params) => new Promise((resolve,reject) => {
-    const id = `journal-${++nextHost}`; hostCalls.set(id,{resolve,reject}); out({id,call,params});
-  });
-  backend.hostCall = hostCall;
-  backend.host.journal = id => ({
-    read:async()=>hostCall('fixture.journal.read',{}),
-    change:async change=>{ const {revision,snapshot}=await hostCall('fixture.journal.read',{});
-      await hostCall('fixture.journal.replace',{revision,snapshot:change(snapshot)}); },
-  });
-  backend.start = async id => { if(id!==project.id)throw Error('wrong project');return project; };
-  backend.refreshHostProjects = async () => {};
-  backend.worktrees.reloadNative = async () => {};
-  backend.host.resolve = () => ({projectId:'project'});
-  backend.loadProjectJournal = async () => project;
-  backend.openThread = async () => {};
-  project.client.ready = true;
-  backend.resources.beforeCreate = async () => {};
-  backend.providers.manages = () => false;
-  backend.refreshAfterAdmission = async () => {};
-  project.client.capabilities = {features:{permissionPresets:true}};
-  out({event:'ready',methods:['input.prepare','execution.prepare','execution.dispatch']});
-  require('node:readline').createInterface({input:process.stdin}).on('line', async line => {
-    const frame = JSON.parse(line);
-    try {
-      if (hostCalls.has(frame.id)) { const pending=hostCalls.get(frame.id);hostCalls.delete(frame.id);
-        if(frame.error)pending.reject(Error(frame.error.code));else pending.resolve(frame.result);return; }
-      if (frame.event === 'execution.cancel') { adapter.cancelHostExecution(frame.handle,frame.connection); return; }
-      if (frame.event === 'pages.disconnect') { adapter.disconnectHostExecution(frame.connection); await hostCall('fixture.disconnected',{connection:frame.connection}); return; }
-      if (frame.method === 'execution.prepare') {
-        out({id:frame.id,result:await adapter.prepareHostExecution(frame.params,frame.context.connection)}); return;
-      }
-      if (frame.method === 'execution.dispatch') {
-        out({id:frame.id,result:await adapter.dispatchHostExecution(frame.params.handle,frame.context.connection)}); return;
-      }
-      if (frame.method !== 'input.prepare') throw Error('unexpected method');
-      fs.appendFileSync(join(home,'preparations'),'once\n');
-      const result = await prepareInput({desktop:{backend,adapter},request:frame.params});
-      await save(8);
-      out({id:frame.id,result});
-    } catch(error) { out({id:frame.id,error:{code:'INVALID_PARAMS',message:error.message}}); }
-  });
-})().catch(error => { console.error(error); process.exit(1); });
-"#.replace("REPO", &serde_json::to_string(&repo).unwrap())
-          .replace("PROJECT_ALIAS", &serde_json::to_string(&f.alias).unwrap())
-          .replace("PROJECT_ROOT", &serde_json::to_string(&f.host.slots.borrow()["project"].registration.workspace).unwrap())
-          .replace("CORE_ENDPOINT", &serde_json::to_string(&f.host.slots.borrow()["project"].service.as_ref().unwrap().endpoint).unwrap());
-        std::fs::write(&runner, source).unwrap();
-        let runtime = std::env::split_paths(&std::env::var_os("PATH").unwrap())
-            .map(|path| path.join("node")).find(|path| path.is_file()).expect("Node is required");
-        let journal_host = f.host.clone();
-        let (disconnected, mut disconnects) = mpsc::unbounded_channel();
-        let reverse: crate::workbench::Reverse = Rc::new(move |method, params| {
-            let host = journal_host.clone();
-            let disconnected = disconnected.clone();
-            Box::pin(async move {
-                match method.as_str() {
-                    "fixture.disconnected" => { disconnected.send(params["connection"].clone()).unwrap(); Ok(json!({})) }
-                    "fixture.journal.read" => { let (revision, snapshot) = host.journal.native_snapshot("project")?; Ok(json!({"revision":revision,"snapshot":snapshot})) }
-                    "fixture.journal.replace" => { host.journal.native_replace("project", params["revision"].as_u64().unwrap(), params["snapshot"].clone())?; Ok(json!({})) }
-                    _ => crate::server::workbench_route::reverse(&host)(method, params).await,
-                }
-            })
-        });
-        let backend = crate::workbench::Workbench::start(&runtime, &runner, f.root.path(), reverse).await.unwrap();
-        f.host.gateway.workbench.bind_test_backend(backend, &f.source);
+        f.host.gateway.workbench.test_source(&f.source);
+        let mut session = Session::local(f.host.clone(), "local-connection".into()).unwrap();
+        let reference = json!({"pluginId":"example@local","componentId":"commands/review.md","installedDigest":"installed","arguments":"file with spaces.ts --strict"});
+        let params = json!({"threadId":"thread","expectedConfigRevision":1,"text":"","command":reference});
+        let command = uuid::Uuid::new_v4().to_string();
+        let mut unscoped = f.request("session.send", params.clone(), Some(&command));
+        unscoped["params"]["text"] = json!("A remote message");
+        let (_, result) = Fixture::dispatch(f.session("a"), unscoped).await.unwrap();
+        assert_eq!(result.unwrap_err().to_string(), "INVALID_PARAMS");
+        let context = json!({"projectId":"project","gatewayGeneration":f.host.identity.generation,"grantRevision":0,"serviceGeneration":"core-generation"});
+        let mut caps = Fixture::capabilities();
+        caps["features"]["ordinaryTurnSubmit"] = json!(true);
+        caps["methods"].as_array_mut().unwrap().push(json!("areal/turn/submit"));
+        for queued in [false, true] {
+            let command = uuid::Uuid::new_v4().to_string();
+            let mut send = f.request("session.send", params.clone(), Some(&command));
+            send["context"] = context.clone();
+            let mut sending = Fixture::dispatch(session, send.clone());
+            tokio::select! {
+                call = f.call("areal/capabilities") => call.reply(caps.clone()),
+                result = &mut sending => panic!("plugin send settled before Core: {:?}", result.unwrap().1),
+            }
+            let mut observed = Fixture::idle_thread(1);
+            if queued {
+                observed["thread"]["status"]["type"] = json!("active");
+                observed["thread"]["turns"][0]["status"] = json!("inProgress");
+            }
+            f.call("areal/thread/observe").await.reply(observed);
+            f.workspace_admission().await;
+            let submit = f.call("areal/turn/submit").await;
+            assert_eq!(submit.request["params"]["intent"], json!({"type":"message","input":[],"command":reference}));
+            assert_eq!(submit.request["params"]["expectedConfigRevision"], 1);
+            let operation = submit.request["params"]["requestId"].as_str().unwrap().to_owned();
+            submit.reply(if queued { json!({"queueItemId":"plugin-queue"}) } else { json!({"turn":{"id":"plugin-turn"}}) });
+            let (current, result) = sending.await.unwrap();
+            let accepted = result.unwrap();
+            assert_eq!(accepted["admissionState"], "accepted");
+            assert_eq!(accepted["nativeRequestId"], operation);
+            if queued {
+                assert_eq!(accepted["receipt"]["queueItemId"], "plugin-queue");
+                assert!(accepted.get("turnId").is_none());
+            } else {
+                assert_eq!(accepted["turnId"], "plugin-turn");
+            }
+            let (current, duplicate) = Fixture::dispatch(current, send.clone()).await.unwrap();
+            assert_eq!(duplicate.unwrap(), accepted);
+            let read = f.native_read_request("command.read", json!({"commandId":command}));
+            let (current, recovered) = Fixture::dispatch(current, read).await.unwrap();
+            assert_eq!(recovered.unwrap(), accepted);
+            send["params"]["command"]["arguments"] = json!("different arguments");
+            let (current, changed) = Fixture::dispatch(current, send).await.unwrap();
+            assert_eq!(changed.unwrap_err().to_string(), "COMMAND_CONFLICT");
+            session = current;
+        }
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn local_send_and_steer_dispatch_without_node_and_retain_original_receipts() {
+    tokio::task::LocalSet::new().run_until(async {
+        let mut f = Fixture::new().await;
+        f.host.gateway.workbench.test_source(&f.source);
         let session = Session::local(f.host.clone(), "local-connection".into()).unwrap();
         let context = json!({"projectId":"project","gatewayGeneration":f.host.identity.generation,"grantRevision":0,"serviceGeneration":"core-generation"});
         let mut send = f.request("session.send", json!({"threadId":"thread","expectedConfigRevision":1,"text":"Continue"}), Some(&uuid::Uuid::new_v4().to_string()));
@@ -1986,18 +1956,12 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         f.workspace_admission().await;
         let turn = f.call("areal/turn/start").await;
         let input = turn.request["params"]["input"][0]["text"].as_str().unwrap().to_owned();
-        assert!(input.starts_with("Continue"));
-        assert!(input.contains("\"selection\":7"), "{input}");
-        assert!(!input.contains("private"));
-        let (_, journal) = f.host.journal.native_snapshot("project").unwrap();
-        assert!(journal.to_string().contains("selection"));
-        assert!(!journal.to_string().contains("fixture-private"));
+        assert_eq!(input, "Continue");
         turn.reply(json!({"turn":{"id":"desktop-turn"}}));
         let (session, accepted) = sending.await.unwrap();
         let accepted = accepted.unwrap();
         let (session, duplicate) = Fixture::dispatch(session, send).await.unwrap();
         assert_eq!(duplicate.unwrap(), accepted);
-        assert_eq!(std::fs::read_to_string(f.root.path().join("preparations")).unwrap(), "once\n");
         let mut steer = f.request("session.control", json!({"threadId":"thread","operation":"steer","expectedRevision":1,"values":{"text":"Adjust","expectedTurnId":"turn","conversationQuotes":[{"text":"quoted-message"}],"attachments":[{"type":"image","url":"areal://blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],"mcpContent":[{"type":"text","text":"mcp-message"}]}}), Some(&uuid::Uuid::new_v4().to_string()));
         steer["context"] = context;
         let steering = Fixture::dispatch(session, steer.clone());
@@ -2011,20 +1975,18 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         assert_eq!(turn.request["params"]["input"].as_array().unwrap().len(), 4);
         assert!(turn.request["params"]["input"].to_string().contains("quoted-message"));
         assert!(turn.request["params"]["input"].to_string().contains("mcp-message"));
-        assert!(text.starts_with("Adjust"));
-        assert!(text.contains("\"selection\":8"), "{text}");
-        assert!(!text.contains("private"));
+        assert_eq!(text, "Adjust");
         turn.reply(json!({"turnId":"turn"}));
         let (session, result) = steering.await.unwrap();
         assert_eq!(result.unwrap()["admissionState"], "accepted");
         let (session, repeated) = Fixture::dispatch(session, steer.clone()).await.unwrap();
         assert_eq!(repeated.unwrap()["admissionState"], "accepted");
-        assert_eq!(std::fs::read_to_string(f.root.path().join("preparations")).unwrap(), "once\nonce\n");
         let creation_id = uuid::Uuid::new_v4().to_string();
         let mut create = f.request("session.create", json!({"requestId":creation_id,"parameters":{"reasoningEffort":"high","serviceTier":"fast"},"options":{"permissionPreset":"ask"},"model":{"providerId":"provider","modelId":"model"},"worktree":{"mode":"source"}}), Some(&creation_id));
         create["context"] = steer["context"].clone();
         let mut creating = Fixture::dispatch(session, create.clone());
         f.call("areal/server/status").await.reply(json!({"acceptingWork":true}));
+        f.call("areal/capabilities").await.reply(json!({"methods":["areal/thread/start","areal/request/read"],"features":{"threadCreationJournal":{"binding":{"identity":"store","journalEpoch":"epoch","coreInstanceId":"instance"}}}}));
         let native_create = tokio::select! { call = f.call("areal/thread/start") => call, result = &mut creating => panic!("local create returned before dispatch: {:?}", result.unwrap().1) };
         assert_eq!(native_create.request["params"]["requestId"], creation_id);
         assert_eq!(native_create.request["params"]["parameters"]["serviceTier"], "fast");
@@ -2041,7 +2003,7 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         assert_eq!(command_complete["outcomes"][&creation_id]["method"], "workbench/thread/create");
         let (session, duplicate) = Fixture::dispatch(session, create).await.unwrap();
         assert_eq!(duplicate.unwrap(), created);
-        // 旧远程客户端仍用原请求形状，执行与模型上下文来自同源后台。
+        // 旧远程客户端仍用原请求形状，执行来自同源后台。
         let mut remote = f.session("a");
         assert!(remote.uses_workbench_execution());
         remote.source_id = "another-source".into();
@@ -2057,8 +2019,7 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         f.workspace_admission().await;
         let turn = f.call("areal/turn/start").await;
         let text = turn.request["params"]["input"][0]["text"].as_str().unwrap();
-        assert!(text.starts_with("Remote continue") && text.contains("\"selection\":8"));
-        assert!(!text.contains("fixture-private"));
+        assert_eq!(text, "Remote continue");
         turn.reply(json!({"turn":{"id":"remote-turn"}}));
         let (remote, accepted) = sending.await.unwrap();
         let accepted = accepted.unwrap();
@@ -2073,13 +2034,14 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         let (_, created) = creating.await.unwrap();
         assert_eq!(created.unwrap()["admissionState"], "accepted");
         drop(SessionSlot {host:f.host.clone(),peer:None,pending:false,connection:Some(remote_connection.clone())});
-        assert_eq!(tokio::time::timeout(Duration::from_secs(5), disconnects.recv()).await.unwrap().unwrap(), remote_connection);
-        f.host.gateway.workbench.stop_backend().await;
         steer["commandId"] = json!(uuid::Uuid::new_v4().to_string());
-        let failing = Fixture::dispatch(session, steer);
+        let independent = Fixture::dispatch(session, steer);
         f.call("areal/capabilities").await.reply(caps);
-        let (_, result) = failing.await.unwrap();
-        assert_eq!(result.unwrap_err().to_string(), "CAPABILITY_UNAVAILABLE");
+        f.call("areal/thread/observe").await.reply(json!({"thread":{"id":"thread","status":{"type":"active"},"turns":[{"id":"turn","status":"inProgress","items":[]}]},"ownership":{"kind":"ordinary"}}));
+        f.workspace_admission().await;
+        f.call("turn/steer").await.reply(json!({"turnId":"turn"}));
+        let (_, result) = independent.await.unwrap();
+        assert_eq!(result.unwrap()["admissionState"],"accepted");
         assert!(f.calls.try_recv().is_err());
     }).await;
 }
@@ -2139,6 +2101,56 @@ async fn gui_write_uploads_attachments_in_chunks_and_replays_the_final_receipt()
             assert_eq!(replay.unwrap(), done);
         })
         .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn attachment_read_chunks_are_bound_to_the_original_thread_and_connection() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    tokio::task::LocalSet::new().run_until(async {
+        let f = Fixture::new().await;
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        f.host.slots.borrow_mut().get_mut("project").unwrap().service.as_mut().unwrap().endpoint =
+            format!("ws://{}/", listener.local_addr().unwrap());
+        let limit = 256 * 1024;
+        let bytes = vec![b'a'; 4 * limit + 17];
+        let uri = format!("areal://blob/{:x}", <sha2::Sha256 as sha2::Digest>::digest(&bytes));
+        let request = |thread: &str, offset: usize| {
+            let mut request = f.request("attachment.read", json!({"threadId":thread,"uri":uri,"offset":offset}), None);
+            request["context"] = json!({"projectId":"project","gatewayGeneration":f.host.identity.generation,"grantRevision":0,"serviceGeneration":"core-generation"});
+            request
+        };
+        let body = bytes.clone();
+        let expected_path = format!("get /areal/blobs/{}?threadid=thread ", uri.strip_prefix("areal://blob/").unwrap());
+        let core = tokio::task::spawn_local(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut head = Vec::new();
+            while !head.ends_with(b"\r\n\r\n") {
+                let mut byte = [0];
+                socket.read_exact(&mut byte).await.unwrap();
+                head.push(byte[0]);
+            }
+            let head = String::from_utf8(head).unwrap().to_lowercase();
+            assert!(head.starts_with(&expected_path));
+            assert!(head.contains("authorization: bearer original-owner-token\r\n"));
+            socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\n\r\n", body.len()).as_bytes()).await.unwrap();
+            socket.write_all(&body).await.unwrap();
+        });
+        let mut session = Session::local(f.host.clone(), "local-connection".into()).unwrap();
+        let first = session.request(&request("thread", 0)).await.unwrap();
+        core.await.unwrap();
+        assert_eq!(first["nextOffset"], limit);
+        assert!(serde_json::to_vec(&first).unwrap().len() < 1024 * 1024);
+        let mut foreign = Session::local(f.host.clone(), "other-connection".into()).unwrap();
+        assert!(foreign.request(&request("thread", limit)).await.is_err());
+        assert!(session.request(&request("other-thread", limit)).await.is_err());
+        for offset in (limit..bytes.len()).step_by(limit) {
+            let result = session.request(&request("thread", offset)).await.unwrap();
+            let end = (offset + limit).min(bytes.len());
+            assert_eq!(result["offset"], offset);
+            assert_eq!(result["nextOffset"], json!((end < bytes.len()).then_some(end)));
+            assert_eq!(base64::engine::general_purpose::STANDARD.decode(result["base64"].as_str().unwrap()).unwrap(), bytes[offset..end]);
+        }
+    }).await;
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -2557,6 +2569,38 @@ async fn loopback_attention_read_and_interaction_respond_share_connection_token_
                 responded["result"]["admissionState"], "accepted",
                 "{responded}"
             );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn cloud_navigation_inherits_only_the_original_source_and_project_grant() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let f = Fixture::new().await;
+            let record = uuid::Uuid::new_v4().to_string();
+            let id = format!("cloud-session:{}:{record}", f.source);
+            let home = crate::server::library_store::source_home(&f.host, &f.source).unwrap();
+            storage::write(
+                &home.join("cloud-sessions.json"),
+                &json!([
+                    {"id":record,"projectId":f.alias,"binding":{"threadId":"remote-thread"}}
+                ]),
+            )
+            .unwrap();
+            let mut remote = f.session("a");
+            assert!(remote.authorize(Some(&id), "observe").is_ok());
+            assert_eq!(remote.project_id(&id).unwrap(), id);
+            remote.source_id = "another-source".into();
+            assert!(remote.authorize(Some(&id), "observe").is_err());
+            remote.source_id = f.source.clone();
+            f.grant("a", |grant| grant["projectIds"] = json!([]));
+            assert!(remote.authorize(Some(&id), "observe").is_err());
+            let local = Session::local(f.host.clone(), "local-cloud".into()).unwrap();
+            assert!(local.authorize(Some(&id), "observe").is_ok());
+            let removed = f.host.slots.borrow_mut().remove("project").unwrap();
+            assert!(local.authorize(Some(&id), "observe").is_err());
+            f.host.slots.borrow_mut().insert("project".into(), removed);
         })
         .await;
 }

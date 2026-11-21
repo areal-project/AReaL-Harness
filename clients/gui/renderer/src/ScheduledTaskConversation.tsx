@@ -15,6 +15,7 @@ import {
 import type { TaskConversationRenderer } from "./TaskDraft.js";
 import { TaskRunConversations } from "./TaskRunConversations.js";
 import type { Action, Data } from "./services.js";
+import { usePlatformReads } from "./PlatformReadContext.js";
 
 export function ScheduledTaskConversation({
   task,
@@ -38,6 +39,7 @@ export function ScheduledTaskConversation({
   renderResources: (project: Data, thread: Data) => ReactNode;
 }) {
   const { t } = useI18n();
+  const platformReads = usePlatformReads();
   const [read, setRead] = useState<{ status: "pending" | "ready" | "error"; error?: string }>({
     status: "pending",
   });
@@ -46,9 +48,12 @@ export function ScheduledTaskConversation({
   // 运行接在这段对话里时，详情就是这段对话；旧的“每次新开”任务列出各次运行的对话。
   const bound = scheduledTaskConversation(task);
   const target: string | undefined = bound ?? task.sourceThreadId ?? task.threadId ?? undefined;
+  const connected = task.executionConnected ?? project.state?.connected;
+  const generation = task.executionCore?.connectionGeneration ?? project.core?.connectionGeneration;
   useEffect(() => {
-    if (!project.state?.connected || !target) return;
+    if (!connected || !target) return;
     let live = true;
+    const release = platformReads?.watch?.({ projectId: project.id, threadId: target });
     setRead({ status: "pending" });
     void action("open", { projectId: project.id, threadId: target })
       .then(() => {
@@ -59,15 +64,9 @@ export function ScheduledTaskConversation({
       });
     return () => {
       live = false;
+      release?.();
     };
-  }, [
-    action,
-    project.id,
-    project.state?.connected,
-    project.core?.connectionGeneration,
-    target,
-    retry,
-  ]);
+  }, [action, platformReads, project.id, connected, generation, target, retry]);
   const thread = target ? project.state?.threads?.[target] : undefined;
   return (
     <main

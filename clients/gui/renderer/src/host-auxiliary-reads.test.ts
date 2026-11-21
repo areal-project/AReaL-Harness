@@ -9,6 +9,27 @@ import {
 afterEach(() => vi.useRealTimers());
 
 describe("model catalog refresh", () => {
+  it("leaves room for foreground work while loading multiple project catalogs", async () => {
+    const pending: ((value: unknown) => void)[] = [];
+    const query = vi.fn(() => new Promise((resolve) => pending.push(resolve)));
+    const client = {
+      snapshot: () => ({ connection: "ready", identity: { connectionId: "connection" } }),
+      query,
+    } as unknown as HostClient;
+    const projects = Array.from({ length: 20 }, (_, i) => ({
+      projectId: `project-${i}`,
+      state: "stopped",
+    }));
+    const catalogs = new Map();
+    const refresh = () => refreshModelCatalogs(client, projects, catalogs, refresh);
+    refresh();
+    refresh();
+    expect(query).toHaveBeenCalledTimes(2);
+    pending[0]({ models: [] });
+    await vi.waitFor(() => expect(query).toHaveBeenCalledTimes(3));
+    expect(query).toHaveBeenLastCalledWith("project.models", "project-2", {});
+  });
+
   it("reads a stopped project's model catalog without a Core generation", async () => {
     const query = vi.fn().mockResolvedValue({ models: [{ modelId: "saved" }] });
     const client = {

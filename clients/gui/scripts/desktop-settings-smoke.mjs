@@ -4,10 +4,12 @@ import { createRequire } from "node:module";
 import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createLocalTlsFixture } from "./desktop-network-smoke.mjs";
+import { readFixtureHost } from "./application-cleanup.mjs";
+import { readCoreThread } from "./support/core-observation.mjs";
+import { installHostTransportBarrier } from "./support/host-transport-barrier.mjs";
 
 const require = createRequire(import.meta.url);
-const { ServiceConnection } = require("../app/src/core/service-client.cjs");
-const { executeCore } = createRequire(import.meta.url)("./support/core-process-fixture.cjs");
+const { executeCore } = require("./support/core-process-fixture.cjs");
 
 export function desktopSettingsSmoke(scratch, workspace) {
   const frames = [],
@@ -15,12 +17,28 @@ export function desktopSettingsSmoke(scratch, workspace) {
   return {
     model: () => false,
     frames: () => frames,
-    async run({ app, page: getPage, state, call, until, button, quit, launch, received, checks }) {
+    async run({
+      app,
+      page: getPage,
+      call,
+      until,
+      button,
+      quit,
+      launch,
+      received,
+      checks,
+      binary,
+      env,
+      gui,
+      sendReady,
+    }) {
       let page = getPage();
-      let tlsFixture, notificationConnection;
-      const notices = [];
+      let tlsFixture;
+      const submissions = [];
       const terminalIds = new Set();
-      const persisted = () => state().then((snapshot) => snapshot.library.settings);
+      // Shell 的共享读模型屏蔽代理与 CA 路径；夹具只核对隔离资料库的保存值。
+      const persisted = async () =>
+        JSON.parse(await readFile(join(env.AREAL_CORE_HOME, "library.json"), "utf8")).settings;
       const capture = async (id) => {
         await page.screenshot({ path: join(scratch, `${id}.png`), animations: "disabled" });
         await writeFile(join(scratch, `${id}.aria.txt`), await page.locator("body").ariaSnapshot());
@@ -43,11 +61,6 @@ export function desktopSettingsSmoke(scratch, workspace) {
               contextIsolation: prefs.contextIsolation,
               nodeIntegration: prefs.nodeIntegration,
             },
-            env: Object.fromEntries(
-              Object.entries(process.env).filter(
-                ([key]) => key.startsWith("AREAL_") || key === "PATH",
-              ),
-            ),
           };
         });
         assert.equal(identity.pid, app().process().pid);
@@ -57,29 +70,12 @@ export function desktopSettingsSmoke(scratch, workspace) {
           contextIsolation: true,
           nodeIntegration: false,
         });
-        const env = identity.env;
-        const metadata = JSON.parse(
-          await readFile(join(env.AREAL_CORE_HOME, "service.json"), "utf8"),
-        );
-        process.kill(metadata.pid, 0);
-        const connection = new ServiceConnection();
-        let hello;
-        try {
-          await connection.connect(metadata);
-          hello = await connection.request("hello", {
-            protocol: metadata.protocol,
-            identity: metadata.identity,
-          });
-          assert.equal(hello.service.pid, metadata.pid);
-          assert.equal(
-            await realpath(hello.service.applicationOwner.profile),
-            await realpath(identity.userData),
-          );
-        } finally {
-          connection.close();
-        }
-        const binary = env.AREAL_CORE_BIN;
-        assert.ok(binary, "source settings acceptance requires AREAL_CORE_BIN");
+        const host = await readFixtureHost(env);
+        assert.ok(host?.pid > 1, "fixture Host discovery is available");
+        process.kill(host.pid, 0);
+        const native = await getPage().evaluate(() => window.arealDesktop.nativeState());
+        assert.equal(native.connection.state, "ready");
+        assert.deepEqual(native.projects, [], "Main does not own the project projection");
         const instances = JSON.parse(
           (await executeCore(binary, ["service", "list", "--json"], { env, timeout: 20000 }))
             .stdout,
@@ -102,7 +98,7 @@ export function desktopSettingsSmoke(scratch, workspace) {
           electron: identity.electron,
           userData: identity.userData,
           preferences: identity.preferences,
-          desktop: { pid: metadata.pid, identity: metadata.identity },
+          host: { pid: host.pid, id: host.hostId, generation: host.generation },
           instances: instances.map(({ serviceId, generation, state, hostPid, corePid }) => ({
             serviceId,
             generation,
@@ -122,21 +118,18 @@ export function desktopSettingsSmoke(scratch, workspace) {
       };
       const textbox = (label) => page.getByRole("textbox", { name: label, exact: true });
       const row = (label) => page.locator(".settings-field-row").filter({ has: textbox(label) });
-      const save = async (label, key, value) => {
+      const save = async (label, key, value, expected = value.trim()) => {
         await textbox(label).fill(value);
         await row(label).getByRole("button", { name: "保存", exact: true }).click();
-        await until(
-          (snapshot) => snapshot.library.settings[key] === value.trim(),
-          `Core saves ${key}`,
-        );
+        await until(async () => (await persisted())[key] === expected, `Core saves ${key}`);
       };
       const toggle = async (label, key, value) => {
         const control = page.getByRole("switch", { name: label, exact: true });
         if (((await control.getAttribute("aria-checked")) === "true") !== value)
           await control.click();
         await until(
-          (snapshot) => (snapshot.library.settings[key] !== false) === value,
-          `Core saves ${key}`,
+          async () => ((await persisted())[key] !== false) === value,
+          `Host saves ${key}`,
         );
         await page.waitForFunction(
           ({ label, value }) =>
@@ -150,6 +143,7 @@ export function desktopSettingsSmoke(scratch, workspace) {
         assert.equal(await control.getAttribute("aria-checked"), String(value));
       };
       const general = async () => {
+        await page.locator('[data-testid="areal-workbench"][data-startup-ready="true"]').waitFor();
         await button("设置").click();
         await button("常规").click();
       };
@@ -171,7 +165,14 @@ export function desktopSettingsSmoke(scratch, workspace) {
           await page.locator(".terminal-pane [data-terminal-id]").getAttribute("data-terminal-id"),
         );
       };
-      const closeTerminals = async () => {
+      const selectedThread = async () => {
+        const threadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+        assert.ok(threadId, "selected Thread identity is available");
+        return threadId;
+      };
+      const readThread = (threadId) => readCoreThread({ binary, env, gui, workspace, threadId });
+      const nativeNotices = () => app().evaluate(() => globalThis.__settingsNativeNotices);
+      const closeTerminals = async (label) => {
         if (!(await page.locator(".terminal-pane").isVisible()))
           await page.keyboard.press("Control+Backquote");
         await page.locator(".terminal-pane").waitFor();
@@ -192,7 +193,7 @@ export function desktopSettingsSmoke(scratch, workspace) {
           const project = snapshot.projects.find((project) => project.root === workspace);
           records = await call("manage", {
             projectId: project.id,
-            threadId: Object.keys(project.state.threads)[0],
+            threadId: await selectedThread(),
             operation: "processes",
           });
           return [...terminalIds].every(
@@ -200,25 +201,61 @@ export function desktopSettingsSmoke(scratch, workspace) {
           );
         }, "explicit terminal closes confirm Core process cleanup");
         await writeFile(
-          join(scratch, "desktop-settings-terminal-cleanup.json"),
+          join(scratch, `desktop-settings-terminal-cleanup-${label}.json`),
           JSON.stringify(records, null, 2),
         );
+        terminalIds.clear();
         await button("关闭面板").click();
       };
       const sendCompleted = async (text) => {
-        const turns = (snapshot) =>
-          Object.values(
-            snapshot.projects.find((project) => project.root === workspace)?.state?.threads ?? {},
-          ).flatMap((thread) => thread.turns ?? []);
-        const before = turns(await state()).length;
-        await page.getByTestId("chat-input").fill(text);
-        await button("发送").click();
-        await until(
-          (snapshot) =>
-            turns(snapshot).length > before && turns(snapshot).at(-1)?.status === "completed",
-          "local fixture turn completes",
-        );
-        await notificationConnection.request("snapshot");
+        const workbench = page.getByTestId("areal-workbench");
+        const originalId = await workbench.getAttribute("data-thread-id");
+        const before = originalId ? (await readThread(originalId)).turns.length : 0;
+        await page.evaluate(installHostTransportBarrier);
+        await page.evaluate(() => {
+          globalThis.__settingsWrites = [];
+          globalThis.__settingsWriteMonitor = globalThis.createHostTransportBarrier((frame) => {
+            if (!["session.create", "session.send"].includes(frame.method)) return;
+            const entry = { method: frame.method, commandId: frame.commandId };
+            globalThis.__settingsWrites.push(entry);
+            return {
+              onResponse: ({ error, result }) =>
+                Object.assign(entry, {
+                  errorCode: error?.code,
+                  admissionState: result?.admissionState,
+                  resultErrorCode: result?.error?.code,
+                }),
+            };
+          });
+        });
+        try {
+          await page.getByTestId("chat-input").fill(text);
+          await sendReady(page);
+          await button("发送").click();
+          await page.waitForFunction(
+            () => document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId,
+          );
+          const threadId = await selectedThread();
+          let completed;
+          await until(async () => {
+            const thread = await readThread(threadId);
+            const turn = thread.turns.at(-1);
+            if (thread.turns.length === before + 1 && turn?.status === "completed")
+              completed = turn;
+            return completed;
+          }, "local fixture Turn completes");
+          await page
+            .locator(`[data-turn-id="${completed.id}"][data-turn-status="completed"]`)
+            .waitFor();
+          return completed;
+        } finally {
+          submissions.push(
+            ...(await page.evaluate(() => {
+              globalThis.__settingsWriteMonitor.restore();
+              return globalThis.__settingsWrites;
+            })),
+          );
+        }
       };
       try {
         const kitty = join(scratch, "user-home/.config/kitty");
@@ -228,20 +265,12 @@ export function desktopSettingsSmoke(scratch, workspace) {
         const caPath = tlsFixture.caPath;
         await until((snapshot) => snapshot.connection?.state === "ready", "settings desktop ready");
         const initialDoctor = await doctor("initial");
-        const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-        notificationConnection = new ServiceConnection(undefined, undefined, (notice) =>
-          notices.push(notice),
-        );
-        await notificationConnection.connect(metadata);
-        await notificationConnection.request("hello", {
-          protocol: metadata.protocol,
-          identity: metadata.identity,
-          notifications: true,
-        });
-        await notificationConnection.request("activity", {
-          focused: true,
-          suspended: false,
-          idleSeconds: 0,
+        await app().evaluate(({ Notification }) => {
+          globalThis.__settingsNativeNotices = [];
+          Notification.isSupported = () => true;
+          Notification.prototype.show = function () {
+            globalThis.__settingsNativeNotices.push({ title: this.title, body: this.body });
+          };
         });
         await general();
         const permissionBefore = (await persisted()).permissionNotifications;
@@ -263,36 +292,6 @@ export function desktopSettingsSmoke(scratch, workspace) {
         );
         await toggle("继承系统终端 Profile", "terminalInheritSystemProfile", false);
         await save("终端字体", "terminalFontFamily", "  Courier New  ");
-        await save("HTTP 代理", "httpProxy", "  http://127.0.0.1:9  ");
-        await save("不使用代理的地址", "httpProxyNoProxy", "  localhost,127.0.0.1  ");
-        await save("自定义证书", "httpProxyCaCertPath", `  ${caPath}  `);
-        await textbox("HTTP 代理").fill("file:///invalid-proxy");
-        await row("HTTP 代理").getByRole("button", { name: "保存", exact: true }).click();
-        await row("HTTP 代理")
-          .getByRole("alert")
-          .filter({ hasText: /proxy|代理/i })
-          .waitFor();
-        assert.equal(
-          (await persisted()).httpProxy,
-          "http://127.0.0.1:9",
-          "invalid proxy preserves saved value",
-        );
-        await textbox("HTTP 代理").fill("http://127.0.0.1:9");
-        await textbox("自定义证书").fill(join(scratch, "missing-ca.pem"));
-        await row("自定义证书").getByRole("button", { name: "保存", exact: true }).click();
-        await row("自定义证书")
-          .getByRole("alert")
-          .filter({ hasText: /CA|certificate|证书|ENOENT/i })
-          .waitFor();
-        assert.equal(
-          (await persisted()).httpProxyCaCertPath,
-          caPath,
-          "unreadable CA preserves saved trust setting",
-        );
-        await save("自定义证书", "httpProxyCaCertPath", "");
-        await save("自定义证书", "httpProxyCaCertPath", caPath);
-        await save("HTTP 代理", "httpProxy", "");
-        await save("不使用代理的地址", "httpProxyNoProxy", "");
         await save("终端字体", "terminalFontFamily", "");
         await save("终端字体", "terminalFontFamily", "Courier New");
         await toggle("Chromium 硬件加速", "hardwareAcceleration", false);
@@ -333,33 +332,32 @@ export function desktopSettingsSmoke(scratch, workspace) {
         );
         await capture("desktop-settings-saved");
         await button("返回应用").click();
-        await sendCompleted("验证终端设置");
-        assert.equal(
-          notices.length,
-          0,
-          "disabled master suppresses actual completed-turn notification",
+        const muted = await sendCompleted("验证终端设置");
+        assert.deepEqual(
+          await nativeNotices(),
+          [],
+          "disabled master suppresses completion delivery",
         );
         await general();
         await toggle("任务通知", "taskNotifications", true);
         await button("返回应用").click();
-        await sendCompleted("验证任务通知");
-        assert.equal(
-          notices.length,
-          1,
-          "enabled master routes one actual completed-turn notification",
+        const enabled = await sendCompleted("验证任务通知");
+        await until(
+          async () => (await nativeNotices()).length > 0,
+          "native completion notification",
         );
-        assert.equal(notices[0].kind, "completion");
-        assert.equal(
-          notices[0].projectId,
-          (await state()).projects.find((project) => project.root === workspace).id,
-        );
+        const notices = await nativeNotices();
+        assert.equal(notices.length, 1);
+        assert.equal(notices[0].title, "任务已完成");
         await writeFile(
           join(scratch, "desktop-settings-notifications.json"),
           JSON.stringify(
             {
               notices,
+              mutedTurnId: muted.id,
+              enabledTurnId: enabled.id,
               fixture:
-                "authenticated notification observer with synthetic most-recent-focused activity; OS delivery not exercised",
+                "Electron Notification.show sink; operating-system delivery is outside this source fixture",
             },
             null,
             2,
@@ -414,10 +412,39 @@ export function desktopSettingsSmoke(scratch, workspace) {
         await save("终端字体", "terminalFontFamily", "Courier New");
         await button("返回应用").click();
         const requestsBefore = received.length;
-        await closeTerminals();
+        await closeTerminals("before-restart");
+        await general();
+        await save("HTTP 代理", "httpProxy", "  http://127.0.0.1:9  ");
+        await save(
+          "不使用代理的地址",
+          "httpProxyNoProxy",
+          "  localhost,127.0.0.1  ",
+          "127.0.0.1,localhost",
+        );
+        await save("自定义证书", "httpProxyCaCertPath", `  ${caPath}  `);
+        await textbox("HTTP 代理").fill("file:///invalid-proxy");
+        await row("HTTP 代理").getByRole("button", { name: "保存", exact: true }).click();
+        await row("HTTP 代理").getByRole("alert").waitFor();
+        assert.equal(
+          (await persisted()).httpProxy,
+          "http://127.0.0.1:9",
+          "invalid proxy preserves saved value",
+        );
+        await textbox("HTTP 代理").fill("http://127.0.0.1:9");
+        await textbox("自定义证书").fill(join(scratch, "missing-ca.pem"));
+        await row("自定义证书").getByRole("button", { name: "保存", exact: true }).click();
+        await row("自定义证书").getByRole("alert").waitFor();
+        assert.equal(
+          (await persisted()).httpProxyCaCertPath,
+          caPath,
+          "unreadable CA preserves saved trust setting",
+        );
+        await save("自定义证书", "httpProxyCaCertPath", "");
+        await save("自定义证书", "httpProxyCaCertPath", caPath);
+        await save("HTTP 代理", "httpProxy", "");
+        await save("不使用代理的地址", "httpProxyNoProxy", "");
+        await button("返回应用").click();
         await doctor("before-close");
-        notificationConnection.close();
-        notificationConnection = null;
         await quit();
         await launch();
         page = getPage();
@@ -513,13 +540,17 @@ export function desktopSettingsSmoke(scratch, workspace) {
         );
         await capture("desktop-settings-reopened");
         await button("返回应用").click();
+        const terminalThread = await selectedThread();
+        const projectId = await page.getByTestId("areal-workbench").getAttribute("data-project-id");
+        const activation = await call("connect", { projectId, threadId: terminalThread });
+        assert.equal(activation.state, "ready", "explicitly activate the persisted Thread's Core");
+        assert.ok(activation.serviceGeneration);
+        assert.equal(received.length, requestsBefore, "Core activation does not submit a Turn");
         await button("更改权限").click();
         await page.getByRole("menuitemradio", { name: /^完全访问/ }).click();
-        await until((snapshot) => {
-          const project = snapshot.projects.find((project) => project.root === workspace);
-          return Object.values(project.configurations ?? {}).some(
-            (configuration) => configuration.permissions?.resources === "deployment",
-          );
+        await until(async () => {
+          const thread = await readThread(terminalThread);
+          return thread.desktop?.configuration?.permissions?.resources === "deployment";
         }, "isolated Runtime curl fixture receives supported network permission");
         await page.keyboard.press("Control+Backquote");
         await newTerminal();
@@ -548,18 +579,18 @@ export function desktopSettingsSmoke(scratch, workspace) {
           join(scratch, "desktop-settings-local-tls-requests.json"),
           JSON.stringify(tlsFixture.requests, null, 2),
         );
-        await closeTerminals();
+        await closeTerminals("after-restart");
         checks.push(
           "desktop settings: UI/Core save, trim/clear, invalid proxy/CA preserve saved state, actual completion notification routing enabled/disabled, preserved suboptions, rendered terminal custom/inherited/fallback font, GPU next-launch effect, cold persistence, Chromium TLS policy, Runtime curl custom CA, no replay",
         );
       } finally {
-        notificationConnection?.close();
         await tlsFixture?.close();
         await writeFile(
           join(scratch, "desktop-settings-events.json"),
           JSON.stringify(
             {
               events,
+              submissions,
               limits: [
                 "isolated source macOS Electron/Core",
                 "synthetic local model only",

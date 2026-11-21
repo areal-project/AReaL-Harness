@@ -68,6 +68,130 @@ fn service(host: &Host, endpoint: String) -> Service {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn owner_task_invalidations_advance_the_shared_shell_revision() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let host = Rc::new(super::super::schedules::tests::fixture(root.path()));
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let service = service(&host, format!("ws://{}/", listener.local_addr().unwrap()));
+            let core = tokio::task::spawn_local(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut socket = tokio_tungstenite::accept_hdr_async(stream, ScheduleHeaders)
+                    .await
+                    .unwrap();
+                let initialize = receive(&mut socket).await;
+                send(&mut socket, json!({"id":initialize["id"],"result":{}})).await;
+                std::future::pending::<()>().await;
+            });
+            let session = connect(host.clone(), "project", service).await.unwrap();
+            session.ready.set(true);
+            let connections = &host.schedules.connections;
+            connections
+                .sessions
+                .borrow_mut()
+                .insert("project".into(), session.clone());
+            let invalidation = |tasks: Value| {
+                json!({"method":"areal/owner/invalidated",
+            "params":{"generation":"directory","sequence":1,"changedTasks":tasks,
+                      "changedThreads":["thread"],"facts":[]}})
+            };
+            let changes = host.changes.subscribe();
+            let task_revision = connections.task_revision(&host, "project").unwrap();
+            let shell_revision = connections.shell_revision(&host, "project").unwrap();
+            publish_event(&host, &session, invalidation(json!([])));
+            assert_eq!(
+                connections.task_revision(&host, "project").unwrap(),
+                task_revision
+            );
+            assert!(!changes.has_changed().unwrap());
+            publish_event(&host, &session, invalidation(json!(["task"])));
+            assert_ne!(
+                connections.task_revision(&host, "project").unwrap(),
+                task_revision
+            );
+            assert_ne!(
+                connections.shell_revision(&host, "project").unwrap(),
+                shell_revision
+            );
+            assert!(changes.has_changed().unwrap());
+            core.abort();
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn status_deadline_does_not_revoke_current_core_connection() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let host = Rc::new(super::super::schedules::tests::fixture(root.path()));
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let service = service(&host, format!("ws://{}/", listener.local_addr().unwrap()));
+            let registration = host.slots.borrow()["project"].registration.clone();
+            let directory =
+                storage::registry(&host.home, &Host::service_id(&registration)).unwrap();
+            storage::private_dir(&directory).unwrap();
+            let startup = storage::open_private(&directory.join("start.lock"), true).unwrap();
+            fs2::FileExt::try_lock_exclusive(&startup).unwrap();
+            let (writer, lifetime) = areal_local_service::OwnerLifetime::pair().unwrap();
+            {
+                let mut slots = host.slots.borrow_mut();
+                let slot = slots.get_mut("project").unwrap();
+                slot.writer = Some(writer);
+                slot.lifetime = Some(Rc::new(lifetime));
+            }
+            let (finished, finish) = oneshot::channel();
+            let server = tokio::task::spawn_local(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut socket = tokio_tungstenite::accept_hdr_async(stream, ScheduleHeaders)
+                    .await
+                    .unwrap();
+                let initialize = receive(&mut socket).await;
+                send(&mut socket, json!({"id":initialize["id"],"result":{}})).await;
+                let page = receive(&mut socket).await;
+                assert_eq!(page["method"], "areal/conversation/history");
+                send(
+                    &mut socket,
+                    json!({"id":page["id"],"result":{"complete":true}}),
+                )
+                .await;
+                let _ = finish.await;
+            });
+            let connections = &host.schedules.connections;
+            let close = connections
+                .connect_test_core(host.clone(), "project", service)
+                .await
+                .unwrap();
+            let original = connections.shared_identity(&host, "project").unwrap();
+            let status = host.project_status("project").await;
+            assert_eq!(status.state, "ready");
+            assert_eq!(
+                connections.shared_identity(&host, "project").unwrap(),
+                original
+            );
+            assert_eq!(
+                connections
+                    .remote_request(
+                        &host,
+                        "project",
+                        (&original.0, &original.1, &original.2),
+                        "areal/conversation/history",
+                        json!({})
+                    )
+                    .await
+                    .unwrap()["complete"],
+                true
+            );
+            close();
+            assert_eq!(host.project_status("project").await.state, "unavailable");
+            finished.send(()).unwrap();
+            server.await.unwrap();
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn turn_completed_wakes_original_lifecycle_receipt_without_redispatch() {
     lifecycle_completion(false, false).await;
 }
@@ -565,7 +689,9 @@ async fn repeated_ready_activation_preserves_original_workbench_connection() {
                 "project",
                 &service.identity.config_fingerprint,
                 Some(&service),
+                true,
             );
+            assert!(!host.slots.borrow()["project"].uncertain_start);
             changed.changed().await.unwrap();
             assert_eq!(
                 host.schedules
@@ -582,7 +708,46 @@ async fn repeated_ready_activation_preserves_original_workbench_connection() {
                 .await
                 .unwrap();
             assert_eq!(result["result"]["acceptingWork"], true);
-            host.begin_project_activation("project", "changed-fingerprint", Some(&service));
+            host.begin_project_activation(
+                "project",
+                &service.identity.config_fingerprint,
+                Some(&service),
+                false,
+            );
+            assert!(
+                host.slots.borrow()["project"].uncertain_start,
+                "unmanaged model activation can restart and must retain the uncertainty fence"
+            );
+            assert!(
+                host.schedules
+                    .connections
+                    .shared_identity(&host, "project")
+                    .is_err()
+            );
+            host.begin_project_activation(
+                "project",
+                &service.identity.config_fingerprint,
+                Some(&service),
+                true,
+            );
+            assert!(
+                host.slots.borrow()["project"].uncertain_start,
+                "managed reuse must not clear an existing uncertain activation"
+            );
+            assert!(
+                host.schedules
+                    .connections
+                    .shared_identity(&host, "project")
+                    .is_err()
+            );
+            {
+                let mut slots = host.slots.borrow_mut();
+                let slot = slots.get_mut("project").unwrap();
+                slot.uncertain_start = false;
+                slot.state = "ready".into();
+            }
+            host.begin_project_activation("project", "changed-fingerprint", Some(&service), true);
+            assert!(host.slots.borrow()["project"].uncertain_start);
             assert!(
                 host.schedules
                     .connections
@@ -880,7 +1045,14 @@ async fn refresh_records_drain_and_original_maintenance_stop_before_activation()
             let session = connect(host.clone(), "project", service.clone())
                 .await
                 .unwrap();
+            let mut candidate = inputs.clone();
+            candidate.environment.insert("AREAL_HARNESS_TOOL_EXTENSIONS".into(), host.home.join("immutable-hooks.json").to_string_lossy().into_owned());
+            candidate.options.history_only = true;
+            *session.refresh_inputs.borrow_mut() = Some(candidate.clone());
             let mut refresh = capture_refresh(&host, &session).await.unwrap();
+            assert_eq!(serde_json::to_value(&refresh.inputs).unwrap(), serde_json::to_value(&candidate).unwrap());
+            let saved: LaunchInputs = storage::read(&path.parent().unwrap().join("inputs.json")).unwrap();
+            assert_eq!(serde_json::to_value(saved).unwrap(), serde_json::to_value(&inputs).unwrap(), "candidate cannot overwrite running generation launch inputs before the journaled restart");
             assert!(refresh.drained);
             session.close();
             server.await.unwrap();

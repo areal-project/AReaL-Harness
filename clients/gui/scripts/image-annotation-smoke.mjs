@@ -4,13 +4,25 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applicationFixture } from "./application-fixture.mjs";
-import { assertApplicationStopped } from "./application-cleanup.mjs";
+import {
+  assertApplicationStopped,
+  closeSmokeApplication,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
+} from "./application-cleanup.mjs";
+import { readCoreThread, withCore } from "./support/core-observation.mjs";
+import { openProjectInDesktop } from "./support/journey-fixture.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
-import { captureSmokeFailure, selectConversation } from "./smoke-navigation.mjs";
+import {
+  captureSmokeFailure,
+  createProjectConversation,
+  selectConversation,
+  selectCreatedConversation,
+} from "./smoke-navigation.mjs";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -25,13 +37,17 @@ assert.equal(
 );
 const scratch = await makeTempDir("areal-image-annotations-");
 const evidence = join(root, ".scratch/image-annotations", `run-${Date.now()}`);
-const workspace = join(scratch, "workspace");
+const workspace = join(scratch, "demo");
 await mkdir(evidence, { recursive: true });
 await mkdir(workspace);
 await mkdir(join(scratch, "user/.areal"), { recursive: true });
 execFileSync("git", ["init", "-b", "main"], { cwd: workspace, stdio: "ignore" });
-const env = {
-  ...process.env,
+const env = { ...process.env };
+for (const key of Object.keys(env))
+  if (/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) || key === "ELECTRON_RUN_AS_NODE") delete env[key];
+Object.assign(env, {
+  HOME: join(scratch, "user"),
+  AREAL_HARNESS_HOME: join(scratch, "registry"),
   AREAL_CORE_BIN: binary,
   AREAL_CORE_HOME: join(scratch, "core"),
   AREAL_CORE_USER_HOME: join(scratch, "user"),
@@ -39,9 +55,9 @@ const env = {
   AREAL_CORE_DESKTOP_CONFIG: join(scratch, "desktop.json"),
   AREAL_HARNESS_SERVICE_HOME: join(scratch, "registry"),
   AREAL_GUI_USER_DATA: join(scratch, "electron"),
-};
-for (const key of ["AREAL_CORE_WORKSPACE", "AREAL_HARNESS_HOME", "AREAL_HARNESS_CONFIG"])
-  delete env[key];
+  NO_PROXY: "127.0.0.1,localhost",
+  no_proxy: "127.0.0.1,localhost",
+});
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const alive = (pid) => {
   try {
@@ -139,8 +155,53 @@ let app,
   passed = false;
 const button = (name) => page.getByRole("button", { name, exact: true });
 const state = () => page.evaluate(() => window.arealDesktop.snapshot());
-const project = (snapshot) =>
-  snapshot.projects.find((entry) => entry.root === workspace && !entry.projectless);
+const coreObservation = { binary, env, gui, workspace };
+const thread = (threadId) => readCoreThread({ ...coreObservation, threadId });
+const upload = { armed: false, attempts: 0 };
+let originalHost;
+function routeUploadFault(socket) {
+  const remote = socket.connectToServer();
+  socket.onMessage((message) => {
+    const frame = JSON.parse(message.toString());
+    if (upload.armed && frame.method === "attachment.upload") {
+      upload.attempts++;
+      if (!upload.requestId) {
+        assert.ok(frame.id !== undefined, "only the original upload receives the rejection");
+        upload.requestId = frame.id;
+        upload.reject = () => {
+          socket.send(
+            JSON.stringify({
+              version: 1,
+              id: frame.id,
+              error: { code: "COMMAND_FAILED", message: "IMAGE_UPLOAD_REJECTED" },
+            }),
+          );
+          upload.reject = undefined;
+        };
+        return;
+      }
+    }
+    remote.send(message);
+  });
+}
+async function threadIdentities() {
+  const root = env.AREAL_CORE_HOME;
+  const projects = (await readdir(root, { withFileTypes: true })).filter((entry) =>
+    entry.isDirectory(),
+  );
+  const inventory = await Promise.all(
+    projects.map(async ({ name }) => {
+      const files = await readdir(join(root, name, "state")).catch((error) => {
+        if (error.code === "ENOENT") return [];
+        throw error;
+      });
+      return files
+        .filter((file) => /^[a-f0-9-]{36}\.json$/i.test(file))
+        .map((file) => `${name}:${file}`);
+    }),
+  );
+  return inventory.flat().sort();
+}
 const currentId = () => page.getByTestId("areal-workbench").getAttribute("data-thread-id");
 const region = () => page.getByRole("region", { name: "图片标注", exact: true });
 const editor = () => region().getByRole("dialog", { name: "编辑当前标注", exact: true });
@@ -334,8 +395,17 @@ async function launch() {
   page = await app.firstWindow();
   page.setDefaultTimeout(15000);
   page.on("pageerror", (error) => errors.push(error.stack));
-  await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
-  await until(async () => (await state()).connection?.state === "ready", "isolated service ready");
+  const ready = page.locator('[data-testid="areal-workbench"][data-startup-ready="true"]');
+  await ready.waitFor({ timeout: 120000 });
+  originalHost = await until(() => readFixtureHost(env), "original isolated Host");
+  await page.routeWebSocket(/\/host\/socket$/, routeUploadFault);
+  await page.evaluate(() => {
+    const key = "areal-gui:application-preferences";
+    const preferences = JSON.parse(localStorage.getItem(key) ?? "{}");
+    localStorage.setItem(key, JSON.stringify({ ...preferences, nextPromptSuggestions: false }));
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await ready.waitFor();
   await app.evaluate(({ app, BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0];
     window.setSize(1440, 1000);
@@ -369,34 +439,31 @@ async function launch() {
 }
 async function close() {
   if (!app) return;
-  const owned = app;
-  const mainPid = owned.process().pid;
-  app = undefined;
-  const metadata = await readFile(join(env.AREAL_CORE_HOME, "service.json"), "utf8")
-    .then(JSON.parse)
-    .catch((error) => {
-      if (error.code === "ENOENT") return null;
-      throw error;
-    });
+  const child = app.process();
+  const host = originalHost ?? (await readFixtureHost(env));
+  upload.reject?.();
   for (const response of live)
     if (!response.writableEnded && !response.destroyed) response.end(event("", true));
-  await withSmokeDeadline(
-    "release owned upload gate and prepare quit",
-    () =>
-      owned.evaluate(({ dialog }) => {
-        globalThis.__imageAnnotationUploadGate?.release?.();
-        globalThis.__imageAnnotationUploadGate?.restore?.();
-        dialog.showMessageBox = async () => ({ response: 1 });
-      }),
-    5000,
-  ).catch(() => {});
-  await withSmokeDeadline("owned Electron close", () => owned.close(), 30000);
-  await assertApplicationStopped(binary, env, metadata);
-  assert.equal(alive(mainPid), false, "The prior owned GUI Main must exit before relaunch");
+  await app.evaluate(({ dialog }, failed) => {
+    dialog.showMessageBox = async (...args) => {
+      const options = args.at(-1);
+      return { response: failed && ["question", "warning"].includes(options.type) ? 1 : 0 };
+    };
+  }, errors.length > 0);
+  await closeSmokeApplication(app, 60_000);
+  app = undefined;
+  originalHost = undefined;
+  const directory = join(evidence, `quit-${child.pid}`);
+  await mkdir(directory);
+  const receipt = await settleFixtureHostAfterQuit(binary, env, directory, {
+    host,
+    pid: child.pid,
+  });
   facts.shutdowns ??= [];
   facts.shutdowns.push({
-    mainPid,
-    adapterPid: metadata?.pid ?? null,
+    mainPid: child.pid,
+    hostPid: host?.pid,
+    stopRequestId: receipt?.requestId,
     guiExited: true,
     serviceExited: true,
   });
@@ -416,21 +483,19 @@ try {
     () => page.evaluate(() => !document.documentElement.classList.contains("dark")),
     "light theme applied",
   );
-  await app.evaluate(({ dialog }, path) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
-  }, workspace);
-  await button("不在项目中工作").click();
-  await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
-  await until(async () => project(await state())?.state?.connected, "workspace connected");
+  await openProjectInDesktop(app, page, workspace);
+  await input().waitFor({ timeout: 60_000 });
+  const projectId = await page.getByTestId("areal-workbench").getAttribute("data-project-id");
+  assert.ok(projectId);
+  await page.getByTestId("composer-model-trigger").click();
+  await page.getByRole("radio", { name: "fixture", exact: true }).click();
   await input().fill("IMAGE_OTHER_THREAD");
   await button("发送").click();
   const otherId = await until(async () => {
     const id = await currentId();
-    return (
-      id && project(await state()).state.threads[id]?.turns?.at(-1)?.status === "completed" && id
-    );
+    return id && (await thread(id)).turns.at(-1)?.status === "completed" && id;
   }, "other conversation completed");
-  await button("新聊天").click();
+  await createProjectConversation(page, "demo");
   await input().fill("IMAGE_ORIGINAL_DRAFT");
   const imageBytes = Buffer.from(
     await page.evaluate(() => {
@@ -592,51 +657,19 @@ try {
   await confirm("IMAGE_NOTE_DUPLICATE");
   await finish();
   await capture("03-composer-confirmed");
-  await app.evaluate(
-    (_, modulePath) => {
-      const req = process.getBuiltinModule("module").createRequire(modulePath);
-      const { ServiceConnection } = req(modulePath);
-      const original = ServiceConnection.prototype.request;
-      const gate = (globalThis.__imageAnnotationUploadGate = {
-        attempts: 0,
-        entered: false,
-        restore: () => {
-          ServiceConnection.prototype.request = original;
-        },
-      });
-      ServiceConnection.prototype.request = function (method, params, ...rest) {
-        if (
-          method === "command" &&
-          params?.name === "media" &&
-          params?.request?.operation === "upload"
-        ) {
-          gate.attempts++;
-          if (!gate.entered) {
-            gate.entered = true;
-            return new Promise((_, reject) => {
-              gate.release = () => reject(new Error("IMAGE_UPLOAD_REJECTED"));
-            });
-          }
-        }
-        return original.call(this, method, params, ...rest);
-      };
-    },
-    join(gui, "app/src/core/service-client.cjs"),
-  );
+  upload.armed = true;
   await page.getByTestId("chat-send-button").click();
-  await until(
-    () => app.evaluate(() => globalThis.__imageAnnotationUploadGate.entered),
-    "media upload gate entered",
-  );
-  await app.evaluate(() => globalThis.__imageAnnotationUploadGate.release());
-  await page.getByRole("alert").filter({ hasText: "IMAGE_UPLOAD_REJECTED" }).waitFor();
+  await until(() => upload.reject, "original native upload caught before dispatch");
+  upload.reject();
+  await page.getByRole("alert").filter({ hasText: "操作没有完成" }).waitFor();
+  facts.rejectedUploadId = upload.requestId;
   const threadId = await currentId();
   assert.ok(threadId, "First-send failure keeps the accepted new conversation");
   assert.equal(requests.length, baseline, "Rejected media upload never enters the model");
   assert.equal(await input().textContent(), "IMAGE_ORIGINAL_DRAFT");
   assert.equal(await page.getByTestId("composer-attachment").count(), 2);
   await selectConversation(page, otherId);
-  await selectConversation(page, threadId);
+  await selectCreatedConversation(page, projectId, threadId);
   await openImage();
   assert.equal(
     await region()
@@ -646,7 +679,7 @@ try {
   );
   await finish();
   assert.equal(
-    await app.evaluate(() => globalThis.__imageAnnotationUploadGate.attempts),
+    upload.attempts,
     1,
     "Navigation and reopening never retry a rejected upload automatically",
   );
@@ -655,8 +688,9 @@ try {
     "New-draft handoff and upload refusal retain the exact body, attachments and annotation identities for explicit retry",
   );
   await page.getByTestId("chat-send-button").click();
+  upload.armed = false;
   const history = await until(async () => {
-    const value = project(await state()).state.threads[threadId];
+    const value = await thread(threadId);
     return (
       requests.length === baseline + 1 && value?.turns?.at(-1)?.status === "completed" && value
     );
@@ -725,11 +759,12 @@ try {
   await button("关闭图片预览").click();
   await close();
   await launch();
+  await createProjectConversation(page, "demo");
   await selectConversation(page, threadId);
   await sentImage(0, expected[0].points);
   await capture("05-reopened-history");
   await button("关闭图片预览").click();
-  const reopened = project(await state()).state.threads[threadId];
+  const reopened = await thread(threadId);
   await json("history-after.json", reopened);
   assert.deepEqual(
     reopened.turns,
@@ -748,7 +783,10 @@ try {
   await input().fill("IMAGE_QUEUE_HOLD");
   await page.getByTestId("chat-send-button").click();
   await until(() => live.size === 1, "held active turn for queue editing");
-  const queue = async () => project(await state()).state.queues[otherId];
+  const queue = () =>
+    withCore(coreObservation, (client) =>
+      client.request("areal/queue/list", { threadId: otherId }),
+    );
   const retainedFile = join(scratch, "retained.png");
   await writeFile(retainedFile, imageBytes);
   await input().fill("IMAGE_QUEUE_MESSAGE");
@@ -834,7 +872,7 @@ try {
   for (const response of live) response.end(event("", true));
   await until(
     async () =>
-      project(await state()).state.threads[otherId].turns.at(-1)?.status === "completed" &&
+      (await thread(otherId)).turns.at(-1)?.status === "completed" &&
       (await queue()).items.every((item) => item.status !== "pending" && item.status !== "running"),
     "edited queued message executes",
   );
@@ -852,13 +890,9 @@ try {
     "Queue editing preserves retained image metadata, reindexes after removal, offsets new annotated media and sends the edited payload through Core",
   );
   await button("新聊天").click();
-  await button("在 workspace 中开始新聊天").click();
+  await button("在 demo 中开始新聊天").click();
   await page.getByRole("menuitem", { name: "不在项目中工作", exact: true }).click();
-  const beforeProjectless = await state();
-  const threadIdentities = (snapshot) =>
-    snapshot.projects
-      .flatMap((owner) => Object.keys(owner.state?.threads ?? {}).map((id) => `${owner.id}:${id}`))
-      .sort();
+  const beforeProjectless = await threadIdentities();
   const projectlessRequestCount = requests.length;
   await input().fill("IMAGE_PROJECTLESS_DRAFT");
   await page.locator("input[type=file]").setInputFiles(fixtures[0]);
@@ -869,27 +903,26 @@ try {
   assert.equal(requests.length, projectlessRequestCount, "Projectless Done never sends");
   assert.ok(!(await currentId()), "Projectless annotation remains a draft without a Core thread");
   assert.deepEqual(
-    threadIdentities(await state()),
-    threadIdentities(beforeProjectless),
+    await threadIdentities(),
+    beforeProjectless,
     "Projectless annotation does not create a hidden thread before Send",
   );
   assert.equal(await input().textContent(), "IMAGE_PROJECTLESS_DRAFT");
   await page.getByTestId("chat-send-button").click();
   const projectless = await until(async () => {
-    const snapshot = await state();
     const id = await currentId();
-    const owner = snapshot.projects.find(
-      (entry) =>
-        entry.projectless && entry.state?.threads[id]?.turns?.at(-1)?.status === "completed",
+    const projectId = await page.getByTestId("areal-workbench").getAttribute("data-project-id");
+    if (!id || !projectId || requests.length !== projectlessRequestCount + 1) return null;
+    const owner = (await state()).projects.find(
+      (entry) => entry.projectless && entry.id === projectId,
     );
-    return (
-      owner &&
-      requests.length === projectlessRequestCount + 1 && {
-        owner,
-        id,
-        thread: owner.state.threads[id],
-      }
-    );
+    if (!owner) return null;
+    const thread = await readCoreThread({
+      ...coreObservation,
+      workspace: owner.root,
+      threadId: id,
+    });
+    return thread.turns.at(-1)?.status === "completed" && { owner, id, thread };
   }, "projectless first send persists an annotated Core thread");
   const projectlessUser = projectless.thread.turns
     .at(-1)
@@ -944,9 +977,6 @@ try {
 } finally {
   for (const response of live)
     if (!response.writableEnded && !response.destroyed) response.end(event("", true));
-  const metadata = await readFile(join(env.AREAL_CORE_HOME, "service.json"), "utf8")
-    .then(JSON.parse)
-    .catch(() => null);
   await close().catch((error) => {
     errors.push(`Electron cleanup: ${error.message}`);
     passed = false;
@@ -960,7 +990,7 @@ try {
     passed = false;
   });
   try {
-    await assertApplicationStopped(binary, env, metadata);
+    await assertApplicationStopped(binary, env, { hostPid: originalHost?.pid });
     await until(
       () => (facts.launches ?? []).every((identity) => !alive(identity.pid)),
       "owned GUI Main processes exit",
@@ -1013,8 +1043,7 @@ try {
     ),
     binary,
     coreSHA256: coreHash,
-    runtime:
-      "source Electron/Main + shared service + real Core/Runtime + deterministic local model",
+    runtime: "source Electron/Main + Rust Host + real Core/Runtime + deterministic local model",
     boundaries:
       "Native project picker fixture, actual file input, synthetic composing Enter; no real provider, OS IME candidate UI or packaged acceptance",
   });

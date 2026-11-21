@@ -67,7 +67,7 @@ impl MediaReference {
     }
 }
 
-fn digest(uri: &str) -> Result<&str> {
+pub(super) fn digest(uri: &str) -> Result<&str> {
     let digest = uri
         .strip_prefix("areal://blob/")
         .context("RESOURCE_UNAVAILABLE")?;
@@ -632,6 +632,16 @@ pub(crate) async fn read_blob(
     uri: &str,
     guard: impl Fn() -> Result<()>,
 ) -> Result<Value> {
+    let (bytes, mime) = read_blob_bytes(service, thread, uri, guard).await?;
+    Ok(json!({"base64":STANDARD.encode(bytes),"mime":mime}))
+}
+
+pub(super) async fn read_blob_bytes(
+    service: &Service,
+    thread: &str,
+    uri: &str,
+    guard: impl Fn() -> Result<()>,
+) -> Result<(Vec<u8>, String)> {
     guard()?;
     let (url, token) = core_blob_url(service, &format!("/areal/blobs/{}", digest(uri)?), thread)?;
     read_blob_from(url, token, uri, guard).await
@@ -641,7 +651,7 @@ async fn read_blob_from(
     token: String,
     uri: &str,
     guard: impl Fn() -> Result<()>,
-) -> Result<Value> {
+) -> Result<(Vec<u8>, String)> {
     let mut response = core_client()?.get(url).bearer_auth(token).send().await?;
     ensure!(response.status().is_success(), "RESOURCE_UNAVAILABLE");
     ensure!(
@@ -667,7 +677,7 @@ async fn read_blob_from(
         "RESOURCE_UNAVAILABLE"
     );
     guard()?;
-    Ok(json!({"base64":STANDARD.encode(bytes),"mime":mime}))
+    Ok((bytes, mime))
 }
 
 fn remote_blob_url(endpoint: &str, thread: &str, path: &str) -> Result<url::Url> {
@@ -696,7 +706,8 @@ pub(crate) async fn remote_blob(
     if params["operation"] == "read" {
         let uri = params["uri"].as_str().context("INVALID_PARAMS")?;
         let url = remote_blob_url(endpoint, thread, &format!("/{}", digest(uri)?))?;
-        return read_blob_from(url, token.into(), uri, guard).await;
+        let (bytes, mime) = read_blob_from(url, token.into(), uri, guard).await?;
+        return Ok(json!({"base64":STANDARD.encode(bytes),"mime":mime}));
     }
     ensure!(
         params["operation"] == "upload"

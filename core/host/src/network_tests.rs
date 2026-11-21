@@ -98,6 +98,42 @@ fn configured_ca_requires_regular_bounded_self_signed_authority_and_valid_signat
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("ca.pem");
     let original = authority(root.path());
+    let native = rustls_native_certs::load_native_certs();
+    assert!(!native.certs.is_empty());
+    let environment = launch_environment(
+        NetworkInput {
+            extra_ca_pem: vec![original.clone()],
+            ..Default::default()
+        },
+        &root.path().join("launch"),
+    )
+    .unwrap();
+    let bytes = std::fs::read(&environment["SSL_CERT_FILE"]).unwrap();
+    let mut remaining = bytes.as_slice();
+    let mut retained = BTreeSet::new();
+    while let Some(start) = remaining
+        .windows(27)
+        .position(|part| part == b"-----BEGIN CERTIFICATE-----")
+    {
+        let (rest, pem) = x509_parser::pem::parse_x509_pem(&remaining[start..]).unwrap();
+        retained.insert(pem.contents);
+        remaining = rest;
+    }
+    assert!(
+        native
+            .certs
+            .iter()
+            .all(|cert| retained.contains(cert.as_ref())),
+        "additional CA must retain original native roots"
+    );
+    let (_, extra) = x509_parser::pem::parse_x509_pem(original.as_bytes()).unwrap();
+    assert!(retained.contains(&extra.contents));
+    assert!(
+        environment
+            .keys()
+            .all(|name| crate::launch::allowed_environment(name))
+    );
+
     std::fs::write(&path, &original).unwrap();
     assert!(
         ca_bundle(&path, true)
@@ -290,4 +326,26 @@ async fn no_proxy_mode_clears_inherited_proxy_before_launching_a_model() {
     assert_eq!(proxy_for_url(&url, &environment), None);
     assert!(!environment.contains_key("http_proxy"));
     assert_eq!(environment[areal_config::proxy::MANAGED_PROXY], "1");
+}
+
+#[tokio::test]
+async fn prepared_network_environment_is_stable_when_applied_at_activation() {
+    let directory = tempfile::tempdir().unwrap();
+    for proxy in ["direct", "http://configured.invalid:8080"] {
+        let inherited = BTreeMap::from([
+            ("HTTP_PROXY".into(), "http://inherited.invalid:80".into()),
+            ("http_proxy".into(), "http://inherited.invalid:80".into()),
+        ]);
+        let input = desktop(&serde_json::json!({"httpProxy":proxy}), &inherited)
+            .await
+            .unwrap();
+        let prepared = launch_environment(input.clone(), directory.path()).unwrap();
+        let mut activated = prepared.clone();
+        apply_model_proxy(input, &mut activated);
+        assert_eq!(
+            prepared, activated,
+            "activation must not change prepared network identity"
+        );
+        assert_eq!(prepared[areal_config::proxy::MANAGED_PROXY], "1");
+    }
 }

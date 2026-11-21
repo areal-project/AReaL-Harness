@@ -358,10 +358,7 @@ export function PluginCenter({
   const readinessReason = (value: PluginReadiness) =>
     t("settings.pluginCenter.requiredHostToolsUnavailable", {
       tools: value.missingTools.join(", "),
-    }) +
-    (value.missingTools.includes("computer_v1")
-      ? ` ${t("settings.pluginCenter.enableNativeComputerProvider")}`
-      : "");
+    });
   useEffect(() => {
     setPreview((current) => (current?.id === selected ? current : null));
     setInstallReview(false);

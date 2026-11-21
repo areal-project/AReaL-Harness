@@ -1,9 +1,10 @@
 use super::*;
 use crate::server::conversation_media;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::Deserialize;
 use std::collections::{HashMap, VecDeque};
 
-pub(super) const METHODS: &[&str] = &["attachment.upload"];
+pub(super) const METHODS: &[&str] = &["attachment.upload", "attachment.read"];
 
 /// 单块原始字节上限；base64 后仍远小于 1 MiB 的帧上限。
 pub(crate) const CHUNK_BYTES: usize = 256 * 1024;
@@ -24,6 +25,24 @@ struct Upload {
     bytes: Vec<u8>,
 }
 
+pub(super) struct Download {
+    project: String,
+    generation: String,
+    thread_id: String,
+    uri: String,
+    bytes: Vec<u8>,
+    mime: String,
+    expires: Instant,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DownloadChunk {
+    thread_id: String,
+    uri: String,
+    offset: usize,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Chunk {
@@ -36,6 +55,122 @@ struct Chunk {
 }
 
 impl Session {
+    pub(super) async fn read_attachment(
+        &mut self,
+        project: &str,
+        request: &Value,
+    ) -> Result<Value> {
+        let context = &request["context"];
+        ensure!(self.local && self.gui_write, "FORBIDDEN");
+        ensure!(
+            request.get("commandId").is_none()
+                && exact(
+                    context,
+                    &[
+                        "projectId",
+                        "gatewayGeneration",
+                        "grantRevision",
+                        "serviceGeneration"
+                    ]
+                ),
+            "INVALID_PARAMS"
+        );
+        let chunk: DownloadChunk =
+            serde_json::from_value(request["params"].clone()).context("INVALID_PARAMS")?;
+        ensure!(
+            !chunk.thread_id.is_empty()
+                && chunk.thread_id.len() <= 128
+                && chunk.offset < conversation_media::MAX_BYTES
+                && chunk.offset % CHUNK_BYTES == 0,
+            "INVALID_PARAMS"
+        );
+        conversation_media::digest(&chunk.uri)?;
+        let generation = text(context, "serviceGeneration")?;
+        let (id, current) = self.project(project)?;
+        let guard = || -> Result<()> {
+            self.authorize(Some(project), "manage")?;
+            ensure!(
+                context["gatewayGeneration"] == self.generation
+                    && context["grantRevision"] == self.grant["revision"]
+                    && current == generation
+                    && self.project(project)? == (id.clone(), current.clone()),
+                "RESYNC_REQUIRED"
+            );
+            Ok(())
+        };
+        guard()?;
+        if chunk.offset == 0 {
+            let (bytes, mime) = if crate::server::cloud_sessions::CloudSessions::is_virtual(&id) {
+                let scope = self
+                    .host
+                    .gateway
+                    .workbench
+                    .cloud
+                    .sessions
+                    .scope(&self.host, &id)?;
+                let result = self
+                    .host
+                    .schedules
+                    .connections
+                    .workbench_blob(
+                        &self.host,
+                        &id,
+                        &scope.lease,
+                        &json!({"operation":"read","threadId":chunk.thread_id,"uri":chunk.uri}),
+                    )
+                    .await?;
+                (
+                    STANDARD.decode(result["base64"].as_str().context("INVALID_RESPONSE")?)?,
+                    text(&result, "mime")?.to_owned(),
+                )
+            } else {
+                let service = self
+                    .host
+                    .slots
+                    .borrow()
+                    .get(&id)
+                    .and_then(|slot| slot.service.clone())
+                    .context("CORE_UNAVAILABLE")?;
+                conversation_media::read_blob_bytes(&service, &chunk.thread_id, &chunk.uri, &guard)
+                    .await?
+            };
+            guard()?;
+            self.download = Some(Box::new(Download {
+                project: id.clone(),
+                generation: generation.into(),
+                thread_id: chunk.thread_id.clone(),
+                uri: chunk.uri.clone(),
+                bytes,
+                mime,
+                expires: Instant::now() + Duration::from_secs(30),
+            }));
+        }
+        let download = self
+            .download
+            .as_ref()
+            .filter(|download| {
+                download.project == id
+                    && download.generation == generation
+                    && download.thread_id == chunk.thread_id
+                    && download.uri == chunk.uri
+                    && download.expires > Instant::now()
+            })
+            .context("RESOURCE_UNAVAILABLE")?;
+        let total = download.bytes.len();
+        ensure!(
+            chunk.offset < total || (total == 0 && chunk.offset == 0),
+            "RESOURCE_UNAVAILABLE"
+        );
+        let end = (chunk.offset + CHUNK_BYTES).min(total);
+        let result = json!({"projectId":context["projectId"],"serviceGeneration":generation,"threadId":chunk.thread_id,
+            "uri":chunk.uri,"mimeType":download.mime,"offset":chunk.offset,"totalBytes":total,
+            "nextOffset":(end < total).then_some(end),"base64":STANDARD.encode(&download.bytes[chunk.offset..end])});
+        if end == total {
+            self.download = None;
+        }
+        Ok(result)
+    }
+
     /// 附件按 uploadId 分块送进 Host，收齐后由 Host 交给 Core；
     /// 末块重发返回同一份回执，Core 按内容去重，所以重试不会多存一份。
     pub(super) async fn upload_attachment(
@@ -140,28 +275,43 @@ impl Session {
         // 未知结果保留缓冲供原末块核对；明确拒收则释放容量。
         let body = upload.bytes.clone();
         let (id, _) = self.project(project)?;
-        let service = self
-            .host
-            .slots
-            .borrow()
-            .get(&id)
-            .and_then(|slot| slot.service.clone())
-            .context("CORE_UNAVAILABLE")?;
-        let media =
-            match conversation_media::upload(&service, &chunk.thread_id, &chunk.mime_type, body)
-                .await
-            {
-                Ok(media) => media,
-                Err(error) => {
-                    if matches!(
-                        error.to_string().as_str(),
-                        "ATTACHMENT_UNSUPPORTED" | "LIMIT_EXCEEDED"
-                    ) {
-                        self.uploads.active.remove(&upload_id);
-                    }
-                    return Err(error);
-                }
+        let uploaded =
+            if crate::server::cloud_sessions::CloudSessions::is_virtual(&id) {
+                use base64::Engine;
+                let scope = self
+                    .host
+                    .gateway
+                    .workbench
+                    .cloud
+                    .sessions
+                    .scope(&self.host, &id)?;
+                self.host.schedules.connections.workbench_blob(&self.host, &id, &scope.lease,
+                &json!({"operation":"upload","threadId":chunk.thread_id,"mime":chunk.mime_type,
+                    "base64":base64::engine::general_purpose::STANDARD.encode(body)})).await
+            } else {
+                let service = self
+                    .host
+                    .slots
+                    .borrow()
+                    .get(&id)
+                    .and_then(|slot| slot.service.clone())
+                    .context("CORE_UNAVAILABLE")?;
+                conversation_media::upload(&service, &chunk.thread_id, &chunk.mime_type, body).await
             };
+        self.authorize(Some(project), "submit")?;
+        ensure!(self.project(project)?.1 == generation, "RESYNC_REQUIRED");
+        let media = match uploaded {
+            Ok(media) => media,
+            Err(error) => {
+                if matches!(
+                    error.to_string().as_str(),
+                    "ATTACHMENT_UNSUPPORTED" | "LIMIT_EXCEEDED"
+                ) {
+                    self.uploads.active.remove(&upload_id);
+                }
+                return Err(error);
+            }
+        };
         self.uploads.active.remove(&upload_id);
         let receipt = json!({"uploadId":upload_id,"receivedBytes":received,"attachment":media});
         if self.uploads.done.len() == RECEIPTS {

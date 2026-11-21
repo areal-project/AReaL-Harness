@@ -533,55 +533,26 @@ async fn persisted_history_reads_stopped_project_without_activation_or_unknown_r
         write(&mut socket,json!({"version":1,"id":"after-close","method":"session.history","context":context,"params":{"threadId":thread,"subscriptionId":subscription,"view":"own"}})).await;
         assert_eq!(read(&mut socket).await["error"]["code"],"RESYNC_REQUIRED");
         let mut readers = Vec::new();
-        for index in 0..3 {
+        for index in 0..7 {
             let ticket = client.web_ticket(ELECTRON_ORIGIN).await.unwrap();
             let mut peer = connect(&ticket, ELECTRON_ORIGIN).await;
             write(&mut peer,json!({"version":1,"id":"hello","method":"hello","params":{"protocolVersions":[1],"capabilities":["gui-read-v1","persistedHistoryV1"],"ticket":ticket.ticket,"expectedGeneration":ticket.generation}})).await;
             assert!(read(&mut peer).await.get("result").is_some());
             write(&mut peer,json!({"version":1,"id":"open","method":"session.openPersisted","context":context,"params":{"threadId":thread,"view":"conversation"}})).await;
             let response = read(&mut peer).await;
-            if index < 2 { assert_eq!(response["result"]["access"]["readOnly"],true); }
+            if index < 6 { assert_eq!(response["result"]["access"]["readOnly"],true); }
             else { assert_eq!(response["error"]["code"],"RESOURCE_BUSY"); }
             readers.push((peer,response["result"]["subscriptionId"].clone()));
         }
         let (first, first_subscription) = &mut readers[0];
         write(first,json!({"version":1,"id":"release","method":"subscription.close","context":context,"params":{"subscriptionId":first_subscription}})).await;
         assert_eq!(read(first).await["result"]["closed"],true);
-        let (third, _) = &mut readers[2];
-        write(third,json!({"version":1,"id":"retry","method":"session.openPersisted","context":context,"params":{"threadId":thread,"view":"conversation"}})).await;
-        assert_eq!(read(third).await["result"]["access"]["readOnly"],true);
+        let (seventh, _) = &mut readers[6];
+        write(seventh,json!({"version":1,"id":"retry","method":"session.openPersisted","context":context,"params":{"threadId":thread,"view":"conversation"}})).await;
+        assert_eq!(read(seventh).await["result"]["access"]["readOnly"],true);
         fixture.host.slots.borrow_mut().get_mut("persisted").unwrap().registration.workspace = fixture.host.home.join("rebound-workspace");
         fixture.host.changed();
-        assert_eq!(read(third).await["method"],"session.invalidated");
-    }).await;
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn page_events_are_delivered_only_to_the_authenticated_connection() {
-    tokio::task::LocalSet::new().run_until(async {
-        let fixture = Fixture::start().await;
-        let client = fixture.client().await;
-        let mut sockets = Vec::new();
-        for _ in 0..2 {
-            let ticket = client.web_ticket(ELECTRON_ORIGIN).await.unwrap();
-            let mut socket = connect(&ticket, ELECTRON_ORIGIN).await;
-            write(&mut socket, json!({"version":1,"id":"hello","method":"hello","params":{
-                "protocolVersions":[1],"capabilities":["gui-read-v1","gui-write-v1"],
-                "ticket":ticket.ticket,"expectedGeneration":ticket.generation
-            }})).await;
-            let hello = read(&mut socket).await["result"].clone();
-            sockets.push((socket, hello["connectionId"].clone()));
-        }
-        let (mut second, _) = sockets.pop().unwrap();
-        let (mut first, owner) = sockets.pop().unwrap();
-        super::super::workbench_route::reverse(&fixture.host)("pages.event".into(), json!({
-            "connection":owner,"token":"page-token","notification":{"jsonrpc":"2.0","method":"ui/notifications/closed"}
-        })).await.unwrap();
-        let event = read(&mut first).await;
-        assert_eq!(event["method"], "pages.event");
-        assert_eq!(event["params"]["connectionId"], owner);
-        write(&mut second, json!({"version":1,"id":"barrier","method":"host.status","params":{}})).await;
-        assert_eq!(read(&mut second).await["id"], "barrier");
+        assert_eq!(read(seventh).await["method"],"session.invalidated");
     }).await;
 }
 
@@ -613,71 +584,6 @@ fn loopback_errors_distinguish_reads_and_unknown_writes() {
             assert_eq!(rejected["code"], code);
         }
     }
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn lagged_page_events_keep_the_loopback_connection_alive() {
-    tokio::task::LocalSet::new()
-        .run_until(async {
-            let fixture = Fixture::start().await;
-            let ticket = fixture
-                .client()
-                .await
-                .web_ticket(ELECTRON_ORIGIN)
-                .await
-                .unwrap();
-            let mut socket = connect(&ticket, ELECTRON_ORIGIN).await;
-            write(
-                &mut socket,
-                json!({"version":1,"id":"hello","method":"hello","params":{
-                    "protocolVersions":[1],"capabilities":["gui-read-v1","gui-write-v1"],
-                    "ticket":ticket.ticket,"expectedGeneration":ticket.generation
-                }}),
-            )
-            .await;
-            let owner = read(&mut socket).await["result"]["connectionId"].clone();
-            let reverse = super::super::workbench_route::reverse(&fixture.host);
-            let mut witness = fixture.host.gateway.workbench.page_events();
-            // 单线程内连续填满广播缓冲，不让 WebSocket 消费者运行，确定性触发 Lagged。
-            for index in 0..96 {
-                reverse(
-                    "pages.event".into(),
-                    json!({"connection":owner,"token":"burst","notification":{"index":index}}),
-                )
-                .await
-                .unwrap();
-            }
-            assert!(matches!(
-                witness.try_recv(),
-                Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_))
-            ));
-            write(
-                &mut socket,
-                json!({"version":1,"id":"after-lag","method":"host.status","params":{}}),
-            )
-            .await;
-            let mut events = 0;
-            let mut replied = false;
-            while events < 32 || !replied {
-                let packet = read(&mut socket).await;
-                if packet["id"] == "after-lag" {
-                    assert!(packet["result"].is_object());
-                    replied = true;
-                } else {
-                    assert_eq!(packet["method"], "pages.event");
-                    assert_eq!(packet["params"]["connectionId"], owner);
-                    events += 1;
-                }
-            }
-            reverse(
-                "pages.event".into(),
-                json!({"connection":owner,"token":"after-lag","notification":{}}),
-            )
-            .await
-            .unwrap();
-            assert_eq!(read(&mut socket).await["params"]["token"], "after-lag");
-        })
-        .await;
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -720,66 +626,279 @@ async fn shell_subscription_keeps_inflight_catalog_query_running() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn pending_workbench_requests_do_not_block_queries_or_page_events() {
+async fn pending_workbench_requests_do_not_block_queries() {
     tokio::task::LocalSet::new()
         .run_until(async {
-            for blocked_method in ["feedback.read", "desktop.command"] {
+            for blocked_method in ["manage.read", "desktop.command"] {
                 let fixture = Fixture::start().await;
-                let runner = fixture.host.home.join("blocked.cjs");
-                std::fs::write(
-                    &runner,
-                    r#"
-            const out = frame => console.log(JSON.stringify({version:1,...frame}));
-            out({event:'ready',methods:['feedback.read','desktop.command']});
-            let pending;
-            require('node:readline').createInterface({input:process.stdin}).on('line', line => {
-                const frame = JSON.parse(line);
-                if (frame.method && pending === undefined) {
-                    pending = frame.id;
-                    out({call:'blocked',id:'gate',params:{}});
-                } else if (frame.method) {
-                    out({id:frame.id,result:{models:[]}});
-                } else if (frame.id === 'gate') {
-                    out({id:pending,result:{models:[]}});
-                }
-            });
-        "#,
-                )
-                .unwrap();
                 let entered = Rc::new(Notify::new());
                 let released = Rc::new(Notify::new());
-                let reverse: crate::workbench::Reverse = {
-                    let entered = entered.clone();
-                    let released = released.clone();
-                    Rc::new(move |method, _| {
-                        let entered = entered.clone();
-                        let released = released.clone();
-                        Box::pin(async move {
-                            assert_eq!(method, "blocked");
-                            entered.notify_one();
-                            released.notified().await;
-                            Ok(Value::Null)
-                        })
-                    })
-                };
-                let node = std::process::Command::new("which")
-                    .arg("node")
-                    .output()
-                    .unwrap();
-                assert!(
-                    node.status.success(),
-                    "Node is required for workbench tests"
-                );
-                let node = PathBuf::from(String::from_utf8(node.stdout).unwrap().trim());
-                let backend =
-                    crate::workbench::Workbench::start(&node, &runner, &fixture.host.home, reverse)
-                        .await
+                let mock_core_server: Option<tokio::task::JoinHandle<()>>;
+                let mock_control_server: Option<tokio::task::JoinHandle<()>>;
+                let mock_core_close: Option<Box<dyn Fn()>>;
+                let mock_service_lock: Option<std::fs::File>;
+                let creation_id = uuid::Uuid::new_v4().to_string();
+                let slow_params;
+                {
+                    let base = fixture.host.home.parent().unwrap().canonicalize().unwrap();
+                    let profile = base.join("profile");
+                    let core_home = base.join("data");
+                    let legacy = base.join("legacy");
+                    let workspace = base.join("project");
+                    let data_dir = base.join("project-data");
+                    for dir in [&profile, &core_home, &workspace, &data_dir] {
+                        storage::private_dir(dir).unwrap();
+                    }
+                    let src = crate::migration::Source {
+                        profile: profile.clone(),
+                        core_home: core_home.clone(),
+                        legacy_service_home: legacy,
+                    };
+                    fixture.host.migration.attach(src.clone(), "fixture", None).unwrap();
+                    let imported = fixture
+                        .host
+                        .migration
+                        .import(
+                            serde_json::from_value(json!({
+                                "requestId": uuid::Uuid::new_v4().to_string(),
+                                "expectedGeneration": fixture.host.identity.generation,
+                                "source": src,
+                            }))
+                            .unwrap(),
+                            "fixture",
+                            &[],
+                            &fixture.host.journal,
+                        )
                         .unwrap();
-                fixture
-                    .host
-                    .gateway
-                    .workbench
-                    .bind_test_backend(backend, "fixture");
+                    assert_eq!(imported["kind"], "ready");
+                    let source_id = fixture
+                        .host
+                        .migration
+                        .navigation_source_id(&profile)
+                        .unwrap()
+                        .unwrap();
+                    let alias = "fedcba9876543210fedcba98";
+                    let registration = crate::ProjectRegistration {
+                        project_id: "project".into(),
+                        workspace: workspace.clone(),
+                        data_dir,
+                        source: crate::ProjectSource::Gui {
+                            profile: profile.clone(),
+                            legacy_project_id: alias.into(),
+                        },
+                        default_binding: false,
+                    };
+                    storage::write(
+                        &core_home.join("projects.json"),
+                        &json!([{ "id": alias, "root": workspace }]),
+                    )
+                    .unwrap();
+                    storage::private_dir(&core_home.join("worktree-requests")).unwrap();
+                    storage::write(
+                        &core_home.join("worktree-requests").join(format!("{creation_id}.json")),
+                        &json!({"kind":"checkout","requestId":creation_id,"projectId":alias,
+                            "parameters":{},"state":"created","intent":"continue","events":[]}),
+                    ).unwrap();
+                    std::fs::write(fixture.host.bin.join("areal"), "").unwrap();
+                    super::super::workbench_route::frontend_options(&fixture.host, &source_id,
+                        json!({"binary":fixture.host.bin.join("areal"),"home":core_home,"guiProfile":profile,"hostHome":fixture.host.home,"userHome":base}), None).unwrap();
+                    fixture.host.journal.initialize("project", json!({"version":1,"pending":[],"outcomes":{"original":{"method":"areal/turn/start","accepted":true,"threadId":"thread","turnId":"original-turn"}}})).unwrap();
+
+                    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                    let service_id =
+                        storage::digest(registration.data_dir.as_os_str().as_encoded_bytes())[..24]
+                            .to_owned();
+                    let service = areal_protocol::service::Service {
+                        identity: areal_protocol::service::Identity {
+                            protocol_version: 1,
+                            service_id: service_id.clone(),
+                            generation: "gen-1".into(),
+                            workspace: registration.workspace.clone(),
+                            data_dir: registration.data_dir.clone(),
+                            config_fingerprint: "fixture".into(),
+                        },
+                        owner: Some(fixture.host.owner()),
+                        endpoint: format!("ws://{}/", listener.local_addr().unwrap()),
+                        web_url: String::new(),
+                        auth_file: fixture.host.home.join("core-auth.json"),
+                        log_file: fixture.host.home.join("core.log"),
+                        host_pid: 1,
+                        core_pid: 2,
+                        state: areal_protocol::service::State::Ready,
+                    };
+                    storage::write(
+                        &service.auth_file,
+                        &json!({"principals":[{"id":"desktop-owner","token":"fixture"}]}),
+                    )
+                    .unwrap();
+                    let service_dir = storage::registry(&fixture.host.home, &service_id).unwrap();
+                    storage::private_dir(&service_dir).unwrap();
+                    storage::write(&service_dir.join("service.json"), &service).unwrap();
+                    let service_lock =
+                        storage::open_private(&registration.data_dir.join("service.lock"), true)
+                            .unwrap();
+                    fs2::FileExt::try_lock_exclusive(&service_lock).unwrap();
+                    mock_service_lock = Some(service_lock);
+
+                    let control_path = storage::control_socket(&service_dir).unwrap();
+                    storage::private_dir(control_path.parent().unwrap()).unwrap();
+                    let control_listener = tokio::net::UnixListener::bind(&control_path).unwrap();
+                    let control_service = service.clone();
+                    mock_control_server = Some(tokio::task::spawn_local(async move {
+                        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+                        while let Ok((stream, _)) = control_listener.accept().await {
+                            let (read_half, mut write_half) = stream.into_split();
+                            let mut line = String::new();
+                            if BufReader::new(read_half).read_line(&mut line).await.unwrap_or(0) > 0 {
+                                let mut reply = serde_json::to_vec(
+                                    &areal_protocol::service::Response::Ok {
+                                        service: Box::new(control_service.clone()),
+                                    },
+                                )
+                                .unwrap();
+                                reply.push(b'\n');
+                                let _ = write_half.write_all(&reply).await;
+                                let _ = write_half.flush().await;
+                            }
+                        }
+                    }));
+
+                    let mut slot = super::super::Slot::imported(registration);
+                    slot.service = Some(service.clone());
+                    slot.state = "ready".into();
+                    let (writer, lifetime) = areal_local_service::OwnerLifetime::pair().unwrap();
+                    slot.writer = Some(writer);
+                    slot.lifetime = Some(Rc::new(lifetime));
+                    fixture.host.slots.borrow_mut().insert("project".into(), slot);
+
+                    let entered_cb = entered.clone();
+                    let released_cb = released.clone();
+                    let probe_identity = service.identity.clone();
+                    let blocked = Rc::new(std::cell::Cell::new(false));
+                    let server = tokio::task::spawn_local(async move {
+                        use futures_util::{SinkExt, StreamExt};
+                        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                        use tokio_tungstenite::tungstenite::Message;
+                        while let Ok((mut stream, _)) = listener.accept().await {
+                            let mut peek = [0u8; 16];
+                            let n = stream.peek(&mut peek).await.unwrap_or(0);
+                            if peek[..n].starts_with(b"GET /areal/") {
+                                let mut buf = [0u8; 4096];
+                                let mut total = 0usize;
+                                while total < buf.len() {
+                                    let read = stream.read(&mut buf[total..]).await.unwrap_or(0);
+                                    if read == 0 {
+                                        break;
+                                    }
+                                    total += read;
+                                    if buf[..total].windows(4).any(|w| w == b"\r\n\r\n") {
+                                        break;
+                                    }
+                                }
+                                let body = serde_json::to_vec(&probe_identity).unwrap();
+                                let header = format!(
+                                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                                    body.len()
+                                );
+                                let _ = stream.write_all(header.as_bytes()).await;
+                                let _ = stream.write_all(&body).await;
+                                let _ = stream.flush().await;
+                                continue;
+                            }
+                            let entered_cb = entered_cb.clone();
+                            let released_cb = released_cb.clone();
+                            let blocked = blocked.clone();
+                            tokio::task::spawn_local(async move {
+                                let socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+                                let (writer, mut reader) = socket.split();
+                                let writer = Rc::new(tokio::sync::Mutex::new(writer));
+                                while let Some(Ok(Message::Text(text))) = reader.next().await {
+                                    let call: Value = serde_json::from_str(&text).unwrap();
+                                    if call.get("id").is_none() {
+                                        continue;
+                                    }
+                                    let hold = call["method"] == "areal/server/status" && !blocked.replace(true);
+                                    if hold { entered_cb.notify_one(); }
+                                    let result = match call["method"].as_str().unwrap() {
+                                        "initialize" => json!({}),
+                                        "areal/task/list" | "areal/plugin/mcp/list" => json!({ "data": [], "nextCursor": null }),
+                                        "areal/capabilities" => json!({"methods":["areal/thread/prediction","areal/thread/inspect","areal/context/read","areal/plugin/mcp/list"]}),
+                                        "areal/thread/prediction" => json!({"threadId":"thread","sourceTurnId":"turn","text":"suggestion"}),
+                                        "areal/thread/inspect" => json!({"threadId":"thread","configuration":{"revision":1}}),
+                                        "areal/context/read" => json!({"threadId":"thread","items":[]}),
+                                        "areal/server/status" => {
+                                            json!({
+                                                "acceptingWork": true,
+                                                "activeGoals": [],
+                                                "activeTasks": 0,
+                                                "activeTurns": [],
+                                                "apiVersion": "areal.core.v1",
+                                                "capacity": {
+                                                    "activeTurns": 0,
+                                                    "blobBytes": 0,
+                                                    "historyBytesPerThread": 0,
+                                                    "maxActiveTurns": 4,
+                                                    "maxThreads": 8,
+                                                    "threads": 0
+                                                },
+                                                "closed": false,
+                                                "compactions": [],
+                                                "configuration": Value::Null,
+                                                "draining": false,
+                                                "idleForMs": 0,
+                                                "lifecycle": {
+                                                    "admission": "open",
+                                                    "executionOutcomes": { "uninspectedUnknown": 0 },
+                                                    "ifIdle": { "allowed": true, "reasons": [] },
+                                                    "settled": { "allowed": true, "reasons": [] },
+                                                    "version": 1
+                                                },
+                                                "pendingQueueItems": 0,
+                                                "queues": [],
+                                                "productVersion": "fixture",
+                                                "resources": [],
+                                                "restartSafe": true,
+                                                "runtime": Value::Null,
+                                                "stateVersion": 1,
+                                                "unresolvedTools": [],
+                                                "workgroups": []
+                                            })
+                                        }
+                                        other => panic!("unexpected mock core method: {other}"),
+                                    };
+                                    let writer = writer.clone();
+                                    let released = released_cb.clone();
+                                    tokio::task::spawn_local(async move {
+                                    if hold { released.notified().await; }
+                                    writer.lock().await
+                                        .send(Message::Text(
+                                            json!({ "jsonrpc": "2.0", "id": call["id"], "result": result })
+                                                .to_string()
+                                                .into(),
+                                        ))
+                                        .await
+                                        .unwrap();
+                                    });
+                                }
+                            });
+                        }
+                    });
+                    mock_core_server = Some(server);
+                    mock_core_close = Some(
+                        fixture
+                            .host
+                            .schedules
+                            .connections
+                            .connect_test_core(fixture.host.clone(), "project", service)
+                            .await
+                            .unwrap(),
+                    );
+                    slow_params = if blocked_method == "manage.read" {
+                        json!({"sourceId": source_id, "projectId": alias, "operation": "server"})
+                    } else {
+                        json!({"sourceId": source_id, "command":"manage", "request":{"projectId":alias,"operation":"server"}})
+                    };
+                }
                 let ticket = fixture
                     .client()
                     .await
@@ -795,12 +914,7 @@ async fn pending_workbench_requests_do_not_block_queries_or_page_events() {
                     }}),
                 )
                 .await;
-                let owner = read(&mut socket).await["result"]["connectionId"].clone();
-                let slow_params = if blocked_method == "feedback.read" {
-                    json!({"sourceId":"fixture","operation":"status"})
-                } else {
-                    json!({"command":"connect","request":{"projectId":"selected"}})
-                };
+                let _hello = read(&mut socket).await;
                 write(
                     &mut socket,
                     json!({"version":1,"id":"slow","method":blocked_method,
@@ -814,11 +928,11 @@ async fn pending_workbench_requests_do_not_block_queries_or_page_events() {
                     write(
                         &mut socket,
                         json!({"version":1,"id":"second","method":"desktop.command",
-                "params":{"command":"connect","request":{"projectId":"second"}}}),
+                "params":slow_params}),
                     )
                     .await;
                 }
-                // 确认目标请求已进入后台且尚未释放，再检查同连接的安全读取与事件。
+                // 确认目标请求已进入后台且尚未释放，再检查同连接的安全读取不被阻塞。
                 write(
                     &mut socket,
                     json!({"version":1,"id":"fast","method":"host.status","params":{}}),
@@ -829,17 +943,18 @@ async fn pending_workbench_requests_do_not_block_queries_or_page_events() {
                     json!({"version":1,"id":"catalog","method":"analytics.read","params":{}}),
                 )
                 .await;
-                super::super::workbench_route::reverse(&fixture.host)(
-                    "pages.event".into(),
-                    json!({"connection":owner,"token":"while-blocked","notification":{}}),
-                )
-                .await
-                .unwrap();
+                if blocked_method == "desktop.command" {
+                    write(&mut socket, json!({"version":1,"id":"cancel","method":"worktree.command",
+                        "commandId":uuid::Uuid::new_v4().to_string(),
+                        "params":{"sourceId":slow_params["sourceId"],"projectId":slow_params["request"]["projectId"],
+                            "operation":"worktreeCancel","requestId":uuid::Uuid::new_v4().to_string(),"worktreeRequestId":creation_id}
+                    })).await;
+                }
                 let progress = tokio::time::timeout(Duration::from_secs(1), async {
                     let mut status = false;
-                    let mut event = false;
                     let mut catalog = false;
-                    while !status || !event || !catalog {
+                    let mut cancelled = blocked_method != "desktop.command";
+                    while !status || !catalog || !cancelled {
                         let packet = read(&mut socket).await;
                         assert_ne!(packet["id"], "slow");
                         assert_ne!(
@@ -848,17 +963,20 @@ async fn pending_workbench_requests_do_not_block_queries_or_page_events() {
                         );
                         status |=
                             packet["id"] == "fast" && packet["result"]["hostId"] == ticket.host_id;
-                        event |= packet["method"] == "pages.event"
-                            && packet["params"]["token"] == "while-blocked";
                         catalog |=
                             packet["id"] == "catalog" && packet["result"]["tokens"] == 0;
+                        if packet["id"] == "cancel" {
+                            assert_eq!(packet["result"]["receipt"]["requestId"], creation_id, "{packet}");
+                            assert_eq!(packet["result"]["receipt"]["state"], "cancelled", "{packet}");
+                            cancelled = true;
+                        }
                     }
                 })
                 .await;
                 if progress.is_ok() && blocked_method == "desktop.command" {
                     for index in 0..15 {
                         write(&mut socket, json!({"version":1,"id":format!("capacity-{index}"),
-                            "method":"desktop.command","params":{"command":"connect","request":{"projectId":"queued"}}})).await;
+                            "method":"desktop.command","params":slow_params})).await;
                     }
                     let rejected = read(&mut socket).await;
                     assert_eq!(rejected["id"], "capacity-14");
@@ -872,29 +990,38 @@ async fn pending_workbench_requests_do_not_block_queries_or_page_events() {
                     assert_eq!(safe["result"]["tokens"], 0, "full mutation admission must preserve independent reads");
                     write(&mut socket, json!({"version":1,"id":"original-status",
                         "method":"desktop.command","params":{"command":"reconcile",
-                        "request":{"projectId":"queued","requestId":"original"}}})).await;
+                        "request":{"projectId":slow_params["request"]["projectId"],"requestId":"original"}}})).await;
                     let receipt = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
                     assert_eq!(receipt["id"], "original-status");
                     assert!(receipt.get("error").is_none(), "full mutation admission must preserve original receipt recovery: {receipt}");
+                    assert_eq!(receipt["result"]["outcomes"]["original"]["turnId"], "original-turn");
                     write(&mut socket, json!({"version":1,"id":"prediction-read",
                         "method":"desktop.command","params":{"command":"prediction",
-                        "request":{"projectId":"queued","threadId":"thread","sourceTurnId":"turn","operation":"request"}}})).await;
+                        "request":{"projectId":slow_params["request"]["projectId"],"threadId":"thread","sourceTurnId":"turn","operation":"request"}}})).await;
                     let prediction = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
                     assert_eq!(prediction["id"], "prediction-read");
                     assert!(prediction.get("error").is_none(), "prediction must use bounded query admission: {prediction}");
                     write(&mut socket, json!({"version":1,"id":"inspect-read",
                         "method":"desktop.command","params":{"command":"manage",
-                        "request":{"projectId":"queued","threadId":"thread","operation":"inspect"}}})).await;
+                        "request":{"projectId":slow_params["request"]["projectId"],"threadId":"thread","operation":"inspect"}}})).await;
                     let inspect = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
                     assert_eq!(inspect["id"], "inspect-read");
                     assert!(inspect.get("error").is_none(), "manage inspect must use bounded query admission: {inspect}");
-                    for (command, operation) in [("manage", "mcpForms"), ("manage", "context"), ("workspace", "info"), ("resources", "skills")] {
+                    for (command, operation) in [("manage", "context"), ("workspace", "info"), ("resources", "skills")] {
+                        let mut request = json!({"projectId":slow_params["request"]["projectId"],"operation":operation});
+                        if command == "manage" { request["threadId"] = json!("thread"); }
+                        if command == "resources" { request["scope"] = json!("project"); }
                         write(&mut socket, json!({"version":1,"id":operation,"method":"desktop.command",
-                            "params":{"command":command,"request":{"projectId":"queued","operation":operation}}})).await;
+                            "params":{"command":command,"request":request}})).await;
                         let reply = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
                         assert_eq!(reply["id"], operation);
                         assert!(reply.get("error").is_none(), "reopening a chat must not consume mutation slots for {command}/{operation}: {reply}");
                     }
+                    write(&mut socket, json!({"version":1,"id":"mcp-read","method":"manage.read",
+                        "params":{"sourceId":slow_params["sourceId"],"projectId":slow_params["request"]["projectId"],"operation":"pluginMcp"}})).await;
+                    let mcp = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
+                    assert_eq!(mcp["id"], "mcp-read");
+                    assert_eq!(mcp["result"]["data"], json!([]), "MCP reads retain independent query admission: {mcp}");
                     write(&mut socket, json!({"version":1,"id":"activity-ping",
                         "method":"analytics.activity","params":{"focused":true,"idleSeconds":0}})).await;
                     let activity = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
@@ -903,12 +1030,24 @@ async fn pending_workbench_requests_do_not_block_queries_or_page_events() {
                 }
                 released.notify_one();
                 if progress.is_ok() {
-                    assert_eq!(read(&mut socket).await["id"], "slow");
-                    if blocked_method == "desktop.command" {
+                    let slow = read(&mut socket).await;
+                    assert_eq!(slow["id"], "slow");
+                    if blocked_method == "manage.read" {
+                        assert!(slow.get("error").is_none(), "{slow}");
+                    } else if blocked_method == "desktop.command" {
                         assert_eq!(read(&mut socket).await["id"], "second");
                     }
                 }
-                fixture.host.gateway.workbench.stop_backend().await;
+                if let Some(close) = mock_core_close {
+                    close();
+                }
+                if let Some(control) = mock_control_server {
+                    control.abort();
+                }
+                if let Some(server) = mock_core_server {
+                    server.abort();
+                }
+                drop(mock_service_lock);
                 assert!(
                     progress.is_ok(),
                     "a pending workbench request blocked the read/event loop"
@@ -975,59 +1114,11 @@ async fn browser_write_scopes_are_explicit_enforced_and_revocable() {
             let error = read(&mut socket).await["error"].clone();
             assert_eq!(error["code"], if scope == "manage" { "CAPABILITY_UNAVAILABLE" } else { "FORBIDDEN" });
             assert_eq!(error["submissionUnknown"], false);
-            for operation in ["open", "request"] {
-                write(&mut socket, json!({"version":1,"id":"page","method":"pages.command","params":{"operation":operation}})).await;
-                assert_eq!(read(&mut socket).await["error"]["code"], "FORBIDDEN");
-            }
             fixture.client().await.revoke_browser(&grant.device_id).await.unwrap();
             write(&mut socket, json!({"version":1,"id":"revoked","method":"host.status","params":{}})).await;
             closed(&mut socket).await;
         }
     }).await;
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn public_page_proxy_is_static_and_sandboxed_without_exposing_resources() {
-    tokio::task::LocalSet::new()
-        .run_until(async {
-            let fixture = Fixture::start().await;
-            let endpoint = fixture.host.loopback.endpoint().unwrap();
-            let authority = endpoint.origin.strip_prefix("http://").unwrap();
-            for path in [
-                "/host/pages/proxy",
-                "/host/pages/private-page/view",
-                "/host/pages/proxy?token=private",
-            ] {
-                let mut stream = TcpStream::connect(authority).await.unwrap();
-                stream
-                    .write_all(
-                        format!(
-                            "GET {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\n\r\n"
-                        )
-                        .as_bytes(),
-                    )
-                    .await
-                    .unwrap();
-                let mut bytes = Vec::new();
-                tokio::time::timeout(Duration::from_secs(2), stream.read_to_end(&mut bytes))
-                    .await
-                    .unwrap()
-                    .unwrap();
-                let text = std::str::from_utf8(&bytes).unwrap();
-                let (headers, body) = text.split_once("\r\n\r\n").unwrap();
-                if path == "/host/pages/proxy" {
-                    assert!(headers.starts_with("HTTP/1.1 200"));
-                    assert!(headers.contains("sandbox allow-scripts"));
-                    assert!(!headers.contains("allow-same-origin"));
-                    assert_eq!(body, include_str!("page_proxy.html"));
-                    assert!(!body.contains("areal-ui://"));
-                } else {
-                    assert!(!headers.starts_with("HTTP/1.1 200"));
-                    assert!(!body.contains("private"));
-                }
-            }
-        })
-        .await;
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -1585,4 +1676,16 @@ async fn loopback_bots_command_read_and_event_push() {
             assert_eq!(missing["error"]["submissionUnknown"], false);
         })
         .await;
+}
+
+#[test]
+fn worktree_cancel_uses_control_lane_without_reclassifying_creation() {
+    assert_eq!(
+        request_lane("worktree.command", &json!({"operation":"worktreeCancel"})),
+        Some(RemoteMethodLane::Control)
+    );
+    assert_eq!(
+        request_lane("worktree.command", &json!({"operation":"worktreeCreate"})),
+        Some(RemoteMethodLane::Mutation)
+    );
 }

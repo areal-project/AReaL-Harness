@@ -34,7 +34,11 @@ export function ProjectlessDraft({
   const [prepared, setPrepared] = useState<Data>();
   const [error, setError] = useState("");
   const [ownerId, setOwnerId] = useState(() => localStorage.getItem(`${key}:project`));
-  const owner = snapshot.projects.find((p) => p.id === ownerId) ?? prepared;
+  // 冷启动准备失败后，复用 Host 后续发布的就绪目录；已有草稿归属时仍锁定原项目。
+  const adopted = !ownerId
+    ? snapshot.projects.find((p) => p.projectless && p.state?.connected)
+    : undefined;
+  const owner = snapshot.projects.find((p) => p.id === ownerId) ?? adopted ?? prepared;
   const ready = snapshot.connection?.state === "ready";
   const prepare = async () => {
     setPreparing(true);
@@ -59,6 +63,9 @@ export function ProjectlessDraft({
       setPreparing(false);
     }
   };
+  useEffect(() => {
+    if (adopted?.id && error) setError("");
+  }, [adopted?.id, error]);
   useEffect(() => {
     if (ownerId && ready && !owner?.state?.connected)
       void readAction("connect", { projectId: ownerId }).catch(() => {});

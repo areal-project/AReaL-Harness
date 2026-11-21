@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import { preparePrivateFixtureDirectories } from "./support/desktop-fixture.mjs";
+import { nativeRecoverySnapshot } from "./support/native-recovery-observation.mjs";
 import { readCoreThread } from "./support/core-observation.mjs";
 import { resolveAcceptanceBinary } from "./support/acceptance-binary.mjs";
-import { stopAndAssertFixtureHost } from "./application-cleanup.mjs";
+import { closeRecordedSmokeApplication, stopAndAssertFixtureHost } from "./application-cleanup.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -164,7 +165,8 @@ async function transportProxy(metadata, events) {
       if (
         armed &&
         !armed.dispatched &&
-        message.method === (armed.name === "send" ? "session.send" : "session.open")
+        message.method === (armed.name === "send" ? "session.send" : "session.open") &&
+        message.params?.threadId === armed.expectedThreadId
       ) {
         entry.fault = armed;
         armed.dispatched = true;
@@ -254,9 +256,10 @@ async function transportProxy(metadata, events) {
     get connections() {
       return connections;
     },
-    arm(name) {
+    arm(name, expectedThreadId) {
+      assert.ok(expectedThreadId, "Fault must name its original thread");
       assert.ok(!armed || armed.completed, "Previous fault must settle");
-      armed = { name, dispatched: false, completed: false };
+      armed = { name, expectedThreadId, dispatched: false, completed: false };
       return armed;
     },
     disconnect() {
@@ -313,6 +316,7 @@ if (command === "doctor") {
   console.log(`Evidence: ${evidence}`);
   const requests = [],
     events = [],
+    protocolErrors = [],
     errors = [],
     stderr = [],
     checks = [];
@@ -323,7 +327,7 @@ if (command === "doctor") {
     faultBoundary:
       "Renderer↔Host websocket: real command response and racing notifications withheld, connection cut, then fresh-ticket reconnection",
     excluded: [
-      "Core→Desktop response-loss and healthy Core observe retry (separate backend contract smoke)",
+      "Host→Core response-loss and healthy Core observe retry",
       "real provider/credentials",
       "native directory dialog and physical input",
       "Runtime tool execution",
@@ -337,7 +341,8 @@ if (command === "doctor") {
   let app, page, processHandle, application, model, proxy, failure, projectId, threadId;
   const env = environment(state),
     workspace = join(state, "workspace");
-  const snapshot = () => page.evaluate(() => window.arealDesktop.snapshot());
+  const shellSnapshot = () => nativeRecoverySnapshot(env);
+  const snapshot = () => nativeRecoverySnapshot(env, { projectId, threadId });
   const project = (snap) => snap.projects.find((value) => value.id === projectId);
   const thread = (snap) => project(snap)?.state?.threads[threadId];
   const workRequests = () => requests.filter((value) => !value.title).length;
@@ -360,9 +365,35 @@ if (command === "doctor") {
       env,
       timeout: 120000,
     });
+    await app.evaluate(({ dialog }, path) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
+      dialog.showMessageBox = async (...args) => ({
+        response: ["确认取消后台任务？", "退出 AReaL Harness？"].includes(args.at(-1).message)
+          ? 1
+          : (args.at(-1).cancelId ?? 0),
+      });
+    }, workspace);
     processHandle = app.process();
     processHandle.stderr.on("data", (data) => stderr.push(String(data)));
     page = await app.firstWindow();
+    // 只记录错误类别和方法，不保存票据、请求参数或业务正文。
+    page.on("websocket", (socket) => {
+      const methods = new Map();
+      socket.on("framesent", ({ payload }) => {
+        try {
+          const frame = JSON.parse(String(payload));
+          if (typeof frame.method === "string") methods.set(frame.id, frame.method);
+        } catch {}
+      });
+      socket.on("framereceived", ({ payload }) => {
+        try {
+          const frame = JSON.parse(String(payload));
+          if (frame.error && protocolErrors.length < 100)
+            protocolErrors.push({ method: methods.get(frame.id), code: frame.error.code });
+          methods.delete(frame.id);
+        } catch {}
+      });
+    });
     page.setDefaultTimeout(20000);
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
@@ -377,8 +408,18 @@ if (command === "doctor") {
       await page.reload();
       await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
     }
+    // 首次启动时 Host 尚未发布描述文件；只等待不存在，权限和协议错误仍立即失败。
+    await until(async () => {
+      try {
+        await access(join(env.AREAL_HARNESS_SERVICE_HOME, "host", "host.json"));
+        return true;
+      } catch (error) {
+        if (error.code === "ENOENT") return false;
+        throw error;
+      }
+    }, "source Host descriptor published");
     await until(
-      async () => (await snapshot()).connection?.state === "ready",
+      async () => (await shellSnapshot()).connection?.state === "ready",
       "source Desktop ready",
     );
     const actual = await app.evaluate(({ app, BrowserWindow }) => {
@@ -400,32 +441,40 @@ if (command === "doctor") {
     assert.equal(actual.sandbox, true);
     assert.equal(actual.contextIsolation, true);
     assert.equal(actual.nodeIntegration, false);
-    const metadata = JSON.parse(await readFile(join(state, "core/service.json"), "utf8"));
+    const metadata = (await shellSnapshot()).host;
+    // 通过真实 preload 投影核对原生连接归属，不能用独立 Host 观察代替 Main 握手。
+    const native = await until(async () => {
+      const state = await page.evaluate(() => window.arealDesktop.nativeState());
+      if (state.connection?.state !== "ready") return false;
+      assert.deepEqual(
+        state.verifiedDesktopHost,
+        {
+          hostId: metadata.hostId,
+          generation: metadata.generation,
+        },
+        "preload must expose the verified current Host attachment",
+      );
+      return state;
+    }, "native desktop attachment ready");
+    await json(join(evidence, `native-attachment-${processHandle.pid}.json`), {
+      connection: native.connection,
+      verifiedDesktopHost: native.verifiedDesktopHost,
+    });
     await json(join(evidence, "run.json"), run);
     await json(join(evidence, `doctor-${processHandle.pid}.json`), {
       ...actual,
-      desktopPid: metadata.pid,
-      desktopGeneration: metadata.desktopGeneration,
+      hostId: metadata.hostId,
+      hostGeneration: metadata.generation,
       binarySHA256: sha(await readFile(binary)),
     });
-    await app.evaluate(({ dialog }, path) => {
-      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
-      dialog.showMessageBox = async (...args) => ({
-        response: ["确认取消后台任务？", "退出 AReaL Harness？"].includes(args.at(-1).message)
-          ? 1
-          : (args.at(-1).cancelId ?? 0),
-      });
-    }, workspace);
   }
   async function stopGUI() {
     if (!app) return;
-    await app.evaluate(({ app }) => app.quit());
-    await until(
-      () => processHandle.exitCode !== null || processHandle.signalCode !== null,
-      "owned Main exits",
-      30000,
-    );
-    app = null;
+    try {
+      await closeRecordedSmokeApplication(app, 30000);
+    } finally {
+      app = null;
+    }
   }
   try {
     await mkdir(workspace);
@@ -503,11 +552,6 @@ if (command === "doctor") {
         "UI-added project connected",
       )
     ).id;
-    await until(
-      async () =>
-        project(await snapshot())?.models?.some((model) => model.displayName === "fixture"),
-      "fixture model catalog loaded",
-    );
     await page.getByRole("button", { name: "选择模型", exact: true }).click();
     await page.getByRole("radio", { name: "fixture", exact: true }).click();
     await page.keyboard.press("Escape");
@@ -656,7 +700,7 @@ if (command === "doctor") {
         });
       });
       await createProjectConversation(page, "workspace");
-      const open = proxy.arm("open");
+      const open = proxy.arm("open", threadId);
       await page.getByTestId(`task-item-${threadId}`).click();
       await until(() => open.completed, "session.open response intercepted");
       assert.equal(open.hadError, false, "real session.open succeeded at Host");
@@ -724,12 +768,14 @@ if (command === "doctor") {
       });
       const before = structuredClone(thread(await snapshot())),
         beforeModel = workRequests();
-      const send = proxy.arm("send");
+      const send = proxy.arm("send", threadId);
       await page.getByTestId("chat-input").fill("Accept exactly this original send once");
       await page.getByTestId("chat-send-button").click();
       await until(() => send.completed, "real accepted Host send response intercepted");
       assert.equal(send.hadError, false, JSON.stringify(send.response));
       assert.ok(send.requestId);
+      assert.equal(send.response.result?.commandId, send.requestId);
+      assert.equal(send.response.result?.admissionState, "accepted");
       assert.equal(send.threadId, threadId);
       const unknown = page.getByRole("button", { name: "检查操作状态", exact: true });
       await unknown.waitFor();
@@ -818,11 +864,13 @@ if (command === "doctor") {
       );
       await json(join(evidence, "send-fault.json"), send);
       await capture("04-send-converged");
-      const unchanged = proxy.arm("send");
+      const unchanged = proxy.arm("send", threadId);
       await page.getByTestId("chat-input").fill("An unchanged recovery draft");
       await page.getByTestId("chat-send-button").click();
       await until(() => unchanged.completed, "unchanged draft send response intercepted");
       assert.equal(unchanged.hadError, false, JSON.stringify(unchanged.response));
+      assert.equal(unchanged.response.result?.commandId, unchanged.requestId);
+      assert.equal(unchanged.response.result?.admissionState, "accepted");
       await unknown.waitFor();
       const draftState = () =>
         page.evaluate((requestId) => {
@@ -887,7 +935,7 @@ if (command === "doctor") {
       const history = displayTurns(thread(await snapshot()).turns),
         readModel = workRequests();
       await createProjectConversation(page, "workspace");
-      const read = proxy.arm("open");
+      const read = proxy.arm("open", threadId);
       await page.getByTestId(`task-item-${threadId}`).click();
       await until(() => read.completed, "real Host history-open response intercepted");
       assert.equal(read.hadError, false, JSON.stringify(read.response));
@@ -945,7 +993,7 @@ if (command === "doctor") {
       proxy = null;
       await launch();
       await until(
-        async () => project(await snapshot())?.state?.connected,
+        async () => project(await shellSnapshot())?.state?.connected,
         "same private project restored after fresh Main launch",
       );
       await createProjectConversation(page, "workspace");
@@ -972,9 +1020,8 @@ if (command === "doctor") {
   } finally {
     proxy?.release();
     if (app) {
-      await stopGUI().catch(async (error) => {
+      await stopGUI().catch((error) => {
         errors.push(`normal GUI exit: ${error.message}`);
-        await app?.evaluate(({ app }) => app.exit(1)).catch(() => {});
       });
     }
     if (application)
@@ -1007,6 +1054,7 @@ if (command === "doctor") {
         errors.push(`Renderer build changed during acceptance: ${path}`);
     await json(join(evidence, "model-requests.json"), requests);
     await json(join(evidence, "transport-events.json"), events);
+    await json(join(evidence, "protocol-errors.json"), protocolErrors);
     await writeFile(join(evidence, "electron.stderr.log"), stderr.join(""));
     Object.assign(manifest, { passed: !failure && errors.length === 0, failure });
     await json(join(evidence, "manifest.json"), manifest);

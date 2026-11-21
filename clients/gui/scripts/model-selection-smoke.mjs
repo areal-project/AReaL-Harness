@@ -2097,7 +2097,6 @@ async function runFullModelSelection() {
     "compact model rows show the name only",
   );
   assert.equal(await page.getByText("帮助", { exact: true }).count(), 0);
-  assert.equal(await page.getByText("凭据来源", { exact: true }).count(), 0);
   assert.equal(
     await page.getByRole("tab", { name: "模型", exact: true }).count(),
     0,
@@ -2900,9 +2899,9 @@ try {
     "renderer/src/settings/UnsavedChanges.tsx",
     "renderer/src/settings/SettingsWorkspace.tsx",
     "renderer/src/i18n/IntlProvider.tsx",
-    "../../services/workbench/src/desktop/core/model-config.cjs",
-    "../../services/workbench/src/desktop/core/providers.cjs",
-    "../../services/workbench/src/desktop/core/backend.cjs",
+    "../../core/config/src/models.rs",
+    "../../core/host/src/provider_config.rs",
+    "../../core/host/src/workbench_route.rs",
     "../../core/config/src/models.rs",
     "../../core/config/src/lib.rs",
     "../../core/local-service/src/spec.rs",

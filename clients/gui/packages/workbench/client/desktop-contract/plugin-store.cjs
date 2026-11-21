@@ -114,7 +114,7 @@ function isPluginStoreResponse(operation, value, protocolResponse) {
     )
   );
 }
-/** 收窄成 Host 接受的字段：安装只有用户级，项目只用于读与“在此项目启用”。 @param {Record<string,unknown>} request */
+/** 安装为用户级；解析与安装用项目 ID 找到项目市场。 @param {Record<string,unknown>} request */
 function hostPluginStoreParams(request) {
   const { requestId: _requestId, scope, projectId, ...rest } = request;
   const keepProject =
@@ -123,6 +123,7 @@ function hostPluginStoreParams(request) {
       request.operation === "plugin" ||
       request.operation === "mcp" ||
       request.operation === "pluginInstall" ||
+      request.operation === "pluginResolve" ||
       (request.operation === "pluginConfigure" && scope === "project"));
   return keepProject ? { ...rest, projectId } : rest;
 }

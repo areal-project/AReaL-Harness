@@ -42,7 +42,7 @@ assert.ok(
 const executable = packaged ? resolve(process.env.AREAL_GUI_EXECUTABLE) : require("electron");
 const resources = packaged ? join(dirname(dirname(executable)), "Resources") : null;
 const bundled = packaged
-  ? require("../../../services/workbench/src/desktop/core/bundle.cjs").verifyCoreBundle(resources, {
+  ? require("../packages/workbench/node/bundle.cjs").verifyCoreBundle(resources, {
       hashes: true,
     })
   : null;
@@ -1966,7 +1966,8 @@ try {
   const files = [
     "app/src/core/preview.cjs",
     "app/src/core/main.cjs",
-    "../../services/workbench/src/desktop/core/service-protocol.cjs",
+    "app/src/core/service-client.cjs",
+    "../../core/host/src/workbench_frontend.rs",
     "app/src/core/browser-navigation.cjs",
     "app/src/core/preview-native/navigation.cjs",
     "app/src/core/preview-native/read-session.cjs",

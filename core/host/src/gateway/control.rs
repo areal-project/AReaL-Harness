@@ -7,9 +7,6 @@ fn matching_source(snapshot: Value, source_id: &str) -> Result<Value> {
     );
     Ok(snapshot)
 }
-fn source(host: &Host, source_id: &str) -> Result<Value> {
-    matching_source(host.remote.snapshot(&host.migration)?, source_id)
-}
 async fn source_async(host: &Host, source_id: &str) -> Result<Value> {
     matching_source(
         host.remote.snapshot_async(&host.migration).await?,
@@ -106,13 +103,22 @@ fn pair_payload(host: &Host, config: &Value, invite: &Invite) -> Result<Value> {
 impl Host {
     pub(in crate::server) async fn gateway_state_async(&self, source_id: &str) -> Result<Value> {
         let snapshot = source_async(self, source_id).await?;
-        self.gateway_state_from_snapshot(&snapshot)
+        self.gateway_state_snapshot(source_id, snapshot)
     }
     pub(in crate::server) fn gateway_state(&self, source_id: &str) -> Result<Value> {
-        let snapshot = source(self, source_id)?;
-        self.gateway_state_from_snapshot(&snapshot)
+        let snapshot = self.remote.snapshot(&self.migration)?;
+        self.gateway_state_snapshot(source_id, snapshot)
     }
-    fn gateway_state_from_snapshot(&self, snapshot: &Value) -> Result<Value> {
+    pub(in crate::server) fn gateway_state_snapshot(
+        &self,
+        source_id: &str,
+        snapshot: Value,
+    ) -> Result<Value> {
+        if snapshot["sourceId"].is_null() {
+            self.migration.source_profile(source_id)?;
+        } else {
+            ensure!(snapshot["sourceId"] == source_id, "sourceNotFound");
+        }
         let config = &snapshot["config"];
         let identity = config["identity"]
             .as_str()

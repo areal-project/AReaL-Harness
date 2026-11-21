@@ -183,24 +183,24 @@
     },
     {
       "id": "R-CONTENT-018",
-      "title": "尺寸与返回 ：优先使用对话列宽",
+      "title": "尺寸与返回",
       "owner": "clients/gui/design-system/content-system.md#统一设计合同",
       "strength": "must",
-      "textSha256": "1b7a091d26327692b9adde79520a214a7545e4f74c05333ad16dd9bd54f2990b"
+      "textSha256": "4f15ec25dcc9d75ca8939c76e8d6fc41825c47a0047b2ade32f1318992a4d377"
     },
     {
       "id": "R-CONTENT-019",
-      "title": "呈现状态 ：统一表达准备中、可读/可交互、只读、不可用及已关闭，内容就绪与业务执行结果分开",
+      "title": "呈现状态",
       "owner": "clients/gui/design-system/content-system.md#统一设计合同",
       "strength": "must",
-      "textSha256": "f55b596a1a687a4dcff4e5e6326dfc9ebf5b54a5f2a1659428aae830cd425bac"
+      "textSha256": "7fa22db5e3b51310055c99b994300a93ab73547f267fe32699b68c37bb4dd4d0"
     },
     {
       "id": "R-CONTENT-020",
-      "title": "稳定身份与恢复 ：沿用原item/制品/实例身份",
+      "title": "稳定身份与恢复",
       "owner": "clients/gui/design-system/content-system.md#统一设计合同",
       "strength": "must",
-      "textSha256": "d3371fa9e2475650387f38373d7989081961e2114535d48737840ab90a3b56f7"
+      "textSha256": "cfb5ce7d71c0126057f2d28f2b22e2af0100ea71be6376409f8447285d0f3d5c"
     },
     {
       "id": "R-CONTENT-022",
@@ -210,18 +210,11 @@
       "textSha256": "21612c6f9ca0ba0ef959c314b2319660f7afa4a5f8c6898bc1139b748123bd54"
     },
     {
-      "id": "R-CONTENT-026",
-      "title": "当前生成页的离线资源清单没有自动提供KaTeX或Mermaid",
-      "owner": "clients/gui/design-system/content-system.md#公式与科学内容",
-      "strength": "must",
-      "textSha256": "e5f7ba1a0b65c17da934394f2345950f3fba1b98128d8354013ef412d0e17323"
-    },
-    {
       "id": "R-CONTENT-028",
-      "title": "必须覆盖的验收场景：流式中不完整公式与引用",
+      "title": "内容阅读验收覆盖流式正文中的未闭合公式和围栏、流结束后的阅读状态，以及查看失败时的反馈和恢复",
       "owner": "clients/gui/design-system/content-system.md#最小落地顺序与验收",
       "strength": "must",
-      "textSha256": "28020c08fd2fe286bc7f41a98b0f2d85458951b0bd40e3c14c641bb99d0eb543"
+      "textSha256": "3062adcd83da2d0d73e41149ae237f44c45d1126931b233a1b7acb27ceedf754"
     },
     {
       "id": "R-CONVERSATION-028",

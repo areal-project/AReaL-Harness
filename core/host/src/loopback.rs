@@ -67,6 +67,8 @@ const WRITE_METHODS: &[&str] = &[
     "project.activate",
     "command.read",
     "attachment.upload",
+    "attachment.read",
+    "worktree.project.add",
     "analytics.activity",
     "analytics.import",
     "analytics.read",
@@ -87,8 +89,6 @@ const WRITE_METHODS: &[&str] = &[
     "bots.read",
     "bots.command",
     "worktree.command",
-    "pages.command",
-    "pages.resource",
     "desktop.command",
 ];
 const TTL: Duration = Duration::from_secs(30);
@@ -108,7 +108,7 @@ struct BrowserBinding {
     port: u16,
 }
 
-fn ui_root(bin: &Path) -> Option<PathBuf> {
+pub(super) fn ui_root(bin: &Path) -> Option<PathBuf> {
     [
         bin.join("../../areal-gui"),
         bin.join("../share/areal-gui"),
@@ -127,18 +127,18 @@ struct Ticket {
     generation: String,
     deadline: Instant,
 }
-struct PageConnection {
+struct ClientConnection {
     host: Rc<Host>,
     connection: String,
 }
-impl Drop for PageConnection {
+impl Drop for ClientConnection {
     fn drop(&mut self) {
         self.host.clients.borrow_mut().remove(&self.connection);
         self.host.changed();
         self.host
             .gateway
             .workbench
-            .disconnect_pages(&self.connection);
+            .disconnect_connection(&self.host, &self.connection);
     }
 }
 #[derive(Default)]
@@ -149,16 +149,6 @@ pub(super) struct Loopback {
     ui_root: RefCell<Option<PathBuf>>,
 }
 impl Loopback {
-    pub(super) fn page_proxy_url(&self) -> Result<String> {
-        Ok(format!(
-            "{}/host/pages/proxy",
-            self.endpoint
-                .borrow()
-                .as_ref()
-                .context("CAPABILITY_UNAVAILABLE")?
-                .origin
-        ))
-    }
     pub(super) fn ticket(&self, input: LocalWebTicketParams) -> Result<LocalWebTicketResult> {
         self.mint_ticket(input, None)
     }
@@ -267,11 +257,26 @@ impl Loopback {
             "turn.stop" => "interrupt",
             "interaction.respond" | "task.question.reply" => "answer",
             "task.pause" => "pauseTask",
-            "library.command" | "analytics.import" | "worktree.read" | "worktree.command"
-            | "tasks.read" | "trajectory.read" | "trajectory.command" | "feedback.read"
-            | "feedback.command" | "manage.read" | "manage.command" | "providers.read"
-            | "providers.command" | "plugins.read" | "plugins.command" | "bots.read"
-            | "bots.command" | "pages.command" | "pages.resource" | "desktop.command" => "manage",
+            "attachment.read"
+            | "worktree.project.add"
+            | "library.command"
+            | "analytics.import"
+            | "worktree.read"
+            | "worktree.command"
+            | "tasks.read"
+            | "trajectory.read"
+            | "trajectory.command"
+            | "feedback.read"
+            | "feedback.command"
+            | "manage.read"
+            | "manage.command"
+            | "providers.read"
+            | "providers.command"
+            | "plugins.read"
+            | "bots.read"
+            | "bots.command"
+            | "plugins.command"
+            | "desktop.command" => "manage",
             _ if WRITE_METHODS.contains(&method) => "observe",
             _ => return false,
         };
@@ -533,11 +538,10 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
     host.clients
         .borrow_mut()
         .insert(connection_id.clone(), None);
-    let _pages = PageConnection {
+    let _connection = ClientConnection {
         host: host.clone(),
         connection: connection_id.clone(),
     };
-    let mut page_events = host.gateway.workbench.page_events();
     // 写能力同时要求协议协商和本机用户明确授予的范围；旧浏览器仍只有 observe。
     let mut writer = (negotiated
         && device_id.as_ref().is_none_or(|id| {
@@ -666,23 +670,6 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                 writer = Some(local);
                 ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
                 send(&mut socket, &response).await?;
-            }
-            event = page_events.recv() => {
-                let event = match event {
-                    Ok(event) => event,
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                    Err(error) => return Err(error).context("page event stream interrupted"),
-                };
-                if event["connection"] != connection_id { continue; }
-                ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
-                if let Some(device) = &device_id {
-                    ensure!(host.loopback.browser_permits(device, "manage"), "FORBIDDEN");
-                }
-                send(&mut socket, &json!({"version":VERSION,"method":"pages.event","params":{
-                    "event":"pages.event","connectionId":connection_id,
-                    "gatewayGeneration":host.identity.generation,
-                    "token":event["token"],"notification":event["notification"]
-                }})).await?;
             }
             event = bot_events.recv(), if writable => {
                 let event = match event {
@@ -923,6 +910,10 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
 }
 
 fn request_lane(method: &str, params: &Value) -> Option<RemoteMethodLane> {
+    // 创建正在等待 setup 时，取消必须能越过同连接的业务队列。
+    if method == "worktree.command" && params["operation"] == "worktreeCancel" {
+        return Some(RemoteMethodLane::Control);
+    }
     // 过渡：到 0.2.0 删。desktop.command 拆分后由各 Schema 方法声明通道。
     if method == "desktop.command" {
         match (
@@ -1049,7 +1040,11 @@ fn loopback_error(request: &Value, error: &anyhow::Error) -> Value {
     ) {
         value["commandId"] = request["commandId"].clone();
         value["submissionUnknown"] = json!(
-            !(super::gateway_owner::settled_failure(code) || code == "CAPABILITY_UNAVAILABLE")
+            !(super::gateway_owner::settled_failure(code)
+                || matches!(
+                    code,
+                    "CAPABILITY_UNAVAILABLE" | "COMMAND_FAILED" | "scheduleWorkspaceRequired"
+                ))
         );
     } else if matches!(
         request["method"].as_str(),

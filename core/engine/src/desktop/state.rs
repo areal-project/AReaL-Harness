@@ -470,7 +470,6 @@ impl Engine {
         self.mutate(move |engine| async move {
             let tool = match request.bundle_id.as_str() {
                 BROWSER_V1_BUNDLE => areal_protocol::desktop::browser_v1_tool(),
-                areal_protocol::desktop::COMPUTER_V1_BUNDLE => areal_protocol::desktop::computer_v1_tool(),
                 _ => return Err(invalid("unsupported desktop tool bundle")),
             };
             if host.is_closed() || host.identity() != identity {
@@ -504,7 +503,9 @@ impl Engine {
                 return Err(Error::Conflict);
             }
             let mut bindings = cell.bindings.write().await;
-            if bindings.host.as_ref().is_some_and(|old| old.id() != host.id() && !old.is_closed()) {
+            // 空工具表没有客户端工具执行权，共享连接不能阻止原生浏览器附件。
+            if !state.thread.dynamic_tools.is_empty()
+                && bindings.host.as_ref().is_some_and(|old| old.id() != host.id() && !old.is_closed()) {
                 return Err(Error::Conflict);
             }
             let present = state.thread.dynamic_tools.iter().find(|entry| entry.name == tool.name);
@@ -512,7 +513,7 @@ impl Engine {
                 return Err(Error::Conflict);
             }
             // 旧工具仅在原 live ToolHost 当前连接上继续执行；不能改绑给不认识它们的 GUI。
-            let deployed = [areal_protocol::desktop::browser_v1_tool(), areal_protocol::desktop::computer_v1_tool()];
+            let deployed = [areal_protocol::desktop::browser_v1_tool()];
             if state.thread.dynamic_tools.iter().any(|entry| !deployed.iter().any(|known| digest(entry).ok() == digest(known).ok()))
                 && !bindings.host.as_ref().is_some_and(|old| old.id() == host.id() && !old.is_closed())
             {

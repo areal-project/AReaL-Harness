@@ -48,7 +48,6 @@ export default defineConfig(() => ({
         .filter((key) => key.startsWith("./desktop-contract/"))
         .map((key) => `@areal/workbench/${key.slice(2)}`),
       "@areal/workbench/model-selection",
-      "@areal/workbench/state-projection",
       "@areal/provider-config",
     ],
   },

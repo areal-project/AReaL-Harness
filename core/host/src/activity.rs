@@ -32,7 +32,8 @@ pub(crate) async fn observe(
             .join(storage::digest(registration.project_id.as_bytes()))
             .join("inputs.json");
         ensure!(
-            storage::read_optional::<Value>(&launch_inputs)?.is_none(),
+            storage::read_optional::<Value>(&launch_inputs)?.is_none()
+                || crate::launch::preparation_only(home, registration)?,
             "previous activation has no service record"
         );
         let _service = existing_lock(&registration.data_dir.join("service.lock"))?;

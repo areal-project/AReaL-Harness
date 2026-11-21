@@ -530,33 +530,15 @@ async fn connection(
             ));
             continue;
         }
-        if !conn.principal.token.is_empty()
-            && conn.principal.id != "desktop-owner"
-            && ((method == "areal/mcp/app/open" && params["fileResource"].is_object())
-                || (method == "areal/mcp/app/request"
-                    && params["request"]["method"] == "ui/host-file"))
-        {
-            conn.send(response(
-                id.unwrap(),
-                Err(RpcError {
-                    code: -32003,
-                    message: "trusted desktop file host required".into(),
-                    data: Some(json!({"reason":"REQUEST_REJECTED","outcome":{"kind":"rejected"},"recovery":{"kind":"none"}})),
-                }),
-            ));
-            continue;
-        }
         let project_permission = (method == "areal/interaction/respond"
             && params["decision"] == "allowProject")
             || method.starts_with("areal/permissions/")
             || method.starts_with("areal/plugin/")
             || codex_plugins::METHODS.contains(&method)
             || plugin_runtime::METHODS.contains(&method);
-        if (method.starts_with("areal/mcp/app/tools/")
-            && !conn.principal.allows(auth::Permission::Tools))
-            || (project_permission
-                && (!conn.principal.allows(auth::Permission::Manage)
-                    || conn.principal.thread_ids.is_some()))
+        if (project_permission
+            && (!conn.principal.allows(auth::Permission::Manage)
+                || conn.principal.thread_ids.is_some()))
             || !conn.principal.allows(auth::permission(method))
             || ["threadId", "parentThreadId", "sourceThreadId"]
                 .iter()
@@ -632,7 +614,6 @@ async fn connection(
                         | "areal/side/close"
                         | "areal/conversation/history"
                         | "areal/side/context/read"
-                        | "areal/genUi/source"
                         | "areal/task/create"
                         | "areal/task/draft"
                         | "turn/interrupt"
@@ -664,9 +645,6 @@ async fn connection(
                     | "areal/mcp/form/resource/prepare"
                     | "areal/mcp/form/resource/stage"
                     | "areal/mcp/form/resource/release"
-                    | "areal/mcp/app/tools/resolve"
-                    | "areal/mcp/app/tools/revoke"
-                    | "areal/mcp/app/close"
                     | "areal/plugin/hooks/configure"
             );
             if !control && conn.rpc_permits.available_permits() <= 4 {
@@ -687,7 +665,6 @@ async fn connection(
             };
             let method = method.to_owned();
             let identity = conn.principal.id.clone();
-            let tool_host = conn.tool_host.clone();
             let principal = conn.principal.clone();
             let configuration = conn.configuration.clone();
             let engine = engine.clone();
@@ -719,15 +696,13 @@ async fn connection(
                     } else if method == "turn/steer" {
                         steer_request(&engine, &identity, params).await
                     } else if method == "areal/side/create" {
-                        let host = (principal.id == "desktop-owner"
+                        let can_inherit_browser = principal.id == "desktop-owner"
                             && principal.allows(auth::Permission::Interact)
                             && principal.allows(auth::Permission::Tools)
-                            && principal.thread_ids.is_none())
-                        .then_some(tool_host as Arc<dyn areal_engine::tools::DynamicToolHost>);
-                        desktop::create_side(&engine, &identity, params, host).await
+                            && principal.thread_ids.is_none();
+                        desktop::create_side(&engine, &identity, params, can_inherit_browser).await
                     } else if plugin_runtime::METHODS.contains(&method.as_str()) {
-                        plugin_runtime::dispatch(&engine, &identity, tool_host, &method, params)
-                            .await
+                        plugin_runtime::dispatch(&engine, &identity, &method, params).await
                     } else if codex_plugins::METHODS.contains(&method.as_str()) {
                         codex_plugins::dispatch(&engine, &identity, &method, params).await
                     } else if delegations::METHODS.contains(&method.as_str()) {
@@ -831,7 +806,6 @@ async fn check_side_policy(engine: &Engine, method: &str, params: &Value) -> Res
             | "areal/turn/start"
             | "turn/interrupt"
             | "areal/side/context/read"
-            | "areal/genUi/source"
             | "areal/conversation/history"
             | "areal/tool/acknowledge"
             | "areal/context/read"
@@ -1221,27 +1195,7 @@ impl Connection {
             return self.conversation_list(engine, params).await;
         }
         if plugin_runtime::METHODS.contains(&method) {
-            if method.starts_with("areal/mcp/app/tools/")
-                && (!self.principal.allows(auth::Permission::Manage)
-                    || !self.principal.allows(auth::Permission::Tools)
-                    || self.principal.thread_ids.is_some())
-            {
-                return Err(RpcError {
-                    code: -32003,
-                    message: "unrestricted Manage and Tools permissions required".into(),
-                    data: Some(
-                        json!({"reason":"PERMISSION_DENIED","outcome":{"kind":"rejected"},"recovery":{"kind":"none"}}),
-                    ),
-                });
-            }
-            return plugin_runtime::dispatch(
-                engine,
-                &self.principal.id,
-                self.tool_host.clone(),
-                method,
-                params,
-            )
-            .await;
+            return plugin_runtime::dispatch(engine, &self.principal.id, method, params).await;
         }
         if codex_plugins::METHODS.contains(&method) {
             return codex_plugins::dispatch(engine, &self.principal.id, method, params).await;
@@ -1421,11 +1375,7 @@ impl Connection {
                             })
                     })
                     .collect::<Result<std::collections::BTreeMap<_, _>, _>>()?;
-                let mut notifications = NOTIFICATIONS.to_vec();
-                notifications.extend([
-                    "areal/mcp/app/tools/pending",
-                    "areal/mcp/app/tools/cancelled",
-                ]);
+                let notifications = NOTIFICATIONS.to_vec();
                 let mut capabilities = json!({"apiVersion": API_VERSION, "methods": methods, "methodSemantics":semantics,
                     "notifications": notifications, "serverRequests":SERVER_REQUESTS,
                     "browserToolBundles":if can_attach_browser {json!([{"bundleId":areal_protocol::desktop::BROWSER_V1_BUNDLE,
@@ -1442,17 +1392,6 @@ impl Connection {
                 capabilities["features"]["sideExecutableV2"] = json!(true);
                 capabilities["features"]["hostUpdateStatus"] = json!(true);
                 capabilities["features"]["connectionProcesses"] = json!(true);
-                capabilities["desktopToolBundles"] = if can_attach_browser {
-                    json!([{ "bundleId":areal_protocol::desktop::COMPUTER_V1_BUNDLE,
-                        "definition":areal_protocol::desktop::computer_v1_tool() }])
-                } else {
-                    json!([])
-                };
-                capabilities["features"]["computerToolAttachment"] = json!(can_attach_browser);
-                capabilities["features"]["computerToolPreparation"] = json!(can_attach_browser);
-                capabilities["features"]["externalCua"] = json!(can_attach_browser);
-                capabilities["features"]["mcpPageToolsV1"] =
-                    json!({"version":1,"kinds":["getSelection","applyPatch"]});
                 capabilities["features"]["permissionPresets"] =
                     json!(engine.permission_presets_available());
                 capabilities["features"]["permissionFullAccess"] =
@@ -1890,6 +1829,83 @@ mod tests {
             assert_eq!(
                 error.code, -32602,
                 "registered method has no parameter route: {method}"
+            );
+        }
+        let capabilities = conn
+            .dispatch(
+                &engine,
+                "areal/capabilities",
+                json!({"apiVersion":"areal.core.v1"}),
+            )
+            .await
+            .unwrap();
+        assert!(
+            !capabilities["methods"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|method| method == "areal/genUi/source")
+        );
+        assert_eq!(
+            conn.dispatch(&engine, "areal/genUi/source", json!({}))
+                .await
+                .unwrap_err()
+                .code,
+            -32601
+        );
+        assert!(capabilities["features"].get("mcpPageToolsV1").is_none());
+        for method in [
+            "areal/mcp/apps/list",
+            "areal/mcp/app/open",
+            "areal/mcp/app/openFromResult",
+            "areal/mcp/app/request",
+            "areal/mcp/app/close",
+            "areal/mcp/app/tools/register",
+            "areal/mcp/app/tools/revoke",
+            "areal/mcp/app/tools/claim",
+            "areal/mcp/app/tools/resolve",
+        ] {
+            assert!(
+                !capabilities["methods"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|entry| entry == method),
+                "retired MCP App method advertised: {method}"
+            );
+            assert_eq!(
+                conn.dispatch(&engine, method, json!({}))
+                    .await
+                    .unwrap_err()
+                    .code,
+                -32601,
+                "retired method is still callable: {method}"
+            );
+        }
+        assert!(
+            !capabilities["notifications"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|notice| notice
+                    .as_str()
+                    .is_some_and(|notice| notice.starts_with("areal/mcp/app/")))
+        );
+        for method in [
+            "areal/plugin/mcp/list",
+            "areal/mcp/tool/result",
+            "areal/mcp/extension/call",
+            "areal/mcp/forms/list",
+            "areal/mcp/form/respond",
+            "areal/mcp/form/preview",
+        ] {
+            assert!(
+                capabilities["methods"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|entry| entry == method),
+                "ordinary MCP method missing: {method}"
             );
         }
         assert!(engine.list(None, 100, None).await.unwrap().0.is_empty());

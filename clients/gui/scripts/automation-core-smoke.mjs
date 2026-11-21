@@ -7,35 +7,26 @@ import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { arch, cpus, loadavg, platform, release } from "node:os";
+import { selectCreatedConversation, captureSmokeFailure } from "./smoke-navigation.mjs";
 import {
-  selectConversation,
-  selectCreatedConversation,
-  captureSmokeFailure,
-} from "./smoke-navigation.mjs";
-import { assertApplicationStopped, closeRecordedSmokeApplication } from "./application-cleanup.mjs";
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
+  closeRecordedSmokeApplication,
+} from "./application-cleanup.mjs";
 import { checkBrowserStartup } from "./browser-startup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 
 const runStarted = performance.now();
-const options = { suite: "all", native: false };
+const options = { suite: "browser" };
 for (let index = 2; index < process.argv.length; index++) {
   const flag = process.argv[index];
-  if (flag === "--native") options.native = true;
-  else if (flag === "--benchmark") options.benchmark = true;
+  if (flag === "--benchmark") options.benchmark = true;
   else if (flag === "--ecosystem") options.ecosystem = true;
-  else if (
-    [
-      "--suite",
-      "--native-bundle-id",
-      "--native-fixture-app",
-      "--task-benchmark-config",
-      "--app-root",
-    ].includes(flag)
-  ) {
+  else if (["--suite", "--task-benchmark-config", "--app-root"].includes(flag)) {
     assert.ok(
       process.argv[index + 1] && !process.argv[index + 1].startsWith("--"),
       `${flag} needs a value`,
@@ -45,16 +36,11 @@ for (let index = 2; index < process.argv.length; index++) {
         "--suite": "suite",
         "--app-root": "appRoot",
         "--task-benchmark-config": "taskConfig",
-        "--native-bundle-id": "bundleId",
-        "--native-fixture-app": "fixtureApp",
       }[flag]
     ] = process.argv[++index];
   } else throw Error(`Unknown flag ${flag}`);
 }
-assert.ok(
-  ["all", "browser", "computer"].includes(options.suite),
-  "--suite must be all, browser, or computer",
-);
+assert.ok(options.suite === "browser", "--suite must be browser");
 if (options.benchmark) {
   assert.equal(options.suite, "browser", "--benchmark requires --suite browser");
   assert.ok(!options.ecosystem, "--benchmark measures the fixed non-ecosystem browser suite");
@@ -63,19 +49,6 @@ if (options.ecosystem) {
   assert.notEqual(options.suite, "all", "--ecosystem requires one explicit --suite");
   assert.ok(process.env.AREAL_CORE_BIN, "--ecosystem requires an explicit AREAL_CORE_BIN");
 }
-if (options.native) {
-  assert.notEqual(options.suite, "browser", "--native requires the computer suite");
-  assert.equal(
-    options.bundleId,
-    "com.areal.harness.computer-fixture",
-    "native actions accept only the dedicated harmless AReaL fixture",
-  );
-  assert.ok(
-    isAbsolute(options.fixtureApp ?? ""),
-    "--native requires --native-fixture-app with an absolute .app path",
-  );
-} else assert.ok(!options.bundleId && !options.fixtureApp, "native fixture flags require --native");
-
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
 assert.ok(!options.appRoot || isAbsolute(options.appRoot), "--app-root must be absolute");
@@ -138,15 +111,12 @@ const failureModes = [
   "Screenshot bytes do not become readable durable Core image Blobs.",
   "Hidden/full-page capture loses page state or returns only the visible viewport.",
   "Dialog management or recording status reports success without the actual fixture/artifact effect.",
-  "Settings enablement does not persist, a fresh disabled session advertises computer_v1, or disabled native admission executes.",
-  "Passive computer status requests OS authorization or native actions run without existing grants.",
 ];
 if (ecosystem)
   failureModes.push(
     "GUI source review installs the wrong package or restart loses the installed digest or selected Skill reference.",
     "Try creates a thread or submits to the model before Send.",
     "The model never receives the exact installed Skill body and Core reference before native tool execution.",
-    "Missing host tools or disabled computer control report available readiness.",
     "Creator replaces the existing official builtin source or skips its real Runtime initialization and validation.",
     "Stale, denied or UNKNOWN mutations execute again. Only denied mutation replay is covered by this combined runner.",
   );
@@ -246,7 +216,7 @@ const site = createServer(async (request, response) => {
 });
 await new Promise((resolve) => site.listen(0, "127.0.0.1", resolve));
 const siteUrl = `http://127.0.0.1:${site.address().port}/`;
-let app, page, projectId, threadId, pageId, nativeId, activeScenario, fixtureProcess;
+let app, page, projectId, threadId, pageId, nativeId, activeScenario;
 const model = createServer(async (request, response) => {
   if (taskBenchmark)
     return taskBenchmark.fixtureModel(request, response).catch((error) => {
@@ -288,7 +258,7 @@ const model = createServer(async (request, response) => {
       const packet = JSON.parse(
         body.messages.findLast((message) => message.role === "user").content,
       );
-      assert.ok(["browser_v1", "computer_v1"].includes(packet.tool));
+      assert.ok(packet.tool === "browser_v1");
       assert.match(packet.digest, /^[a-f0-9]{64}$/);
       (events.permissionReviews ??= []).push({ tool: packet.tool, digest: packet.digest });
       response.writeHead(200, { "Content-Type": "text/event-stream" });
@@ -453,8 +423,9 @@ async function benchmarkSourceSnapshot() {
     ...Object.fromEntries(
       [
         "app/src/main.cjs",
-        "../../services/workbench/src/desktop/core/browser-tool.cjs",
-        "../../services/workbench/src/desktop/core/service-protocol.cjs",
+        "packages/browser-automation/src/host-tool.cjs",
+        "app/src/core/service-client.cjs",
+        "../../core/host/src/workbench_frontend.rs",
         "app/src/core/preview-native/native-targets.cjs",
         "packages/browser-automation/src/upstream/browser/browserPlaywrightLocatorExecutor.ts",
         "app/src/core/preview.cjs",
@@ -828,59 +799,6 @@ async function newThread(selectSkill = true) {
   await selectCreatedConversation(page, projectId, threadId);
   return threadId;
 }
-async function computerSettings() {
-  await page.getByRole("button", { name: "设置", exact: true }).click();
-  await page.getByRole("button", { name: "电脑控制", exact: true }).click();
-  await page.getByTestId("computer-control-settings").waitFor();
-}
-async function setComputerEnabled(value) {
-  await computerSettings();
-  const control = page.getByTestId("computer-control-enabled").getByRole("switch");
-  if (
-    !value &&
-    (await control.getAttribute("aria-checked")) === "false" &&
-    (await state()).library?.settings?.computerControlEnabled === undefined
-  ) {
-    events.initialComputerPreference =
-      "Unset preference renders disabled. Subsequent enabled and disabled toggles must persist explicit values.";
-    await page.getByRole("button", { name: "返回应用", exact: true }).click();
-    return;
-  }
-  if ((await control.getAttribute("aria-checked")) !== String(value)) await control.click();
-  await until(
-    async () => (await state()).library?.settings?.computerControlEnabled === value,
-    "computer setting reflected in actual service snapshot",
-  );
-  await until(
-    async () =>
-      JSON.parse(await readFile(join(scratch, "core/library.json"), "utf8")).settings
-        .computerControlEnabled === value,
-    "computer setting persisted on disk",
-  );
-  if (value) {
-    await page.evaluate(() => document.fonts.ready);
-    events.settingsScreenshot = join(scratch, "computer-control-settings.png");
-    await page.screenshot({ path: events.settingsScreenshot });
-  }
-  await page.getByRole("button", { name: "返回应用", exact: true }).click();
-}
-async function computerCase(id, operation, parameters = {}, extra = {}) {
-  return runScenario({
-    id: `computer-${id}`,
-    tool: "computer_v1",
-    arguments: { operation, parameters },
-    ...extra,
-  });
-}
-function assertComputerCatalog(id, enabled) {
-  const requests = events.modelCalls.filter((call) => call.scenario === id);
-  assert.ok(requests.length, "catalog assertion observed at least one real model request");
-  assert.ok(
-    requests.every((call) => call.toolNames.includes("computer_v1") === enabled),
-    "fresh-session catalog follows computer enablement",
-  );
-}
-
 async function ecosystemDetail() {
   await page
     .getByRole("navigation", { name: "应用导航", exact: true })
@@ -979,13 +897,16 @@ async function installEcosystem() {
     (id) => localStorage.getItem(`areal-gui:draft:${id}:new:skills`),
     projectId,
   );
-  const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
+  const host = await readFixtureHost(env);
+  const pid = app.process().pid;
   await app.evaluate(({ dialog }) => {
     dialog.showMessageBox = async () => ({ response: 1 });
   });
   await closeRecordedSmokeApplication(app);
   app = undefined;
-  await assertApplicationStopped(binary, env, metadata);
+  const evidence = join(scratch, `quit-${pid}`);
+  await mkdir(evidence);
+  await settleFixtureHostAfterQuit(binary, env, evidence, { host, pid });
   await launch();
   const restored = (await command("manage", { projectId, operation: "plugins" })).data.find(
     (plugin) => plugin.id === ecosystem.pluginId,
@@ -1065,10 +986,7 @@ async function launch() {
   await until(async () => (await state()).connection?.state === "ready", "desktop service ready");
   events.startup = await checkBrowserStartup(app, { binary, userHome, scratch });
   events.runtime = await app.evaluate(
-    (
-      { app, BrowserWindow, dialog, shell, webContents },
-      { workspace, computerModule, taskLifecycle },
-    ) => {
+    ({ app, BrowserWindow, dialog, shell, webContents }, { workspace, taskLifecycle }) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [workspace] });
       globalThis.__automationPermissionRequests = [];
       globalThis.__automationDialogs = [];
@@ -1187,35 +1105,6 @@ async function launch() {
         );
         return pending;
       };
-      if (computerModule) {
-        const { ComputerControl } = process
-          .getBuiltinModule("node:module")
-          .createRequire(computerModule)(computerModule);
-        globalThis.__automationComputerTrace = [];
-        const prepare = ComputerControl.prototype.prepare;
-        ComputerControl.prototype.prepare = async function (request) {
-          try {
-            const result = await prepare.call(this, request);
-            globalThis.__automationComputerTrace.push({
-              phase: "prepare",
-              request: { ...request, signal: undefined },
-              result,
-            });
-            return result;
-          } catch (error) {
-            globalThis.__automationComputerTrace.push({
-              phase: "prepare",
-              code: error.code,
-              message: error.message,
-            });
-            throw error;
-          }
-        };
-        ComputerControl.prototype.requestAccess = function (capability) {
-          globalThis.__automationPermissionRequests.push({ kind: "requestAccess", capability });
-          throw Error("Acceptance runner forbids OS authorization requests");
-        };
-      }
       const openExternal = shell.openExternal.bind(shell);
       shell.openExternal = async (url, ...rest) => {
         if (String(url).startsWith("x-apple.systempreferences:")) {
@@ -1240,8 +1129,6 @@ async function launch() {
     {
       workspace,
       taskLifecycle: Boolean(taskBenchmark),
-      computerModule:
-        options.suite === "browser" ? null : join(gui, "app/src/core/computer-control.cjs"),
     },
   );
   assert.equal(events.runtime.userData, env.AREAL_GUI_USER_DATA);
@@ -1285,308 +1172,9 @@ try {
     });
   }
   if (ecosystem) {
-    if (options.suite === "computer") await setComputerEnabled(true);
     await installEcosystem();
   }
-  if (options.suite !== "browser") {
-    let selectedThread;
-    if (ecosystem) {
-      await newThread();
-      selectedThread = threadId;
-    }
-    await setComputerEnabled(false);
-    if (ecosystem) {
-      await readiness(false);
-      const requests = events.modelCalls.length;
-      const before = (await state()).projects.find((project) => project.id === projectId).state;
-      const draft = await page.evaluate(
-        (id) => ({
-          text: localStorage.getItem(`areal-gui:draft:${id}:new`),
-          skills: localStorage.getItem(`areal-gui:draft:${id}:new:skills`),
-        }),
-        projectId,
-      );
-      const detail = await ecosystemDetail();
-      await until(
-        async () => !(await detail.getByRole("button", { name: "试用", exact: true }).isEnabled()),
-        "disabled native provider blocks Try",
-      );
-      await until(
-        async () => /computer_v1/.test(await detail.innerText()),
-        "unavailable readiness identifies missing native host tool",
-      );
-      assert.deepEqual(
-        await page.evaluate(
-          (id) => ({
-            text: localStorage.getItem(`areal-gui:draft:${id}:new`),
-            skills: localStorage.getItem(`areal-gui:draft:${id}:new:skills`),
-          }),
-          projectId,
-        ),
-        draft,
-        "unavailable Try preserves the draft and selected Skill reference",
-      );
-      assert.equal(events.modelCalls.length, requests);
-      assert.deepEqual(
-        Object.keys(
-          (await state()).projects.find((project) => project.id === projectId).state.threads,
-        ).sort(),
-        Object.keys(before.threads).sort(),
-        "unavailable adapter does not create a thread",
-      );
-      await detail.getByRole("button", { name: "管理", exact: true }).click();
-      await page
-        .getByTestId("plugin-detail-page")
-        .getByRole("button", { name: ecosystem.skillName, exact: true })
-        .click();
-      const skillDetail = page.getByTestId("skill-detail-page");
-      await skillDetail.getByRole("button", { name: "试用", exact: true }).click();
-      await until(
-        async () => /computer_v1/.test(await skillDetail.innerText()),
-        "Skill detail Try reports the same missing deployment",
-      );
-      assert.deepEqual(
-        await page.evaluate(
-          (id) => ({
-            text: localStorage.getItem(`areal-gui:draft:${id}:new`),
-            skills: localStorage.getItem(`areal-gui:draft:${id}:new:skills`),
-          }),
-          projectId,
-        ),
-        draft,
-        "Skill detail blocked Try preserves draft",
-      );
-      assert.equal(
-        events.modelCalls.length,
-        requests,
-        "Skill detail cannot bypass disabled native deployment",
-      );
-      checks.push("ecosystem-disabled-computer-try-blocked");
-      await page
-        .getByRole("navigation", { name: "应用导航", exact: true })
-        .getByRole("button", { name: "首页", exact: true })
-        .click();
-    }
-    const before = await command("computerControl", { operation: "status" });
-    const after = await command("computerControl", { operation: "status" });
-    events.passiveStatus = { before, after };
-    assert.equal(before.enabled, false);
-    assert.equal(after.enabled, false);
-    for (const capability of ["accessibility", "screenRecording", "inputMonitoring"])
-      assert.equal(
-        after[capability],
-        before[capability],
-        "passive status leaves OS grants unchanged",
-      );
-    await newThread(false);
-    await runScenario({ id: "computer-disabled-tool-catalog" });
-    assertComputerCatalog("computer-disabled-tool-catalog", false);
-    checks.push("computer-disabled-tool-catalog");
-    await setComputerEnabled(true);
-    if (ecosystem) {
-      const status = await command("computerControl", { operation: "status" });
-      await readiness(status.available === true);
-    }
-    if (ecosystem) {
-      threadId = selectedThread;
-      ecosystem.currentSelected = true;
-      await selectConversation(page, threadId);
-    } else await newThread();
-    await computerCase(
-      "describe",
-      "describe",
-      {},
-      {
-        assertResult(item) {
-          successful(item);
-          const text = JSON.stringify(item.contentItems);
-          for (const name of [
-            "get_app_state",
-            "left_click",
-            "set_value",
-            "request_access",
-            "stop_computer_control",
-          ])
-            assert.ok(text.includes(name), `describe lists ${name}`);
-        },
-      },
-    );
-    assertComputerCatalog("computer-describe", true);
-    const status = await command("computerControl", { operation: "status" });
-    assert.equal(status.enabled, true);
-    events.enabledStatus = status;
-    await computerCase(
-      "passive-access",
-      "request_access",
-      {},
-      {
-        assertResult(item) {
-          successful(item);
-          const access = resultObject(
-            item,
-            (value) =>
-              typeof value.accessibility === "string" && typeof value.screenRecording === "string",
-          );
-          assert.equal(access.accessibility, status.accessibility);
-          assert.equal(access.screenRecording, status.screenRecording);
-        },
-      },
-    );
-    if (status.accessibility === "denied") {
-      await computerCase(
-        "permission-denied",
-        "get_app_state",
-        { app_ref: { bundle_id: "com.areal.harness.computer-fixture" }, include_screenshot: false },
-        {
-          approval: "none",
-          assertResult(item) {
-            assert.equal(item.success, false, JSON.stringify(item));
-            const denial = resultObject(item, (value) => value.code === "permission_denied");
-            assert.equal(denial.action_sent, false);
-            assert.equal(denial.dispatch_status, "not_sent");
-          },
-        },
-      );
-    } else
-      gaps.push(
-        "Native AX permission-denied behavior was not run because this helper already has Accessibility access.",
-      );
-    if (options.native) {
-      if (
-        status.available !== true ||
-        status.accessibility !== "granted" ||
-        status.screenRecording !== "granted"
-      ) {
-        const blocker = Error(
-          "Native acceptance blocked. The helper needs pre-existing Accessibility and Screen Recording grants. No authorization was requested.",
-        );
-        blocker.code = "NATIVE_GRANTS_REQUIRED";
-        throw blocker;
-      }
-      const plist = join(options.fixtureApp, "Contents/Info.plist");
-      const bundleId = execFileSync(
-        "/usr/libexec/PlistBuddy",
-        ["-c", "Print :CFBundleIdentifier", plist],
-        { encoding: "utf8" },
-      ).trim();
-      assert.equal(
-        bundleId,
-        options.bundleId,
-        "only the dedicated harmless fixture can be launched",
-      );
-      const executable = execFileSync(
-        "/usr/libexec/PlistBuddy",
-        ["-c", "Print :CFBundleExecutable", plist],
-        { encoding: "utf8" },
-      ).trim();
-      assert.ok(executable && !executable.includes("/"));
-      const truthPath = join(scratch, "native-fixture-truth.json");
-      fixtureProcess = spawn(join(options.fixtureApp, "Contents/MacOS", executable), [truthPath], {
-        stdio: ["ignore", "ignore", "pipe"],
-      });
-      let fixtureError;
-      fixtureProcess.on("error", (error) => {
-        fixtureError = error;
-      });
-      fixtureProcess.stderr.on(
-        "data",
-        (chunk) => void writeFile(join(scratch, "native-fixture.stderr.log"), chunk, { flag: "a" }),
-      );
-      const truth = () => readFile(truthPath, "utf8").then(JSON.parse);
-      const initial = await until(() => {
-        if (fixtureError) throw fixtureError;
-        return truth().catch(() => null);
-      }, "owned native fixture ready");
-      assert.equal(
-        initial.pid,
-        fixtureProcess.pid,
-        "fixture evidence belongs to this launched process",
-      );
-      assert.equal(initial.presses, 0);
-      const app_ref = { bundle_id: options.bundleId };
-      const observe = async (id) => {
-        const item = await computerCase(id, "get_app_state", { app_ref, include_screenshot: true });
-        const observed = resultObject(
-          item,
-          (value) => typeof value.state_id === "string" && Array.isArray(value.elements),
-        );
-        assert.equal(observed.app.bundle_id, options.bundleId);
-        await imageResult(item);
-        return observed;
-      };
-      let observed = await observe("native-observe");
-      const target = (identifier) => {
-        const element = observed.elements.find((element) => element.identifier === identifier);
-        assert.ok(element, `real AX tree contains ${identifier}`);
-        return { type: "element", index: element.index };
-      };
-      await computerCase(
-        "native-denied",
-        "left_click",
-        { app_ref, state_id: observed.state_id, target: target("fixture-press"), strategy: "a11y" },
-        { approval: "deny", assertEffect: async () => assert.equal((await truth()).presses, 0) },
-      );
-      observed = await observe("native-after-denial");
-      assert.equal((await truth()).presses, 0, "read after denial does not replay native input");
-      await computerCase(
-        "native-click",
-        "left_click",
-        { app_ref, state_id: observed.state_id, target: target("fixture-press"), strategy: "a11y" },
-        {
-          assertEffect: () =>
-            until(async () => (await truth()).presses === 1, "real AppKit button effect"),
-        },
-      );
-      observed = await observe("native-after-click");
-      await computerCase(
-        "native-set-value",
-        "set_value",
-        {
-          app_ref,
-          state_id: observed.state_id,
-          target: target("fixture-editor"),
-          value: "Core AX input A😀BC",
-        },
-        {
-          assertEffect: () =>
-            until(
-              async () => (await truth()).text === "Core AX input A😀BC",
-              "real AppKit text effect",
-            ),
-        },
-      );
-      events.nativeFixture = { initial, final: await truth(), bundleId, truthPath };
-      gaps.push(
-        "Native accepted cases cover AX button/text effects and app-window capture. CGEvent input, UTF-16 selection, clipboard restoration, stale refs and physical takeover are not run by this Core integration runner.",
-      );
-    } else
-      gaps.push(
-        "Native AX observation, screen capture and input were not run. Use --native with the dedicated fixture and pre-existing helper grants.",
-      );
-    await setComputerEnabled(false);
-    await computerCase(
-      "disabled-existing-thread",
-      "get_app_state",
-      { app_ref: { bundle_id: "com.areal.harness.computer-fixture" }, include_screenshot: false },
-      {
-        approval: "none",
-        assertResult(item) {
-          assert.equal(item.success, false, JSON.stringify(item));
-          const denial = resultObject(item, (value) => value.code === "not_authorized");
-          assert.match(denial.message, /disabled/i);
-          assert.equal(denial.action_sent, false);
-          assert.equal(denial.dispatch_status, "not_sent");
-        },
-      },
-    );
-    events.computerRegistrationContract =
-      "Existing threads may retain their saved tool definition. Disabled Main admission rejects before approval. Fresh disabled threads omit computer_v1.";
-    await newThread(false);
-    await runScenario({ id: "computer-disabled-again" });
-    assertComputerCatalog("computer-disabled-again", false);
-    checks.push("computer-disabled-again");
-  }
-  if (!taskBenchmark && options.suite !== "computer") {
+  if (!taskBenchmark) {
     if (ecosystem) await readiness(true);
     await newThread();
     await page.keyboard.press("Meta+t");
@@ -1910,7 +1498,7 @@ try {
   }
   if (ecosystem)
     gaps.push(
-      "Selected-plugin browser/computer paths do not cover stale-reference mutation rejection, UNKNOWN receipt loss, physical Stop/takeover, real providers, or packaged apps. Those scenarios require separate acceptance and cannot be inferred from this runner.",
+      "Selected-plugin browser paths do not cover stale-reference mutation rejection, UNKNOWN receipt loss, real providers, or packaged apps. Those scenarios require separate acceptance and cannot be inferred from this runner.",
     );
   events.permissionRequests = await app.evaluate(() => globalThis.__automationPermissionRequests);
   assert.deepEqual(
@@ -1918,11 +1506,7 @@ try {
     [],
     "passive settings/model access queries never call explicit authorization or open System Settings",
   );
-  checks.push(
-    options.suite === "browser"
-      ? "browser-no-authorization-request"
-      : "passive-status-no-authorization-request",
-  );
+  checks.push("browser-no-authorization-request");
   assert.deepEqual(errors, []);
   passed = taskBenchmark
     ? !["blocked", "timeout", "unknown"].includes(events.taskBenchmark?.status)
@@ -1930,33 +1514,17 @@ try {
 } catch (error) {
   errors.push({ code: error.code ?? "ACCEPTANCE_FAILED", message: error.stack ?? String(error) });
   if (page) await captureSmokeFailure(page, scratch, error);
-  process.exitCode = error.code === "NATIVE_GRANTS_REQUIRED" ? 2 : 1;
+  process.exitCode = 1;
 } finally {
   const teardownStarted = performance.now();
-  if (fixtureProcess && fixtureProcess.exitCode === null && fixtureProcess.signalCode === null) {
-    fixtureProcess.kill("SIGTERM");
-    await until(
-      () => fixtureProcess.exitCode !== null || fixtureProcess.signalCode !== null,
-      "owned native fixture stopped",
-      10000,
-    ).catch((error) => errors.push(error.message));
-  }
-  const metadata = await readFile(join(scratch, "core/service.json"), "utf8").then(
-    JSON.parse,
-    (error) => {
-      if (error.code !== "ENOENT") errors.push(error.message);
-      return null;
-    },
-  );
+  const host = await readFixtureHost(env);
+  const pid = app?.process().pid;
   if (app) {
     events.nativeDialogs = await app
       .evaluate(() => globalThis.__automationDialogs)
       .catch((error) => ({ unavailable: error.message }));
     events.nativeDialogTrace = await app
       .evaluate(() => globalThis.__automationDialogTrace)
-      .catch((error) => ({ unavailable: error.message }));
-    events.computerTrace = await app
-      .evaluate(() => globalThis.__automationComputerTrace)
       .catch((error) => ({ unavailable: error.message }));
     events.permissionRequests ??= await app
       .evaluate(() => globalThis.__automationPermissionRequests)
@@ -1977,44 +1545,11 @@ try {
       errors.push(`Electron cleanup ${error.message}`);
     }
   }
-  if (metadata) {
-    try {
-      await assertApplicationStopped(binary, env, metadata);
-      events.cleanup.applicationStopped = true;
-    } catch (error) {
-      errors.push(`Application cleanup ${error.message}`);
-      const { ServiceConnection, waitForServiceProcessExit } = require(
-        join(productGUI, "app/src/core/service-client.cjs"),
-      );
-      const connection = new ServiceConnection();
-      try {
-        await connection.connect(metadata);
-        const packet = await connection.request("hello", {
-          protocol: metadata.protocol,
-          identity: metadata.identity,
-        });
-        await connection
-          .request(
-            "stopService",
-            {
-              protocol: metadata.protocol,
-              cancel: true,
-              expectedDesktopGeneration: metadata.desktopGeneration,
-              expectedTargets: packet.service.targets,
-            },
-            true,
-          )
-          .catch((error) => {
-            if (!error.message.includes("已请求退出")) throw error;
-          });
-        await waitForServiceProcessExit(join(scratch, "core"), metadata);
-        events.cleanup.assistedServiceStop = true;
-      } catch (cleanupError) {
-        errors.push(`Assisted cleanup ${cleanupError.message}`);
-      } finally {
-        connection.close();
-      }
-    }
+  try {
+    events.cleanup.hostStop = await settleFixtureHostAfterQuit(binary, env, scratch, { host, pid });
+    events.cleanup.applicationStopped = true;
+  } catch (error) {
+    errors.push(`Application cleanup ${error.message}`);
   }
   site.closeAllConnections();
   model.closeAllConnections();
@@ -2026,8 +1561,7 @@ try {
   if (!passed) process.exitCode ||= 1;
   const files = [
     "scripts/automation-core-smoke.mjs",
-    "../../services/workbench/src/desktop/core/browser-tool.cjs",
-    "app/src/core/computer-control.cjs",
+    "packages/browser-automation/src/host-tool.cjs",
     "app/src/core/preview.cjs",
     "app/src/core/agent-dialog-presentation.cjs",
     "renderer/dist/index.html",

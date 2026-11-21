@@ -8,6 +8,7 @@ export function parsePairingLink(value, { requireInvite = true } = {}) {
     const authority = /^https?:\/\/([^/]+)/.exec(value)?.[1];
     const local = fragment.get("local") === "1";
     const fingerprint = fragment.get("cert");
+    // 过渡：到 0.1.22 删；本次升级窗口保留旧 HTTP 本地配对，不能丢弃配对身份。
     const legacyLocal =
       local &&
       fingerprint === null &&
@@ -17,6 +18,7 @@ export function parsePairingLink(value, { requireInvite = true } = {}) {
       local &&
       isPinnedRelayOrigin(url.origin, fingerprint) &&
       (authority === url.host || authority === `${url.hostname}:443`);
+    // 过渡：到 0.1.22 删；升级窗口仍接受上述旧配对地址。
     if (
       (local ? !legacyLocal && !pinnedLocal : url.protocol !== "https:" || fingerprint !== null) ||
       fragment.getAll("cert").length > 1 ||

@@ -51,7 +51,7 @@ parts:
 
 icons:
   source: 见 icons/ 目录，按名称引用，颜色取 currentColor
-  used: [nav-back, nav-forward, search, search-clear, settings-general, settings-appearance, settings-usage, settings-plugins, settings-snapshots, settings-browser, settings-computer, settings-worktrees, settings-hooks, settings-models, settings-session, settings-cloud, settings-trajectory, settings-mobile]
+  used: [nav-back, nav-forward, search, search-clear, settings-general, settings-appearance, settings-usage, settings-plugins, settings-snapshots, settings-browser, settings-worktrees, settings-hooks, settings-models, settings-session, settings-cloud, settings-trajectory, settings-mobile]
 
 content: 分组、各项名称、图标与搜索关键词见示例数据 settings.groups
 

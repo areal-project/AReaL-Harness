@@ -55,6 +55,8 @@ These checks establish query correctness, compatibility and local performance, w
 
 ## Reproduction
 
+The GUI benchmark below belongs to the retired Node catalog coordinator. Use the separate checkout at `461c09bd7` for the historical runner and the linked source hashes for measured inputs.
+
 Run from the repository root:
 
 ```sh

@@ -6,14 +6,18 @@ import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile, rm, readdir, chmod } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { createProjectConversation, captureSmokeFailure } from "./smoke-navigation.mjs";
-import { closeSmokeApplication, stopAndAssertFixtureHost } from "./application-cleanup.mjs";
+import {
+  closeSmokeApplication,
+  makeFixtureDirectoriesWritable,
+  stopAndAssertFixtureHost,
+} from "./application-cleanup.mjs";
 import { applicationFixture } from "./application-fixture.mjs";
 import { CoreClient } from "../packages/runtime-client/core.js";
 
@@ -509,13 +513,6 @@ async function measureCatalog(descriptor) {
   }
 }
 
-async function removeFixture(directory) {
-  await chmod(directory, 0o700);
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (entry.isDirectory()) await removeFixture(join(directory, entry.name));
-  }
-}
-
 console.log(`Evidence: ${evidence}`);
 try {
   for (const variant of variants) {
@@ -797,7 +794,7 @@ try {
     );
     if (passed) {
       try {
-        await removeFixture(scratch);
+        await makeFixtureDirectoriesWritable(scratch);
         await rm(scratch, { recursive: true });
       } catch (error) {
         passed = false;

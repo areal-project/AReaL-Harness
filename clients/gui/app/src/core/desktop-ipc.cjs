@@ -3,7 +3,7 @@
 const { ipcMain, protocol, dialog } = require("electron");
 const { readFile } = require("node:fs/promises");
 const { resolve, sep, extname } = require("node:path");
-const { nativeText } = require("@areal/workbench-service/desktop/core/native-i18n.cjs");
+const { nativeText } = require("@areal/workbench/node/native-i18n");
 /** @typedef {import('@areal/workbench/desktop-contract').DesktopInvokeArguments} InvokeArguments */
 /** @typedef {import('@areal/workbench/desktop-contract').DesktopSendArguments} SendArguments */
 /** @typedef {import('@areal/workbench/desktop-contract').DesktopEventArguments} EventArguments */
@@ -48,9 +48,9 @@ function registerUiProtocol(guiRoot) {
       return new Response(await readFile(path), {
         headers: {
           "Content-Type": mime[extname(path)] ?? "application/octet-stream",
-          // 换代后端口会变，回环连接仍须由当前 Host 签发一次性票据。
+          // Host 换代可以分配新端口，回环连接仍须原代际的一次性票据。
           "Content-Security-Policy":
-            "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' ws://127.0.0.1:*; worker-src 'self' blob:; object-src 'none'; frame-src areal-mcp:",
+            "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' ws://127.0.0.1:*; worker-src 'self' blob:; object-src 'none'; frame-src 'none'",
         },
       });
     } catch {
@@ -85,7 +85,7 @@ function desktopDialogs(getWindow) {
   return { showMessageBox, showOpenDialog, showSaveDialog };
 }
 
-/** @param {import('electron').App} app @param {typeof import('@areal/workbench-service/desktop/core/diagnostics.cjs')} diagnostics */
+/** @param {import('electron').App} app @param {typeof import('@areal/workbench/node/diagnostics')} diagnostics */
 function registerDesktopShell(app, diagnostics) {
   app.on("child-process-gone", (_event, details) =>
     diagnostics.record({
@@ -104,7 +104,6 @@ function registerDesktopShell(app, diagnostics) {
   );
   app.on("will-quit", () => diagnostics.record({ type: "exit-requested", exitCode: 0 }));
   protocol.registerSchemesAsPrivileged([
-    { scheme: "areal-mcp", privileges: { standard: true, secure: true, supportFetchAPI: true } },
     { scheme: "areal-ui", privileges: { standard: true, secure: true, supportFetchAPI: true } },
   ]);
 }

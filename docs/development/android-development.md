@@ -42,7 +42,7 @@ Android 本地 Origin 是 `https://localhost`。Relay 部署者需把该精确�
 
 ## 可重复门禁
 
-首次在新 worktree 运行产品门禁前，执行 `npm ci --prefix services/remote-relay --ignore-scripts` 和 `pnpm --dir clients/gui --filter @areal/gen-ui build`，准备 Relay 及桌面夹具依赖。workspace/commands 另需指向同一完整固定槽的 `AREAL_CORE_BIN` 与 `AREAL_RUNTIME_BIN`。macOS 测试环境须允许 Runtime 的 Seatbelt 预检。
+首次在新 worktree 运行产品门禁前，执行 `npm ci --prefix services/remote-relay --ignore-scripts`，准备 Relay 依赖。workspace/commands 另需指向同一完整固定槽的 `AREAL_CORE_BIN` 与 `AREAL_RUNTIME_BIN`。macOS 测试环境须允许 Runtime 的 Seatbelt 预检。
 
 只使用本任务新建的隔离 emulator，显式指定 serial。runner 不选择真机或修改系统 CA。Relay 夹具仍有独立 Node 版本要求，可用 `AREAL_RELAY_NODE` 指向兼容版本。
 

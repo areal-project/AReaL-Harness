@@ -85,6 +85,18 @@ try {
         !history.loadingOlder
       );
     });
+  const reobserve = async () => {
+    const main = page.locator("[data-fixture-history]");
+    const previous = JSON.parse(await main.getAttribute("data-fixture-history")).viewGeneration;
+    await page.getByRole("button", { name: "Reobserve", exact: true }).click();
+    await page.waitForFunction((previous) => {
+      const history = JSON.parse(
+        document.querySelector("[data-fixture-history]")?.getAttribute("data-fixture-history") ??
+          "null",
+      );
+      return history?.viewGeneration && history.viewGeneration !== previous;
+    }, previous);
+  };
   assert.equal(await page.getByRole("button", { name: "加载更早的消息", exact: true }).count(), 0);
   await historyReady();
   await page.waitForFunction(() => {
@@ -276,7 +288,7 @@ try {
   await page.getByRole("button", { name: "Leave conversation", exact: true }).click();
   await page.getByRole("button", { name: "Return to conversation", exact: true }).click();
   await checkAnchor("released old page is restored after returning");
-  await page.getByRole("button", { name: "Reobserve", exact: true }).click();
+  await reobserve();
   await checkAnchor("reobservation preserves the old-page anchor");
   await checkDisclosures();
   report.checks.push(
@@ -292,8 +304,10 @@ try {
   await page.screenshot({ path: join(evidence, "dark-reading.png") });
   await page.getByRole("button", { name: "Toggle theme", exact: true }).click();
   await page.screenshot({ path: join(evidence, "light-reading.png") });
-  await page.getByRole("button", { name: "Reobserve", exact: true }).click();
   await checkAnchor("old page is present before unavailable history scenario");
+  await page.getByRole("button", { name: "Leave conversation", exact: true }).click();
+  // 新快照到达时阅读视图已释放。当前快照的缓存可保留，旧快照的正文需要按锚点重取。
+  await reobserve();
   await page.evaluate(() =>
     fetch("/__reading/control", {
       method: "POST",
@@ -301,17 +315,24 @@ try {
       body: JSON.stringify({ operation: "failNext" }),
     }),
   );
-  await page.getByRole("button", { name: "Leave conversation", exact: true }).click();
-  const failedHistory = page.waitForResponse(
-    (response) =>
-      response.url().endsWith("/__reading/history") &&
-      response.request().postDataJSON().operation === "ensureAnchor",
-  );
+  const failureTraceStart = await page.evaluate(() => window.readingTrace.length);
+  const failuresBefore = fixture.snapshot().failures;
   await page.getByRole("button", { name: "Return to conversation", exact: true }).click();
-  const failedHistoryResponse = await failedHistory;
-  const failedHistoryResult = await failedHistoryResponse.json();
-  assert.equal(failedHistoryResult.kind, "limited");
-  assert.equal(failedHistoryResult.reason, "unavailable");
+  await page.waitForFunction(
+    (start) =>
+      window.readingTrace
+        .slice(start)
+        .some(
+          (entry) =>
+            entry.operation === "ensureAnchor" && entry.settled && entry.result === "limited",
+        ),
+    failureTraceStart,
+  );
+  assert.equal(
+    fixture.snapshot().failures,
+    failuresBefore + 1,
+    "failure reached original history read",
+  );
   await frames();
   assert.equal(await page.getByText("暂时无法恢复阅读位置", { exact: false }).count(), 0);
   assert.equal(await page.getByRole("button", { name: "重试恢复位置", exact: true }).count(), 0);
@@ -325,8 +346,9 @@ try {
   await checkAnchor("renderer reload restores its persisted old-page anchor");
   await checkDisclosures();
   report.checks.push("manual nested disclosures survive renderer reload");
-  await page.getByRole("button", { name: "Reobserve", exact: true }).click();
   await checkAnchor("old page is present before cancellation scenario");
+  await page.getByRole("button", { name: "Leave conversation", exact: true }).click();
+  await reobserve();
   const holdResponse = page.waitForResponse(
     (response) =>
       response.url().endsWith("/__reading/control") &&
@@ -334,13 +356,6 @@ try {
   );
   await page.getByRole("button", { name: "Hold pages", exact: true }).click();
   assert.ok((await holdResponse).ok());
-  const releaseView = page.waitForResponse(
-    (response) =>
-      response.url().endsWith("/__reading/history") &&
-      response.request().postDataJSON().operation === "release",
-  );
-  await page.getByRole("button", { name: "Leave conversation", exact: true }).click();
-  assert.equal((await (await releaseView).json()).released, true);
   await page.waitForFunction(() => {
     const history = JSON.parse(
       document.querySelector("[data-fixture-history]")?.getAttribute("data-fixture-history") ??
@@ -353,32 +368,19 @@ try {
       )
     );
   });
-  const ensureRequest = page.waitForRequest(
-    (request) =>
-      request.url().endsWith("/__reading/history") &&
-      request.postDataJSON().operation === "ensureAnchor",
-  );
+  const restoreTraceStart = await page.evaluate(() => window.readingTrace.length);
   await page.getByRole("button", { name: "Return to conversation", exact: true }).click();
-  const ensureHttp = await ensureRequest;
-  const ensure = ensureHttp.postDataJSON();
-  await until(
-    () =>
-      page.evaluate(async () => (await (await fetch("/__reading/state")).json()).held.length > 0),
-    "history restore request held",
+  await until(() => fixture.snapshot().held.length > 0, "history restore request held");
+  const ensure = await page.evaluate(
+    (start) =>
+      window.readingTrace
+        .slice(start)
+        .find((entry) => entry.operation === "ensureAnchor" && !entry.settled),
+    restoreTraceStart,
   );
+  assert.ok(ensure, "the original anchor read is pending while Host holds its page");
   report.heldRestore = fixture.snapshot().held;
   await page.locator(".messages").hover();
-  const retainedResponse = page
-    .waitForResponse((response) => {
-      if (!response.url().endsWith("/__reading/history")) return false;
-      const request = response.request().postDataJSON();
-      return (
-        request.operation === "retain" &&
-        request.viewId === ensure.viewId &&
-        request.revision > ensure.revision
-      );
-    })
-    .catch((error) => error);
   const beforeWheel = await messages.evaluate((reader) => {
     reader.dataset.fixtureWheelEnd = "pending";
     reader.addEventListener(
@@ -397,22 +399,22 @@ try {
     );
     return reader.scrollTop;
   });
-  const olderRequests = [];
-  const captureOlder = (request) => {
-    if (
-      request.url().endsWith("/__reading/history") &&
-      request.postDataJSON().operation === "loadOlder"
-    )
-      olderRequests.push(request);
-  };
-  page.on("request", captureOlder);
   await page.mouse.wheel(0, -200);
   await page.locator('.messages[data-fixture-wheel-delta="-200"]').waitFor();
   await page.locator('.messages[data-fixture-wheel-end="settled"]').waitFor();
-  const retained = await retainedResponse;
-  if (retained instanceof Error) throw retained;
-  const retainedResult = await retained.json();
-  assert.equal(retainedResult.retained, true);
+  const retained = await (
+    await page.waitForFunction(
+      (ensure) =>
+        window.readingTrace.find(
+          (entry) =>
+            entry.operation === "retain" &&
+            entry.viewId === ensure.viewId &&
+            entry.revision > ensure.revision &&
+            entry.settled,
+        ),
+      ensure,
+    )
+  ).jsonValue();
   await frames();
   const cancelledAnchor = await messages.evaluate((reader, beforeWheel) => {
     const viewport = reader.getBoundingClientRect();
@@ -440,8 +442,7 @@ try {
   report.cancelledAnchor = {
     ...cancelledAnchor,
     ensure,
-    retained: retained.request().postDataJSON(),
-    retainedResult,
+    retained,
   };
   await page.evaluate(() =>
     fetch("/__reading/control", {
@@ -450,18 +451,20 @@ try {
       body: JSON.stringify({ operation: "release" }),
     }),
   );
-  const response = await ensureHttp.response();
-  assert.ok(response);
-  const result = await response.json();
-  report.cancelledRestore = result;
-  assert.equal(result.kind, "cancelled");
-  await frames();
-  for (const request of olderRequests) {
-    const response = await request.response();
-    assert.ok(response);
-    await response.finished();
-  }
-  page.off("request", captureOlder);
+  report.cancelledRestore = await (
+    await page.waitForFunction(
+      (ensure) =>
+        window.readingTrace.find(
+          (entry) =>
+            entry.operation === "ensureAnchor" &&
+            entry.viewId === ensure.viewId &&
+            entry.revision === ensure.revision &&
+            entry.settled,
+        ),
+      ensure,
+    )
+  ).jsonValue();
+  assert.equal(report.cancelledRestore.result, "cancelled");
   await historyReady();
   await frames();
   const afterCancellation = await messages.evaluate((reader, anchor) => {
@@ -493,9 +496,8 @@ try {
   const snapshot = fixture.snapshot();
   report.history = {
     calls: snapshot.calls,
+    failures: snapshot.failures,
     pending: snapshot.pending,
-    views: snapshot.views,
-    displayHistory: snapshot.thread?.displayHistory,
     view: await page
       ?.evaluate(() => {
         const reader = document.querySelector(".messages");
@@ -508,6 +510,7 @@ try {
             .querySelector("[data-fixture-history]")
             ?.getAttribute("data-fixture-history"),
           saved: sessionStorage.getItem("areal-gui:reading-views:v1"),
+          trace: window.readingTrace?.slice(-10),
         };
       })
       .catch(() => undefined),

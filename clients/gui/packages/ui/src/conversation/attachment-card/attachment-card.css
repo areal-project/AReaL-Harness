@@ -1,7 +1,4 @@
-.composer-attachment-row .composer-image-card {
-  order: 0;
-}
-.composer-attachment-row .composer-text-card {
+.composer-attachment-row .composer-attachment-item:has(.composer-text-card) {
   order: 2;
 }
 .composer-image-card,

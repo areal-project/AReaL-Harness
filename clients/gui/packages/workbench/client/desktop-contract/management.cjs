@@ -18,7 +18,6 @@ const pluginStore = require("./plugin-store.cjs");
  * pluginSubmission:{projectId:string,operation:'pluginSubmission',requestId:string,mutation:PluginMutation,threadId?:string},
  * processSubmission:{projectId:string,operation:'processSubmission',threadId:string,requestId:string,guiOwned?:boolean},
  * agentSubmission:{projectId:string,operation:'agentSubmission',parentThreadId:string,requestId:string},
- * mcpFormResourceSubmission:{projectId:string,operation:'mcpFormResourceSubmission',requestId:string},
  * pluginStoreSnapshot:{operation:'pluginStoreSnapshot',projectId?:string,id?:string},pluginStoreDoctor:{operation:'pluginStoreDoctor',projectId?:string},
  * pluginArchivePick:{projectId:string,operation:'pluginArchivePick'}
  * }} LocalRequestMap */
@@ -35,7 +34,6 @@ const pluginStore = require("./plugin-store.cjs");
  * pluginReadiness:PluginReadiness,pluginSubmission:SubmissionRead<ProtocolResponseMap[PluginMutation]>,
  * processSubmission:{confirmed:false}|{confirmed:true,result:ProtocolResponseMap['processStart']&TerminalPresentation&{argv:string[],closed:boolean,controls:number}},
  * agentSubmission:{confirmed:false}|({confirmed:true,accepted:true,method:'areal/agent/spawn',parentThreadId:string,threadId:string,turnId:string}&import('./shared.cjs').SubmissionOutcome),
- * mcpFormResourceSubmission:SubmissionRead<ProtocolResponseMap['mcpFormResourceStage']>,
  * pluginUserConfigSave:ProtocolResponseMap['pluginUserConfigSave']&{reloadDeferred?:boolean},
  * pluginStoreSnapshot:PluginStoreSnapshot,pluginStoreDoctor:PluginDoctorReport,
  * pluginArchivePick:{canceled:true}|{selectionToken:string,fileName:string}
@@ -138,7 +136,6 @@ function isManagementRequest(value) {
     case "pluginArchivePick":
       return true;
     case "workgroupSubmission":
-    case "mcpFormResourceSubmission":
       return typeof value.requestId === "string";
     case "pluginReadiness":
       return (
@@ -300,8 +297,6 @@ function validateManagementResponse(request, value) {
         );
       case "pluginSubmission":
         return "mutation" in request && submissionRead(value, request.mutation);
-      case "mcpFormResourceSubmission":
-        return submissionRead(value, "mcpFormResourceStage");
       case "processSubmission":
         return (
           value.confirmed === false ||

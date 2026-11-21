@@ -85,7 +85,6 @@ pub(crate) struct Bundle {
     root: PathBuf,
     assets: Option<PathBuf>,
     version: String,
-    files: BTreeSet<PathBuf>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -134,7 +133,6 @@ fn source_bundle(bin: &Path) -> Option<Bundle> {
         assets: assets.is_dir().then_some(assets),
         root,
         version: "source".into(),
-        files: BTreeSet::new(),
     })
 }
 impl Bundle {
@@ -214,14 +212,13 @@ pub(crate) async fn discover_bundle(
         "bundle manifest too large"
     );
     let manifest: Manifest = serde_json::from_slice(&manifest_bytes)?;
-    let files = verify_files(&root, &manifest, required)?;
+    verify_files(&root, &manifest, required)?;
     Ok(Bundle {
         runtime: contents.join("MacOS/AReaL Harness GUI"),
         runner: root.join(runner),
         root,
         assets: None,
         version: manifest.version,
-        files,
     })
 }
 fn verify_files(root: &Path, manifest: &Manifest, required: &[&str]) -> Result<BTreeSet<PathBuf>> {

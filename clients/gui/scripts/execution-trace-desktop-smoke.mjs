@@ -14,16 +14,24 @@ import { tmpdir } from "node:os";
 const tempRoot = await realpath(tmpdir());
 const localRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const root = resolve(process.env.AREAL_VERIFY_ROOT || localRoot);
-const { assertApplicationStopped, closeSmokeApplication } = await import(
-  join(root, "clients/gui/scripts/application-cleanup.mjs")
-);
+const {
+  assertApplicationStopped,
+  closeSmokeApplication,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
+} = await import(join(root, "clients/gui/scripts/application-cleanup.mjs"));
 const { respondToSessionName } = await import(join(root, "clients/gui/scripts/model-fixture.mjs"));
 const desktop = join(root, "clients/gui/app");
 const require = createRequire(join(desktop, "package.json"));
 const { _electron: electron } = require("playwright-core");
-const { ServiceConnection, waitForServiceExit } = require(
-  join(desktop, "src/core/service-client.cjs"),
+const { HostClient } = require("@areal/client/node");
+const { readCoreThread } = await import(
+  join(root, "clients/gui/scripts/support/core-observation.mjs")
 );
+const { openProjectInDesktop, sendReady } = await import(
+  join(root, "clients/gui/scripts/support/journey-fixture.mjs")
+);
+const { selectConversation } = await import(join(root, "clients/gui/scripts/smoke-navigation.mjs"));
 const { verificationDoctor, lockVerificationSlot } = await import(
   new URL("./verification-build.mjs", import.meta.url)
 );
@@ -72,6 +80,7 @@ function environment(state) {
   const noProxy = [env.NO_PROXY, env.no_proxy, "127.0.0.1,localhost,::1"].filter(Boolean).join(",");
   return {
     ...env,
+    HOME: join(state, "user"),
     NO_PROXY: noProxy,
     no_proxy: noProxy,
     AREAL_GUI_USER_DATA: join(state, "electron"),
@@ -95,92 +104,23 @@ async function cleanup(run) {
     throw error;
   }
   const env = environment(run.state);
-  // Stop only this run's Core instances; safe adapter shutdown normally does this itself.
-  const metadataPath = join(run.state, "core/service.json");
-  let metadata;
-  try {
-    metadata = JSON.parse(await readFile(metadataPath, "utf8"));
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
+  const metadata = await readFile(join(run.evidence, "latest-launch.json"), "utf8")
+    .then(JSON.parse)
+    .catch((error) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+  if (metadata) {
+    await settleFixtureHostAfterQuit(binary, env, run.evidence, {
+      host: { hostId: metadata.hostId, generation: metadata.generation, pid: metadata.hostPid },
+      pid: metadata.pid,
+    });
+  } else {
+    assert.equal(await readFixtureHost(env), null, "original launch identity was not recorded");
+    await assertApplicationStopped(binary, env, null);
   }
-  if (metadata?.applicationOwner) {
-    await assertApplicationStopped(binary, env, metadata);
-  } else if (metadata) {
-    const connection = new ServiceConnection();
-    try {
-      await connection.connect(metadata);
-      await connection.request("hello", {
-        protocol: metadata.protocol,
-        identity: metadata.identity,
-      });
-      await until(async () => {
-        try {
-          return await connection.request("stopService", { protocol: metadata.protocol }, true);
-        } catch (error) {
-          if (error.message.includes("后台仍有任务")) {
-            const owned = JSON.parse(
-              execFileSync(binary, ["service", "list", "--json"], { env, encoding: "utf8" }),
-            );
-            for (const instance of owned) {
-              assert.ok(
-                instance.workspace.startsWith(run.state + "/"),
-                "workspace outside owned state",
-              );
-              assert.ok(
-                instance.dataDir.startsWith(join(run.state, "core") + "/"),
-                "data outside owned state",
-              );
-              if (instance.state !== "stopped")
-                execFileSync(
-                  binary,
-                  ["service", "stop", "--instance", instance.serviceId, "--cancel", "--json"],
-                  { env, timeout: 60000 },
-                );
-            }
-            return null;
-          }
-          throw error;
-        }
-      }, "safe stop of owned adapter");
-    } finally {
-      connection.close();
-    }
-    await waitForServiceExit(join(run.state, "core"), metadata);
-    await until(async () => {
-      try {
-        process.kill(metadata.pid, 0);
-        return false;
-      } catch (error) {
-        if (error.code === "ESRCH") return true;
-        throw error;
-      }
-    }, "owned adapter process exits");
-  }
-  const instances = JSON.parse(
-    execFileSync(binary, ["service", "list", "--json"], { env, encoding: "utf8" }),
-  );
-  for (const instance of instances) {
-    assert.ok(instance.workspace.startsWith(run.state + "/"), "workspace outside owned state");
-    assert.ok(
-      instance.dataDir.startsWith(join(run.state, "core") + "/"),
-      "data outside owned state",
-    );
-    if (instance.state !== "stopped")
-      execFileSync(
-        binary,
-        ["service", "stop", "--instance", instance.serviceId, "--cancel", "--json"],
-        { env, timeout: 60000 },
-      );
-  }
-  const remaining = JSON.parse(
-    execFileSync(binary, ["service", "list", "--json"], { env, encoding: "utf8" }),
-  );
-  assert.ok(
-    remaining.every((instance) => instance.state === "stopped"),
-    "Core remains live",
-  );
   await rm(run.state, { recursive: true });
-  return { adapterExited: true, coreStopped: true, stateRemoved: true };
+  return { coreStopped: true, stateRemoved: true };
 }
 if (command === "doctor") {
   console.log(JSON.stringify(await preflight(), null, 2));
@@ -208,28 +148,34 @@ if (command === "doctor") {
     actions = [],
     errors = [],
     electronStderr = [];
-  let app, page, server, failure, cleanupResult;
+  let app, page, server, failure, cleanupResult, originalHost;
+  const exits = [];
   async function closeGUI() {
     if (!app) return;
     const current = app;
     app = null;
     const child = current.process();
-    try {
-      await current.evaluate(({ dialog, Menu }) => {
-        dialog.showMessageBox = async () => ({ response: 1 });
-        const quit = Menu.getApplicationMenu().items[0].submenu.items.find(
-          (item) => item.label === "退出 AReaL Harness",
-        );
-        if (!quit) throw Error("Safe application quit menu is missing");
-        quit.click();
-      });
-    } finally {
-      await closeSmokeApplication({
-        process: () => child,
-        close: () =>
-          until(() => child.exitCode !== null || child.signalCode !== null, "owned Electron exit"),
-      });
-    }
+    const pid = child.pid;
+    const host = originalHost;
+    originalHost = null;
+    const exitEvidence = join(evidence, `exit-${pid}`);
+    await mkdir(exitEvidence);
+    await closeSmokeApplication({
+      process: () => child,
+      close: () =>
+        current.evaluate(({ app, dialog }) => {
+          dialog.showMessageBox = async () => ({ response: 1 });
+          app.quit();
+        }),
+    });
+    const receipt = await settleFixtureHostAfterQuit(binary, environment(state), exitEvidence, {
+      host,
+      pid,
+    });
+    assert.ok(receipt, "fixture Host issued a stop receipt");
+    assert.ok(child.exitCode === 0 && child.signalCode === null);
+    exits.push({ pid, hostPid: host?.pid, exitCode: child.exitCode, requestId: receipt.requestId });
+    await json(join(evidence, "exits.json"), exits);
   }
   const record = async (action) => {
     actions.push({ at: new Date().toISOString(), action });
@@ -248,7 +194,7 @@ if (command === "doctor") {
       "source Electron/Main/preload + real Core/Runtime; deterministic local model; native project picker injected",
   };
   try {
-    const workspace = join(state, "workspace");
+    const workspace = join(state, "demo");
     await mkdir(workspace);
     await mkdir(join(state, "user"));
     execFileSync("git", ["init", "-b", "main"], { cwd: workspace, stdio: "ignore" });
@@ -332,7 +278,7 @@ if (command === "doctor") {
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     await writeFile(
       join(state, "config.toml"),
-      `schema_version=2\n[delegation]\ninspection_permissions="inherit"\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\n`,
+      `schema_version=1\n[delegation]\ninspection_permissions="inherit"\n[model]\ncatalog_version=1\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\nmodels=[{id="fixture",enabled=true}]\n`,
     );
     await json(join(state, "desktop.json"), {
       profiles: [
@@ -345,8 +291,7 @@ if (command === "doctor") {
       ],
     });
     const env = environment(state);
-    const snapshot = () => page.evaluate(() => window.arealDesktop.snapshot());
-    const project = (state) => state.projects.find((item) => item.root === workspace);
+
     const capture = async (name) => {
       await page.screenshot({
         path: join(evidence, `${name}.png`),
@@ -368,21 +313,23 @@ if (command === "doctor") {
       app.process().stderr.on("data", (data) => electronStderr.push(String(data)));
       page = await app.firstWindow();
       page.setDefaultTimeout(15000);
-      {
-        await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
-        await page.evaluate(() => {
-          const key = "areal-gui:application-preferences";
-          const prefs = JSON.parse(localStorage.getItem(key) || "{}");
-          localStorage.setItem(key, JSON.stringify({ ...prefs, nextPromptSuggestions: false }));
-        });
-        await page.reload();
-      }
       page.on("pageerror", (error) => errors.push(error.message));
-      await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
-      await until(
-        async () => (await snapshot()).connection?.state === "ready",
-        "usable desktop service",
-      );
+      const ready = page.locator('[data-testid="areal-workbench"][data-startup-ready="true"]');
+      await ready.waitFor({ timeout: 120000 });
+      const preferencesChanged = await page.evaluate(() => {
+        const key = "areal-gui:application-preferences";
+        const prefs = JSON.parse(localStorage.getItem(key) || "{}");
+        if (prefs.locale === "zh-CN" && prefs.nextPromptSuggestions === false) return false;
+        localStorage.setItem(
+          key,
+          JSON.stringify({ ...prefs, locale: "zh-CN", nextPromptSuggestions: false }),
+        );
+        return true;
+      });
+      if (preferencesChanged) {
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await ready.waitFor();
+      }
       const actual = await app.evaluate(({ app, BrowserWindow }) => {
         const p = BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences();
         return {
@@ -399,60 +346,55 @@ if (command === "doctor") {
       assert.equal(actual.sandbox, true);
       assert.equal(actual.contextIsolation, true);
       assert.equal(actual.nodeIntegration, false);
-      const metadata = JSON.parse(await readFile(join(state, "core/service.json"), "utf8"));
-      process.kill(metadata.pid, 0);
-      const connection = new ServiceConnection();
+      originalHost = await until(async () => {
+        const descriptor = await readFixtureHost(env);
+        return descriptor?.pid > 1 ? descriptor : false;
+      }, "isolated Host identity published");
+      process.kill(originalHost.pid, 0);
+      const connection = new HostClient();
       try {
-        await connection.connect(metadata);
-        await connection.request("hello", {
-          protocol: metadata.protocol,
-          identity: metadata.identity,
-        });
+        await connection.connect(env.AREAL_HARNESS_SERVICE_HOME);
+        assert.equal(connection.hostId, originalHost.hostId);
+        assert.equal(connection.generation, originalHost.generation);
       } finally {
         connection.close();
       }
       const instanceDoctor = {
         ...actual,
-        adapterPid: metadata.pid,
+        hostId: originalHost.hostId,
+        generation: originalHost.generation,
+        hostPid: originalHost.pid,
         coreSHA256: sha(await readFile(binary)),
         modelAddress: server.address(),
         ownedState: state,
       };
-      await json(join(evidence, "doctor.json"), instanceDoctor);
+      await json(join(evidence, "latest-launch.json"), instanceDoctor);
       await json(join(evidence, `doctor-${actual.pid}.json`), instanceDoctor);
-      const { doctor } = await import(
-        join(root, ".agents/skills/verify-areal-harness/scripts/instance-doctor.mjs")
-      );
-      await doctor({
-        app,
-        page,
-        env,
-        binary,
-        expectedSHA256: build.coreSHA256,
-        evidence,
-        label: `${actual.pid}-launch`,
-      });
-      await app.evaluate(({ BrowserWindow, dialog }, path) => {
+      await app.evaluate(({ BrowserWindow }) => {
         BrowserWindow.getAllWindows()[0].setSize(1440, 960);
-        dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
-      }, workspace);
+      });
     }
     await record("launch fresh isolated source Electron");
     await launch();
-    await page.getByRole("button", { name: "不在项目中工作", exact: true }).click();
-    await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
-    await until(async () => project(await snapshot())?.state?.connected, "project connected");
+    await openProjectInDesktop(app, page, workspace);
+    await page.getByRole("button", { name: "选择模型", exact: true }).click();
+    await page.getByRole("radio", { name: "fixture", exact: true }).click();
     await page.getByTestId("chat-input").fill("TRACE_ROOT");
+    await sendReady(page);
     await page.getByTestId("chat-send-button").click();
     await page.getByText("TRACE_ROOT_DONE", { exact: true }).waitFor({ timeout: 120000 });
     const tid = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
     assert.ok(tid);
-    await until(
-      async () =>
-        project(await snapshot()).state.threads[tid]?.turns?.at(-1)?.status === "completed",
-      "root completed",
+    const coreOptions = { binary, env, gui: dirname(desktop), workspace, threadId: tid };
+    const history = await until(async () => {
+      const thread = await readCoreThread(coreOptions);
+      return thread.turns?.at(-1)?.status === "completed" ? thread : null;
+    }, "original Core Turn completed");
+    const turn = history.turns.at(-1);
+    assert.ok(
+      turn.items.some((item) => item.type === "agentMessage" && item.text === "TRACE_ROOT_DONE"),
     );
-    await json(join(evidence, "history-before.json"), project(await snapshot()).state.threads[tid]);
+    await json(join(evidence, "history-before.json"), history);
     async function openTrace() {
       await page.getByRole("button", { name: "任务操作", exact: true }).click();
       await page.getByRole("menuitem", { name: "查看调用轨迹", exact: true }).click();
@@ -480,20 +422,53 @@ if (command === "doctor") {
     }
     await capture("01-trace");
     async function copyConversation() {
-      await app.evaluate(({ clipboard }) => clipboard.clear());
-      await page.getByRole("button", { name: "复制当前会话全部轨迹", exact: true }).click();
-      await page.getByRole("button", { name: "已复制当前会话全部轨迹", exact: true }).waitFor();
-      return until(async () => {
-        const text = await app.evaluate(({ clipboard }) => clipboard.readText());
+      const previous = await app.evaluateHandle(async ({ clipboard, ClipboardItem }) => {
+        // 在复制前实体化，各 MIME 类型都留在 Main 内存中。
+        return Promise.all(
+          (await clipboard.read()).map(
+            async (item) =>
+              new ClipboardItem(
+                Object.fromEntries(
+                  await Promise.all(
+                    item.types.map(async (type) => [type, await item.getType(type)]),
+                  ),
+                ),
+              ),
+          ),
+        );
+      });
+      let copiedText;
+      try {
+        await page.getByRole("button", { name: "复制当前会话全部轨迹", exact: true }).click();
+        await page.getByRole("button", { name: "已复制当前会话全部轨迹", exact: true }).waitFor();
+        return await until(async () => {
+          const text = await app.evaluate(({ clipboard }) => clipboard.readText());
+          try {
+            const value = JSON.parse(text);
+            if (value.scope !== "conversationIncludingSubagents" || value.threadId !== tid)
+              return null;
+            copiedText = text;
+            return value;
+          } catch {
+            return null;
+          }
+        }, "current conversation copied to clipboard");
+      } finally {
         try {
-          const value = JSON.parse(text);
-          return value.scope === "conversationIncludingSubagents" && value.threadId === tid
-            ? value
-            : null;
-        } catch {
-          return null;
+          if (copiedText) {
+            await app.evaluate(
+              async ({ clipboard }, { previous, copiedText }) => {
+                if ((await clipboard.readText()) !== copiedText) return;
+                if (previous.length === 0) clipboard.clear();
+                else await clipboard.write(previous);
+              },
+              { previous, copiedText },
+            );
+          }
+        } finally {
+          await previous.dispose();
         }
-      }, "current conversation copied to clipboard");
+      }
     }
     const copied = await copyConversation();
     assert.equal(copied.scope, "conversationIncludingSubagents");
@@ -505,8 +480,7 @@ if (command === "doctor") {
     const count = requests.length;
     await closeGUI();
     await launch();
-    await until(async () => project(await snapshot())?.state?.connected, "restored project");
-    await page.getByTestId(`task-item-${tid}`).click();
+    await selectConversation(page, tid);
     await page.getByText("TRACE_ROOT_DONE", { exact: true }).waitFor();
     await openTrace();
     await page.locator("[data-execution-id]").first().getByRole("button").first().click();
@@ -523,12 +497,24 @@ if (command === "doctor") {
       await page.locator("[data-execution-id]").nth(1).getByRole("button").first().click();
       await page.getByText("TRACE_NESTED_DONE", { exact: false }).first().waitFor();
     }
-    assert.equal(requests.length, count, "reopening trace does not issue model requests");
     const restoredCopy = await copyConversation();
-    assert.ok(restoredCopy.children?.length, "restored copy includes shared child");
+    assert.deepEqual(
+      restoredCopy.children.map(({ execution, sources }) => [
+        execution.executionId,
+        sources.map(({ threadId }) => threadId),
+      ]),
+      copied.children.map(({ execution, sources }) => [
+        execution.executionId,
+        sources.map(({ threadId }) => threadId),
+      ]),
+      "restored copy includes the original execution and child Threads",
+    );
+    assert.equal(requests.length, count, "reopening and copying trace do not issue model requests");
     await json(join(evidence, "trace-copy-after.json"), restoredCopy);
     await capture("02-reopened");
-    await json(join(evidence, "history-after.json"), project(await snapshot()).state.threads[tid]);
+    const restored = await readCoreThread(coreOptions);
+    assert.deepEqual(restored.turns, history.turns, "reopen preserves the original Core Turns");
+    await json(join(evidence, "history-after.json"), restored);
     manifest.delegationScope = single
       ? "one shared child; nested not tested"
       : "nested shared children";
@@ -548,18 +534,6 @@ if (command === "doctor") {
           .ariaSnapshot()
           .catch(() => ""),
       ).catch(() => {});
-      const { doctor } = await import(
-        join(root, ".agents/skills/verify-areal-harness/scripts/instance-doctor.mjs")
-      );
-      await doctor({
-        app,
-        page,
-        env: environment(state),
-        binary,
-        expectedSHA256: build.coreSHA256,
-        evidence,
-        label: "failure",
-      }).catch((error) => errors.push(`failure doctor: ${error.message}`));
     }
   } finally {
     if (app) {

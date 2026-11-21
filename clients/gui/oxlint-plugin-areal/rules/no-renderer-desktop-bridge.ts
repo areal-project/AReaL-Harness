@@ -101,8 +101,7 @@ export default defineRule({
     function reportContract(node: ESTree.Node | null | undefined) {
       if (!node || contractAdapter) return;
       const source = staticText(node);
-      if (!source || !/(?:^|\/)(?:desktop-contract|state-projection)(?:[/.]|$)/.test(source))
-        return;
+      if (!source || !/(?:^|\/)desktop-contract(?:[/.]|$)/.test(source)) return;
       context.report({
         node,
         message:

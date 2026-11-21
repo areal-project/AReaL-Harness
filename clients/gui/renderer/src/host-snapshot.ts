@@ -185,6 +185,7 @@ type ExecutionView = {
   executionLocalReady?: boolean;
   executionHostState?: ShellProject["state"];
   executionError: null;
+  cloud?: NavigationSummary["cloud"];
   worktree?: WorktreeDisplay;
 };
 export type ReadProject = Record<string, unknown> & {
@@ -218,7 +219,6 @@ export const SHELL_SNAPSHOT_KEYS = [
   "serviceSummary",
   "backendUpdate",
   "lifecycle",
-  "computerControl",
   "subscription",
   "projectless",
 ] as const;
@@ -242,31 +242,60 @@ export function shellSnapshot(value: Snapshot): ShellSnapshot {
   };
 }
 
-type WatchedRead = { value?: { projectId: string; snapshot: unknown }; previous?: unknown };
-/** 按读结果对象缓存解析，同一份附加会话不重复解析，投影缓存才能按引用命中。 */
-export function createWatchedThreads(
-  reads: () => Iterable<WatchedRead>,
-  parse: (snapshot: unknown) => Observation["thread"],
+export function projectReadingWindow(
+  thread: Observation["thread"],
+  readingWindow: ReadingWindow,
+  freshness: string | undefined,
 ) {
-  const parsed = new WeakMap<object, Observation["thread"] | null>();
-  return () => {
-    const byProject = new Map<string, Observation["thread"][]>();
-    for (const read of reads()) {
-      const value = (read.value ?? read.previous) as WatchedRead["value"];
-      if (!value) continue;
-      let thread = parsed.get(value);
-      if (thread === undefined) {
-        try {
-          thread = parse(value.snapshot);
-        } catch {
-          thread = null;
-        }
-        parsed.set(value, thread);
-      }
-      if (thread)
-        byProject.set(value.projectId, [...(byProject.get(value.projectId) ?? []), thread]);
-    }
-    return byProject;
+  const pages = [...readingWindow.pages].sort(
+    (a, b) =>
+      readingWindow.pageRecords.findIndex((record) => record.id === b.pageId) -
+      readingWindow.pageRecords.findIndex((record) => record.id === a.pageId),
+  );
+  const gaps = historyGaps(readingWindow);
+  const entries = [...readingWindow.stalePages, ...pages].flatMap((page) => page.data);
+  const sources = new Map(entries.map((entry) => [entry.sourceItemId, entry]));
+  const merged = mergeHistory(thread, entries);
+  return {
+    ...merged,
+    turns: merged.turns.map((turn) => ({
+      ...turn,
+      items: turn.items.map((item) => {
+        const source = sources.get(item.id);
+        const expanded = readingWindow.items.get(item.id);
+        const value =
+          item.type === "historyDeferred" && expanded && expanded.version === item.version
+            ? expanded.entry.item
+            : item;
+        return source
+          ? {
+              ...value,
+              historySource: {
+                threadId: source.sourceThreadId,
+                turnId: source.sourceTurnId,
+                itemId: source.sourceItemId,
+              },
+            }
+          : value;
+      }),
+    })),
+    displayHistory: {
+      supported: readingWindow.observation.history !== undefined,
+      viewGeneration: readingWindow.viewGeneration,
+      revision: readingWindow.session.sequence,
+      complete: readingWindow.complete && !gaps.some((gap) => gap.atTop),
+      gaps,
+      omitted: readingWindow.pageRecords.length > readingWindow.pages.length,
+      pageTopology: readingWindow.pageRecords
+        .filter((record) => record.items.length)
+        .map(({ id, items }) => ({ id, items })),
+      restoringItems: readingWindow.stalePages.flatMap((page) =>
+        page.data.map((entry) => entry.sourceItemId),
+      ),
+      baselineFirstItemId: readingWindow.baselineFirstItemId,
+      freshness,
+      loadingOlder: !!readingWindow.olderRead,
+    },
   };
 }
 
@@ -301,7 +330,6 @@ export function createHostSnapshotProjector(
       historyVersion: number;
       fresh: boolean;
       localExecutionReady?: boolean;
-      desktopProject?: Snapshot["projects"][number];
       sessionFreshness?: string;
       sessionState?: ReturnType<HostClient["readsSnapshot"]>["session"];
       sessionTarget?: ReturnType<HostClient["readsSnapshot"]>["sessionTarget"];
@@ -323,7 +351,6 @@ export function createHostSnapshotProjector(
       watched,
       tasks,
       readingWindow,
-      observation,
       session,
       historyVersion,
       commandOutcomes,
@@ -334,7 +361,6 @@ export function createHostSnapshotProjector(
       watched: ReadonlyMap<string, Observation["thread"][]>;
       tasks: ReadonlyMap<string, Record<string, unknown>>;
       readingWindow?: ReadingWindow;
-      observation?: Observation;
       session?: SessionRead;
       historyVersion: number;
       commandOutcomes: ReadonlyMap<string, Record<string, JsonObject>>;
@@ -388,16 +414,15 @@ export function createHostSnapshotProjector(
         inspectionEntry.identity === configurationIdentity(configuration)
           ? inspectionEntry.value
           : undefined;
-      const desktopProject = desktopSnapshot?.projects.find((item) => item.id === id);
       const localExecutionReady = desktop
         ? desktopSnapshot?.connection?.state === "ready" &&
           connection.connection === "ready" &&
           desktopSnapshot.verifiedDesktopHost?.hostId === connection.identity.hostId &&
           desktopSnapshot.verifiedDesktopHost?.generation === connection.identity.hostGeneration &&
-          desktopProject?.state?.connected === true &&
-          desktopProject.scheduling?.suppressed !== true &&
+          fresh &&
+          project.state === "ready" &&
           !!project.serviceGeneration &&
-          desktopProject.core?.serviceGeneration === project.serviceGeneration
+          project.scheduleActivationSuppressed !== true
         : undefined;
       const cached = projectViews.get(project.projectId);
       const outcomes =
@@ -423,7 +448,6 @@ export function createHostSnapshotProjector(
         cached.historyVersion === displayVersion &&
         cached.fresh === fresh &&
         cached.localExecutionReady === localExecutionReady &&
-        cached.desktopProject === desktopProject &&
         cached.sessionFreshness === sessionFreshness &&
         cached.sessionState === sessionState &&
         cached.sessionTarget === sessionTarget &&
@@ -448,64 +472,16 @@ export function createHostSnapshotProjector(
       let thread = selectedSession ? native?.thread : undefined;
       if (thread && selectedSession?.access?.kind === "persisted")
         thread = { ...thread, persistedHistory: true };
-      if (thread && session && readingWindow) {
-        const pages = [...readingWindow.pages].sort(
-          (a, b) =>
-            readingWindow!.pageRecords.findIndex((record) => record.id === b.pageId) -
-            readingWindow!.pageRecords.findIndex((record) => record.id === a.pageId),
-        );
-        const gaps = historyGaps(readingWindow);
-        const entries = [...readingWindow.stalePages, ...pages].flatMap((page) => page.data);
-        const sources = new Map(entries.map((entry) => [entry.sourceItemId, entry]));
-        const merged = mergeHistory(thread, entries);
-        thread = {
-          ...merged,
-          turns: merged.turns.map((turn) => ({
-            ...turn,
-            items: turn.items.map((item) => {
-              const source = sources.get(item.id);
-              const expanded = readingWindow!.items.get(item.id);
-              const value =
-                item.type === "historyDeferred" && expanded && expanded.version === item.version
-                  ? expanded.entry.item
-                  : item;
-              return source
-                ? {
-                    ...value,
-                    historySource: {
-                      threadId: source.sourceThreadId,
-                      turnId: source.sourceTurnId,
-                      itemId: source.sourceItemId,
-                    },
-                  }
-                : value;
-            }),
-          })),
-          displayHistory: {
-            supported: observation?.history !== undefined,
-            viewGeneration: readingWindow.viewGeneration,
-            revision: session.sequence,
-            complete: readingWindow.complete && !gaps.some((gap) => gap.atTop),
-            gaps,
-            omitted: readingWindow.pageRecords.length > readingWindow.pages.length,
-            pageTopology: readingWindow.pageRecords
-              .filter((record) => record.items.length)
-              .map(({ id, items }) => ({ id, items })),
-            restoringItems: readingWindow.stalePages.flatMap((page) =>
-              page.data.map((entry) => entry.sourceItemId),
-            ),
-            baselineFirstItemId: readingWindow.baselineFirstItemId,
-            freshness: sessionFreshness,
-            loadingOlder: !!readingWindow.olderRead,
-          },
-        };
-      }
+      if (thread && session && readingWindow)
+        thread = projectReadingWindow(thread, readingWindow, sessionFreshness);
       const executionCore = {
         connectionGeneration: project.serviceGeneration ?? "",
         instanceId: project.serviceGeneration ?? "",
         serviceGeneration: project.serviceGeneration ?? null,
       };
+      const cloud = project.summaries.items.find((summary) => summary.cloud)?.cloud;
       const execution = {
+        ...(cloud ? { cloud } : {}),
         executionProjectId: id,
         executionRoot: project.workspace,
         executionCore,
@@ -538,7 +514,8 @@ export function createHostSnapshotProjector(
         profiles: Array.isArray(auxiliary?.profiles) ? auxiliary.profiles : [],
         id,
         hostProjectId: project.projectId,
-        ...(desktop ? { localExecutionReady, scheduling: desktopProject?.scheduling } : {}),
+        ...(desktop ? { localExecutionReady } : {}),
+        scheduling: { suppressed: project.scheduleActivationSuppressed === true },
         root: project.workspace,
         projectless: project.projectless,
         logicalProjectId: project.logicalProjectId
@@ -553,11 +530,23 @@ export function createHostSnapshotProjector(
           instanceId: project.serviceGeneration ?? "",
         },
         state: {
-          ...(projectTasks ? { tasks: projectTasks } : {}),
+          ...(projectTasks
+            ? {
+                tasks: Object.fromEntries(
+                  Object.entries(projectTasks).map(([id, task]) => [
+                    id,
+                    Object.assign({}, task, {
+                      executionConnected: execution.executionConnected,
+                      executionCore,
+                    }),
+                  ]),
+                ),
+              }
+            : {}),
           connected:
             fresh && project.state === "ready" && (!desktop || localExecutionReady === true),
           hostState: fresh ? project.state : undefined,
-          error: desktopProject?.state?.error ?? desktopProject?.error ?? null,
+          error: null,
           threads: {
             ...Object.fromEntries(
               auxiliaryThreads.map(([key, side]) => [key, { ...side, ...execution }]),
@@ -645,7 +634,6 @@ export function createHostSnapshotProjector(
         historyVersion: displayVersion,
         fresh,
         localExecutionReady,
-        desktopProject,
         sessionFreshness,
         sessionState,
         sessionTarget,

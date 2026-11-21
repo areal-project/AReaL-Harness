@@ -16,6 +16,11 @@ pub(super) struct Providers {
     checking: Cell<bool>,
     writing: tokio::sync::Mutex<()>,
 }
+impl Providers {
+    pub(super) fn updating(&self) -> bool {
+        self.writing.try_lock().is_err()
+    }
+}
 struct Checked {
     stamp: Value,
     execution: Value,

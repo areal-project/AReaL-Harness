@@ -23,13 +23,10 @@ import { DraftComposer } from "../DraftComposer.js";
 import { LeaveProjectIcon, NewProjectIcon, ProjectFolderIcon } from "../homeChromeIcons.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { DismissIcon } from "../interfaceIcons.js";
-import { McpMentionsPicker, useMcpAppsWorkspace } from "../McpAppsWorkspace.js";
 import { Messages } from "../Messages.js";
 import { ProjectlessDraft } from "../ProjectlessDraft.js";
 import { recoverySettings } from "../recoveryPresentation.js";
 import { rawText } from "../errors/errorCopy.js";
-// 过渡：到 0.1.21 删，设置页标识统一后移除旧标识模块引用。
-import { serviceSettingsId } from "../lib/legacySettingsIds.js";
 import { conversationLoadState } from "./conversationLoadState.js";
 import { type Action, type PlatformServices } from "../services.js";
 import { projectExecutionBlocked } from "../state/projectExecution.js";
@@ -61,7 +58,6 @@ type ConversationWorkspaceProps = {
   admitting: boolean;
   mainPane: React.RefObject<HTMLElement | null>;
   workspacePanels: ReturnType<typeof useWorkspacePanels>;
-  mcpWorkspace: ReturnType<typeof useMcpAppsWorkspace>;
   side: ReturnType<typeof useSideConversations>;
   fork: ReturnType<typeof useConversationFork>;
   preview: ReturnType<typeof useWorkspacePreview>;
@@ -203,7 +199,7 @@ function ConversationContent() {
                     size="sm"
                     className="mt-3"
                     onClick={() => {
-                      surfaces.setSettingsTab(serviceSettingsId);
+                      surfaces.setSettingsTab("高级诊断");
                       surfaces.setSettingsOpen(true);
                     }}
                   >
@@ -267,13 +263,11 @@ function ActiveConversation() {
     dark,
     empty,
     workspacePanels,
-    mcpWorkspace,
     side,
     fork,
     preview,
     documents,
     panelNavigation,
-    composerWorkspace,
     annotation,
     surfaces,
     tasks,
@@ -288,6 +282,17 @@ function ActiveConversation() {
   const readOnly = platformReadOnly || session.readOnly;
   const conversationSubmitReadOnly = useConversationSubmitReadOnly();
   const conversationCreateReadOnly = useConversationCreateReadOnly();
+  const readStatus = services.reads?.status();
+  const canActivatePersisted =
+    services.capabilities?.native === true ||
+    services.capabilities?.mutations === true ||
+    (readStatus?.connection === "ready" &&
+      readStatus.identity.writeMethods?.includes("project.activate") === true);
+  const dormantWritable =
+    !platformReadOnly &&
+    !conversationSubmitReadOnly &&
+    canActivatePersisted &&
+    Boolean(thread && "persistedHistory" in thread && thread.persistedHistory === true);
   const panelOwner = `${project?.id ?? ""}:${threadId}`;
   const { workspaceView } = workspacePanels.view;
   const {
@@ -303,7 +308,6 @@ function ActiveConversation() {
   const { onLink, rememberPanelTrigger } = preview;
   const { openFile, requestReview: setReviewRequest } = documents;
   const { showPanel } = panelNavigation;
-  const { mcpMentionsOpen, setMcpMentionsOpen, appEntries } = composerWorkspace;
   const { openImageAnnotation } = annotation;
   const { viewRefreshing } = startup;
   const { newTask } = navigationCommands;
@@ -341,21 +345,16 @@ function ActiveConversation() {
           }
           thread={thread}
           action={action}
-          readOnly={readOnly}
-          interactivePages={
-            !session.readOnly &&
-            !thread.cloud &&
-            (!readOnly || services.capabilities?.pages === true)
-          }
+          readOnly={readOnly && !dormantWritable}
           decisionShown
-          onOpenResult={mcpWorkspace.openResult}
-          resultStates={mcpWorkspace.resultStates}
-          onFork={readOnly || thread.cloud ? undefined : forkFromTurn}
+          onFork={(readOnly && !dormantWritable) || thread.cloud ? undefined : forkFromTurn}
           onAddSelection={
-            !readOnly && !thread.cloud && canStageSelection ? addSelectionToChat : undefined
+            (!readOnly || dormantWritable) && !thread.cloud && canStageSelection
+              ? addSelectionToChat
+              : undefined
           }
           onSideSelection={
-            !readOnly && !thread.cloud && canStageSelection && canCreateSide
+            (!readOnly || dormantWritable) && !thread.cloud && canStageSelection && canCreateSide
               ? openSideSelection
               : undefined
           }
@@ -422,17 +421,6 @@ function ActiveConversation() {
                 }
               />
             )}
-            {!thread.cloud && mcpWorkspace.contexts}
-            {!thread.cloud && mcpWorkspace.formsView}
-            {!thread.cloud && mcpMentionsOpen && (
-              <McpMentionsPicker
-                servers={mcpWorkspace.servers}
-                projectId={project.id}
-                threadId={thread.id}
-                action={resourceAction}
-                onClose={() => setMcpMentionsOpen(false)}
-              />
-            )}
             {thread.cloud ? (
               <CloudComposer
                 key={`${project.id}:${thread.id}`}
@@ -446,8 +434,6 @@ function ActiveConversation() {
                 surfacePlacement={empty ? "home" : "thread"}
                 onAnnotate={openImageAnnotation}
                 key={`${project.id}:${thread.id}`}
-                onMcpMention={() => setMcpMentionsOpen(true)}
-                appEntries={appEntries}
                 conversationReferences={conversationReferences}
                 project={project}
                 thread={thread}
@@ -460,7 +446,7 @@ function ActiveConversation() {
                 readAction={resourceAction}
                 onPanel={showPanel}
                 onSide={
-                  !readOnly && canCreateSide
+                  (!readOnly || dormantWritable) && canCreateSide
                     ? async (text) => {
                         await createSide(text);
                       }
@@ -501,7 +487,7 @@ function DraftConversation() {
   const { workspaceView } = workspacePanels.view;
 
   const { showPanel } = panelNavigation;
-  const { appEntries, worktreeSelection, changeWorktreeSelection } = composerWorkspace;
+  const { worktreeSelection, changeWorktreeSelection } = composerWorkspace;
   const { openImageAnnotation } = annotation;
 
   const { newTask, choose, leaveProject, open } = navigationCommands;
@@ -663,7 +649,6 @@ function DraftConversation() {
             prepareBrowserDraft={session.prepareBrowserDraft}
             worktree={worktreeSelection}
             onWorktreeCreated={() => changeWorktreeSelection(project.id, undefined)}
-            appEntries={appEntries}
             conversationReferences={conversationReferences}
             surfaceLayout={workspaceView === "panel" ? "compact" : "default"}
             onAnnotate={openImageAnnotation}

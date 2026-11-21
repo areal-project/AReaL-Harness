@@ -1,22 +1,31 @@
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { readCoreThread } from "./support/core-observation.mjs";
+import {
+  assertApplicationStopped,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
+} from "./application-cleanup.mjs";
 import { createRequire } from "node:module";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createServer } from "node:http";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const catalogBackend = process.env.AREAL_CATALOG_TEST_BACKEND ?? "memory";
 assert.ok(["memory", "sqlite", "memory-lazy", "sqlite-lazy"].includes(catalogBackend));
 const require = createRequire(join(gui, "app/package.json"));
-const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { GuiSourceSession } = require("@areal/client/gui-source");
 const {
-  DesktopService,
-  PROTOCOL,
-} = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
-const { ServiceConnection } = require("../app/src/core/service-client.cjs");
+  createNativeHostTransport,
+} = require("../app/src/core/generated/native-host-transport.cjs");
+const { build } = createRequire(join(gui, "packages/browser-data/package.json"))("esbuild");
+const WebSocket = require("ws");
+const execute = promisify(execFile);
 const scratch = await makeTempDir("areal-large-history-");
 // Focused paging acceptance excludes the independent >64MiB fragment workload.
 const pagesOnly = process.argv.includes("--pages-only");
@@ -41,119 +50,224 @@ const model = createServer(async (request, response) => {
 await new Promise((resolve) => model.listen(0, "127.0.0.1", resolve));
 await writeFile(
   join(scratch, "user", ".areal", "config.toml"),
-  `schema_version=1\n[storage]\nsession_catalog="${catalogBackend}"\n[model]\nprovider="fixture"\nname="fixture"\ncontext_window_tokens=2000000\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\n`,
+  `schema_version=1\n[storage]\nsession_catalog="${catalogBackend}"\n[model]\ncatalog_version=1\nprovider="fixture"\nname="fixture"\ncontext_window_tokens=2000000\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\nmodels=[{id="fixture",enabled=true}]\n`,
 );
-const deployment = join(scratch, "desktop.json");
-await writeFile(
-  deployment,
-  JSON.stringify({
-    profiles: [
-      { id: "fixture", revision: "v1", displayName: "Fixture", instructions: "Complete the task" },
-    ],
-  }),
-);
-const options = {
-  binary: process.env.AREAL_CORE_BIN || resolve(gui, "../../target/debug/areal"),
-  home,
-  harnessHome: join(scratch, "registry"),
-  userHome: join(scratch, "user"),
-  desktopConfig: deployment,
-  defaultProfile: { id: "fixture", revision: "v1" },
-};
-let backend = new CoreBackend(options),
-  passed = false,
-  service,
-  connection,
-  desktopPacket,
-  stage = "seed";
+const deployment = join(gui, "packages/workbench/assets/desktop-profile.json");
+const binary = process.env.AREAL_CORE_BIN || resolve(gui, "../../target/debug/areal");
+const userHome = join(scratch, "user");
+const profile = join(scratch, "electron");
+const registry = join(scratch, "registry");
+const priorRegistry = join(scratch, "prior-registry");
+for (const key of Object.keys(process.env)) {
+  if (/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) || key === "ELECTRON_RUN_AS_NODE")
+    delete process.env[key];
+}
+Object.assign(process.env, {
+  HOME: userHome,
+  AREAL_CORE_HOME: home,
+  AREAL_CORE_USER_HOME: userHome,
+  AREAL_GUI_USER_DATA: profile,
+  AREAL_HARNESS_HOME: join(scratch, "harness"),
+  AREAL_HARNESS_SERVICE_HOME: registry,
+});
+const env = { ...process.env };
+await mkdir(profile);
+const source = new GuiSourceSession({
+  binary,
+  home: registry,
+  source: { profile, coreHome: home, legacyServiceHome: priorRegistry },
+  singletonHeld: true,
+});
+let main,
+  web,
+  originalHost,
+  passed = false;
+let stage = "seed";
+let failure, cleanupError, fragmentOffset;
+const checks = [],
+  wireBytes = [],
+  rpcTimings = [];
 const progress = (value, data = {}) => {
   stage = value;
   console.log(JSON.stringify({ stage, ...data }));
 };
-const rpcTimings = [];
-let maxCacheBytes = 0;
-const checks = [],
-  wireBytes = [];
 async function until(predicate, label, timeout = 60000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
-    if (predicate()) return;
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    const value = await predicate();
+    if (value) return value;
+    await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(`Timeout: ${label}`);
 }
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 const ids = (thread) => thread.turns.flatMap((turn) => turn.items.map((item) => item.id));
-const history = (projectId, threadId, operation, extra = {}) =>
-  backend.command("history", {
-    projectId,
-    threadId,
-    viewId: `smoke:${threadId}`,
-    operation,
-    ...extra,
+const origin = "areal-ui://app";
+let projectId, sourceProjectId, serviceGeneration;
+const bundle = join(scratch, "host-websocket.mjs");
+await build({
+  entryPoints: [join(gui, "packages/client/src/websocket.ts")],
+  bundle: true,
+  format: "esm",
+  platform: "node",
+  outfile: bundle,
+});
+const { connectWebSocket } = await import(pathToFileURL(bundle));
+async function connectWeb() {
+  const ticket = await source.client.request("web.ticket", {
+    origin,
+    expectedGeneration: source.client.generation,
+    profile,
   });
-function capture(project) {
-  const request = project.client.request.bind(project.client);
-  project.client.request = (method, params, settings) => {
-    if (["areal/thread/observe", "areal/conversation/history"].includes(method)) {
-      assert.equal(
-        params?.mode ?? params?.view,
-        method === "areal/thread/observe" ? "bounded" : "own",
-      );
-      assert.ok(params.maxBytes <= 1048576);
-      assert.ok(settings?.maxResponseBytes <= 1048576);
-    }
-    assert.ok(
-      method !== "thread/read" || params?.includeTurns !== true,
-      "ordinary Desktop history path must not bypass bounded observe",
-    );
-    const started = performance.now();
-    return request(method, params, settings).then((result) => {
-      if (["areal/thread/observe", "areal/conversation/history"].includes(method)) {
-        const fragment = result.data?.[0]?.fragment;
-        const timing = {
-          method,
-          elapsedMs: Math.round(performance.now() - started),
-          ...(fragment ? { offsetUtf8: fragment.offsetUtf8, totalBytes: fragment.totalBytes } : {}),
-        };
-        rpcTimings.push(timing);
-        progress(stage, timing);
-      }
-      return result;
-    });
-  };
-  project.client.socket.on("message", (bytes) => {
-    const value = JSON.parse(String(bytes));
-    if (value.result?.history || (value.result?.snapshotId && value.result?.data))
-      wireBytes.push(Buffer.byteLength(bytes));
-  });
+  const connection = await connectWebSocket(
+    { origin, writes: true, bootstrap: async () => ticket },
+    () => true,
+    AbortSignal.timeout(120000),
+    () => {},
+    () => {},
+    (url) => {
+      const socket = new WebSocket(url, { origin, followRedirects: false });
+      socket.on("message", (data) => {
+        const { result } = JSON.parse(String(data));
+        if (result?.view === "conversation" && (result.snapshot || result.page))
+          wireBytes.push(Buffer.byteLength(data));
+      });
+      return socket;
+    },
+  );
+  return connection.transport;
 }
+const context = () => ({ projectId, serviceGeneration });
+const open = (threadId) =>
+  web.request("session.open", { threadId, view: "conversation" }, context());
+const history = async (baseline, cursor) => {
+  const started = performance.now();
+  const timing = { serviceGeneration, fragmentOffset };
+  rpcTimings.push(timing);
+  try {
+    const result = await web.request(
+      "session.history",
+      {
+        threadId: baseline.threadId,
+        subscriptionId: baseline.subscriptionId,
+        view: "own",
+        cursor,
+        maxBytes: 131072,
+      },
+      context(),
+    );
+    for (const key of [
+      "connectionId",
+      "serviceGeneration",
+      "projectId",
+      "threadId",
+      "subscriptionId",
+    ])
+      assert.equal(result[key], baseline[key]);
+    timing.complete = result.page.complete;
+    return result.page;
+  } finally {
+    timing.elapsedMs = Math.round(performance.now() - started);
+  }
+};
 try {
-  await backend.init();
-  const projectId = await backend.addProject(workspace),
-    project = backend.projects.get(projectId);
-  assert.equal(
-    project.client.capabilities?.features?.boundedObservation,
-    true,
-    "requires Unit4 Core capability",
+  console.log("History evidence:", scratch);
+  await source.init({ deferCredentials: true });
+  originalHost = await readFixtureHost(env);
+  const launch = await source.prepareNative(
+    {
+      binary,
+      home,
+      guiProfile: profile,
+      hostHome: registry,
+      harnessHome: priorRegistry,
+      userHome,
+      configHome: userHome,
+      config: join(userHome, ".areal/config.toml"),
+      desktopConfig: deployment,
+      defaultProfile: { id: "areal-standard", revision: "v2" },
+    },
+    env,
   );
-  const { threadId } = await backend.command("create", { projectId });
-  const { threadId: archivedId } = await backend.command("create", { projectId });
-  const { threadId: hugeId } = await backend.command("create", { projectId });
+  main = await createNativeHostTransport({
+    home: registry,
+    sourceId: source.sourceId,
+    launch: launch.options,
+    environmentCredentials: source.environmentCredentials,
+    onCallback: () => {
+      throw new Error("History fixture must not require a native tool");
+    },
+    onEvent() {},
+    onClosed() {},
+  });
+  ({ projectId: sourceProjectId } = await main.call("worktree.project.add", { root: workspace }));
+  web = await connectWeb();
+  const shell = await web.request("shell.subscribe", {});
+  ({ projectId } = shell.snapshot.projects.find(
+    (entry) =>
+      entry.alias?.sourceId === source.sourceId && entry.alias.projectId === sourceProjectId,
+  ));
+  ({ serviceGeneration } = await web.write("project.activate", {}, { projectId }));
+  assert.ok(serviceGeneration);
+  const createThread = async () => {
+    const requestId = randomUUID();
+    const result = await web.write(
+      "session.create",
+      {
+        requestId,
+        model: { providerId: "fixture", modelId: "fixture" },
+        worktree: { mode: "source" },
+      },
+      context(),
+      requestId,
+    );
+    assert.equal(result.admissionState, "accepted", JSON.stringify(result));
+    return result.threadId;
+  };
+  const threadId = await createThread();
+  const archivedId = await createThread();
+  const hugeId = pagesOnly ? null : await createThread();
   const additionalIds = [];
-  for (let n = 0; n < 7; n++)
-    additionalIds.push((await backend.command("create", { projectId })).threadId);
-  await backend.command("send", { projectId, threadId, text: "fixture seed" });
-  await until(
-    () => project.model.state.threads[threadId]?.turns.some((turn) => turn.status === "completed"),
-    "seed completed",
+  for (let n = 0; n < 7; n++) additionalIds.push(await createThread());
+  const seed = await readCoreThread({ binary, env, gui, threadId, workspace });
+  const result = await web.write(
+    "session.send",
+    {
+      threadId,
+      text: "fixture seed",
+      expectedConfigRevision: seed.desktop.configuration.revision,
+    },
+    context(),
+    randomUUID(),
   );
-  const modelRequests = workRequests(),
-    dataDir = project.service.dataDir;
+  assert.equal(result.admissionState, "accepted", JSON.stringify(result));
+  await until(async () => {
+    const thread = await readCoreThread({ binary, env, gui, threadId, workspace });
+    return thread.turns.some((turn) => turn.id === result.turnId && turn.status === "completed");
+  }, "Seed Turn completed");
+  const modelRequests = workRequests();
+  const { stdout } = await execute(binary, ["service", "list", "--json"], { env, timeout: 20000 });
+  const { dataDir } = JSON.parse(stdout).find(
+    (record) => record.workspace === workspace && record.generation === serviceGeneration,
+  );
+  assert.ok(dataDir.startsWith(home + "/"), "Persisted fixture must stay inside its Core home");
   if (catalogBackend === "sqlite")
     assert.ok((await readFile(join(dataDir, "catalog/index.sqlite3"))).length > 0);
-  await backend.shutdown();
-  await backend.disconnect();
+  progress("seed-stop");
+  web.close();
+  web = null;
+  const stopId = randomUUID();
+  const stopped = await source.client.stopProject(
+    stopId,
+    projectId,
+    serviceGeneration,
+    "cancel",
+    false,
+  );
+  assert.equal(stopped.requestId, stopId);
+  assert.equal(stopped.state, "completed", JSON.stringify(stopped));
+  await assertApplicationStopped(binary, env);
+  await writeFile(join(scratch, "seed-stop.json"), JSON.stringify(stopped, null, 2));
   const makeTurn = (n) => ({
     id: `turn-${n}`,
     status: "completed",
@@ -187,200 +301,154 @@ try {
     record.thread.desktop.archived = id === archivedId;
     await writeFile(path, JSON.stringify(record));
   }
-  const hugePath = join(dataDir, `${hugeId}.json`),
-    hugeRecord = JSON.parse(await readFile(hugePath, "utf8"));
-  const hugeText = '雪\\\"🙂\n'.repeat(5500000);
-  const hugeHash = digest(hugeText);
-  hugeRecord.thread.turns = [
-    {
-      id: "huge-turn",
-      status: "completed",
-      items: [
-        { id: "huge-user", type: "userMessage", content: [{ type: "text", text: "huge fixture" }] },
-        { id: "huge-item", type: "agentMessage", text: hugeText },
-      ],
-    },
-  ];
-  assert.ok(Buffer.byteLength(JSON.stringify(hugeRecord)) > 64 * 1024 * 1024);
-  await writeFile(hugePath, JSON.stringify(hugeRecord));
-  const persisted = new Map();
-  for (const id of [threadId, archivedId, hugeId, ...additionalIds]) {
-    const value = JSON.parse(await readFile(join(dataDir, `${id}.json`), "utf8")).thread;
-    persisted.set(id, digest(JSON.stringify({ turns: value.turns, receipts: value.receipts })));
+  let hugeHash;
+  if (hugeId) {
+    const path = join(dataDir, `${hugeId}.json`);
+    const record = JSON.parse(await readFile(path, "utf8"));
+    const hugeText = '雪\\\"🙂\n'.repeat(5500000);
+    hugeHash = digest(hugeText);
+    record.thread.turns = [
+      {
+        id: "huge-turn",
+        status: "completed",
+        items: [
+          {
+            id: "huge-user",
+            type: "userMessage",
+            content: [{ type: "text", text: "huge fixture" }],
+          },
+          { id: "huge-item", type: "agentMessage", text: hugeText },
+        ],
+      },
+    ];
+    const bytes = JSON.stringify(record);
+    assert.ok(Buffer.byteLength(bytes) > 64 * 1024 * 1024);
+    await writeFile(path, bytes);
   }
-  backend = new CoreBackend(options);
-  await backend.init();
-  await backend.start(projectId);
+  const persisted = new Map();
+  const receiptHash = async (id) => {
+    const value = JSON.parse(await readFile(join(dataDir, `${id}.json`), "utf8")).thread;
+    return digest(JSON.stringify({ turns: value.turns, receipts: value.receipts }));
+  };
+  for (const id of [threadId, archivedId, hugeId, ...additionalIds].filter(Boolean))
+    persisted.set(id, await receiptHash(id));
+
+  web = await connectWeb();
+  const originalGeneration = serviceGeneration;
+  ({ serviceGeneration } = await web.write("project.activate", {}, { projectId }));
+  assert.ok(serviceGeneration && serviceGeneration !== originalGeneration);
   if (catalogBackend.endsWith("-lazy")) {
     const name = catalogBackend.startsWith("sqlite") ? "metadata.sqlite3" : "metadata.json";
     assert.ok((await readFile(join(dataDir, "catalog", name))).length > 0);
   }
-  const live = backend.projects.get(projectId);
-  capture(live);
   for (const id of [threadId, archivedId]) {
     progress(id === archivedId ? "archived-pages" : "ordinary-pages");
-    await backend.openThread(live, id);
-    await history(projectId, id, "acquire");
-    let ordered = ids(live.model.state.threads[id]);
-    assert.ok(
-      Buffer.byteLength(JSON.stringify(live.model.state.threads[id])) <= 1048576,
-      "initial Desktop view is bounded",
-    );
-    let complete = live.model.state.threads[id].displayHistory.complete;
-    while (!complete) {
-      const page = await history(projectId, id, "loadOlder");
-      ordered = [...page.data.map((entry) => entry.sourceItemId), ...ordered];
-      complete = page.complete;
-      assert.ok(
-        Buffer.byteLength(JSON.stringify(live.model.state.threads[id])) < 6 * 1048576,
-        "old display pages stay bounded while traversing all history",
-      );
+    const baseline = await open(id);
+    const expected = turns.flatMap((turn) => turn.items.map((item) => item.id));
+    let ordered = ids(baseline.snapshot.thread);
+    let cursor = baseline.snapshot.history.nextCursor;
+    const firstCursor = cursor;
+    let first;
+    const visited = new Set();
+    while (cursor) {
+      assert.ok(!visited.has(cursor), "History cursor advanced");
+      visited.add(cursor);
+      const page = await history(baseline, cursor);
+      assert.ok(page.data.length && visited.size <= expected.length);
+      first ??= page;
+      ordered = [...page.data.map((item) => item.sourceItemId), ...ordered];
+      assert.equal(Boolean(page.nextCursor), !page.complete);
+      cursor = page.nextCursor;
     }
-    assert.deepEqual(
-      ordered,
-      turns.flatMap((turn) => turn.items.map((item) => item.id)),
-      "all old page IDs are chronological without gaps or duplicates",
-    );
-    const gap = live.model.state.threads[id].displayHistory.gaps.find((gap) => !gap.atTop);
-    assert.ok(gap, "eviction retains a reloadable gap beside the latest window");
-    const restored = await history(projectId, id, "loadOlder", { pageId: gap.id });
-    const shown = ids(live.model.state.threads[id]);
-    assert.ok(
-      restored.data.every((entry) => shown.includes(entry.sourceItemId)),
-      "real Core cursors can reload evicted bodies",
-    );
-    assert.deepEqual(
-      shown,
-      ordered.filter((itemId) => shown.includes(itemId)),
-      "reload preserves chronological order without duplicates",
-    );
-    assert.ok(
-      backend.historyWindow(live, id).pages.length <= 4,
-      "reloading uses the same four-page body budget",
-    );
-    await history(projectId, id, "release");
+    assert.deepEqual(ordered, expected);
+    assert.ok(firstCursor && first);
+    assert.deepEqual((await history(baseline, firstCursor)).data, first.data);
   }
   checks.push(
-    "ordinary and archived multi-segment histories traverse in order and reload evicted bodies using real Core cursors within the four-page budget",
+    "Original ordinary and archived history is traversed in order, and an old page can be read again by its cursor",
   );
-  if (!pagesOnly) {
-    progress("huge-baseline");
-    await backend.openThread(live, hugeId);
-    service = new DesktopService(backend, "large-history-fixture");
-    const metadata = await service.listen();
-    connection = new ServiceConnection(
-      (packet) => {
-        desktopPacket = packet;
-      },
-      () => {},
-    );
-    await connection.connect(metadata);
-    await connection.request("hello", { protocol: PROTOCOL, identity: metadata.identity });
-    const desktopHistory = (operation, extra = {}) =>
-      connection.request("command", {
-        name: "history",
-        request: { projectId, threadId: hugeId, viewId: "desktop-huge", operation, ...extra },
-      });
-    await desktopHistory("acquire");
-    assert.equal(
-      live.model.state.threads[hugeId].turns[0].items.find((item) => item.id === "huge-item").type,
-      "historyDeferred",
-    );
-    assert.ok(
-      Buffer.byteLength(JSON.stringify(live.model.state.threads[hugeId])) <= 1048576,
-      "huge item is not eagerly materialized",
-    );
+  if (hugeId) {
     progress("huge-fragments");
-    await desktopHistory("loadItem", { itemId: "huge-item" });
-    assert.equal(
-      digest(
-        live.model.state.threads[hugeId].turns[0].items.find((item) => item.id === "huge-item")
-          .text,
-      ),
-      hugeHash,
+    const baseline = await open(hugeId);
+    const deferred = baseline.snapshot.thread.turns[0].items.find(
+      (item) => item.id === "huge-item",
     );
-    const received = desktopPacket.snapshot.projects.find((project) => project.id === projectId)
-      .state.threads[hugeId];
-    assert.equal(
-      digest(received.turns[0].items.find((item) => item.id === "huge-item").text),
-      hugeHash,
-      "actual Desktop transport preserves the full explicit item",
-    );
-    await desktopHistory("release");
-    assert.equal(
-      desktopPacket.snapshot.projects
-        .find((project) => project.id === projectId)
-        .state.threads[hugeId].turns[0].items.find((item) => item.id === "huge-item").type,
-      "historyDeferred",
-    );
-    assert.ok(
-      Buffer.byteLength(JSON.stringify(live.model.state.threads[hugeId])) <= 1048576,
-      "last view release drops huge materialization",
-    );
+    assert.equal(deferred.type, "historyDeferred");
+    assert.ok(deferred.totalBytes > 64 * 1024 * 1024);
+    let cursor = deferred.cursor,
+      offset = 0;
+    const buffers = [];
+    do {
+      fragmentOffset = offset;
+      const page = await history(baseline, cursor);
+      assert.ok(page.data.length, "History fragment reply must advance by at least one byte");
+      for (const entry of page.data) {
+        assert.equal(entry.sourceThreadId, hugeId);
+        assert.equal(entry.sourceTurnId, "huge-turn");
+        assert.equal(entry.sourceItemId, "huge-item");
+        assert.equal(entry.fragment.version, deferred.version);
+        assert.equal(entry.fragment.totalBytes, deferred.totalBytes);
+        assert.equal(entry.fragment.offsetUtf8, offset);
+        const bytes = Buffer.from(entry.fragment.text);
+        assert.ok(bytes.length);
+        offset += bytes.length;
+        assert.equal(offset, entry.fragment.nextOffsetUtf8);
+        assert.ok(offset <= deferred.totalBytes);
+        buffers.push(bytes);
+      }
+      assert.ok(page.complete || (page.nextCursor && page.nextCursor !== cursor));
+      cursor = page.nextCursor;
+    } while (cursor);
+    fragmentOffset = undefined;
+    assert.equal(offset, deferred.totalBytes);
+    const entry = JSON.parse(Buffer.concat(buffers, offset).toString("utf8"));
+    assert.equal(entry.item.id, "huge-item");
+    assert.equal(digest(entry.item.text), hugeHash);
     checks.push(
-      "escaped Unicode item above 64MiB reassembles exactly only after explicit load and is released with its view",
+      "An explicit history read reconstructs a greater-than-64 MiB item with the same digest from bounded ordered fragments",
     );
     progress("reconnect");
-    const before = live.client,
-      generation = live.service.generation;
-    before.socket.terminate();
-    await until(
-      () =>
-        live.client !== before && live.model.state.connected && !backend.starting.has(projectId),
-      "bounded reconnect",
-    );
-    capture(live);
-    assert.equal(live.service.generation, generation);
-    assert.equal(workRequests(), modelRequests, "reconnect starts no non-title model work");
+    web.close();
+    web = await connectWeb();
+    const reopened = await open(hugeId);
+    assert.equal(reopened.serviceGeneration, serviceGeneration);
+    assert.notEqual(reopened.connectionId, baseline.connectionId);
     assert.equal(
-      live.model.state.threads[hugeId].turns[0].items.find((item) => item.id === "huge-item").type,
+      reopened.snapshot.thread.turns[0].items.find((item) => item.id === "huge-item").type,
       "historyDeferred",
     );
-    assert.ok(
-      wireBytes.length > 10 && Math.max(...wireBytes) <= 1048576,
-      "every observed history RPC envelope is <=1MiB",
-    );
-    checks.push(
-      "reconnect recovers the same bounded views without additional model work or Core restart",
-    );
+    checks.push("Reconnecting to the same Core keeps the oversized item deferred");
   }
-  progress("cache-views");
-  for (const id of [...additionalIds, threadId]) {
-    await backend.openThread(live, id);
-    await history(projectId, id, "acquire");
-    for (let n = 0; n < 4 && !live.model.state.threads[id].displayHistory.complete; n++)
-      await history(projectId, id, "loadOlder");
-    const cacheBytes = Buffer.byteLength(
-      JSON.stringify({
-        threads: live.model.state.threads,
-        pages: [...backend.historyWindows.values()].map((window) => window.pages),
-      }),
-    );
-    maxCacheBytes = Math.max(maxCacheBytes, cacheBytes);
-    assert.ok(
-      backend.historyWindows.size <= 8 && cacheBytes < 20 * 1048576,
-      "all Desktop history windows and retained page entries have finite combined size",
-    );
+  progress("select-many");
+  let previousView;
+  for (const id of [...additionalIds, threadId, archivedId]) {
+    const baseline = await open(id);
+    assert.equal(baseline.threadId, id);
+    assert.equal(baseline.serviceGeneration, serviceGeneration);
+    assert.ok(baseline.snapshot.history.nextCursor);
+    if (previousView)
+      await assert.rejects(history(previousView, previousView.snapshot.history.nextCursor), {
+        code: "INVALID_PARAMS",
+      });
+    previousView = baseline;
   }
-  await assert.rejects(backend.openThread(live, archivedId), /视图已达上限/);
-  await history(projectId, additionalIds[0], "release");
-  await backend.openThread(live, archivedId);
-  assert.equal(backend.historyWindows.size, 8);
-  for (const id of [...additionalIds, threadId]) await history(projectId, id, "release");
-  checks.push(
-    "more than eight conversation views evict unused windows with bounded combined model and page bytes",
+  assert.ok(
+    wireBytes.length > 10 && Math.max(...wireBytes) <= 1048576,
+    "Every history baseline or page envelope stays below 1 MiB",
   );
-  for (const [id, hash] of persisted) {
-    const value = JSON.parse(await readFile(join(dataDir, `${id}.json`), "utf8")).thread;
+  for (const [id, hash] of persisted)
     assert.equal(
-      digest(JSON.stringify({ turns: value.turns, receipts: value.receipts })),
+      await receiptHash(id),
       hash,
-      "read/reconnect cannot append a Turn or change its authoritative effect receipts",
+      "History reads must preserve execution history and receipts",
     );
-  }
-  assert.equal(workRequests(), modelRequests);
+  assert.equal(workRequests(), modelRequests, "History operations never submit model work");
+  checks.push(
+    "Selecting another conversation closes the previous reading view, with bounded frames and no execution or receipt changes",
+  );
   passed = true;
 } catch (error) {
+  failure = error;
   console.error(
     JSON.stringify({
       stage,
@@ -390,17 +458,16 @@ try {
       lastRpc: rpcTimings.at(-1),
     }),
   );
-  throw error;
 } finally {
-  connection?.close();
-  service?.close();
-  for (const project of backend.projects.values()) {
-    try {
-      await project.client?.request("areal/server/drain", { strategy: "cancel" });
-    } catch {}
+  web?.close();
+  main?.close();
+  source.close();
+  try {
+    await settleFixtureHostAfterQuit(binary, env, scratch, { host: originalHost });
+  } catch (error) {
+    cleanupError = error;
+    passed = false;
   }
-  await backend.shutdown().catch(() => {});
-  await backend.disconnect().catch(() => {});
   model.closeAllConnections();
   await new Promise((resolve) => model.close(resolve));
   await writeFile(
@@ -409,17 +476,19 @@ try {
       {
         passed,
         checks,
+        binarySHA256: digest(await readFile(binary)),
+        scriptSHA256: digest(await readFile(import.meta.filename)),
         workRequests: workRequests(),
         titleRequests: modelCalls.filter((call) => call.title).length,
         modelCalls,
         stage,
-        maxCacheBytes,
+        cleanupError: cleanupError?.message,
         rpcTimings,
         historyResponses: wireBytes.length,
         maxHistoryResponseBytes: Math.max(0, ...wireBytes),
         pagesOnly,
         scope:
-          "production CoreBackend and real Core WebSocket plus DesktopService/ServiceConnection, isolated persisted multi-segment fixtures and local deterministic model; pagesOnly skips huge fragments/reconnect, no Renderer acceptance",
+          "Native Host WebSocket and real Core, isolated persisted multi-segment fixtures and local deterministic model. pagesOnly skips huge fragments/reconnect. Renderer cache limits have separate tests.",
       },
       null,
       2,
@@ -427,3 +496,7 @@ try {
   );
   console.log(JSON.stringify({ passed, evidence: scratch, checks }));
 }
+if (failure && cleanupError)
+  throw new AggregateError([failure, cleanupError], "History verification and cleanup failed");
+if (failure) throw failure;
+if (cleanupError) throw cleanupError;

@@ -9,8 +9,7 @@ import type { ReadingBlock } from "./conversationReading.js";
 /** 阅读视图只持有显示缓存；关闭或切换不发送停止、继续或任何任务写入。 */
 export function useConversationHistory(projectId: string, thread: Data, action: Action) {
   const { t } = useI18n();
-  const platformReads = usePlatformReads();
-  const reads = thread.displayHistory?.owner === "workbench" ? undefined : platformReads;
+  const reads = usePlatformReads();
   const [viewId] = useState(() => crypto.randomUUID());
   const owner = `${projectId}:${thread.id}`;
   const generation = `${owner}:${reads ? "host" : "workbench"}:${thread.displayHistory?.viewGeneration ?? ""}`;
@@ -84,7 +83,7 @@ export function useConversationHistory(projectId: string, thread: Data, action: 
       try {
         if (reads) {
           if (itemId) await reads.loadItem(itemId, { projectId, threadId: thread.id });
-          else await reads.loadOlder(pageId);
+          else await reads.loadOlder(pageId, String(thread.displayHistory?.viewGeneration));
           return true;
         }
         await action("history", {

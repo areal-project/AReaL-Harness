@@ -24,7 +24,7 @@ test("public UI Skills retain content scanning and do not admit private Skills",
       await readFile(new URL("./verify-public.mjs", import.meta.url)),
     );
     await put(
-      "../../services/workbench/src/assets/builtin-skills/openai-skill-creator.source.json",
+      "packages/workbench/assets/builtin-skills/openai-skill-creator.source.json",
       JSON.stringify({ files: [] }),
     );
     for (const path of [
@@ -32,8 +32,8 @@ test("public UI Skills retain content scanning and do not admit private Skills",
       "renderer/ZCODE-LICENSE",
       "licenses/material-icon-theme-LICENSE",
       "THIRD-PARTY-NOTICES.md",
-      "../../services/workbench/src/assets/builtin-skills/openai-skill-creator/LICENSE.txt",
-      "../../services/workbench/src/assets/builtin-skills/openai-skill-creator/SKILL.md",
+      "packages/workbench/assets/builtin-skills/openai-skill-creator/LICENSE.txt",
+      "packages/workbench/assets/builtin-skills/openai-skill-creator/SKILL.md",
       "packages/ui/skills/areal-ui-guide/SKILL.md",
       "packages/ui/skills/areal-ui-critique/SKILL.md",
     ])

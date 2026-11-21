@@ -1,16 +1,13 @@
-//! Host 到工作台服务的路由：懒启动、退避重启、反向调用与 Core 事件转发。设计见 docs/design/workbench-service.md。
+//! Rust Host 的工作台领域路由与 GUI 来源配置。
 use super::Host;
-use crate::workbench::{Reverse, Workbench, restart_delay};
 use anyhow::{Context, Result, bail, ensure};
 use areal_local_service::storage;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     cell::{Cell, RefCell},
-    os::fd::AsRawFd,
     path::{Path, PathBuf},
-    rc::{Rc, Weak},
-    time::{Duration, Instant},
+    rc::Rc,
 };
 
 /// 服务实现、Host 转发的方法。目前只给本机桌面主体；远程设备跨项目统计需单独授权，暂不开放。
@@ -31,8 +28,7 @@ pub(super) const METHODS: &[&str] = &[
     "providers.read",
     "providers.command",
     "worktree.command",
-    "pages.command",
-    "pages.resource",
+    "worktree.project.add",
     "desktop.command",
 ];
 /// manage 里会推动执行的管理写操作。manage 能力只表示“能管理本机后台”，
@@ -44,6 +40,7 @@ const MANAGE_SUBMIT_OPERATIONS: &[&str] = &[
     "processStart",
     "processTerminate",
     "processWrite",
+    "taskDraftSend",
     "taskRunNow",
     "taskResumeRun",
 ];
@@ -52,6 +49,13 @@ const MANAGE_INTERRUPT_OPERATIONS: &[&str] = &["executionCancel", "taskStopRun",
 
 /// 该 manage 请求除 manage 之外还要的能力。其余管理操作只需 manage。
 pub(super) fn manage_capability(method: &str, params: &Value) -> Option<&'static str> {
+    if method == "feedback.command" {
+        return match params["operation"].as_str()? {
+            "refine" => Some("submit"),
+            "close" => Some("interrupt"),
+            _ => None,
+        };
+    }
     if method != "manage.command" {
         return None;
     }
@@ -63,48 +67,37 @@ pub(super) fn manage_capability(method: &str, params: &Value) -> Option<&'static
         .contains(&operation)
         .then_some("interrupt")
 }
-const FAILURE_WINDOW: Duration = Duration::from_secs(600);
-
-// 退出由请求惰性发现，首次退出不能从“现在”开始退避而必然拒绝恢复。
-// 仍记录这次失败；窗口内后续退出按 1、2、4…秒退避，启动失败也计入上限。
-fn record_exit(failures: &RefCell<Vec<Instant>>) -> bool {
-    let mut failures = failures.borrow_mut();
-    failures.retain(|time| time.elapsed() < FAILURE_WINDOW);
-    let first = failures.is_empty();
-    failures.push(Instant::now());
-    first
-}
-
 #[derive(Default)]
 pub(super) struct Supervisor {
     analytics: Rc<super::analytics::Analytics>,
     providers: Rc<super::provider_catalog::Providers>,
-    model_network:
-        tokio::sync::Mutex<std::collections::BTreeMap<String, crate::network::NetworkInput>>,
-    /// 桌面后台：界面 Main 原来在进程内启动的 CoreBackend + DesktopService，改由 Host 监督。
+    model_network: tokio::sync::Mutex<
+        std::collections::BTreeMap<String, (Value, crate::network::NetworkInput)>,
+    >,
+    feedback: super::feedback::Feedback,
+    trajectory: Rc<super::trajectory::Trajectory>,
+    pub(super) side_owners: super::side_owners::SideWindowOwners,
+    workspace_ops: super::workspace_ops::WorkspaceOps,
+    pub(super) manage_service: super::manage_service::ManageService,
+    pub(super) resources: super::resources::Resources,
+    pub(super) cloud: super::cloud::Cloud,
+    pub(super) projectless: super::projectless::Projectless,
+    remote_commands: super::remote_commands::RemoteCommands,
     backend: Backend,
-    page_events: RefCell<Option<tokio::sync::broadcast::Sender<Value>>>,
 }
 
 #[derive(Default)]
 pub(super) struct Backend {
-    running: RefCell<Option<Rc<Workbench>>>,
-    starting: tokio::sync::Mutex<()>,
-    failures: RefCell<Vec<Instant>>,
-    stopped: Cell<bool>,
-    /// 已启动后台的项目 profile 与服务身份（不含票据），供 Main 核对所有权。
-    ownership: RefCell<Option<(String, Value)>>,
     source: RefCell<Option<String>>,
     utility_options: RefCell<Option<Value>>,
     environment_credentials: RefCell<Option<EnvironmentCredentials>>,
-    events: RefCell<Vec<Value>>,
     worktree_cleaning: Cell<bool>,
 }
 
 #[derive(Clone)]
 struct EnvironmentCredentials {
-    source_id: String,
     launch_key: String,
+    source_id: String,
     values: std::collections::BTreeMap<String, String>,
 }
 
@@ -117,50 +110,6 @@ pub(super) struct Ensure {
     options: Value,
     #[serde(default, skip_serializing)]
     environment_credentials: Option<std::collections::BTreeMap<String, String>>,
-}
-
-/// 剩余桌面后台入口；发行包使用签名资源内的运行时。
-pub(super) struct Entry {
-    pub runtime: PathBuf,
-    pub runner: PathBuf,
-}
-
-/// 源码验收用仓库相邻的服务和 Node；发行包仍只接受签名清单。
-fn source_entry(bin: &Path, runner: &str) -> Option<Entry> {
-    if !cfg!(debug_assertions)
-        || bin.file_name()? != "debug"
-        || bin.parent()?.file_name()? != "target"
-    {
-        return None;
-    }
-    let root = bin.join("../../services/workbench").canonicalize().ok()?;
-    let runner = root.join("src").join(runner);
-    if !runner.is_file() || !root.join("package.json").is_file() {
-        return None;
-    }
-    let runtime = std::env::split_paths(&std::env::var_os("PATH")?)
-        .map(|path| path.join("node"))
-        .find_map(|path| path.is_file().then(|| path.canonicalize().ok()).flatten())?;
-    Some(Entry { runtime, runner })
-}
-
-/// 桌面后台入口：同一个工作台资源包里的 `src/backend-main.cjs`，仍用应用自带的 Electron。
-pub(super) async fn discover_backend(bin: &Path) -> Result<Entry> {
-    if let Some(entry) = source_entry(bin, "backend-main.cjs") {
-        return Ok(entry);
-    }
-    let bundle = crate::local_relay::discover_bundle(
-        bin,
-        "areal-workbench",
-        "src/backend-main.cjs",
-        &["src/backend-main.cjs", "src/channel.cjs"],
-        "CAPABILITY_UNAVAILABLE",
-    )
-    .await?;
-    Ok(Entry {
-        runtime: bundle.runtime,
-        runner: bundle.runner,
-    })
 }
 
 /// 复用已发布 source 的项目绑定；Host ID 与后台 alias 从不按字符串或路径猜测。
@@ -183,182 +132,64 @@ pub(super) fn backend_project_alias(host: &Host, source: &str, project: &str) ->
 
 /// 只存在于当前请求的准备句柄；journal 只保存 Core 参数，不保存可重放句柄。
 pub(super) struct PreparedExecution {
-    backend: Rc<Workbench>,
-    connection: String,
-    handle: String,
+    owner: PreparedOwner,
     pub params: Value,
     pub source: String,
     dispatched: bool,
-    host_dispatch: Option<HostDispatch>,
 }
-type HostDispatch = (Weak<Host>, String, String, (String, String, String));
+enum PreparedOwner {
+    Creation(super::execution_preparation::PreparedCreation),
+    Core(super::execution_preparation::PreparedCore),
+}
 impl PreparedExecution {
     pub(super) async fn dispatch(&mut self) -> Result<Value> {
         ensure!(!self.dispatched, "SUBMISSION_UNKNOWN");
         self.dispatched = true;
-        if let Some((host, project, method, scope)) = &self.host_dispatch {
-            let host = host.upgrade().context("CAPABILITY_UNAVAILABLE")?;
-            ensure!(
-                host.gateway.workbench.backend_has_source(&self.source),
-                "RESYNC_REQUIRED"
-            );
-            let current = host.gateway.workbench.backend.running.borrow().clone();
-            ensure!(
-                current
-                    .as_ref()
-                    .is_some_and(|current| Rc::ptr_eq(current, &self.backend))
-                    && !self.backend.closed(),
-                "CAPABILITY_UNAVAILABLE"
-            );
-            let result = host
-                .schedules
-                .connections
-                .remote_request(
-                    &host,
-                    project,
-                    (&scope.0, &scope.1, &scope.2),
-                    method,
-                    self.params.clone(),
-                )
-                .await;
-            // 回执以 Core 为准；页面租约结算失败不能把已受理的执行改成拒绝或重发。
-            let body = match &result {
-                Ok(result) => {
-                    json!({"connection":self.connection,"handle":self.handle,"result":result})
-                }
-                Err(_) => json!({"connection":self.connection,"handle":self.handle,"error":true}),
-            };
-            self.backend.notify("execution.complete", body).await;
-            return result;
+        match &self.owner {
+            PreparedOwner::Creation(creation) => {
+                creation.dispatch(&self.source, &self.params).await
+            }
+            PreparedOwner::Core(core) => core.dispatch(&self.source, &self.params).await,
         }
-        let value = self
-            .backend
-            .request(
-                "execution.dispatch",
-                json!({"handle":self.handle}),
-                json!({"connection":self.connection}),
-            )
-            .await?;
-        if let Some(error) = value.get("error") {
-            ensure!(error["code"].as_i64().is_some(), "INVALID_RESPONSE");
-            return Err(crate::server::schedule_connection::RpcFailure(error.clone()).into());
-        }
-        value.get("result").cloned().context("INVALID_RESPONSE")
     }
 }
-impl Drop for PreparedExecution {
-    fn drop(&mut self) {
-        if self.dispatched {
-            return;
-        }
-        let backend = self.backend.clone();
-        let params = json!({"connection":self.connection,"handle":self.handle});
-        tokio::task::spawn_local(async move {
-            backend.notify("execution.cancel", params).await;
-        });
-    }
-}
-
 impl Supervisor {
-    /// 与项目 Core 共用当前 Host 代际的网络快照。重启后重新读取系统代理。
+    /// 同一来源的探测与 Core 共用网络快照；配置变化后失效，系统代理随 Host 代际重读。
     pub(super) async fn model_network(
         &self,
         host: &Host,
         source: &str,
     ) -> Result<crate::network::NetworkInput> {
+        let configured = |library: &Value| {
+            let settings = &library["settings"];
+            Value::Object(
+                ["httpProxy", "httpProxyNoProxy", "httpProxyCaCertPath"]
+                    .into_iter()
+                    .filter_map(|key| settings.get(key).map(|value| (key.into(), value.clone())))
+                    .collect(),
+            )
+        };
         let mut snapshots = self.model_network.lock().await;
-        if let Some(input) = snapshots.get(source) {
+        let settings = configured(&super::library_store::read_source(host, source)?);
+        if let Some((saved, input)) = snapshots.get(source)
+            && *saved == settings
+        {
             return Ok(input.clone());
         }
-        let settings = super::library_store::read_source(host, source)?;
         let environment = std::env::vars_os()
             .filter_map(|(key, value)| Some((key.into_string().ok()?, value.into_string().ok()?)))
             .collect();
-        let input = crate::network::desktop(&settings["settings"], &environment).await?;
-        snapshots.insert(source.into(), input.clone());
+        let input = crate::network::desktop(&settings, &environment).await?;
+        ensure!(
+            configured(&super::library_store::read_source(host, source)?) == settings,
+            "RESYNC_REQUIRED"
+        );
+        snapshots.insert(source.into(), (settings, input.clone()));
         Ok(input)
     }
 
-    pub(super) fn tasks_event(&self, host: &Host, canonical: &str, mut body: Value) {
-        let Some(source) = self.active_source() else {
-            return;
-        };
-        let Ok(alias) = backend_project_alias(host, &source, canonical) else {
-            return;
-        };
-        body["projectId"] = json!(alias);
-        if let Some(backend) = self
-            .backend
-            .running
-            .borrow()
-            .clone()
-            .filter(|b| !b.closed())
-        {
-            tokio::task::spawn_local(async move {
-                backend.notify("tasks.event", body).await;
-            });
-        }
-    }
-
-    pub(super) fn backend_core_event(&self, project: &str, lease: &str, event: &Value) {
-        let backend = self.backend.running.borrow().clone();
-        let body = json!({"projectId":project,"lease":lease,"method":event["method"],"params":event["params"],"sequence":event["sequence"]});
-        if let Some(backend) = backend {
-            tokio::task::spawn_local(async move {
-                backend.notify("core.event", body).await;
-            });
-        } else if self.backend.events.borrow().len() < 4096 {
-            self.backend.events.borrow_mut().push(body);
-        } else {
-            self.backend.stopped.set(true);
-        }
-    }
-    pub(super) async fn backend_core_callback(
-        &self,
-        project: &str,
-        lease: &str,
-        method: &str,
-        params: &Value,
-        request_id: &Value,
-    ) -> Result<Value> {
-        let backend = self
-            .backend
-            .running
-            .borrow()
-            .clone()
-            .context("CAPABILITY_UNAVAILABLE")?;
-        backend.request("core.callback",json!({"projectId":project,"lease":lease,"method":method,"params":params,"requestId":request_id}),json!({})).await
-    }
-    pub(super) async fn backend_private(&self, method: &str, params: Value) -> Result<Value> {
-        ensure!(
-            ["lifecycle.dependencies", "lifecycle.flush"].contains(&method),
-            "FORBIDDEN"
-        );
-        let backend = self
-            .backend
-            .running
-            .borrow()
-            .clone()
-            .context("CAPABILITY_UNAVAILABLE")?;
-        backend.request(method, params, json!({})).await
-    }
-
-    pub(super) fn worktree_backend_identity(&self, source: &str) -> Option<Value> {
-        if !self.backend_has_source(source)
-            || self
-                .backend
-                .running
-                .borrow()
-                .as_ref()
-                .is_none_or(|backend| backend.closed())
-        {
-            return None;
-        }
-        self.backend
-            .ownership
-            .borrow()
-            .as_ref()
-            .map(|(_, owner)| owner.clone())
+    pub(super) fn provider_updating(&self) -> bool {
+        self.providers.updating()
     }
     // 沿用原后台 init/finishSetup 的清理触发，不在每次目录读取时启动清理。
     pub(super) fn schedule_worktree_cleanup(&self, host: &Rc<Host>, source: &str) {
@@ -368,17 +199,11 @@ impl Supervisor {
             return;
         }
         let source = source.to_owned();
-        let owner = if source == "host" {
-            None
-        } else {
-            self.worktree_backend_identity(&source)
-        };
         let weak = Rc::downgrade(host);
         let task: futures_util::future::LocalBoxFuture<'static, ()> = Box::pin(async move {
             if let Some(host) = weak.upgrade() {
-                let current = source == "host"
-                    || (host.gateway.workbench.backend_has_source(&source)
-                        && host.gateway.workbench.worktree_backend_identity(&source) == owner);
+                let current =
+                    source == "host" || host.gateway.workbench.backend_has_source(&source);
                 if current && host.admission().is_ok() {
                     let _ = super::worktree_catalog::auto_cleanup(&host, &source).await;
                 }
@@ -397,13 +222,6 @@ impl Supervisor {
     pub(super) fn active_source(&self) -> Option<String> {
         self.backend.source.borrow().clone()
     }
-    pub(super) fn owns_client_process(&self, pid: u32) -> bool {
-        self.backend
-            .running
-            .borrow()
-            .as_ref()
-            .is_some_and(|child| child.owns_process(pid))
-    }
     pub(super) fn utility_options(&self, source: &str) -> Result<Value> {
         ensure!(
             self.backend.source.borrow().as_deref() == Some(source),
@@ -415,48 +233,6 @@ impl Supervisor {
             .clone()
             .context("CAPABILITY_UNAVAILABLE")
     }
-    pub(super) async fn library_dependencies(&self, source: &str) -> Result<Value> {
-        ensure!(self.backend_has_source(source), "FORBIDDEN");
-        let backend = self
-            .backend
-            .running
-            .borrow()
-            .clone()
-            .context("CAPABILITY_UNAVAILABLE")?;
-        let result = backend
-            .request("library.dependencies", json!({}), json!({}))
-            .await?;
-        ensure!(
-            self.backend_has_source(source)
-                && self
-                    .backend
-                    .running
-                    .borrow()
-                    .as_ref()
-                    .is_some_and(|v| Rc::ptr_eq(v, &backend)),
-            "RESYNC_REQUIRED"
-        );
-        Ok(result)
-    }
-    pub(super) async fn worktree_changed(&self, source: &str) {
-        if !self.backend_has_source(source) {
-            return;
-        }
-        let backend = self.backend.running.borrow().clone();
-        if let Some(backend) = backend {
-            backend
-                .notify("worktree.changed", json!({"sourceId":source}))
-                .await;
-        }
-    }
-
-    pub(super) async fn library_changed(&self) {
-        let backend = self.backend.running.borrow().clone();
-        if let Some(backend) = backend {
-            backend.notify("library.changed", json!({})).await;
-        }
-    }
-
     pub(super) fn backend_has_source(&self, source: &str) -> bool {
         self.backend.source.borrow().as_deref() == Some(source)
     }
@@ -468,76 +244,64 @@ impl Supervisor {
     pub(super) fn backend_source(&self) -> Option<String> {
         self.backend.source.borrow().clone()
     }
+    #[cfg(test)]
+    pub(super) fn set_test_environment_credentials(
+        &self,
+        source: &str,
+        values: std::collections::BTreeMap<String, String>,
+    ) {
+        *self.backend.environment_credentials.borrow_mut() = Some(EnvironmentCredentials {
+            source_id: source.to_owned(),
+            launch_key: String::new(),
+            values,
+        });
+    }
+    #[cfg(test)]
+    pub(super) fn set_test_source_and_options(&self, source: &str, options: Value) {
+        *self.backend.source.borrow_mut() = Some(source.to_owned());
+        *self.backend.utility_options.borrow_mut() = Some(options);
+    }
 
     pub(super) async fn prepare_execution(
         &self,
         host: &Rc<Host>,
-        connection: &str,
+        _connection: &str,
         project: &str,
         method: &str,
         mut params: Value,
     ) -> Result<Option<PreparedExecution>> {
-        // 拉不起后台时按没有桌面后台处理，不挡住不需要桌面工具的提交。
-        let _ = self.resume_backend(host).await;
-        let Some(source) = self.backend.source.borrow().clone() else {
+        if method == "workbench/thread/create" {
+            self.restore_source(host)?;
+            let source = self.active_source().context("CAPABILITY_UNAVAILABLE")?;
+            let alias = backend_project_alias(host, &source, project)?;
+            ensure!(
+                params.get("projectId").is_none_or(|id| id == &alias),
+                "INVALID_PARAMS"
+            );
+            params["projectId"] = json!(alias);
+            let creation =
+                super::execution_preparation::prepare(host, &source, &alias, &params).await?;
+            return Ok(Some(PreparedExecution {
+                owner: PreparedOwner::Creation(creation),
+                params,
+                source,
+                dispatched: false,
+            }));
+        }
+        self.restore_source(host)?;
+        let Some(source) = self.active_source() else {
             return Ok(None);
         };
-        let alias = backend_project_alias(host, &source, project)?;
-        if method == "workbench/thread/create" {
-            params["projectId"] = json!(alias);
-        }
-        let scope = host.schedules.connections.shared_identity(host, project)?;
-        let backend = self
-            .backend
-            .running
-            .borrow()
-            .clone()
-            .context("CAPABILITY_UNAVAILABLE")?;
-        ensure!(!backend.closed(), "CAPABILITY_UNAVAILABLE");
-        let response = backend.request("execution.prepare",
-            json!({"projectId":alias,"call":{"method":method,"params":params},"coreInstanceId":scope.0,"coreGeneration":scope.1}),
-            json!({"connection":connection}),
-        ).await?;
-        let result = PreparedExecution {
-            backend: backend.clone(),
-            connection: connection.to_owned(),
-            handle: response["handle"]
-                .as_str()
-                .filter(|value| !value.is_empty() && value.len() <= 128)
-                .context("INVALID_RESPONSE")?
-                .to_owned(),
-            params: response["call"]["params"].clone(),
-            source: source.clone(),
+        backend_project_alias(host, &source, project)?;
+        let core =
+            super::execution_preparation::prepare_core(host, &source, project, method, &mut params)
+                .await?;
+        Ok(Some(PreparedExecution {
+            owner: PreparedOwner::Core(core),
+            params,
+            source,
             dispatched: false,
-            host_dispatch: (response["hostDispatch"] == true).then(|| {
-                (
-                    Rc::downgrade(host),
-                    project.to_owned(),
-                    method.to_owned(),
-                    scope.clone(),
-                )
-            }),
-        };
-        ensure!(response["call"]["method"] == method, "INVALID_RESPONSE");
-        ensure!(
-            self.backend.source.borrow().as_deref() == Some(source.as_str())
-                && backend_project_alias(host, &source, project)? == alias
-                && host.schedules.connections.shared_identity(host, project)? == scope
-                && self
-                    .backend
-                    .running
-                    .borrow()
-                    .as_ref()
-                    .is_some_and(|current| Rc::ptr_eq(current, &backend))
-                && !backend.closed()
-                && result.params.is_object(),
-            "RESYNC_REQUIRED"
-        );
-        ensure!(
-            serde_json::to_vec(&result.params)?.len() <= 704 * 1024,
-            "LIMIT_EXCEEDED"
-        );
-        Ok(Some(result))
+        }))
     }
 
     pub(super) async fn read_creation(
@@ -583,105 +347,14 @@ impl Supervisor {
         Ok(result)
     }
 
-    /// 仅已绑定桌面后台的 Host 输入使用该私有投影；故障不能退回遗漏状态的输入。
-    pub(super) async fn prepare_input(
-        &self,
-        host: &Rc<Host>,
-        project: &str,
-        thread: &str,
-        text: &str,
-    ) -> Result<String> {
-        let source = self.backend.source.borrow().clone();
-        if source.is_none() {
-            return Ok(text.to_owned());
-        }
-        let backend = self
-            .backend
-            .running
-            .borrow()
-            .clone()
-            .context("CAPABILITY_UNAVAILABLE")?;
-        ensure!(!backend.closed(), "CAPABILITY_UNAVAILABLE");
-        let alias = backend_project_alias(host, source.as_deref().unwrap(), project)?;
-        let params = areal_protocol::host::WorkbenchInputPrepareParams {
-            project_id: alias.clone(),
-            thread_id: thread.to_owned(),
-            text: text.to_owned(),
-        };
-        let result = backend
-            .request("input.prepare", serde_json::to_value(params)?, json!({}))
-            .await?;
-        ensure!(
-            *self.backend.source.borrow() == source
-                && backend_project_alias(host, source.as_deref().unwrap(), project)? == alias
-                && self
-                    .backend
-                    .running
-                    .borrow()
-                    .as_ref()
-                    .is_some_and(|current| Rc::ptr_eq(current, &backend))
-                && !backend.closed(),
-            "RESYNC_REQUIRED"
-        );
-        let result: areal_protocol::host::WorkbenchInputPrepareResult =
-            serde_json::from_value(result).context("INVALID_RESPONSE")?;
-        ensure!(result.text.len() <= 512 * 1024, "LIMIT_EXCEEDED");
-        Ok(result.text)
-    }
-    #[cfg(test)]
-    pub(crate) fn bind_test_backend(&self, backend: Workbench, source: &str) {
-        *self.backend.ownership.borrow_mut() = Some(("test".into(), json!({"serviceId":"test"})));
-        *self.backend.running.borrow_mut() = Some(Rc::new(backend));
-        *self.backend.source.borrow_mut() = Some(source.into());
-    }
-
-    pub(super) async fn request(
+    pub(super) async fn analytics_request(
         &self,
         host: &Rc<Host>,
         method: &str,
-        params: Value,
-        context: Value,
+        params: &Value,
+        context: &Value,
     ) -> Result<Value> {
-        ensure!(METHODS.contains(&method), "methodNotFound");
-        if method.starts_with("analytics.") {
-            return self
-                .analytics
-                .request(host, method, &params, &context)
-                .await;
-        }
-        if method == "providers.read" {
-            self.restore_source(host)?;
-            let source = self.backend_source().context("CAPABILITY_UNAVAILABLE")?;
-            return self.providers.read(host, &source);
-        }
-        if matches!(
-            method,
-            "library.command"
-                | "worktree.read"
-                | "worktree.command"
-                | "tasks.read"
-                | "trajectory.read"
-                | "trajectory.command"
-                | "feedback.read"
-                | "feedback.command"
-                | "manage.read"
-                | "manage.command"
-                | "providers.command"
-                | "pages.command"
-                | "pages.resource"
-                | "desktop.command"
-        ) {
-            self.resume_backend(host).await?;
-            let backend = self
-                .backend
-                .running
-                .borrow()
-                .clone()
-                .context("CAPABILITY_UNAVAILABLE")?;
-            ensure!(!backend.closed(), "CAPABILITY_UNAVAILABLE");
-            return backend.request(method, params, context).await;
-        }
-        bail!("methodNotFound")
+        self.analytics.request(host, method, params, context).await
     }
 
     /// 统计直接观察 Core 事实，不为事件启动工作台。
@@ -705,17 +378,6 @@ impl Supervisor {
             &json!({"operation":"discover","connection":connection}),
         )
         .await
-    }
-
-    /// 启动或复用桌面后台，返回它的身份（不含票据）。
-    pub(super) async fn ensure_backend(&self, host: &Rc<Host>, input: Ensure) -> Result<Value> {
-        self.backend.ensure(host, input).await.map_err(|error| {
-            if error.to_string() == "CAPABILITY_UNAVAILABLE" {
-                crate::wire::error("CAPABILITY_UNAVAILABLE", "后台尚不可用，请按退避恢复连接")
-            } else {
-                error
-            }
-        })
     }
 
     pub(super) fn credential_names(&self, host: &Host, input: Ensure) -> Result<Value> {
@@ -768,26 +430,6 @@ impl Supervisor {
         credentials
     }
 
-    /// 本机网页需要后台而它没在运行时（Host 重启、桌面窗口已关），按桌面上次接受的参数重新拉起。
-    /// 参数只含路径，重新走与 `backend.ensure` 相同的校验；从没开过桌面时保持不可用。
-    pub(super) async fn resume_backend(&self, host: &Rc<Host>) -> Result<()> {
-        if self
-            .backend
-            .running
-            .borrow()
-            .as_ref()
-            .is_some_and(|backend| !backend.closed())
-        {
-            return Ok(());
-        }
-        let Some(input) =
-            areal_local_service::storage::read_optional::<Ensure>(&launch_record(host))?
-        else {
-            return Ok(());
-        };
-        self.ensure_backend(host, input).await.map(|_| ())
-    }
-
     /// 原生领域只恢复经过校验的来源与配置输入，不为读取目录启动过渡后台。
     pub(super) fn restore_source(&self, host: &Host) -> Result<()> {
         if self.active_source().is_some() {
@@ -810,41 +452,39 @@ impl Supervisor {
         Ok(())
     }
 
-    /// 当前桌面后台的所有权：Main 用它区分“Host 监督的本机后台”和旧应用会话遗留的后台。
-    pub(super) async fn backend_status(&self, host: &Rc<Host>) -> Result<Value> {
-        self.backend.status(host)
-    }
-
-    pub(super) async fn stop_backend(&self) {
-        self.backend.stop().await;
-    }
-
-    pub(super) fn page_events(&self) -> tokio::sync::broadcast::Receiver<Value> {
-        self.page_events
-            .borrow_mut()
-            .get_or_insert_with(|| tokio::sync::broadcast::channel(32).0)
-            .subscribe()
-    }
-
-    pub(super) fn disconnect_pages(&self, connection: &str) {
-        let Some(backend) = self.backend.running.borrow().clone() else {
-            return;
-        };
-        let connection = connection.to_owned();
-        tokio::task::spawn_local(async move {
-            backend
-                .notify("pages.disconnect", json!({"connection":connection}))
-                .await;
-        });
+    pub(super) fn disconnect_connection(&self, host: &Rc<Host>, connection: &str) {
+        self.side_owners.disconnect(host, connection);
     }
 }
 
 fn backend_rejection(receipt: &Value, error: &Value) -> anyhow::Error {
-    if receipt["method"] == "providers.command" && error["code"] == "RESOURCE_UNAVAILABLE" {
+    if matches!(
+        receipt["method"].as_str(),
+        Some("providers.command" | "trajectory.command")
+    ) && error["code"] == "RESOURCE_UNAVAILABLE"
+    {
         return crate::wire::error(
             "RESOURCE_UNAVAILABLE",
             error["message"].as_str().unwrap_or("供应商连接不可用"),
         );
+    }
+    if receipt["method"] == "manage.command" && error.get("data").is_none() {
+        let code = match error["code"].as_str() {
+            Some("COMMAND_FAILED") => Some("COMMAND_FAILED"),
+            Some("scheduleWorkspaceRequired") => Some("scheduleWorkspaceRequired"),
+            Some("RESOURCE_UNAVAILABLE") => Some("RESOURCE_UNAVAILABLE"),
+            Some("INVALID_PARAMS") => Some("INVALID_PARAMS"),
+            Some("FORBIDDEN") => Some("FORBIDDEN"),
+            Some("TARGET_CHANGED") => Some("TARGET_CHANGED"),
+            Some("PROFILE_NOT_SUPPORTED") => Some("PROFILE_NOT_SUPPORTED"),
+            _ => None,
+        };
+        if let Some(code) = code {
+            return crate::wire::error(
+                code,
+                error["message"].as_str().unwrap_or("Host command failed"),
+            );
+        }
     }
     super::task_catalog::TaskRejection(error.clone()).into()
 }
@@ -963,27 +603,11 @@ pub(super) async fn backend_command(
     let standalone_worktree = method == "worktree.command" && source == "host";
     let native_task = method == "manage.command"
         && super::task_catalog::mutation(params["operation"].as_str().unwrap_or("")).is_some();
+    let native_manage = method == "manage.command" && !native_task;
     if !standalone_worktree {
         host.gateway.workbench.restore_source(host)?;
         ensure!(
             host.gateway.workbench.active_source().is_some(),
-            "CAPABILITY_UNAVAILABLE"
-        );
-        ensure!(
-            host.gateway.workbench.backend_has_source(&source),
-            "FORBIDDEN"
-        );
-    }
-    let native_provider = method == "providers.command"
-        && (super::provider_config::native_write(&params)
-            || super::provider_probe::native(&params));
-    if !standalone_worktree && !native_task && !native_provider {
-        host.gateway.workbench.resume_backend(host).await?;
-    }
-    let backend = host.gateway.workbench.backend.running.borrow().clone();
-    if !standalone_worktree && !native_task && !native_provider {
-        ensure!(
-            backend.as_ref().is_some_and(|b| !b.closed()),
             "CAPABILITY_UNAVAILABLE"
         );
         ensure!(
@@ -1012,13 +636,11 @@ pub(super) async fn backend_command(
     if method == "manage.command" && payload.get("requestId").is_none() {
         payload["requestId"] = json!(command);
     }
-    // 导航、工作树与任务变更由 Host 执行；其他偏好沿工作台校验和 Host patch 写入。
-    let library_navigation = method == "library.command"
-        && (payload["operation"] != "settings"
-            || payload["key"]
-                .as_str()
-                .is_some_and(super::library_commands::navigation_setting));
-    let result = if library_navigation {
+    let native_library = method == "library.command";
+    let native_provider = method == "providers.command";
+    let native_feedback = method == "feedback.command";
+    let native_trajectory = method == "trajectory.command";
+    let result = if native_library {
         super::library_service::command(host, &source, payload).await
     } else if method == "worktree.command" {
         super::worktree_catalog::command(host, &source, payload).await
@@ -1032,14 +654,29 @@ pub(super) async fn backend_command(
                 .write(host, &source, &command, &payload)
                 .await
         }
+    } else if native_feedback {
+        host.gateway
+            .workbench
+            .feedback
+            .command(host, &source, &command, payload)
+            .await
+    } else if native_trajectory {
+        host.gateway
+            .workbench
+            .trajectory
+            .command(host, &source, payload)
+            .await
     } else if native_task {
         payload["sourceId"] = json!(source);
         super::task_catalog::command(host, &payload).await
-    } else {
-        backend
-            .context("CAPABILITY_UNAVAILABLE")?
-            .request(method, payload, json!({"principal":principal}))
+    } else if native_manage {
+        host.gateway
+            .workbench
+            .manage_service
+            .command_rpc(host, &source, &command, payload)
             .await
+    } else {
+        bail!("methodNotFound")
     }
     .and_then(|value| {
         if method == "library.command" {
@@ -1060,6 +697,21 @@ pub(super) async fn backend_command(
             .or_else(|| {
                 native_provider
                     .then(|| super::provider_probe::rejection(&error))
+                    .flatten()
+            })
+            .or_else(|| {
+                native_feedback
+                    .then(|| super::feedback::rejection(&error))
+                    .flatten()
+            })
+            .or_else(|| {
+                native_trajectory
+                    .then(|| super::trajectory::rejection(&error))
+                    .flatten()
+            })
+            .or_else(|| {
+                native_manage
+                    .then(|| super::manage_service::rejection(&error))
                     .flatten()
             }) {
             Some(error) => {
@@ -1093,41 +745,228 @@ pub(super) async fn backend_command(
     Ok(receipt)
 }
 
-/// 本机网页的桌面命令：与桌面窗口同一用户，由后台按桌面命令合同校验后执行。
-/// 不进 Host journal，丢回复与桌面窗口原路径一样只能重新读取。
-pub(super) async fn desktop_command(
+pub(super) fn desktop_command_capability(params: &Value) -> Option<&'static str> {
+    let command = params.get("command")?.as_str()?;
+    let operation = params
+        .get("request")
+        .and_then(|req| req.get("operation"))
+        .and_then(Value::as_str);
+    match command {
+        "editMessage" | "continue" | "fork" => Some("submit"),
+        "manage" => {
+            let op = operation?;
+            if MANAGE_SUBMIT_OPERATIONS.contains(&op) {
+                Some("submit")
+            } else if MANAGE_INTERRUPT_OPERATIONS.contains(&op) {
+                Some("interrupt")
+            } else {
+                None
+            }
+        }
+        "prediction" if operation == Some("request") => Some("submit"),
+        "queueEdit" if matches!(operation, Some("update" | "reorder" | "resume" | "steer")) => {
+            Some("submit")
+        }
+        "side" if matches!(operation, Some("start" | "send" | "create")) => Some("submit"),
+        "media" if operation == Some("release") => Some("submit"),
+        _ => None,
+    }
+}
+
+/// 桌面与本机网页共用 Host 的命令入口；各领域负责准入、持久化及回执。
+pub(super) fn desktop_command<'a>(
+    host: &'a Rc<Host>,
+    principal: &'a str,
+    connection: &'a str,
+    request: &'a Value,
+) -> futures_util::future::LocalBoxFuture<'a, Result<Value>> {
+    // 多领域分发的 future 固定在堆上，避免每个调用方内联保存整棵异步状态。
+    Box::pin(async move {
+        use areal_protocol::host::DesktopCommandParamsFieldCommand as Cmd;
+        ensure!(request.get("commandId").is_none(), "INVALID_PARAMS");
+        let mut params = serde_json::from_value::<areal_protocol::host::DesktopCommandParams>(
+            request["params"].clone(),
+        )
+        .context("INVALID_PARAMS")?;
+        host.admission()?;
+        let command = match params.command {
+            Cmd::Value1 => "chatgpt",
+            Cmd::Value2 => "cloud",
+            Cmd::Value3 => "cloudSession",
+            Cmd::Value4 => "configure",
+            Cmd::Value5 => "connect",
+            Cmd::Value6 => "continue",
+            Cmd::Value7 => "dismissRecovery",
+            Cmd::Value8 => "editMessage",
+            Cmd::Value9 => "fork",
+            Cmd::Value10 => "manage",
+            Cmd::Value11 => "media",
+            Cmd::Value12 => "prediction",
+            Cmd::Value13 => "prepareCreator",
+            Cmd::Value14 => "projectless",
+            Cmd::Value15 => "queue",
+            Cmd::Value16 => "queueEdit",
+            Cmd::Value17 => "reconcile",
+            Cmd::Value18 => "remoteControl",
+            Cmd::Value19 => "resources",
+            Cmd::Value20 => "side",
+            Cmd::Value21 => "workspace",
+            Cmd::Value22 => "recovery",
+        };
+        host.gateway.workbench.restore_source(host)?;
+        let source = host.gateway.workbench.active_source().ok_or_else(|| {
+            crate::wire::error(
+                "CAPABILITY_UNAVAILABLE",
+                "桌面后台未运行，请先打开一次桌面应用",
+            )
+        })?;
+        ensure!(
+            params.source_id.take().is_none_or(|id| id == source),
+            "FORBIDDEN"
+        );
+        match command {
+            "recovery" => {
+                let mut query = params.request;
+                let operation = query
+                    .as_object_mut()
+                    .context("INVALID_PARAMS")?
+                    .remove("operation")
+                    .context("INVALID_PARAMS")?;
+                match operation.as_str() {
+                    Some("history") => {
+                        crate::space::history::for_host(&host.home, serde_json::from_value(query)?)
+                            .await
+                    }
+                    Some("importProvider") => host.import_provider(serde_json::from_value(query)?),
+                    Some("inspect" | "openWorkspace") => {
+                        let catalog = crate::space::inspect_params_for_host(&host.home, &query)?;
+                        if operation == "inspect" {
+                            return Ok(catalog);
+                        }
+                        let root = catalog["workspace"]
+                            .as_str()
+                            .context("RESOURCE_UNAVAILABLE")?;
+                        super::worktree_catalog::add_project(host, &source, json!({"root":root}))
+                            .await
+                    }
+                    _ => anyhow::bail!("INVALID_PARAMS"),
+                }
+            }
+            "remoteControl" => {
+                host.gateway
+                    .workbench
+                    .remote_commands
+                    .command(host, &source, &params.request)
+                    .await
+            }
+            "cloudSession" => {
+                Box::pin(host.gateway.workbench.cloud.sessions.command(
+                    host,
+                    &source,
+                    &params.request,
+                ))
+                .await
+            }
+            "cloud" => {
+                host.gateway
+                    .workbench
+                    .cloud
+                    .settings(host, &source, &params.request)
+                    .await
+            }
+            "prepareCreator" => {
+                host.gateway
+                    .workbench
+                    .resources
+                    .prepare_creator(host, &source, &params.request)
+                    .await
+            }
+            "resources" => {
+                host.gateway
+                    .workbench
+                    .resources
+                    .command(host, &source, &params.request)
+                    .await
+            }
+            "projectless" => {
+                host.gateway
+                    .workbench
+                    .projectless
+                    .command(host, &source, &params.request)
+                    .await
+            }
+            "chatgpt" => host.chatgpt_desktop_command(&source, &params.request).await,
+            "manage" => {
+                host.gateway
+                    .workbench
+                    .manage_service
+                    .desktop_command(host, principal, &source, &params.request)
+                    .await
+            }
+            "media" => Box::pin(attachment_inventory_command(host, &source, &params.request)).await,
+            "side" => {
+                host.gateway
+                    .workbench
+                    .side_owners
+                    .command(host, &source, connection, &params.request)
+                    .await
+            }
+            "workspace" => {
+                host.gateway
+                    .workbench
+                    .workspace_ops
+                    .execute(host, &source, &params.request)
+                    .await
+            }
+            _ => super::session_commands::execute(host, &source, command, &params.request).await,
+        }
+    })
+}
+
+async fn attachment_inventory_command(
     host: &Rc<Host>,
-    principal: &str,
-    connection: &str,
+    source: &str,
     request: &Value,
 ) -> Result<Value> {
-    ensure!(request.get("commandId").is_none(), "INVALID_PARAMS");
-    let mut params = serde_json::from_value::<areal_protocol::host::DesktopCommandParams>(
-        request["params"].clone(),
-    )
-    .context("INVALID_PARAMS")?;
-    host.admission()?;
-    host.gateway.workbench.resume_backend(host).await?;
-    let source = host.gateway.workbench.backend.source.borrow().clone();
-    ensure!(
-        source.is_some(),
-        crate::wire::error(
-            "CAPABILITY_UNAVAILABLE",
-            "桌面后台未运行，请先打开一次桌面应用"
-        )
-    );
-    let matched = params.source_id.take().is_none_or(|id| source == Some(id));
-    ensure!(matched, "FORBIDDEN");
-    let params = serde_json::to_value(params)?;
-    host.gateway
-        .workbench
-        .request(
+    use super::session_commands::{resolve_project_scope, shared_rpc};
+    let thread = request["threadId"]
+        .as_str()
+        .filter(|id| !id.is_empty() && id.len() <= 256)
+        .context("INVALID_PARAMS")?;
+    let release = match request["operation"].as_str() {
+        Some("list") => false,
+        Some("release") => true,
+        _ => bail!("INVALID_PARAMS"),
+    };
+    let scope = resolve_project_scope(host, source, request, release, true).await?;
+    if !release {
+        let result = shared_rpc(
             host,
-            "desktop.command",
-            params,
-            json!({"principal":principal,"connection":connection}),
+            &scope.canonical_id,
+            "thread/read",
+            json!({"threadId": thread, "includeTurns": false}),
         )
-        .await
+        .await?;
+        let desktop = &result["thread"]["desktop"];
+        return Ok(json!({
+            "uploads": desktop["uploads"].as_array().map(Vec::as_slice).unwrap_or_default(),
+            "archived": desktop["archived"] == true,
+        }));
+    }
+    let uri = request["uri"].as_str().context("INVALID_PARAMS")?;
+    super::conversation_media::digest(uri).map_err(|_| anyhow::anyhow!("INVALID_PARAMS"))?;
+    let id = match request.get("requestId") {
+        Some(id) => id.as_str().context("INVALID_PARAMS")?.to_owned(),
+        None => uuid::Uuid::new_v4().to_string(),
+    };
+    super::workbench_submissions::submit_shared(
+        host,
+        &scope.canonical_id,
+        "areal/blob/release",
+        json!({"threadId": thread, "uri": uri, "requestId": id}),
+        true,
+    )
+    .await
 }
 
 pub(super) async fn backend_read(
@@ -1185,10 +1024,25 @@ pub(super) async fn backend_read(
         .context("INVALID_PARAMS")?
         .to_owned();
     if method == "tasks.read" && host.gateway.workbench.backend_has_source(&source) {
-        return super::task_catalog::read(host, &params).await;
+        return super::task_catalog::read(host, principal, &params).await;
     }
     if method == "providers.read" {
         return host.gateway.workbench.providers.read(host, &source);
+    }
+    if method == "trajectory.read" {
+        return host
+            .gateway
+            .workbench
+            .trajectory
+            .read(host, &source, params);
+    }
+    if method == "feedback.read" {
+        return host
+            .gateway
+            .workbench
+            .feedback
+            .read(host, &source, params)
+            .await;
     }
     if method == "manage.read"
         && host.gateway.workbench.backend_has_source(&source)
@@ -1201,14 +1055,18 @@ pub(super) async fn backend_read(
     if method == "worktree.read" && host.gateway.workbench.backend_has_source(&source) {
         return super::worktree_catalog::read(host, &source, params).await;
     }
-    params.as_object_mut().unwrap().remove("sourceId");
-    let value = host
-        .gateway
-        .workbench
-        .request(host, method, params, json!({"principal":principal}))
-        .await?;
-    validate_backend_result(method, &value)?;
-    Ok(value)
+    if method == "manage.read" {
+        params.as_object_mut().unwrap().remove("sourceId");
+        let value = host
+            .gateway
+            .workbench
+            .manage_service
+            .read_rpc(host, &source, params)
+            .await?;
+        validate_backend_result(method, &value)?;
+        return Ok(value);
+    }
+    bail!("methodNotFound")
 }
 
 fn validate_backend_result(method: &str, value: &Value) -> Result<()> {
@@ -1247,244 +1105,6 @@ fn validate_backend_result(method: &str, value: &Value) -> Result<()> {
     Ok(())
 }
 
-impl Backend {
-    async fn ensure(&self, host: &Rc<Host>, input: Ensure) -> Result<Value> {
-        let (key, launch) = launch(host, input.clone())?;
-        if let Some(credentials) = &input.environment_credentials
-            && !credentials.is_empty()
-        {
-            let allowed = environment_credential_names(&launch.options)?;
-            ensure!(
-                credentials.keys().all(|name| allowed.contains(name)),
-                "INVALID_PARAMS"
-            );
-        }
-        let _guard = self.starting.lock().await;
-        ensure!(!self.stopped.get(), "CAPABILITY_UNAVAILABLE");
-        let current = self.running.borrow().clone();
-        let mut first_exit = false;
-        if let Some(workbench) = current {
-            if !workbench.closed() {
-                let owner = self.ownership.borrow().clone();
-                if let Some((current, ownership)) = owner {
-                    ensure!(current == key, "CONFLICT");
-                    if let Some(credentials) = &input.environment_credentials {
-                        let source = launch.source_id.clone().context("GUI_SOURCE_PENDING")?;
-                        *self.environment_credentials.borrow_mut() = Some(EnvironmentCredentials {
-                            source_id: source,
-                            launch_key: key.clone(),
-                            values: credentials.clone(),
-                        });
-                    }
-                    // 旧版本启动的后台没有留下记录；桌面再次接上时补记，网页之后才能自行拉起。
-                    let _ = areal_local_service::storage::write(&launch_record(host), &input);
-                    return Ok(ownership);
-                }
-            }
-            workbench.stop().await?;
-            host.schedules.connections.workbench_close_terminals();
-            self.running.borrow_mut().take();
-            first_exit = record_exit(&self.failures);
-        }
-        if !first_exit {
-            self.admit()?;
-        }
-        let source = launch.source_id.clone();
-        let record = input.clone();
-        let source_id = source.clone().context("GUI_SOURCE_PENDING")?;
-        let previous = self.environment_credentials.borrow().clone();
-        let credentials = if let Some(credentials) = &input.environment_credentials {
-            credentials.clone()
-        } else {
-            previous
-                .filter(|credentials| {
-                    credentials.source_id == source_id && credentials.launch_key == key
-                })
-                .map(|credentials| credentials.values)
-                .unwrap_or_default()
-        };
-        *self.environment_credentials.borrow_mut() = Some(EnvironmentCredentials {
-            source_id,
-            launch_key: key.clone(),
-            values: credentials,
-        });
-        *self.source.borrow_mut() = source.clone();
-        *self.utility_options.borrow_mut() = Some(launch.options.clone());
-        match self.start(host, launch).await {
-            Ok((workbench, ownership)) => {
-                // 记不下来只影响下次网页自动拉起，不影响这次启动。
-                let _ = areal_local_service::storage::write(&launch_record(host), &record);
-                *self.source.borrow_mut() = source;
-                let workbench = Rc::new(workbench);
-                *self.running.borrow_mut() = Some(workbench.clone());
-                let watched = workbench.clone();
-                let weak_host = Rc::downgrade(host);
-                tokio::task::spawn_local(async move {
-                    watched.wait_closed().await;
-                    if let Some(host) = weak_host.upgrade() {
-                        let current = host.gateway.workbench.backend.running.borrow().clone();
-                        if current
-                            .as_ref()
-                            .is_none_or(|current| Rc::ptr_eq(current, &watched))
-                        {
-                            host.schedules.connections.workbench_close_terminals();
-                        }
-                    }
-                });
-                for event in self.events.take() {
-                    workbench.notify("core.event", event).await;
-                }
-                ensure!(!self.stopped.get(), "RESYNC_REQUIRED");
-                *self.ownership.borrow_mut() = Some((key, ownership.clone()));
-                let source = self.source.borrow().clone();
-                if let Some(source) = source {
-                    if host.gateway.workbench.backend_has_source(&source) {
-                        host.gateway.workbench.library_changed().await;
-                    }
-                    host.gateway
-                        .workbench
-                        .schedule_worktree_cleanup(host, &source);
-                }
-                Ok(ownership)
-            }
-            Err(error) => {
-                self.environment_credentials.borrow_mut().take();
-                host.schedules.connections.workbench_close_terminals();
-                self.source.borrow_mut().take();
-                self.utility_options.borrow_mut().take();
-                self.failures.borrow_mut().push(Instant::now());
-                Err(error)
-            }
-        }
-    }
-
-    fn status(&self, host: &Rc<Host>) -> Result<Value> {
-        let alive = self
-            .running
-            .borrow()
-            .as_ref()
-            .is_some_and(|workbench| !workbench.closed());
-        let ownership = self.ownership.borrow().clone().map(|(_, value)| value);
-        Ok(json!({
-            "hostId": host.identity.host_id,
-            "generation": host.identity.generation,
-            "owned": alive && ownership.is_some(),
-            "service": ownership.filter(|_| alive),
-        }))
-    }
-
-    async fn stop(&self) {
-        self.stopped.set(true);
-        let _guard = self.starting.lock().await;
-        let ownership = self.ownership.borrow_mut().take();
-        let options = self.utility_options.borrow_mut().take();
-        self.environment_credentials.borrow_mut().take();
-        let running = self.running.borrow_mut().take();
-        if let Some(workbench) = running {
-            if workbench.stop().await.is_err() {
-                eprintln!("Workbench stop: child exit could not be confirmed");
-                return;
-            }
-            if let (Some((_, owner)), Some(options)) = (ownership, options)
-                && retire_backend_record(&options, &owner).is_err()
-            {
-                eprintln!("Workbench stop: discovery retirement could not be completed");
-            }
-        }
-    }
-
-    fn admit(&self) -> Result<()> {
-        let mut failures = self.failures.borrow_mut();
-        failures.retain(|time| time.elapsed() < FAILURE_WINDOW);
-        let Some(last) = failures.last() else {
-            return Ok(());
-        };
-        ensure!(failures.len() < 5, "CAPABILITY_UNAVAILABLE");
-        let delay = restart_delay((failures.len() as u32).saturating_sub(2))
-            .context("CAPABILITY_UNAVAILABLE")?;
-        ensure!(last.elapsed() >= delay, "CAPABILITY_UNAVAILABLE");
-        Ok(())
-    }
-
-    async fn start(&self, host: &Rc<Host>, launch: Launch) -> Result<(Workbench, Value)> {
-        let entry = discover_backend(&host.bin).await?;
-        let data = host.home.join("workbench");
-        areal_local_service::storage::private_dir(&data)?;
-        let owner = crate::workbench_owner::BackendOwner::acquire(
-            Path::new(
-                launch.options["home"]
-                    .as_str()
-                    .context("backend home missing")?,
-            ),
-            &host.identity,
-        )?;
-        let bootstrap = json!({
-            "appRoot": launch.app_root,
-            "options": launch.options,
-            "retired": self.ownership.borrow().as_ref().map(|(_, value)| value.clone()),
-            "owner": owner.identity,
-            "leaseFd": owner.lease.as_raw_fd(),
-        });
-        let (workbench, ready) = Workbench::start_with(
-            &entry.runtime,
-            &entry.runner,
-            &data,
-            reverse(host),
-            Some(("backend.start", bootstrap)),
-            &[owner.lease.as_raw_fd()],
-        )
-        .await?;
-        let service = ready
-            .get("service")
-            .cloned()
-            .context("invalid workbench ready frame")?;
-        ensure!(
-            service.is_object()
-                && service["pid"].as_u64().is_some_and(|pid| pid > 1)
-                && service["identity"]
-                    .as_str()
-                    .is_some_and(|value| !value.is_empty()),
-            "invalid workbench ready frame"
-        );
-        owner.ready(&service)?;
-        Ok((
-            workbench,
-            json!({
-                "hostId": host.identity.host_id,
-                "generation": host.identity.generation,
-                "pid": service["pid"],
-                "identity": service["identity"],
-                "desktopGeneration": service.get("desktopGeneration").cloned().unwrap_or(Value::Null),
-            }),
-        ))
-    }
-}
-
-fn retire_backend_record(options: &Value, owner: &Value) -> Result<()> {
-    let home = options["home"].as_str().context("backend home missing")?;
-    let path = Path::new(home).join("service.json");
-    let Some(bytes) = areal_local_service::storage::read_bytes(&path)? else {
-        return Ok(());
-    };
-    let record: Value = serde_json::from_slice(&bytes)?;
-    let persisted = areal_local_service::storage::read_optional::<Value>(
-        &Path::new(home).join("backend-owner.json"),
-    )?;
-    // 子进程关闭异常或被强制结束时未必执行 finally；Host 等到退出后只结算自己持有的身份。
-    if ["pid", "identity", "desktopGeneration"]
-        .iter()
-        .all(|key| record[key] == owner[key])
-        && persisted.is_some_and(|persisted| {
-            persisted["owner"]["hostId"] == owner["hostId"]
-                && persisted["owner"]["generation"] == owner["generation"]
-                && record["owner"] == persisted["owner"]
-        })
-    {
-        std::fs::remove_file(path)?;
-    }
-    Ok(())
-}
-
 fn launch_record(host: &Host) -> PathBuf {
     host.home.join("workbench/backend-launch.json")
 }
@@ -1504,12 +1124,10 @@ fn environment_credential_names(options: &Value) -> Result<std::collections::BTr
 
 struct Launch {
     source_id: Option<String>,
-    app_root: PathBuf,
     options: Value,
 }
 
-/// 校验桌面后台的启动参数。数据目录保持已登记的原 GUI home，Host 数据目录必须是自己；
-/// Core 程序必须在 Host 自己的 Core 目录内；`appRoot` 从安装包推导，不接受客户端指定。
+/// 校验原生 GUI 来源配置，数据目录保持已登记的 GUI home，Core 必须与 Host 同属一套构建。
 fn launch(host: &Host, input: Ensure) -> Result<(String, Launch)> {
     let source = host
         .migration
@@ -1571,375 +1189,75 @@ fn launch_at(bin: &Path, host_home: &Path, input: Ensure) -> Result<(String, Lau
             && binary.file_name().is_some_and(|name| name == "areal"),
         invalid("Core executable is not the Host Core")
     );
-    let source = source_entry(bin, "backend-main.cjs").is_some();
-    let app_root = bin
-        .join(if source {
-            "../../clients/gui/app"
-        } else {
-            "../../app.asar"
-        })
-        .canonicalize()
-        .map_err(|_| anyhow::anyhow!("CAPABILITY_UNAVAILABLE"))?;
-    ensure!(
-        if source {
-            app_root.is_dir()
-        } else {
-            app_root.is_file()
-        },
-        "CAPABILITY_UNAVAILABLE"
-    );
     Ok((
         serde_json::to_string(&options)?,
         Launch {
-            app_root,
             options,
             source_id: None,
         },
     ))
 }
 
-/// 服务向 Host 的反向调用。服务只经 Host 取项目与 Core，Host 做代次检查。
-pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
-    let host: Weak<Host> = Rc::downgrade(host);
-    Rc::new(move |call, params| {
-        let host = host.clone();
-        Box::pin(async move {
-            let host = host.upgrade().context("CAPABILITY_UNAVAILABLE")?;
-            match call.as_str() {
-                "recovery.importProvider" => host.import_provider(serde_json::from_value(params)?),
-                // 桌面命令通道里的插件库操作与网关同一个入口。
-                "plugins.read" | "plugins.command" => {
-                    super::plugins::request(&host, &call, &params).await
-                }
-                "recovery.history" => {
-                    crate::space::history::for_host(&host.home, serde_json::from_value(params)?)
-                        .await
-                }
-                "recovery.inspect" => crate::space::inspect_params_for_host(&host.home, &params),
-                "workbench.utility" => {
-                    let source = host
-                        .gateway
-                        .workbench
-                        .backend
-                        .source
-                        .borrow()
-                        .clone()
-                        .context("FORBIDDEN")?;
-                    super::workbench_utility::execute(&host, &source, params).await
-                }
-                "pages.event" => {
-                    if let Some(sender) = host.gateway.workbench.page_events.borrow().as_ref() {
-                        let _ = sender.send(params);
-                    }
-                    Ok(Value::Null)
-                }
-                "library.patch" => {
-                    let source = host
-                        .gateway
-                        .workbench
-                        .active_source()
-                        .context("FORBIDDEN")?;
-                    let result = super::library_service::patch(&host, &source, &params)?;
-                    host.gateway.workbench.library_changed().await;
-                    Ok(result)
-                }
-                "library.command" => {
-                    let source = host
-                        .gateway
-                        .workbench
-                        .active_source()
-                        .context("FORBIDDEN")?;
-                    super::library_service::command(&host, &source, params).await
-                }
-                "lifecycle.read" | "lifecycle.command" => {
-                    let source = host
-                        .gateway
-                        .workbench
-                        .active_source()
-                        .context("FORBIDDEN")?;
-                    ensure!(params["sourceId"] == source, "FORBIDDEN");
-                    if call == "lifecycle.command" {
-                        super::workbench_lifecycle::command(
-                            &host,
-                            &source,
-                            params["request"].clone(),
-                        )
-                        .await
-                    } else {
-                        super::workbench_lifecycle::read_request(
-                            &host,
-                            &source,
-                            params["operation"].as_str().context("INVALID_PARAMS")?,
-                            &params,
-                        )
-                        .await
-                    }
-                }
-                "tasks.preview" => {
-                    let source = host
-                        .gateway
-                        .workbench
-                        .backend
-                        .source
-                        .borrow()
-                        .clone()
-                        .context("FORBIDDEN")?;
-                    let mut params = params;
-                    params["sourceId"] = json!(source);
-                    super::task_catalog::preview(&host, &params).await
-                }
-                "tasks.owner.read" => {
-                    let source = host
-                        .gateway
-                        .workbench
-                        .active_source()
-                        .context("FORBIDDEN")?;
-                    let mut params = params;
-                    params["sourceId"] = json!(source);
-                    super::task_catalog::owner_read(&host, &params).await
-                }
-                "tasks.observe" => {
-                    let source = host
-                        .gateway
-                        .workbench
-                        .active_source()
-                        .context("FORBIDDEN")?;
-                    let mut params = params;
-                    params["sourceId"] = json!(source);
-                    super::task_catalog::observe(&host, &params).await
-                }
-                "tasks.read" | "tasks.command" => {
-                    let source = host
-                        .gateway
-                        .workbench
-                        .active_source()
-                        .context("FORBIDDEN")?;
-                    let mut params = params;
-                    params["sourceId"] = json!(source);
-                    if call == "tasks.read" {
-                        super::task_catalog::read(&host, &params).await
-                    } else {
-                        super::task_catalog::native_command(&host, "local", &params).await
-                    }
-                }
-                "worktree.project.add" => {
-                    let source = host
-                        .gateway
-                        .workbench
-                        .active_source()
-                        .context("FORBIDDEN")?;
-                    super::worktree_catalog::add_project(&host, &source, params).await
-                }
-                "worktree.thread.prepare" | "worktree.thread.bind" => {
-                    let source = host
-                        .gateway
-                        .workbench
-                        .active_source()
-                        .context("FORBIDDEN")?;
-                    let project = params["projectId"].as_str().context("INVALID_PARAMS")?;
-                    if call == "worktree.thread.prepare" {
-                        super::worktree_catalog::prepare_thread_target(
-                            &host,
-                            &source,
-                            project,
-                            params["request"].clone(),
-                        )
-                        .await
-                    } else {
-                        super::worktree_catalog::validate_private_binding(&host, &source, &params)?;
-                        super::worktree_catalog::bind_thread_target(
-                            &host,
-                            &source,
-                            project,
-                            params["requestId"].as_str().context("INVALID_PARAMS")?,
-                            params["params"].clone(),
-                        )
-                        .await
-                    }
-                }
-                "worktree.read" | "worktree.command" => {
-                    let source = host
-                        .gateway
-                        .workbench
-                        .active_source()
-                        .context("FORBIDDEN")?;
-                    if call == "worktree.read" {
-                        super::worktree_catalog::read(&host, &source, params).await
-                    } else {
-                        let command = params["commandId"]
-                            .as_str()
-                            .context("INVALID_PARAMS")?
-                            .to_owned();
-                        let mut params = params["request"].clone();
-                        params["sourceId"] = json!(source);
-                        backend_command(
-                            &host,
-                            "local",
-                            &json!({"method":call,"commandId":command,"params":params}),
-                        )
-                        .await
-                    }
-                }
-                "execution.admit" => {
-                    let source = params["sourceId"].as_str().context("INVALID_PARAMS")?;
-                    let project = params["projectId"].as_str().context("INVALID_PARAMS")?;
-                    ensure!(
-                        host.gateway.workbench.backend_has_source(source),
-                        "FORBIDDEN"
-                    );
-                    backend_project_alias(&host, source, project)?;
-                    host.schedules
-                        .connections
-                        .workbench_admit(
-                            &host,
-                            project,
-                            Some(params["lease"].as_str().context("INVALID_PARAMS")?),
-                            params["name"].as_str().context("INVALID_PARAMS")?,
-                            &params["request"],
-                        )
-                        .await
-                }
-                "execution.dismiss" => {
-                    let source = params["sourceId"].as_str().context("INVALID_PARAMS")?;
-                    let project = params["projectId"].as_str().context("INVALID_PARAMS")?;
-                    ensure!(
-                        host.gateway.workbench.backend_has_source(source),
-                        "FORBIDDEN"
-                    );
-                    backend_project_alias(&host, source, project)?;
-                    let lease = params["lease"].as_str().context("INVALID_PARAMS")?;
-                    host.schedules
-                        .connections
-                        .workbench_request(
-                            &host,
-                            project,
-                            lease,
-                            "areal/capabilities",
-                            json!({"apiVersion":"areal.core.v1"}),
-                        )
-                        .await?;
-                    host.journal.native_dismiss(
-                        project,
-                        params["requestId"].as_str().context("INVALID_PARAMS")?,
-                    )?;
-                    Ok(json!({"dismissed":true}))
-                }
-                "execution.submit" | "execution.reconcile" => {
-                    let source = params["sourceId"].as_str().context("INVALID_PARAMS")?;
-                    let project = params["projectId"].as_str().context("INVALID_PARAMS")?;
-                    ensure!(
-                        host.gateway.workbench.backend_has_source(source),
-                        "FORBIDDEN"
-                    );
-                    backend_project_alias(&host, source, project)?;
-                    let lease = params["lease"].as_str().context("INVALID_PARAMS")?;
-                    let method = params["method"].as_str().context("INVALID_PARAMS")?;
-                    if call == "execution.submit" {
-                        super::workbench_submissions::submit(
-                            &host,
-                            project,
-                            lease,
-                            method,
-                            params["params"].clone(),
-                            params["remember"] == true,
-                            params["rejectKnown"] == true,
-                        )
-                        .await
-                    } else {
-                        super::workbench_submissions::reconcile(
-                            &host,
-                            project,
-                            lease,
-                            method,
-                            params["params"].clone(),
-                        )
-                        .await
-                    }
-                }
-                "cloud.attach" => {
-                    let source = host
-                        .gateway
-                        .workbench
-                        .backend
-                        .source
-                        .borrow()
-                        .clone()
-                        .context("FORBIDDEN")?;
-                    ensure!(params["sourceId"] == source, "FORBIDDEN");
-                    host.schedules
-                        .connections
-                        .workbench_cloud_attach(&host, &source, &params)
-                        .await
-                }
-                "core.attach" | "core.detach" | "core.media" | "core.blob" => {
-                    workbench_core_call(&host, &call, &params).await
-                }
-                "core.request" if params.get("lease").is_some() => {
-                    workbench_core_call(&host, &call, &params).await
-                }
-                _ => bail!("FORBIDDEN"),
-            }
-        })
-    })
-}
-
-async fn workbench_core_call(host: &Rc<Host>, method: &str, params: &Value) -> Result<Value> {
-    let source = params["sourceId"].as_str().context("INVALID_PARAMS")?;
-    let project = params["projectId"].as_str().context("INVALID_PARAMS")?;
-    ensure!(
-        host.gateway.workbench.backend_has_source(source),
-        "FORBIDDEN"
-    );
-    let remote = params["lease"].as_str().is_some_and(|lease| {
-        host.schedules
-            .connections
-            .workbench_remote(source, project, lease)
-    });
-    if !remote {
-        backend_project_alias(host, source, project)?;
-    }
-    let connections = &host.schedules.connections;
-    if method == "core.attach" {
-        return connections
-            .workbench_attach(host, project, params["scope"].as_str())
-            .await;
-    }
-    let lease = params["lease"].as_str().context("INVALID_PARAMS")?;
-    if method == "core.detach" {
-        return connections.workbench_detach(host, project, lease);
-    }
-    if method == "core.blob" {
-        return connections
-            .workbench_blob(host, project, lease, params)
-            .await;
-    }
-    if method == "core.media" {
-        return connections
-            .workbench_media(host, project, lease, params)
-            .await;
-    }
-    connections
-        .workbench_request(
-            host,
-            project,
-            lease,
-            params["method"].as_str().context("INVALID_PARAMS")?,
-            params["params"].clone(),
-        )
-        .await
-}
-
-pub(super) fn frontend_options(host: &Host, source: &str, options: Value) -> Result<Value> {
-    let profile = host.migration.source_profile(source)?;
-    let (_, launch) = launch(
-        host,
-        Ensure {
-            profile,
-            options,
-            environment_credentials: Default::default(),
-        },
-    )?;
+pub(super) fn frontend_options(
+    host: &Host,
+    source: &str,
+    options: Value,
+    environment_credentials: Option<std::collections::BTreeMap<String, String>>,
+) -> Result<Value> {
+    host.admission()?;
+    let input = Ensure {
+        profile: host.migration.source_profile(source)?,
+        options,
+        environment_credentials,
+    };
+    let (key, launch) = launch(host, input.clone())?;
     ensure!(launch.source_id.as_deref() == Some(source), "FORBIDDEN");
+    if let Some(credentials) = &input.environment_credentials
+        && !credentials.is_empty()
+    {
+        let allowed = environment_credential_names(&launch.options)?;
+        ensure!(
+            credentials.keys().all(|name| allowed.contains(name)),
+            "INVALID_PARAMS"
+        );
+    }
+    let backend = &host.gateway.workbench.backend;
+    // 独立终端附件保留自己的来源和选项，不能改绑当前工作台或写它的凭据。
+    if backend
+        .source
+        .borrow()
+        .as_deref()
+        .is_some_and(|active| active != source)
+    {
+        ensure!(
+            input
+                .environment_credentials
+                .as_ref()
+                .is_none_or(|credentials| credentials.is_empty()),
+            "CONFLICT"
+        );
+        return Ok(launch.options);
+    }
+    let previous = backend.environment_credentials.borrow().clone();
+    let credentials = input.environment_credentials.clone().unwrap_or_else(|| {
+        previous
+            .filter(|previous| previous.source_id == source && previous.launch_key == key)
+            .map(|previous| previous.values)
+            .unwrap_or_default()
+    });
+    // 只持久化经校验的路径；环境凭据只留在Host内存，不写入启动记录。
+    storage::private_dir(launch_record(host).parent().unwrap())?;
+    storage::write(&launch_record(host), &input)?;
+    host.retain_for_gui()?;
+    *backend.source.borrow_mut() = Some(source.into());
+    *backend.utility_options.borrow_mut() = Some(launch.options.clone());
+    *backend.environment_credentials.borrow_mut() = Some(EnvironmentCredentials {
+        source_id: source.into(),
+        launch_key: key,
+        values: credentials,
+    });
+    // 模型配置失败不阻塞独立的历史和管理读取，模型入口保留原错误。
+    let _ = super::provider_config::import_saved_configuration(host, source, &launch.options);
     Ok(launch.options)
 }
 

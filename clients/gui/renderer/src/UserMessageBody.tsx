@@ -2,7 +2,6 @@ import { useI18n, type MessageId } from "./i18n/IntlProvider.js";
 import type { PendingMessage } from "./pendingMessage.js";
 import { parsePromptConversationSelections } from "./conversationSelectionReference.js";
 import { ConversationSelectionReferences } from "./ConversationSelectionReferences.js";
-import { stripGenUiModelContext } from "@areal/gen-ui/contract";
 import { Box } from "lucide-react";
 import { MessageResponse } from "./components/ai-elements/message.js";
 import { formatSkillMentionDisplayLabel } from "./mentions/mentionMarkdown.js";
@@ -88,7 +87,7 @@ export function UserMessageBody({
   onOpenFileLink?: (path: string) => void;
   fileReferenceRoot?: string;
 }) {
-  const selection = parsePromptConversationSelections(stripGenUiModelContext(children));
+  const selection = parsePromptConversationSelections(children);
   const { text, skills } = projectUserMessage(selection.visibleContent);
   const markdown = (
     <MessageResponse

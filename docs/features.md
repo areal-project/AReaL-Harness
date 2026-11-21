@@ -26,7 +26,6 @@
 | 桌面 GUI | 新会话沿用最近一次实际发送被受理的模型与思考强度；首次使用或原模型已不可用时，在输入框选择模型。设置页只管理服务商，不另设新会话默认模型或会话模型入口。 `clients/gui` 提供 React/Electron、原生文件/差异/终端/浏览器面板、模型与资源设置、手机配对和定时任务界面；聊天模型选择器按供应商分组展示模型，直接选择所需模型；当前模型入口和思考强度页保留来源，区分不同供应商的同名模型。普通会话支持暂停后在原会话手动继续，最后一条用户消息可编辑后作为新消息发送并保留原记录。启用 Browser 的聊天可在用户授权后让 Core 读取该聊天当前原生网页的可访问性文本。人工批注支持冻结原生截图、元素/区域选择、多条 Composer 附件与含裁图和说明的消息，不要求启用模型 Browser 工具包。关闭窗口保留应用；普通退出 GUI 保留共享 Host、Core 和已受理任务，桌面工具连接随 GUI 关闭；停止后台使用显式 Host 操作。支持独立公开依赖构建与 macOS arm64 本地包。[GUI](../clients/gui/README.md)  SnapShots 支持 macOS 前台窗口捕获、可选应用文本、系统全局快捷键、音效、闪光与原生附件动画；截图草稿可跨重启恢复。 |
 | iOS Remote | `clients/mobile` 使用 Capacitor 与共享 Remote 协议，提供钥匙串身份、扫码/粘贴配对、前后台重连、授权项目、会话历史、实时消息，以及普通会话创建、模型/权限选择、发送、排队和停止。未知命令通过原 ID 核对。Task 详情只读，审批问答和 App 推送尚未接入。原生下限为 iOS 17.4，开发门禁在 iOS 17.5 模拟器运行；真机验收尚未完成。[iOS 开发指南](development/ios-development.md) |
 | Android Remote | 复用当前 iOS 移动 UI、配对、重连、浏览与命令恢复，原生存储使用 Android Keystore。最低安装 API 26，WebView、真机与 Release 分别验收。[Android 开发指南](development/android-development.md) |
-| 生成式交互回答 | 主会话和 Side 显示 Core 发布的不可变 HTML 制品，复用 MCP Apps 沙箱。状态在同一 Desktop 配置中有界保存，后续输入只附加模型可见参数，私有状态不进入模型请求。页面后续问题经宿主确认发送。[桌面 API](api/desktop.md#生成式交互回答) |
 | 桌面 Worktree | 普通新会话使用当前目录、分支与 Core，多个会话可共享目录；只有本次创建明确选择 Worktree 才创建独立 checkout 与 Core/Runtime，线程仍归原逻辑项目。创建和绑定可恢复，保留已有目录、未提交改动和旧请求身份。任务按实际宿主路由，定时任务家庭继续预约自动分配的项目外目录并核对执行锚点；共享目录与无预约的旧安排不能启用。直接 Core/CLI、原生自主任务及 full-access 外部写入的边界见[指南](guides/worktrees.md)。 |
 | 会话选区与轮次导航 | 主会话划词可添加到主 Composer 或当前辅助对话，保留正文与附件。引用可逐条移除、按来源去重，最多 8 条、单条 8,000 字符、合计 16,000 字符。辅助对话使用独立临时标签和完整 Composer，继承稳定来源历史，支持工具、附件与权限交互。`/side`、`/btw` 可创建空对话或发送文字首问。主、辅会话共用独立滚动的轮次导航；Esc 按焦点所属面板停止。旧版只读 Side 保留原权限。[GUI](../clients/gui/README.md) |
 | 客户端 | 统一 `areal` 命令（默认 TUI、exec、version、upgrade、app-server、config、workgroup、service、web）与本地 Web；TUI 支持 Unicode 光标编辑与常用输入快捷键、持久错误提示、默认分组折叠、鼠标/键盘展开及过程/最终正文分级；CLI 实现选定 Claude Code 非交互参数与消息。[CLI 契约](api/claude-cli.md) |
@@ -34,7 +33,6 @@
 | Task Mode 与独立频道 | foreground/scheduled/background、持久 TaskRun、独立 Inbox 回复、headless 无人工等待；统一委派的 TaskRun worker 跨协调 Turn 存活并共享预算。Web 提供任务控制、定时创建和独立收件箱。[接口](api/tasks.md) 计划支持显式“立即运行”，创建独立 manual Run，保留暂停和下次计划时间，使用原总预算；响应丢失时只读核对原收据。 |
 | 插件组件支持 | 无项目或 Core 未连接时可读取安装快照与静态诊断；组件报告区分候选和安装摘要。支持受限 Markdown Commands、Agent Profile、用户配置与本地开发链接。MCP 连接、认证和 Hook 信任独立。[插件](guides/plugins.md) |
 | 浏览器自动化 | 复用 ZCode 已实现命令，包括定位器、iframe、CUA、截图、alert/confirm、下载和 WebM。在项目新草稿打开浏览器会创建聊天并保留草稿，发送后继续使用同一页面。全部项目共享持久登录态，设置提供显式 Chrome 导入及数据清理；页面控制和审批仍绑定聊天，UNKNOWN 不重放。预览支持手机、平板与桌面设备宽高、旋转和自适应显示，并区分页面加载失败、权限拒绝与原动作结果未确认。[Browser](api/browser.md) |
-| 电脑控制 | 默认关闭的本机 macOS 原生 Helper，通过设置由用户授予辅助功能、屏幕录制及输入监控；支持应用/窗口观察、AX 与键鼠输入、停止和接管。Core 保留单次计划审批与历史。可显式选择外部 LCU，由原运行时处理 JS 与应用授权，仅用于新建普通聊天；内置浏览器保持可用。[电脑控制](api/computer.md) |
 | Goal 持久目标 | 通过 `/goal` 等入口显式创建，无需配置开关；跨 Turn 自动推进、暂停/恢复/编辑/清除，用户输入优先；主/子 Agent、Workgroup、摘要共享预算。[客户端指南](guides/clients.md#goals) · [接口](api/core.md#goals) |
 | 共享本地服务 | 多 TUI 窗口与 Web 复用 Core/Runtime；本地 Web 启动通过一次性登录码自动认证；公共 JSON 发现/控制供 Desktop Main 使用，按工作区隔离、模型配置热更新、热更新未应用时的空闲安全重启（支持继承新凭据）、显式停止与故障清理。[契约](api/local-service.md) |
 | SDK | 仓库内私有 `@areal/runtime` 和 `@areal/plugins`，Node.js 22.19.0+。[SDK 契约](api/typescript-sdk.md) |

@@ -1,19 +1,27 @@
-#[path = "conversation_media.rs"]
-pub(crate) mod conversation_media;
-#[path = "conversation_read.rs"]
-mod conversation_read;
-#[path = "gateway/owner.rs"]
-mod gateway_owner;
-#[path = "space/import.rs"]
-mod space_import;
-#[cfg(test)]
-#[path = "vault_liveness_tests.rs"]
-mod vault_liveness_tests;
-pub(crate) use gateway_owner::error_code;
 #[path = "analytics.rs"]
 mod analytics;
 #[path = "bots.rs"]
 pub(crate) mod bots;
+#[path = "cloud.rs"]
+mod cloud;
+#[path = "cloud_sessions.rs"]
+mod cloud_sessions;
+#[path = "conversation_media.rs"]
+pub(crate) mod conversation_media;
+#[path = "conversation_read.rs"]
+mod conversation_read;
+#[path = "execution_preparation.rs"]
+mod execution_preparation;
+#[path = "feedback.rs"]
+mod feedback;
+#[path = "feedback_context.rs"]
+mod feedback_context;
+#[path = "frontend_notices.rs"]
+mod frontend_notices;
+#[path = "gateway/owner.rs"]
+mod gateway_owner;
+#[path = "gui_project.rs"]
+mod gui_project;
 #[path = "idle.rs"]
 mod idle;
 #[path = "library_commands.rs"]
@@ -24,36 +32,60 @@ mod library_service;
 mod library_store;
 #[path = "loopback.rs"]
 mod loopback;
+#[path = "manage_service.rs"]
+mod manage_service;
 #[path = "plugins.rs"]
 mod plugins;
 #[path = "power.rs"]
 mod power;
+#[path = "projectless.rs"]
+mod projectless;
 #[path = "provider_catalog.rs"]
 mod provider_catalog;
 #[path = "provider_config.rs"]
 mod provider_config;
 #[path = "provider_probe.rs"]
 mod provider_probe;
+#[path = "remote_commands.rs"]
+mod remote_commands;
+#[path = "resource_inspections.rs"]
+mod resource_inspections;
+#[path = "resources.rs"]
+mod resources;
 #[path = "schedule_connection.rs"]
 mod schedule_connection;
 #[path = "schedules.rs"]
 mod schedules;
+#[path = "session_commands.rs"]
+mod session_commands;
 #[path = "shell_subscription.rs"]
 mod shell_subscription;
+#[path = "side_owners.rs"]
+mod side_owners;
+#[path = "space/import.rs"]
+mod space_import;
 #[path = "subscription/host.rs"]
 mod subscriptions;
 #[path = "task_catalog.rs"]
 mod task_catalog;
+#[path = "trajectory.rs"]
+mod trajectory;
 #[path = "updates.rs"]
 pub(crate) mod updates;
+#[cfg(test)]
+#[path = "vault_liveness_tests.rs"]
+mod vault_liveness_tests;
 #[path = "workbench_lifecycle.rs"]
 mod workbench_lifecycle;
+
 #[path = "workbench_route.rs"]
 mod workbench_route;
 #[path = "workbench_submissions.rs"]
 mod workbench_submissions;
 #[path = "workbench_utility.rs"]
 mod workbench_utility;
+#[path = "workspace_ops.rs"]
+mod workspace_ops;
 #[path = "worktree_catalog.rs"]
 mod worktree_catalog;
 use crate::{
@@ -78,8 +110,10 @@ use std::{
 use tokio::{
     io::BufReader,
     net::{UnixListener, UnixStream},
-    sync::{Mutex, Notify, RwLock, watch},
+    sync::{Mutex, Notify, OwnedRwLockWriteGuard, RwLock, watch},
 };
+
+const DESKTOP_CORE_MAX_FRAME: usize = 64 * 1024 * 1024;
 
 pub struct RunOptions {
     pub home: PathBuf,
@@ -175,6 +209,10 @@ impl Drop for ConnectionGuard {
             .schedules
             .connections
             .frontend_disconnect(&self.id);
+        self.host
+            .gateway
+            .workbench
+            .disconnect_connection(&self.host, &self.id);
         self.host.migration.disconnect(&self.id);
         let _ = self.host.journal.disconnect(&self.id);
         self.host.remote.disconnect(&self.id);
@@ -484,7 +522,7 @@ pub(crate) async fn run_local_mode(
         }
     };
     drop(loopback);
-    host.gateway.workbench.stop_backend().await;
+    host.gateway.workbench.cloud.sessions.close_all(&host);
     host.gateway.workbench.stop().await;
     host.close_subscriptions().await;
     host.power.close().await;
@@ -547,7 +585,7 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
         .iter()
         .any(|capability| capability == "desktopCore");
     let frame_limit = if desktop_core {
-        crate::workbench::MAX_FRAME
+        DESKTOP_CORE_MAX_FRAME
     } else {
         wire::MAX_FRAME
     };
@@ -625,9 +663,12 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
                     }.await
                 } else if request.method=="desktop.core.subscribe" {
                     ensure!(frontend_events.is_none(),error("invalidRequest","desktop attachment already exists"));
-                    let source=request.params["sourceId"].as_str().context("INVALID_PARAMS")?;
-                    let (result,events)=host.schedules.connections.frontend_subscribe(&host,&connection.id,source,request.params["options"].clone())?;
-                    frontend_events=Some(events);Ok(result)
+                    let input:areal_protocol::host::LocalDesktopCoreSubscribeParams=serde_json::from_value(request.params)?;
+                    let (result,events)=host.schedules.connections.frontend_subscribe(&host,&connection.id,&input.source_id,serde_json::to_value(input.options)?,input.environment_credentials.map(|values|values.additional_properties))?;
+                    frontend_events=Some(events);
+                    let projects=host.slots.borrow().iter().filter(|(_,slot)|slot.state=="ready").map(|(id,_)|id.clone()).collect::<Vec<_>>();
+                    for project in projects {host.schedules.connections.frontend_project_ready(&host,&project);}
+                    Ok(result)
                 } else {host.dispatch_connection(&request.method,request.params,&connection).await};
                 let response=match result {Ok(value)=>json!({"version":VERSION,"id":request.id,"result":value}),Err(e)=>json!({"version":VERSION,"id":request.id,"error":local_command_error(&e)})};
                 let sent=write_local_frame(&mut writer,&response,frame_limit).await;
@@ -1243,10 +1284,22 @@ impl Host {
                 } else {
                     "probe_error"
                 };
+                let connection_allows_observation = observed.is_err()
+                    && self
+                        .schedules
+                        .connections
+                        .observation_can_keep_identity(self, id);
                 let mut slots = self.slots.borrow_mut();
                 let slot = slots.get_mut(id).unwrap();
-                // 协议、代际或归属校验失败仍按原安全边界失效；只隔离外层观察超时。
-                if observed.is_ok() && (slot.service.is_some() || slot.writer.is_some()) {
+                let supervised = slot.writer.is_some()
+                    && slot
+                        .service
+                        .as_ref()
+                        .is_some_and(|service| service.owner.as_ref() == Some(&self.owner()));
+                // 超时不能撤销仍有权威身份的连接；连接已关闭时也不能沿缓存继续声明 ready。
+                if slot.state == "ready"
+                    && !(connection_allows_observation && supervised && !slot.uncertain_start)
+                {
                     slot.state = "unavailable".into();
                 }
                 if slot.service.is_some() {
@@ -1268,6 +1321,20 @@ impl Host {
         params: Value,
         connection: &ConnectionGuard,
     ) -> Result<Value> {
+        if method == "lifecycle.read" {
+            let input: areal_protocol::host::LocalLifecycleReadParams =
+                serde_json::from_value(params.clone()).context("INVALID_PARAMS")?;
+            let profile = std::fs::canonicalize(&input.profile)?;
+            let source = self
+                .migration
+                .navigation_source_id(&profile)?
+                .context("FORBIDDEN")?;
+            let operation = params["operation"].as_str().context("INVALID_PARAMS")?;
+            return Box::pin(workbench_lifecycle::read_request(
+                self, &source, operation, &params,
+            ))
+            .await;
+        }
         if method == "desktop.core.terminals.close" {
             ensure!(
                 params.as_object().is_some_and(|params| params.len() == 1),
@@ -1285,12 +1352,20 @@ impl Host {
                 .frontend_call(self, &params)
                 .await;
         }
+        if method == "desktop.command" {
+            let input = serde_json::from_value(params).context("INVALID_PARAMS")?;
+            return self
+                .schedules
+                .connections
+                .frontend_desktop_command(self, input)
+                .await;
+        }
         if method == "desktop.core.callback" {
             return self.schedules.connections.frontend_reply(&params);
         }
         if method == "tasks.read" {
             serde_json::from_value::<areal_protocol::host::LocalTasksReadParams>(params.clone())?;
-            return task_catalog::read(self, &params).await;
+            return task_catalog::read(self, "local", &params).await;
         }
         if method == "tasks.command" {
             serde_json::from_value::<areal_protocol::host::LocalTasksCommandParams>(
@@ -1323,20 +1398,15 @@ impl Host {
                 .workbench
                 .credential_names(self, serde_json::from_value(params)?);
         }
-        if method == "backend.ensure" {
-            serde_json::from_value::<areal_protocol::host::LocalBackendEnsureParams>(
-                params.clone(),
-            )?;
-            self.retain_for_gui()?;
-            return self
-                .gateway
-                .workbench
-                .ensure_backend(self, serde_json::from_value(params)?)
-                .await;
-        }
         if method == "backend.status" {
             serde_json::from_value::<Empty>(params)?;
-            return self.gateway.workbench.backend_status(self).await;
+            // 升级客户端用同一查询区分持有旧子进程的上一代 Host。
+            return Ok(json!({
+                "hostId": self.identity.host_id,
+                "generation": self.identity.generation,
+                "owned": false,
+                "service": null,
+            }));
         }
         if method == "web.ticket" {
             let input: areal_protocol::host::LocalWebTicketParams = serde_json::from_value(params)?;
@@ -1743,16 +1813,43 @@ impl Host {
     async fn ensure_cause(&self, input: Ensure, scheduled: bool) -> Result<Value> {
         self.ensure_generation(input, scheduled, None).await
     }
+    async fn ensure_from_gateway(self: &Rc<Self>, input: Ensure) -> Result<Value> {
+        let (guard, digest, previous) = self.admit_ensure(&input, true, None).await?;
+        if let Some(previous) = previous {
+            return previous_result(previous);
+        }
+        // 受理之后由 Host 持有原项目锁和回执。Renderer 重载只撤回等待结果的连接。
+        let host = self.clone();
+        tokio::task::spawn_local(async move {
+            let _guard = guard;
+            host.finish_ensure(&input, true, &digest).await
+        })
+        .await
+        .context("project activation task failed")?
+    }
     async fn ensure_generation(
         &self,
         input: Ensure,
         scheduled: bool,
         service_generation: Option<&str>,
     ) -> Result<Value> {
+        let (_guard, digest, previous) = self
+            .admit_ensure(&input, scheduled, service_generation)
+            .await?;
+        if let Some(previous) = previous {
+            return previous_result(previous);
+        }
+        self.finish_ensure(&input, scheduled, &digest).await
+    }
+    async fn admit_ensure(
+        &self,
+        input: &Ensure,
+        scheduled: bool,
+        service_generation: Option<&str>,
+    ) -> Result<(OwnedRwLockWriteGuard<()>, String, Option<Value>)> {
         self.generation(&input.expected_generation)?;
         self.admission()?;
-        let gate = self.gate(&input.project_id)?;
-        let _guard = gate.write().await;
+        let guard = self.gate(&input.project_id)?.write_owned().await;
         self.admission()?;
         if let Some(generation) = service_generation {
             let instance = Self::service_id(&self.slots.borrow()[&input.project_id].registration);
@@ -1787,15 +1884,14 @@ impl Host {
         let (digest, previous) = self.accepted(
             &input.request_id,
             "project.ensure",
-            &input,
+            input,
             &input.project_id,
         )?;
-        if let Some(previous) = previous {
-            self.apply_scheduling_intent(&input.request_id)?;
-            return previous_result(previous);
-        }
         self.apply_scheduling_intent(&input.request_id)?;
-        let result = self.ensure_inner(&input).await;
+        Ok((guard, digest, previous))
+    }
+    async fn finish_ensure(&self, input: &Ensure, scheduled: bool, digest: &str) -> Result<Value> {
+        let result = self.ensure_inner(input).await;
         if result.is_err() {
             self.slots
                 .borrow_mut()
@@ -1803,7 +1899,7 @@ impl Host {
                 .unwrap()
                 .state = "unavailable".into();
         }
-        let result = self.finish_mutation(&input.request_id, &digest, result);
+        let result = self.finish_mutation(&input.request_id, digest, result);
         if !scheduled && input.launch_inputs.is_some() {
             self.schedules.wake.notify_one();
         }
@@ -1814,6 +1910,7 @@ impl Host {
         project: &str,
         fingerprint: &str,
         current: Option<&Service>,
+        model_catalog_managed: bool,
     ) {
         {
             let mut slots = self.slots.borrow_mut();
@@ -1824,11 +1921,14 @@ impl Host {
                     && service.owner.as_ref() == Some(&self.owner())
                     && service.identity.config_fingerprint == fingerprint
                     && slot.state == "ready"
+                    && !slot.uncertain_start
                     && slot.writer.is_some()
                     && slot.service.as_ref().is_some_and(|previous| {
                         previous.identity == service.identity && previous.owner == service.owner
                     })
             });
+            // 托管模型的同配置复用不会进入模型热更新超时重启；真正启动仍在 before_launch 设置围栏。
+            slot.uncertain_start = !reusing_ready || !model_catalog_managed;
             if !reusing_ready {
                 slot.idle.reset();
                 slot.state = "starting".into();
@@ -1850,14 +1950,15 @@ impl Host {
             .join("host/launch")
             .join(storage::digest(input.project_id.as_bytes()))
             .join("inputs.json");
-        let mut inputs = match &input.launch_inputs {
-            Some(v) => v.clone(),
-            None => storage::read_optional(&saved_path)?.ok_or_else(|| {
-                error(
-                    "configurationConflict",
-                    "first activation requires launchInputs",
-                )
-            })?,
+        let (mut inputs, using_saved_inputs) = match &input.launch_inputs {
+            Some(v) => (v.clone(), false),
+            None => match storage::read_optional(&saved_path)? {
+                Some(inputs) => (inputs, true),
+                None => (
+                    gui_project::missing_inputs(self, &registration).await?,
+                    false,
+                ),
+            },
         };
         let uses_shared_host_config = self.uses_shared_host_config(&inputs);
         if uses_shared_host_config && self.home.join("config.toml").exists() {
@@ -1880,6 +1981,23 @@ impl Host {
                 if name.starts_with("AREAL_CREDENTIAL_") && !inputs.credential_names.contains(name)
                 {
                     inputs.credential_names.push(name.clone());
+                }
+            }
+        } else if matches!(registration.source, crate::ProjectSource::Gui { .. }) {
+            let mut cfg_inputs = launch::config_inputs(&self.home, &inputs, &BTreeMap::new());
+            cfg_inputs.overrides.data_dir = Some(registration.data_dir.clone());
+            if let Ok((config, _)) = areal_config::load_service_config(&cfg_inputs) {
+                for name in config.model.api_key_env.iter().chain(
+                    config
+                        .model_catalog
+                        .iter()
+                        .filter_map(|provider| provider.api_key_env.as_ref()),
+                ) {
+                    if name.starts_with("AREAL_CREDENTIAL_")
+                        && !inputs.credential_names.contains(name)
+                    {
+                        inputs.credential_names.push(name.clone());
+                    }
                 }
             }
         }
@@ -2017,26 +2135,17 @@ impl Host {
         inputs
             .credential_names
             .retain(|name| !deferred_credentials.contains(name));
-        let (mut spec, _) =
-            launch::prepare(&self.home, &self.bin, &registration, &inputs, &credentials)?;
-        let mut journal = self
-            .receipt(&input.request_id)?
-            .context("missing activation receipt")?;
-        let previous = storage::read_optional::<Service>(&spec.directory()?.join("service.json"))?;
-        journal.evidence = json!({"serviceId":spec.service_id,"fingerprint":spec.fingerprint,"owner":self.owner(),"registration":registration,"previousService":previous,"components":spec.components});
-        storage::write(
-            &wire::operation_path(&self.home, &input.request_id),
-            &journal,
-        )?;
+        let service_id = Self::service_id(&registration);
+        let directory = storage::registry(&self.home, &service_id)?;
+        let previous = storage::read_optional::<Service>(&directory.join("service.json"))?;
         let current = if previous.is_some() {
-            let service = areal_local_service::status(&self.home, &spec.service_id)
+            let service = areal_local_service::status(&self.home, &service_id)
                 .await
                 .map_err(|cause| {
                     error(
                         "migrationBlocked",
                         format!(
-                            "cannot inspect existing service {} before activation: {cause:#}",
-                            spec.service_id
+                            "cannot inspect existing service {service_id} before activation: {cause:#}",
                         ),
                     )
                 })?;
@@ -2044,6 +2153,24 @@ impl Host {
         } else {
             None
         };
+        // 只给下一代 Core 使用当前网络设置；继续复用运行中代际的原始启动输入。
+        if using_saved_inputs
+            && current
+                .as_ref()
+                .is_none_or(|service| service.state == State::Stopped)
+        {
+            gui_project::refresh_saved_network(self, &registration, &mut inputs).await?;
+        }
+        let (mut spec, _) =
+            launch::prepare(&self.home, &self.bin, &registration, &inputs, &credentials)?;
+        let mut journal = self
+            .receipt(&input.request_id)?
+            .context("missing activation receipt")?;
+        journal.evidence = json!({"serviceId":spec.service_id,"fingerprint":spec.fingerprint,"owner":self.owner(),"registration":registration,"previousService":previous,"components":spec.components});
+        storage::write(
+            &wire::operation_path(&self.home, &input.request_id),
+            &journal,
+        )?;
         let mut prior_boot_activation = false;
         if let Some(previous) = current.as_ref().filter(|s| {
             s.owner.as_ref() != Some(&self.owner())
@@ -2141,7 +2268,12 @@ impl Host {
             }
         }
         spec.owner = Some(self.owner());
-        self.begin_project_activation(&input.project_id, &spec.fingerprint, current.as_ref());
+        self.begin_project_activation(
+            &input.project_id,
+            &spec.fingerprint,
+            current.as_ref(),
+            spec.model_catalog_managed,
+        );
         let lifetime = {
             let mut slots = self.slots.borrow_mut();
             let slot = slots.get_mut(&input.project_id).unwrap();
@@ -2155,13 +2287,13 @@ impl Host {
                 lifetime
             }
         };
-        self.slots
-            .borrow_mut()
-            .get_mut(&input.project_id)
-            .unwrap()
-            .uncertain_start = true;
         let activation_checked = std::cell::Cell::new(false);
         let before_launch = || -> Result<()> {
+            self.slots
+                .borrow_mut()
+                .get_mut(&input.project_id)
+                .unwrap()
+                .uncertain_start = true;
             if !prior_boot_activation {
                 activation_checked.set(true);
                 return Ok(());

@@ -416,7 +416,6 @@ impl Engine {
                         && matches!(
                             entry.backend,
                             crate::tools::Backend::Client
-                                | crate::tools::Backend::Page(_)
                                 | crate::tools::Backend::Mcp(_)
                                 | crate::tools::Backend::Plugin(_)
                                 | crate::tools::Backend::Coordination

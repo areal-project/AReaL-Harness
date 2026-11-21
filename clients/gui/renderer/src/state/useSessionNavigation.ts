@@ -287,7 +287,11 @@ export function useSessionNavigation(
               ? { projectId: owner.projectId, threadId: owner.threadId }
               : null;
             let needsConnect =
-              operation === "connect" && (!target?.state?.connected || options.forceConnect);
+              operation === "connect" &&
+              (!target?.state?.connected || options.forceConnect) &&
+              !target?.state?.threads?.[owner.threadId ?? ""]?.cloud &&
+              !target?.summaries?.find((summary: { id: string }) => summary.id === owner.threadId)
+                ?.cloud;
             let opened = false;
             let liveReadFailure: unknown;
             const connection = services.reads.status();

@@ -569,62 +569,6 @@ test("effort selection preserves service default and distinguishes unknown from 
   );
 });
 
-test("projectless catalog uses declared API and fresh account efforts without a protocol-wide fallback", async () => {
-  const { ProjectlessWorkspaces } =
-    await import("@areal/workbench-service/desktop/core/projectless.cjs");
-  const caps = { tools: true, vision: true, reasoning: true, reasoningEffortOptions: [] };
-  const providers = {
-    config: {
-      current: async () => ({
-        effective: { model: {} },
-        credentialStates: {},
-        data: [
-          {
-            id: "official",
-            enabled: true,
-            endpoint: "https://api.openai.com/v1/responses",
-            parameters: {},
-            models: [{ id: "gpt-6.1-sol", enabled: true, parameters: {} }],
-          },
-          {
-            id: "custom",
-            enabled: true,
-            endpoint: "http://127.0.0.1/v1/responses",
-            parameters: {},
-            models: [
-              { id: "gpt-6.1-sol", enabled: true, parameters: {} },
-              {
-                id: "empty",
-                enabled: true,
-                parameters: { reasoningEffort: "minimal" },
-                capabilities: caps,
-              },
-            ],
-          },
-        ],
-      }),
-    },
-    openaiService: {
-      catalog: { metadata: () => ({ fresh: true }) },
-      models: [
-        { id: "account-model", reasoningEffortOptions: ["high", "max"] },
-        { id: "unknown-account-model" },
-      ],
-    },
-  };
-  const result = await new ProjectlessWorkspaces({ providers }).command({ operation: "catalog" });
-  assert.deepEqual(
-    result.models.map((model) => model.reasoningEffortOptions),
-    [["low", "medium", "high", "xhigh", "max"], [], [], ["high", "max"], []],
-  );
-  assert.equal(
-    result.models[2].parameters.reasoningEffort,
-    "minimal",
-    "historical intent remains available for correction",
-  );
-  assert.equal(result.models[2].available, true);
-});
-
 test("subscription transports encode Fast for their endpoint and preserve Off, omission and effort", () => {
   const request = { model: "opaque-model", input: [], stream: true, reasoning: { effort: "high" } };
   for (const [encode, fastTier] of [
@@ -660,34 +604,5 @@ test("desktop provider parameter boundary preserves supported tiers and rejects 
   for (const serviceTier of ["priority", "auto", "turbo", true, 1, {}]) {
     assert.throws(() => modelParameters({ serviceTier }), /模型参数/);
     assert.equal(parameters({ serviceTier }), false);
-  }
-});
-
-test("projectless catalog carries selected tier into named and implicit defaults", async () => {
-  const { ProjectlessWorkspaces } =
-    await import("@areal/workbench-service/desktop/core/projectless.cjs");
-  for (const serviceTier of ["fast", "default"]) {
-    const providers = {
-      config: {
-        current: async () => ({
-          effective: { model: { provider: "local", name: "one", service_tier: serviceTier } },
-          credentialStates: {},
-          data: [
-            {
-              id: "local",
-              enabled: true,
-              endpoint: "http://fixture.invalid/v1/responses",
-              parameters: { serviceTier: "fast" },
-              models: [{ id: "one", enabled: true, parameters: {} }],
-            },
-          ],
-        }),
-      },
-    };
-    const result = await new ProjectlessWorkspaces({ providers }).command({ operation: "catalog" });
-    assert.equal(result.models.length, 2);
-    assert.equal(result.models[0].providerId, null);
-    assert.equal(result.models[0].parameters.serviceTier, serviceTier);
-    assert.equal(result.models[1].parameters.serviceTier, serviceTier);
   }
 });

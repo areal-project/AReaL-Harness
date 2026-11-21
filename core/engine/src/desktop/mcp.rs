@@ -30,15 +30,6 @@ impl Engine {
         let registry = registry
             .with_mcp(tools)?
             .with_dynamic(&thread.dynamic_tools)?;
-        let registry = if !thread.is_read_only_side()
-            && !research
-            && config.allow_plugin_skills
-            && !config.read_only
-        {
-            self.page_registry(registry, thread)?
-        } else {
-            registry
-        };
         Ok(if thread.is_read_only_side() {
             registry.side_only(thread.side_workspace_read())
         } else if research {

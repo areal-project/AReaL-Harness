@@ -48,16 +48,6 @@ const files = [
   .map((file) => `./${file}`);
 
 const vp = fileURLToPath(new URL("../node_modules/vite-plus/bin/vp", import.meta.url));
-// 工作台服务同属本工作区，格式按它自己的 vite.config.mts；整目录检查只需一两秒。
-const workbench = spawnSync(process.execPath, [vp, "fmt", "--check", "src", "test"], {
-  cwd: join(root, "../../services/workbench"),
-  stdio: "inherit",
-});
-if (workbench.status !== 0) {
-  console.error("services/workbench 格式不对：pnpm --dir clients/gui run fmt:workbench");
-  process.exit(workbench.status ?? 1);
-}
-
 if (files.length === 0) {
   console.log("No changed GUI files to check.");
   process.exit(0);

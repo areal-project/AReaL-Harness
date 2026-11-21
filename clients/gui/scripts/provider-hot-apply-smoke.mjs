@@ -1,3 +1,7 @@
+import { readFixtureHost, settleFixtureHostAfterQuit } from "./application-cleanup.mjs";
+import { readCoreThread } from "./support/core-observation.mjs";
+import { fixtureWorkbench } from "./support/desktop-fixture.mjs";
+import { openProjectInDesktop } from "./support/journey-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -19,11 +23,7 @@ const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const {
-  ServiceConnection,
-  waitForServiceProcessExit,
-  waitForProcessExit,
-} = require("../app/src/core/service-client.cjs");
+const { waitForProcessExit } = require("../app/src/core/service-client.cjs");
 const WebSocket = require("ws");
 const binary = process.env.AREAL_CORE_BIN;
 const activeSaveOnly = process.argv.includes("--active-save");
@@ -38,9 +38,9 @@ assert.equal(
 );
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 const sourceFiles = [
-  "../../services/workbench/src/desktop/core/providers.cjs",
-  "../../services/workbench/src/desktop/core/model-config.cjs",
-  "../../services/workbench/src/desktop/core/backend.cjs",
+  "../../core/host/src/provider_config.rs",
+  "../../core/config/src/models.rs",
+  "../../core/host/src/model_application.rs",
   "renderer/src/settings/ModelSettings.tsx",
   "scripts/provider-hot-apply-smoke.mjs",
   "renderer/dist/index.html",
@@ -57,7 +57,7 @@ const coreHashes = Object.fromEntries(
   ),
 );
 const scratch = await makeTempDir("areal-provider-hot-");
-const workspace = join(scratch, "workspace");
+const workspace = join(scratch, "demo");
 const userHome = join(scratch, "user");
 const config = join(userHome, ".areal/config.toml");
 await mkdir(workspace);
@@ -146,6 +146,9 @@ const env = { ...process.env };
 for (const key of Object.keys(env))
   if (/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) || key === "ELECTRON_RUN_AS_NODE") delete env[key];
 Object.assign(env, {
+  HOME: userHome,
+  AREAL_HARNESS_HOME: join(scratch, "registry"),
+  AREAL_CORE_CONFIG: config,
   AREAL_CORE_BIN: binary,
   AREAL_CORE_USER_HOME: userHome,
   AREAL_GUI_USER_DATA: join(scratch, "electron"),
@@ -157,14 +160,14 @@ env.NO_PROXY = env.no_proxy = [env.NO_PROXY, env.no_proxy, "127.0.0.1", "localho
   .join(",");
 let app,
   page,
-  observer,
-  metadata,
+  originalHost,
+  quitPid,
   projectId,
   passed = false,
   cleanup;
 const button = (name) => page.getByRole("button", { name, exact: true });
-const state = () => page.evaluate(() => window.arealDesktop.snapshot());
-const project = (snapshot) => snapshot.projects.find((item) => item.root === workspace);
+const thread = (threadId) => readCoreThread({ binary, env, gui, workspace, threadId });
+const providers = () => fixtureWorkbench(page, "providers.read", { operation: "list" });
 async function until(read, label, timeout = 30000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -185,19 +188,22 @@ async function command(name, params) {
 const cli = (args) =>
   JSON.parse(execFileSync(binary, [...args, "--json"], { env, encoding: "utf8", timeout: 20000 }));
 async function settled() {
-  const { service, snapshot } = await observer.request("snapshot");
+  const status = await command("serviceStatus", {});
   return (
-    service.starting === 0 &&
-    service.activeCommands === 0 &&
-    !service.providerUpdating &&
-    !service.busy &&
-    project(snapshot)?.state?.connected &&
-    snapshot.projects.every((item) => !item.core?.instanceId || item.state?.connected)
+    status.connected &&
+    status.starting === 0 &&
+    !status.providerUpdating &&
+    !status.busy &&
+    status.projects.some((project) => project.root === workspace && project.started)
   );
 }
 async function coreRead() {
-  const snapshot = await state();
-  const descriptor = cli(["service", "status", "--instance", project(snapshot).core.instanceId]);
+  const records = cli(["service", "list"]);
+  const ready = (records.data ?? records).filter(
+    (item) => item.workspace === workspace && item.state === "ready",
+  );
+  assert.equal(ready.length, 1, "one ready Core owns the original workspace");
+  const [descriptor] = ready;
   assert.equal(descriptor.workspace, workspace);
   assert.equal(descriptor.dataDir, join(env.AREAL_CORE_HOME, projectId, "state"));
   assert.equal(descriptor.state, "ready");
@@ -254,11 +260,14 @@ function runtimePids(hostPid) {
 }
 async function identity(label, { active = false } = {}) {
   if (!active) await until(settled, `${label} backend settles`);
-  const { service } = await observer.request("snapshot");
+  const host = await readFixtureHost(env);
+  assert.equal(host?.generation, originalHost.generation);
+  assert.equal(host?.pid, originalHost.pid);
+  const resources = await command("resources", { operation: "inspect" });
   const { descriptor, status } = await coreRead();
   const value = {
-    desktopPid: service.pid,
-    desktopGeneration: service.lifecycle?.desktopGeneration,
+    sharedHostPid: host.pid,
+    sharedHostGeneration: host.generation,
     instanceId: descriptor.serviceId,
     coreGeneration: descriptor.generation,
     hostPid: descriptor.hostPid,
@@ -266,14 +275,14 @@ async function identity(label, { active = false } = {}) {
     runtimePids: runtimePids(descriptor.hostPid),
     runtimeEpoch: status.runtime?.runtimeEpoch,
   };
-  assert.equal(typeof value.desktopGeneration, "string", "Read the actual desktop generation");
+  assert.equal(typeof value.sharedHostGeneration, "string", "Read the native Host generation");
   assert.equal(typeof value.runtimeEpoch, "string", "Read the actual Runtime epoch");
   assert.equal(value.runtimePids.length, 1, "Observe exactly the Runtime owned by this Core Host");
   assert.equal(
-    service.targets.find((target) => target.projectId === projectId)?.generation,
+    resources.find((target) => target.projectId === projectId)?.generation,
     value.coreGeneration,
   );
-  for (const pid of [value.desktopPid, value.hostPid, value.corePid, ...value.runtimePids]) {
+  for (const pid of [value.sharedHostPid, value.hostPid, value.corePid, ...value.runtimePids]) {
     process.kill(pid, 0);
     ownedPids.add(pid);
   }
@@ -283,8 +292,8 @@ async function identity(label, { active = false } = {}) {
 }
 function unchanged(before, after, label) {
   for (const key of [
-    "desktopPid",
-    "desktopGeneration",
+    "sharedHostPid",
+    "sharedHostGeneration",
     "instanceId",
     "coreGeneration",
     "hostPid",
@@ -297,7 +306,7 @@ function unchanged(before, after, label) {
     before.runtimePids,
     `${label} must preserve the actual owned Runtime PID`,
   );
-  for (const pid of [before.desktopPid, before.hostPid, before.corePid, ...before.runtimePids])
+  for (const pid of [before.sharedHostPid, before.hostPid, before.corePid, ...before.runtimePids])
     process.kill(pid, 0);
 }
 async function openSettings(name = "Hot apply fixture") {
@@ -320,7 +329,7 @@ async function saveProvider(label) {
     180000,
   );
   const saved = await until(async () => {
-    const result = await command("providers", { operation: "list" });
+    const result = await providers();
     return result.pendingApply ? null : result;
   }, `${label} actual Core application`);
   const core = await coreRead();
@@ -347,8 +356,11 @@ async function saveProvider(label) {
   );
   assert.equal(model.credentialState, "available");
   assert.equal(
-    project(await state()).models.find((item) => item.providerId === "fixture")?.available,
+    saved.data
+      .find((item) => item.id === "fixture")
+      ?.models.some((model) => model.id === "fixture-model"),
     true,
+    "Host catalog exposes the model persisted by the settings UI",
   );
   unchanged(before, await identity(`${label} after`), label);
   return saved;
@@ -369,7 +381,7 @@ async function send(marker, expectedCredential, model = "fixture-model") {
   const threadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
   await until(
     async () =>
-      project(await state()).state.threads[threadId]?.turns?.at(-1)?.status === "completed" &&
+      (await thread(threadId)).turns.at(-1)?.status === "completed" &&
       requests.filter((request) => request.kind === "turn").length === before + 1,
     `${marker} completed`,
   );
@@ -400,20 +412,16 @@ async function launch() {
   page = await app.firstWindow();
   page.setDefaultTimeout(15000);
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
-  await until(async () => (await state()).connection?.state === "ready", "GUI connected");
-  metadata = JSON.parse(await readFile(join(env.AREAL_CORE_HOME, "service.json"), "utf8"));
-  observer = new ServiceConnection();
-  await observer.connect(metadata);
-  await observer.request("hello", { protocol: metadata.protocol, identity: metadata.identity });
+  await page
+    .locator('[data-testid="areal-workbench"][data-startup-ready="true"]')
+    .waitFor({ timeout: 120000 });
+  originalHost = await until(() => readFixtureHost(env), "original isolated Host");
   await app.evaluate(({ dialog, BrowserWindow }) => {
     dialog.showMessageBox = async () => ({ response: 1 });
     BrowserWindow.getAllWindows()[0].setSize(1440, 960);
   });
 }
 async function closeGui() {
-  observer?.close();
-  observer = undefined;
   if (!app) return;
   if (page && !page.isClosed()) {
     const discard = button("取消修改");
@@ -424,6 +432,7 @@ async function closeGui() {
   }
   const current = app;
   const process = current.process();
+  quitPid = process.pid;
   if (process.exitCode === null) {
     await current
       .evaluate(({ Menu }) => {
@@ -445,40 +454,16 @@ async function closeGui() {
   app = undefined;
 }
 async function stopOwnedService() {
-  observer?.close();
-  observer = undefined;
-  metadata ??= JSON.parse(await readFile(join(env.AREAL_CORE_HOME, "service.json"), "utf8"));
-  if (metadata.applicationOwner) {
-    await waitForServiceProcessExit(env.AREAL_CORE_HOME, metadata);
-    for (const pid of ownedPids) await waitForProcessExit(pid);
-    const records = cli(["service", "list"]);
-    assert.deepEqual(
-      (records.data ?? records).filter((record) => record.state !== "stopped"),
-      [],
-      "Application lifetime cleanup stops every owned Core generation",
-    );
-    metadata = undefined;
-    return;
-  }
-  const connection = new ServiceConnection();
-  try {
-    await connection.connect(metadata);
-    await connection.request("hello", { protocol: metadata.protocol, identity: metadata.identity });
-    await until(async () => {
-      const { service } = await connection.request("snapshot");
-      return (
-        !service.busy && !service.starting && !service.activeCommands && !service.providerUpdating
-      );
-    }, "owned service is idle before cleanup");
-    await connection.request("stopService", { protocol: metadata.protocol }, true);
-    await waitForServiceProcessExit(env.AREAL_CORE_HOME, metadata);
-  } finally {
-    connection.close();
-  }
-  metadata = undefined;
+  if (!quitPid) return;
+  const directory = join(scratch, `quit-${quitPid}`);
+  await mkdir(directory);
+  await settleFixtureHostAfterQuit(binary, env, directory, { host: originalHost, pid: quitPid });
+  for (const pid of ownedPids) await waitForProcessExit(pid);
+  originalHost = undefined;
+  quitPid = undefined;
 }
 async function persistedCredentials(expected) {
-  const value = await command("providers", { operation: "list" });
+  const value = await providers();
   const item = value.data.find((item) => item.id === "fixture");
   const canonical = await readFile(config, "utf8");
   assert.equal(value.path, config);
@@ -541,12 +526,10 @@ providerHotApplyChecks: try {
   });
   await page.reload();
   await page.getByTestId("areal-workbench").waitFor();
-  await app.evaluate(({ dialog }, path) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
-  }, workspace);
-  await page.evaluate(() => window.arealDesktop.chooseProject());
-  await until(async () => project(await state())?.state?.connected, "isolated project connected");
-  projectId = project(await state()).id;
+  await openProjectInDesktop(app, page, workspace);
+  await page.getByTestId("chat-input").waitFor();
+  projectId = await page.getByTestId("areal-workbench").getAttribute("data-project-id");
+  assert.ok(projectId);
   await until(settled, "initial project work settled");
   assert.equal(
     (await coreRead()).catalog.data.find((item) => item.providerId === "fixture")?.available,
@@ -558,7 +541,7 @@ providerHotApplyChecks: try {
   const first = await saveProvider("first credential save");
   const firstReference = first.data.find((item) => item.id === "fixture").apiKeyEnv;
   await persistedCredentials({ first: firstReference });
-  const revealsBefore = await command("providers", { operation: "list" });
+  const revealsBefore = await providers();
   await button("显示 API Key").click();
   await button("隐藏 API Key").waitFor();
   assert.equal(
@@ -574,10 +557,7 @@ providerHotApplyChecks: try {
   await button("隐藏 API Key").click();
   assert.equal(await page.getByTestId("provider-api-key").inputValue(), "");
   assert.equal(await page.getByTestId("provider-api-key").getAttribute("placeholder"), "••••••••");
-  assert.equal(
-    (await command("providers", { operation: "list" })).revision,
-    revealsBefore.revision,
-  );
+  assert.equal((await providers()).revision, revealsBefore.revision);
   checks.push(
     "The trusted Electron eye action reveals the encrypted saved fixture key; hiding clears the input without a save or configuration revision change",
   );
@@ -586,7 +566,7 @@ providerHotApplyChecks: try {
     "UI save persists the encrypted credential and applies an available Core catalog without restarting desktop, Core Host, Core or Runtime",
   );
   await button("返回应用").click();
-  await createProjectConversation(page, "workspace");
+  await createProjectConversation(page, "demo");
   await chooseModel();
   if (activeSaveOnly) {
     const before = await identity("active save before");
@@ -596,14 +576,12 @@ providerHotApplyChecks: try {
     await until(() => heldResponse, "original synthetic SSE request is held");
     const threadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
     await until(
-      async () =>
-        project(await state()).state.threads[threadId]?.turns?.at(-1)?.status === "inProgress",
+      async () => (await thread(threadId)).turns.at(-1)?.status === "inProgress",
       "original turn remains active",
     );
-    const original = structuredClone(project(await state()).configurations[threadId]);
-    const originalTurn = structuredClone(
-      project(await state()).state.threads[threadId].turns.at(-1).configuration,
-    );
+    const originalThread = await thread(threadId);
+    const original = originalThread.desktop.configuration;
+    const originalTurn = originalThread.turns.at(-1).configuration;
     const appliedBefore = (await coreRead()).status.configuration.applied;
     activeSaveEvidence.before = {
       threadId,
@@ -622,16 +600,16 @@ providerHotApplyChecks: try {
     await button("保存模型").click();
     await button("保存").click();
     await until(async () => await button("返回应用").isEnabled(), "active save UI settles");
-    const saved = await command("providers", { operation: "list" });
+    const saved = await providers();
     const coreWhileActive = await coreRead();
-    const current = project(await state());
+    const current = await thread(threadId);
     activeSaveEvidence.afterSave = {
       revision: saved.revision,
       pendingApply: saved.pendingApply,
       provider: saved.data.find((item) => item.id === "fixture"),
       applied: coreWhileActive.status.configuration.applied,
-      configuration: current.configurations[threadId],
-      turn: current.state.threads[threadId].turns.at(-1),
+      configuration: current.desktop.configuration,
+      turn: current.turns.at(-1),
       alerts: await page.getByRole("alert").allTextContents(),
       savedIndicator: await button("保存").isDisabled(),
     };
@@ -670,9 +648,9 @@ providerHotApplyChecks: try {
       coreWhileActive.status.activeTurns.some((turn) => turn.threadId === threadId),
       true,
     );
-    assert.equal(current.state.threads[threadId].turns.at(-1).status, "inProgress");
-    assert.deepEqual(current.configurations[threadId], original);
-    assert.deepEqual(current.state.threads[threadId].turns.at(-1).configuration, originalTurn);
+    assert.equal(current.turns.at(-1).status, "inProgress");
+    assert.deepEqual(current.desktop.configuration, original);
+    assert.deepEqual(current.turns.at(-1).configuration, originalTurn);
     assert.equal(
       activeSaveEvidence.responseClosed,
       undefined,
@@ -690,8 +668,7 @@ providerHotApplyChecks: try {
     await button("返回应用").click();
     releaseHeldResponse();
     await until(
-      async () =>
-        project(await state()).state.threads[threadId]?.turns?.at(-1)?.status === "completed",
+      async () => (await thread(threadId)).turns.at(-1)?.status === "completed",
       "original turn completes only after fixture release",
     );
     await until(async () => {
@@ -706,9 +683,9 @@ providerHotApplyChecks: try {
         )
       );
     }, "saved revision applies automatically without another UI save");
-    const applied = await command("providers", { operation: "list" });
+    const applied = await providers();
     assert.equal(applied.pendingApply, false);
-    assert.deepEqual(project(await state()).configurations[threadId], original);
+    assert.deepEqual((await thread(threadId)).desktop.configuration, original);
     unchanged(
       before,
       await identity("active save automatically applied"),
@@ -718,7 +695,7 @@ providerHotApplyChecks: try {
       requests.filter((request) => request.kind === "turn"),
       [{ model: "fixture-model", credential: "first", kind: "turn", marker: "HOT_ACTIVE_SAVE" }],
     );
-    await createProjectConversation(page, "workspace");
+    await createProjectConversation(page, "demo");
     await chooseModel("fixture-added-model");
     await send("HOT_AFTER_ACTIVE_SAVE", "second", "fixture-added-model");
     activeSaveEvidence.afterApply = {
@@ -734,7 +711,7 @@ providerHotApplyChecks: try {
     break providerHotApplyChecks;
   }
   const oldThread = await send("HOT_FIRST_CONVERSATION", "first");
-  const oldConfiguration = structuredClone(project(await state()).configurations[oldThread]);
+  const oldConfiguration = (await thread(oldThread)).desktop.configuration;
   assert.equal(oldConfiguration.model.providerId, "fixture");
 
   await openSettings();
@@ -743,11 +720,11 @@ providerHotApplyChecks: try {
   const secondReference = second.data.find((item) => item.id === "fixture").apiKeyEnv;
   assert.notEqual(secondReference, firstReference, "Rotation creates a new immutable reference");
   await persistedCredentials({ first: firstReference, second: secondReference });
-  assert.deepEqual(project(await state()).configurations[oldThread], oldConfiguration);
+  assert.deepEqual((await thread(oldThread)).desktop.configuration, oldConfiguration);
   await button("返回应用").click();
   await selectConversation(page, oldThread);
   await send("HOT_OLD_CONVERSATION_AFTER_ROTATION", "first");
-  await createProjectConversation(page, "workspace");
+  await createProjectConversation(page, "demo");
   await chooseModel();
   const newThread = await send("HOT_NEW_CONVERSATION_AFTER_ROTATION", "second");
   assert.notEqual(newThread, oldThread);
@@ -781,7 +758,7 @@ providerHotApplyChecks: try {
     "invalid-url",
   );
   assert.equal(await readFile(config, "utf8"), canonicalBeforeInvalid);
-  assert.equal((await command("providers", { operation: "list" })).revision, second.revision);
+  assert.equal((await providers()).revision, second.revision);
   const appliedAfterInvalid = await coreRead();
   assert.deepEqual(appliedAfterInvalid.catalog.data, appliedBeforeInvalid.catalog.data);
   assert.deepEqual(appliedAfterInvalid.providers.data, appliedBeforeInvalid.providers.data);
@@ -800,13 +777,14 @@ providerHotApplyChecks: try {
   await closeGui();
   await stopOwnedService();
   await launch();
-  await until(
-    async () =>
-      project(await state())?.state?.connected &&
-      project(await state()).models.some((item) => item.providerId === "fixture" && item.available),
-    "saved credential available after cold reopen",
-  );
-  const reopened = await command("providers", { operation: "list" });
+  await createProjectConversation(page, "demo");
+  await until(async () => {
+    if (!(await settled())) return false;
+    return (await coreRead()).catalog.data.some(
+      (item) => item.providerId === "fixture" && item.available,
+    );
+  }, "saved credential available after cold reopen");
+  const reopened = await providers();
   assert.equal(reopened.revision, second.revision);
   assert.equal(reopened.pendingApply, false);
   assert.equal(reopened.credentialSources.fixture, "stored");
@@ -818,7 +796,7 @@ providerHotApplyChecks: try {
   await identity("cold reopen");
   assert.equal(requests.length, requestCount, "Cold reopen cannot issue or replay a model request");
   await page.screenshot({ path: join(scratch, "reopened-available.png"), animations: "disabled" });
-  await createProjectConversation(page, "workspace");
+  await createProjectConversation(page, "demo");
   await chooseModel();
   await send("HOT_EXPLICIT_SEND_AFTER_REOPEN", "second");
   checks.push(
@@ -897,7 +875,7 @@ providerHotApplyChecks: try {
           exitCode: process.exitCode,
         })),
         scope:
-          "Real isolated source Electron, desktop service, Core Host/Core/Runtime and settings UI; local deterministic HTTP SSE model; native directory picker return fixture; no real provider credentials or remote inference",
+          "Real isolated source Electron, Rust Host, Core/Runtime and settings UI; local deterministic HTTP SSE model; native directory picker return fixture; no real provider credentials or remote inference",
       },
       null,
       2,

@@ -1,3 +1,5 @@
+import { createFixtureThread } from "./support/desktop-fixture.mjs";
+import { withCore } from "./support/core-observation.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -11,11 +13,12 @@ import {
   captureSmokeFailure,
   createProjectConversation,
   selectConversation,
+  selectCreatedConversation,
 } from "./smoke-navigation.mjs";
 import {
-  assertApplicationStopped,
   closeSmokeApplication,
-  stopFixtureHost,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
 } from "./application-cleanup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 
@@ -23,8 +26,6 @@ const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const { ServiceConnection } = require("../app/src/core/service-client.cjs");
-const { HostClient } = require("@areal/client/node");
 const scratch = await makeTempDir("areal-plugin-concepts-");
 const workspace = join(scratch, "workspace");
 const userHome = join(scratch, "user");
@@ -63,7 +64,6 @@ assert.ok(
 );
 const creatorWorkspace = creatorOnly ? workspace : join(scratch, "creator-workspace");
 const archiveEvidence = {};
-let appEvidence;
 let creatorEvidence;
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 const json = (path, value) => writeFile(path, JSON.stringify(value, null, 2));
@@ -116,34 +116,19 @@ await json(join(workspace, ".agents/plugins/marketplace.json"), {
   ],
 });
 await writeFile(
-  join(source, "app.html"),
-  `<!doctype html><html><body>
-<h1>Concept App</h1><output id="ready">waiting</output><button id="echo">Echo literal</button><output id="result"></output>
-<script>
-let sequence=0;const pending=new Map();
-function call(method,params){return new Promise((resolve,reject)=>{const id=++sequence;pending.set(id,{resolve,reject});parent.postMessage({jsonrpc:'2.0',id,method,params},'*');});}
-addEventListener('message',event=>{if(event.source!==parent)return;const message=event.data;if(message.jsonrpc!=='2.0')return;const request=pending.get(message.id);if(request){pending.delete(message.id);message.error?request.reject(Error(message.error.message)):request.resolve(message.result);}});
-call('ui/initialize',{appInfo:{name:'concept-app',version:'1'},protocolVersion:'2026-01-26',appCapabilities:{availableDisplayModes:['inline']}}).then(()=>{parent.postMessage({jsonrpc:'2.0',method:'ui/notifications/initialized'},'*');document.getElementById('ready').textContent='initialized';});
-document.getElementById('echo').onclick=async()=>{try{const result=await call('tools/call',{name:'concept.echo',arguments:{value:'CONCEPT_LITERAL'}});document.getElementById('result').textContent=JSON.stringify(result);}catch(error){document.getElementById('result').textContent='ERROR: '+error.message;}};
-</script></body></html>`,
-);
-await writeFile(
   join(source, "server.mjs"),
   String.raw`import {createInterface} from 'node:readline';
-import {appendFileSync,readFileSync} from 'node:fs';
-import {fileURLToPath} from 'node:url';
+import {appendFileSync} from 'node:fs';
 const owner=process.argv[2],path=process.argv[3];
 const log=value=>appendFileSync(path,JSON.stringify({owner,...value})+'\n');
 log({event:'started',pid:process.pid});
-const tools=[{name:'concept.echo',description:'Echo the supplied literal.',inputSchema:{type:'object',properties:{value:{type:'string'}},required:['value']},annotations:{readOnlyHint:true},...(owner==='package'?{_meta:{ui:{visibility:['app','model']}}}:{})}];
-if(owner==='package')tools.unshift({name:'concept.open',title:'Concept App',description:'Open the local acceptance app.',inputSchema:{type:'object',properties:{}},annotations:{readOnlyHint:true},_meta:{ui:{resourceUri:'ui://concept/app',visibility:['model']},'openai/ui':{entrypoints:[{type:'global'},{type:'thread'}]}}});
+const tools=[{name:'concept.echo',description:'Echo the supplied literal.',inputSchema:{type:'object',properties:{value:{type:'string'}},required:['value']},annotations:{readOnlyHint:true}}];
 for await(const line of createInterface({input:process.stdin})){let request;try{request=JSON.parse(line);log({event:'request',method:request.method,params:request.params});if(request.id===undefined)continue;let result;
-switch(request.method){case'initialize':result={protocolVersion:request.params.protocolVersion,serverInfo:{name:'concept-'+owner,version:'1'},capabilities:{tools:{},...(owner==='package'?{resources:{},extensions:{'io.modelcontextprotocol/ui':{}}}:{})}};break;
+switch(request.method){case'initialize':result={protocolVersion:request.params.protocolVersion,serverInfo:{name:'concept-'+owner,version:'1'},capabilities:{tools:{}}};break;
 case'ping':result={};break;case'tools/list':result={tools};break;
-case'resources/list':result={resources:owner==='package'?[{uri:'ui://concept/app',name:'Concept App',mimeType:'text/html;profile=mcp-app'}]:[]};break;
+case'resources/list':result={resources:[]};break;
 case'resources/templates/list':result={resourceTemplates:[]};break;
-case'resources/read':if(request.params.uri!=='ui://concept/app')throw Error('unknown resource');result={contents:[{uri:'ui://concept/app',mimeType:'text/html;profile=mcp-app',text:readFileSync(fileURLToPath(new URL('./app.html',import.meta.url)),'utf8'),_meta:{ui:{csp:{connectDomains:[],resourceDomains:[]}},'openai/ui':{availableDisplayModes:['inline']}}}]};break;
-case'tools/call':if(request.params.name==='concept.open')result={content:[{type:'text',text:'CONCEPT_APP_OPENED'}]};else if(request.params.name==='concept.echo')result={content:[{type:'text',text:'ECHO_'+request.params.arguments.value}]};else throw Error('unknown tool');break;
+case'tools/call':if(request.params.name==='concept.echo')result={content:[{type:'text',text:'ECHO_'+request.params.arguments.value}]};else throw Error('unknown tool');break;
 default:throw Error('unsupported method');}
 log({event:'response',method:request.method,result});process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,result})+'\n');
 }catch(error){if(request?.id!==undefined)process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,error:{code:-32601,message:error.message}})+'\n');}}
@@ -211,16 +196,12 @@ const createdSkillId = "creator-project-proof";
 const createdSkillBody =
   "---\nname: creator-project-proof\ndescription: Produce project-local acceptance proof when asked.\n---\n\n# Project proof\n\nRead the requested project task and report a concise result.\n";
 const creatorBody = await readFile(
-  join(gui, "../../services/workbench/src/assets/builtin-skills", fixture.creatorId, "SKILL.md"),
+  join(gui, "packages/workbench/assets/builtin-skills", fixture.creatorId, "SKILL.md"),
   "utf8",
 );
 const creatorSource = JSON.parse(
   await readFile(
-    join(
-      gui,
-      "../../services/workbench/src/assets/builtin-skills",
-      `${fixture.creatorId}.source.json`,
-    ),
+    join(gui, "packages/workbench/assets/builtin-skills", `${fixture.creatorId}.source.json`),
     "utf8",
   ),
 );
@@ -237,12 +218,7 @@ const creatorResources = await Promise.all(
       sha256: expected.sha256,
       size: (
         await readFile(
-          join(
-            gui,
-            "../../services/workbench/src/assets/builtin-skills",
-            fixture.creatorId,
-            resource,
-          ),
+          join(gui, "packages/workbench/assets/builtin-skills", fixture.creatorId, resource),
         )
       ).length,
     };
@@ -433,12 +409,15 @@ const model = createServer(async (request, response) => {
 await new Promise((resolve) => model.listen(0, "127.0.0.1", resolve));
 await writeFile(
   join(userHome, ".areal/config.toml"),
-  `schema_version=1\n[model]\nname="fixture"\n[model.providers.default]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}"\n`,
+  `schema_version=1\n[model]\ncatalog_version=1\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}"\nmodels=[{id="fixture",enabled=true}]\n`,
 );
 const env = { ...process.env };
 for (const key of Object.keys(env))
   if (/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) || key === "ELECTRON_RUN_AS_NODE") delete env[key];
 Object.assign(env, {
+  HOME: userHome,
+  AREAL_HARNESS_HOME: join(scratch, "registry"),
+  AREAL_CORE_CONFIG: join(userHome, ".areal/config.toml"),
   AREAL_GUI_USER_DATA: join(scratch, "electron"),
   AREAL_CORE_HOME: join(scratch, "core"),
   AREAL_CORE_USER_HOME: userHome,
@@ -516,31 +495,6 @@ async function launch() {
     timeout: 120_000,
   });
   page = await app.firstWindow();
-  await app.evaluate(
-    (_electron, modulePath) => {
-      const { McpAppsHost } = process.getBuiltinModule("node:module").createRequire(modulePath)(
-        modulePath,
-      );
-      globalThis.__conceptAppTrace = [];
-      for (const method of ["open", "adopt"]) {
-        const original = McpAppsHost.prototype[method];
-        McpAppsHost.prototype[method] = async function (...args) {
-          try {
-            return await original.apply(this, args);
-          } catch (error) {
-            globalThis.__conceptAppTrace.push({
-              method,
-              at: Date.now(),
-              message: error.message,
-              stack: error.stack,
-            });
-            throw error;
-          }
-        };
-      }
-    },
-    join(gui, "../../services/workbench/src/desktop/core/mcp-apps.cjs"),
-  );
   await app.evaluate(({ dialog }) => {
     const original = dialog.showMessageBox;
     dialog.showMessageBox = async (...args) => {
@@ -571,27 +525,18 @@ async function launch() {
   assert.equal(identity.sandbox, true);
   assert.equal(identity.contextIsolation, true);
   assert.equal(identity.nodeIntegration, false);
-  const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-  process.kill(metadata.pid, 0);
-  const connection = new ServiceConnection();
+  const host = await until(() => readFixtureHost(env), "original isolated Host");
+  const { HostClient } = require("@areal/client/node");
+  const observer = new HostClient();
   try {
-    await connection.connect(metadata);
-    await connection.request("hello", { protocol: metadata.protocol, identity: metadata.identity });
+    await observer.connect(env.AREAL_HARNESS_SERVICE_HOME);
+    assert.equal(observer.hostId, host.hostId);
+    assert.equal(observer.generation, host.generation);
+    process.kill(host.pid, 0);
   } finally {
-    connection.close();
+    observer.close();
   }
-  const host = JSON.parse(
-    await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/host.json"), "utf8"),
-  );
-  instances.push({
-    ...identity,
-    hostId: host.hostId,
-    hostGeneration: host.generation,
-    hostPid: host.pid,
-    servicePid: metadata.pid,
-    serviceProtocol: metadata.protocol,
-    desktopGeneration: metadata.desktopGeneration,
-  });
+  instances.push({ ...identity, hostPid: host.pid, hostGeneration: host.generation });
 }
 async function settings() {
   await button("设置").click();
@@ -700,15 +645,21 @@ async function selectOwner(ownerThreadId) {
     .getByRole("button", { name: "首页", exact: true })
     .click();
   if (await button("展开侧栏").isVisible()) await button("展开侧栏").click();
-  await selectConversation(page, ownerThreadId);
+  await call("connect", { projectId, threadId: ownerThreadId });
+  if (!(await page.getByTestId(`task-item-${ownerThreadId}`).count()))
+    await selectCreatedConversation(page, projectId, ownerThreadId);
+  else await selectConversation(page, ownerThreadId);
   assert.equal(
     await page.getByTestId("areal-workbench").getAttribute("data-project-id"),
     projectId,
   );
-  const queue = (await state()).projects.find((project) => project.id === projectId).state.queues?.[
-    ownerThreadId
-  ];
-  assert.ok(queue, "persisted App owner exposes its authoritative queue");
+  const readQueue = () =>
+    withCore(
+      { binary: env.AREAL_CORE_BIN, env, gui, workspace, threadId: ownerThreadId },
+      (client) => client.request("areal/queue/list", { threadId: ownerThreadId }),
+    );
+  const queue = await readQueue();
+  assert.ok(queue, "persisted conversation owner exposes its authoritative queue");
   assert.equal(
     queue.items.some((item) => ["pending", "running"].includes(item.status)),
     false,
@@ -724,10 +675,7 @@ async function selectOwner(ownerThreadId) {
     await page.getByRole("menuitem", { name: "队列", exact: true }).click();
     await button("继续队列").click();
     await until(
-      async () =>
-        (await state()).projects.find((project) => project.id === projectId).state.queues?.[
-          ownerThreadId
-        ]?.paused === false,
+      async () => !(await readQueue()).paused,
       "explicit UI resumes the empty queue after cold service shutdown",
     );
   }
@@ -748,86 +696,6 @@ async function connectPackage(detail) {
     );
     return plugin?.servers.length === 1 && plugin.servers[0].state === "connected" ? plugin : null;
   }, "explicit digest trust connects package MCP");
-}
-const echoRequests = (entries) =>
-  entries.filter(
-    (event) =>
-      event.owner === "package" &&
-      event.event === "request" &&
-      event.method === "tools/call" &&
-      event.params.name === "concept.echo",
-  );
-async function settleAppApproval(read, label) {
-  let approvals = 0;
-  const value = await until(async () => {
-    const result = await read();
-    if (result) return result;
-    const approval = page.locator('[data-interaction="approval"]');
-    const allow = approval.getByRole("button", { name: "允许一次", exact: true });
-    if (!approvals && (await allow.count()) && (await allow.isVisible())) {
-      let enabled = false;
-      try {
-        enabled = await allow.isEnabled({ timeout: 250 });
-      } catch (error) {
-        if (await allow.count()) throw error;
-      }
-      if (enabled) {
-        await allow.click();
-        approvals++;
-      }
-    }
-    return null;
-  }, label);
-  assert.equal(approvals, 1, "the App action uses its ordinary visible Core approval");
-  return value;
-}
-async function openAndEchoApp(detail, ownerThreadId, expectedCalls) {
-  const before = (await state()).projects.find((project) => project.id === projectId);
-  const beforeThreads = Object.keys(before.state.threads).sort();
-  assert.equal(before.root, workspace);
-  assert.ok(before.state.threads[ownerThreadId], "App owner is a persisted source conversation");
-  assert.equal(
-    await page.getByTestId("areal-workbench").getAttribute("data-thread-id"),
-    ownerThreadId,
-  );
-  await detail.getByRole("button", { name: "Concept App", exact: true }).click();
-  await page.getByTestId("chat-input").waitFor();
-  const frame = await settleAppApproval(
-    async () => page.frames().find((frame) => /^areal-mcp:\/\/[^/]+\/view$/.test(frame.url())),
-    "actual MCP App frame after ordinary approval",
-  );
-  await frame.locator("#ready").filter({ hasText: "initialized" }).waitFor();
-  assert.equal(
-    await page.getByTestId("areal-workbench").getAttribute("data-thread-id"),
-    ownerThreadId,
-    "global App preserves its selected persisted owner",
-  );
-  assert.deepEqual(
-    Object.keys(
-      (await state()).projects.find((project) => project.id === projectId).state.threads,
-    ).sort(),
-    beforeThreads,
-    "opening App cannot create another execution thread",
-  );
-  assert.equal(requests.length, 0, "opening App cannot invoke inference");
-  await frame.getByRole("button", { name: "Echo literal", exact: true }).click();
-  await settleAppApproval(
-    async () =>
-      await frame.locator("#result").filter({ hasText: "ECHO_CONCEPT_LITERAL" }).isVisible(),
-    "App Echo after ordinary approval",
-  );
-  assert.deepEqual(JSON.parse(await frame.locator("#result").innerText()).content, [
-    { type: "text", text: "ECHO_CONCEPT_LITERAL" },
-  ]);
-  const echoes = echoRequests(await events());
-  assert.equal(
-    echoes.length,
-    expectedCalls,
-    "one explicit Echo produces one transport call without replay",
-  );
-  assert.ok(echoes.every((event) => event.params.arguments.value === "CONCEPT_LITERAL"));
-  assert.equal(requests.length, 0, "interactive App echo cannot invoke model inference");
-  return { frameUrl: frame.url(), threadId: ownerThreadId };
 }
 async function ownedCoreGeneration(ownerRoot) {
   const host = new HostClient();
@@ -910,17 +778,29 @@ async function assertSkillOwners() {
   await packaged.getByRole("button", { name: "管理插件", exact: true }).waitFor();
   return { packaged, standalone };
 }
+async function threadIds(ownerRoot) {
+  return withCore({ binary: env.AREAL_CORE_BIN, env, gui, workspace: ownerRoot }, async (client) =>
+    (await client.request("thread/list", { limit: 100 })).data.map((item) => item.id).sort(),
+  );
+}
 async function stopService() {
-  const instance = instances.at(-1);
-  assert.ok(instance, "fixture recorded the Desktop and Host identity at launch");
-  const receipt =
-    (await stopFixtureHost(env.AREAL_CORE_BIN, env.AREAL_HARNESS_SERVICE_HOME, scratch)) ??
-    JSON.parse(await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/stop.json"), "utf8"));
-  assert.equal(receipt.hostId, instance.hostId);
-  assert.equal(receipt.generation, instance.hostGeneration);
-  assert.equal(receipt.state, "completed");
-  await assertApplicationStopped(env.AREAL_CORE_BIN, env, { pid: instance.servicePid });
-  await assertApplicationStopped(env.AREAL_CORE_BIN, env, { pid: instance.hostPid });
+  if (!app) return;
+  const host = await readFixtureHost(env);
+  const pid = app.process().pid;
+  await app.evaluate(({ dialog }, failed) => {
+    dialog.showMessageBox = async (...args) => ({
+      response: failed && ["question", "warning"].includes(args.at(-1).type) ? 1 : 0,
+    });
+  }, !!failure);
+  await closeSmokeApplication(app);
+  app = null;
+  const evidence = join(scratch, `quit-${pid}`);
+  await mkdir(evidence);
+  const receipt = await settleFixtureHostAfterQuit(env.AREAL_CORE_BIN, env, evidence, {
+    host,
+    pid,
+  });
+  assert.equal(receipt?.state, "completed", "original Host stop completes");
   const remaining = JSON.parse(
     execFileSync(env.AREAL_CORE_BIN, ["service", "list", "--json"], {
       env,
@@ -928,36 +808,17 @@ async function stopService() {
       timeout: 30_000,
     }),
   );
-  const owners = JSON.parse(await readFile(join(scratch, "core/projects.json"), "utf8"));
-  const projectless = JSON.parse(
-    await readFile(join(scratch, "core/projectless-drafts.json"), "utf8"),
-  );
   for (const service of remaining) {
-    const owner = owners.find((owner) => owner.root === service.workspace);
     assert.ok(
-      owner &&
-        ([workspace, creatorWorkspace].includes(owner.root) ||
-          (owner.projectless === true &&
-            projectless[owner.projectlessRequestId]?.root === owner.root &&
-            owner.root.startsWith(`${userHome}/`))),
-      "registry contains only persisted fixture owners",
+      service.workspace.startsWith(scratch + "/"),
+      "registry contains only fixture workspaces",
     );
-    assert.equal(service.owner?.kind, "host");
-    assert.ok(
-      instances.some(
-        (run) =>
-          service.owner.hostId === run.hostId && service.owner.generation === run.hostGeneration,
-      ),
-      "service belongs to a recorded fixture Host generation",
-    );
-    assert.equal(service.dataDir, join(scratch, "core", owner.id, "state"));
+    assert.equal(service.owner?.kind, "gui");
+    assert.equal(service.owner?.profile, env.AREAL_GUI_USER_DATA);
+    assert.ok(service.dataDir.startsWith(env.AREAL_CORE_HOME + "/"));
+    assert.equal(service.state, "stopped");
   }
-  assert.equal(
-    remaining.every((service) => service.state === "stopped"),
-    true,
-    "owned Core services stopped",
-  );
-  return { desktopStopped: true, coreStopped: true, hostStop: receipt.state, remaining };
+  return { hostStopped: true, coreStopped: true, receipt, remaining };
 }
 
 try {
@@ -970,16 +831,14 @@ try {
       .getByRole("button", { name: "首页", exact: true })
       .click();
     await createProjectConversation(page, "workspace");
+    await ownedCoreGeneration(workspace);
     const owner = await until(
-      async () =>
-        (await state()).projects.find(
-          (project) => project.root === workspace && project.state?.connected,
-        ),
+      async () => (await state()).projects.find((project) => project.root === workspace),
       "Creator fixture project connected",
     );
     projectId = owner.id;
     assert.equal(
-      Object.keys(owner.state.threads).length,
+      (await threadIds(workspace)).length,
       0,
       "Creator scenario starts before any task occupies the source workspace",
     );
@@ -1044,18 +903,17 @@ try {
       .getByRole("button", { name: "首页", exact: true })
       .click();
     await createProjectConversation(page, "workspace");
+    await ownedCoreGeneration(workspace);
     const ready = await until(async () => {
       const value = await state();
-      return value.projects.find(
-        (project) => project.root === workspace && project.state?.connected,
-      );
+      return value.projects.find((project) => project.root === workspace);
     }, "fixture project connected");
     projectId = ready.id;
     pluginProjectId = projectId;
     threadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
     assert.equal(threadId, "", "new project conversation is an unsubmitted draft");
-    const legacyThread = await call("create", {
-      projectId,
+    const legacyThread = await createFixtureThread(page, projectId, {
+      model: { providerId: "fixture", modelId: "fixture" },
       profile: { id: "areal-standard", revision: "resources-00000000" },
     });
     assert.ok(legacyThread.threadId, "legacy profile fixture has a persisted conversation owner");
@@ -1080,21 +938,23 @@ try {
     checks.push(
       "custom deployment without Creator keeps its permissions and preserves the existing chat draft",
     );
-    await closeSmokeApplication(app);
-    app = null;
     await stopService();
     delete env.AREAL_CORE_DESKTOP_CONFIG;
     await launch();
+    await createProjectConversation(page, "workspace");
+    await ownedCoreGeneration(workspace);
     const upgraded = await until(
       async () =>
         (await state()).projects.find(
-          (project) =>
-            project.id === projectId && project.root === workspace && project.state?.connected,
+          (project) => project.id === projectId && project.root === workspace,
         ),
       "upgraded project connected",
     );
+    const profiles = await withCore({ binary: env.AREAL_CORE_BIN, env, gui, workspace }, (client) =>
+      client.request("areal/profile/list", {}),
+    );
     assert.equal(
-      upgraded.profiles.find((profile) => profile.id === "areal-standard").revision,
+      profiles.data.find((profile) => profile.id === "areal-standard").revision,
       "resources-00000000",
       "fixture retains a historical first profile without Creator",
     );
@@ -1643,81 +1503,38 @@ try {
     checks.push(
       "package MCP is listed before connection, delegates management to the package, and shows the real connected state after explicit digest trust",
     );
-    const unboundThreads = Object.keys(
-      (await state()).projects.find((project) => project.id === projectId).state.threads,
-    ).sort();
-    assert.equal(await page.getByTestId("areal-workbench").getAttribute("data-thread-id"), "");
-    const unboundDetail = await detailFromResource(mcpRow("plugin"));
-    await unboundDetail.getByRole("button", { name: "Concept App", exact: true }).click();
-    await page.getByText("请先在侧栏选择已有会话，再打开应用。", { exact: true }).waitFor();
-    assert.deepEqual(
-      Object.keys(
-        (await state()).projects.find((project) => project.id === projectId).state.threads,
-      ).sort(),
-      unboundThreads,
-      "unbound global App refuses without implicitly creating or choosing a conversation",
-    );
-    assert.equal(echoRequests(await events()).length, 0);
-    assert.equal(requests.length, 0);
-    checks.push(
-      "unbound global App requests an explicit conversation without creating a worktree, dispatching a tool or submitting a draft",
-    );
     await selectOwner(legacyThread.threadId);
     threadId = legacyThread.threadId;
-    await settings();
-    await tab("MCP");
-    await scopeProject();
-    const appDialog = await detailFromResource(mcpRow("plugin"));
-    const directoryBeforeRestart = await call("manage", {
-      operation: "mcpApps",
-      projectId,
-      threadId,
-    });
-    const initialApp = await openAndEchoApp(appDialog, threadId, 1);
-    const appOwner = await call("manage", { projectId, threadId, operation: "inspect" });
+    const ownerProfile = await call("manage", { projectId, threadId, operation: "inspect" });
     assert.deepEqual(
-      { id: appOwner.configuration.profile.id, revision: appOwner.configuration.profile.revision },
+      {
+        id: ownerProfile.configuration.profile.id,
+        revision: ownerProfile.configuration.profile.revision,
+      },
       { id: "areal-standard", revision: "resources-00000000" },
-      "App preserves the selected historical profile binding",
+      "conversation preserves the selected historical profile binding",
     );
-    appEvidence = {
-      initial: initialApp,
-      epochBefore: directoryBeforeRestart.requestEpoch,
-      serverBefore: directoryBeforeRestart.data.find(
-        (server) => server.pluginId === fixture.pluginId,
-      ),
-    };
-    checks.push(
-      "interactive App remains reachable from plugin detail and returns the literal echo through an actual sandbox frame and MCP transport",
-    );
-    await capture("05-plugin-interactive-app");
-    const oldDesktop = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
+    const oldHost = await readFixtureHost(env);
     const oldCore = await ownedCoreGeneration(workspace);
     const oldElectronPid = app.process().pid;
-    await closeSmokeApplication(app);
-    app = null;
     await stopService();
-    appEvidence.applicationStopped = true;
     await launch();
     await until(
       async () =>
         (await state()).projects.find(
           (project) => project.id === projectId && project.root === workspace,
-        )?.state?.connected,
+        ),
       "reopened project connected",
     );
-    const newDesktop = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
+    await createProjectConversation(page, "workspace");
+    const newHost = await readFixtureHost(env);
     const newCore = await ownedCoreGeneration(workspace);
     assert.notEqual(app.process().pid, oldElectronPid, "cold reopen starts a new Electron process");
+    assert.notEqual(newHost.pid, oldHost.pid, "cold reopen starts a new Host process");
     assert.notEqual(
-      newDesktop.pid,
-      oldDesktop.pid,
-      "cold reopen starts a new Desktop service process",
-    );
-    assert.notEqual(
-      newDesktop.desktopGeneration,
-      oldDesktop.desktopGeneration,
-      "cold reopen starts a new Desktop service generation",
+      newHost.generation,
+      oldHost.generation,
+      "cold reopen starts a new Host generation",
     );
     assert.notEqual(newCore.corePid, oldCore.corePid, "cold reopen starts a new Core process");
     assert.notEqual(
@@ -1763,57 +1580,16 @@ try {
     );
     assert.equal(restoredPackage.trusted, true, "installed digest trust survives cold restart");
     assert.equal(restoredPackage.installedDigest, installed.installedDigest);
-    assert.equal(
-      echoRequests(await events()).length,
-      1,
-      "cold restart cannot replay the previous Echo",
-    );
     const reopenedDetail = await detailFromResource(mcpRow("plugin"));
     const reconnectedPackage = await connectPackage(reopenedDetail);
     assert.equal(reconnectedPackage.trusted, true);
     assert.equal(reconnectedPackage.installedDigest, installed.installedDigest);
-    const directoryAfterRestart = await call("manage", {
-      operation: "mcpApps",
-      projectId,
-      threadId,
-    });
-    assert.equal(typeof directoryBeforeRestart.requestEpoch, "string");
-    assert.equal(typeof directoryAfterRestart.requestEpoch, "string");
-    assert.notEqual(
-      directoryAfterRestart.requestEpoch,
-      directoryBeforeRestart.requestEpoch,
-      "cold Core restart invalidates the previous App epoch",
-    );
-    const reopenedApp = await openAndEchoApp(reopenedDetail, threadId, 2);
-    assert.notEqual(
-      reopenedApp.frameUrl,
-      initialApp.frameUrl,
-      "explicit reopen uses a new sandbox App token",
-    );
-    Object.assign(appEvidence, {
-      reopened: reopenedApp,
-      oldElectronPid,
-      newElectronPid: app.process().pid,
-      desktopBefore: { pid: oldDesktop.pid, generation: oldDesktop.desktopGeneration },
-      desktopAfter: { pid: newDesktop.pid, generation: newDesktop.desktopGeneration },
-      coreBefore: oldCore,
-      coreAfter: newCore,
-      epochBefore: directoryBeforeRestart.requestEpoch,
-      epochAfter: directoryAfterRestart.requestEpoch,
-      serverBefore: directoryBeforeRestart.data.find(
-        (server) => server.pluginId === fixture.pluginId,
-      ),
-      serverAfter: directoryAfterRestart.data.find(
-        (server) => server.pluginId === fixture.pluginId,
-      ),
-    });
+    await closeDetail();
     checks.push(
-      "cold GUI restart stops old Desktop and Core generations, retains resource identity and trust, and explicitly reconnects and reopens App for one new literal Echo without inference or replay",
+      "cold GUI restart stops old Host and Core generations, retains resource identity and trust, and explicitly reconnects package MCP",
     );
     await capture("06-reopened-resources");
-    const beforeTry = Object.keys(
-      (await state()).projects.find((project) => project.id === projectId).state.threads,
-    ).sort();
+    const beforeTry = await threadIds(workspace);
     await pluginWorkspace();
     await marketAudience("个人");
     await button(`查看插件 ${archivePluginId}`).click();
@@ -1831,12 +1607,7 @@ try {
       0,
       "a plugin without Skills cannot attach a fabricated Skill",
     );
-    assert.deepEqual(
-      Object.keys(
-        (await state()).projects.find((project) => project.id === projectId).state.threads,
-      ).sort(),
-      beforeTry,
-    );
+    assert.deepEqual(await threadIds(workspace), beforeTry);
     assert.equal(requests.length, 0, "trying a plugin stages a draft without inference");
     checks.push(
       "a plugin without Skills can open an ordinary draft without a fabricated Skill or premature execution",
@@ -1853,16 +1624,14 @@ try {
       .getByRole("button", { name: "首页", exact: true })
       .click();
     await createProjectConversation(page, "creator-workspace");
+    await ownedCoreGeneration(creatorWorkspace);
     const creatorOwner = await until(
-      async () =>
-        (await state()).projects.find(
-          (project) => project.root === creatorWorkspace && project.state?.connected,
-        ),
+      async () => (await state()).projects.find((project) => project.root === creatorWorkspace),
       "isolated Creator project connected",
     );
     projectId = creatorOwner.id;
     assert.equal(
-      Object.keys(creatorOwner.state.threads).length,
+      (await threadIds(creatorWorkspace)).length,
       0,
       "Creator first Send starts in an unoccupied project workspace",
     );
@@ -1886,9 +1655,7 @@ try {
     revision: creatorSource.revision,
     contentDigest: creatorSource.contentDigest,
   });
-  const beforeCreator = await state();
-  const threadIds = (value) =>
-    Object.keys(value.projects.find((project) => project.id === projectId).state.threads).sort();
+  const beforeCreator = await threadIds(creatorWorkspace);
   await button("创建 Skill").click();
   const draft = page.getByTestId("chat-input");
   await draft.filter({ hasText: "CREATOR_EXISTING_DRAFT" }).waitFor();
@@ -1911,8 +1678,8 @@ try {
     "Create Skill enters an ordinary chat draft without a creation form",
   );
   assert.deepEqual(
-    threadIds(await state()),
-    threadIds(beforeCreator),
+    await threadIds(creatorWorkspace),
+    beforeCreator,
     "Create Skill cannot create an execution thread before Send",
   );
   assert.equal(requests.length, 0, "Create Skill cannot invoke the model before Send");
@@ -2211,17 +1978,8 @@ try {
 } catch (error) {
   failure = { message: error.message, stack: error.stack };
   process.exitCode = 1;
-  if (app)
-    await json(
-      join(scratch, "app-failure-trace.json"),
-      await app
-        .evaluate(() => globalThis.__conceptAppTrace)
-        .catch((e) => ({ unavailable: e.message })),
-    );
   if (page) await captureSmokeFailure(page, scratch, error);
 } finally {
-  if (app)
-    await closeSmokeApplication(app).catch((error) => errors.push(`close GUI: ${error.message}`));
   try {
     cleanup = await stopService();
   } catch (error) {
@@ -2248,7 +2006,6 @@ try {
     instances,
     cleanup,
     archive: archiveEvidence,
-    app: appEvidence,
     creator: creatorEvidence,
     source: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
     sourceFiles,
@@ -2262,8 +2019,8 @@ try {
     modelRequests: requests.length,
     auxiliaryRequests,
     scope: creatorOnly
-      ? "source Electron/Main/Core Create, Try and Send in the same open project; deterministic model; actual Runtime writes, validation and full Skill readback; no packaged or real-provider acceptance"
-      : "source Electron/Main/Core plugin workspace, reviewed portable local and ZIP plugins, standalone resources, stdio MCP, native App iframe before and after cold Desktop/Core restart, official bundled Creator ordinary chat turn in a separate unoccupied project; deterministic loopback model; no packaged or remote-provider acceptance",
+      ? "source Electron/Main/Core official Creator first ordinary turn in an otherwise unoccupied project workspace; deterministic model; actual Runtime writes and validation; no worktree inheritance, package or real-provider acceptance"
+      : "source Electron/Main/Core plugin workspace, reviewed portable local and ZIP plugins, standalone resources, stdio MCP, official bundled Creator ordinary chat turn in a separate unoccupied project; deterministic loopback model; no packaged or remote-provider acceptance",
     creatorPython,
     injectedBoundary:
       "native directory and ZIP selection return isolated fixture paths; explicit Python with PyYAML; auxiliary model requests are fixtures; deterministic loopback model reads official resources with skill_resource_read, materializes those returned bytes through Runtime into authorized workspace scratch, then emits official Creator init, project read/write and validation tool calls, then the literal response",

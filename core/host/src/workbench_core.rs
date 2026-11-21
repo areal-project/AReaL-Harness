@@ -26,7 +26,6 @@ const WORKBENCH_METHODS: &[&str] = &[
     "areal/execution/trace",
     "areal/execution/traceResult",
     "areal/execution/wait",
-    "areal/genUi/source",
     "areal/goal/clear",
     "areal/goal/create",
     "areal/goal/get",
@@ -37,21 +36,7 @@ const WORKBENCH_METHODS: &[&str] = &[
     "areal/inbox/list",
     "areal/interaction/list",
     "areal/interaction/respond",
-    "areal/mcp/app/close",
-    "areal/mcp/app/open",
-    "areal/mcp/app/openFromResult",
-    "areal/mcp/app/request",
-    "areal/mcp/app/tools/register",
-    "areal/mcp/app/tools/revoke",
-    "areal/mcp/apps/list",
     "areal/mcp/extension/call",
-    "areal/mcp/form/preview",
-    "areal/mcp/form/resource/prepare",
-    "areal/mcp/form/resource/release",
-    "areal/mcp/form/resource/stage",
-    "areal/mcp/form/respond",
-    "areal/mcp/forms/list",
-    "areal/mcp/tool/result",
     "areal/model/list",
     "areal/owner/unwatch",
     "areal/owner/watch",
@@ -185,7 +170,12 @@ impl Drop for TerminalPermit<'_> {
         self.0.set(self.0.get() - 1);
     }
 }
-struct AttachGuard(Option<Rc<CoreSession>>);
+pub(crate) struct AttachGuard(Option<Rc<CoreSession>>);
+impl AttachGuard {
+    pub(crate) fn retain(mut self) {
+        self.0 = None;
+    }
+}
 impl Drop for AttachGuard {
     fn drop(&mut self) {
         if let Some(session) = self.0.take() {
@@ -252,7 +242,39 @@ impl Connections {
         Ok(())
     }
 
-    fn workbench_session(&self, host: &Host, id: &str, lease: &str) -> Result<Rc<CoreSession>> {
+    pub(crate) fn bind_cloud_revision(
+        &self,
+        host: &Host,
+        id: &str,
+        lease: &str,
+        revision: u64,
+    ) -> Result<()> {
+        let session = self.workbench_session(host, id, lease)?;
+        ensure!(session.remote_source.is_some(), "FORBIDDEN");
+        session.remote_revision.set(Some(revision));
+        ensure!(session.shared_current(host), "TARGET_CHANGED");
+        if session.host_owned.get() {
+            self.sessions.borrow_mut().insert(id.into(), session);
+            self.changed.notify_waiters();
+        }
+        Ok(())
+    }
+
+    pub(crate) fn hold_attachment(
+        &self,
+        host: &Host,
+        id: &str,
+        lease: &str,
+    ) -> Result<AttachGuard> {
+        Ok(AttachGuard(Some(self.workbench_session(host, id, lease)?)))
+    }
+
+    pub(super) fn workbench_session(
+        &self,
+        host: &Host,
+        id: &str,
+        lease: &str,
+    ) -> Result<Rc<CoreSession>> {
         let terminal = self.terminals.borrow().get(lease).cloned();
         let session = terminal
             .or_else(|| self.sessions.borrow().get(id).cloned())
@@ -280,20 +302,22 @@ impl Connections {
         ))
     }
 
-    pub(crate) fn workbench_close_terminals(&self) {
-        self.terminal_epoch
-            .set(self.terminal_epoch.get().wrapping_add(1));
-        let leases = self
+    pub(crate) fn prune_cloud_revisions(&self, host: &Host) {
+        let stale: Vec<_> = self
             .terminals
             .borrow()
-            .keys()
-            .filter(|lease| !self.frontend_owns(lease))
-            .cloned()
-            .collect::<Vec<_>>();
-        for lease in leases {
-            if let Some(session) = self.terminals.borrow_mut().remove(&lease) {
-                session.close();
-            }
+            .iter()
+            .filter(|(_, session)| {
+                session.remote_revision.get().is_some() && !session.shared_current(host)
+            })
+            .map(|(lease, session)| (lease.clone(), session.project_id.clone()))
+            .collect();
+        let changed = !stale.is_empty();
+        for (lease, project) in stale {
+            let _ = self.workbench_detach(host, &project, &lease);
+        }
+        if changed {
+            host.changed();
         }
     }
 
@@ -323,7 +347,6 @@ impl Connections {
             scope.is_none() || matches!(scope, Some("terminal" | "observer")),
             "INVALID_PARAMS"
         );
-        let terminal_epoch = self.terminal_epoch.get();
         let _permit = if scope.is_some() || desktop {
             self.terminals
                 .borrow_mut()
@@ -396,7 +419,6 @@ impl Connections {
             })?;
         ensure!(session.shared_current(host), unavailable());
         if scope.is_some() || desktop {
-            ensure!(self.terminal_epoch.get() == terminal_epoch, unavailable());
             if scope == Some("terminal") {
                 ensure!(
                     capabilities["features"]["connectionProcesses"] == true,
@@ -557,11 +579,74 @@ impl Connections {
         }
     }
 
+    pub(crate) async fn shared_workbench_request(
+        &self,
+        host: &Host,
+        id: &str,
+        (service_id, generation, connection_id): (&str, &str, &str),
+        method: &str,
+        params: Value,
+    ) -> Result<Value> {
+        ensure!(WORKBENCH_METHODS.contains(&method), "FORBIDDEN");
+        ensure!(params.is_object(), "INVALID_PARAMS");
+        let session = self
+            .sessions
+            .borrow()
+            .get(id)
+            .cloned()
+            .ok_or_else(unavailable)?;
+        ensure!(
+            session.shared_current(host)
+                && session.service.identity.service_id == service_id
+                && session.service.identity.generation == generation
+                && session.connection_id == connection_id,
+            unavailable()
+        );
+        let result = session.request_with_barrier(method, params).await;
+        ensure!(
+            session.shared_current(host) && session.service.identity.generation == generation,
+            unavailable()
+        );
+        match result {
+            Ok(result) => {
+                if matches!(
+                    method,
+                    "areal/thread/archive"
+                        | "areal/conversation/unarchive"
+                        | "areal/thread/configure"
+                        | "thread/start"
+                        | "areal/thread/start"
+                        | "areal/thread/fork"
+                        | "thread/fork"
+                        | "areal/side/start"
+                        | "areal/side/create"
+                        | "areal/side/close"
+                ) {
+                    session.shell_revision.set(session.shell_revision.get() + 1);
+                    host.changed();
+                }
+                Ok(json!({"result":result.value,"sequence":result.sequence}))
+            }
+            Err(error) => match error.downcast_ref::<RpcFailure>() {
+                Some(error) => Ok(json!({"error":error.0})),
+                None => Err(error),
+            },
+        }
+    }
+
     pub(crate) fn workbench_detach(&self, host: &Host, id: &str, lease: &str) -> Result<Value> {
         let terminal = self.terminals.borrow().get(lease).cloned();
         if let Some(session) = terminal {
             ensure!(session.project_id == id, "FORBIDDEN");
             self.terminals.borrow_mut().remove(lease);
+            if self
+                .sessions
+                .borrow()
+                .get(id)
+                .is_some_and(|current| Rc::ptr_eq(current, &session))
+            {
+                self.sessions.borrow_mut().remove(id);
+            }
             session.close();
             return Ok(json!({"closed":true}));
         }
@@ -659,6 +744,11 @@ impl Connections {
             admission_diagnostic(id, "current", &cause);
             return Err(cause);
         }
+        if session.remote_source.is_some() {
+            // 远端工作区的准入属于远端 Core；本机逻辑项目只承载导航与授权。
+            ensure!(lease.is_some() || session.host_owned.get(), "FORBIDDEN");
+            return Ok(json!({"admitted":true}));
+        }
         let registrations = host
             .slots
             .borrow()
@@ -724,6 +814,28 @@ impl Connections {
         source: &str,
         params: &Value,
     ) -> Result<Value> {
+        self.cloud_attach(host, source, params, None).await
+    }
+    pub(crate) async fn owned_cloud_attach(
+        &self,
+        host: &Rc<Host>,
+        source: &str,
+        id: &str,
+        params: &Value,
+    ) -> Result<Value> {
+        let record = id
+            .strip_prefix(&format!("cloud-session:{source}:"))
+            .context("FORBIDDEN")?;
+        crate::wire::request_id(record)?;
+        self.cloud_attach(host, source, params, Some(id)).await
+    }
+    async fn cloud_attach(
+        &self,
+        host: &Rc<Host>,
+        source: &str,
+        params: &Value,
+        owner: Option<&str>,
+    ) -> Result<Value> {
         host.migration.source_profile(source)?;
         let url = params["baseURL"].as_str().context("INVALID_PARAMS")?;
         let url = url::Url::parse(url)?;
@@ -741,6 +853,7 @@ impl Connections {
                 !token.is_empty() && token.len() <= 16384 && !token.contains(['\r', '\n'])
             })
             .context("INVALID_PARAMS")?;
+        self.prune_cloud_revisions(host);
         self.terminals
             .borrow_mut()
             .retain(|_, session| !session.closed.get());
@@ -751,9 +864,10 @@ impl Connections {
         self.terminal_connecting
             .set(self.terminal_connecting.get() + 1);
         let _permit = TerminalPermit(&self.terminal_connecting);
-        let epoch = self.terminal_epoch.get();
         let lease = uuid::Uuid::new_v4().to_string();
-        let project = format!("cloud:{lease}");
+        let project = owner
+            .map(str::to_owned)
+            .unwrap_or_else(|| format!("cloud:{lease}"));
         let service = Service {
             identity: areal_protocol::service::Identity {
                 protocol_version: 1,
@@ -786,12 +900,12 @@ impl Connections {
             .request("areal/capabilities", json!({"apiVersion":"areal.core.v1"}))
             .await?;
         ensure!(
-            self.terminal_epoch.get() == epoch
-                && capabilities["apiVersion"] == "areal.core.v1"
-                && capabilities["methods"].is_array(),
+            capabilities["apiVersion"] == "areal.core.v1" && capabilities["methods"].is_array(),
             "CORE_INCOMPATIBLE"
         );
         *session.workbench_lease.borrow_mut() = Some(lease.clone());
+        session.host_owned.set(owner.is_some());
+        *session.capabilities.borrow_mut() = capabilities.clone();
         session.ready.set(true);
         let result = json!({"projectId":project,"lease":lease,"coreInstanceId":session.service.identity.service_id,"coreGeneration":session.service.identity.generation,"connectionId":session.connection_id,"capabilities":capabilities});
         self.terminals.borrow_mut().insert(lease, session);
@@ -929,6 +1043,45 @@ impl Connections {
             _ => anyhow::bail!("INVALID_PARAMS"),
         }
     }
+
+    pub(crate) async fn shared_read_blob(
+        &self,
+        host: &Host,
+        id: &str,
+        thread: &str,
+        uri: &str,
+    ) -> Result<Vec<u8>> {
+        use base64::Engine;
+        let session = self
+            .sessions
+            .borrow()
+            .get(id)
+            .cloned()
+            .ok_or_else(unavailable)?;
+        ensure!(session.shared_current(host), unavailable());
+        let result = if let Some(token) = &session.remote_token {
+            super::super::conversation_media::remote_blob(
+                &session.service.endpoint,
+                token,
+                &json!({"operation":"read","threadId":thread,"uri":uri}),
+                || {
+                    ensure!(session.shared_current(host), unavailable());
+                    Ok(())
+                },
+            )
+            .await?
+        } else {
+            super::super::conversation_media::read_blob(&session.service, thread, uri, || {
+                ensure!(session.shared_current(host), unavailable());
+                Ok(())
+            })
+            .await?
+        };
+        let encoded = result["base64"].as_str().context("INVALID_RESPONSE")?;
+        base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .context("INVALID_RESPONSE")
+    }
 }
 
 fn core_admission_command(method: &str, params: &Value) -> Option<(&'static str, Value)> {
@@ -965,7 +1118,6 @@ fn core_admission_command(method: &str, params: &Value) -> Option<(&'static str,
         | "areal/tool/acknowledge"
         | "areal/hook/acknowledge"
         | "areal/server/drain"
-        | "areal/mcp/app/close"
         | "turn/interrupt"
         | "areal/task/pause"
         | "areal/task/cancel"

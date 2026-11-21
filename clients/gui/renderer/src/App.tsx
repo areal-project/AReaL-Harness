@@ -2,11 +2,9 @@ import { AppProviders, WorkbenchProviders } from "./app-shell/WorkbenchProviders
 import React, { useEffect, useSyncExternalStore } from "react";
 import { WorkSurface, WorkbenchShell } from "./app-shell/WorkbenchShell.js";
 import { BackendStatusNotice } from "./BackendStatusNotice.js";
-import { Button } from "./components/ui/button.js";
 import { sending, subscribeSending } from "./Composer.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { Inbox } from "./Inbox.js";
-import { useMcpAppsWorkspace } from "./McpAppsWorkspace.js";
 import { recoverySettings } from "./recoveryPresentation.js";
 import { type Data, type PlatformServices } from "./services.js";
 import { useApplicationPreferences } from "./settings/applicationPreferences.js";
@@ -305,34 +303,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     threadId,
     thread,
   ]);
-  const mcpWorkspace = useMcpAppsWorkspace({
-    services,
-    project,
-    deepLinksEnabled: initialReleased,
-    projects: snapshot.projects,
-    activeTab:
-      !annotationVisible &&
-      !pluginsOpen &&
-      !botsOpen &&
-      !settingsOpen &&
-      !taskCenterOpen &&
-      workspaceView !== "conversation"
-        ? panel
-        : "",
-    threadId,
-    action: resourceAction,
-    onOpenThread: async (pid, tid) => {
-      surfaces.leaveSettings();
-      surfaces.leaveBots();
-      await open(pid, tid);
-    },
-    onReveal: (tab, owner) => {
-      if (workspacePanels.revealApp(tab, owner)) surfaces.leaveSettings();
-    },
-    onRemoveTab: workspacePanels.removeApp,
-    onError: setError,
-  });
-  const composerWorkspace = useComposerWorkspace(project, thread, mcpWorkspace, setError);
+  const composerWorkspace = useComposerWorkspace(project);
 
   useEffect(navigationCommands.subscribeNotifications, [
     services,
@@ -416,7 +387,6 @@ function AppContent({ services }: { services: PlatformServices }) {
       session={session}
       services={services}
       action={action}
-      mcpWorkspace={mcpWorkspace}
       workspacePanels={workspacePanels}
       preview={preview}
       panelNavigation={panelNavigation}
@@ -515,24 +485,6 @@ function AppContent({ services }: { services: PlatformServices }) {
           }}
         />
         <ToastHost />
-        {snapshot.computerControl?.active === true && (
-          <div
-            role="status"
-            className="fixed bottom-4 right-4 z-50 flex items-center justify-between gap-3 rounded-lg border bg-background px-4 py-2 text-ui-sm shadow-lg"
-          >
-            <span>
-              {t("settings.computer.working")}
-              {snapshot.computerControl.app?.name ? ` · ${snapshot.computerControl.app.name}` : ""}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void resourceAction("computerControl", { operation: "stop" })}
-            >
-              {t("settings.computer.stop")}
-            </Button>
-          </div>
-        )}
         {!session.readOnly && (
           <BackendStatusNotice
             summary={snapshot.serviceSummary}
@@ -725,7 +677,6 @@ function AppContent({ services }: { services: PlatformServices }) {
                       session={session}
                       surfaces={surfaces}
                       navigationCommands={navigationCommands}
-                      mcpWorkspace={mcpWorkspace}
                     />
                   }
                   {pluginCenterActive ? null : settingsOpen ? (
@@ -766,7 +717,6 @@ function AppContent({ services }: { services: PlatformServices }) {
                       admitting={admitting}
                       mainPane={mainPane}
                       workspacePanels={workspacePanels}
-                      mcpWorkspace={mcpWorkspace}
                       side={side}
                       fork={fork}
                       preview={preview}
@@ -785,7 +735,6 @@ function AppContent({ services }: { services: PlatformServices }) {
                     />
                   )}
                 </WorkSurface>
-                {mcpWorkspace.pages}
                 <WorkspacePanels
                   session={session}
                   workspacePanels={workspacePanels}
@@ -794,7 +743,6 @@ function AppContent({ services }: { services: PlatformServices }) {
                   annotation={annotation}
                   surfaces={surfaces}
                   browserWorkspace={browserWorkspace}
-                  mcpWorkspace={mcpWorkspace}
                   taskCenterOpen={taskCenterOpen}
                   services={services}
                   dark={dark}

@@ -123,9 +123,6 @@
               "null"
             ]
           },
-          "externalCua": {
-            "type": "boolean"
-          },
           "interactionMode": {
             "$ref": "#/$defs/InteractionMode",
             "default": "interactive"
@@ -2695,120 +2692,6 @@
       ],
       "type": "object"
     },
-    "areal/mcp/app/notification": {
-      "additionalProperties": true,
-      "properties": {
-        "generation": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "instanceId": {
-          "type": "string"
-        },
-        "notification": {
-          "additionalProperties": true,
-          "properties": {
-            "jsonrpc": {
-              "const": "2.0"
-            },
-            "method": {
-              "type": "string"
-            },
-            "params": {
-              "type": "object"
-            }
-          },
-          "required": [
-            "jsonrpc",
-            "method",
-            "params"
-          ],
-          "type": "object"
-        },
-        "threadId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "generation",
-        "instanceId",
-        "notification",
-        "threadId"
-      ],
-      "type": "object"
-    },
-    "areal/mcp/app/tools/cancelled": {
-      "additionalProperties": false,
-      "properties": {
-        "callId": {
-          "type": "string"
-        },
-        "claimId": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "ownerId": {
-          "type": "string"
-        },
-        "registrationId": {
-          "type": "string"
-        },
-        "schemaDigest": {
-          "type": "string"
-        },
-        "threadId": {
-          "type": "string"
-        },
-        "turnId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "threadId",
-        "turnId",
-        "callId",
-        "registrationId",
-        "ownerId",
-        "schemaDigest"
-      ],
-      "title": "PageCancelled",
-      "type": "object"
-    },
-    "areal/mcp/app/tools/pending": {
-      "additionalProperties": false,
-      "properties": {
-        "callId": {
-          "type": "string"
-        },
-        "ownerId": {
-          "type": "string"
-        },
-        "registrationId": {
-          "type": "string"
-        },
-        "schemaDigest": {
-          "type": "string"
-        },
-        "threadId": {
-          "type": "string"
-        },
-        "turnId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "threadId",
-        "turnId",
-        "callId",
-        "registrationId",
-        "ownerId",
-        "schemaDigest"
-      ],
-      "title": "PageCoordinates",
-      "type": "object"
-    },
     "areal/mcp/form/requested": {
       "additionalProperties": true,
       "properties": {
@@ -3069,6 +2952,12 @@
                 "string",
                 "null"
               ]
+            },
+            "turnId": {
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "required": [
@@ -3079,6 +2968,7 @@
         },
         "OwnerNoticeKind": {
           "enum": [
+            "turnCompleted",
             "taskCompleted",
             "questionPending",
             "interactionPending"
@@ -3479,9 +3369,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/queue/$defs/InteractionMode",
@@ -5544,9 +5431,6 @@
                     "null"
                   ]
                 },
-                "externalCua": {
-                  "type": "boolean"
-                },
                 "interactionMode": {
                   "$ref": "#/properties/configuration/$defs/InteractionMode",
                   "default": "interactive"
@@ -6289,9 +6173,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
@@ -12346,9 +12227,6 @@
                     "null"
                   ]
                 },
-                "externalCua": {
-                  "type": "boolean"
-                },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
                   "default": "interactive"
@@ -16159,9 +16037,6 @@
                     "null"
                   ]
                 },
-                "externalCua": {
-                  "type": "boolean"
-                },
                 "interactionMode": {
                   "$ref": "#/properties/turn/$defs/InteractionMode",
                   "default": "interactive"
@@ -18185,9 +18060,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/turn/$defs/InteractionMode",
@@ -20643,9 +20515,6 @@
               "null"
             ]
           },
-          "externalCua": {
-            "type": "boolean"
-          },
           "interactionMode": {
             "$ref": "#/$defs/InteractionMode",
             "default": "interactive"
@@ -22661,33 +22530,6 @@
       ],
       "type": "object"
     },
-    "areal/genUi/source": {
-      "additionalProperties": false,
-      "properties": {
-        "itemId": {
-          "type": "string"
-        },
-        "path": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "threadId": {
-          "type": "string"
-        },
-        "turnId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "threadId",
-        "turnId",
-        "itemId"
-      ],
-      "title": "GenUiSource",
-      "type": "object"
-    },
     "areal/goal/clear": {
       "additionalProperties": false,
       "properties": {
@@ -23114,561 +22956,6 @@
         "turnId"
       ],
       "title": "Respond",
-      "type": "object"
-    },
-    "areal/mcp/app/close": {
-      "additionalProperties": false,
-      "properties": {
-        "generation": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "instanceId": {
-          "type": "string"
-        },
-        "threadId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "threadId",
-        "instanceId",
-        "generation"
-      ],
-      "title": "Close",
-      "type": "object"
-    },
-    "areal/mcp/app/open": {
-      "additionalProperties": false,
-      "properties": {
-        "arguments": true,
-        "deepLink": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "expectedGeneration": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "fileResource": true,
-        "requestId": {
-          "type": "string"
-        },
-        "serverId": {
-          "type": "string"
-        },
-        "threadId": {
-          "type": "string"
-        },
-        "toolName": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "threadId",
-        "serverId",
-        "expectedGeneration",
-        "toolName",
-        "requestId"
-      ],
-      "title": "Open",
-      "type": "object"
-    },
-    "areal/mcp/app/openFromResult": {
-      "additionalProperties": false,
-      "properties": {
-        "itemId": {
-          "type": "string"
-        },
-        "requestId": {
-          "type": "string"
-        },
-        "threadId": {
-          "type": "string"
-        },
-        "turnId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "threadId",
-        "turnId",
-        "itemId",
-        "requestId"
-      ],
-      "title": "OpenFromResult",
-      "type": "object"
-    },
-    "areal/mcp/app/request": {
-      "additionalProperties": false,
-      "properties": {
-        "generation": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "instanceId": {
-          "type": "string"
-        },
-        "request": true,
-        "requestId": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "threadId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "threadId",
-        "instanceId",
-        "generation",
-        "request"
-      ],
-      "title": "AppRequest",
-      "type": "object"
-    },
-    "areal/mcp/app/tools/claim": {
-      "additionalProperties": false,
-      "properties": {
-        "callId": {
-          "type": "string"
-        },
-        "ownerId": {
-          "type": "string"
-        },
-        "registrationId": {
-          "type": "string"
-        },
-        "schemaDigest": {
-          "type": "string"
-        },
-        "threadId": {
-          "type": "string"
-        },
-        "turnId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "threadId",
-        "turnId",
-        "callId",
-        "registrationId",
-        "ownerId",
-        "schemaDigest"
-      ],
-      "title": "PageCoordinates",
-      "type": "object"
-    },
-    "areal/mcp/app/tools/register": {
-      "$defs": {
-        "PageDeclaration": {
-          "additionalProperties": false,
-          "properties": {
-            "documentId": {
-              "maxLength": 64,
-              "minLength": 1,
-              "type": "string"
-            },
-            "tools": {
-              "items": {
-                "$ref": "#/$defs/PageToolKind"
-              },
-              "maxItems": 2,
-              "minItems": 1,
-              "type": "array"
-            },
-            "version": {
-              "format": "uint8",
-              "maximum": 1,
-              "minimum": 1,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "version",
-            "documentId",
-            "tools"
-          ],
-          "type": "object"
-        },
-        "PageToolKind": {
-          "enum": [
-            "getSelection",
-            "applyPatch"
-          ],
-          "type": "string"
-        }
-      },
-      "additionalProperties": false,
-      "properties": {
-        "declaration": {
-          "$ref": "#/$defs/PageDeclaration"
-        },
-        "generation": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "instanceId": {
-          "type": "string"
-        },
-        "ownerId": {
-          "type": "string"
-        },
-        "threadId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "threadId",
-        "instanceId",
-        "generation",
-        "ownerId",
-        "declaration"
-      ],
-      "title": "PageRegister",
-      "type": "object"
-    },
-    "areal/mcp/app/tools/resolve": {
-      "$defs": {
-        "PageNoEffect": {
-          "enum": [
-            "cancelled",
-            "closed",
-            "unavailable"
-          ],
-          "type": "string"
-        },
-        "PageRejection": {
-          "enum": [
-            "invalidRange",
-            "documentTooLarge",
-            "noChange"
-          ],
-          "type": "string"
-        },
-        "PageReply": {
-          "oneOf": [
-            {
-              "additionalProperties": false,
-              "properties": {
-                "result": {
-                  "$ref": "#/$defs/PageResult"
-                },
-                "status": {
-                  "const": "completed",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "status",
-                "result"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "reason": {
-                  "$ref": "#/$defs/PageNoEffect"
-                },
-                "status": {
-                  "const": "noEffect",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "status",
-                "reason"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "status": {
-                  "const": "unknown",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "status"
-              ],
-              "type": "object"
-            }
-          ]
-        },
-        "PageResult": {
-          "oneOf": [
-            {
-              "additionalProperties": false,
-              "properties": {
-                "anchor": {
-                  "format": "uint64",
-                  "maximum": 65536,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "dirty": {
-                  "type": "boolean"
-                },
-                "documentId": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "documentRevision": {
-                  "format": "uint64",
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "head": {
-                  "format": "uint64",
-                  "maximum": 65536,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "kind": {
-                  "const": "selection",
-                  "type": "string"
-                },
-                "selectedText": {
-                  "maxLength": 4096,
-                  "type": "string"
-                },
-                "truncated": {
-                  "type": "boolean"
-                }
-              },
-              "required": [
-                "kind",
-                "documentId",
-                "documentRevision",
-                "anchor",
-                "head",
-                "selectedText",
-                "truncated",
-                "dirty"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "dirty": {
-                  "type": "boolean"
-                },
-                "documentId": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "documentRevision": {
-                  "format": "uint64",
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "from": {
-                  "format": "uint64",
-                  "maximum": 65536,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "insertedLength": {
-                  "format": "uint64",
-                  "maximum": 4096,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "kind": {
-                  "const": "applied",
-                  "type": "string"
-                },
-                "previousDocumentRevision": {
-                  "format": "uint64",
-                  "maximum": 9007199254740990,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "to": {
-                  "format": "uint64",
-                  "maximum": 65536,
-                  "minimum": 0,
-                  "type": "integer"
-                }
-              },
-              "required": [
-                "kind",
-                "documentId",
-                "previousDocumentRevision",
-                "documentRevision",
-                "from",
-                "to",
-                "insertedLength",
-                "dirty"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "documentId": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "documentRevision": {
-                  "format": "uint64",
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "expectedDocumentRevision": {
-                  "format": "uint64",
-                  "maximum": 9007199254740990,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "kind": {
-                  "const": "conflict",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "kind",
-                "documentId",
-                "expectedDocumentRevision",
-                "documentRevision"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "documentId": {
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "documentRevision": {
-                  "format": "uint64",
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "kind": {
-                  "const": "rejected",
-                  "type": "string"
-                },
-                "reason": {
-                  "$ref": "#/$defs/PageRejection"
-                }
-              },
-              "required": [
-                "kind",
-                "documentId",
-                "documentRevision",
-                "reason"
-              ],
-              "type": "object"
-            }
-          ]
-        }
-      },
-      "additionalProperties": false,
-      "properties": {
-        "callId": {
-          "type": "string"
-        },
-        "claimId": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "ownerId": {
-          "type": "string"
-        },
-        "registrationId": {
-          "type": "string"
-        },
-        "reply": {
-          "$ref": "#/$defs/PageReply"
-        },
-        "schemaDigest": {
-          "type": "string"
-        },
-        "threadId": {
-          "type": "string"
-        },
-        "turnId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "threadId",
-        "turnId",
-        "callId",
-        "registrationId",
-        "ownerId",
-        "schemaDigest",
-        "reply"
-      ],
-      "title": "PageResolve",
-      "type": "object"
-    },
-    "areal/mcp/app/tools/revoke": {
-      "additionalProperties": false,
-      "properties": {
-        "generation": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "instanceId": {
-          "type": "string"
-        },
-        "ownerId": {
-          "type": "string"
-        },
-        "registrationId": {
-          "type": "string"
-        },
-        "threadId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "threadId",
-        "instanceId",
-        "generation",
-        "registrationId",
-        "ownerId"
-      ],
-      "title": "PageRevoke",
-      "type": "object"
-    },
-    "areal/mcp/apps/list": {
-      "additionalProperties": false,
-      "properties": {
-        "threadId": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "title": "Apps",
       "type": "object"
     },
     "areal/mcp/extension/call": {
@@ -29318,8 +28605,7 @@
       "$defs": {
         "DesktopToolBundle": {
           "enum": [
-            "areal.browser.v1",
-            "areal.computer.v1"
+            "areal.browser.v1"
           ],
           "type": "string"
         }
@@ -29930,9 +29216,6 @@
                 "null"
               ]
             },
-            "externalCua": {
-              "type": "boolean"
-            },
             "interactionMode": {
               "$ref": "#/$defs/InteractionMode",
               "default": "interactive"
@@ -30435,9 +29718,6 @@
                 "boolean",
                 "null"
               ]
-            },
-            "externalCua": {
-              "type": "boolean"
             },
             "interactionMode": {
               "$ref": "#/$defs/InteractionMode",
@@ -34998,9 +34278,6 @@
                       "null"
                     ]
                   },
-                  "externalCua": {
-                    "type": "boolean"
-                  },
                   "interactionMode": {
                     "$ref": "#/properties/data/items/$defs/InteractionMode",
                     "default": "interactive"
@@ -38904,9 +38181,6 @@
                         "null"
                       ]
                     },
-                    "externalCua": {
-                      "type": "boolean"
-                    },
                     "interactionMode": {
                       "$ref": "#/oneOf/0/properties/thread/$defs/InteractionMode",
                       "default": "interactive"
@@ -42708,9 +41982,6 @@
                         "null"
                       ]
                     },
-                    "externalCua": {
-                      "type": "boolean"
-                    },
                     "interactionMode": {
                       "$ref": "#/oneOf/0/properties/turn/$defs/InteractionMode",
                       "default": "interactive"
@@ -44887,28 +44158,6 @@
                 }
               ]
             },
-            "mcpPageToolsV1": {
-              "additionalProperties": true,
-              "properties": {
-                "kinds": {
-                  "items": {
-                    "enum": [
-                      "getSelection",
-                      "applyPatch"
-                    ]
-                  },
-                  "type": "array"
-                },
-                "version": {
-                  "const": 1
-                }
-              },
-              "required": [
-                "kinds",
-                "version"
-              ],
-              "type": "object"
-            },
             "threadCreationJournal": {
               "additionalProperties": true,
               "properties": {
@@ -45285,7 +44534,6 @@
               },
               "required": [
                 "estimateScope",
-                "estimatedInputTokens",
                 "historyEstimatedTokens",
                 "inputLimitTokens",
                 "outputLimitTokens",
@@ -45826,7 +45074,6 @@
               },
               "required": [
                 "estimateScope",
-                "estimatedInputTokens",
                 "historyEstimatedTokens",
                 "inputLimitTokens",
                 "outputLimitTokens",
@@ -48444,9 +47691,6 @@
                       "boolean",
                       "null"
                     ]
-                  },
-                  "externalCua": {
-                    "type": "boolean"
                   },
                   "interactionMode": {
                     "$ref": "#/properties/data/items/$defs/InteractionMode",
@@ -53421,9 +52665,6 @@
                         "null"
                       ]
                     },
-                    "externalCua": {
-                      "type": "boolean"
-                    },
                     "interactionMode": {
                       "$ref": "#/properties/activeTurn/anyOf/0/$defs/InteractionMode",
                       "default": "interactive"
@@ -55777,9 +55018,6 @@
                         "null"
                       ]
                     },
-                    "externalCua": {
-                      "type": "boolean"
-                    },
                     "interactionMode": {
                       "$ref": "#/properties/queue/anyOf/0/$defs/InteractionMode",
                       "default": "interactive"
@@ -56899,66 +56137,6 @@
         "title",
         "verification",
         "timedOut"
-      ],
-      "type": "object"
-    },
-    "areal/genUi/source": {
-      "additionalProperties": true,
-      "properties": {
-        "artifacts": {
-          "items": {
-            "additionalProperties": true,
-            "properties": {
-              "artifactId": {
-                "type": "string"
-              },
-              "blob": {
-                "type": "string"
-              },
-              "callId": {
-                "type": "string"
-              },
-              "digest": {
-                "type": "string"
-              },
-              "html": {
-                "type": "string"
-              },
-              "path": {
-                "type": "string"
-              },
-              "threadId": {
-                "type": "string"
-              },
-              "turnId": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "artifactId",
-              "blob",
-              "callId",
-              "digest",
-              "html",
-              "path",
-              "threadId",
-              "turnId"
-            ],
-            "type": "object"
-          },
-          "type": "array"
-        },
-        "readOnly": {
-          "type": "boolean"
-        },
-        "text": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "artifacts",
-        "readOnly",
-        "text"
       ],
       "type": "object"
     },
@@ -59523,656 +58701,6 @@
         }
       ]
     },
-    "areal/mcp/app/close": {
-      "additionalProperties": true,
-      "properties": {
-        "closed": {
-          "const": true
-        }
-      },
-      "required": [
-        "closed"
-      ],
-      "type": "object"
-    },
-    "areal/mcp/app/open": {
-      "additionalProperties": true,
-      "properties": {
-        "generation": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "hostContext": {
-          "additionalProperties": true,
-          "properties": {
-            "deepLink": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "modelContext": {},
-            "threadId": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "deepLink",
-            "modelContext",
-            "threadId"
-          ],
-          "type": "object"
-        },
-        "initialArguments": {
-          "type": "object"
-        },
-        "initialResult": {
-          "anyOf": [
-            {
-              "additionalProperties": true,
-              "properties": {
-                "_meta": {
-                  "type": "object"
-                },
-                "content": {
-                  "items": {
-                    "additionalProperties": true,
-                    "properties": {
-                      "type": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "type"
-                    ],
-                    "type": "object"
-                  },
-                  "type": "array"
-                },
-                "isError": {
-                  "type": "boolean"
-                },
-                "resultType": {
-                  "const": "complete"
-                },
-                "structuredContent": {}
-              },
-              "required": [
-                "content"
-              ],
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "instanceId": {
-          "type": "string"
-        },
-        "resource": {
-          "additionalProperties": true,
-          "properties": {
-            "_meta": {},
-            "html": {
-              "type": "string"
-            },
-            "mimeType": {},
-            "uri": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "_meta",
-            "html",
-            "mimeType",
-            "uri"
-          ],
-          "type": "object"
-        },
-        "serverId": {
-          "type": "string"
-        },
-        "toolMetadata": {
-          "additionalProperties": true,
-          "properties": {
-            "inputSchema": {
-              "type": "object"
-            },
-            "name": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "inputSchema",
-            "name"
-          ],
-          "type": "object"
-        }
-      },
-      "required": [
-        "generation",
-        "hostContext",
-        "initialArguments",
-        "initialResult",
-        "instanceId",
-        "resource",
-        "serverId",
-        "toolMetadata"
-      ],
-      "type": "object"
-    },
-    "areal/mcp/app/openFromResult": {
-      "$defs": {
-        "ResultUnavailable": {
-          "enum": [
-            "notSuccessful",
-            "missingProvenance",
-            "corruptSnapshot",
-            "staleSourceEpoch",
-            "packageChanged",
-            "sourceDisabled",
-            "sourceUnavailable",
-            "resourceRejected",
-            "resourceReadFailed",
-            "pageFailed",
-            "capacityReached"
-          ],
-          "type": "string"
-        }
-      },
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "instance": {
-              "additionalProperties": true,
-              "properties": {
-                "generation": {
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "hostContext": {
-                  "additionalProperties": true,
-                  "properties": {
-                    "deepLink": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "modelContext": {},
-                    "threadId": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "deepLink",
-                    "modelContext",
-                    "threadId"
-                  ],
-                  "type": "object"
-                },
-                "initialArguments": {
-                  "type": "object"
-                },
-                "initialResult": {
-                  "anyOf": [
-                    {
-                      "additionalProperties": true,
-                      "properties": {
-                        "_meta": {
-                          "type": "object"
-                        },
-                        "content": {
-                          "items": {
-                            "additionalProperties": true,
-                            "properties": {
-                              "type": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "type"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "isError": {
-                          "type": "boolean"
-                        },
-                        "resultType": {
-                          "const": "complete"
-                        },
-                        "structuredContent": {}
-                      },
-                      "required": [
-                        "content"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "instanceId": {
-                  "type": "string"
-                },
-                "resource": {
-                  "additionalProperties": true,
-                  "properties": {
-                    "_meta": {},
-                    "html": {
-                      "type": "string"
-                    },
-                    "mimeType": {},
-                    "uri": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "_meta",
-                    "html",
-                    "mimeType",
-                    "uri"
-                  ],
-                  "type": "object"
-                },
-                "serverId": {
-                  "type": "string"
-                },
-                "toolMetadata": {
-                  "additionalProperties": true,
-                  "properties": {
-                    "inputSchema": {
-                      "type": "object"
-                    },
-                    "name": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "inputSchema",
-                    "name"
-                  ],
-                  "type": "object"
-                }
-              },
-              "required": [
-                "generation",
-                "hostContext",
-                "initialArguments",
-                "initialResult",
-                "instanceId",
-                "resource",
-                "serverId",
-                "toolMetadata"
-              ],
-              "type": "object"
-            },
-            "status": {
-              "const": "open",
-              "type": "string"
-            }
-          },
-          "required": [
-            "status",
-            "instance"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "status": {
-              "const": "closed",
-              "type": "string"
-            }
-          },
-          "required": [
-            "status"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "reason": {
-              "$ref": "#/$defs/ResultUnavailable"
-            },
-            "status": {
-              "const": "unavailable",
-              "type": "string"
-            }
-          },
-          "required": [
-            "status",
-            "reason"
-          ],
-          "type": "object"
-        }
-      ],
-      "title": "ResultOpenReply"
-    },
-    "areal/mcp/app/request": {
-      "oneOf": [
-        {
-          "additionalProperties": true,
-          "properties": {
-            "id": {},
-            "jsonrpc": {
-              "const": "2.0"
-            },
-            "result": {}
-          },
-          "required": [
-            "id",
-            "jsonrpc",
-            "result"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": true,
-          "properties": {
-            "error": {
-              "additionalProperties": true,
-              "properties": {
-                "code": {
-                  "type": "integer"
-                },
-                "message": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "code",
-                "message"
-              ],
-              "type": "object"
-            },
-            "id": {},
-            "jsonrpc": {
-              "const": "2.0"
-            }
-          },
-          "required": [
-            "error",
-            "id",
-            "jsonrpc"
-          ],
-          "type": "object"
-        }
-      ]
-    },
-    "areal/mcp/app/tools/claim": {
-      "$defs": {
-        "PageClaimDenial": {
-          "enum": [
-            "alreadyClaimed",
-            "unavailable"
-          ],
-          "type": "string"
-        },
-        "PageToolKind": {
-          "enum": [
-            "getSelection",
-            "applyPatch"
-          ],
-          "type": "string"
-        }
-      },
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "arguments": true,
-            "claimId": {
-              "type": "string"
-            },
-            "documentId": {
-              "type": "string"
-            },
-            "kind": {
-              "$ref": "#/$defs/PageToolKind"
-            },
-            "status": {
-              "const": "granted",
-              "type": "string"
-            }
-          },
-          "required": [
-            "status",
-            "claimId",
-            "kind",
-            "documentId",
-            "arguments"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "reason": {
-              "$ref": "#/$defs/PageClaimDenial"
-            },
-            "status": {
-              "const": "notGranted",
-              "type": "string"
-            }
-          },
-          "required": [
-            "status",
-            "reason"
-          ],
-          "type": "object"
-        }
-      ],
-      "title": "PageClaimReply"
-    },
-    "areal/mcp/app/tools/register": {
-      "$defs": {
-        "PageToolDefinition": {
-          "additionalProperties": false,
-          "properties": {
-            "kind": {
-              "$ref": "#/$defs/PageToolKind"
-            },
-            "name": {
-              "type": "string"
-            },
-            "schemaDigest": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "name",
-            "schemaDigest"
-          ],
-          "type": "object"
-        },
-        "PageToolKind": {
-          "enum": [
-            "getSelection",
-            "applyPatch"
-          ],
-          "type": "string"
-        }
-      },
-      "additionalProperties": false,
-      "properties": {
-        "documentId": {
-          "type": "string"
-        },
-        "registrationId": {
-          "type": "string"
-        },
-        "tools": {
-          "items": {
-            "$ref": "#/$defs/PageToolDefinition"
-          },
-          "type": "array"
-        }
-      },
-      "required": [
-        "registrationId",
-        "documentId",
-        "tools"
-      ],
-      "title": "PageRegisterReply",
-      "type": "object"
-    },
-    "areal/mcp/app/tools/resolve": {
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "status": {
-              "const": "accepted",
-              "type": "string"
-            }
-          },
-          "required": [
-            "status"
-          ],
-          "type": "object"
-        }
-      ],
-      "title": "PageAccepted"
-    },
-    "areal/mcp/app/tools/revoke": {
-      "additionalProperties": false,
-      "properties": {
-        "revoked": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "revoked"
-      ],
-      "title": "PageRevoked",
-      "type": "object"
-    },
-    "areal/mcp/apps/list": {
-      "additionalProperties": true,
-      "properties": {
-        "data": {
-          "items": {
-            "additionalProperties": true,
-            "properties": {
-              "capabilities": {
-                "type": "object"
-              },
-              "generation": {
-                "minimum": 0,
-                "type": "integer"
-              },
-              "icons": {
-                "anyOf": [
-                  {
-                    "items": {
-                      "type": "object"
-                    },
-                    "type": "array"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "installedDigest": {
-                "type": "string"
-              },
-              "instructions": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "pluginId": {
-                "type": "string"
-              },
-              "protocolVersion": {
-                "type": "string"
-              },
-              "serverId": {
-                "type": "string"
-              },
-              "title": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "tools": {
-                "items": {
-                  "additionalProperties": true,
-                  "properties": {
-                    "inputSchema": {
-                      "type": "object"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "toolName": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "inputSchema",
-                    "name",
-                    "toolName"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
-              }
-            },
-            "required": [
-              "capabilities",
-              "generation",
-              "icons",
-              "installedDigest",
-              "instructions",
-              "pluginId",
-              "protocolVersion",
-              "serverId",
-              "title",
-              "tools"
-            ],
-            "type": "object"
-          },
-          "type": "array"
-        },
-        "requestEpoch": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "data",
-        "requestEpoch"
-      ],
-      "type": "object"
-    },
     "areal/mcp/extension/call": {
       "additionalProperties": true,
       "properties": {
@@ -60208,78 +58736,41 @@
       "type": "object"
     },
     "areal/mcp/form/preview": {
-      "oneOf": [
-        {
+      "additionalProperties": true,
+      "properties": {
+        "generation": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "resource": {
           "additionalProperties": true,
           "properties": {
-            "generation": {
-              "minimum": 0,
-              "type": "integer"
-            },
-            "resource": {
-              "additionalProperties": true,
-              "properties": {
-                "contents": {
-                  "items": {
-                    "type": "object"
-                  },
-                  "type": "array"
-                }
+            "contents": {
+              "items": {
+                "type": "object"
               },
-              "required": [
-                "contents"
-              ],
-              "type": "object"
-            },
-            "serverId": {
-              "type": "string"
-            },
-            "type": {
-              "const": "resource_link"
+              "type": "array"
             }
           },
           "required": [
-            "generation",
-            "resource",
-            "serverId",
-            "type"
+            "contents"
           ],
           "type": "object"
         },
-        {
-          "additionalProperties": true,
-          "properties": {
-            "arguments": {
-              "type": "object"
-            },
-            "generation": {
-              "minimum": 0,
-              "type": "integer"
-            },
-            "requiresIdleTurn": {
-              "const": true
-            },
-            "serverId": {
-              "type": "string"
-            },
-            "toolName": {
-              "type": "string"
-            },
-            "type": {
-              "const": "mcp_app_tool"
-            }
-          },
-          "required": [
-            "arguments",
-            "generation",
-            "requiresIdleTurn",
-            "serverId",
-            "toolName",
-            "type"
-          ],
-          "type": "object"
+        "serverId": {
+          "type": "string"
+        },
+        "type": {
+          "const": "resource_link"
         }
-      ]
+      },
+      "required": [
+        "generation",
+        "resource",
+        "serverId",
+        "type"
+      ],
+      "type": "object"
     },
     "areal/mcp/form/resource/prepare": {
       "additionalProperties": true,
@@ -61917,6 +60408,17 @@
                       ],
                       "type": "object"
                     },
+                    "generation": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "policy": {
                       "$defs": {
                         "ApprovalMode": {
@@ -62012,6 +60514,7 @@
                     "authentication",
                     "authenticationTiming",
                     "config",
+                    "generation",
                     "policy",
                     "projectEnabled",
                     "serverId",
@@ -65249,6 +63752,17 @@
                       ],
                       "type": "object"
                     },
+                    "generation": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "policy": {
                       "$defs": {
                         "ApprovalMode": {
@@ -65344,6 +63858,7 @@
                     "authentication",
                     "authenticationTiming",
                     "config",
+                    "generation",
                     "policy",
                     "projectEnabled",
                     "serverId",
@@ -66235,9 +64750,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
@@ -70036,9 +68548,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/turn/$defs/InteractionMode",
@@ -74341,9 +72850,6 @@
                 "null"
               ]
             },
-            "externalCua": {
-              "type": "boolean"
-            },
             "interactionMode": {
               "$ref": "#/$defs/InteractionMode",
               "default": "interactive"
@@ -75267,9 +73773,6 @@
                 "boolean",
                 "null"
               ]
-            },
-            "externalCua": {
-              "type": "boolean"
             },
             "interactionMode": {
               "$ref": "#/$defs/InteractionMode",
@@ -76195,9 +74698,6 @@
                 "null"
               ]
             },
-            "externalCua": {
-              "type": "boolean"
-            },
             "interactionMode": {
               "$ref": "#/$defs/InteractionMode",
               "default": "interactive"
@@ -77122,9 +75622,6 @@
                 "null"
               ]
             },
-            "externalCua": {
-              "type": "boolean"
-            },
             "interactionMode": {
               "$ref": "#/$defs/InteractionMode",
               "default": "interactive"
@@ -78048,9 +76545,6 @@
                 "boolean",
                 "null"
               ]
-            },
-            "externalCua": {
-              "type": "boolean"
             },
             "interactionMode": {
               "$ref": "#/$defs/InteractionMode",
@@ -79000,9 +77494,6 @@
                 "boolean",
                 "null"
               ]
-            },
-            "externalCua": {
-              "type": "boolean"
             },
             "interactionMode": {
               "$ref": "#/$defs/InteractionMode",
@@ -80417,6 +78908,35 @@
         "productVersion": {
           "type": "string"
         },
+        "queues": {
+          "items": {
+            "additionalProperties": true,
+            "properties": {
+              "paused": {
+                "type": "boolean"
+              },
+              "pending": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "running": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "threadId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "paused",
+              "pending",
+              "running",
+              "threadId"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
         "readReady": {
           "type": "boolean"
         },
@@ -80629,6 +79149,7 @@
         "lifecycle",
         "pendingQueueItems",
         "productVersion",
+        "queues",
         "readReady",
         "resources",
         "restartSafe",
@@ -81198,6 +79719,35 @@
         "productVersion": {
           "type": "string"
         },
+        "queues": {
+          "items": {
+            "additionalProperties": true,
+            "properties": {
+              "paused": {
+                "type": "boolean"
+              },
+              "pending": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "running": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "threadId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "paused",
+              "pending",
+              "running",
+              "threadId"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
         "readReady": {
           "type": "boolean"
         },
@@ -81410,6 +79960,7 @@
         "lifecycle",
         "pendingQueueItems",
         "productVersion",
+        "queues",
         "readReady",
         "resources",
         "restartSafe",
@@ -81740,9 +80291,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
@@ -85544,9 +84092,6 @@
                         "null"
                       ]
                     },
-                    "externalCua": {
-                      "type": "boolean"
-                    },
                     "interactionMode": {
                       "$ref": "#/properties/turn/anyOf/0/$defs/InteractionMode",
                       "default": "interactive"
@@ -87647,9 +86192,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
@@ -91448,9 +89990,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/turn/$defs/InteractionMode",
@@ -99066,9 +97605,6 @@
                         "boolean",
                         "null"
                       ]
-                    },
-                    "externalCua": {
-                      "type": "boolean"
                     },
                     "interactionMode": {
                       "$ref": "#/anyOf/4/properties/thread/$defs/InteractionMode",
@@ -112543,9 +111079,6 @@
                 "null"
               ]
             },
-            "externalCua": {
-              "type": "boolean"
-            },
             "interactionMode": {
               "$ref": "#/$defs/InteractionMode",
               "default": "interactive"
@@ -113223,9 +111756,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
@@ -117038,9 +115568,6 @@
                     "null"
                   ]
                 },
-                "externalCua": {
-                  "type": "boolean"
-                },
                 "interactionMode": {
                   "$ref": "#/properties/configuration/$defs/InteractionMode",
                   "default": "interactive"
@@ -118288,9 +116815,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
@@ -123184,9 +121708,6 @@
                     "null"
                   ]
                 },
-                "externalCua": {
-                  "type": "boolean"
-                },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
                   "default": "interactive"
@@ -127043,9 +125564,6 @@
                     "null"
                   ]
                 },
-                "externalCua": {
-                  "type": "boolean"
-                },
                 "interactionMode": {
                   "$ref": "#/properties/turn/$defs/InteractionMode",
                   "default": "interactive"
@@ -129067,9 +127585,6 @@
                         "boolean",
                         "null"
                       ]
-                    },
-                    "externalCua": {
-                      "type": "boolean"
                     },
                     "interactionMode": {
                       "$ref": "#/oneOf/0/properties/turn/$defs/InteractionMode",
@@ -141408,9 +139923,6 @@
                       "null"
                     ]
                   },
-                  "externalCua": {
-                    "type": "boolean"
-                  },
                   "interactionMode": {
                     "$ref": "#/properties/data/items/$defs/InteractionMode",
                     "default": "interactive"
@@ -145301,9 +143813,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
@@ -149287,9 +147796,6 @@
                     "boolean",
                     "null"
                   ]
-                },
-                "externalCua": {
-                  "type": "boolean"
                 },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
@@ -154134,9 +152640,6 @@
                     "null"
                   ]
                 },
-                "externalCua": {
-                  "type": "boolean"
-                },
                 "interactionMode": {
                   "$ref": "#/properties/thread/$defs/InteractionMode",
                   "default": "interactive"
@@ -157958,9 +156461,6 @@
                     "null"
                   ]
                 },
-                "externalCua": {
-                  "type": "boolean"
-                },
                 "interactionMode": {
                   "$ref": "#/properties/turn/$defs/InteractionMode",
                   "default": "interactive"
@@ -159892,78 +158392,6 @@
       ],
       "type": "object"
     },
-    "areal/computer/prepare": {
-      "additionalProperties": false,
-      "properties": {
-        "arguments": {},
-        "callId": {
-          "type": "string"
-        },
-        "computerApproval": {
-          "additionalProperties": false,
-          "properties": {
-            "plan": {
-              "type": "object"
-            }
-          },
-          "required": [
-            "plan"
-          ],
-          "type": "object"
-        },
-        "discardPreparedPlan": {
-          "type": "boolean"
-        },
-        "hostGeneration": {
-          "type": "string"
-        },
-        "threadId": {
-          "type": "string"
-        },
-        "tool": {
-          "type": "string"
-        },
-        "turnId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "threadId",
-        "turnId",
-        "callId",
-        "tool",
-        "arguments",
-        "hostGeneration"
-      ],
-      "type": "object"
-    },
-    "areal/cua/turnEnded": {
-      "additionalProperties": false,
-      "properties": {
-        "event": {
-          "enum": [
-            "Stop",
-            "Interrupt"
-          ]
-        },
-        "hostGeneration": {
-          "type": "string"
-        },
-        "threadId": {
-          "type": "string"
-        },
-        "turnId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "threadId",
-        "turnId",
-        "hostGeneration",
-        "event"
-      ],
-      "type": "object"
-    },
     "areal/host/status": {
       "additionalProperties": false,
       "properties": {},
@@ -160052,18 +158480,6 @@
         "callId": {
           "type": "string"
         },
-        "computerApproval": {
-          "additionalProperties": false,
-          "properties": {
-            "plan": {
-              "type": "object"
-            }
-          },
-          "required": [
-            "plan"
-          ],
-          "type": "object"
-        },
         "hostGeneration": {
           "type": "string"
         },
@@ -160090,14 +158506,6 @@
   },
   "serverResponses": {
     "areal/browser/prepare": {
-      "type": "object"
-    },
-    "areal/computer/prepare": {
-      "type": "object"
-    },
-    "areal/cua/turnEnded": {
-      "additionalProperties": false,
-      "properties": {},
       "type": "object"
     },
     "areal/host/status": {
@@ -160446,9 +158854,6 @@
               "boolean",
               "null"
             ]
-          },
-          "externalCua": {
-            "type": "boolean"
           },
           "interactionMode": {
             "$ref": "#/$defs/InteractionMode",
@@ -164247,9 +162652,6 @@
               "boolean",
               "null"
             ]
-          },
-          "externalCua": {
-            "type": "boolean"
           },
           "interactionMode": {
             "$ref": "#/$defs/InteractionMode",

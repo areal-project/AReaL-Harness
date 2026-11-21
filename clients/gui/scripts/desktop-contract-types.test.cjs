@@ -11,6 +11,26 @@ const {
 } = require("../packages/workbench/client/desktop-contract.cjs");
 
 const cases = [
+  [
+    "serviceStatus",
+    {},
+    {
+      canStop: false,
+      connected: true,
+      busy: false,
+      starting: 0,
+      providerUpdating: false,
+      projects: [],
+    },
+    {
+      canStop: false,
+      connected: true,
+      busy: "unknown",
+      starting: 0,
+      providerUpdating: false,
+      projects: [],
+    },
+  ],
   ["recovery", { operation: "inspect" }, { kind: "none" }, { kind: "none", projects: [] }],
   [
     "recovery",
@@ -252,7 +272,7 @@ test("the shared preload bridge leaves unvalidated invoke and event responses un
 declare const bridge: DesktopBridge;
 const opaque: unknown = await bridge.command('send', {});
 const unsafe: string = await bridge.command('send', {});
-bridge.onProjection(value => { const unchecked: {frame:unknown} = value; });
+bridge.onNativeState(value => { const unchecked: {serviceSummary:unknown} = value; });
 `,
     );
     writeFileSync(

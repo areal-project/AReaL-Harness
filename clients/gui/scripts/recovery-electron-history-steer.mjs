@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { nativeRecoverySnapshot } from "./support/native-recovery-observation.mjs";
+import { createFixtureThread } from "./support/desktop-fixture.mjs";
 import { createRequire } from "node:module";
 import { randomUUID, createHash } from "node:crypto";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
@@ -122,7 +124,7 @@ const mark = (name, data) => {
   stage = name;
   record.stages.push({ name, data });
 };
-const state = () => page.evaluate(() => window.arealDesktop.snapshot());
+const state = () => nativeRecoverySnapshot(env);
 try {
   app = await electron.launch({ executablePath: exe, args: [], env, timeout: 120000 });
   page = await app.firstWindow();
@@ -161,13 +163,12 @@ try {
   );
   mark("project", { id: project.id, core: project.core });
   await writeFile(join(root, "project.json"), JSON.stringify(project, null, 2));
-  const reply = await page.evaluate(async (p) => window.arealDesktop.command("create", p), {
-    projectId: project.id,
+  const reply = await createFixtureThread(page, project.id, {
+    requestId: randomUUID(),
     browserEnabled: true,
-    profile: { id: "fixture", revision: "v1" },
+    agentProfile: { id: "fixture", revision: "v1" },
   });
-  assert(reply.ok, JSON.stringify(reply));
-  const threadId = reply.value.threadId;
+  const threadId = reply.threadId;
   await selectCreatedConversation(page, project.id, threadId);
   mark("created", { threadId });
   await page.getByTestId("chat-input").fill("OLD_GUI_FIRST");
