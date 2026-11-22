@@ -54,6 +54,7 @@
         "smoke:test:service-reopen",
         "smoke:test:conversation-reading"
       ],
+      "evidenceCheck": "smoke:test:service-reopen",
       "boundaries": ["request-admission", "host-lifecycle", "history-projection"]
     },
     {
@@ -72,7 +73,8 @@
         "newGenerationObserved",
         "cleanupSettled"
       ],
-      "checks": ["smoke:test:stop-reopen"]
+      "checks": ["smoke:test:stop-reopen"],
+      "evidenceCheck": "smoke:test:stop-reopen"
     },
     {
       "id": "connection-recovery",
@@ -101,6 +103,29 @@
       "checks": ["smoke:test:connection-recovery"],
       "evidenceCheck": "smoke:test:connection-recovery",
       "boundaries": ["request-admission", "host-lifecycle", "history-projection"]
+    },
+    {
+      "id": "ui-visual-audit",
+      "title": "亮暗多视口视觉与动效量化巡检",
+      "surfaces": ["web", "desktop"],
+      "paths": [
+        "clients/gui/packages/ui/tokens.json",
+        "clients/gui/packages/ui/src/*.css",
+        "clients/gui/packages/ui/src/**/*.css",
+        "clients/gui/renderer/src/*.css",
+        "clients/gui/renderer/src/**/*.css",
+        "clients/gui/scripts/ui-audit-probe.mjs",
+        "clients/gui/scripts/journey-manifest.json"
+      ],
+      "authorities": ["renderer"],
+      "terminalFacts": [
+        "overflowFree",
+        "layoutStable",
+        "reducedMotionRespected",
+        "contactSheetCaptured"
+      ],
+      "checks": ["smoke:test:ui-audit"],
+      "evidenceCheck": "smoke:test:ui-audit"
     }
   ],
   "boundaries": [

@@ -1218,5 +1218,13 @@
     ],
     "platformReason": "Uses the same macOS source Electron owner as the recovery pilot.",
     "notes": "Bounded source Web recovery sequences with real Host/Core, data-only replay, exact business-failure shrinking and independent evidence; elective, no package or real idle timer claim."
+  },
+  {
+    "script": "test:ui-audit",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["design-system", "ui"],
+    "requires": ["browser", "gui-build"],
+    "notes": "Quantitative multi-view UI audit (Light/Dark, zh-CN/en, 1280/420@18px/390, overflow/CLS/reduced-motion) and contact sheet generator."
   }
 ]

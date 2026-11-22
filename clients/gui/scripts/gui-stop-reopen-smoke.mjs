@@ -278,6 +278,46 @@ try {
   for (const [name, hash] of Object.entries(hashes))
     assert.equal(sha(await readFile(join(dirname(binary), name))), hash);
   await writeFile(join(scratch, "manifest.json"), JSON.stringify(result, null, 2));
+  const factChecks = {
+    stopReceiptSettled: result.reached.includes("stop receipt completed"),
+    originalProcessesExited: result.reached.includes("original Host and project processes exited"),
+    newGenerationObserved: result.reached.includes("successor Host observed"),
+    cleanupSettled: !result.cleanupError,
+  };
+  const businessReportPath = process.env.AREAL_JOURNEY_REPORT
+    ? resolve(process.env.AREAL_JOURNEY_REPORT)
+    : join(scratch, "report.json");
+  const evidenceFile = "manifest.json";
+  if (businessReportPath !== join(scratch, "report.json")) {
+    await writeFile(
+      join(dirname(businessReportPath), evidenceFile),
+      JSON.stringify(result, null, 2),
+    );
+  }
+  const allFactsPassed = !result.firstFailure && Object.values(factChecks).every(Boolean);
+  const businessReport = {
+    schemaVersion: 1,
+    journeyId: "host-stop-reopen",
+    identity: process.env.AREAL_VERIFICATION_IDENTITY
+      ? JSON.parse(process.env.AREAL_VERIFICATION_IDENTITY)
+      : {},
+    status: allFactsPassed ? "passed" : "failed",
+    facts: Object.entries(factChecks).map(([id, ok]) => ({
+      id,
+      status: ok ? "passed" : "failed",
+      evidence: [evidenceFile],
+    })),
+    firstFailure: result.firstFailure,
+    reached: Object.entries(factChecks)
+      .filter(([, ok]) => ok)
+      .map(([id]) => id),
+    unreached: Object.entries(factChecks)
+      .filter(([, ok]) => !ok)
+      .map(([id]) => id),
+    cleanup: { status: result.cleanupError ? "failed" : "passed", evidence: [evidenceFile] },
+    scope: `Isolated source Electron desktop + real shared Host (${mode} stop mode); packaged app not run`,
+  };
+  await writeFile(businessReportPath, JSON.stringify(businessReport, null, 2));
   console.log(JSON.stringify(result, null, 2));
   if (result.firstFailure) process.exitCode = 1;
 }

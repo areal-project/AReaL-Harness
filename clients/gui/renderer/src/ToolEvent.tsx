@@ -33,6 +33,76 @@ function fileName(path: string): string {
   return path.replace(/\/+$/, "").split("/").at(-1) || path;
 }
 
+const FILE_TOOLS = new Set([
+  "fs_create",
+  "fs_write",
+  "fs_apply_patch",
+  "fs_apply_patches",
+  "fs_read",
+]);
+
+/** 文件类工具展开时展示可读代码与摘要回执，避免直接把转义 JSON 和内部字段摊给用户。 */
+function formatFileToolRecord(
+  item: Data,
+  running: boolean,
+): { heading: string; argsText: string; resultText: string } | null {
+  if (!FILE_TOOLS.has(item.tool)) return null;
+  const args = item.arguments && typeof item.arguments === "object" ? item.arguments : null;
+  const rawPath = typeof args?.path === "string" ? args.path : "";
+  const heading = rawPath || item.tool;
+
+  let argsText: string;
+  if ((item.tool === "fs_create" || item.tool === "fs_write") && typeof args?.text === "string") {
+    argsText = args.text;
+  } else if (
+    (item.tool === "fs_apply_patch" || item.tool === "fs_apply_patches") &&
+    typeof args?.patch === "string"
+  ) {
+    argsText = args.patch;
+  } else if (item.tool === "fs_read" && rawPath) {
+    const start = Number.isSafeInteger(args?.startLine) ? args.startLine : null;
+    const end = Number.isSafeInteger(args?.endLine) ? args.endLine : null;
+    argsText = start != null && end != null ? `${rawPath}（第 ${start}-${end} 行）` : rawPath;
+  } else {
+    argsText = JSON.stringify(item.arguments, null, 2);
+  }
+
+  const rawResult = recordItems(item.contentItems)
+    .map((c: Data) => c.text ?? "")
+    .join("\n");
+  let resultText = rawResult || (running ? "等待工具输出…" : "无文本输出");
+  if (rawResult) {
+    try {
+      const parsed = JSON.parse(rawResult);
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        typeof parsed.path === "string" &&
+        parsed.path.startsWith("workspace://repo/") &&
+        Number.isSafeInteger(parsed.size)
+      ) {
+        const relPath = parsed.path.slice("workspace://repo/".length);
+        if (item.tool === "fs_read" && typeof parsed.text === "string") {
+          resultText = parsed.text;
+        } else {
+          const verb =
+            item.tool === "fs_create"
+              ? "已创建"
+              : item.tool === "fs_write"
+                ? "已写入"
+                : item.tool === "fs_read"
+                  ? "已读取"
+                  : "已更新";
+          resultText = `${verb} ${relPath}（${parsed.size} 字节）`;
+        }
+      }
+    } catch {
+      // 非 JSON 回执保持原始文本展示。
+    }
+  }
+  return { heading, argsText, resultText };
+}
+
 export function ToolEvent({
   item,
   onFile,
@@ -454,40 +524,51 @@ export function ToolEvent({
           ) : isCommand ? (
             <CommandDetails item={item} />
           ) : (
-            <div
-              className="tool-event-body"
-              id={recordId}
-              role={file ? "region" : undefined}
-              aria-label={file ? "工具原始记录" : undefined}
-            >
-              <div className="tool-event-heading tool-record-heading">
-                <span>{item.tool}</span>
-                <ToolCallDuration item={item} />
-              </div>
-              <pre aria-label="工具参数">{JSON.stringify(item.arguments, null, 2)}</pre>
-              <pre aria-label="工具结果">
-                {recordItems(item.contentItems)
-                  .map((c: Data) => c.text ?? "")
-                  .join("\n") || (view.running ? "等待工具输出…" : "无文本输出")}
-              </pre>
-              {!images.length &&
-                action &&
-                projectId &&
-                threadId &&
-                recordItems(item.contentItems)
-                  .filter((c: Data) => c.type === "arealMedia" && c.modality === "image")
-                  .map((c: Data) => (
-                    <SentAttachment
-                      mediaSource={mediaSource}
-                      key={c.media.uri}
-                      part={{ type: "image", uri: c.media.uri, name: "页面截图" }}
-                      projectId={projectId}
-                      threadId={threadId}
-                      action={action}
-                    />
-                  ))}
-              {item.execution?.exitCode != null && <small>退出码 {item.execution.exitCode}</small>}
-            </div>
+            (() => {
+              const fileRecord = formatFileToolRecord(item, view.running);
+              return (
+                <div
+                  className="tool-event-body"
+                  id={recordId}
+                  role={file ? "region" : undefined}
+                  aria-label={file ? "工具原始记录" : undefined}
+                >
+                  <div className="tool-event-heading tool-record-heading">
+                    <span>{fileRecord ? fileRecord.heading : item.tool}</span>
+                    <ToolCallDuration item={item} />
+                  </div>
+                  <pre aria-label="工具参数">
+                    {fileRecord ? fileRecord.argsText : JSON.stringify(item.arguments, null, 2)}
+                  </pre>
+                  <pre aria-label="工具结果">
+                    {fileRecord
+                      ? fileRecord.resultText
+                      : recordItems(item.contentItems)
+                          .map((c: Data) => c.text ?? "")
+                          .join("\n") || (view.running ? "等待工具输出…" : "无文本输出")}
+                  </pre>
+                  {!images.length &&
+                    action &&
+                    projectId &&
+                    threadId &&
+                    recordItems(item.contentItems)
+                      .filter((c: Data) => c.type === "arealMedia" && c.modality === "image")
+                      .map((c: Data) => (
+                        <SentAttachment
+                          mediaSource={mediaSource}
+                          key={c.media.uri}
+                          part={{ type: "image", uri: c.media.uri, name: "页面截图" }}
+                          projectId={projectId}
+                          threadId={threadId}
+                          action={action}
+                        />
+                      ))}
+                  {item.execution?.exitCode != null && (
+                    <small>退出码 {item.execution.exitCode}</small>
+                  )}
+                </div>
+              );
+            })()
           ))}
       </Collapsible.Panel>
       {open && action && projectId && threadId && item.execution?.resultSnapshot?.uri && (

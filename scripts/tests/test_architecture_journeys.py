@@ -578,7 +578,20 @@ class ArchitectureAndJourneys(unittest.TestCase):
                 )
         self.assertEqual(
             [entry["id"] for entry in registry["journeys"] if "evidenceCheck" in entry],
-            ["conversation-submit", "connection-recovery"],
+            [
+                "conversation-submit",
+                "unknown-receipt-recovery",
+                "host-stop-reopen",
+                "connection-recovery",
+                "ui-visual-audit",
+            ],
+        )
+        visual_plan = scope.build_plan(
+            ["clients/gui/renderer/src/workbench.css"], {"baseRevision": "base"}, manifest
+        )
+        self.assertEqual(visual_plan["affectedJourneys"], ["ui-visual-audit"])
+        self.assertEqual(
+            visual_plan["journeyEvidence"]["ui-visual-audit"]["check"], "smoke:test:ui-audit"
         )
 
     def test_gate_rejects_exit_zero_without_required_business_report(self):

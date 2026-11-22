@@ -129,6 +129,7 @@
     "design:build": "vp run design-build",
     "test:design": "node scripts/design-system-smoke.mjs",
     "audit:ui": "node scripts/ui-audit-probe.mjs",
+    "test:ui-audit": "node scripts/ui-audit-probe.mjs",
     "design:health": "node scripts/design-health-report.mjs",
     "lint:ui-guardrails": "node scripts/ui-guardrails-lint.mjs",
     "verify:design": "vp run design-suite",

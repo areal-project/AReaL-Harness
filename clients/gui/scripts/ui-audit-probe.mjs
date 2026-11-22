@@ -15,8 +15,12 @@ const require = createRequire(join(gui, "app/package.json"));
 const { chromium } = require("playwright-core");
 
 const outArgIndex = process.argv.indexOf("--out");
-const outDir =
-  outArgIndex > 0 && process.argv[outArgIndex + 1]
+const journeyReportPath = process.env.AREAL_JOURNEY_REPORT
+  ? resolve(process.env.AREAL_JOURNEY_REPORT)
+  : null;
+const outDir = journeyReportPath
+  ? dirname(journeyReportPath)
+  : outArgIndex > 0 && process.argv[outArgIndex + 1]
     ? resolve(process.argv[outArgIndex + 1])
     : await mkdtemp(join(tmpdir(), "areal-ui-audit-"));
 await mkdir(outDir, { recursive: true });
@@ -365,17 +369,84 @@ try {
   report.sheets.push(sheetPath);
 
   await writeFile(join(outDir, "ui-audit-report.json"), JSON.stringify(report, null, 2));
+  const maxOverflowX = Math.max(0, ...report.layoutAudit.map((r) => r.docOverflowX));
+  const maxCls = Math.max(0, ...report.layoutAudit.map((r) => r.clsTotal));
+  const reducedMotionAnims = report.motionProbe.find((m) => m.reducedMotion)?.anims.length ?? 0;
+  const overflowFree = maxOverflowX === 0;
+  const layoutStable = maxCls === 0;
+  const reducedMotionRespected = reducedMotionAnims === 0;
+  const contactSheetCaptured = report.sheets.length > 0 && report.consoleErrors.length === 0;
+  const allPassed = overflowFree && layoutStable && reducedMotionRespected && contactSheetCaptured;
+  const businessReport = {
+    schemaVersion: 1,
+    journeyId: "ui-visual-audit",
+    identity: process.env.AREAL_VERIFICATION_IDENTITY
+      ? JSON.parse(process.env.AREAL_VERIFICATION_IDENTITY)
+      : {},
+    status: allPassed ? "passed" : "failed",
+    facts: [
+      {
+        id: "overflowFree",
+        status: overflowFree ? "passed" : "failed",
+        evidence: ["ui-audit-report.json"],
+      },
+      {
+        id: "layoutStable",
+        status: layoutStable ? "passed" : "failed",
+        evidence: ["ui-audit-report.json"],
+      },
+      {
+        id: "reducedMotionRespected",
+        status: reducedMotionRespected ? "passed" : "failed",
+        evidence: ["ui-audit-report.json"],
+      },
+      {
+        id: "contactSheetCaptured",
+        status: contactSheetCaptured ? "passed" : "failed",
+        evidence: ["contact-sheet-overview.png", "ui-audit-report.json"],
+      },
+    ],
+    firstFailure: allPassed
+      ? null
+      : !overflowFree
+        ? "overflowFree"
+        : !layoutStable
+          ? "layoutStable"
+          : !reducedMotionRespected
+            ? "reducedMotionRespected"
+            : "contactSheetCaptured",
+    reached: [
+      ...(overflowFree ? ["overflowFree"] : []),
+      ...(layoutStable ? ["layoutStable"] : []),
+      ...(reducedMotionRespected ? ["reducedMotionRespected"] : []),
+      ...(contactSheetCaptured ? ["contactSheetCaptured"] : []),
+    ],
+    unreached: [
+      ...(!overflowFree ? ["overflowFree"] : []),
+      ...(!layoutStable ? ["layoutStable"] : []),
+      ...(!reducedMotionRespected ? ["reducedMotionRespected"] : []),
+      ...(!contactSheetCaptured ? ["contactSheetCaptured"] : []),
+    ],
+    cleanup: { status: "passed", evidence: ["ui-audit-report.json"] },
+    scope:
+      "Design System multi-view browser audit (Light/Dark, zh-CN/en, 1280/420@18px/390) + reduced-motion probe; macOS packaged vibrancy and mobile not run",
+  };
+  await writeFile(
+    journeyReportPath ?? join(outDir, "report.json"),
+    JSON.stringify(businessReport, null, 2),
+  );
   console.log(
     JSON.stringify({
-      passed: report.consoleErrors.length === 0,
+      passed: allPassed,
       outDir,
       views: report.layoutAudit.length,
-      maxOverflowX: Math.max(0, ...report.layoutAudit.map((r) => r.docOverflowX)),
-      maxCls: Math.max(0, ...report.layoutAudit.map((r) => r.clsTotal)),
-      reducedMotionAnims: report.motionProbe.find((m) => m.reducedMotion)?.anims.length ?? 0,
+      maxOverflowX,
+      maxCls,
+      reducedMotionAnims,
       sheets: report.sheets,
     }),
   );
+  if (!allPassed) process.exitCode = 1;
 } finally {
   await browser.close();
   server.close();
