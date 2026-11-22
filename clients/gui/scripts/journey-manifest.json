@@ -15,12 +15,13 @@
         "clients/gui/scripts/journey-manifest.json"
       ],
       "authorities": ["host", "core", "runtime"],
-      "terminalFacts": ["requestAccepted", "turnSettled", "visibleResult"],
+      "terminalFacts": ["coldStartFirstSend", "requestAccepted", "turnSettled", "visibleResult"],
       "checks": [
         "smoke:test:ux-journeys",
         "smoke:test:web-journeys",
         "smoke:test:conversation-reading"
       ],
+      "evidenceCheck": "smoke:test:web-journeys",
       "boundaries": ["request-admission", "history-projection", "provider-configuration"]
     },
     {

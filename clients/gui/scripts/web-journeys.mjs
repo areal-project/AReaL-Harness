@@ -8,15 +8,17 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import {
   coreBin,
   createScene,
+  gui,
   playwright,
   reply,
   sendReady,
   startModel,
 } from "./support/journey-fixture.mjs";
+import { readCoreThread } from "./support/core-observation.mjs";
 import { expectFeedback, inspectPage, recordToasts } from "./ux-checks.mjs";
 import {
   cleanupSyntheticHostKeychain,
@@ -26,10 +28,54 @@ import {
 } from "./application-cleanup.mjs";
 
 const outIndex = process.argv.indexOf("--out");
+const reportPath = process.env.AREAL_JOURNEY_REPORT
+  ? resolve(process.env.AREAL_JOURNEY_REPORT)
+  : null;
 const shots = resolve(
-  outIndex > 0 ? process.argv[outIndex + 1] : join(tmpdir(), "areal-web-shots"),
+  reportPath
+    ? dirname(reportPath)
+    : outIndex > 0
+      ? process.argv[outIndex + 1]
+      : join(tmpdir(), "areal-web-shots"),
 );
+const journeyReportPath = reportPath ?? join(shots, "report.json");
+const factIds = ["coldStartFirstSend", "requestAccepted", "turnSettled", "visibleResult"];
+const journeyReport = {
+  schemaVersion: 1,
+  journeyId: "conversation-submit",
+  identity: process.env.AREAL_VERIFICATION_IDENTITY
+    ? JSON.parse(process.env.AREAL_VERIFICATION_IDENTITY)
+    : {},
+  status: "pending",
+  facts: factIds.map((id) => ({ id, status: "pending", evidence: [] })),
+  firstFailure: null,
+  reached: [],
+  unreached: [...factIds],
+  cleanup: { status: "pending", evidence: [] },
+  scope:
+    "Source Electron owner, real Host/Core and Chromium Renderer; local model; mobile and packaged app not run",
+};
+let stage = "prerequisites";
 await mkdir(shots, { recursive: true });
+const persistEvidence = (name, value) =>
+  writeFile(join(shots, name), JSON.stringify(value, null, 2), { mode: 0o600 });
+const saveJourneyReport = () =>
+  writeFile(journeyReportPath, JSON.stringify(journeyReport, null, 2), { mode: 0o600 });
+async function passFact(id, observations, extraFiles = []) {
+  const name = `${id}.json`;
+  await persistEvidence(name, observations);
+  Object.assign(
+    journeyReport.facts.find((fact) => fact.id === id),
+    {
+      status: "passed",
+      evidence: [name, ...extraFiles],
+      observations,
+    },
+  );
+  journeyReport.reached.push(id);
+  journeyReport.unreached = factIds.filter((item) => !journeyReport.reached.includes(item));
+  await saveJourneyReport();
+}
 const results = [];
 const record = (result) => {
   results.push(result);
@@ -256,23 +302,55 @@ try {
   await page.getByRole("button", { name: "1 个评论", exact: true }).waitFor();
 
   // 旅程 W2：发送 → 审批卡出现、输入框仍在 → 审批中继续排队 → 允许 → 本轮完成。
+  stage = "coldStartFirstSend";
   const input = page.getByTestId("chat-input").first();
   await page.getByRole("button", { name: "选择模型", exact: true }).click();
   await page.getByRole("radio", { name: "fixture", exact: true }).click();
   await input.fill("给 src/math.ts 加一个 clamp 函数");
   await sendReady(page);
-  record(
-    await expectFeedback(page, "W2 回车发送", () => input.press("Enter"), {
-      until: page.locator(".messages").getByText("给 src/math.ts 加一个 clamp 函数"),
-    }),
-  );
+  const w2SendCheck = await expectFeedback(page, "W2 回车发送", () => input.press("Enter"), {
+    until: page.locator(".messages").getByText("给 src/math.ts 加一个 clamp 函数"),
+  });
+  record(w2SendCheck);
   const approval = page.locator('.decision-card[data-interaction="approval"]');
   await approval.waitFor({ timeout: 60_000 });
   const threadId = await workbench.getAttribute("data-thread-id");
   assert.equal(await workbench.getAttribute("data-project-id"), projectId);
   assert.ok(threadId, "Host 受理首条消息后发布原会话身份");
-  const mainReviewKey = `areal-gui:review-comments:${projectId}:${threadId}`;
+  const createTraces = commandTrace.filter((entry) => entry.method === "session.create");
+  assert.equal(createTraces.length, 1, "FM-CHAT-01: 冷项目首条发送应一次受理，不得重试多次创建");
+  const firstCreate = createTraces[0];
+  assert.equal(
+    firstCreate.admissionState,
+    "accepted",
+    "FM-CHAT-01: 首次 session.create 必须直接受理",
+  );
+  assert.equal(firstCreate.errorCode, null, "FM-CHAT-01: 首次发送不得返回任何错误码");
+  assert.notEqual(firstCreate.submissionUnknown, true, "FM-CHAT-01: 首次发送不得落入 UNKNOWN");
   await shot("approval");
+  await passFact(
+    "coldStartFirstSend",
+    {
+      ruleId: "FM-CHAT-01",
+      projectId,
+      commandId: firstCreate.commandId,
+      admissionState: firstCreate.admissionState,
+      errorCode: firstCreate.errorCode,
+      createAttempts: createTraces.length,
+      bypassedReadinessProbe: false,
+    },
+    ["web-approval.png"],
+  );
+  stage = "requestAccepted";
+  await passFact("requestAccepted", {
+    projectId,
+    threadId,
+    commandId: firstCreate.commandId,
+    serviceGeneration: firstCreate.returnedGeneration ?? firstCreate.serviceGeneration ?? null,
+    admissionState: firstCreate.admissionState,
+  });
+  stage = "turnSettled";
+  const mainReviewKey = `areal-gui:review-comments:${projectId}:${threadId}`;
   assert.equal(await input.isVisible(), true, "审批时输入框仍在");
   record(await inspectPage(page, "W2 等审批"));
   await input.fill("顺便把 README 也更新");
@@ -293,6 +371,43 @@ try {
   await sentMainComment.waitFor();
   await sentMainComment.click();
   await page.getByText(mainComment.body, { exact: true }).waitFor();
+  const authoritative = await readCoreThread({
+    binary: coreBin,
+    env: desktop.env,
+    gui,
+    threadId,
+    workspace: scene.project,
+  });
+  const firstTurn = authoritative.turns?.[0];
+  assert.equal(authoritative.id, threadId, "权威 Core Thread ID 必须与页面一致");
+  assert.ok(firstTurn?.id, "权威 Core 必须记录首条 Turn 身份");
+  assert.equal(firstTurn.status, "completed", "权威 Core 首条 Turn 必须结算为 completed");
+  await passFact("turnSettled", {
+    threadId: authoritative.id,
+    turnId: firstTurn.id,
+    status: firstTurn.status,
+    commandId: firstCreate.commandId,
+  });
+  stage = "visibleResult";
+  const w2VisibleCheck = await inspectPage(page, "W2 首轮可见结果");
+  record(w2VisibleCheck);
+  assert.deepEqual(w2SendCheck.problems, [], "W2 首条发送交互体检无告警");
+  assert.deepEqual(w2VisibleCheck.problems, [], "W2 首轮可见结果体检无告警");
+  assert.deepEqual(pageErrors, [], "W2 首轮完成前无未捕获页面异常");
+  await shot("first-turn-visible");
+  await passFact(
+    "visibleResult",
+    {
+      threadId,
+      turnId: firstTurn.id,
+      replyVisible: true,
+      reviewCommentVisible: true,
+      uxProblems: w2VisibleCheck.problems.length,
+      pageErrors: pageErrors.length,
+    },
+    ["web-first-turn-visible.png"],
+  );
+  stage = "followUpAndOtherJourneys";
 
   // 先结算队列条目触发的审批，UNKNOWN 注入必须命中空闲会话的下一次发送。
   const pendingApproval = page
@@ -481,6 +596,14 @@ try {
   assert.deepEqual(pageErrors, [], "页面没有未捕获异常");
 } catch (error) {
   console.error("旅程失败：", error);
+  if (!journeyReport.firstFailure) {
+    journeyReport.firstFailure = {
+      stage,
+      message: error instanceof Error ? error.message : String(error),
+    };
+    const activeFact = journeyReport.facts.find((fact) => fact.id === stage);
+    if (activeFact && activeFact.status === "pending") activeFact.status = "failed";
+  }
   if (page) {
     await page.screenshot({ path: join(shots, "web-failure.png") }).catch(() => {});
     const text = await page
@@ -514,16 +637,46 @@ try {
       await rm(scene.scratch, { recursive: true, force: true, maxRetries: 5 });
     } else {
       await scene.dispose();
+      await writeFile(join(shots, "cleanup.json"), JSON.stringify({ disposed: true }));
     }
+    journeyReport.cleanup = { status: "passed", evidence: ["cleanup.json"] };
   } catch (error) {
     await writeFile(join(shots, "cleanup-error.txt"), String(error)).catch(() => {});
     cleanupFailure = error;
+    journeyReport.cleanup = {
+      status: "failed",
+      evidence: ["cleanup-error.txt"],
+      message: error instanceof Error ? error.message : String(error),
+    };
+    if (!journeyReport.firstFailure) {
+      journeyReport.firstFailure = {
+        stage: "cleanup",
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
     console.error("旅程清理失败：", error);
   } finally {
     model.close();
   }
+  const failedSteps = results.filter((result) => result.problems.length);
+  if (failedSteps.length && !journeyReport.firstFailure) {
+    journeyReport.firstFailure = {
+      stage: failedSteps[0].step,
+      message: failedSteps[0].problems.join("；"),
+    };
+  }
+  journeyReport.unreached = factIds.filter((item) => !journeyReport.reached.includes(item));
+  journeyReport.status =
+    !journeyReport.firstFailure &&
+    journeyReport.facts.every((fact) => fact.status === "passed") &&
+    journeyReport.cleanup.status === "passed"
+      ? "passed"
+      : "failed";
+  await saveJourneyReport();
 }
 if (cleanupFailure) throw cleanupFailure;
 const failed = results.filter((result) => result.problems.length);
-console.log(`${results.length - failed.length}/${results.length} 步通过；截图在 ${shots}`);
+console.log(
+  `${results.length - failed.length}/${results.length} 步通过；截图与业务报告在 ${shots}`,
+);
 process.exit(failed.length ? 1 : 0);

@@ -561,7 +561,7 @@ class ArchitectureAndJourneys(unittest.TestCase):
                 )
         self.assertEqual(
             [entry["id"] for entry in registry["journeys"] if "evidenceCheck" in entry],
-            ["connection-recovery"],
+            ["conversation-submit", "connection-recovery"],
         )
 
     def test_gate_rejects_exit_zero_without_required_business_report(self):
