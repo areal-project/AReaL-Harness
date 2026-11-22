@@ -39,7 +39,14 @@ const shots = resolve(
       : join(tmpdir(), "areal-web-shots"),
 );
 const journeyReportPath = reportPath ?? join(shots, "report.json");
-const factIds = ["coldStartFirstSend", "requestAccepted", "turnSettled", "visibleResult"];
+const factIds = [
+  "coldStartFirstSend",
+  "requestAccepted",
+  "turnSettled",
+  "visibleResult",
+  "attachmentSubmitted",
+  "queuedFollowUp",
+];
 const journeyReport = {
   schemaVersion: 1,
   journeyId: "conversation-submit",
@@ -352,13 +359,13 @@ try {
   stage = "turnSettled";
   const mainReviewKey = `areal-gui:review-comments:${projectId}:${threadId}`;
   assert.equal(await input.isVisible(), true, "审批时输入框仍在");
-  record(await inspectPage(page, "W2 等审批"));
+  const w2ApprovalCheck = await inspectPage(page, "W2 等审批");
+  record(w2ApprovalCheck);
   await input.fill("顺便把 README 也更新");
-  record(
-    await expectFeedback(page, "W2 审批中排队", () => input.press("Enter"), {
-      until: page.locator(".composer-queue"),
-    }),
-  );
+  const w2QueueCheck = await expectFeedback(page, "W2 审批中排队", () => input.press("Enter"), {
+    until: page.locator(".composer-queue"),
+  });
+  record(w2QueueCheck);
   await approval
     .getByRole("button", { name: /允许/ })
     .first()
@@ -407,7 +414,24 @@ try {
     },
     ["web-first-turn-visible.png"],
   );
-  stage = "followUpAndOtherJourneys";
+  stage = "attachmentSubmitted";
+  const draftCommentsRemaining = await page.evaluate(
+    (key) => JSON.parse(localStorage.getItem(key) || '{"comments":[]}').comments.length,
+    newReviewKey,
+  );
+  assert.equal(draftCommentsRemaining, 0, "FM-CHAT-02: 发送后草稿评论应清空");
+  await passFact(
+    "attachmentSubmitted",
+    {
+      ruleId: "FM-CHAT-02",
+      threadId,
+      turnId: firstTurn.id,
+      commentVisible: true,
+      draftCleared: draftCommentsRemaining === 0,
+    },
+    ["web-first-turn-visible.png"],
+  );
+  stage = "queuedFollowUp";
 
   // 先结算队列条目触发的审批，UNKNOWN 注入必须命中空闲会话的下一次发送。
   const pendingApproval = page
@@ -422,6 +446,31 @@ try {
     .locator('[data-turn-status="completed"][data-latest-turn="true"]')
     .filter({ hasText: "顺便把 README 也更新" })
     .waitFor({ timeout: 60_000 });
+  const afterQueue = await readCoreThread({
+    binary: coreBin,
+    env: desktop.env,
+    gui,
+    threadId,
+    workspace: scene.project,
+  });
+  const secondTurn = afterQueue.turns?.[1];
+  assert.ok(
+    secondTurn?.id && secondTurn.id !== firstTurn.id,
+    "FM-CHAT-03: 排队消息必须生成独立 Turn",
+  );
+  assert.equal(secondTurn.status, "completed", "FM-CHAT-03: 排队 Turn 必须结算为 completed");
+  assert.deepEqual(w2ApprovalCheck.problems, [], "FM-CHAT-03: 等审批时状态诚实且无体检告警");
+  assert.deepEqual(w2QueueCheck.problems, [], "FM-CHAT-03: 审批中排队交互有及时反馈");
+  await passFact("queuedFollowUp", {
+    ruleId: "FM-CHAT-03",
+    threadId,
+    firstTurnId: firstTurn.id,
+    secondTurnId: secondTurn.id,
+    secondTurnStatus: secondTurn.status,
+    approvalUxProblems: w2ApprovalCheck.problems.length,
+    queueFeedbackProblems: w2QueueCheck.problems.length,
+  });
+  stage = "followUpAndOtherJourneys";
 
   // 旅程 W2b：真实 Host 已受理但浏览器丢失回执。自动核对原 requestId
   // 后只消费该评论，历史里的结构化 part 仍来自 Core 的权威快照。

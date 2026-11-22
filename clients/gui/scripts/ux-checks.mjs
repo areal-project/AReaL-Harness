@@ -137,11 +137,26 @@ export async function inspectPage(page, step, { locale = "zh-CN" } = {}) {
           };
         }),
       );
-      // 仅按内容所有者剥离用户/模型正文（兼顾 .messages 与 .messages-embedded-content），保留应用告警。
-      const clone = document.body.cloneNode(true);
-      clone.querySelectorAll(contentSelectors.join(", ")).forEach((node) => node.remove());
+      // 仅收集真实可见且归属应用的文本（按内容所有者排除用户/模型正文，兼顾 .messages 与 .messages-embedded-content，
+      // 不依赖离屏 clone.innerText，避免误读 display:none / 折叠区域中的隐藏节点）。
+      const excluded = [...contentSelectors, "script", "style", "noscript", "template"].join(", ");
+      const chunks = [];
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const text = node.nodeValue?.trim();
+        if (!text) continue;
+        const parent = node.parentElement;
+        if (!parent || parent.closest(excluded) || !visible(parent)) continue;
+        if (parent.closest("details:not([open])") && !parent.closest("summary")) continue;
+        if (
+          typeof parent.checkVisibility === "function" &&
+          !parent.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })
+        )
+          continue;
+        chunks.push(text);
+      }
       return {
-        appText: clone.innerText,
+        appText: chunks.join("\n"),
         awaiting: !!document.querySelector('.decision-card[data-interaction="approval"]'),
         boxes,
         toasts: window.__uxToasts?.splice(0) ?? [],
