@@ -111,6 +111,7 @@ try {
   // 定时页新建打开弹框，不跳到对话页；创建直接提交到无项目工作区，接在任务自己的对话里运行。
   await page.goto(url + "?empty");
   await page.getByRole("button", { name: "整理每日计划", exact: false }).click();
+  await page.getByRole("button", { name: "使用此模板", exact: true }).click();
   const objective = page.getByRole("textbox", { name: "指令", exact: true });
   assert.equal(await objective.inputValue(), "回顾我提供的计划，整理当天待办和需要关注的事项。");
   assert.equal(
@@ -148,6 +149,7 @@ try {
   await page.setViewportSize({ width: 1100, height: 800 });
   await page.goto(url + "?empty");
   await page.getByRole("button", { name: "整理每日计划", exact: false }).click();
+  await page.getByRole("button", { name: "使用此模板", exact: true }).click();
   await page.getByRole("textbox", { name: "指令", exact: true }).waitFor();
   assert.equal(
     (await page.evaluate(() => window.calls)).filter((call) => call.name === "create").length,

@@ -206,7 +206,7 @@ async function settingsChecks() {
       const probe = document.body.appendChild(document.createElement("div"));
       probe.style.borderRadius = "var(--radius-panel)";
       probe.style.lineHeight = "var(--line-height-ui)";
-      probe.style.minHeight = "calc(var(--spacing-control-sm) + var(--spacing-section))";
+      probe.style.minHeight = "var(--size-touch-target)";
       probe.style.maxHeight = "calc(var(--spacing-control-sm) + var(--spacing-field))";
       probe.style.width = "calc(var(--reading-width) * 3 / 8)";
       const css = getComputedStyle(probe);
@@ -228,7 +228,7 @@ async function settingsChecks() {
         `${name} consumes the settings card semantic background`,
       );
       assert.equal(value.title.font, `${sample.font}px`);
-      assert.equal(value.title.weight, "500");
+      assert.equal(value.title.weight, "600");
       assert.equal(value.title.margin, "0px");
       assert.equal(value.title.line, settingsTokens.titleLine);
       assert.equal(value.description.font, `${Number(sample.font) - 2}px`);
@@ -781,7 +781,7 @@ try {
       const reasoningToggle = reading.getByRole("button", { name: "思考过程", exact: true });
       await toggleHere(reasoningToggle, "Enter", "reasoning keyboard expansion");
       await toggleHere(reasoningToggle, undefined, "reasoning mouse collapse");
-      const processToggle = reading.locator(".turn-progress-summary");
+      const processToggle = reading.locator('[data-testid="turn-elapsed"] button').first();
       await toggleHere(processToggle, "Enter", "turn progress keyboard collapse");
       await toggleHere(processToggle, undefined, "turn progress mouse expansion");
       await readingGroup.scrollIntoViewIfNeeded();
@@ -979,7 +979,7 @@ try {
       checks.push(
         "one sweeping tail status for tool and model progress; tool rows stay static; input, retry and disconnect retain canonical static labels",
       );
-      const progressToggle = updating.locator(".turn-progress-summary");
+      const progressToggle = updating.locator('[data-testid="turn-elapsed"] button').first();
       await progressToggle.click();
       await progressToggle.click();
       const updatingGroup = updating.locator(

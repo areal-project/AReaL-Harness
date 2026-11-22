@@ -769,7 +769,9 @@ export function Messages({
         `[data-side-item-id="${CSS.escape(state.anchor.itemId)}"]`,
       );
       if (!item) return;
-      const control = event.target.querySelector<HTMLElement>(".turn-progress-summary");
+      const control = event.target.querySelector<HTMLElement>(
+        '[data-testid="turn-elapsed"] button, .turn-progress-summary',
+      );
       if (!control) return;
       reading.current = changeReadingIntent(reading.current, {
         kind: "holding",
