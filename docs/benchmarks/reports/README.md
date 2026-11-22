@@ -6,6 +6,7 @@
 
 | 报告 | 证据范围 |
 |---|---|
+| [固定75题 executionFocus 效率观察](long-horizon75-execution-focus.md) | Astra 75份候选、70对原版有效配对；全部纠正成本、浏览器异常与单体token反例保留，显式配置未推广默认 |
 | [建模工具集合对照](modeling-tool-surface.md) | 同 main 十对新建制品工作区对照；显式工具配置、全部尝试、共同盲评与未晋级附图候选 |
 | [会话目录、分页与 GUI 刷新](conversation-catalog.md)、[迭代验证](conversation-catalog-validation.md)、[内存与 SQLite 对照](conversation-catalog-sqlite.md)、[轻量目录与按需历史](conversation-catalog-lazy.md) | Engine/RPC 交替 release 对照、真实 GUI 缓存 IO 与兼容回归；保留不利结果，不外推整体 Agent 收益 |
 | [收尾、读取补位与 Responses 路由](completion-cache-routing.md) | 固定100次对照、缓存接近但仍慢30.6%；保留失败、UNKNOWN、机制补修与未晋级结论 |
