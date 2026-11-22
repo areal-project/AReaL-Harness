@@ -33,18 +33,6 @@
 .areal-workbench:has(.workspace-side-panel[data-open="true"]) {
   --main-clip-end: calc(-1 * var(--page-radius));
 }
-.areal-workbench::after {
-  content: "";
-  position: absolute;
-  top: var(--shell-bar-height);
-  right: calc(var(--spacing-inline) / 2);
-  bottom: calc(var(--spacing-inline) / 2);
-  left: var(--page-frame-left);
-  border-radius: var(--page-radius);
-  box-shadow: var(--shadow-page-surface);
-  pointer-events: none;
-  z-index: 1;
-}
 .areal-workbench .work-surface {
   background: transparent;
 }

@@ -311,10 +311,10 @@
 | `default-accent` | `#3a83f7` | themes.accent 既有默认覆盖匹配值。 |
 | `file-link-default` | `#2c67c5` | palette.source.preMigration |
 | `primary-text-default-dark` | `#2d2d2d` | palette.source.preMigration |
-| `user-message-default-dark` | `#173e76` | palette.source.preMigration |
-| `user-message-default-light` | `#e8f3fe` | palette.source.preMigration |
-| `user-text-default-dark` | `#f6fafe` | palette.source.preMigration |
-| `user-text-default-light` | `#0c274a` | palette.source.preMigration |
+| `user-message-default-dark` | `#2a2a2d` | palette.source.preMigration |
+| `user-message-default-light` | `#f3f3f4` | palette.source.preMigration |
+| `user-text-default-dark` | `#f4f4f5` | palette.source.preMigration |
+| `user-text-default-light` | `#1a1c1f` | palette.source.preMigration |
 | `settings-sidebar-default-solid` | `rgb(40 40 40 / 1)` | palette.source.preMigration |
 | `settings-sidebar-default-translucent` | `rgb(40 40 40 / 0.7)` | palette.source.preMigration |
 | `settings-row-default-dark` | `rgba(255, 255, 255, 0.08)` | palette.source.preMigration |
@@ -468,8 +468,8 @@
 | `--color-composer-action-foreground` | component · 中性主动作上的可读文字。 | text-primary-inverse 保留已有组件变量名；仅引用 text-primary-inverse。中性主动作上的可读文字。 | `var(--color-primary-foreground)` | `var(--color-primary-foreground)` |
 | `--color-accent` | semantic · 弱强调背景。 | surface-accent  | `color-mix(in srgb, #1a1c1f 6%, #ffffff)` | `color-mix(in srgb, #ffffff 6%, #181818)` |
 | `--color-secondary` | semantic · 次要控件的前景透明层。 | surface-secondary  | `color-mix(in srgb, #1a1c1f 5%, transparent)` | `color-mix(in srgb, #ffffff 5%, transparent)` |
-| `--color-user-message` | component · 用户消息区分层，默认主题保留已采纳蓝色。 | surface-user-message 保留已有组件变量名；仅引用 surface-user-message。用户消息区分层，默认主题保留已采纳蓝色。 | `#e8f3fe` | `#173e76` |
-| `--color-user-message-text` | component · 用户消息正文，默认主题保留蓝底配对前景。 | text-user-message 保留已有组件变量名；仅引用 text-user-message。用户消息正文，默认主题保留蓝底配对前景。 | `#0c274a` | `#f6fafe` |
+| `--color-user-message` | component · 用户消息区分层，默认主题保留已采纳蓝色。 | surface-user-message 保留已有组件变量名；仅引用 surface-user-message。用户消息区分层，默认主题保留已采纳蓝色。 | `#f3f3f4` | `#2a2a2d` |
+| `--color-user-message-text` | component · 用户消息正文，默认主题保留蓝底配对前景。 | text-user-message 保留已有组件变量名；仅引用 text-user-message。用户消息正文，默认主题保留蓝底配对前景。 | `#1a1c1f` | `#f4f4f5` |
 | `--color-background-win-alt` | semantic · 浅色外壳与次级窗口表面。 | surface-window-alt  | `color-mix(in srgb, #1a1c1f 4%, #ffffff)` | `color-mix(in srgb, #ffffff 4%, #181818)` |
 | `--color-shell` | semantic · 标题栏和外框表面。 | surface-shell  | `color-mix(in srgb, #1a1c1f 4%, #ffffff)` | `color-mix(in srgb, #ffffff 5.194805194805195%, #181818)` |
 | `--color-navigation-background` | semantic · 导航表面。浅色透明材料保留 OKLab 混色。 | surface-navigation  | `color-mix(in oklab, #ffffff 70%, transparent)` | `color-mix(in srgb, #ffffff 2.5974025974025974%, #181818)` |

@@ -327,15 +327,17 @@ kbd {
   overflow: auto;
 }
 .conversation-pane.draft-pane {
-  padding: var(--spacing-section) var(--spacing-field) 0;
+  justify-content: center;
+  gap: var(--spacing-section);
+  padding: var(--spacing-section) var(--spacing-field) calc(var(--spacing-section) * 3);
 }
 .draft-greeting {
-  flex: 1 0 auto;
+  flex: 0 0 auto;
   min-height: fit-content;
   width: 100%;
   max-width: calc(var(--reading-width) - var(--spacing-control-lg));
   margin: 0 auto;
-  padding: var(--spacing-section) 0;
+  padding: var(--spacing-inline) 0 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -478,8 +480,17 @@ button.composer-project:hover > svg,
   display: none;
 }
 .active-composer {
+  position: relative;
   container: composer-column / inline-size;
   flex-shrink: 0;
+}
+.active-composer::before {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * var(--spacing-section)) 0 auto;
+  height: var(--spacing-section);
+  background: linear-gradient(to bottom, transparent, var(--color-background));
+  pointer-events: none;
 }
 .active-composer .composer-project-bar {
   width: calc(100% - 2 * var(--spacing-field));
