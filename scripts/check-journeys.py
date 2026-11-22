@@ -4,6 +4,7 @@ import argparse
 import fnmatch
 import importlib.util
 import json
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -59,6 +60,21 @@ def affected(paths, manifest=None):
     ]
 
 
+def validate_path_patterns(manifest, tracked_paths):
+    """确保清单与共享边界中的每条路径模式都能命中至少一个受控文件，防止重构后静默漏选。"""
+    unmatched = []
+    for kind, entries in (
+        ("journey", manifest["journeys"]),
+        ("boundary", manifest.get("boundaries", [])),
+    ):
+        for entry in entries:
+            for pattern in entry["paths"]:
+                if not any(fnmatch.fnmatchcase(path, pattern) for path in tracked_paths):
+                    unmatched.append(f"{kind}:{entry['id']}:{pattern}")
+    if unmatched:
+        raise ValueError(f"journey manifest has unmatched path patterns: {', '.join(unmatched)}")
+
+
 def validate_checks(manifest, items, journey_ids=None):
     planned = {item["id"] for item in items}
     for journey in manifest["journeys"]:
@@ -74,6 +90,8 @@ def main(argv=None):
     parser.add_argument("paths", nargs="*")
     args = parser.parse_args(argv)
     manifest = load_manifest()
+    tracked = subprocess.check_output(["git", "ls-files"], cwd=ROOT, text=True).splitlines()
+    validate_path_patterns(manifest, tracked)
     # 使用真实计划检查 ID，避免登记了测试却没有任何执行入口。
     spec = importlib.util.spec_from_file_location("journey_scope", ROOT / "scripts/ci-scope.py")
     scope = importlib.util.module_from_spec(spec)

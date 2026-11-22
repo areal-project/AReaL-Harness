@@ -31,7 +31,35 @@ triage = load("compare_journey_triage", "compare-journey-triage.py")
 class ArchitectureAndJourneys(unittest.TestCase):
     def test_repository_manifests_pass(self):
         self.assertEqual(architecture.check(ROOT), [])
-        self.assertEqual(journeys.load_manifest()["schemaVersion"], 1)
+        manifest = journeys.load_manifest()
+        self.assertEqual(manifest["schemaVersion"], 1)
+        tracked = subprocess.check_output(["git", "ls-files"], cwd=ROOT, text=True).splitlines()
+        journeys.validate_path_patterns(manifest, tracked)
+
+    def test_message_render_children_select_history_journeys_without_overmatching_siblings(self):
+        manifest = json.loads((ROOT / "clients/gui/scripts/test-manifest.json").read_text())
+        expected = {"conversation-submit", "unknown-receipt-recovery", "connection-recovery"}
+        for path in (
+            "clients/gui/renderer/src/components/ai-elements/message.tsx",
+            "clients/gui/renderer/src/components/ai-elements/message-response-renderer.tsx",
+        ):
+            with self.subTest(path=path):
+                plan = scope.build_plan([path], {"baseRevision": "base"}, manifest)
+                self.assertEqual(set(plan["affectedJourneys"]), expected)
+                items = {item["id"] for item in plan["items"]}
+                for journey in expected:
+                    self.assertTrue(set(plan["journeyChecks"][journey]) <= items)
+        # 无关兄弟组件不应误触发历史投影旅程，防止 glob 过度放宽。
+        sibling = scope.build_plan(
+            ["clients/gui/renderer/src/components/ai-elements/diagram-reader.tsx"],
+            {"baseRevision": "base"},
+            manifest,
+        )
+        self.assertEqual(sibling["affectedJourneys"], [])
+        self.assertEqual(
+            journeys.affected(["clients/gui/renderer/src/components/ui/button.tsx"]),
+            [],
+        )
 
     def test_forbidden_renderer_import_is_reported(self):
         with tempfile.TemporaryDirectory() as directory:

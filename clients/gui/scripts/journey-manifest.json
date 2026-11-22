@@ -126,7 +126,8 @@
         "runtime/supervisor/**",
         "runtime/daemon/**",
         "clients/gui/app/src/core/service-*.cjs",
-        "clients/gui/app/src/core/startup-*.cjs",
+        "clients/gui/app/src/core/host-prerequisites.cjs",
+        "clients/gui/app/src/core/space-bootstrap.cjs",
         "clients/gui/scripts/application-cleanup.mjs",
         "clients/gui/scripts/support/desktop-fixture.mjs",
         "core/host/src/gateway/stop.rs",
@@ -143,7 +144,9 @@
         "clients/gui/renderer/src/host-watched-history.ts",
         "clients/gui/renderer/src/serviceGeneration.ts",
         "clients/gui/renderer/src/Messages.tsx",
-        "clients/gui/renderer/src/components/messages/**",
+        "clients/gui/renderer/src/components/ai-elements/message.tsx",
+        "clients/gui/renderer/src/components/ai-elements/message-response-renderer.tsx",
+        "clients/gui/renderer/src/components/ai-elements/message-code-block.tsx",
         "core/host/src/conversation_read.rs",
         "core/engine/src/store/archive/own.rs"
       ]
