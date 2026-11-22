@@ -57,7 +57,8 @@
   gap: var(--spacing-inline);
   margin-top: var(--spacing-inline);
 }
-.decision-card .decision-button {
+.decision-card .decision-button,
+.decision-card-footer [data-slot="button"] {
   height: var(--spacing-control);
   padding: 0 var(--spacing-inline);
   border-radius: var(--radius-pill);
@@ -127,11 +128,13 @@
   border-radius: var(--radius-pill);
   background: var(--color-primary);
 }
-.decision-card .approval-split .decision-primary {
+.decision-card .approval-split .decision-primary,
+.decision-card .approval-split > [data-slot="button"]:first-child {
   border-radius: var(--radius-pill) 0 0 var(--radius-pill);
   padding-right: calc(var(--spacing-inline) / 2);
 }
-.decision-card .approval-split .approval-scope-trigger {
+.decision-card .approval-split .approval-scope-trigger,
+.decision-card .approval-split > [data-slot="button"]:last-child {
   width: calc(var(--spacing-inline) * 13 / 4);
   padding: 0 calc(var(--spacing-inline) * 3 / 4) 0 calc(var(--spacing-inline) / 4);
   border-radius: 0 var(--radius-pill) var(--radius-pill) 0;

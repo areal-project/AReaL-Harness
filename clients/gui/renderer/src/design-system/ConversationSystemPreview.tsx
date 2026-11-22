@@ -4,8 +4,11 @@ import {
   SubagentPanel,
   TaskContext,
   ThinkingStatus,
+  ThreadSummaryItem,
+  ThreadSummaryPanel,
+  WorkedForDivider,
 } from "@areal/ui/compositions";
-import { Disclosure } from "@areal/ui";
+import { Badge, Callout, Disclosure, Kbd } from "@areal/ui";
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { FileTextIcon, GlobeIcon, ImageIcon } from "lucide-react";
 import "@areal/ui/conversation.css";
@@ -306,19 +309,36 @@ export function ConversationSystemPreview({ dark }: { dark: boolean }) {
         <div className="cs-conversation">
           <div className="cs-transcript" role="region" aria-label="示例对话" tabIndex={0}>
             <div className="cs-reading-column">
+              <ThreadSummaryPanel
+                title="整理对话流设计系统"
+                summary="2 个变更文件 · 4 轮对话"
+                variant="compact"
+                open={false}
+                pinned
+              >
+                <ThreadSummaryItem label="本会话变更文件" meta="2" />
+              </ThreadSummaryPanel>
               <p className="cs-user-message">
                 把活动分组、图片和任务上下文整理为统一的对话流，保留按需展开与返回阅读。
               </p>
-              <p className="cs-working">
-                <span>
-                  {phase === "running"
+              <WorkedForDivider
+                label={
+                  phase === "running"
                     ? "Working for 2m 28s"
                     : phase === "completed"
                       ? "Worked for 16m 18s"
-                      : "结果待核对"}
-                </span>
-                <small>本地历史样例</small>
-              </p>
+                      : "结果待核对"
+                }
+                meta={
+                  <Badge tone="neutral" size="sm">
+                    本地历史样例
+                  </Badge>
+                }
+              />
+              <Callout tone="info" title="快捷键提示">
+                按 <Kbd variant="keycap">⌘ ⇧ S</Kbd> 固定摘要，按 <Kbd variant="keycap">⌘ F</Kbd>{" "}
+                在对话内查找。
+              </Callout>
               <p>
                 我会先读取现有规范与组件，再整理活动的展示层级。命令、图片与子任务分别保留自己的入口。
               </p>

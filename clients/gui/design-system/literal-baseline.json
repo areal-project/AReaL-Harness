@@ -1,7 +1,7 @@
 {
   "$description": "生产 UI 字面量存量上限，由 scripts/design-system-baseline.mjs --write 生成；只允许减少。",
   "total": {
-    "color": 48,
+    "color": 40,
     "radius": 3,
     "typography": 3
   },
@@ -27,9 +27,6 @@
     },
     "renderer/src/settings/SettingsWorkspace.css": {
       "color": 26
-    },
-    "renderer/src/settings/trajectory-settings.css": {
-      "color": 8
     },
     "renderer/src/settings/usage.css": {
       "radius": 2
@@ -324,62 +321,6 @@
       "occurrence": 1,
       "reason": "这是主题选择器的固定主题样本或 Diff 语法示例。示例必须展示被选主题，不能继承当前活动调色板。",
       "exitCondition": "主题预览改用统一主题样本数据时随该所有者收敛。"
-    },
-    {
-      "file": "renderer/src/settings/trajectory-settings.css",
-      "finding": "literal color: background: #ffedd5",
-      "occurrence": 1,
-      "reason": "记录开关的启用和停用分别使用完整底色、文字、描边配对。已有 success/warning 单色角色不等价。",
-      "exitCondition": "开关反馈组件定义成组的状态表面与文字角色后等价迁移。"
-    },
-    {
-      "file": "renderer/src/settings/trajectory-settings.css",
-      "finding": "literal color: color: #9a3412",
-      "occurrence": 1,
-      "reason": "记录开关的启用和停用分别使用完整底色、文字、描边配对。已有 success/warning 单色角色不等价。",
-      "exitCondition": "开关反馈组件定义成组的状态表面与文字角色后等价迁移。"
-    },
-    {
-      "file": "renderer/src/settings/trajectory-settings.css",
-      "finding": "literal color: background: #fed7aa",
-      "occurrence": 1,
-      "reason": "记录开关的启用和停用分别使用完整底色、文字、描边配对。已有 success/warning 单色角色不等价。",
-      "exitCondition": "开关反馈组件定义成组的状态表面与文字角色后等价迁移。"
-    },
-    {
-      "file": "renderer/src/settings/trajectory-settings.css",
-      "finding": "literal color: border: 1px solid #fdba74",
-      "occurrence": 1,
-      "reason": "记录开关的启用和停用分别使用完整底色、文字、描边配对。已有 success/warning 单色角色不等价。",
-      "exitCondition": "开关反馈组件定义成组的状态表面与文字角色后等价迁移。"
-    },
-    {
-      "file": "renderer/src/settings/trajectory-settings.css",
-      "finding": "literal color: background: #dcfce7",
-      "occurrence": 1,
-      "reason": "记录开关的启用和停用分别使用完整底色、文字、描边配对。已有 success/warning 单色角色不等价。",
-      "exitCondition": "开关反馈组件定义成组的状态表面与文字角色后等价迁移。"
-    },
-    {
-      "file": "renderer/src/settings/trajectory-settings.css",
-      "finding": "literal color: color: #166534",
-      "occurrence": 1,
-      "reason": "记录开关的启用和停用分别使用完整底色、文字、描边配对。已有 success/warning 单色角色不等价。",
-      "exitCondition": "开关反馈组件定义成组的状态表面与文字角色后等价迁移。"
-    },
-    {
-      "file": "renderer/src/settings/trajectory-settings.css",
-      "finding": "literal color: background: #bbf7d0",
-      "occurrence": 1,
-      "reason": "记录开关的启用和停用分别使用完整底色、文字、描边配对。已有 success/warning 单色角色不等价。",
-      "exitCondition": "开关反馈组件定义成组的状态表面与文字角色后等价迁移。"
-    },
-    {
-      "file": "renderer/src/settings/trajectory-settings.css",
-      "finding": "literal color: border-color: #86efac",
-      "occurrence": 1,
-      "reason": "记录开关的启用和停用分别使用完整底色、文字、描边配对。已有 success/warning 单色角色不等价。",
-      "exitCondition": "开关反馈组件定义成组的状态表面与文字角色后等价迁移。"
     },
     {
       "file": "renderer/src/settings/usage.css",

@@ -268,8 +268,8 @@ export function ApprovalRequest({
         unknown ? (
           <Button
             type="button"
-            className="decision-button"
             variant="outline"
+            size="sm"
             disabled={busy}
             onClick={() => void refresh()}
           >
@@ -279,8 +279,8 @@ export function ApprovalRequest({
           <>
             <Button
               type="button"
-              className="decision-button"
               variant="outline"
+              size="sm"
               aria-label={t("decision.denyShortcut", { label: t("decision.deny") })}
               disabled={locked}
               onClick={() => void respond("deny")}
@@ -292,7 +292,7 @@ export function ApprovalRequest({
               <div className="approval-split">
                 <Button
                   type="button"
-                  className="decision-button decision-primary"
+                  size="sm"
                   aria-label="允许一次"
                   disabled={locked}
                   onClick={() => void respond("allowOnce")}
@@ -307,7 +307,7 @@ export function ApprovalRequest({
                     render={
                       <Button
                         type="button"
-                        className="decision-button approval-scope-trigger"
+                        size="icon-sm"
                         aria-label="更多授权范围"
                         disabled={locked}
                       >
@@ -342,7 +342,7 @@ export function ApprovalRequest({
             ) : (
               <Button
                 type="button"
-                className="decision-button decision-primary"
+                size="sm"
                 disabled={locked}
                 onClick={() => void respond("allowOnce")}
               >

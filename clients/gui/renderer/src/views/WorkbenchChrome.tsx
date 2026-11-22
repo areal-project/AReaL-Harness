@@ -181,8 +181,8 @@ export function WorkspaceNavigation({
   return (
     <div className="workspace-navigation">
       <Button
-        unstyled
-        className="icon-button"
+        variant="ghost"
+        size="icon-sm"
         aria-label={t("common.navigation.back")}
         title={t("common.navigation.backShortcut")}
         disabled={taskCenterOpen || workspaceHistory.index <= 0}
@@ -191,8 +191,8 @@ export function WorkspaceNavigation({
         <NavigationBackIcon size={16} />
       </Button>
       <Button
-        unstyled
-        className="icon-button"
+        variant="ghost"
+        size="icon-sm"
         aria-label={t("common.navigation.forward")}
         title={t("common.navigation.forwardShortcut")}
         disabled={taskCenterOpen || workspaceHistory.index >= workspaceHistory.entries.length - 1}
@@ -201,8 +201,8 @@ export function WorkspaceNavigation({
         <NavigationForwardIcon size={16} />
       </Button>
       <Button
-        unstyled
-        className="icon-button"
+        variant="ghost"
+        size="icon-sm"
         aria-label={
           sidebar ? t("common.navigation.collapseSidebar") : t("common.navigation.expandSidebar")
         }
@@ -239,11 +239,7 @@ export function WorkspaceTaskActions({
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
-            <Button
-              unstyled
-              aria-label={t("common.navigation.taskActions")}
-              className="icon-button"
-            >
+            <Button variant="ghost" size="icon-sm" aria-label={t("common.navigation.taskActions")}>
               <MoreOptionsIcon size={16} />
             </Button>
           }

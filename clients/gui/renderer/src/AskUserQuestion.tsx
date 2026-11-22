@@ -273,8 +273,8 @@ export function AskUserQuestion({
               {unknown ? (
                 <Button
                   type="button"
-                  className="decision-button"
                   variant="outline"
+                  size="sm"
                   disabled={busy}
                   onClick={() => void refresh()}
                 >
@@ -284,8 +284,8 @@ export function AskUserQuestion({
                 <>
                   <Button
                     type="button"
-                    className="decision-button ask-user-defer"
                     variant="outline"
+                    size="sm"
                     disabled={busy || submitted}
                     onClick={() => setCollapsed(true)}
                   >
@@ -293,7 +293,7 @@ export function AskUserQuestion({
                   </Button>
                   <Button
                     type="submit"
-                    className="decision-button decision-primary"
+                    size="sm"
                     disabled={
                       locked || !answer(draft) || (index === questions.length - 1 && !complete)
                     }
