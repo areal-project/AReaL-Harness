@@ -2,9 +2,9 @@
 
 <!-- BEGIN GENERATED: base -->
 
-候选 ID：`desktop-core`；版本：`0.4.1`；状态：`candidate`。
+候选 ID：`desktop-core`；版本：`0.4.1`；状态：`frozen-beta`。
 
-来源快照：待最终验收后记录；冻结与兼容所有者：[design-system/base.md](../design-system/base.md)。
+来源快照：`88980224fd5154c495a776c2aea36213742a1c53`；冻结与兼容所有者：[design-system/base.md](../design-system/base.md)。
 
 完整准入归 [registry.json](registry.json) 的 `baseCandidate`。
 

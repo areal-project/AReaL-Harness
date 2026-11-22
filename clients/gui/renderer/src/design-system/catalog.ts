@@ -156,9 +156,9 @@ export const baseCandidate = {
     "成员状态与变体是有限准入声明，不表示每项笛卡尔组合均已运行；已完成证据以索引记录为准",
     "完整P-CONVERSATION、SidePane、原生资源宿主、列明同窗口Renderer恢复以外的恢复生命周期和完整插件安装/认证/连接生命周期未准入；P-RESOURCES仅限列明插件路径",
   ],
-  status: "candidate",
+  status: "frozen-beta",
   snapshot: {
-    revision: null,
+    revision: "88980224fd5154c495a776c2aea36213742a1c53",
     owner: "design-system/base.md",
   },
   admissions: [
