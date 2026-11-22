@@ -207,7 +207,8 @@
     "test:host-scheduled-hibernation": "node scripts/host-scheduled-hibernation-smoke.mjs",
     "test:connection-recovery": "node scripts/connection-recovery-smoke.mjs",
     "test:connection-recovery-counterexamples": "node scripts/connection-recovery-counterexample.mjs",
-    "test:connection-recovery-contracts": "node --test scripts/connection-recovery-counterexample.test.mjs"
+    "test:connection-recovery-contracts": "node --test scripts/connection-recovery-counterexample.test.mjs scripts/recovery-exploration.test.mjs scripts/connection-recovery-explore.test.mjs",
+    "test:connection-recovery-explore": "node scripts/connection-recovery-explore.mjs"
   },
   "devDependencies": {
     "@areal/remote-client": "workspace:*",

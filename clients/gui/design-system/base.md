@@ -73,6 +73,17 @@
 | PopoverSidebar | [合同](../packages/ui/src/workbench/popover-sidebar/popover-sidebar.md) | E-SETTINGS |
 | AutomationTemplateDialog | [合同](../packages/ui/src/workbench/automation-template-dialog/automation-template-dialog.md) | E-SETTINGS |
 | ShortcutCapture | [合同](../packages/ui/src/settings/shortcut-capture/shortcut-capture.md) | E-SETTINGS |
+| Attachments | [合同](../packages/ui/src/conversation/message-attachments/message-attachments.md) | E-CONVERSATION |
+| MarkdownTable | [合同](../packages/ui/src/conversation/markdown-table/markdown-table.md) | E-CONVERSATION |
+| Attachment | [合同](../packages/ui/src/conversation/message-attachments/message-attachments.md) | E-CONVERSATION |
+| AttachmentPreview | [合同](../packages/ui/src/conversation/message-attachments/message-attachments.md) | E-CONVERSATION |
+| AttachmentInfo | [合同](../packages/ui/src/conversation/message-attachments/message-attachments.md) | E-CONVERSATION |
+| AttachmentRemove | [合同](../packages/ui/src/conversation/message-attachments/message-attachments.md) | E-CONVERSATION |
+| MarkdownTableHeader | [合同](../packages/ui/src/conversation/markdown-table/markdown-table.md) | E-CONVERSATION |
+| MarkdownTableBody | [合同](../packages/ui/src/conversation/markdown-table/markdown-table.md) | E-CONVERSATION |
+| MarkdownTableRow | [合同](../packages/ui/src/conversation/markdown-table/markdown-table.md) | E-CONVERSATION |
+| MarkdownTableHead | [合同](../packages/ui/src/conversation/markdown-table/markdown-table.md) | E-CONVERSATION |
+| MarkdownTableCell | [合同](../packages/ui/src/conversation/markdown-table/markdown-table.md) | E-CONVERSATION |
 
 证据见 [Base索引](base-evidence.md)。
 

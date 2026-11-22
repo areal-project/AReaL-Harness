@@ -104,3 +104,34 @@ export { WorktreeStatus } from "./worktree/worktree-status/worktree-status.js";
 export { WorktreeDirectory } from "./worktree/worktree-directory/worktree-directory.js";
 export { WorktreeSettings } from "./worktree/worktree-settings/worktree-settings.js";
 export { WorktreeWorkspace } from "./worktree/worktree-workspace/worktree-workspace.js";
+export {
+  type AttachmentData,
+  type AttachmentMediaCategory,
+  type AttachmentVariant,
+  type AttachmentsProps,
+  Attachments,
+  type AttachmentProps,
+  Attachment,
+  type AttachmentPreviewProps,
+  AttachmentPreview,
+  type AttachmentInfoProps,
+  AttachmentInfo,
+  type AttachmentRemoveProps,
+  AttachmentRemove,
+} from "./conversation/message-attachments/message-attachments.js";
+export {
+  MarkdownTable,
+  MarkdownTableHeader,
+  MarkdownTableBody,
+  MarkdownTableRow,
+  MarkdownTableHead,
+  MarkdownTableCell,
+  type MarkdownTableRows,
+  type MarkdownTableLabels,
+  type MarkdownTableProps,
+  type MarkdownTableHeaderProps,
+  type MarkdownTableBodyProps,
+  type MarkdownTableRowProps,
+  type MarkdownTableHeadProps,
+  type MarkdownTableCellProps,
+} from "./conversation/markdown-table/markdown-table.js";

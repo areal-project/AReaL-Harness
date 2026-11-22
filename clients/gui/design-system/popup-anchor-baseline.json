@@ -1,10 +1,1 @@
-[
-  {
-    "file": "packages/ui/src/conversation/command-details/command-details.css",
-    "rule": "hover-layout",
-    "snippet": ".command-input-toggle[aria-expanded=\"false\"] .command-input { display }",
-    "fingerprint": "03f6247084f634087975cb9bbec2461c07101df7f35b865b24a5dd80051e306f",
-    "reason": "Disclosure toggle hides its own command input; no popup trigger lives inside the hidden element.",
-    "exitCondition": "Remove this exact finding when the command input disclosure moves to the shared Disclosure component."
-  }
-]
+[]

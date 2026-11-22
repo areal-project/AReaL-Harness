@@ -460,6 +460,72 @@
       "source": "packages/ui/src/settings/shortcut-capture/shortcut-capture.tsx",
       "purpose": "设置页快捷键录制控件",
       "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "Attachments",
+      "source": "packages/ui/src/conversation/message-attachments/message-attachments.tsx",
+      "purpose": "消息媒体、文件与来源附件容器",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "Attachment",
+      "source": "packages/ui/src/conversation/message-attachments/message-attachments.tsx",
+      "purpose": "单条消息附件项",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "AttachmentPreview",
+      "source": "packages/ui/src/conversation/message-attachments/message-attachments.tsx",
+      "purpose": "消息附件缩略预览",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "AttachmentInfo",
+      "source": "packages/ui/src/conversation/message-attachments/message-attachments.tsx",
+      "purpose": "消息附件元信息",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "AttachmentRemove",
+      "source": "packages/ui/src/conversation/message-attachments/message-attachments.tsx",
+      "purpose": "消息附件移除按钮",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "MarkdownTable",
+      "source": "packages/ui/src/conversation/markdown-table/markdown-table.tsx",
+      "purpose": "Markdown 表格、虚拟横向阅读与复制导出",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "MarkdownTableHeader",
+      "source": "packages/ui/src/conversation/markdown-table/markdown-table.tsx",
+      "purpose": "Markdown 表格表头容器",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "MarkdownTableBody",
+      "source": "packages/ui/src/conversation/markdown-table/markdown-table.tsx",
+      "purpose": "Markdown 表格表体容器",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "MarkdownTableRow",
+      "source": "packages/ui/src/conversation/markdown-table/markdown-table.tsx",
+      "purpose": "Markdown 表格行",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "MarkdownTableHead",
+      "source": "packages/ui/src/conversation/markdown-table/markdown-table.tsx",
+      "purpose": "Markdown 表格表头单元格",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "MarkdownTableCell",
+      "source": "packages/ui/src/conversation/markdown-table/markdown-table.tsx",
+      "purpose": "Markdown 表格数据单元格",
+      "importFrom": "@areal/ui/compositions"
     }
   ],
   "patterns": [
@@ -637,7 +703,18 @@
       "ThreadFindBar",
       "PopoverSidebar",
       "AutomationTemplateDialog",
-      "ShortcutCapture"
+      "ShortcutCapture",
+      "Attachments",
+      "MarkdownTable",
+      "Attachment",
+      "AttachmentPreview",
+      "AttachmentInfo",
+      "AttachmentRemove",
+      "MarkdownTableHeader",
+      "MarkdownTableBody",
+      "MarkdownTableRow",
+      "MarkdownTableHead",
+      "MarkdownTableCell"
     ],
     "patterns": ["P-SETTINGS", "P-DECISION", "P-RESOURCES"],
     "acceptance": [
@@ -1216,6 +1293,94 @@
         "states": ["idle", "recording", "disabled"],
         "evidence": ["E-SETTINGS"],
         "exports": ["ShortcutCapture"]
+      },
+      {
+        "id": "Attachments",
+        "contract": "packages/ui/src/conversation/message-attachments/message-attachments.md",
+        "consumers": ["renderer/src/components/ai-elements/attachments.tsx"],
+        "variants": ["grid", "inline", "list"],
+        "states": ["ready"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "MarkdownTable",
+        "contract": "packages/ui/src/conversation/markdown-table/markdown-table.md",
+        "consumers": ["renderer/src/components/ai-elements/markdown-table.tsx"],
+        "variants": ["default"],
+        "states": ["ready", "scrolling"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "Attachment",
+        "contract": "packages/ui/src/conversation/message-attachments/message-attachments.md",
+        "consumers": ["renderer/src/components/ai-elements/attachments.tsx"],
+        "variants": ["grid", "inline", "list"],
+        "states": ["ready"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "AttachmentPreview",
+        "contract": "packages/ui/src/conversation/message-attachments/message-attachments.md",
+        "consumers": ["renderer/src/components/ai-elements/attachments.tsx"],
+        "variants": ["grid", "inline", "list"],
+        "states": ["ready"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "AttachmentInfo",
+        "contract": "packages/ui/src/conversation/message-attachments/message-attachments.md",
+        "consumers": ["renderer/src/components/ai-elements/attachments.tsx"],
+        "variants": ["grid", "inline", "list"],
+        "states": ["ready"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "AttachmentRemove",
+        "contract": "packages/ui/src/conversation/message-attachments/message-attachments.md",
+        "consumers": ["renderer/src/components/ai-elements/attachments.tsx"],
+        "variants": ["grid", "inline", "list"],
+        "states": ["ready"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "MarkdownTableHeader",
+        "contract": "packages/ui/src/conversation/markdown-table/markdown-table.md",
+        "consumers": ["renderer/src/components/ai-elements/markdown-table.tsx"],
+        "variants": ["default"],
+        "states": ["ready"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "MarkdownTableBody",
+        "contract": "packages/ui/src/conversation/markdown-table/markdown-table.md",
+        "consumers": ["renderer/src/components/ai-elements/markdown-table.tsx"],
+        "variants": ["default"],
+        "states": ["ready"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "MarkdownTableRow",
+        "contract": "packages/ui/src/conversation/markdown-table/markdown-table.md",
+        "consumers": ["renderer/src/components/ai-elements/markdown-table.tsx"],
+        "variants": ["default"],
+        "states": ["ready"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "MarkdownTableHead",
+        "contract": "packages/ui/src/conversation/markdown-table/markdown-table.md",
+        "consumers": ["renderer/src/components/ai-elements/markdown-table.tsx"],
+        "variants": ["default"],
+        "states": ["ready"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "MarkdownTableCell",
+        "contract": "packages/ui/src/conversation/markdown-table/markdown-table.md",
+        "consumers": ["renderer/src/components/ai-elements/markdown-table.tsx"],
+        "variants": ["default"],
+        "states": ["ready"],
+        "evidence": ["E-CONVERSATION"]
       }
     ],
     "evidence": [

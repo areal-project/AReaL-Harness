@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { ExtraProps } from "streamdown";
-import { MarkdownTable as View, type MarkdownTableProps } from "@areal/ui/experimental";
+import { MarkdownTable as View, type MarkdownTableProps } from "@areal/ui/compositions";
 import { useZCodeIntl } from "../../i18n/IntlProvider.js";
 import { toast } from "../ui/toast.js";
 export {
@@ -11,12 +11,14 @@ export {
   resolveMarkdownTableFrameDistances,
   resolveMarkdownTableVirtualScrollbarMetrics,
   resolveMarkdownTableVirtualScrollMax,
+} from "@areal/ui/conversation-utils";
+export {
   MarkdownTableHeader,
   MarkdownTableBody,
   MarkdownTableRow,
   MarkdownTableHead,
   MarkdownTableCell,
-} from "@areal/ui/experimental";
+} from "@areal/ui/compositions";
 export type {
   MarkdownTableRows,
   MarkdownTableLabels,
@@ -26,7 +28,7 @@ export type {
   MarkdownTableRowProps,
   MarkdownTableHeadProps,
   MarkdownTableCellProps,
-} from "@areal/ui/experimental";
+} from "@areal/ui/compositions";
 export function MarkdownTable({ node, ...props }: MarkdownTableProps) {
   const { intl } = useZCodeIntl();
   const labels = useMemo(

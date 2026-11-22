@@ -169,6 +169,24 @@ pnpm --dir clients/gui test:connection-recovery-counterexamples
 
 反证入口冻结 HEAD 与本次试点改动，在隔离 worktree 顺序运行正确实现、恢复旧加载投影、恢复旧休眠 guard。每轮构建 Renderer、核对产物身份并运行同一个真实旅程；错误实现必须在对应业务事实处失败且清理成功，构建/启动失败不计检出。报告保留补丁摘要、原始报告、截图和首个失败。固定三个样本用于衡量两项已知缺陷的检出、正确实现误报和证据完整性；这些指标不等于发现全部未知缺陷或减少人工时间。人工分钟数缺少配对实测时保持未知，先根据报告直接可判定的事实和仍需介入的问题决定是否扩大试点。
 
+
+### 有界恢复探索与回放
+
+`test:connection-recovery-explore` 复用同一个真实恢复 runner，在隔离空项目上生成 `edit`、`reconnect`、`idle-reconnect`、`submit`、`unknown-submit`、终止 `stop-reconnect` 的有限序列。默认 3 个 seed、每个 6 步；每次最多 6 个案例、每个最多 12 步。UNKNOWN 必须已有 Thread，显式停止只能位于末尾；回放文件只接受固定 schema 和合成文本，不接受代码、工作区或服务路径。
+
+```sh
+pnpm --dir clients/gui test:connection-recovery-explore --seed 1 --cases 3 --steps 6
+pnpm --dir clients/gui test:connection-recovery-explore --replay /absolute/path/plan.json
+pnpm --dir clients/gui test:connection-recovery-explore --replay /absolute/path/plan.json --shrink --shrink-attempts 6
+pnpm --dir clients/gui test:connection-recovery-counterexamples --explore
+```
+
+每轮建立新 fixture，保存 `plan.json`、`report.json`、导入并计算摘要的 `evidence.json`、逐步前后状态/截图和 `exploration-events.json`。回放重建相同用户动作及受控断连顺序，重新核对新实例的请求和代际；不宣称重放所有操作系统调度。已有输出目录拒绝覆盖。运行前后源码身份必须一致。
+
+缩减只接受同一个业务断言和动作、且清理成功的失败；原失败和每次尝试全部保留，环境/验证器/清理故障停止缩减。`minimal` 只表示当前合法单步删除无法再保留目标失败，不表示全局最短。`--explore` 反例验收在冻结树中分别验证正确实现与旧休眠 guard，并确认缩减产物对应实际执行过的同目标失败。
+
+该入口是可选验收，没有改变 CI 必需检查。它扩展到恢复后的普通提交、UNKNOWN 原回执与显式停止组合，范围仍是源码 Web/socket；不证明 Host 进程换代、真实十五分钟定时、正式安装包或移动真机。用户功能与证据对应见[恢复样板功能地图](../design/recovery-verification-map.md)。
+
 ## 本地验证产物与启动诊断
 
 `make build` / `make release` 在 Cargo 成功后写入 `target/<profile>/verification-build.json`，绑定现有 Core `inputHash`、构建提交和整套 Core/Runtime 的 SHA-256。GUI 构建沿用 bundle 分析插件，在 `renderer/dist/verification-build.json` 中记录 GUI 输入摘要与输出文件哈希；构建期间源码改变则失败。

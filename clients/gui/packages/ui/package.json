@@ -79,6 +79,10 @@
       "types": "./dist/compositions.d.ts",
       "default": "./dist/compositions.js"
     },
+    "./conversation-utils": {
+      "types": "./dist/lib/conversation-utils.d.ts",
+      "default": "./dist/lib/conversation-utils.js"
+    },
     "./experimental": {
       "types": "./dist/experimental.d.ts",
       "default": "./dist/experimental.js"

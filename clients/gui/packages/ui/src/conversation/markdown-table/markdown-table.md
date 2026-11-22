@@ -2,13 +2,13 @@
 id: markdown-table
 title: MarkdownTable
 summary: Markdown表格、虚拟横向阅读及复制导出。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: conversation
 category: composition
 aliases: ["Markdown表格、虚拟横向阅读及复制导出"]
 related: ["button"]
-exports: ["buildMarkdownTableText", "buildCsvTableText", "resolveMarkdownTableStickyScrollbarMode", "resolveMarkdownTableStickyScrollbarOffset", "resolveMarkdownTableFrameDistances", "resolveMarkdownTableVirtualScrollbarMetrics", "resolveMarkdownTableVirtualScrollMax", "MarkdownTable", "MarkdownTableHeader", "MarkdownTableBody", "MarkdownTableRow", "MarkdownTableHead", "MarkdownTableCell"]
+exports: ["MarkdownTable", "MarkdownTableHeader", "MarkdownTableBody", "MarkdownTableRow", "MarkdownTableHead", "MarkdownTableCell"]
 ---
 
 # MarkdownTable Markdown表格、虚拟横向阅读及复制导出

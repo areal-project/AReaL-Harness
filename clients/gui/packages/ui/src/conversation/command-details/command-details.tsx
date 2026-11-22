@@ -32,7 +32,10 @@ function CommandText({
           aria-expanded={expanded}
           onClick={() => setExpanded(!expanded)}
         >
-          <pre className="command-input" aria-label={labels?.commandRegion ?? "执行命令"}>
+          <pre
+            className={expanded ? "command-input" : "command-input command-input-clamped"}
+            aria-label={labels?.commandRegion ?? "执行命令"}
+          >
             $ {text}
           </pre>
         </button>

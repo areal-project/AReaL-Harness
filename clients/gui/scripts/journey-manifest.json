@@ -75,7 +75,9 @@
         "clients/gui/renderer/src/views/StartupScreen.tsx",
         "clients/gui/scripts/connection-recovery-smoke.mjs",
         "clients/gui/scripts/connection-recovery-counterexample.mjs",
-        "clients/gui/scripts/journey-manifest.json"
+        "clients/gui/scripts/journey-manifest.json",
+        "clients/gui/scripts/connection-recovery-explore.mjs",
+        "clients/gui/scripts/support/recovery-exploration.mjs"
       ],
       "authorities": ["host", "core"],
       "terminalFacts": [

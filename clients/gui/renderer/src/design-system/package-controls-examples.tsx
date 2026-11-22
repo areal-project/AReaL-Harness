@@ -55,7 +55,7 @@ import {
   MarkdownTableHead,
   MarkdownTableHeader,
   MarkdownTableRow,
-} from "@areal/ui/experimental";
+} from "@areal/ui/compositions";
 import {
   AttachmentCard,
   CatalogEmpty,

@@ -19,6 +19,8 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
+import { validatePlan } from "./support/recovery-exploration.mjs";
 
 const repo = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const runner = "clients/gui/scripts/connection-recovery-smoke.mjs";
@@ -37,6 +39,10 @@ export const snapshotPaths = [
   runner,
   "clients/gui/scripts/connection-recovery-counterexample.mjs",
   "clients/gui/scripts/connection-recovery-counterexample.test.mjs",
+  "clients/gui/scripts/support/recovery-exploration.mjs",
+  "clients/gui/scripts/recovery-exploration.test.mjs",
+  "clients/gui/scripts/connection-recovery-explore.mjs",
+  "clients/gui/scripts/connection-recovery-explore.test.mjs",
 ];
 export const mutations = [
   {
@@ -169,6 +175,82 @@ export function summarizeAttempts(attempts) {
   };
 }
 
+const explorationProbe = {
+  schemaVersion: 1,
+  seed: 21,
+  actions: [
+    { op: "edit", text: "recovery-draft-probe" },
+    { op: "reconnect" },
+    { op: "idle-reconnect" },
+    { op: "submit" },
+    { op: "unknown-submit" },
+    { op: "stop-reconnect" },
+  ],
+};
+
+const isExplorationTarget = (failure) =>
+  failure?.kind === "business" &&
+  failure.assertionId === "exploration-recovery-progress" &&
+  failure.action === "idle-reconnect";
+
+export function judgeExplorationAttempt(summary, exitCode, mutation, records, reducedPlan) {
+  assert.equal(summary.plannedCases, 1, "The counterexample runs one exact replay plan");
+  assert.equal(summary.unexecutedCases, 0, "The original replay case must execute");
+  assert(Array.isArray(summary.attempts) && summary.attempts.length > 0, "Replay evidence missing");
+  assert.equal(records.length, summary.attempts.length, "Every replay needs its actual evidence");
+  assert.equal(summary.attempts[0].label, "case-0");
+  assert.deepEqual(validatePlan(records[0].plan), explorationProbe, "Original probe differs");
+  for (const [index, attempt] of summary.attempts.entries()) {
+    const { plan, evidence } = records[index];
+    validatePlan(plan);
+    assert.equal(attempt.cleanup?.status, "passed", "Every exploration attempt must clean up");
+    assert.equal(evidence.cleanup?.status, "passed", "Actual cleanup evidence must agree");
+    assert.equal(attempt.status, evidence.status, "Summary must agree with actual evidence");
+    assert.deepEqual(attempt.firstFailure, evidence.firstFailure);
+    assert(["passed", "failed"].includes(attempt.status), "Blocked replay cannot prove detection");
+    if (index > 0) assert.equal(attempt.label, "shrink");
+    if (attempt.status === "passed") {
+      assert.equal(attempt.exitCode, 0);
+      assert.equal(attempt.firstFailure, null);
+    } else {
+      assert(Number.isInteger(attempt.exitCode) && attempt.exitCode !== 0);
+      assert.equal(attempt.firstFailure?.kind, "business", "Verifier failure is not detection");
+      assert(attempt.firstFailure.assertionId, "Business failures need a named assertion");
+    }
+  }
+  if (!mutation) {
+    assert.equal(exitCode, 0, "Baseline exploration must exit successfully");
+    assert.equal(summary.status, "passed");
+    assert.equal(summary.firstFailure ?? null, null);
+    assert.equal(summary.attempts.length, 1);
+    assert.equal(summary.attempts[0].status, "passed");
+    return;
+  }
+  assert.equal(mutation.id, "stale-hibernation-owner");
+  assert(Number.isInteger(exitCode) && exitCode !== 0, "Mutant exploration must fail");
+  assert.equal(summary.status, "failed");
+  assert(isExplorationTarget(summary.firstFailure), "Original target business failure required");
+  assert(isExplorationTarget(records[0].evidence.firstFailure));
+  assert.equal(summary.reduction?.attempts, records.length - 1, "Reduction count must be exact");
+  assert(summary.reduction.attempts > 0, "At least one shrinking attempt must execute");
+  assert.equal(typeof summary.reduction.minimal, "boolean");
+  assert(
+    ["single-deletion-minimal", "budget-exhausted"].includes(summary.reduction.stoppedReason),
+    "Inconclusive reduction cannot prove the loop",
+  );
+  const reduced = validatePlan(reducedPlan);
+  assert(
+    records.some(({ plan, evidence }) => {
+      return (
+        JSON.stringify(plan) === JSON.stringify(reduced) &&
+        evidence.status === "failed" &&
+        isExplorationTarget(evidence.firstFailure)
+      );
+    }),
+    "The reduced plan must have actually reproduced the same business failure",
+  );
+}
+
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const json = async (path, value) => writeFile(path, JSON.stringify(value, null, 2) + "\n");
 const inside = (root, path) => {
@@ -274,7 +356,13 @@ elif mode == "import":
     print(json.dumps(detail))
 `;
 
-export async function runCounterexamples({ source = repo, output, binaryDirectory } = {}) {
+export async function runCounterexamples({
+  source = repo,
+  output,
+  binaryDirectory,
+  exploration = false,
+} = {}) {
+  assert.equal(typeof exploration, "boolean");
   source = await realpath(source);
   output = output
     ? resolve(output)
@@ -289,6 +377,7 @@ export async function runCounterexamples({ source = repo, output, binaryDirector
     source,
     worktree: tree,
     snapshotPaths,
+    exploration,
     attempts: [null, ...mutations].map((mutation) => ({
       id: mutation?.id ?? "baseline",
       status: "pending",
@@ -496,6 +585,66 @@ export async function runCounterexamples({ source = repo, output, binaryDirector
         : undefined;
       attempt.fault = mutation ? detail.faults?.[mutation.fact] : null;
       judgeAttempt(detail, execution.code, mutation, trigger);
+      if (exploration && (!mutation || mutation.id === "stale-hibernation-owner")) {
+        const explorationDirectory = join(directory, "exploration");
+        const replayPath = join(directory, "exploration-plan.json");
+        await json(replayPath, validatePlan(explorationProbe));
+        safeToRemove = false;
+        const explored = await command(
+          process.execPath,
+          [
+            "clients/gui/scripts/connection-recovery-explore.mjs",
+            "--replay",
+            replayPath,
+            "--output",
+            explorationDirectory,
+            ...(mutation ? ["--shrink", "--shrink-attempts", "6"] : []),
+          ],
+          {
+            cwd: tree,
+            log: join(directory, "exploration.log"),
+            allowFailure: true,
+            env: { ...process.env, AREAL_CORE_BIN: join(tree, "target/debug/areal") },
+          },
+        );
+        const summary = JSON.parse(
+          await readFile(join(explorationDirectory, "result.json"), "utf8"),
+        );
+        attempt.exploration = {
+          directory: explorationDirectory,
+          exitCode: explored.code,
+          status: summary.status,
+          firstFailure: summary.firstFailure ?? null,
+          reduction: summary.reduction ?? null,
+        };
+        const records = [];
+        const explorationRoot = await realpath(explorationDirectory);
+        const seenDirectories = new Set();
+        for (const replay of summary.attempts) {
+          const actual = await realpath(replay.directory);
+          assert(
+            actual !== explorationRoot && inside(explorationRoot, actual),
+            "Replay evidence must stay in this attempt",
+          );
+          assert(
+            !seenDirectories.has(actual),
+            "Each replay requires a distinct evidence directory",
+          );
+          seenDirectories.add(actual);
+          const load = async (name) => {
+            const path = join(actual, name);
+            assert((await lstat(path)).isFile(), "Replay evidence must be a regular file");
+            return JSON.parse(await readFile(path, "utf8"));
+          };
+          records.push({ plan: await load("plan.json"), evidence: await load("evidence.json") });
+        }
+        const reducedPlan = mutation
+          ? JSON.parse(await readFile(join(explorationDirectory, "reduced-plan.json"), "utf8"))
+          : undefined;
+        judgeExplorationAttempt(summary, explored.code, mutation, records, reducedPlan);
+        safeToRemove = true;
+        attempt.exploration.evidenceValidated = true;
+      }
       attempt.status = "passed";
     }
     result.status = "passed";
@@ -532,12 +681,10 @@ export async function runCounterexamples({ source = repo, output, binaryDirector
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const args = process.argv.slice(2);
-  assert(
-    args.length === 0 || (args.length === 2 && args[0] === "--output"),
-    "usage: node connection-recovery-counterexample.mjs [--output NEW_DIRECTORY]",
-  );
-  const result = await runCounterexamples({ output: args[1] });
+  const { values } = parseArgs({
+    options: { output: { type: "string" }, explore: { type: "boolean", default: false } },
+  });
+  const result = await runCounterexamples({ output: values.output, exploration: values.explore });
   console.log(
     JSON.stringify({
       status: result.status,

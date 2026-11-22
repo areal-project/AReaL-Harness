@@ -50,7 +50,7 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.command-input-toggle[aria-expanded="false"] .command-input {
+.command-card .command-input-clamped {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;

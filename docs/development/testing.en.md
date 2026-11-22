@@ -684,3 +684,21 @@ unset AREAL_LIVE_API_KEY
 The `read` syntax above is for zsh. The script passes only the environment variable name via `--api-key-env`; real requests incur charges. Set `AREAL_LIVE_BIN_DIR` to a fixed built binary directory, or use the default `target/debug`. Ensure the binaries match the source under test.
 
 Each run prints a private 0700 temporary directory. `<run-dir>/evidence/result.json` records revision, configuration digest, reached stages, identities, usage and cleanup; failures exit nonzero and unreached stages do not pass. `state/` contains authentication tokens and model history: treat the entire directory as private, and review the summary before sharing it. Raw server logs are not saved. Delete the exact printed directory manually when finished. Do not run against production data or put credentials in shell history, command arguments or evidence.
+
+
+### Bounded recovery exploration and replay
+
+`test:connection-recovery-explore` reuses the real recovery runner in an isolated empty project. It generates finite sequences of `edit`, `reconnect`, `idle-reconnect`, `submit`, `unknown-submit`, and terminal `stop-reconnect`. Defaults are three seeds with six actions each; limits are six cases and twelve actions per case. UNKNOWN requires an existing Thread and explicit stop must be last. Replay accepts a fixed data schema and synthetic text, never executable code, workspace paths or service paths.
+
+```sh
+pnpm --dir clients/gui test:connection-recovery-explore --seed 1 --cases 3 --steps 6
+pnpm --dir clients/gui test:connection-recovery-explore --replay /absolute/path/plan.json
+pnpm --dir clients/gui test:connection-recovery-explore --replay /absolute/path/plan.json --shrink --shrink-attempts 6
+pnpm --dir clients/gui test:connection-recovery-counterexamples --explore
+```
+
+Each attempt creates a fresh fixture and retains `plan.json`, `report.json`, imported/hashed `evidence.json`, per-step before/after observations and screenshots, and `exploration-events.json`. Replay reconstructs the same user actions and controlled disconnection order, checking fresh request and generation identities. It does not reproduce every operating-system schedule. Existing output directories cannot be overwritten. Source identity must remain unchanged during execution.
+
+Reduction accepts only the same business assertion and action with successful cleanup. The original failure and every attempt remain available. Environment, verifier or cleanup failures stop reduction. `minimal` means no legal single deletion preserves the target failure, not global minimality. Counterexamples with `--explore` run correct code and the old hibernation guard in a frozen tree and require the reduced plan to match an actual execution of the same failure.
+
+This is elective acceptance and changes no required CI checks. It extends recovery into ordinary submissions, original UNKNOWN receipts and explicit-stop combinations. Scope remains source Web/socket behavior, excluding Host process replacement, the actual fifteen-minute timer, installed packages and physical mobile devices. See the [recovery feature map](../design/recovery-verification-map.en.md).

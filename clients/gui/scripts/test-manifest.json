@@ -1201,5 +1201,22 @@
     "areas": ["testing", "recovery"],
     "requires": [],
     "notes": "Mutation applicability and report verdict classification; no product acceptance claim."
+  },
+  {
+    "script": "test:connection-recovery-explore",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "areas": ["testing", "lifecycle", "conversation"],
+    "requires": [
+      "electron",
+      "playwright-chromium",
+      "core-binary",
+      "native-runtime",
+      "gui-build",
+      "git",
+      "python3"
+    ],
+    "platformReason": "Uses the same macOS source Electron owner as the recovery pilot.",
+    "notes": "Bounded source Web recovery sequences with real Host/Core, data-only replay, exact business-failure shrinking and independent evidence; elective, no package or real idle timer claim."
   }
 ]

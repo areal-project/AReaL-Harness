@@ -35,7 +35,10 @@ vi.hoisted(() => {
 function grips(node: ReactNode): ComponentProps<"button">[] {
   if (Array.isArray(node)) return node.flatMap(grips);
   if (!isValidElement<ComponentProps<"button">>(node)) return [];
-  return node.props.className === "composer-queue-grip" ? [node.props] : grips(node.props.children);
+  return typeof node.props["aria-label"] === "string" &&
+    node.props["aria-label"].startsWith("调整顺序 ")
+    ? [node.props]
+    : grips(node.props.children);
 }
 function queue(revision: number, ids: string[]) {
   return {

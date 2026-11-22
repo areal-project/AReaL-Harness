@@ -14,6 +14,7 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   judgeAttempt,
+  judgeExplorationAttempt,
   copyDependencies,
   mutate,
   mutations,
@@ -220,4 +221,155 @@ test("snapshot allowlist excludes concurrent production UI edits", () => {
   assert(snapshotPaths.includes("clients/gui/scripts/connection-recovery-smoke.mjs"));
   assert(!snapshotPaths.some((path) => path.startsWith("clients/gui/renderer/")));
   assert.equal(new Set(snapshotPaths).size, snapshotPaths.length);
+});
+
+const explorationFailure = {
+  kind: "business",
+  assertionId: "exploration-recovery-progress",
+  action: "idle-reconnect",
+};
+const explorationPlan = {
+  schemaVersion: 1,
+  seed: 21,
+  actions: [
+    { op: "edit", text: "recovery-draft-probe" },
+    { op: "reconnect" },
+    { op: "idle-reconnect" },
+    { op: "submit" },
+    { op: "unknown-submit" },
+    { op: "stop-reconnect" },
+  ],
+};
+const reducedExplorationPlan = {
+  ...explorationPlan,
+  actions: [{ op: "idle-reconnect" }, { op: "submit" }],
+};
+function explorationCase(mutant = false) {
+  const detail = (status, firstFailure) => ({
+    status,
+    firstFailure,
+    cleanup: { status: "passed" },
+  });
+  const original = detail(mutant ? "failed" : "passed", mutant ? explorationFailure : null);
+  const records = [{ plan: explorationPlan, evidence: original }];
+  if (mutant)
+    records.push({ plan: reducedExplorationPlan, evidence: detail("failed", explorationFailure) });
+  return {
+    summary: {
+      status: original.status,
+      firstFailure: original.firstFailure,
+      plannedCases: 1,
+      unexecutedCases: 0,
+      attempts: records.map(({ evidence }, index) => ({
+        ...evidence,
+        label: index ? "shrink" : "case-0",
+        exitCode: evidence.status === "passed" ? 0 : 1,
+      })),
+      ...(mutant
+        ? { reduction: { attempts: 1, minimal: false, stoppedReason: "budget-exhausted" } }
+        : {}),
+    },
+    records,
+  };
+}
+
+test("exploration baseline and targeted replay require settled real attempts", () => {
+  const baseline = explorationCase();
+  assert.doesNotThrow(() => judgeExplorationAttempt(baseline.summary, 0, null, baseline.records));
+  assert.throws(() => judgeExplorationAttempt(baseline.summary, 1, null, baseline.records));
+  assert.throws(() => judgeExplorationAttempt({ ...baseline.summary, attempts: [] }, 0, null, []));
+  const mutant = explorationCase(true);
+  assert.doesNotThrow(() =>
+    judgeExplorationAttempt(
+      mutant.summary,
+      1,
+      mutations[1],
+      mutant.records,
+      reducedExplorationPlan,
+    ),
+  );
+  assert.throws(() =>
+    judgeExplorationAttempt(
+      mutant.summary,
+      0,
+      mutations[1],
+      mutant.records,
+      reducedExplorationPlan,
+    ),
+  );
+});
+
+test("exploration cannot accept blocked, unrelated or uncleared failure as a counterexample", () => {
+  for (const change of [
+    (value) => {
+      value.summary.firstFailure.kind = "infrastructure";
+    },
+    (value) => {
+      value.summary.firstFailure.assertionId = "other-oracle";
+    },
+    (value) => {
+      value.summary.firstFailure.action = "reconnect";
+    },
+    (value) => {
+      value.summary.attempts[1].cleanup.status = "failed";
+    },
+    (value) => {
+      value.summary.attempts[1].status = "blocked";
+    },
+    (value) => {
+      value.records[1].evidence.firstFailure.kind = "verifier";
+    },
+    (value) => {
+      value.summary.reduction.attempts = 0;
+    },
+    (value) => {
+      value.summary.reduction.stoppedReason = "inconclusive-attempt";
+    },
+    (value) => {
+      value.summary.unexecutedCases = 1;
+    },
+    (value) => {
+      value.records[0].plan.actions = [{ op: "submit" }];
+    },
+  ]) {
+    const value = structuredClone(explorationCase(true));
+    change(value);
+    assert.throws(() =>
+      judgeExplorationAttempt(
+        value.summary,
+        1,
+        mutations[1],
+        value.records,
+        reducedExplorationPlan,
+      ),
+    );
+  }
+});
+
+test("reduced replay must be legal and have actually reproduced the same failure", () => {
+  const value = explorationCase(true);
+  assert.throws(() =>
+    judgeExplorationAttempt(value.summary, 1, mutations[1], value.records, {
+      ...reducedExplorationPlan,
+      actions: [{ op: "submit" }],
+    }),
+  );
+  assert.throws(() =>
+    judgeExplorationAttempt(value.summary, 1, mutations[1], value.records, {
+      ...reducedExplorationPlan,
+      actions: [{ op: "unknown-submit" }, { op: "submit" }],
+    }),
+  );
+  const passed = structuredClone(value);
+  Object.assign(passed.summary.attempts[1], { status: "passed", firstFailure: null, exitCode: 0 });
+  Object.assign(passed.records[1].evidence, { status: "passed", firstFailure: null });
+  assert.throws(() =>
+    judgeExplorationAttempt(
+      passed.summary,
+      1,
+      mutations[1],
+      passed.records,
+      reducedExplorationPlan,
+    ),
+  );
 });

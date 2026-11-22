@@ -76,6 +76,17 @@
 | [PopoverSidebar](../packages/ui/src/workbench/popover-sidebar/popover-sidebar.tsx) |
 | [AutomationTemplateDialog](../packages/ui/src/workbench/automation-template-dialog/automation-template-dialog.tsx) |
 | [ShortcutCapture](../packages/ui/src/settings/shortcut-capture/shortcut-capture.tsx) |
+| [Attachments](../packages/ui/src/conversation/message-attachments/message-attachments.tsx) |
+| [Attachment](../packages/ui/src/conversation/message-attachments/message-attachments.tsx) |
+| [AttachmentPreview](../packages/ui/src/conversation/message-attachments/message-attachments.tsx) |
+| [AttachmentInfo](../packages/ui/src/conversation/message-attachments/message-attachments.tsx) |
+| [AttachmentRemove](../packages/ui/src/conversation/message-attachments/message-attachments.tsx) |
+| [MarkdownTable](../packages/ui/src/conversation/markdown-table/markdown-table.tsx) |
+| [MarkdownTableHeader](../packages/ui/src/conversation/markdown-table/markdown-table.tsx) |
+| [MarkdownTableBody](../packages/ui/src/conversation/markdown-table/markdown-table.tsx) |
+| [MarkdownTableRow](../packages/ui/src/conversation/markdown-table/markdown-table.tsx) |
+| [MarkdownTableHead](../packages/ui/src/conversation/markdown-table/markdown-table.tsx) |
+| [MarkdownTableCell](../packages/ui/src/conversation/markdown-table/markdown-table.tsx) |
 
 <!-- END GENERATED: components -->
 
