@@ -19,6 +19,7 @@ export function NewTaskButtonGroup({
         render={
           <Button
             variant="ghost"
+            align="start"
             className="w-full"
             type="button"
             aria-label={label}

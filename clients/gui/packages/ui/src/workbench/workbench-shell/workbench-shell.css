@@ -79,7 +79,7 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
-  background: var(--color-navigation-background);
+  background: transparent;
   clip-path: inset(0 calc(-1 * var(--page-radius)) 0 0 round var(--page-radius));
 }
 .sidebar-with-rail {
@@ -118,9 +118,6 @@
   padding: 0 calc(var(--spacing-inline) * 3 / 2) 0
     max(calc(var(--spacing-inline) * 3 / 2), var(--window-inset));
   -webkit-app-region: drag;
-}
-.sidebar-chrome {
-  border-right: var(--border-width-default) solid var(--color-border-hairline);
 }
 .sidebar-chrome button {
   -webkit-app-region: no-drag;

@@ -227,7 +227,7 @@
   --color-surface-fog: color-mix(in oklab, var(--color-foreground) 5%, transparent);
   --color-border-hairline: color-mix(in oklab, var(--color-foreground) 11%, transparent);
   --shadow-popover-overlay: 0 0 0 0.5px var(--color-border-hairline), 0 12px 32px -4px rgb(0 0 0 / 42%);
-  --color-surface-under: #131313;
+  --color-surface-under: #1f1f22;
   --color-surface-card: #212121;
   --color-surface-composer: #282828;
   --color-surface-popover: #303030;

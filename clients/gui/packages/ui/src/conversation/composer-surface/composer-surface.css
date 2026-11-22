@@ -73,7 +73,6 @@
 }
 .composer-surface[data-layout="default"] .composer-toolbar {
   padding-top: calc(var(--spacing-inline) / 2);
-  border-top: var(--border-width-default) solid var(--color-border-hairline);
 }
 .composer-toolbar {
   container: composer-footer / inline-size;

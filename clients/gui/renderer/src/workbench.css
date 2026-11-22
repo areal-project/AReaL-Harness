@@ -203,7 +203,6 @@ kbd {
 [data-sidebar-pinned] {
   padding-bottom: calc(var(--spacing-inline) * 3 / 4);
   margin-bottom: calc(var(--spacing-inline) * 3 / 4);
-  border-bottom: var(--border-width-default) solid var(--color-border-subtle, var(--color-border));
 }
 .project-row:hover,
 .project-row:has([data-popup-open]),

@@ -172,7 +172,7 @@
 | `--color-syntax-error` | `#f44747` | 代码语法配色（AReaL Light / AReaL Dark 代码主题）：语法错误与非法记号；明暗相同 |
 | `--color-surface-fog` | `color-mix(in oklab, var(--color-foreground) 3%, transparent)（暗色 color-mix(in oklab, var(--color-foreground) 5%, transparent)）` | 极轻雾化表面层，用于分段控件底轨、摘要条与柔和分组底色 |
 | `--color-border-hairline` | `color-mix(in oklab, var(--color-foreground) 8%, transparent)（暗色 color-mix(in oklab, var(--color-foreground) 11%, transparent)）` | 精细 oklab 语义描边色，用于浮层与内嵌表面边界 |
-| `--color-surface-under` | `#f9f9f9（暗色 #131313）` | 最底层外壳与停靠侧栏基底（Codex 灰阶 50：亮色 #f9f9f9 / 暗色 #131313） |
+| `--color-surface-under` | `#f9f9f9（暗色 #1f1f22）` | 最底层外壳与停靠侧栏基底（亮色 #f9f9f9 / 暗色 #1f1f22，对齐 Codex 一体化柔和深炭灰侧栏） |
 | `--color-surface-card` | `#ffffff（暗色 #212121）` | 抬升卡片表面（Codex 灰阶 200：亮色 #ffffff / 暗色 #212121），用于设置组、审批卡、Ask User 与置顶摘要卡 |
 | `--color-surface-composer` | `#ffffff（暗色 #282828）` | 输入区主表面（Codex 灰阶 250：亮色 #ffffff / 暗色 #282828），高于主阅读画布一层 |
 | `--color-surface-popover` | `#ffffff（暗色 #303030）` | 浮层、折叠侧栏弹层与灵动摘要条表面（Codex 灰阶 300：亮色 #ffffff / 暗色 #303030） |

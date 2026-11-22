@@ -9,7 +9,7 @@ import { TitleTooltip } from "../tooltip/tooltip.js";
 // scrollbar-color/尺寸等非合成动画，放大主线程 style/layout 压力；只过渡颜色和合成层的 scale。
 // 按下缩放给出即时反馈；菜单触发器跳过，避免与弹出的菜单同时变形。
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-button border border-transparent bg-clip-padding text-ui-caption/(--line-height-relaxed) whitespace-nowrap ui-control transition-[color,background-color,border-color,box-shadow,scale] [&:active:not([aria-haspopup])]:scale-[0.97] outline-none focus-visible:ring-2 focus-visible:ring-ring/40 select-none disabled:pointer-events-none disabled:opacity-(--opacity-disabled) aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center rounded-button border border-transparent bg-clip-padding text-ui-caption/(--line-height-relaxed) whitespace-nowrap ui-control transition-[color,background-color,border-color,box-shadow,scale] [&:active:not([aria-haspopup])]:scale-[0.97] outline-none focus-visible:ring-2 focus-visible:ring-ring/40 select-none disabled:pointer-events-none disabled:opacity-(--opacity-disabled) aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
@@ -43,11 +43,16 @@ const buttonVariants = cva(
         default: "",
         pill: "rounded-pill",
       },
+      align: {
+        center: "justify-center",
+        start: "justify-start",
+      },
     },
     defaultVariants: {
       variant: "default",
       size: "default",
       shape: "default",
+      align: "center",
     },
   },
 );
@@ -57,6 +62,7 @@ function Button({
   variant = "default",
   size = "default",
   shape = "default",
+  align = "center",
   unstyled = false,
   title,
   ...props
@@ -71,7 +77,9 @@ function Button({
       data-slot="button"
       data-variant={unstyled ? undefined : variant}
       data-size={unstyled ? undefined : size}
-      className={unstyled ? className : cn(buttonVariants({ variant, size, shape, className }))}
+      className={
+        unstyled ? className : cn(buttonVariants({ variant, size, shape, align, className }))
+      }
       {...props}
     />
   );
