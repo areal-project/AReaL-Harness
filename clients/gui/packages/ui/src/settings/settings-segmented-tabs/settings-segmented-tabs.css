@@ -15,7 +15,7 @@
   gap: calc(var(--spacing-inline) / 4);
   border-radius: var(--radius-full);
   background: var(--color-surface-fog);
-  border: 0;
+  border: var(--border-width-default) solid var(--color-border-hairline);
 }
 
 .settings-segmented-tabs [data-slot="tabs-trigger"] {
@@ -42,6 +42,7 @@
 /* Base UI exposes data-active by presence, not a string boolean. */
 .settings-segmented-tabs [data-slot="tabs-trigger"][data-active] {
   background: var(--color-card);
+  border-color: var(--color-border-hairline);
   color: var(--color-foreground);
   box-shadow: var(--shadow-raised-control);
 }

@@ -58,6 +58,7 @@ export function TaskResourcesPopover({
       setOpen(false);
       callback(value);
     };
+  const hasChanges = changes.additions > 0 || changes.deletions > 0;
   return (
     <Popover
       open={open}
@@ -79,12 +80,19 @@ export function TaskResourcesPopover({
               unstyled
               type="button"
               ref={trigger}
+              data-has-changes={hasChanges || undefined}
               className={`icon-button task-resources-trigger ${open ? "active" : ""}`}
               aria-label={t("chat.resources.trigger")}
             />
           }
         >
           <TaskSummaryIcon />
+          {hasChanges && (
+            <span className="task-resources-diff-summary" aria-hidden="true">
+              <span className="added">+{changes.additions}</span>
+              <span className="deleted">-{changes.deletions}</span>
+            </span>
+          )}
         </PopoverTrigger>
       </TitleTooltip>
       <PopoverContent

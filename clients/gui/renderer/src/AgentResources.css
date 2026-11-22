@@ -103,11 +103,49 @@
   margin-left: var(--spacing-inline);
   text-decoration: underline;
 }
+.task-resources-trigger[data-has-changes] {
+  width: auto;
+  height: var(--spacing-control);
+  padding-inline: var(--spacing-inline);
+  gap: calc(var(--spacing-inline) * 3 / 4);
+  border-radius: var(--radius-pill);
+  border: var(--border-width-default) solid var(--color-border-hairline);
+  background: var(--color-surface-elevated);
+}
+.task-resources-trigger[data-has-changes]:hover,
+.task-resources-trigger[data-has-changes][aria-expanded="true"] {
+  background: var(--color-surface-tertiary);
+  border-color: var(--color-border-hover);
+}
+.task-resources-diff-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing-inline) / 2);
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-medium);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.task-resources-diff-summary .added {
+  color: var(--color-git-added);
+  padding: calc(var(--spacing-inline) / 4) calc(var(--spacing-inline) / 2);
+  border-radius: var(--radius-pill);
+  background: var(--color-diff-added-surface);
+}
+.task-resources-diff-summary .deleted {
+  color: var(--color-git-deleted);
+  padding: calc(var(--spacing-inline) / 4) calc(var(--spacing-inline) / 2);
+  border-radius: var(--radius-pill);
+  background: var(--color-diff-removed-surface);
+}
 .task-resources-popup {
   width: calc(var(--ui-font-size) * 22 + var(--spacing-inline) / 2);
   padding: 0;
   gap: 0;
-  background: var(--color-menu);
+  border: var(--border-width-default) solid var(--color-menu-border);
+  background: color-mix(in oklab, var(--color-menu) 92%, transparent);
+  backdrop-filter: var(--material-overlay-filter);
+  box-shadow: var(--shadow-popover-overlay);
 }
 .task-resources {
   padding: var(--spacing-inline) calc(var(--spacing-inline) * 3 / 2);
