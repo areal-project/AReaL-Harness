@@ -82,70 +82,106 @@ export function recordToasts() {
   );
 }
 
-/** 在当前页面跑检查 2–6，返回 { step, problems }。 */
-export async function inspectPage(page, step, { locale = "zh-CN" } = {}) {
-  const state = await page.evaluate((layers) => {
-    const visible = (element) => {
-      const box = element.getBoundingClientRect();
-      return box.width > 0 && box.height > 0 && getComputedStyle(element).visibility !== "hidden";
-    };
-    const boxes = Object.entries(layers).flatMap(([name, selector]) =>
-      [...document.querySelectorAll(selector)].filter(visible).map((element, index) => {
-        const box = element.getBoundingClientRect();
-        const contains = Object.entries(layers)
-          .filter(([other, s]) => other !== name && element.querySelector(s))
-          .map(([other]) => other);
-        return {
-          name: `${name}#${index}`,
-          x: box.x,
-          y: box.y,
-          width: box.width,
-          height: box.height,
-          contains: contains.flatMap((other) =>
-            [...document.querySelectorAll(layers[other])].map((_, i) => `${other}#${i}`),
-          ),
-        };
-      }),
-    );
-    // 对话正文是模型写的，只检查看得见的界面本身。
-    const clone = document.body.cloneNode(true);
-    clone
-      .querySelectorAll(".messages, [contenteditable], .sr-only")
-      .forEach((node) => node.remove());
-    return {
-      chrome: clone.innerText,
-      text: document.body.innerText,
-      awaiting: !!document.querySelector('.decision-card[data-interaction="approval"]'),
-      boxes,
-      toasts: window.__uxToasts?.splice(0) ?? [],
-    };
-  }, LAYERS);
+// 按内容所有者排除用户/模型正文与输入控件，保留应用自己的告警（如 .messages / .messages-embedded-content 内的 role="alert"）。
+export const CONTENT_OWNED_SELECTORS = [
+  ".user-message-content",
+  ".assistant-message",
+  "[contenteditable]",
+  "textarea",
+  ".sr-only",
+];
+
+/** 校验目标状态是否在动作前后发生真实变化（避免动作前已存在的队列条/节点直接蒙混通过）。 */
+export function hasTargetDelta(before, after) {
+  if (after.count <= 0) return false;
+  if (before.count === 0) return true;
+  return after.count !== before.count || after.lastText !== before.lastText;
+}
+
+/** 纯函数版检查 2–6，供单测和 inspectPage 复用。 */
+export function inspectState(state, step, { locale = "zh-CN" } = {}) {
+  const appText = state.appText ?? state.chrome ?? "";
   const problems = [
-    ...rawErrors(state.text).map((hit) => `原始错误：${hit}`),
-    ...(locale === "zh-CN" ? mixedLanguage(state.chrome) : []).map((hit) => `混用英文：${hit}`),
-    ...overlaps(state.boxes).map(([a, b]) => `浮层重叠：${a} 与 ${b}`),
-    ...untruthfulStatus(state.chrome, state.awaiting).map((hit) => `等审批时显示“${hit}”`),
-    ...unsolicitedToasts(state.toasts).map((hit) => `没操作就弹出提示：${hit}`),
+    ...rawErrors(appText).map((hit) => `原始错误：${hit}`),
+    ...(locale === "zh-CN" ? mixedLanguage(appText) : []).map((hit) => `混用英文：${hit}`),
+    ...overlaps(state.boxes ?? []).map(([a, b]) => `浮层重叠：${a} 与 ${b}`),
+    ...untruthfulStatus(appText, Boolean(state.awaiting)).map((hit) => `等审批时显示“${hit}”`),
+    ...unsolicitedToasts(state.toasts ?? []).map((hit) => `没操作就弹出提示：${hit}`),
   ];
   return { step, problems };
 }
 
+/** 在当前页面跑检查 2–6，返回 { step, problems }。 */
+export async function inspectPage(page, step, { locale = "zh-CN" } = {}) {
+  const state = await page.evaluate(
+    ({ layers, contentSelectors }) => {
+      const visible = (element) => {
+        const box = element.getBoundingClientRect();
+        return box.width > 0 && box.height > 0 && getComputedStyle(element).visibility !== "hidden";
+      };
+      const boxes = Object.entries(layers).flatMap(([name, selector]) =>
+        [...document.querySelectorAll(selector)].filter(visible).map((element, index) => {
+          const box = element.getBoundingClientRect();
+          const contains = Object.entries(layers)
+            .filter(([other, s]) => other !== name && element.querySelector(s))
+            .map(([other]) => other);
+          return {
+            name: `${name}#${index}`,
+            x: box.x,
+            y: box.y,
+            width: box.width,
+            height: box.height,
+            contains: contains.flatMap((other) =>
+              [...document.querySelectorAll(layers[other])].map((_, i) => `${other}#${i}`),
+            ),
+          };
+        }),
+      );
+      // 仅按内容所有者剥离用户/模型正文（兼顾 .messages 与 .messages-embedded-content），保留应用告警。
+      const clone = document.body.cloneNode(true);
+      clone.querySelectorAll(contentSelectors.join(", ")).forEach((node) => node.remove());
+      return {
+        appText: clone.innerText,
+        awaiting: !!document.querySelector('.decision-card[data-interaction="approval"]'),
+        boxes,
+        toasts: window.__uxToasts?.splice(0) ?? [],
+      };
+    },
+    { layers: LAYERS, contentSelectors: CONTENT_OWNED_SELECTORS },
+  );
+  return inspectState(state, step, { locale });
+}
+
 /**
- * 1. 有反馈：执行 act 后 400ms 内页面必须有可见变化，否则记为“卡住”。
- * 给了 until 时还要在 10 秒内真的出现预期结果；只弹一条提示不算完成。
+ * 1. 有反馈：执行 act 后 400ms 内页面（或指定 target）必须有可见变化，否则记为“卡住”。
+ * 给了 until 时还要在 10 秒内出现动作前后的目标状态变化；动作前已存在的节点不算本次反馈。
  */
-export async function expectFeedback(page, step, act, { timeout = 400, until } = {}) {
-  await page.evaluate(() => {
+export async function expectFeedback(page, step, act, { timeout = 400, until, target } = {}) {
+  const snapshotUntil = async () => {
+    if (!until) return { count: 0, lastText: "" };
+    const count = await until.count();
+    const lastText =
+      count > 0
+        ? await until
+            .last()
+            .innerText()
+            .catch(() => "")
+        : "";
+    return { count, lastText };
+  };
+  const before = await snapshotUntil();
+  await page.evaluate((selector) => {
     window.__uxChanged = false;
     window.__uxObserver?.disconnect();
+    const root = (selector && document.querySelector(selector)) || document.body;
     window.__uxObserver = new MutationObserver(() => (window.__uxChanged = true));
-    window.__uxObserver.observe(document.body, {
+    window.__uxObserver.observe(root, {
       subtree: true,
       childList: true,
       attributes: true,
       characterData: true,
     });
-  });
+  }, target ?? null);
   await act();
   const changed = await page
     .waitForFunction(() => window.__uxChanged, null, { timeout })
@@ -153,16 +189,18 @@ export async function expectFeedback(page, step, act, { timeout = 400, until } =
     .catch(() => false);
   await page.evaluate(() => window.__uxObserver?.disconnect());
   const problems = changed ? [] : [`卡住：${timeout}ms 内界面没有变化`];
-  if (
-    until &&
-    !(await until
-      .first()
-      .waitFor({ timeout: 10_000 })
-      .then(
-        () => true,
-        () => false,
-      ))
-  )
-    problems.push("没有出现预期结果");
+  if (until) {
+    const deadline = Date.now() + 10_000;
+    let matched = false;
+    while (Date.now() < deadline) {
+      const after = await snapshotUntil();
+      if (hasTargetDelta(before, after)) {
+        matched = true;
+        break;
+      }
+      await new Promise((done) => setTimeout(done, 50));
+    }
+    if (!matched) problems.push("没有出现预期结果");
+  }
   return { step, problems };
 }

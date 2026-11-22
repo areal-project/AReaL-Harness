@@ -569,6 +569,29 @@ class ArchitectureAndJourneys(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "missing required business evidence"):
             evidence.build(plan, report)
 
+    def test_decision_summary_compresses_without_losing_triage_facts(self):
+        _plan, _report, _contract, detail = self.fact_fixture()
+        detail["status"] = "failed"
+        detail["facts"][0]["status"] = "failed"
+        detail["facts"][1]["status"] = "pending"
+        detail["firstFailure"] = {"stage": "visibleResult", "message": "reply missing"}
+        detail["unreached"] = ["noReplay"]
+        detail["faults"] = {
+            "visibleResult": {"injectionReached": True, "evidence": ["wire.json"]},
+        }
+        detail["artifacts"] = {"observation.json": "a" * 64, "cleanup.json": "b" * 64}
+        compact = evidence.decision_summary(detail, full_ci=None, report_path="report.json")
+        self.assertEqual(compact["journeyId"], "submit")
+        self.assertEqual(compact["status"], "failed")
+        self.assertEqual(compact["facts"], {"visibleResult": "failed", "noReplay": "pending"})
+        self.assertEqual(compact["firstFailure"], detail["firstFailure"])
+        self.assertEqual(compact["unreached"], ["noReplay"])
+        self.assertEqual(compact["faultsInjectionReached"], {"visibleResult": True})
+        self.assertEqual(compact["cleanup"], {"status": "passed"})
+        self.assertIsNone(compact["fullCiPassed"])
+        self.assertNotIn("artifacts", compact)
+        self.assertLess(len(json.dumps(compact)), len(json.dumps(detail)))
+
 
 if __name__ == "__main__":
     unittest.main()

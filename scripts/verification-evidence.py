@@ -266,12 +266,69 @@ def validate(report, plan):
     return evidence
 
 
+def decision_summary(detail, *, full_ci=None, report_path=None):
+    """生成面向人工与 Agent 分诊的紧凑决策摘要，剥离重复附件清单与哈希，保留全部裁决事实。"""
+    facts = {row["id"]: row["status"] for row in detail.get("facts", [])}
+    faults = {
+        name: bool(info.get("injectionReached"))
+        for name, info in (detail.get("faults") or {}).items()
+        if isinstance(info, dict)
+    }
+    cleanup = detail.get("cleanup") or {}
+    cleanup_summary = {"status": cleanup.get("status", "pending")}
+    if cleanup.get("status") != "passed" and (cleanup.get("errors") or cleanup.get("message")):
+        cleanup_summary["detail"] = cleanup.get("errors") or cleanup.get("message")
+    summary = {
+        "schemaVersion": 1,
+        "journeyId": detail.get("journeyId"),
+        "status": detail.get("status"),
+        "facts": facts,
+        "firstFailure": detail.get("firstFailure"),
+        "unreached": list(detail.get("unreached") or []),
+        "cleanup": cleanup_summary,
+        "fullCiPassed": full_ci,
+    }
+    if faults:
+        summary["faultsInjectionReached"] = faults
+    if detail.get("scope"):
+        summary["scope"] = detail["scope"]
+    if report_path is not None:
+        summary["fullReport"] = str(report_path)
+    return summary
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("report", type=Path)
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="输出精简决策摘要（支持单条旅程 report.json 或完整 preflight report.json）",
+    )
     args = parser.parse_args(argv)
+    payload = json.loads(args.report.read_text())
+    if args.summary and "journeyId" in payload and "facts" in payload:
+        print(
+            json.dumps(
+                decision_summary(payload, full_ci=None, report_path=args.report),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0
     plan = json.loads(args.report.with_name("plan.json").read_text())
-    validate(json.loads(args.report.read_text()), plan)
+    ev = validate(payload, plan)
+    if args.summary:
+        journeys = [
+            decision_summary(
+                {**j, "journeyId": j["id"]},
+                full_ci=None,
+                report_path=j.get("report") or args.report,
+            )
+            for j in ev.get("journeys", [])
+        ]
+        print(json.dumps({"status": "passed", "journeys": journeys}, ensure_ascii=False, indent=2))
+        return 0
     print(json.dumps({"status": "passed", "report": str(args.report)}))
     return 0
 

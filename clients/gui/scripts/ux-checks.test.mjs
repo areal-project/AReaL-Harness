@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  CONTENT_OWNED_SELECTORS,
+  hasTargetDelta,
+  inspectState,
   mixedLanguage,
   overlaps,
   rawErrors,
@@ -56,4 +59,35 @@ test("only toasts long after the last user input count as unsolicited", () => {
     ]),
     ["工作区信息不可用"],
   );
+});
+
+test("content-owned selectors exclude user/model bodies without hiding app alerts in messages", () => {
+  assert.ok(CONTENT_OWNED_SELECTORS.includes(".user-message-content"));
+  assert.ok(CONTENT_OWNED_SELECTORS.includes(".assistant-message"));
+  assert.ok(!CONTENT_OWNED_SELECTORS.includes(".messages"));
+  assert.ok(!CONTENT_OWNED_SELECTORS.includes(".messages-embedded-content"));
+  const uuid = "5d33b33e-2bcf-4f70-96dc-8576672272d0";
+  // 正例：UUID 出现在用户/模型正文里（已被剥离，不在 appText 中）应通过。
+  const chatBodyOnly = inspectState({ appText: "新会话\n发送" }, "正文含 UUID");
+  assert.deepEqual(chatBodyOnly.problems, []);
+  // 反例：同一 UUID 出现在应用告警里（保留在 appText 中）必须失败。
+  const appAlertWithUuid = inspectState({ appText: `历史读取失败：${uuid}` }, "应用告警含 UUID");
+  assert.deepEqual(appAlertWithUuid.problems, [`原始错误：${uuid}`]);
+});
+
+test("hasTargetDelta requires a post-action change when the target already existed", () => {
+  assert.equal(hasTargetDelta({ count: 0, lastText: "" }, { count: 1, lastText: "新排队" }), true);
+  assert.equal(
+    hasTargetDelta({ count: 1, lastText: "旧排队" }, { count: 1, lastText: "旧排队" }),
+    false,
+  );
+  assert.equal(
+    hasTargetDelta({ count: 1, lastText: "旧排队" }, { count: 1, lastText: "旧排队\n新排队" }),
+    true,
+  );
+  assert.equal(
+    hasTargetDelta({ count: 1, lastText: "旧排队" }, { count: 2, lastText: "新排队" }),
+    true,
+  );
+  assert.equal(hasTargetDelta({ count: 1, lastText: "旧排队" }, { count: 0, lastText: "" }), false);
 });
