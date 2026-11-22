@@ -351,6 +351,23 @@ class ArchitectureAndJourneys(unittest.TestCase):
         self.assertIn("blockReasons", report["rows"][0]["newProcess"]["realJourneyEvidence"][0])
         self.assertFalse(report["conclusion"]["canConfirmHumanTimeReduction"])
 
+    def test_triage_continuous_baseline_includes_unmapped_and_marks_observation_window(self):
+        from datetime import datetime, timezone
+
+        now = datetime(2026, 11, 22, 12, 0, tzinfo=timezone.utc)
+        mature = triage.observation_window("2026-11-01T00:00:00+00:00", days=14, now=now)
+        observing = triage.observation_window("2026-11-20T00:00:00+00:00", days=14, now=now)
+        self.assertEqual(mature["status"], "mature")
+        self.assertTrue(mature["mature"])
+        self.assertEqual(observing["status"], "observing")
+        self.assertFalse(observing["mature"])
+        report = triage.compare(3, include_unmapped=True, ref="HEAD", now=now)
+        self.assertEqual(report["measurement"]["sampleRef"], "HEAD")
+        self.assertTrue(report["measurement"]["includeUnmapped"])
+        self.assertIn("zeroHitCommits", report["measurement"])
+        self.assertIn("observationWindow", report["measurement"])
+        self.assertIn("manualBaseline", report["rows"][0])
+
     def fact_fixture(self):
         plan, report = self.evidence_fixture()
         contract = {"journeyId": "submit", "terminalFacts": ["visibleResult", "noReplay"]}

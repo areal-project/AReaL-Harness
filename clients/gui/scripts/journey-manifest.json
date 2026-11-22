@@ -21,7 +21,9 @@
         "turnSettled",
         "visibleResult",
         "attachmentSubmitted",
-        "queuedFollowUp"
+        "queuedFollowUp",
+        "modelSwitchNextTurn",
+        "cancelAndContinue"
       ],
       "checks": [
         "smoke:test:ux-journeys",

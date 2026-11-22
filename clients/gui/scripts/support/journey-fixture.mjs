@@ -17,6 +17,8 @@ export const reply = "## 已添加 clamp\n\n在 `src/math.ts` 加了 `clamp`，�
 
 /** 假模型：读文件 → 要联网的命令（触发审批）→ 最终回答。每条新用户消息重新走一遍。 */
 export async function startModel() {
+  const requests = [];
+  const heldResponses = new Set();
   const model = createServer((req, res) => {
     let body = "";
     req.on("data", (chunk) => (body += chunk));
@@ -41,10 +43,24 @@ export async function startModel() {
             .map((part) => part.text)
             .join("")
         : userContent;
+      requests.push({ model: request.model ?? null, userText: userText ?? null });
       const toolResults = messages
         .slice(lastUser)
         .filter((message) => message.role === "tool").length;
-      if (!request.stream || !tools.length)
+      if (userText === "触发可取消的长任务") {
+        res.write(chunk({ content: "正在处理长任务…" }));
+        heldResponses.add(res);
+        req.on("close", () => {
+          heldResponses.delete(res);
+          if (!res.writableEnded) res.end();
+        });
+        return;
+      }
+      if (userText === "切换模型后的引导消息")
+        res.write(chunk({ content: "已使用新模型回复" }) + chunk({}, "stop"));
+      else if (userText === "取消后的继续消息")
+        res.write(chunk({ content: "取消后继续完成" }) + chunk({}, "stop"));
+      else if (!request.stream || !tools.length)
         res.write(chunk({ content: "添加 clamp" }) + chunk({}, "stop"));
       else if (userText === "准备一处侧边审查改动")
         res.write(
@@ -75,7 +91,10 @@ export async function startModel() {
   await new Promise((ready) => model.listen(0, "127.0.0.1", ready));
   return {
     port: model.address().port,
+    requests,
     close() {
+      for (const res of heldResponses) if (!res.writableEnded) res.end();
+      heldResponses.clear();
       model.closeAllConnections();
       model.close();
     },
@@ -100,14 +119,17 @@ export async function createScene(prefix) {
     { cwd: project },
   );
 
-  async function environment(name, modelPort) {
+  async function environment(name, modelPort, { extraModels = [] } = {}) {
     const root = join(scratch, name);
     await mkdir(join(root, "home"), { recursive: true });
     const config = join(root, "config.toml");
+    const modelsToml = ["fixture", ...extraModels]
+      .map((id) => `{id="${id}",enabled=true}`)
+      .join(",");
     await writeFile(
       config,
       modelPort
-        ? `schema_version=1\n[model]\ncatalog_version=1\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${modelPort}/v1/chat/completions"\nmodels=[{id="fixture",enabled=true}]\n`
+        ? `schema_version=1\n[model]\ncatalog_version=1\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${modelPort}/v1/chat/completions"\nmodels=[${modelsToml}]\n`
         : "schema_version=1\n",
     );
     const env = {
@@ -129,8 +151,8 @@ export async function createScene(prefix) {
   }
 
   /** 启动桌面窗口，等输入框出现；返回 Electron 应用、窗口与关闭方法。 */
-  async function launchDesktop(name, modelPort) {
-    const env = await environment(name, modelPort);
+  async function launchDesktop(name, modelPort, options) {
+    const env = await environment(name, modelPort, options);
     const app = await playwright._electron.launch({
       executablePath: require("electron"),
       // Chromium 拒绝以 root 带沙箱启动；只在云端容器这类 root 环境关掉。

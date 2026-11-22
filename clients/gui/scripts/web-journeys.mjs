@@ -46,6 +46,8 @@ const factIds = [
   "visibleResult",
   "attachmentSubmitted",
   "queuedFollowUp",
+  "modelSwitchNextTurn",
+  "cancelAndContinue",
 ];
 const journeyReport = {
   schemaVersion: 1,
@@ -219,7 +221,7 @@ async function preserveHostDiagnostics() {
 
 try {
   // 桌面第一次启动时登记资料库来源和 Host 启动配置。
-  desktop = await scene.launchDesktop("web", model.port);
+  desktop = await scene.launchDesktop("web", model.port, { extraModels: ["fixture-alt"] });
   const env = desktop.env;
   const { port } = JSON.parse(
     await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/web-bind.json"), "utf8"),
@@ -469,6 +471,98 @@ try {
     secondTurnStatus: secondTurn.status,
     approvalUxProblems: w2ApprovalCheck.problems.length,
     queueFeedbackProblems: w2QueueCheck.problems.length,
+  });
+
+  // FM-CHAT-04：中途切换模型后发下一条引导消息，核对出站请求命中新模型且前序轮次完整。
+  stage = "modelSwitchNextTurn";
+  await page.getByRole("button", { name: "选择模型", exact: true }).click();
+  await page.getByRole("radio", { name: "fixture-alt", exact: true }).click();
+  await input.fill("切换模型后的引导消息");
+  await sendReady(page);
+  await input.press("Enter");
+  await page
+    .locator('[data-turn-status="completed"][data-latest-turn="true"]')
+    .filter({ hasText: "已使用新模型回复" })
+    .waitFor({ timeout: 60_000 });
+  const switchedRequest = model.requests.findLast(
+    (entry) => entry.userText === "切换模型后的引导消息",
+  );
+  assert.equal(
+    switchedRequest?.model,
+    "fixture-alt",
+    "FM-CHAT-04: 切换模型后出站请求必须命中新模型 fixture-alt",
+  );
+  const afterSwitch = await readCoreThread({
+    binary: coreBin,
+    env: desktop.env,
+    gui,
+    threadId,
+    workspace: scene.project,
+  });
+  const thirdTurn = afterSwitch.turns?.[2];
+  assert.equal(afterSwitch.turns?.[0]?.id, firstTurn.id, "FM-CHAT-04: 切模型不破坏第 1 轮历史");
+  assert.equal(afterSwitch.turns?.[1]?.id, secondTurn.id, "FM-CHAT-04: 切模型不破坏第 2 轮历史");
+  assert.equal(thirdTurn?.status, "completed", "FM-CHAT-04: 新模型轮次必须结算为 completed");
+  await passFact("modelSwitchNextTurn", {
+    ruleId: "FM-CHAT-04",
+    threadId,
+    turnId: thirdTurn.id,
+    outboundModel: switchedRequest.model,
+    priorTurnsIntact: true,
+  });
+  // 切回默认 fixture，保持后续 W2b/W3/W6 基线一致。
+  await page.getByRole("button", { name: "选择模型", exact: true }).click();
+  await page.getByRole("radio", { name: "fixture", exact: true }).click();
+
+  // FM-CHAT-05：生成中触发停止/取消，核对权威中断态，并验证随后可继续发新消息完成。
+  stage = "cancelAndContinue";
+  await input.fill("触发可取消的长任务");
+  await sendReady(page);
+  await input.press("Enter");
+  const stopButton = page.getByRole("button", { name: "暂停执行", exact: true });
+  await stopButton.waitFor({ timeout: 60_000 });
+  await stopButton.click();
+  await page.locator('section[data-turn-status="interrupted"]').waitFor({ timeout: 60_000 });
+  const afterCancel = await readCoreThread({
+    binary: coreBin,
+    env: desktop.env,
+    gui,
+    threadId,
+    workspace: scene.project,
+  });
+  const cancelledTurn = afterCancel.turns?.[3];
+  assert.equal(
+    cancelledTurn?.status,
+    "interrupted",
+    "FM-CHAT-05: 停止后权威 Core Turn 必须结算为 interrupted",
+  );
+  await input.fill("取消后的继续消息");
+  await sendReady(page);
+  await input.press("Enter");
+  await page
+    .locator('[data-turn-status="completed"][data-latest-turn="true"]')
+    .filter({ hasText: "取消后继续完成" })
+    .waitFor({ timeout: 60_000 });
+  const afterContinue = await readCoreThread({
+    binary: coreBin,
+    env: desktop.env,
+    gui,
+    threadId,
+    workspace: scene.project,
+  });
+  const continuedTurn = afterContinue.turns?.[4];
+  assert.equal(
+    continuedTurn?.status,
+    "completed",
+    "FM-CHAT-05: 取消后续发新消息必须结算为 completed",
+  );
+  await passFact("cancelAndContinue", {
+    ruleId: "FM-CHAT-05",
+    threadId,
+    cancelledTurnId: cancelledTurn.id,
+    cancelledStatus: cancelledTurn.status,
+    continuedTurnId: continuedTurn.id,
+    continuedStatus: continuedTurn.status,
   });
   stage = "followUpAndOtherJourneys";
 

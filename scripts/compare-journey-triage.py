@@ -1,6 +1,7 @@
 """Compare old manual triage with the registered journey plan for recent commits."""
 
 import argparse
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import subprocess
@@ -13,20 +14,40 @@ def git(*args):
     return subprocess.check_output(["git", "--no-optional-locks", *args], cwd=ROOT, text=True)
 
 
-def recent_commits(limit):
-    rows = git(
+def recent_commits(limit, *, ref="HEAD", all_refs=False):
+    args = [
         "log",
-        "--format=%H%x09%s",
+        "--format=%H%x09%cI%x09%s",
         "--no-merges",
-        "--all",
         "--since=90 days ago",
-        "--",
-        "core",
-        "clients/gui",
-        "services/workbench",
-        "schemas",
-    ).splitlines()
-    return [tuple(row.split("\t", 1)) for row in rows]
+    ]
+    if all_refs:
+        args.append("--all")
+    else:
+        args.append(ref)
+    if limit:
+        args.extend(["-n", str(limit)])
+    args.extend(["--", "core", "clients/gui", "services/workbench", "schemas"])
+    rows = git(*args).splitlines()
+    parsed = []
+    for row in rows:
+        commit, committed_at, subject = row.split("\t", 2)
+        parsed.append((commit, committed_at, subject))
+    return parsed
+
+
+def observation_window(committed_at, *, days=14, now=None):
+    """区分已观察满窗口的提交与仍在观察中的提交，避免用短窗口误判逃逸下降。"""
+    current = datetime.now(timezone.utc) if now is None else now
+    commit_time = datetime.fromisoformat(committed_at.replace("Z", "+00:00"))
+    elapsed_days = round(max(0.0, (current - commit_time).total_seconds() / 86400.0), 2)
+    mature = elapsed_days >= days
+    return {
+        "requiredDays": days,
+        "elapsedDays": elapsed_days,
+        "mature": mature,
+        "status": "mature" if mature else "observing",
+    }
 
 
 def changed_paths(commit):
@@ -91,19 +112,32 @@ def journey_evidence(journeys, report):
     return projected
 
 
-def compare(limit=10, evidence_root=None):
+def compare(
+    limit=10,
+    evidence_root=None,
+    *,
+    ref="HEAD",
+    all_refs=False,
+    include_unmapped=False,
+    observation_days=14,
+    now=None,
+):
     scope_spec = importlib_load(ROOT / "scripts/ci-scope.py", "compare_ci_scope")
     manifest = json.loads((ROOT / "clients/gui/scripts/test-manifest.json").read_text())
     journey_manifest = json.loads((ROOT / "clients/gui/scripts/journey-manifest.json").read_text())
     rows = []
     started = time.perf_counter()
     considered = 0
-    for commit, subject in recent_commits(limit * 4):
+    zero_hit_commits = 0
+    scan_limit = limit if include_unmapped else limit * 4
+    for commit, committed_at, subject in recent_commits(scan_limit, ref=ref, all_refs=all_refs):
         paths = changed_paths(commit)
         affected = scope_spec.journey_registry.affected(paths, journey_manifest)
-        if not affected:
+        if not affected and not include_unmapped:
             continue
         considered += 1
+        if not affected:
+            zero_hit_commits += 1
         row_started = time.perf_counter()
         plan = scope_spec.build_plan(
             paths,
@@ -117,11 +151,14 @@ def compare(limit=10, evidence_root=None):
         )
         persisted = matching_report(commit, evidence_root)
         evidence = journey_evidence(affected, persisted)
+        window = observation_window(committed_at, days=observation_days, now=now)
         rows.append(
             {
                 "commit": commit,
+                "committedAt": committed_at,
                 "subject": subject,
                 "changedPaths": len(paths),
+                "observationWindow": window,
                 "oldProcess": {
                     "journeys": "manual/unknown",
                     "authorities": "manual/unknown",
@@ -147,6 +184,13 @@ def compare(limit=10, evidence_root=None):
                     "realJourneyEvidence": evidence,
                     "machineTriageMs": round((time.perf_counter() - row_started) * 1000),
                 },
+                "manualBaseline": {
+                    "expectedJourneys": None,
+                    "firstVerdictCorrect": None,
+                    "humanMinutes": None,
+                    "fixtureBlocked": None,
+                    "escapedDefects": None,
+                },
             }
         )
         if len(rows) >= limit:
@@ -155,12 +199,25 @@ def compare(limit=10, evidence_root=None):
     evidence_rows = [
         evidence for row in rows for evidence in row["newProcess"]["realJourneyEvidence"]
     ]
+    mature_commits = sum(row["observationWindow"]["mature"] for row in rows)
     return {
         "schemaVersion": 1,
         "sampleSize": len(rows),
         "measurement": {
-            "sampleSelection": "latest non-merge commits in the last 90 days that match a registered journey path",
+            "sampleRef": "--all" if all_refs else ref,
+            "includeUnmapped": include_unmapped,
+            "sampleSelection": (
+                "continuous non-merge commits on the selected ref including zero-journey-hit commits"
+                if include_unmapped
+                else "latest non-merge commits in the last 90 days that match a registered journey path"
+            ),
             "consideredCommits": considered,
+            "zeroHitCommits": zero_hit_commits,
+            "observationWindow": {
+                "requiredDays": observation_days,
+                "matureCommits": mature_commits,
+                "observingCommits": len(rows) - mature_commits,
+            },
             "old": "Git history cannot recover human judgment or evidence-assembly minutes; old fields remain unknown.",
             "new": "Machine triage time measured per row by this script, excluding Git startup; persisted reports are reused when their revision matches.",
             "elapsedMs": round((time.perf_counter() - started) * 1000),
@@ -183,11 +240,15 @@ def compare(limit=10, evidence_root=None):
             "canConfirmHumanTimeReduction": False,
             "reason": "the sampled Git history has no before/after human timing records",
             "whatThisRunProves": [
-                "the narrowed registry selects only commits that touch a registered journey path",
+                (
+                    "continuous single-ref sampling preserves zero-journey-hit commits and marks 14-day observation maturity"
+                    if include_unmapped
+                    else "the narrowed registry selects only commits that touch a registered journey path"
+                ),
                 "each selected commit receives deterministic checks, authorities, and evidence fields",
                 "missing real-journey reports are surfaced as an explicit execution blocker",
             ],
-            "nextMeasurement": "record human triage and evidence-assembly minutes for the next comparable sample, then compare against machineTriageMs and persisted evidence coverage",
+            "nextMeasurement": "record human triage and evidence-assembly minutes for the frozen continuous sample, and only compute escape rates on mature (>=14d) commits",
         },
         "rows": rows,
     }
@@ -205,6 +266,21 @@ def importlib_load(path, name):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--limit", type=int, default=10)
+    parser.add_argument("--ref", default="HEAD", help="integration branch or commit ref to sample")
+    parser.add_argument(
+        "--all", dest="all_refs", action="store_true", help="sample across all refs"
+    )
+    parser.add_argument(
+        "--include-unmapped",
+        action="store_true",
+        help="include continuous commits with zero matched journeys to measure coverage gaps",
+    )
+    parser.add_argument(
+        "--observation-days",
+        type=int,
+        default=14,
+        help="minimum days elapsed before a commit counts as mature for escape tracking",
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument(
         "--evidence-root",
@@ -213,7 +289,14 @@ def main(argv=None):
         help="directory containing verification report.json files",
     )
     args = parser.parse_args(argv)
-    result = compare(args.limit, args.evidence_root)
+    result = compare(
+        args.limit,
+        args.evidence_root,
+        ref=args.ref,
+        all_refs=args.all_refs,
+        include_unmapped=args.include_unmapped,
+        observation_days=args.observation_days,
+    )
     text = json.dumps(result, ensure_ascii=False, indent=2) + "\n"
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
