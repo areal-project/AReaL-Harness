@@ -58,3 +58,110 @@ test("cleanup or failure cannot be hidden behind a zero exit code", () => {
 test("a valid complete imported report is accepted", () => {
   assert.doesNotThrow(() => validateExplorationAttempt(evidence(), plan, 0, identity));
 });
+
+function loadingFailure() {
+  const report = evidence();
+  Object.assign(report, {
+    status: "failed",
+    firstFailure: {
+      kind: "business",
+      stage: "loadingWithoutFalseFailure",
+      assertionId: "loading-no-false-failure",
+      action: null,
+      stepIndex: null,
+    },
+    facts: [
+      {
+        id: "loadingWithoutFalseFailure",
+        status: "failed",
+        evidence: ["loading-observation.json"],
+      },
+      { id: "boundedRecoveryExploration", status: "pending", evidence: [] },
+    ],
+    faults: {
+      loadingWithoutFalseFailure: {
+        injectionReached: true,
+        requestId: "shell-request",
+        connectionId: "socket",
+        evidence: ["loading-observation.json"],
+      },
+    },
+    artifacts: { "loading-observation.json": "b".repeat(64) },
+  });
+  report.exploration.steps = [];
+  const observation = {
+    held: {
+      requestId: "shell-request",
+      responseHit: "shell-request",
+      errorCode: null,
+      identity: { connectionId: "socket", gatewayGeneration: "host-generation" },
+    },
+    loading: { startupFailure: true, observedFailures: ["fixture startup error"] },
+  };
+  return { report, observation };
+}
+
+test("an observed initial-loading regression remains a business failure before exploration steps", () => {
+  const { report, observation } = loadingFailure();
+  assert.equal(validateExplorationAttempt(report, plan, 1, identity, observation), report);
+});
+
+test("a loading exception requires the exact fact, matched successful injection and observed failure", () => {
+  for (const change of [
+    ({ report }) => {
+      report.firstFailure.stage = "prerequisites";
+    },
+    ({ report }) => {
+      report.firstFailure.assertionId = "some-other-assertion";
+    },
+    ({ report }) => {
+      report.firstFailure.action = "submit";
+    },
+    ({ report }) => {
+      report.firstFailure.stepIndex = 0;
+    },
+    ({ report }) => {
+      delete report.firstFailure.action;
+    },
+    ({ report }) => {
+      report.exploration.steps = evidence().exploration.steps;
+    },
+    ({ report }) => {
+      report.facts[0].status = "passed";
+    },
+    ({ report }) => {
+      report.facts[1].status = "passed";
+    },
+    ({ report }) => {
+      report.facts[0].evidence = [];
+    },
+    ({ report }) => {
+      report.faults.loadingWithoutFalseFailure.injectionReached = false;
+    },
+    ({ report }) => {
+      report.faults.loadingWithoutFalseFailure.evidence = [];
+    },
+    ({ report }) => {
+      report.artifacts = {};
+    },
+    ({ observation }) => {
+      observation.held.responseHit = "different-request";
+    },
+    ({ observation }) => {
+      observation.held.identity.connectionId = "different-socket";
+    },
+    ({ observation }) => {
+      observation.held.errorCode = "HOST_UNAVAILABLE";
+    },
+    ({ observation }) => {
+      observation.loading = { startupFailure: false, observedFailures: [] };
+    },
+  ]) {
+    const fixture = loadingFailure();
+    change(fixture);
+    assert.throws(() =>
+      validateExplorationAttempt(fixture.report, plan, 1, identity, fixture.observation),
+    );
+  }
+  assert.throws(() => validateExplorationAttempt(loadingFailure().report, plan, 1, identity));
+});

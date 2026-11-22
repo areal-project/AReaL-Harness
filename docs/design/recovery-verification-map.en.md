@@ -4,6 +4,8 @@
 
 This table defines obligations, not a claim that every entry point has passed. Commands and evidence contracts are in the [testing guide](../development/testing.en.md). Planning remains owned by the [journey manifest](../../clients/gui/scripts/journey-manifest.json).
 
+See the [sample acceptance record](../benchmarks/reports/connection-recovery-exploration.en.md) for real exploration, historical counterexamples and reduction on 2026-11-22, including earlier blockers, frozen source identity and uncovered boundaries.
+
 | User goal and entry point | Authoritative outcome | Visible outcome | Executable evidence | Scope and gap |
 |---|---|---|---|---|
 | First Web connection and project selection | Current connection receives the original successful shell baseline | Loading without a false failure alert | Fixed loading journey; every exploration also delays a real baseline | Does not establish packaged startup |

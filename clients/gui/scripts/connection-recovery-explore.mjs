@@ -11,7 +11,7 @@ import { parseArgs } from "node:util";
 const repo = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const facts = ["loadingWithoutFalseFailure", "boundedRecoveryExploration"];
-export function validateExplorationAttempt(detail, plan, exitCode, identity) {
+export function validateExplorationAttempt(detail, plan, exitCode, identity, loadingObservation) {
   assert.equal(detail.journeyId, "connection-recovery-exploration");
   assert.deepEqual(detail.identity, identity, "report identity must match this execution");
   assert.equal(detail.exploration?.planSha256, hash(JSON.stringify(plan)), "replay plan differs");
@@ -49,11 +49,50 @@ export function validateExplorationAttempt(detail, plan, exitCode, identity) {
     assert.notEqual(exitCode, 0, "failure requires nonzero exit");
     assert(detail.firstFailure, "failed report needs first failure");
     if (detail.firstFailure.kind === "business") {
-      const step = steps.at(-1);
-      assert(step?.status === "failed", "business failure must identify a failed step");
-      assert.equal(detail.firstFailure.stepIndex, step.index);
-      assert.equal(detail.firstFailure.action, step.op);
-      assert(detail.firstFailure.assertionId, "business failure requires a named assertion");
+      if (
+        detail.firstFailure.stage === "loadingWithoutFalseFailure" ||
+        detail.firstFailure.assertionId === "loading-no-false-failure"
+      ) {
+        // 首次基线加载先于生成动作；只有已触达的真实成功响应误报才是此处的业务失败。
+        assert.equal(detail.firstFailure.stage, "loadingWithoutFalseFailure");
+        assert.equal(detail.firstFailure.assertionId, "loading-no-false-failure");
+        assert.equal(detail.firstFailure.action, null);
+        assert.equal(detail.firstFailure.stepIndex, null);
+        assert.equal(steps.length, 0, "Initial loading cannot fail after exploration began");
+        assert.deepEqual(detail.facts.map((fact) => fact.id).sort(), [...facts].sort());
+        const fact = detail.facts.find((item) => item.id === "loadingWithoutFalseFailure");
+        assert.equal(fact.status, "failed");
+        assert.equal(
+          detail.facts.find((item) => item.id === "boundedRecoveryExploration").status,
+          "pending",
+        );
+        const name = "loading-observation.json";
+        const fault = detail.faults?.loadingWithoutFalseFailure;
+        assert.equal(fault?.injectionReached, true, "Loading injection must have reached");
+        assert(fact.evidence?.includes(name) && fault.evidence?.includes(name));
+        assert(/^[a-f0-9]{64}$/.test(detail.artifacts?.[name] ?? ""), "Loading evidence missing");
+        assert(
+          fault.requestId && fault.connectionId,
+          "Loading injection requires original identity",
+        );
+        const { held, loading } = loadingObservation ?? {};
+        assert.equal(held?.requestId, fault.requestId);
+        assert.equal(held?.responseHit, fault.requestId, "Loading response must match its request");
+        assert.equal(held?.identity?.connectionId, fault.connectionId);
+        assert(held.identity.gatewayGeneration, "Loading evidence requires a Host generation");
+        assert.equal(held.errorCode, null, "Only a delayed successful baseline tests loading");
+        assert(
+          loading?.startupFailure === true ||
+            (Array.isArray(loading?.observedFailures) && loading.observedFailures.length > 0),
+          "Loading evidence must show the false failure",
+        );
+      } else {
+        const step = steps.at(-1);
+        assert(step?.status === "failed", "business failure must identify a failed step");
+        assert.equal(detail.firstFailure.stepIndex, step.index);
+        assert.equal(detail.firstFailure.action, step.op);
+        assert(detail.firstFailure.assertionId, "business failure requires a named assertion");
+      }
     }
   }
   return detail;
@@ -170,7 +209,20 @@ export async function main(args = process.argv.slice(2)) {
           encoding: "utf8",
         }),
       );
-      validateExplorationAttempt(detail, plan, exitCode, identity);
+      let loadingObservation;
+      if (
+        detail.firstFailure?.kind === "business" &&
+        detail.firstFailure.stage === "loadingWithoutFalseFailure"
+      ) {
+        const bytes = await readFile(join(directory, "loading-observation.json"));
+        assert.equal(
+          hash(bytes),
+          detail.artifacts?.["loading-observation.json"],
+          "Loading evidence changed after import",
+        );
+        loadingObservation = JSON.parse(bytes.toString("utf8"));
+      }
+      validateExplorationAttempt(detail, plan, exitCode, identity, loadingObservation);
       await json(join(directory, "evidence.json"), detail);
       result = {
         status:
@@ -201,6 +253,8 @@ export async function main(args = process.argv.slice(2)) {
       if (
         values.shrink &&
         result.firstFailure?.kind === "business" &&
+        typeof result.firstFailure.action === "string" &&
+        Number.isInteger(result.firstFailure.stepIndex) &&
         result.cleanup?.status === "passed"
       ) {
         const reduced = await minimizePlan(plan, result, (candidate) => run(candidate, "shrink"), {

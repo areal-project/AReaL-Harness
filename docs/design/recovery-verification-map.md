@@ -4,6 +4,8 @@
 
 本表描述验收义务，不代表所有入口已经通过。命令与证据协议见[测试指南](../development/testing.md)。计划归属继续使用 [journey manifest](../../clients/gui/scripts/journey-manifest.json)，不另建选检器。
 
+2026-11-22 的真实探索、历史反例和缩减结果见[样板验收记录](../benchmarks/reports/connection-recovery-exploration.md)，包括首跑阻塞、冻结源码身份及未覆盖范围。
+
 | 用户目标与入口 | 权威结果 | 用户可见结果 | 可执行证据 | 范围与缺口 |
 |---|---|---|---|---|
 | 网页首次连接与选择项目 | 当前连接收到原成功 shell 基线 | 等待只显示加载，不闪失败 | 固定旅程 loading；探索每轮同样先延迟真实基线 | 尚不代表正式包启动 |

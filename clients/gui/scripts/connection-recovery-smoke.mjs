@@ -17,6 +17,7 @@ import {
 import { installHostTransportBarrier } from "./support/host-transport-barrier.mjs";
 import { readCoreThread } from "./support/core-observation.mjs";
 import { validatePlan } from "./support/recovery-exploration.mjs";
+import { fixtureWorkbench } from "./support/desktop-fixture.mjs";
 import {
   assertApplicationStopped,
   cleanupSyntheticHostKeychain,
@@ -92,7 +93,8 @@ async function until(read, label, timeout = 60000, assertionId, infrastructure =
     try {
       value = await read();
     } catch (error) {
-      if (assertionId || infrastructure) error.journeyFailureKind = "infrastructure";
+      if (!error.journeyAssertion && (assertionId || infrastructure))
+        error.journeyFailureKind = "infrastructure";
       throw error;
     }
     if (value) return value;
@@ -188,7 +190,13 @@ function traceSocket(socket) {
           }),
         ),
       });
-      if (explorationMode) events.push({ sequence: events.length, event: "shell", ...wire.at(-1) });
+      if (explorationMode)
+        events.push({
+          ...wire.at(-1),
+          shellSequence: event.sequence,
+          sequence: events.length,
+          event: "shell",
+        });
     }
     const entry = requests.get(frame.id);
     if (entry) {
@@ -237,6 +245,10 @@ function traceSocket(socket) {
       if (explorationMode) events.push({ sequence: events.length, event: "response", ...entry });
     }
     if (
+      !unknown.dropped &&
+      pair.identity?.connectionId === unknown.connectionId &&
+      entry?.method === "session.send" &&
+      entry.commandId === unknown.requestId &&
       frame.id === unknown.frameId &&
       frame.result?.admissionState === "accepted" &&
       !frame.error
@@ -304,14 +316,9 @@ async function usable(projectId, allowEmptyDraft = false) {
     );
   } else await sendReady(page);
   const ui = await visibleState();
-  assert.equal(
-    ui.startupFailure,
-    false,
-    "The selected project remains usable without a failure prompt",
-  );
-  assert.deepEqual(
-    ui.observedFailures,
-    [],
+  targetAssertion(
+    explorationMode ? "exploration-no-false-failure" : "recovery-no-false-failure",
+    !ui.startupFailure && ui.observedFailures.length === 0,
     "The project never displays a startup failure during automatic recovery",
   );
   return ui;
@@ -381,7 +388,7 @@ async function settleTurn(threadId, text, priorTurnIds = []) {
   );
   assert.ok(result.agentReply, "Core has a nonempty model reply");
   await page
-    .locator('[data-turn-status="completed"]')
+    .locator(`[data-turn-id="${result.turnId}"][data-turn-status="completed"]`)
     .filter({ hasText: text })
     .waitFor({ timeout: 30000 });
   return result;
@@ -392,6 +399,7 @@ async function exploreRecovery({ projectId, uiProjectId, modelSelection }) {
   const workbench = page.getByTestId("areal-workbench");
   let expectedDraft = "";
   let expectedThread = "";
+  let lastCoreVerification = null;
   const submissions = [];
   const snapshot = async () => ({
     ui: await visibleState(),
@@ -406,7 +414,11 @@ async function exploreRecovery({ projectId, uiProjectId, modelSelection }) {
     ...currentPair().identity,
   };
   const deadline = Date.now() + 10 * 60 * 1000;
-  const evidence = ["exploration-plan.json", "exploration-events.json"];
+  const evidence = [
+    "exploration-plan.json",
+    "exploration-events.json",
+    "exploration-prerequisites.json",
+  ];
   for (const [index, action] of explorationPlan.actions.entries()) {
     assert(Date.now() < deadline, "exploration exceeded its ten-minute action budget");
     const name = `exploration-step-${index}.json`;
@@ -420,6 +432,7 @@ async function exploreRecovery({ projectId, uiProjectId, modelSelection }) {
     };
     report.exploration.steps.push(explorationStep);
     const observation = { index, action, before: await snapshot(), trigger: null };
+    const stepWireStart = wire.length;
     try {
       if (action.op === "edit") {
         await page.getByTestId("chat-input").first().fill(action.text);
@@ -497,7 +510,7 @@ async function exploreRecovery({ projectId, uiProjectId, modelSelection }) {
           await usable(uiProjectId, true);
         }
       } else if (["submit", "unknown-submit"].includes(action.op)) {
-        // 每次发送使用合成且唯一的文字，既能核对持久 Turn，也不会记录用户数据。
+        // 回放允许重复合成文字；按新 Turn 身份核对本次提交，不依赖文字唯一。
         const text = expectedDraft || `recovery-draft-${explorationPlan.seed}-${index}-send`;
         await page.getByTestId("chat-input").first().fill(text);
         await sendReady(page);
@@ -603,7 +616,7 @@ async function exploreRecovery({ projectId, uiProjectId, modelSelection }) {
         "recovery must preserve model selection",
       );
       // 每个后续事件后复核已完成的提交，防止迟到重放发生在原发送断言之后。
-      if (expectedThread) {
+      if (expectedThread && observation.after.host.state !== "stopped") {
         const thread = await readCoreThread({
           binary: coreBin,
           env,
@@ -632,6 +645,32 @@ async function exploreRecovery({ projectId, uiProjectId, modelSelection }) {
             "later recovery cannot duplicate or replace an earlier Core turn",
           );
         }
+        lastCoreVerification = {
+          stepIndex: index,
+          threadId: thread.id,
+          turnIds: thread.turns.map((turn) => turn.id),
+        };
+        observation.coreVerification = lastCoreVerification;
+      } else if (expectedThread) {
+        // 停止后只读现有投影和上次权威核验，不为观察重启 Core；下次发送再核对全量。
+        assert(
+          lastCoreVerification,
+          "stopped history requires a previous authoritative observation",
+        );
+        observation.lastCoreVerification = lastCoreVerification;
+        targetAssertion(
+          "exploration-no-replay",
+          !wire.slice(stepWireStart).some((entry) => entry.method === "session.send"),
+          "a stopped history observation cannot submit another turn",
+        );
+        for (const submission of submissions)
+          targetAssertion(
+            "exploration-history-preserved",
+            await page
+              .locator(`[data-turn-id="${submission.turnId}"][data-turn-status="completed"]`)
+              .isVisible(),
+            "stopped history must retain each previously verified turn",
+          );
       }
       await page.screenshot({ path: join(out, screenshot) });
       explorationStep.evidence.push(screenshot);
@@ -852,6 +891,29 @@ try {
     .getByRole("button", { name: "选择模型", exact: true })
     .innerText();
   if (explorationMode) {
+    const scheduleReady = await until(
+      async () => {
+        const result = await fixtureWorkbench(desktopPage, "manage.read", {
+          operation: "taskScheduleContext",
+          projectId: uiProjectId,
+          timeZone: "UTC",
+        }).catch((error) => {
+          if (!String(error.message).includes("scheduleHostUnavailable")) throw error;
+          return null;
+        });
+        return Number.isFinite(result?.coreNow) && { coreNow: result.coreNow };
+      },
+      "the original owner scheduling connection is ready before exploration",
+      30000,
+      undefined,
+      true,
+    );
+    await persist("exploration-prerequisites.json", {
+      projectId,
+      uiProjectId,
+      scheduleReady,
+      host: await projectStatus(projectId),
+    });
     await exploreRecovery({ projectId, uiProjectId, modelSelection });
   } else {
     const draft = "连接恢复后继续这条草稿";
