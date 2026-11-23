@@ -8,28 +8,25 @@ export function LabsSettings() {
   const { t } = useI18n();
   const botsEnabled = useLabsFeature("bots");
   return (
-    <>
-      <SettingsSection title={t("settings.labs.title")}>
-        <SettingsGroupCard>
-          <SettingsRow
-            label={
-              <span className="inline-flex items-center gap-2">
-                <FlaskConical size={16} aria-hidden="true" />
-                {t("settings.labs.bots.label")}
-              </span>
-            }
-            description={t("settings.labs.bots.description")}
-            control={
-              <SettingsSwitch
-                aria-label={t("settings.labs.bots.label")}
-                checked={botsEnabled}
-                onCheckedChange={(enabled) => setLabsFeature("bots", enabled)}
-              />
-            }
-          />
-        </SettingsGroupCard>
-      </SettingsSection>
-      <p className="settings-section-desc">{t("settings.labs.description")}</p>
-    </>
+    <SettingsSection>
+      <SettingsGroupCard>
+        <SettingsRow
+          label={
+            <span className="inline-flex items-center gap-2">
+              <FlaskConical size={16} aria-hidden="true" />
+              {t("settings.labs.bots.label")}
+            </span>
+          }
+          description={t("settings.labs.bots.description")}
+          control={
+            <SettingsSwitch
+              aria-label={t("settings.labs.bots.label")}
+              checked={botsEnabled}
+              onCheckedChange={(enabled) => setLabsFeature("bots", enabled)}
+            />
+          }
+        />
+      </SettingsGroupCard>
+    </SettingsSection>
   );
 }

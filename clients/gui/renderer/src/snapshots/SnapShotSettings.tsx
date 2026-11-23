@@ -112,19 +112,20 @@ export function SnapShotSettings({
       if (id === checkId.current) setError((cause as Error).message);
     }
   };
-  const captureStatus =
-    state?.message ||
-    t(
-      !state
-        ? "snapshots.statusChecking"
-        : !settings.snapShotEnabled
-          ? "snapshots.statusDisabled"
-          : state.shortcutPending
-            ? "snapshots.statusPending"
-            : state.shortcutRegistered
-              ? "snapshots.statusReady"
-              : "snapshots.statusSetup",
-    );
+  const captureStatus = !bridge
+    ? t("snapshots.unavailable")
+    : state?.message ||
+      t(
+        !state
+          ? "snapshots.statusChecking"
+          : !settings.snapShotEnabled
+            ? "snapshots.statusDisabled"
+            : state.shortcutPending
+              ? "snapshots.statusPending"
+              : state.shortcutRegistered
+                ? "snapshots.statusReady"
+                : "snapshots.statusSetup",
+      );
   const shortcutStatus = state?.shortcutPending
     ? t("snapshots.statusPending")
     : state?.shortcutRegistered
@@ -177,179 +178,183 @@ export function SnapShotSettings({
           {state?.message || t("snapshots.unavailable")}
         </p>
       )}
-      <SettingsSection title={t("snapshots.title")}>
-        <SettingsGroupCard>
-          <SettingsRow
-            label={t("snapshots.title")}
-            description={
-              <div className="space-y-1">
-                <p>{t("snapshots.description")}</p>
-                <p role="status">{captureStatus}</p>
-              </div>
-            }
-            control={
-              <div className="flex items-center gap-2">
-                {settings.snapShotEnabled &&
-                  !(
-                    state?.macPermissions?.screenRecording &&
-                    (!settings.snapShotIncludeAccessibility ||
-                      state.macPermissions.accessibility) &&
-                    state.shortcutRegistered
-                  ) && (
-                    <Button
-                      variant="outline"
-                      disabled={disabled}
-                      onClick={() => {
-                        wasEnabled.current = settings.setupStep === "complete";
-                        setWizard(settings.setupStep === "shortcut" ? "shortcut" : "access");
-                      }}
-                    >
-                      {t("snapshots.setup")}
-                    </Button>
-                  )}
-                <SettingsSwitch
-                  aria-label={t("snapshots.title")}
-                  checked={settings.snapShotEnabled || !!wizard}
-                  disabled={disabled}
-                  onCheckedChange={(enabled) =>
-                    void run(async () => {
-                      if (!enabled) return save({ snapShotEnabled: false });
-                      wasEnabled.current = false;
-                      const step = settings.setupStep === "shortcut" ? "shortcut" : "access";
-                      await save({ snapShotEnabled: true, setupStep: step });
-                      setWizard(step);
-                    })
-                  }
-                />
-              </div>
-            }
-          />
-          {settings.snapShotEnabled && (
-            <>
-              <SettingsRow
-                label={t("snapshots.includeText")}
-                description={t("snapshots.includeTextDescription")}
-                control={
+      {bridge && state?.mode !== "unavailable" && (
+        <SettingsSection title={t("snapshots.title")}>
+          <SettingsGroupCard>
+            <SettingsRow
+              label={t("snapshots.title")}
+              description={
+                <div className="space-y-1">
+                  <p>{t("snapshots.description")}</p>
+                  <p role="status">{captureStatus}</p>
+                </div>
+              }
+              control={
+                <div className="flex items-center gap-2">
+                  {settings.snapShotEnabled &&
+                    !(
+                      state?.macPermissions?.screenRecording &&
+                      (!settings.snapShotIncludeAccessibility ||
+                        state.macPermissions.accessibility) &&
+                      state.shortcutRegistered
+                    ) && (
+                      <Button
+                        variant="outline"
+                        disabled={disabled}
+                        onClick={() => {
+                          wasEnabled.current = settings.setupStep === "complete";
+                          setWizard(settings.setupStep === "shortcut" ? "shortcut" : "access");
+                        }}
+                      >
+                        {t("snapshots.setup")}
+                      </Button>
+                    )}
                   <SettingsSwitch
-                    aria-label={t("snapshots.includeText")}
-                    checked={settings.snapShotIncludeAccessibility}
+                    aria-label={t("snapshots.title")}
+                    checked={settings.snapShotEnabled || !!wizard}
                     disabled={disabled}
-                    onCheckedChange={(value) =>
+                    onCheckedChange={(enabled) =>
                       void run(async () => {
-                        if (value) await bridge?.requestSnapShotPermissions(true);
-                        await save({ snapShotIncludeAccessibility: value });
+                        if (!enabled) return save({ snapShotEnabled: false });
+                        wasEnabled.current = false;
+                        const step = settings.setupStep === "shortcut" ? "shortcut" : "access";
+                        await save({ snapShotEnabled: true, setupStep: step });
+                        setWizard(step);
                       })
                     }
                   />
-                }
-              />
-              <SettingsRow
-                label={t("snapshots.captureShortcut")}
-                description={
-                  <div className="space-y-1">
-                    <p>{t("snapshots.shortcutDescription")}</p>
-                    {shortcutStatus && <p role="status">{shortcutStatus}</p>}
-                  </div>
-                }
-                control={recorder}
-              />
-              <SettingsRow
-                label={t("snapshots.sound")}
-                description={t("snapshots.soundDescription")}
-                control={
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button
-                          variant="outline"
-                          disabled={disabled}
-                          aria-label={t("snapshots.sound")}
-                        />
+                </div>
+              }
+            />
+            {settings.snapShotEnabled && (
+              <>
+                <SettingsRow
+                  label={t("snapshots.includeText")}
+                  description={t("snapshots.includeTextDescription")}
+                  control={
+                    <SettingsSwitch
+                      aria-label={t("snapshots.includeText")}
+                      checked={settings.snapShotIncludeAccessibility}
+                      disabled={disabled}
+                      onCheckedChange={(value) =>
+                        void run(async () => {
+                          if (value) await bridge?.requestSnapShotPermissions(true);
+                          await save({ snapShotIncludeAccessibility: value });
+                        })
                       }
-                    >
-                      {t(
-                        !settings.snapShotPlaySound
-                          ? "snapshots.off"
-                          : settings.snapShotSound === "soft-pop"
-                            ? "snapshots.whoosh"
-                            : "snapshots.click",
-                      )}
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuRadioGroup
-                        value={settings.snapShotPlaySound ? settings.snapShotSound : "off"}
-                        onValueChange={(value) =>
-                          void run(() =>
-                            value === "off"
-                              ? save({ snapShotPlaySound: false })
-                              : save({
-                                  snapShotPlaySound: true,
-                                  snapShotSound:
-                                    value === "camera-shutter" ? "camera-shutter" : "soft-pop",
-                                }),
-                          )
+                    />
+                  }
+                />
+                <SettingsRow
+                  label={t("snapshots.captureShortcut")}
+                  description={
+                    <div className="space-y-1">
+                      <p>{t("snapshots.shortcutDescription")}</p>
+                      {shortcutStatus && <p role="status">{shortcutStatus}</p>}
+                    </div>
+                  }
+                  control={recorder}
+                />
+                <SettingsRow
+                  label={t("snapshots.sound")}
+                  description={t("snapshots.soundDescription")}
+                  control={
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <Button
+                            variant="outline"
+                            disabled={disabled}
+                            aria-label={t("snapshots.sound")}
+                          />
                         }
                       >
-                        <DropdownMenuRadioItem value="off">
-                          {t("snapshots.off")}
-                        </DropdownMenuRadioItem>
-                        <div className="grid grid-cols-[1fr_auto]">
-                          <DropdownMenuRadioItem value="soft-pop">
-                            {t("snapshots.whoosh")}
+                        {t(
+                          !settings.snapShotPlaySound
+                            ? "snapshots.off"
+                            : settings.snapShotSound === "soft-pop"
+                              ? "snapshots.whoosh"
+                              : "snapshots.click",
+                        )}
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuRadioGroup
+                          value={settings.snapShotPlaySound ? settings.snapShotSound : "off"}
+                          onValueChange={(value) =>
+                            void run(() =>
+                              value === "off"
+                                ? save({ snapShotPlaySound: false })
+                                : save({
+                                    snapShotPlaySound: true,
+                                    snapShotSound:
+                                      value === "camera-shutter" ? "camera-shutter" : "soft-pop",
+                                  }),
+                            )
+                          }
+                        >
+                          <DropdownMenuRadioItem value="off">
+                            {t("snapshots.off")}
                           </DropdownMenuRadioItem>
-                          <DropdownMenuItem
-                            closeOnClick={false}
-                            aria-label={t("snapshots.playWhoosh")}
-                            onClick={() => playSnapShotSound("soft-pop")}
-                          >
-                            <Play size={14} />
-                          </DropdownMenuItem>
-                        </div>
-                        <div className="grid grid-cols-[1fr_auto]">
-                          <DropdownMenuRadioItem value="camera-shutter">
-                            {t("snapshots.click")}
-                          </DropdownMenuRadioItem>
-                          <DropdownMenuItem
-                            closeOnClick={false}
-                            aria-label={t("snapshots.playClick")}
-                            onClick={() => playSnapShotSound("camera-shutter")}
-                          >
-                            <Play size={14} />
-                          </DropdownMenuItem>
-                        </div>
-                      </DropdownMenuRadioGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                }
-              />
-              <SettingsRow
-                label={t("snapshots.flash")}
-                description={t("snapshots.flashDescription")}
-                control={
-                  <SettingsSwitch
-                    aria-label={t("snapshots.flash")}
-                    checked={settings.snapShotFlash}
-                    disabled={disabled}
-                    onCheckedChange={(value) => void run(() => save({ snapShotFlash: value }))}
-                  />
-                }
-              />
-              <SettingsRow
-                label={t("snapshots.animations")}
-                description={t("snapshots.animationsDescription")}
-                control={
-                  <SettingsSwitch
-                    aria-label={t("snapshots.animations")}
-                    checked={settings.snapShotAnimations}
-                    disabled={disabled}
-                    onCheckedChange={(value) => void run(() => save({ snapShotAnimations: value }))}
-                  />
-                }
-              />
-            </>
-          )}
-        </SettingsGroupCard>
-      </SettingsSection>
+                          <div className="grid grid-cols-[1fr_auto]">
+                            <DropdownMenuRadioItem value="soft-pop">
+                              {t("snapshots.whoosh")}
+                            </DropdownMenuRadioItem>
+                            <DropdownMenuItem
+                              closeOnClick={false}
+                              aria-label={t("snapshots.playWhoosh")}
+                              onClick={() => playSnapShotSound("soft-pop")}
+                            >
+                              <Play size={14} />
+                            </DropdownMenuItem>
+                          </div>
+                          <div className="grid grid-cols-[1fr_auto]">
+                            <DropdownMenuRadioItem value="camera-shutter">
+                              {t("snapshots.click")}
+                            </DropdownMenuRadioItem>
+                            <DropdownMenuItem
+                              closeOnClick={false}
+                              aria-label={t("snapshots.playClick")}
+                              onClick={() => playSnapShotSound("camera-shutter")}
+                            >
+                              <Play size={14} />
+                            </DropdownMenuItem>
+                          </div>
+                        </DropdownMenuRadioGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  }
+                />
+                <SettingsRow
+                  label={t("snapshots.flash")}
+                  description={t("snapshots.flashDescription")}
+                  control={
+                    <SettingsSwitch
+                      aria-label={t("snapshots.flash")}
+                      checked={settings.snapShotFlash}
+                      disabled={disabled}
+                      onCheckedChange={(value) => void run(() => save({ snapShotFlash: value }))}
+                    />
+                  }
+                />
+                <SettingsRow
+                  label={t("snapshots.animations")}
+                  description={t("snapshots.animationsDescription")}
+                  control={
+                    <SettingsSwitch
+                      aria-label={t("snapshots.animations")}
+                      checked={settings.snapShotAnimations}
+                      disabled={disabled}
+                      onCheckedChange={(value) =>
+                        void run(() => save({ snapShotAnimations: value }))
+                      }
+                    />
+                  }
+                />
+              </>
+            )}
+          </SettingsGroupCard>
+        </SettingsSection>
+      )}
       {wizard && bridge && (
         <SnapShotSetupDialog
           step={wizard}

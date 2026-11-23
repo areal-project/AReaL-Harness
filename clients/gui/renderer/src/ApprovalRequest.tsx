@@ -69,19 +69,40 @@ export function ApprovalRequest({
     }
   };
   const locked = busy || submitted || unknown;
-  const summary = [item.reason, item.justification, item.effectiveArguments?.purpose].find(
-    (value) => typeof value === "string" && value.trim(),
-  );
+  const permissionJustification =
+    typeof item.effectiveArguments?.permissionRequest?.justification === "string"
+      ? item.effectiveArguments.permissionRequest.justification
+      : undefined;
+  const summary = [
+    item.reason,
+    item.justification,
+    permissionJustification,
+    item.effectiveArguments?.purpose,
+  ].find((value) => typeof value === "string" && value.trim());
+  const argvCommand = Array.isArray(item.effectiveArguments?.argv)
+    ? item.effectiveArguments.argv
+        .filter((part: unknown): part is string => typeof part === "string")
+        .map((part: string) => (/\s/.test(part) ? JSON.stringify(part) : part))
+        .join(" ")
+    : "";
   const command =
     typeof item.effectiveArguments?.command === "string"
       ? item.effectiveArguments.command
-      : browserPlan?.operation === "command" && browserPlan.parameters?.command != null
-        ? JSON.stringify(browserPlan.parameters.command, null, 2)
-        : "";
+      : argvCommand
+        ? argvCommand
+        : browserPlan?.operation === "command" && browserPlan.parameters?.command != null
+          ? JSON.stringify(browserPlan.parameters.command, null, 2)
+          : "";
+  const isTerminal = Boolean(command) || item.tool === "run_command";
+  const fallbackActionLabel = isBrowser
+    ? "执行浏览器操作"
+    : isTerminal
+      ? "运行命令"
+      : `执行 ${item.tool}`;
   return (
     <DecisionCard
       kind="approval"
-      label={isBrowser ? "浏览器" : item.effectiveArguments?.command ? "终端" : "工具"}
+      label={isBrowser ? "浏览器" : isTerminal ? "终端" : "工具"}
       icon={isBrowser ? <Globe /> : <SquareTerminal />}
       busy={busy}
       error={error}
@@ -356,9 +377,7 @@ export function ApprovalRequest({
         )
       }
     >
-      <h3 className="decision-card-title">
-        {summary || `是否允许${isBrowser ? "执行浏览器操作" : `执行 ${item.tool}`}？`}
-      </h3>
+      <h3 className="decision-card-title">{summary || `是否允许${fallbackActionLabel}？`}</h3>
       <p className="approval-target">
         {isBrowser
           ? (browserPlan?.document?.scope?.canonicalFile ??

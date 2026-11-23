@@ -52,6 +52,7 @@ export function FileOpenSetting({
       setBusy(false);
     }
   };
+  if (!service) return null;
   return (
     <SettingsRow
       label={t("settings.fileOpenSetting.openFilesIn")}

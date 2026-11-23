@@ -40,7 +40,7 @@ export function ProjectlessDraft({
     : undefined;
   const owner = snapshot.projects.find((p) => p.id === ownerId) ?? adopted ?? prepared;
   const ready = snapshot.connection?.state === "ready";
-  const prepare = async () => {
+  const prepare = async (): Promise<Data> => {
     setPreparing(true);
     setError("");
     try {
@@ -73,9 +73,24 @@ export function ProjectlessDraft({
   useEffect(() => {
     if (!ready || ownerId || deferred) return;
     let active = true;
-    void prepare().catch((cause) => {
-      if (active) setError(currentErrorText(cause));
-    });
+    // 首次进入无项目态时后台可能仍在冷启，静默申请目录并交由 connect effect 拉起，避免误报“连接暂不可用”。
+    void (async () => {
+      try {
+        let requestId = localStorage.getItem(`${key}:workspace-request`);
+        if (!requestId) {
+          requestId = crypto.randomUUID();
+          localStorage.setItem(`${key}:workspace-request`, requestId);
+        }
+        const result = await call(services, "projectless", { operation: "prepare", requestId });
+        if (!active) return;
+        localStorage.setItem(`${key}:project`, result.projectId);
+        setOwnerId(result.projectId);
+        const project = (await services.snapshot()).projects.find((p) => p.id === result.projectId);
+        if (active && project?.state?.connected) setPrepared(project);
+      } catch {
+        // 首次冷启动失败保持静默，用户真正发送时由 prepare() 显式提示。
+      }
+    })();
     return () => {
       active = false;
     };

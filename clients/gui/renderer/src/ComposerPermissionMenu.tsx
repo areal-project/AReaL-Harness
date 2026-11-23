@@ -74,11 +74,9 @@ export function ComposerPermissionMenu({
           <span className="flex min-w-0 flex-col">
             <span className="permission-choice-label">{t(option.labelId)}</span>
             <span className="permission-choice-description text-ui-sm text-foreground-subtle">
-              {option.id === "fullAccess" && capabilitiesPending
-                ? t("chat.permissions.pendingNotice")
-                : option.id === "fullAccess" && supported && !fullAccess
-                  ? t("chat.permissions.fullAccessUnavailable")
-                  : t(option.descriptionId)}
+              {option.id === "fullAccess" && supported && !fullAccess
+                ? t("chat.permissions.fullAccessUnavailable")
+                : t(option.descriptionId)}
             </span>
           </span>
         </>
@@ -105,6 +103,11 @@ export function ComposerPermissionMenu({
             {content}
           </Button>
         ))}
+        {capabilitiesPending && (
+          <p className="px-2 text-ui-sm text-foreground-subtle">
+            {t("chat.permissions.pendingNotice")}
+          </p>
+        )}
       </div>
     );
   return (

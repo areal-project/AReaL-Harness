@@ -1,5 +1,5 @@
 import { TitleTooltip } from "../../components/tooltip/tooltip.js";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { SettingsSearchInput } from "../../settings/settings-search-input/settings-search-input.js";
 import { NavigationSidebar } from "../workbench-shell/workbench-shell.js";
@@ -65,6 +65,16 @@ export function SettingsNavigation({
       }),
     }))
     .filter((group) => group.items.length);
+
+  // 搜索过滤后若当前页不在命中列表内，自动切到首个命中页，避免右侧停留在不相关设置页。
+  const firstMatchedId = needle ? visibleGroups[0]?.items[0]?.id : undefined;
+  const activeVisible =
+    !needle || visibleGroups.some((group) => group.items.some((item) => item.id === activeId));
+  useEffect(() => {
+    if (firstMatchedId && !activeVisible && !navigationBusy) {
+      onSelect(firstMatchedId);
+    }
+  }, [firstMatchedId, activeVisible, navigationBusy, onSelect]);
 
   return (
     <NavigationSidebar

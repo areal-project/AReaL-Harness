@@ -21,6 +21,14 @@ export function useWorkbenchAppearance(
   useAppearance(dark);
   const [theme, setTheme] = useState(() => localStorage.getItem("areal-gui:theme") ?? "data-dense");
   const [sidebar, setSidebar] = useState(() => !matchMedia("(max-width: 640px)").matches);
+  useEffect(() => {
+    const query = matchMedia("(max-width: 640px)");
+    const onChange = (event: MediaQueryListEvent) => {
+      if (event.matches) setSidebar(false);
+    };
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = Number(localStorage.getItem("areal-gui:sidebar-width"));
     return Number.isFinite(saved) && saved >= 240 && saved <= 520 ? saved : 320;

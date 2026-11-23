@@ -178,7 +178,13 @@
     flex-direction: row;
     gap: calc(var(--spacing-inline) / 2);
     overflow-x: auto;
+    padding-right: var(--spacing-field);
     padding-bottom: var(--spacing-inline);
+    mask-image: linear-gradient(
+      to right,
+      currentColor calc(100% - var(--spacing-field)),
+      transparent 100%
+    );
   }
 }
 @media (max-width: 640px) {

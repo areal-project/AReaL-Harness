@@ -216,6 +216,7 @@ kbd {
   right: calc(var(--spacing-inline) / 2);
   top: 50%;
   transform: translateY(-50%);
+  z-index: 1;
   gap: var(--spacing-inline);
 }
 .project-row:is(:hover, :has(:focus-visible), :has([data-popup-open])) > .project-label {
@@ -773,6 +774,7 @@ button.composer-project:hover > svg,
 .search-backdrop {
   align-items: start !important;
   padding-top: calc(var(--spacing-section) * 5);
+  background: color-mix(in srgb, var(--color-background) 55%, transparent);
 }
 .search-dialog {
   width: min(calc(var(--reading-width) * 5 / 6), 90vw);
@@ -3856,6 +3858,7 @@ button[aria-label="停止"] {
 .composer-catalog-group > span {
   font-size: var(--text-fixed-metadata);
 }
+.composer-catalog-scroll [role="option"],
 .composer-catalog-row {
   width: 100%;
   display: flex;
@@ -3867,9 +3870,11 @@ button[aria-label="停止"] {
   text-align: left;
   border-radius: var(--radius-choice);
 }
+.composer-catalog-scroll [role="option"][aria-selected="true"],
 .composer-catalog-row[aria-selected="true"] {
   background: var(--color-selected);
 }
+.composer-catalog-scroll [role="option"][aria-disabled="true"],
 .composer-catalog-row[aria-disabled="true"] {
   opacity: var(--opacity-disabled);
 }

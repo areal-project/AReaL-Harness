@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ArrowUp,
   Bot,
-  Cloud,
   Minimize2,
   MoreHorizontal,
   Plus,
@@ -160,12 +159,6 @@ export function BotsWorkspace({
                 <Plus size={15} />
                 {t("bots.new")}
               </Button>
-              {!model.arena?.ready && (
-                <Button variant="outline" onClick={() => setArenaOpen(true)}>
-                  <Cloud size={15} />
-                  {t("bots.arena.unconfigured")}
-                </Button>
-              )}
             </div>
           </div>
         ) : (

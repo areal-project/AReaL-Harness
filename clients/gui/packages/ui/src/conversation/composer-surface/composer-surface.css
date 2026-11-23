@@ -203,6 +203,8 @@
 .composer-surface[data-layout="decision"] .composer-toolbar {
   position: static;
   flex: 0 0 auto;
+  /* 决策行里 toolbar 按内容占宽，不能带 inline-size containment，否则内在宽度坍缩为 0 导致控件溢出右边框。 */
+  container-type: normal;
 }
 .composer-surface[data-layout="decision"] [data-composer-leading-actions] {
   position: absolute;
