@@ -523,9 +523,13 @@ button.composer-project:hover > svg,
   padding: var(--spacing-inline) var(--spacing-field) var(--spacing-field);
 }
 @container composer-column (max-width: 820px) {
-  .active-composer .composer-project-bar,
-  .draft-composer .composer-project-bar {
+  .active-composer .composer-project-bar {
     max-width: calc(var(--reading-width-compact) - 2 * var(--spacing-field));
+  }
+  .draft-composer .composer-project-bar {
+    max-width: calc(
+      var(--reading-width-compact) - 2 * var(--spacing-field) - var(--spacing-inline) * 3
+    );
   }
   .composer-dock {
     max-width: var(--reading-width-compact);
