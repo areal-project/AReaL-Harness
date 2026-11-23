@@ -171,21 +171,23 @@ pub(crate) async fn discover_bundle(
     required: &[&str],
     unavailable: &'static str,
 ) -> Result<Bundle> {
-    ensure!(cfg!(target_os = "macos"), unavailable);
+    let fail = |detail: String| crate::wire::error(unavailable, detail);
+    if !cfg!(target_os = "macos") {
+        return Err(fail("local Relay requires macOS".into()));
+    }
     let contents = bin
         .parent()
         .and_then(Path::parent)
         .and_then(Path::parent)
-        .context(unavailable)?;
-    ensure!(
-        contents.file_name().is_some_and(|name| name == "Contents"),
-        unavailable
-    );
-    ensure!(
-        bin == contents.join("Resources/areal-core/bin"),
-        unavailable
-    );
-    let app = contents.parent().context(unavailable)?;
+        .ok_or_else(|| fail("invalid app Contents path".into()))?;
+    if !contents.file_name().is_some_and(|name| name == "Contents")
+        || bin != contents.join("Resources/areal-core/bin")
+    {
+        return Err(fail("Host binary is outside packaged macOS app".into()));
+    }
+    let app = contents
+        .parent()
+        .ok_or_else(|| fail("invalid app bundle path".into()))?;
     let verified = tokio::time::timeout(
         Duration::from_secs(30),
         tokio::process::Command::new("/usr/bin/codesign")
@@ -194,25 +196,36 @@ pub(crate) async fn discover_bundle(
             .kill_on_drop(true)
             .output(),
     )
-    .await??;
-    ensure!(verified.status.success(), "{unavailable}: bundle signature");
+    .await
+    .map_err(|_| fail("bundle signature verification timed out".into()))?
+    .map_err(|error| fail(format!("bundle signature check failed: {error}")))?;
+    if !verified.status.success() {
+        return Err(fail("bundle signature verification failed".into()));
+    }
     let root = contents.join("Resources").join(name);
-    let manifest_file = File::open(root.join("bundle.json"))?;
-    ensure!(
-        manifest_file.metadata()?.len() <= 256 * 1024,
-        "bundle manifest too large"
-    );
+    let manifest_file = File::open(root.join("bundle.json"))
+        .map_err(|error| fail(format!("bundle manifest missing: {error}")))?;
+    if manifest_file
+        .metadata()
+        .map_err(|error| fail(format!("bundle manifest stat failed: {error}")))?
+        .len()
+        > 256 * 1024
+    {
+        return Err(fail("bundle manifest too large".into()));
+    }
     let mut manifest_bytes = Vec::new();
     std::io::Read::read_to_end(
         &mut std::io::Read::take(manifest_file, 256 * 1024 + 1),
         &mut manifest_bytes,
-    )?;
-    ensure!(
-        manifest_bytes.len() <= 256 * 1024,
-        "bundle manifest too large"
-    );
-    let manifest: Manifest = serde_json::from_slice(&manifest_bytes)?;
-    verify_files(&root, &manifest, required)?;
+    )
+    .map_err(|error| fail(format!("bundle manifest read failed: {error}")))?;
+    if manifest_bytes.len() > 256 * 1024 {
+        return Err(fail("bundle manifest too large".into()));
+    }
+    let manifest: Manifest = serde_json::from_slice(&manifest_bytes)
+        .map_err(|error| fail(format!("bundle manifest invalid: {error}")))?;
+    verify_files(&root, &manifest, required)
+        .map_err(|error| fail(format!("bundle verification failed: {error}")))?;
     Ok(Bundle {
         runtime: contents.join("MacOS/AReaL Harness GUI"),
         runner: root.join(runner),
@@ -529,6 +542,17 @@ impl LocalRelay {
         };
         *self.view.borrow_mut() = json!({"phase":if inner.phase.is_empty(){"stopped"}else{&inner.phase},"address":inner.address,"version":inner.version,"error":inner.diagnostic});
     }
+    pub(crate) fn is_running_at(&self, address: &str) -> bool {
+        let view = self.view.borrow();
+        view["phase"] == "running" && view["address"] == address
+    }
+    pub(crate) async fn ensure_bundle(&self, bin: &Path) -> Result<()> {
+        let mut inner = self.inner.lock().await;
+        if inner.bundle.is_none() {
+            inner.bundle = Some(Bundle::discover(bin).await?);
+        }
+        Ok(())
+    }
     pub(crate) async fn start(
         &self,
         home: &Path,
@@ -549,13 +573,23 @@ impl LocalRelay {
                 inner.phase = "failed".into();
                 let _ = close(&mut inner).await;
                 self.publish(&inner);
-                anyhow::bail!("local Relay exited");
+                return Err(crate::wire::error(
+                    "localRelayStartFailed",
+                    "local Relay exited unexpectedly",
+                ));
             }
-            ensure!(
-                inner.address == address,
-                "local Relay configuration changed"
-            );
-            return Ok(());
+            if inner.address == address {
+                return Ok(());
+            }
+            // DHCP 或网卡切换导致目标内网地址变化时，先优雅停旧实例再按新地址拉起，避免卡死在旧地址。
+            close(&mut inner).await.map_err(|error| {
+                crate::wire::error(
+                    "localRelayStartFailed",
+                    format!(
+                        "failed to stop previous local Relay before switching address: {error}"
+                    ),
+                )
+            })?;
         }
         if let Err(error) = ensure_local_address(&origin) {
             inner.phase = "failed".into();
@@ -563,7 +597,10 @@ impl LocalRelay {
             inner.diagnostic = "已保存的内网地址不可用，请确认设备网络后重新开启内网连接。".into();
             self.publish(&inner);
             // 调用方的配置可能已保存，这里的监听失败不能作为未受理回执。
-            return Err(anyhow::anyhow!("{error}"));
+            return Err(crate::wire::error(
+                "localRelayStartFailed",
+                format!("{error}"),
+            ));
         }
         inner.phase = "starting".into();
         inner.address = address.clone();
@@ -580,10 +617,15 @@ impl LocalRelay {
                 let cleanup = close(&mut inner).await;
                 inner.phase = "failed".into();
                 inner.diagnostic = "本机 Relay 启动失败；请检查安装包、端口与原 writer 状态".into();
+                let wrapped = if error.downcast_ref::<crate::wire::Error>().is_some() {
+                    error
+                } else {
+                    crate::wire::error("localRelayStartFailed", format!("{error:#}"))
+                };
                 match cleanup {
-                    Ok(()) => Err(error),
+                    Ok(()) => Err(wrapped),
                     Err(cleanup) => {
-                        Err(error.context(format!("local Relay cleanup unconfirmed: {cleanup}")))
+                        Err(wrapped.context(format!("local Relay cleanup unconfirmed: {cleanup}")))
                     }
                 }
             }
@@ -1023,7 +1065,51 @@ mod tests {
 
     #[tokio::test]
     async fn cli_source_path_cannot_select_a_runtime() {
-        assert!(Bundle::discover(Path::new("/usr/local/bin")).await.is_err());
+        let error = Bundle::discover(Path::new("/usr/local/bin"))
+            .await
+            .err()
+            .expect("non-packaged path must fail bundle discovery");
+        assert_eq!(
+            error
+                .downcast_ref::<crate::wire::Error>()
+                .map(|wire| wire.code),
+            Some("localRelayUnavailable")
+        );
+    }
+
+    #[tokio::test]
+    async fn switching_local_address_stops_previous_runner_instead_of_configuration_changed_error()
+    {
+        let (relay, directory) = running("while read line; do :; done; : > \"$MARKER\"").await;
+        {
+            let mut inner = relay.inner.lock().await;
+            inner.phase = "running".into();
+            inner.address = "http://192.0.2.10:47820".into();
+            relay.publish(&inner);
+        }
+        assert!(relay.is_running_at("http://192.0.2.10:47820"));
+        assert!(!relay.is_running_at("http://192.0.2.11:47820"));
+        // 目标地址切换到不可达新地址时，必须先优雅停掉旧实例，返回结构化 localRelayStartFailed，
+        // 而不是遗留旧实例并报无错误码的 "local Relay configuration changed"。
+        let config = json!({
+            "relayLocal": {
+                "enabled": true,
+                "origin": "http://192.0.2.11:47820",
+                "port": 47820
+            }
+        });
+        let error = relay
+            .start(directory.path(), Path::new("/not-a-runtime"), &config, None)
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error
+                .downcast_ref::<crate::wire::Error>()
+                .map(|wire| wire.code),
+            Some("localRelayStartFailed")
+        );
+        assert!(directory.path().join("relay-closed").is_file());
+        assert!(relay.inner.lock().await.running.is_none());
     }
 
     #[test]

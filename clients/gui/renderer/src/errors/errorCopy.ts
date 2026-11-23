@@ -76,6 +76,8 @@ export const ERROR_CODES = {
   remoteStateUnavailable: { action: "retry", retryable: true },
   localRelayUnavailable: { action: "none", retryable: false },
   localRelayAddressUnavailable: { action: "retry", retryable: false },
+  localRelayStartFailed: { action: "retry", retryable: false },
+  DESKTOP_RESPONSE_INVALID: { action: "refresh", retryable: false },
   // 只用于诊断的码：用户看到通用说明，原码进详情。
   GUI_SOURCE_PENDING: {
     message: "errors.CAPABILITY_UNAVAILABLE",

@@ -263,4 +263,12 @@ export const errorMessages = {
     "zh-CN": "无可用内网地址。请让电脑和手机连同一 Wi‑Fi 或 VPN 后重试。",
     en: "There is no usable local connection address. Connect your computer and phone to the same reachable Wi‑Fi or VPN, enable the local connection again, and generate a new QR code.",
   },
+  "errors.localRelayStartFailed": {
+    "zh-CN": "本机 Relay 启动失败，请检查端口占用或网络状态后重试。",
+    en: "Failed to start the local Relay. Check port availability and network status, then try again.",
+  },
+  "errors.DESKTOP_RESPONSE_INVALID": {
+    "zh-CN": "界面与后台服务版本数据不匹配，请重启应用后重试。",
+    en: "The interface and background service data format do not match. Restart the app and try again.",
+  },
 } as const;

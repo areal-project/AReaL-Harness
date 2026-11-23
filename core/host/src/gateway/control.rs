@@ -305,6 +305,17 @@ impl Host {
             "relayServiceStartLocal" => {
                 self.local_relay_source(&input.source_id)?;
                 crate::local_relay::configure(&mut config)?;
+                // 写入凭据与配置前先校验本机 Relay 组件完整性和签名，避免失败后留下 enabled: true 半状态。
+                self.gateway.local_relay.ensure_bundle(&self.bin).await?;
+                // 目标配置未变化且本机 Relay 已在同地址运行：幂等直接返回，避免重复触发 credential-io 与写密文文件。
+                if config == snapshot["config"]
+                    && let Some(origin) = config["relayLocal"]["origin"].as_str()
+                    && self.gateway.local_relay.is_running_at(origin)
+                {
+                    self.gateway.relay_reconnect.set(true);
+                    self.gateway.refresh_config(&config);
+                    return self.gateway_state(&input.source_id);
+                }
             }
             "relayServiceStopLocal" => {
                 config["relayLocal"]["enabled"] = json!(false);

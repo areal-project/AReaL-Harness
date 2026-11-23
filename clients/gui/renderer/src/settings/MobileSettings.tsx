@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { currentErrorText } from "../errors/currentErrorText.js";
-import { errorCode } from "../errors/errorCopy.js";
+import { errorCode, presentError } from "../errors/errorCopy.js";
 import { Smartphone } from "lucide-react";
 import { Button } from "@areal/ui";
 import { SettingsGroupCard } from "@areal/ui/compositions";
@@ -8,6 +8,7 @@ import { useI18n, formatUiMessage, type UiMessage } from "../i18n/IntlProvider.j
 import { MobileAdvancedNetwork, networkDiagnostics } from "./MobileAdvancedNetwork.js";
 import { MobileAddDevice, type AddDeviceStep } from "./MobileAddDevice.js";
 import { RelayServicePanel } from "./RelayServicePanel.js";
+import { SettingsDisclosure } from "./SettingsDisclosure.js";
 import { MobileDevices } from "./MobileDevices.js";
 import "./MobileSettings.css";
 
@@ -22,6 +23,8 @@ const credentialErrors = new Set([
   "storageMissing",
 ]);
 
+const connectionStatusErrors = new Set(["DISCONNECTED", "CORE_UNAVAILABLE", "TIMEOUT"]);
+
 /**
  * 手机连接页：一张状态卡回答“手机现在能不能连”，下面是设备列表；
  * 网络细节收进高级网络设置。默认通过中继配对，未开启中继时才使用本机入口。
@@ -30,8 +33,10 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
   const { t } = useI18n();
   const [state, setState] = useState<Data>({ deviceGrants: [], pending: [] });
   const [error, setError] = useState<string | UiMessage>(""),
+    [errorDetail, setErrorDetail] = useState(""),
     [busy, setBusy] = useState(false);
   const [statusError, setStatusError] = useState<string | UiMessage>("");
+  const [statusErrorDetail, setStatusErrorDetail] = useState("");
   const [credentialError, setCredentialError] = useState("");
   const [invite, setInvite] = useState<Data | null>(null);
   const [inviteExpired, setInviteExpired] = useState(false);
@@ -42,9 +47,11 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
   const run = async (request: CommandParams<"remoteControl">): Promise<Data | undefined> => {
     setBusy(true);
     setError("");
+    setErrorDetail("");
     try {
       const result = await action("remoteControl", request);
       setStatusError("");
+      setStatusErrorDetail("");
       setCredentialError("");
       if (request.operation === "pair") {
         setInvite(result);
@@ -61,8 +68,9 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
       return result ?? {};
     } catch (error) {
       const failure = error as Error & { code?: string };
+      const presented = presentError(t, failure);
       if (credentialErrors.has(failure.code ?? "")) {
-        setCredentialError(currentErrorText(failure));
+        setCredentialError(presented.message);
         return undefined;
       }
       setError(
@@ -72,8 +80,20 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
                 networkDiagnostics[failure.code] ?? "settings.mobileSettings.networkStatusUnknown",
               values: { code: failure.code },
             }
-          : currentErrorText(failure),
+          : presented.message,
       );
+      setErrorDetail(presented.detail ?? "");
+      // 变更出错后补拉一次权威状态，避免后台已启动或已记录诊断但界面停留在旧状态。
+      if (request.operation !== "status") {
+        void action("remoteControl", { operation: "status" })
+          .then((latest) => {
+            setState(latest);
+            setStatusError("");
+            setStatusErrorDetail("");
+            directUrl.current = latest.directUrl ?? "";
+          })
+          .catch(() => {});
+      }
       return undefined;
     } finally {
       setBusy(false);
@@ -87,18 +107,24 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
           if (!live) return;
           setState(value);
           setStatusError("");
+          setStatusErrorDetail("");
           directUrl.current = value.directUrl ?? "";
         })
         .catch((error) => {
-          if (live)
-            setStatusError(
-              credentialErrors.has(errorCode(error) ?? "")
+          if (!live) return;
+          const code = errorCode(error);
+          const presented = presentError(t, error);
+          setStatusErrorDetail(presented.detail ?? "");
+          setStatusError(
+            code && !connectionStatusErrors.has(code)
+              ? presented.message
+              : credentialErrors.has(code ?? "")
                 ? currentErrorText(error)
                 : {
                     id: "settings.mobileSettings.theHostIsOfflineOrTheBackground",
-                    values: { value0: currentErrorText(error) },
+                    values: { value0: presented.message },
                   },
-            );
+          );
         });
     void read();
     const timer = setInterval(() => {
@@ -116,7 +142,7 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
       clearInterval(timer);
       clearTimeout(doneTimer.current);
     };
-  }, [action]);
+  }, [action, t]);
 
   const transport = state.enabled ? "relay" : "direct";
   const credentialHint = credentialError || state.migrationError;
@@ -309,9 +335,14 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
         )}
       </SettingsGroupCard>
       {!adding && !credentialHint && (error || state.directError || statusError) && (
-        <p className="remote-error" role="alert">
-          {formatUiMessage(t, error) || state.directError || formatUiMessage(t, statusError)}
-        </p>
+        <div className="remote-error" role="alert">
+          <p>{formatUiMessage(t, error) || state.directError || formatUiMessage(t, statusError)}</p>
+          {(errorDetail || (!error && !state.directError && statusErrorDetail)) && (
+            <SettingsDisclosure title={t("recovery.details")}>
+              <code className="remote-muted">{errorDetail || statusErrorDetail}</code>
+            </SettingsDisclosure>
+          )}
+        </div>
       )}
       <RelayServicePanel state={state} busy={busy} run={run} />
       <MobileDevices
