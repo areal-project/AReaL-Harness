@@ -20,11 +20,24 @@ export function useWorkbenchAppearance(
   const [dark, setDark] = useState(false);
   useAppearance(dark);
   const [theme, setTheme] = useState(() => localStorage.getItem("areal-gui:theme") ?? "data-dense");
-  const [sidebar, setSidebar] = useState(() => !matchMedia("(max-width: 640px)").matches);
+  const [sidebar, setSidebarState] = useState(() => !matchMedia("(max-width: 640px)").matches);
+  const autoCollapsed = useRef(false);
+  const setSidebar: typeof setSidebarState = (next) => {
+    autoCollapsed.current = false;
+    setSidebarState(next);
+  };
   useEffect(() => {
     const query = matchMedia("(max-width: 640px)");
     const onChange = (event: MediaQueryListEvent) => {
-      if (event.matches) setSidebar(false);
+      if (event.matches) {
+        setSidebarState((open) => {
+          if (open) autoCollapsed.current = true;
+          return false;
+        });
+      } else if (autoCollapsed.current) {
+        autoCollapsed.current = false;
+        setSidebarState(true);
+      }
     };
     query.addEventListener("change", onChange);
     return () => query.removeEventListener("change", onChange);
