@@ -2485,6 +2485,57 @@ impl Host {
         }
         Ok(None)
     }
+    /// 在调用方已持有该项目 gate 写锁的前提下，核对旧单项目停止回执是否已有权威服务回执。
+    async fn reconcile_pending_blockers_locked(
+        &self,
+        project_id: &str,
+        current: &str,
+    ) -> Result<()> {
+        for path in storage::json_records(&self.home.join("host/operations"), false)? {
+            let mut record: Operation = storage::read(&path)?;
+            if record.receipt["requestId"] == current
+                || record.receipt["projectId"] != project_id
+                || record.receipt["projects"].is_array()
+            {
+                continue;
+            }
+            if !matches!(
+                ReceiptState::of(&record.receipt),
+                Some(
+                    ReceiptState::AcceptedPending
+                        | ReceiptState::AdmissionUnknown
+                        | ReceiptState::SettlementIncomplete
+                )
+            ) {
+                continue;
+            }
+            let (Some(req_id), Some(instance), Some(generation)) = (
+                record.receipt["requestId"].as_str().map(str::to_owned),
+                record.receipt["serviceId"].as_str().map(str::to_owned),
+                record.receipt["serviceGeneration"]
+                    .as_str()
+                    .map(str::to_owned),
+            ) else {
+                continue;
+            };
+            let Ok(strategy) =
+                serde_json::from_value::<StopStrategy>(record.receipt["strategy"].clone())
+            else {
+                continue;
+            };
+            if let Some(op) =
+                areal_local_service::operation(&self.home, &instance, &generation, &req_id).await?
+                && op.request_id == req_id
+                && op.service_id == instance
+                && op.generation == generation
+                && op.cancel == strategy.cancel()
+            {
+                record.receipt = stop_receipt(project_id, strategy, &op);
+                self.save(&req_id, &record.digest, &record.receipt)?;
+            }
+        }
+        Ok(())
+    }
     async fn check_pending(&self, project_id: &str, current: &str) -> Result<()> {
         if let Some(blocker) = self.find_pending_blocker(project_id, current).await? {
             let reason = blocker["reason"]
@@ -2550,6 +2601,9 @@ impl Host {
         };
         let receipt = match operation {
             Ok(op) => stop_receipt(project_id, strategy, &op),
+            Err(err) if areal_local_service::is_stop_not_dispatched(&err) => {
+                json!({"version":VERSION,"requestId":request_id,"projectId":project_id,"serviceId":service.identity.service_id,"serviceGeneration":service.identity.generation,"strategy":strategy,"state":"blocked","message":format!("{err:#}")})
+            }
             Err(_) => {
                 json!({"version":VERSION,"requestId":request_id,"projectId":project_id,"serviceId":service.identity.service_id,"serviceGeneration":service.identity.generation,"strategy":strategy,"state":"admissionUnknown","message":"Read the original operation to reconcile admission"})
             }
@@ -2587,6 +2641,8 @@ impl Host {
                 .context("missing operation");
         }
         self.admission()?;
+        self.reconcile_pending_blockers_locked(id, &input.request_id)
+            .await?;
         self.check_pending(id, &input.request_id).await?;
         let instance = Self::service_id(&self.slots.borrow()[id].registration);
         let service = areal_local_service::status(&self.home, &instance).await?;
@@ -2691,6 +2747,8 @@ impl Host {
             {
                 // 活跃的激活操作也先记 pending；等原操作释放锁后再区分完成与遗留 UNKNOWN。
                 let _guard = self.gate(id)?.write_owned().await;
+                self.reconcile_pending_blockers_locked(id, &input.request_id)
+                    .await?;
                 self.check_pending(id, &input.request_id).await?;
             }
         }
@@ -2709,6 +2767,8 @@ impl Host {
         }
         eprintln!("Host stop preparation: project gates acquired");
         for id in &ids {
+            self.reconcile_pending_blockers_locked(id, &input.request_id)
+                .await?;
             self.check_pending(id, &input.request_id).await?;
         }
         let mut services = Vec::new();

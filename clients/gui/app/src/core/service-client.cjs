@@ -745,6 +745,7 @@ class SharedCoreBackend {
         binary: options.binary,
         buildIdentity,
         closed: () => this.disposed === true,
+        allowDeferred: true,
       });
       source.client.close();
       await source.init({ deferCredentials: true });
@@ -763,7 +764,13 @@ class SharedCoreBackend {
       this.lifecycleError = null;
       trace?.advance("complete_upgrade");
       await completeUpgrade();
-      this.backendUpdate = undefined;
+      this.backendUpdate = completeUpgrade.deferred
+        ? {
+            state: "pending",
+            message:
+              completeUpgrade.reason || "已连接当前后台，新版后台将在原阻塞操作处理并重启后生效。",
+          }
+        : undefined;
     } catch (error) {
       this.closeNativeBrowser();
       this.status.connected = false;
@@ -1270,7 +1277,33 @@ class SharedCoreBackend {
           reference,
           await client.stop(reference.requestId, reference.generation, strategy),
         );
-      } catch {
+      } catch (cause) {
+        const refusalCode = cause instanceof Error && "code" in cause ? String(cause.code) : "";
+        if (
+          ["admissionUnknown", "stopInProgress", "generationMismatch", "invalidRequest"].includes(
+            refusalCode,
+          ) &&
+          client.socket &&
+          !client.socket.destroyed &&
+          client.hostId === reference.hostId &&
+          client.generation === reference.generation
+        ) {
+          try {
+            const confirmed = (await client.operation(reference.requestId))?.operation;
+            if (confirmed != null) return this.acceptHostStop(reference, confirmed);
+            if (client.socket && !client.socket.destroyed) {
+              // 同代已认证连接确认此次 host.stop 未受理；仅撤回这一条新引用，保留其它未决记录。
+              this.hostReferences.delete(reference.requestId);
+              this.hostReceipts.delete(reference.requestId);
+              this.hostStopResources.delete(reference.requestId);
+              await this.persistReferences();
+              this.onChange();
+              throw cause;
+            }
+          } catch (verifyError) {
+            if (verifyError === cause) throw cause;
+          }
+        }
         return this.readHostStop(reference);
       }
     } finally {
@@ -1422,7 +1455,7 @@ class SharedCoreBackend {
       await this.persistReferences();
       this.controlState = null;
       this.reconnectBlocked = false;
-      this.backendUpdate = undefined;
+      if (this.backendUpdate?.state !== "pending") this.backendUpdate = undefined;
       this.onChange();
       return result;
     } catch (error) {

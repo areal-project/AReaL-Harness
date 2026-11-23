@@ -152,10 +152,31 @@ function validateReceipt(record, receipt) {
   return receipt;
 }
 
+/** @typedef {(() => Promise<void>) & {deferred?:boolean,reason?:string}} UpgradeCompletion */
+const PRE_ADMISSION_REFUSAL_CODES = new Set([
+  "admissionUnknown",
+  "stopInProgress",
+  "generationMismatch",
+  "invalidRequest",
+]);
+/** @param {unknown} error */
+const errorCode = (error) =>
+  error instanceof Error && "code" in error && typeof error.code === "string" ? error.code : "";
+/** @param {string} path @param {string} requestId @param {string} generation */
+async function unlinkIfMatching(path, requestId, generation) {
+  const current = await readPrivate(path).catch(() => null);
+  if (current && current.requestId === requestId && current.generation === generation) {
+    await unlink(path).catch((error) => {
+      if (!hasCode(error, "ENOENT")) throw error;
+    });
+  }
+}
+
 /**
  * 桌面单实例持有者在接入业务前调用；同一次交接跨应用重启复用原停止回执。
  * @param {InstanceType<typeof import("./host-client.cjs").HostClient>} client
- * @param {{home:string,binary:string,buildIdentity:string,closed?:()=>boolean}} options
+ * @param {{home:string,binary:string,buildIdentity:string,closed?:()=>boolean,allowDeferred?:boolean}} options
+ * @returns {Promise<UpgradeCompletion>}
  */
 async function ensureDesktopHost(client, options) {
   const binary = await realpath(options.binary);
@@ -192,8 +213,42 @@ async function ensureDesktopHost(client, options) {
   };
   const targetOrder = order(version);
   let recoveredPreparation = false;
+  // 区分本次新建待派发的交接记录与磁盘恢复的未知记录；恢复记录绝不重发 cancel。
+  let freshlyCreated = false;
   const checkOpen = () => {
     if (options.closed?.()) throw new Error("应用连接已关闭，交接将在下次启动继续");
+  };
+  /** @param {string} reason @returns {Promise<UpgradeCompletion | null>} */
+  const tryDeferredAttach = async (reason) => {
+    if (!options.allowDeferred) return null;
+    try {
+      if (!client.socket || client.socket.destroyed) {
+        client.close();
+        await client.connect(options.home);
+      }
+      if (!client.hello || !client.identity) return null;
+      const runningOrder = order(client.hello.executableVersion);
+      const different = targetOrder.findIndex((part, i) => part !== runningOrder[i]);
+      if (different >= 0 && targetOrder[different] < runningOrder[different]) return null;
+      if (
+        !["stopOperations", "scheduledActivation", "scheduledPreparation"].every((cap) =>
+          client.capabilities.includes(cap),
+        )
+      )
+        return null;
+      const hostStatus = await client.status();
+      if (hostStatus?.state !== "running" || hostStatus?.stopIntent === true) return null;
+      const backend = await client.request("backend.status", {});
+      if (backend?.owned !== false) return null;
+      /** @type {UpgradeCompletion} */
+      const deferred = async () => {};
+      deferred.deferred = true;
+      deferred.reason = reason;
+      return deferred;
+    } catch {
+      client.close();
+      return null;
+    }
   };
   /** @type {Upgrade|null} */ let record = initialRecord;
   if (
@@ -228,20 +283,50 @@ async function ensureDesktopHost(client, options) {
   for (;;) {
     checkOpen();
     if (record) {
-      // 读取原回执；没有回执不能改 ID 重发。尚未派发的同 ID 请求由 Host 去重。
+      // 读取原回执；没有回执不能改 ID 重发。仅本次新建且尚未派发的记录允许发送 stop。
+      const dispatchFresh = freshlyCreated;
+      freshlyCreated = false;
       /** @type {Receipt|undefined} */ let receipt;
       /** @type {unknown} */ let stopError;
+      let preAdmissionRefused = false;
       try {
         if (!client.socket) await client.connect(options.home);
         if (client.generation === record.generation) {
           receipt = (await client.operation(record.requestId)).operation;
-          if (!receipt) receipt = await client.stop(record.requestId, record.generation, "cancel");
+          if (!receipt && dispatchFresh) {
+            try {
+              receipt = await client.stop(record.requestId, record.generation, "cancel");
+            } catch (cause) {
+              stopError = cause;
+              if (
+                PRE_ADMISSION_REFUSAL_CODES.has(errorCode(cause)) &&
+                client.socket &&
+                !client.socket.destroyed &&
+                client.hostId === record.hostId &&
+                client.generation === record.generation
+              ) {
+                const confirmed = (await client.operation(record.requestId)).operation;
+                if (confirmed) {
+                  receipt = confirmed;
+                  stopError = undefined;
+                } else if (client.socket && !client.socket.destroyed) {
+                  // 同代已认证连接确认新 stop 未受理，安全撤回这条新建的交接记录，避免后续重启继续锁死。
+                  await unlinkIfMatching(path, record.requestId, record.generation);
+                  preAdmissionRefused = true;
+                } else {
+                  client.close();
+                }
+              } else {
+                client.close();
+              }
+            }
+          }
         }
       } catch (cause) {
         stopError = cause;
         client.close();
       }
-      if (!receipt) {
+      if (!receipt && !preAdmissionRefused) {
         const result = await executeHost(
           binary,
           ["host", "operation", record.requestId, "--json"],
@@ -259,10 +344,13 @@ async function ensureDesktopHost(client, options) {
             : typeof stopError === "string"
               ? stopError
               : "";
-        if (reason && /admissionUnknown|must be reconciled/i.test(reason)) {
-          throw new Error(`应用交接被未核对的项目操作阻塞，请先核对原操作后重试：${reason}`);
-        }
-        throw new Error("应用交接结果尚未确认，请重新打开应用继续恢复");
+        const message =
+          reason && /admissionUnknown|must be reconciled/i.test(reason)
+            ? `应用交接被未核对的项目操作阻塞，请先核对原操作后重试：${reason}`
+            : "应用交接结果尚未确认，请重新打开应用继续恢复";
+        const deferred = await tryDeferredAttach(message);
+        if (deferred) return deferred;
+        throw new Error(message);
       }
       validateReceipt(record, receipt);
       const undispatched = receipt.projects.every((item) => item.dispatch === "notStarted");
@@ -292,8 +380,12 @@ async function ensureDesktopHost(client, options) {
         if (client.generation !== record.generation)
           throw new Error("应用交接的停止准备尚未结算，原记录已保留");
       }
-      if (["blocked", "partial", "settlementIncomplete"].includes(receipt.state))
-        throw new Error("应用交接尚未完成，原交接记录已保留，请重新打开应用继续恢复");
+      if (["blocked", "partial", "settlementIncomplete"].includes(receipt.state)) {
+        const message = "应用交接尚未完成，原交接记录已保留，请重新打开应用继续恢复";
+        const deferred = await tryDeferredAttach(message);
+        if (deferred) return deferred;
+        throw new Error(message);
+      }
       if (receipt.state !== "completed") {
         if (!client.socket || client.socket.destroyed || client.generation !== record.generation)
           throw new Error("应用交接结果尚未确认，请重新打开应用继续恢复");
@@ -359,7 +451,7 @@ async function ensureDesktopHost(client, options) {
       throw new Error("原应用后台不支持安全交接，请先用原版本安全停止后台，再打开新版应用");
     if ((await digest(binary)) !== targetDigest)
       throw new Error("应用文件在准备期间发生变化，请重新打开应用");
-    record = {
+    const nextRecord = {
       version: 1,
       requestId: randomUUID(),
       hostId: client.hostId,
@@ -369,8 +461,9 @@ async function ensureDesktopHost(client, options) {
       targetIdentity: options.buildIdentity,
       phase: "stopping",
     };
-    await publish(path, record);
+    await publish(path, nextRecord);
     record = await readPrivate(path);
+    freshlyCreated = Boolean(record && record.requestId === nextRecord.requestId);
   }
 }
 

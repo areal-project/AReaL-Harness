@@ -451,3 +451,64 @@ for (const denied of [false, true]) {
     await assert.rejects(access(path), { code: "ENOENT" });
   });
 }
+
+test("resumed unknown desktop-upgrade.json never resends cancel and supports deferred attach", async (t) => {
+  const f = await fixture(t);
+  await f.client.connect(f.home);
+  const path = join(f.home, "host/desktop-upgrade.json");
+  const activePath = join(f.home, "host/desktop-build.json");
+  const activeBefore = await readFile(activePath, "utf8");
+  const record = {
+    version: 1,
+    requestId: randomUUID(),
+    hostId: f.client.hostId,
+    generation: f.original.generation,
+    pid: f.original.pid,
+    targetDigest: f.client.hello.executableDigest,
+    targetIdentity: f.options.buildIdentity,
+    phase: "stopping",
+  };
+  const before = JSON.stringify(record);
+  await writeFile(path, before, { mode: 0o600 });
+  f.client.close();
+  let stops = 0;
+  f.client.stop = async () => {
+    stops++;
+    throw new Error("resumed unknown handoff must never resend cancel");
+  };
+  await assert.rejects(ensureDesktopHost(f.client, f.options), /应用交接结果尚未确认/);
+  assert.equal(stops, 0);
+  assert.equal(await readFile(path, "utf8"), before);
+  f.client.close();
+  const deferred = await ensureDesktopHost(f.client, { ...f.options, allowDeferred: true });
+  assert.equal(stops, 0);
+  assert.equal(deferred.deferred, true);
+  assert.match(deferred.reason || "", /应用交接结果尚未确认/);
+  await deferred();
+  assert.equal(f.client.generation, f.original.generation);
+  assert.equal(await readFile(path, "utf8"), before);
+  assert.equal(await readFile(activePath, "utf8"), activeBefore);
+});
+
+test("synchronous pre-admission refusal cleans up fresh desktop-upgrade.json and supports deferred attach", async (t) => {
+  const f = await fixture(t);
+  const path = join(f.home, "host/desktop-upgrade.json");
+  const activePath = join(f.home, "host/desktop-build.json");
+  const activeBefore = await readFile(activePath, "utf8");
+  let stops = 0;
+  f.client.stop = async () => {
+    stops++;
+    throw Object.assign(
+      new Error("an earlier project operation must be reconciled before activation (project p1)"),
+      { code: "admissionUnknown" },
+    );
+  };
+  const deferred = await ensureDesktopHost(f.client, { ...f.options, allowDeferred: true });
+  assert.equal(stops, 1);
+  assert.equal(deferred.deferred, true);
+  assert.match(deferred.reason || "", /未核对的项目操作阻塞/);
+  await deferred();
+  assert.equal(f.client.generation, f.original.generation);
+  await assert.rejects(access(path), { code: "ENOENT" });
+  assert.equal(await readFile(activePath, "utf8"), activeBefore);
+});

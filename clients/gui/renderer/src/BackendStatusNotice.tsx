@@ -90,7 +90,7 @@ function backendPresentation({
     action = "update";
   } else if (connection?.state === "ready" && update?.state === "pending") {
     message = "backend.updatePending";
-    diagnostic = error;
+    diagnostic = error || update.message;
     tone = "info";
     action = "update";
   } else if (connection?.state === "ready") {

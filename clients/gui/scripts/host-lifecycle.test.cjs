@@ -73,7 +73,13 @@ async function fixture(t, extraCapabilities = []) {
           else if (handler) result = await handler(request, socket);
           else result = { operation: operations.get(request.params.requestId) ?? null };
           if (!socket.destroyed)
-            socket.write(JSON.stringify({ version: 1, id: request.id, result }) + "\n");
+            socket.write(
+              JSON.stringify(
+                result && typeof result === "object" && "__rpcError" in result
+                  ? { version: 1, id: request.id, error: result.__rpcError }
+                  : { version: 1, id: request.id, result },
+              ) + "\n",
+            );
         })().catch((error) => {
           socket.destroy(error);
         });
@@ -2192,6 +2198,36 @@ test("offline interrupted preparation connects only Host and reconciles the orig
   assert.equal(result.receipt.preparationInterrupted, true);
   assert.equal(
     f.calls.some((call) => ["host.stop", "project.ensure"].includes(call.method)),
+    false,
+  );
+});
+
+test("synchronous pre-admission host.stop refusal cleans up only the refused reference", async (t) => {
+  const f = await fixture(t);
+  const refused = randomUUID();
+  f.setHandler(async (request) => {
+    if (request.method === "host.stop") {
+      return {
+        __rpcError: {
+          code: "admissionUnknown",
+          message: "an earlier project operation must be reconciled before activation",
+        },
+      };
+    }
+    if (request.method === "host.operation") {
+      return { operation: null };
+    }
+    return {};
+  });
+  await assert.rejects(
+    f.backend.requestHostStop({ strategy: "cancel", requestId: refused }),
+    (error) => error?.code === "admissionUnknown",
+  );
+  assert.equal(f.backend.hostReferences.has(refused), false);
+  const control = await f.backend.readControl();
+  const stored = control ? readReferences(control) : [];
+  assert.equal(
+    stored.some((item) => item.requestId === refused),
     false,
   );
 });

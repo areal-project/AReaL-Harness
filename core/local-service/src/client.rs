@@ -35,6 +35,20 @@ impl std::error::Error for ControlTransportError {
     }
 }
 
+/// 标记停止请求在发送 `StopOperation` 之前就确定失败，避免误标为 `admissionUnknown`。
+#[derive(Debug)]
+struct StopNotDispatched(String);
+impl std::fmt::Display for StopNotDispatched {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+impl std::error::Error for StopNotDispatched {}
+
+pub fn is_stop_not_dispatched(error: &anyhow::Error) -> bool {
+    error.downcast_ref::<StopNotDispatched>().is_some()
+}
+
 pub async fn ensure(spec: &LaunchSpec) -> Result<Service> {
     ensure_inner(spec, None, false, true, None, || Ok(())).await
 }
@@ -735,11 +749,14 @@ async fn stop_operation_unlocked(
         );
         return Ok(operation);
     }
-    let capabilities = capabilities_unlocked(root, id, generation).await?;
-    ensure!(
-        capabilities.version == VERSION && capabilities.stop_operations == 1,
-        "service does not support durable stop operations"
-    );
+    let capabilities = capabilities_unlocked(root, id, generation)
+        .await
+        .map_err(|error| anyhow::Error::new(StopNotDispatched(format!("{error:#}"))))?;
+    if capabilities.version != VERSION || capabilities.stop_operations != 1 {
+        return Err(anyhow::Error::new(StopNotDispatched(
+            "service does not support durable stop operations".into(),
+        )));
+    }
     match control_request(root, id, Request::StopOperation {
         version: VERSION,
         generation: generation.to_owned(),

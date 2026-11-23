@@ -1618,3 +1618,102 @@ async fn status_probe_timeout_does_not_revoke_live_execution_identity() {
         "a proven identity mismatch must still invalidate the connection"
     );
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn reconcile_pending_blockers_settles_confirmed_stop_and_keeps_unconfirmed_blocker() {
+    let root = tempfile::tempdir().unwrap();
+    let host = schedules::tests::fixture(root.path());
+    let registration = host.slots.borrow()["project"].registration.clone();
+    storage::private_dir(&registration.data_dir).unwrap();
+    let instance = Host::service_id(&registration);
+    let directory = storage::registry(&host.home, &instance).unwrap();
+    storage::private_dir(&directory).unwrap();
+    let service: Service = serde_json::from_value(json!({
+        "protocolVersion":1,"serviceId":instance,"generation":"gen-1",
+        "workspace":registration.workspace,"dataDir":registration.data_dir,
+        "configFingerprint":"fixture","owner":host.owner(),
+        "endpoint":"ws://127.0.0.1:1/","webUrl":"",
+        "authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),
+        "hostPid":1,"corePid":1,"state":"ready"
+    }))
+    .unwrap();
+    storage::write(&directory.join("service.json"), &service).unwrap();
+
+    // 1. 写入一条已落盘的服务回执，Host 侧仍为 admissionUnknown。
+    let settled_req = uuid::Uuid::new_v4().to_string();
+    storage::write_stop_receipt(
+        &directory,
+        &storage::StopReceipt {
+            operation: StopOperation {
+                version: VERSION,
+                request_id: settled_req.clone(),
+                service_id: instance.clone(),
+                generation: "gen-1".into(),
+                cancel: false,
+                state: StopOperationState::Blocked,
+                message: Some("active turns running".into()),
+                lifecycle: None,
+            },
+            service: service.clone(),
+            cleanup_confirmed: false,
+        },
+    )
+    .unwrap();
+    storage::write(
+        &wire::operation_path(&host.home, &settled_req),
+        &Operation {
+            digest: "fixture-1".into(),
+            receipt: json!({
+                "version": VERSION,
+                "requestId": settled_req,
+                "projectId": "project",
+                "serviceId": instance,
+                "serviceGeneration": "gen-1",
+                "strategy": "ifIdle",
+                "state": "admissionUnknown"
+            }),
+            evidence: Value::Null,
+        },
+    )
+    .unwrap();
+
+    let gate = host.gate("project").unwrap();
+    let _guard = gate.write().await;
+    host.reconcile_pending_blockers_locked("project", "next-host-stop")
+        .await
+        .unwrap();
+    host.check_pending("project", "next-host-stop")
+        .await
+        .expect("settled single-project stop must no longer block host.stop");
+    let updated: Operation =
+        storage::read(&wire::operation_path(&host.home, &settled_req)).unwrap();
+    assert_eq!(updated.receipt["state"], "blocked");
+
+    // 2. 若仍存在另一条无服务回执的 admissionUnknown，绝不能漏放。
+    let unknown_req = uuid::Uuid::new_v4().to_string();
+    storage::write(
+        &wire::operation_path(&host.home, &unknown_req),
+        &Operation {
+            digest: "fixture-2".into(),
+            receipt: json!({
+                "version": VERSION,
+                "requestId": unknown_req,
+                "projectId": "project",
+                "serviceId": instance,
+                "serviceGeneration": "gen-1",
+                "strategy": "ifIdle",
+                "state": "admissionUnknown"
+            }),
+            evidence: Value::Null,
+        },
+    )
+    .unwrap();
+    host.reconcile_pending_blockers_locked("project", "next-host-stop")
+        .await
+        .unwrap();
+    let err = host
+        .check_pending("project", "next-host-stop")
+        .await
+        .unwrap_err();
+    assert!(format!("{err:#}").contains(&unknown_req));
+}
