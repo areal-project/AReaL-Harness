@@ -38,12 +38,13 @@ export function StartupScreen({
   onQuit: () => void;
 }) {
   const { t } = useI18n();
-  // 只有已确认的失败才展示恢复操作；超时、等待结算和未确认状态仍属于 loading。
+  // 只有已确认的失败或待核对恢复态才展示恢复操作；普通连接等待仍属于 loading。
   const failed =
     state.restoration.failed ||
     state.connection?.state === "unavailable" ||
     !!state.lifecycle?.error;
-  const delayed = state.delayed && !failed;
+  const actionable = failed || !!state.lifecycle?.recovery || state.lifecycleBlocked;
+  const delayed = state.delayed && !actionable;
   const busy =
     state.backend.pending ||
     state.restoration.refreshing ||
@@ -92,10 +93,10 @@ export function StartupScreen({
             />
           ) : (
             <>
-              <p role={failed ? "alert" : "status"}>
-                {t(failed ? "startup.failed" : "startup.loading")}
+              <p role={actionable ? "alert" : "status"}>
+                {t(actionable ? "startup.failed" : "startup.loading")}
               </p>
-              {!failed && (delayed || slowHint) && (
+              {!actionable && (delayed || slowHint) && (
                 <p className="startup-hint">
                   {t(delayed ? "startup.delayed" : "startup.elapsedHint")}
                 </p>
@@ -106,7 +107,7 @@ export function StartupScreen({
                     {t("recovery.retryView")}
                   </Button>
                 )}
-                {failed && services.capabilities?.native !== false && (
+                {actionable && services.capabilities?.native !== false && (
                   <>
                     <Button
                       variant="outline"
@@ -128,8 +129,8 @@ export function StartupScreen({
                     )}
                   </>
                 )}
-                <Button variant={failed ? "ghost" : "outline"} size="sm" onClick={onSettings}>
-                  {t(failed ? "recovery.checkSettings" : "startup.openSettings")}
+                <Button variant={actionable ? "ghost" : "outline"} size="sm" onClick={onSettings}>
+                  {t(actionable ? "recovery.checkSettings" : "startup.openSettings")}
                 </Button>
                 {services.capabilities?.native !== false && (
                   <Button
@@ -142,7 +143,7 @@ export function StartupScreen({
                   </Button>
                 )}
               </div>
-              {failed && details && (
+              {actionable && details && (
                 <SettingsDisclosure title={t("recovery.details")}>
                   <pre>{details}</pre>
                 </SettingsDisclosure>

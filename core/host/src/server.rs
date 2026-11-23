@@ -2432,7 +2432,7 @@ impl Host {
             "original generation has no confirmed Runtime cleanup receipt",
         ))
     }
-    async fn check_pending(&self, project_id: &str, current: &str) -> Result<()> {
+    async fn find_pending_blocker(&self, project_id: &str, current: &str) -> Result<Option<Value>> {
         for path in storage::json_records(&self.home.join("host/operations"), false)? {
             let record: Operation = storage::read(&path)?;
             if record.receipt["requestId"] != current
@@ -2445,10 +2445,12 @@ impl Host {
                         })
                     })
             {
-                return Err(error(
-                    "admissionUnknown",
-                    "an earlier Host stop target must be reconciled before changing project lifecycle",
-                ));
+                return Ok(Some(json!({
+                    "projectId": project_id,
+                    "requestId": record.receipt["requestId"],
+                    "state": record.receipt["state"],
+                    "reason": "an earlier Host stop target must be reconciled before changing project lifecycle",
+                })));
             }
             if record.receipt["requestId"] == current || record.receipt["projectId"] != project_id {
                 continue;
@@ -2461,19 +2463,38 @@ impl Host {
                         | ReceiptState::SettlementIncomplete
                 )
             ) {
-                return Err(error(
-                    "admissionUnknown",
-                    "an earlier project operation must be reconciled before activation",
-                ));
+                return Ok(Some(json!({
+                    "projectId": project_id,
+                    "requestId": record.receipt["requestId"],
+                    "state": record.receipt["state"],
+                    "serviceId": record.receipt["serviceId"],
+                    "serviceGeneration": record.receipt["serviceGeneration"],
+                    "reason": "an earlier project operation must be reconciled before activation",
+                })));
             }
             if let Some(migration) = record.receipt.get("migration")
                 && migration["phase"] == "draining"
             {
-                return Err(error(
-                    "admissionUnknown",
-                    "legacy drain must be reconciled before activation",
-                ));
+                return Ok(Some(json!({
+                    "projectId": project_id,
+                    "requestId": record.receipt["requestId"],
+                    "state": "draining",
+                    "reason": "legacy drain must be reconciled before activation",
+                })));
             }
+        }
+        Ok(None)
+    }
+    async fn check_pending(&self, project_id: &str, current: &str) -> Result<()> {
+        if let Some(blocker) = self.find_pending_blocker(project_id, current).await? {
+            let reason = blocker["reason"]
+                .as_str()
+                .unwrap_or("an earlier project operation must be reconciled before activation");
+            let req = blocker["requestId"].as_str().unwrap_or("unknown");
+            return Err(error(
+                "admissionUnknown",
+                format!("{reason} (project {project_id}, requestId {req})"),
+            ));
         }
         Ok(())
     }
@@ -2663,7 +2684,11 @@ impl Host {
         }
         let projects: Vec<_> = self.slots.borrow().keys().cloned().collect();
         for id in &projects {
-            if self.check_pending(id, &input.request_id).await.is_err() {
+            if self
+                .find_pending_blocker(id, &input.request_id)
+                .await?
+                .is_some()
+            {
                 // 活跃的激活操作也先记 pending；等原操作释放锁后再区分完成与遗留 UNKNOWN。
                 let _guard = self.gate(id)?.write_owned().await;
                 self.check_pending(id, &input.request_id).await?;

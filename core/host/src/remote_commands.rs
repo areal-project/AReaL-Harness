@@ -94,6 +94,41 @@ pub(super) async fn unresolved(host: &Host, source: &str) -> bool {
     settled(host, source).await.is_err()
 }
 
+/// 读取当前未结算的手机连接操作引用（仅返回安全元数据，不含凭据或参数原文）。
+async fn pending_reference(host: &Host, source: &str) -> Result<Option<Value>> {
+    if settled(host, source).await.is_ok() {
+        return Ok(None);
+    }
+    let home = library_store::source_home(host, source)?;
+    for path in [
+        home.join("host-remote-operation.json"),
+        home.join("host-remote-gateway-operation.json"),
+        host.home.join("host/remote-command-reference.json"),
+    ] {
+        let Some(saved): Option<Value> = storage::read_json(&path)? else {
+            continue;
+        };
+        if saved["version"] != 1 {
+            continue;
+        }
+        let Some(reference) = saved.get("pending").filter(|pending| !pending.is_null()) else {
+            continue;
+        };
+        if reference["sourceId"] != source {
+            continue;
+        }
+        if let Some(request_id) = reference["requestId"].as_str() {
+            return Ok(Some(json!({
+                "requestId": request_id,
+                "method": reference["method"],
+                "operation": reference["operation"],
+                "expectedRevision": reference["expectedRevision"],
+            })));
+        }
+    }
+    Ok(None)
+}
+
 impl RemoteCommands {
     pub(super) async fn command(
         &self,
@@ -123,7 +158,11 @@ impl RemoteCommands {
                 request.as_object().is_some_and(|object| object.len() == 1),
                 "INVALID_PARAMS"
             );
-            return host.gateway_state_snapshot(source, snapshot);
+            let mut state = host.gateway_state_snapshot(source, snapshot)?;
+            if let Some(pending) = pending_reference(host, source).await? {
+                state["pendingOperation"] = pending;
+            }
+            return Ok(state);
         }
         let _guard = self.gate.lock().await;
         settled(host, source).await?;
@@ -198,9 +237,10 @@ impl RemoteCommands {
         let path = host.home.join("host/remote-command-reference.json");
         let digest = host.intent_digest("remote.gateway.control", source, id, &request)?;
         let revision = host.remote.snapshot_async(&host.migration).await?["revision"].clone();
+        let operation_name = request["operation"].as_str().unwrap_or("");
         storage::write(
             &path,
-            &json!({"version":1,"pending":{"requestId":id,"sourceId":source,"hostId":host.identity.host_id,"generation":host.identity.generation,"method":"remote.gateway.control","expectedRevision":revision,"controlDigest":digest}}),
+            &json!({"version":1,"pending":{"requestId":id,"sourceId":source,"hostId":host.identity.host_id,"generation":host.identity.generation,"method":"remote.gateway.control","operation":operation_name,"expectedRevision":revision,"controlDigest":digest}}),
         )?;
         let result = host.gateway_control(json!({"requestId":request_id,"expectedGeneration":host.identity.generation,"sourceId":source,"request":request})).await;
         let not_admitted = result
@@ -219,18 +259,34 @@ impl RemoteCommands {
                         | "invalid-origin"
                         | "invalid-code"
                         | "enrollment-required"
+                        | "localRelayAddressUnavailable"
+                        | "localRelayUnavailable"
+                        | "migrationConflict"
+                        | "operationPending"
                 )
             });
-        let known = if result.is_err() && !not_admitted {
-            host.remote
-                .operation_async(id, &host.migration)
-                .await?
-                .is_some_and(|receipt| {
-                    matches!(receipt["state"].as_str(), Some("completed" | "blocked"))
-                })
+        // 凭据读取失败若发生在任何准入回执落盘之前（operation_async 返回 None），已证明未受理，不应留下永久悬挂引用。
+        let pre_admission_storage_refusal = result
+            .as_ref()
+            .err()
+            .and_then(|error| error.downcast_ref::<crate::wire::Error>())
+            .is_some_and(|error| {
+                matches!(
+                    error.code,
+                    "storageLocked"
+                        | "storageMissing"
+                        | "storageAuthorizationRequired"
+                        | "remoteCredentialUnreadable"
+                )
+            });
+        let existing_receipt = if result.is_err() && !not_admitted {
+            host.remote.operation_async(id, &host.migration).await?
         } else {
-            false
+            None
         };
+        let known = existing_receipt.as_ref().is_some_and(|receipt| {
+            matches!(receipt["state"].as_str(), Some("completed" | "blocked"))
+        }) || (pre_admission_storage_refusal && existing_receipt.is_none());
         if result.is_ok() || not_admitted || known {
             storage::write(&path, &json!({"version":1,"pending":null}))?;
         }

@@ -230,13 +230,15 @@ async function ensureDesktopHost(client, options) {
     if (record) {
       // 读取原回执；没有回执不能改 ID 重发。尚未派发的同 ID 请求由 Host 去重。
       /** @type {Receipt|undefined} */ let receipt;
+      /** @type {unknown} */ let stopError;
       try {
         if (!client.socket) await client.connect(options.home);
         if (client.generation === record.generation) {
           receipt = (await client.operation(record.requestId)).operation;
           if (!receipt) receipt = await client.stop(record.requestId, record.generation, "cancel");
         }
-      } catch {
+      } catch (cause) {
+        stopError = cause;
         client.close();
       }
       if (!receipt) {
@@ -250,7 +252,18 @@ async function ensureDesktopHost(client, options) {
         );
         receipt = JSON.parse(result.stdout).operation;
       }
-      if (!receipt) throw new Error("应用交接结果尚未确认，请重新打开应用继续恢复");
+      if (!receipt) {
+        const reason =
+          stopError instanceof Error && stopError.message
+            ? stopError.message
+            : typeof stopError === "string"
+              ? stopError
+              : "";
+        if (reason && /admissionUnknown|must be reconciled/i.test(reason)) {
+          throw new Error(`应用交接被未核对的项目操作阻塞，请先核对原操作后重试：${reason}`);
+        }
+        throw new Error("应用交接结果尚未确认，请重新打开应用继续恢复");
+      }
       validateReceipt(record, receipt);
       const undispatched = receipt.projects.every((item) => item.dispatch === "notStarted");
       const preparing = receipt.state === "acceptedPending" && receipt.preparationPending === true;

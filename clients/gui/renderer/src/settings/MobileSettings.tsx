@@ -126,6 +126,10 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
         ? `${state.directUrl}/#host=${encodeURIComponent(state.directHostId)}`
         : "";
   const entryReady = transport === "relay" ? state.connected : state.directEnabled;
+  const pendingOperation: { requestId?: string; operation?: string } | null =
+    state.pendingOperation && typeof state.pendingOperation === "object"
+      ? state.pendingOperation
+      : null;
   const localRelay =
     state.relay?.startsWith("http:") ||
     state.relayService?.local?.address === state.relay ||
@@ -278,6 +282,25 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
             </Button>
           </div>
         ) : null}
+        {!adding && pendingOperation?.requestId && (
+          <div className="remote-status" data-tone="warning" role="status">
+            <div className="remote-status-text">
+              <strong>上次手机连接操作结果尚未确认</strong>
+              <small>
+                原请求 {String(pendingOperation.requestId).slice(0, 8)}…
+                尚未核对完成，核对前无法发起新的手机连接更改。
+              </small>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={() => void run({ operation: "status" })}
+            >
+              核对上次操作
+            </Button>
+          </div>
+        )}
         {!adding && credentialHint && (
           <p className="remote-error" role="alert">
             {credentialHint}
