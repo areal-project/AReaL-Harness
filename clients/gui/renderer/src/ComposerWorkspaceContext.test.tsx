@@ -94,6 +94,7 @@ function renderContext(props: {
   backendReady?: boolean;
   showBranch?: boolean;
   cloud?: boolean;
+  quietConnecting?: boolean;
 }) {
   hooks.mounted = true;
   hooks.stateIdx = 0;
@@ -246,5 +247,47 @@ describe("ComposerWorkspaceContext", () => {
     });
     expect(startingHtml).toContain("正在连接");
     expect(startingHtml).not.toContain("连接暂不可用");
+  });
+
+  it("quietly omits routine connecting text on local drafts across all cold/transition states while keeping fault recovery", () => {
+    for (const hostState of ["stopped", "stopping", "starting", "ready", undefined] as const) {
+      hooks.reset();
+      const html = renderContext({
+        project: {
+          id: "p-draft",
+          root: "/tmp/LoopMe",
+          state: { connected: false, ...(hostState ? { hostState } : {}) },
+        },
+        quietConnecting: true,
+      });
+      expect(html).not.toContain("正在连接");
+      expect(html).not.toContain("连接暂不可用");
+    }
+
+    hooks.reset();
+    const suppressedHtml = renderContext({
+      project: {
+        id: "p-draft",
+        root: "/tmp/LoopMe",
+        scheduling: { suppressed: true },
+        state: { connected: false, hostState: "stopped" },
+      },
+      quietConnecting: true,
+    });
+    expect(suppressedHtml).toContain("连接暂不可用");
+    expect(suppressedHtml).toContain("重新连接项目");
+
+    hooks.reset();
+    const erroredHtml = renderContext({
+      project: {
+        id: "p-draft",
+        root: "/tmp/LoopMe",
+        error: "Core 启动失败",
+        state: { connected: false, hostState: "unavailable" },
+      },
+      quietConnecting: true,
+    });
+    expect(erroredHtml).toContain("连接暂不可用");
+    expect(erroredHtml).toContain("重新连接项目");
   });
 });

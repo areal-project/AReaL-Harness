@@ -17,6 +17,7 @@ export function ComposerPermissionMenu({
   configuration,
   permissionsSupported,
   fullAccessAvailable,
+  capabilitiesPending = false,
   disabled,
   lockedReadOnly,
   onChange,
@@ -28,25 +29,32 @@ export function ComposerPermissionMenu({
   configuration?: Data;
   permissionsSupported?: boolean;
   fullAccessAvailable?: boolean;
+  /** 项目尚未拿到本代能力目录时为 true：保留已选偏好展示，锁定高风险选项，不误报“不支持”。 */
+  capabilitiesPending?: boolean;
   disabled?: boolean;
   lockedReadOnly?: boolean;
   onChange: (value: PermissionPreset) => void;
   onClose: () => void;
 }) {
   const { t } = useI18n();
-  const supported = permissionsSupported === true || !!configuration?.permissions;
-  const fullAccess = configuration?.permissions
-    ? configuration.permissions.fullAccessAvailable === true
-    : fullAccessAvailable === true;
+  const supported =
+    !capabilitiesPending && (permissionsSupported === true || !!configuration?.permissions);
+  const fullAccess =
+    !capabilitiesPending &&
+    (configuration?.permissions
+      ? configuration.permissions.fullAccessAvailable === true
+      : fullAccessAvailable === true);
   const explicitPreset = configuration ? configuration.options?.permissionPreset != null : true;
   const effectiveValue =
     value === "readOnly"
       ? value
-      : explicitPreset && !supported
-        ? "unsupported"
-        : value === "fullAccess" && !fullAccess
-          ? "restricted"
-          : value;
+      : capabilitiesPending
+        ? value
+        : explicitPreset && !supported
+          ? "unsupported"
+          : value === "fullAccess" && !fullAccess
+            ? "restricted"
+            : value;
   const selected = permissionChoices.find((option) => option.id === effectiveValue);
   const requested = configuration?.options?.permissionPreset ?? value;
   const Icon = effectiveValue === "ask" ? AskPermissionIcon : AutoPermissionIcon;
@@ -55,16 +63,22 @@ export function ComposerPermissionMenu({
     return {
       option,
       disabled:
-        disabled || lockedReadOnly || !supported || (option.id === "fullAccess" && !fullAccess),
+        disabled ||
+        lockedReadOnly ||
+        (capabilitiesPending
+          ? option.id === "fullAccess"
+          : !supported || (option.id === "fullAccess" && !fullAccess)),
       content: (
         <>
           <ChoiceIcon />
           <span className="flex min-w-0 flex-col">
             <span className="permission-choice-label">{t(option.labelId)}</span>
             <span className="permission-choice-description text-ui-sm text-foreground-subtle">
-              {option.id === "fullAccess" && supported && !fullAccess
-                ? t("chat.permissions.fullAccessUnavailable")
-                : t(option.descriptionId)}
+              {option.id === "fullAccess" && capabilitiesPending
+                ? t("chat.permissions.pendingNotice")
+                : option.id === "fullAccess" && supported && !fullAccess
+                  ? t("chat.permissions.fullAccessUnavailable")
+                  : t(option.descriptionId)}
             </span>
           </span>
         </>
@@ -160,11 +174,13 @@ export function ComposerPermissionMenu({
         <p className="px-3 py-2 text-ui-caption text-foreground-subtle">
           {lockedReadOnly
             ? t("chat.permissions.readOnlySession")
-            : !supported
-              ? t("chat.permissions.unsupportedBackend")
-              : requested === "autoReview" && configuration?.permissions?.reviewer === "human"
-                ? t("chat.permissions.humanFallback")
-                : t("chat.permissions.limitsNotice")}
+            : capabilitiesPending
+              ? t("chat.permissions.pendingNotice")
+              : !supported
+                ? t("chat.permissions.unsupportedBackend")
+                : requested === "autoReview" && configuration?.permissions?.reviewer === "human"
+                  ? t("chat.permissions.humanFallback")
+                  : t("chat.permissions.limitsNotice")}
         </p>
       </DropdownMenuContent>
     </DropdownMenu>

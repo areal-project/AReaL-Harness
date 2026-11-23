@@ -72,6 +72,10 @@ export const generalMessages = {
     "zh-CN": "当前由你审批；部署与 Agent 预设的限制仍生效。已入队消息保留原权限。",
     en: "You currently review approvals. Deployment and agent preset limits still apply. Queued messages keep their original permissions.",
   },
+  "chat.permissions.pendingNotice": {
+    "zh-CN": "项目就绪后确认可用权限；当前保留你的默认偏好。",
+    en: "Available permissions will be confirmed once the project is ready; your saved preference is kept.",
+  },
   "chat.permissions.limitsNotice": {
     "zh-CN": "部署与 Agent 预设的限制始终生效；已入队消息保留原权限。",
     en: "Deployment and agent preset limits always apply. Queued messages keep their original permissions.",

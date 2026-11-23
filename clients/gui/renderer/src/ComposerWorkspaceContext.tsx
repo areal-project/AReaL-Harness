@@ -16,6 +16,7 @@ export function ComposerWorkspaceContext({
   backendReady = false,
   showBranch = true,
   cloud = false,
+  quietConnecting = false,
 }: {
   project: Data;
   threadId?: string;
@@ -23,6 +24,8 @@ export function ComposerWorkspaceContext({
   backendReady?: boolean;
   showBranch?: boolean;
   cloud?: boolean;
+  /** 本地项目草稿态下隐藏常态“正在连接…”，仅保留真实故障与显式停止恢复入口。 */
+  quietConnecting?: boolean;
 }) {
   const { t } = useI18n();
   const suppressed = project.scheduling?.suppressed === true;
@@ -123,7 +126,7 @@ export function ComposerWorkspaceContext({
             </TitleTooltip>
           )}
         </>
-      ) : hibernated || silentWarming ? null : !connected ? (
+      ) : quietConnecting || hibernated || silentWarming ? null : !connected ? (
         <WorkspacePreparationStatus key={fetchOwner} state={preparation} />
       ) : currentError ? null : ( // 分支与工作树只是补充信息，读不到就不显示，不打断输入。
         <span>{t("workspace.readingInfo")}</span>

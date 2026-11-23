@@ -27,7 +27,7 @@ import {
 } from "./settings/applicationPreferences.js";
 import { ComposerModelMenu } from "./ComposerModelMenu.js";
 import { ComposerPermissionMenu } from "./ComposerPermissionMenu.js";
-import { permissionOptions, planModeOptions } from "./permissions.js";
+import { permissionOptions, planModeOptions, type PermissionPreset } from "./permissions.js";
 import { ComposerGoalMode, ComposerPlanMode } from "./ComposerPlanMode.js";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ChatPromptEditor } from "./prompt-editor/ChatPromptEditor.js";
@@ -89,6 +89,29 @@ import {
   stageThreadDraft,
   submitMessage,
 } from "./Composer.js";
+
+/** 发送或准备浏览器草稿前，按当前服务代际核对权限能力与显式 Profile，避免丢失配置或误发越权预设。 */
+export function validateDraftCreation(
+  owner: Data,
+  profileSelection: string,
+  permission: PermissionPreset,
+): void {
+  const features = owner.core?.features;
+  if (!features) {
+    throw new Error("项目能力信息尚未同步完成，草稿已保留，请稍后重试。");
+  }
+  const profile = resolveDraftProfile(owner, profileSelection);
+  if (profileSelection && !profile) {
+    throw new Error("所选任务配置尚未加载或已失效，草稿已保留，请重新确认后再发送。");
+  }
+  if (profile?.readOnly === true) return;
+  if (features.permissionPresets !== true) {
+    throw new Error("当前项目后台不支持权限模式，草稿已保留，请更新后再试。");
+  }
+  if (permission === "fullAccess" && features.permissionFullAccess !== true) {
+    throw new Error("当前项目未启用完全访问权限，草稿已保留，请切换权限后再发送。");
+  }
+}
 
 export function DraftComposer({
   project,
@@ -363,6 +386,7 @@ export function DraftComposer({
     setFiles([]);
   };
   const makeCreationRequest = (owner: Data, selection: typeof worktree, requestId: string) => {
+    validateDraftCreation(owner, profileSelection, permission);
     const profile = resolveDraftProfile(owner, profileSelection);
     const separator = effectiveModel.indexOf("/");
     const chosen = owner.models.find((item: Data) => modelValue(item) === effectiveModel) ??
@@ -393,7 +417,7 @@ export function DraftComposer({
     if (!prepareBrowserDraft) return;
     const prepare = async () => {
       if (sending.has(key) || unknown || conversationCreateReadOnly) return;
-      if (!executionReady) {
+      if (!executionReady && !prepareProject) {
         setDraftError("项目连接尚未就绪，请稍后打开浏览器。");
         return;
       }
@@ -402,7 +426,8 @@ export function DraftComposer({
       markSending(key, true);
       setDraftError("");
       try {
-        const request = makeCreationRequest(project, worktree, requestId);
+        const owner = prepareProject ? await prepareProject() : project;
+        const request = makeCreationRequest(owner, worktree, requestId);
         localStorage.setItem(`${key}:pending-create-request`, JSON.stringify(request));
         const result = await readAction("create", request);
         accepted = true;
@@ -1051,19 +1076,22 @@ export function DraftComposer({
                 </DropdownMenu>
               )}
               {!executionReady && preparationStatus}
-              {executionReady && (
+              {!readOnly && (
                 <ComposerPermissionMenu
                   value={chosenProfile?.readOnly ? "readOnly" : permission}
-                  disabled={submitDisabled}
+                  disabled={editLocked}
+                  capabilitiesPending={!executionReady || project.core?.features == null}
                   permissionsSupported={project.core?.features?.permissionPresets === true}
                   fullAccessAvailable={project.core?.features?.permissionFullAccess === true}
                   lockedReadOnly={chosenProfile?.readOnly === true}
                   onChange={(value) => {
                     setPermission(value);
                     localStorage.setItem(`${key}:permission`, value);
-                    setApplicationPreferences({
-                      defaultPermissionPreset: value,
-                    });
+                    if (executionReady && project.core?.features != null) {
+                      setApplicationPreferences({
+                        defaultPermissionPreset: value,
+                      });
+                    }
                   }}
                   onClose={() => api.current?.focus()}
                 />

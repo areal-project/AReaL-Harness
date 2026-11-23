@@ -617,18 +617,53 @@ function DraftConversation() {
   const { setWorktreeSettingsTarget, setSettingsTab, setSettingsOpen } = surfaces;
   const { t } = useI18n();
   const draftSettings = startup.viewFailure && recoverySettings(startup.viewFailure);
+  const waitForProjectCapabilities = async (
+    initial: NonNullable<typeof project>,
+  ): Promise<NonNullable<typeof project>> => {
+    if (initial.core?.features != null || typeof services.onState !== "function") return initial;
+    return await new Promise<NonNullable<typeof project>>((resolve) => {
+      let settled = false;
+      const finish = (value: NonNullable<typeof project>) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        unsubscribe();
+        resolve(value);
+      };
+      const unsubscribe = services.onState((nextSnapshot) => {
+        const match = nextSnapshot.projects.find((item) => item.id === initial.id);
+        if (match && projectUserState(match).canAct && match.core?.features != null) {
+          finish(match);
+        }
+      });
+      const timer = setTimeout(() => {
+        void services
+          .snapshot()
+          .then((latest) => {
+            const match = latest.projects.find((item) => item.id === initial.id);
+            finish(match ?? initial);
+          })
+          .catch(() => finish(initial));
+      }, 3000);
+    });
+  };
   const prepareProject =
-    project && !projectUserState(project).canAct
+    project && (!projectUserState(project).canAct || project.core?.features == null)
       ? async () => {
           const pending = session.pendingRestoration();
           if (pending) await pending.catch(() => {});
           const current = (await services.snapshot()).projects.find(
             (item) => item.id === project.id,
           );
-          if (current && projectUserState(current).canAct) return current;
+          if (current?.scheduling?.suppressed === true) {
+            throw new Error("项目已手动停止，请先点击“重新连接项目”再继续，草稿已保留。");
+          }
+          if (current && projectUserState(current).canAct) {
+            return await waitForProjectCapabilities(current);
+          }
+          // 普通草稿唤醒必须保留其他窗口的显式停止意图，绝不隐式传 resumeScheduling: true。
           await resourceAction("connect", {
             projectId: project.id,
-            resumeScheduling: true,
           });
           const refreshed = (await services.snapshot()).projects.find(
             (item) => item.id === project.id,
@@ -636,7 +671,7 @@ function DraftConversation() {
           if (!refreshed || !projectUserState(refreshed).canAct) {
             throw new Error("项目尚未连接完成，草稿已保留，请稍后重试。");
           }
-          return refreshed;
+          return await waitForProjectCapabilities(refreshed);
         }
       : undefined;
   return (
@@ -739,6 +774,7 @@ function DraftConversation() {
               <ComposerWorkspaceContext
                 project={project}
                 showBranch={false}
+                quietConnecting
                 action={resourceAction}
                 backendReady={snapshot.connection?.state === "ready"}
               />

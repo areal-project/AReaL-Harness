@@ -270,3 +270,53 @@ it("bounds background inspections so history cannot exhaust Host command admissi
   expect(inspections.size).toBe(40);
   expect([...inspections.values()].every((entry) => entry.value?.modelName === "model")).toBe(true);
 });
+
+it("drops stale features and profiles when Core serviceGeneration changes on the same connection", async () => {
+  const replies: ((value: unknown) => void)[] = [];
+  const client = {
+    snapshot: () => ({ connection: "ready", identity: { connectionId: "same-socket" } }),
+    query: () => new Promise((resolve) => replies.push(resolve)),
+  } as unknown as HostClient;
+  const catalogs = new Map<
+    string,
+    { identity: string; scope?: string; connectionId?: string; value?: Record<string, unknown> }
+  >();
+  refreshModelCatalogs(
+    client,
+    [{ projectId: "p1", state: "ready", serviceGeneration: "gen-1" }],
+    catalogs,
+    () => {},
+  );
+  replies[0]({
+    models: [{ providerId: "fixture", modelId: "m1" }],
+    profiles: [{ id: "p-old", revision: "r1" }],
+    features: { permissionPresets: true, permissionFullAccess: true },
+  });
+  await Promise.resolve();
+  expect(catalogs.get("p1")?.value?.features).toEqual({
+    permissionPresets: true,
+    permissionFullAccess: true,
+  });
+
+  // Core 换代（gen-2）但 socket 未变：模型列表可暂留不闪烁，但旧代 features 与 profiles 必须清空等待新代确认。
+  refreshModelCatalogs(
+    client,
+    [{ projectId: "p1", state: "ready", serviceGeneration: "gen-2" }],
+    catalogs,
+    () => {},
+  );
+  expect(catalogs.get("p1")?.value?.models).toEqual([{ providerId: "fixture", modelId: "m1" }]);
+  expect(catalogs.get("p1")?.value?.features).toBeUndefined();
+  expect(catalogs.get("p1")?.value?.profiles).toBeUndefined();
+
+  replies[1]({
+    models: [{ providerId: "fixture", modelId: "m1" }],
+    profiles: [{ id: "p-new", revision: "r2" }],
+    features: { permissionPresets: true, permissionFullAccess: false },
+  });
+  await Promise.resolve();
+  expect(catalogs.get("p1")?.value?.features).toEqual({
+    permissionPresets: true,
+    permissionFullAccess: false,
+  });
+});

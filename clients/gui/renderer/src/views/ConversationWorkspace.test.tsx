@@ -20,13 +20,17 @@ vi.mock("react", async (importOriginal) => ({
   useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot(),
 }));
 
+let capturedPrepareProject: (() => Promise<unknown>) | undefined;
+
 vi.mock("../DraftComposer.js", () => ({
-  DraftComposer: (props: Record<string, unknown>) =>
-    createElement("div", {
+  DraftComposer: (props: Record<string, unknown>) => {
+    capturedPrepareProject = props.prepareProject as (() => Promise<unknown>) | undefined;
+    return createElement("div", {
       "data-testid": "draft-composer",
       "data-model-ready": String(props.modelCatalogReady),
       "data-has-prepare": String(typeof props.prepareProject === "function"),
-    }),
+    });
+  },
 }));
 
 vi.mock("../ComposerWorkspaceContext.js", () => ({
@@ -264,4 +268,122 @@ it("hides the composer project bar on non-empty threads during idle hibernation,
   });
   expect(unavailableHtml).toContain("composer-project-bar");
   expect(unavailableHtml).toContain('data-testid="workspace-context"');
+});
+
+it("prepareProject does not pass resumeScheduling: true and respects another window's explicit stop", async () => {
+  const resourceAction = vi.fn(async () => ({}));
+  let latestProjects: Record<string, unknown>[] = [
+    { id: "p1", root: "/tmp/LoopMe", state: { connected: false, hostState: "stopped" } },
+  ];
+  const renderDraft = () =>
+    renderToStaticMarkup(
+      createElement(
+        IntlProvider,
+        { locale: "zh-CN", messages: catalogs["zh-CN"] },
+        createElement(ConversationWorkspace, {
+          session: {
+            project: latestProjects[0],
+            thread: undefined,
+            threadId: "",
+            readOnly: false,
+            projects: latestProjects,
+            library: { projects: {}, threads: {}, projectOrder: [], settings: {} },
+            snapshot: { connection: { state: "ready" }, projects: latestProjects },
+            resourceAction,
+            retryRestoration: vi.fn(),
+            pendingRestoration: vi.fn(),
+            prepareBrowserDraft: { current: null },
+          } as unknown as Parameters<typeof ConversationWorkspace>[0]["session"],
+          services: {
+            snapshot: vi.fn(async () => ({ projects: latestProjects })),
+          } as unknown as Parameters<typeof ConversationWorkspace>[0]["services"],
+          action: vi.fn(),
+          dark: true,
+          empty: true,
+          admitting: false,
+          mainPane: { current: null },
+          workspacePanels: {
+            view: { workspaceView: "conversation" },
+            removeTerminalTab: vi.fn(),
+          } as unknown as Parameters<typeof ConversationWorkspace>[0]["workspacePanels"],
+          side: {
+            sideChats: { pendingCreation: vi.fn(), creationError: vi.fn() },
+          } as unknown as Parameters<typeof ConversationWorkspace>[0]["side"],
+          fork: {} as Parameters<typeof ConversationWorkspace>[0]["fork"],
+          preview: { onLink: vi.fn() } as unknown as Parameters<
+            typeof ConversationWorkspace
+          >[0]["preview"],
+          documents: {} as Parameters<typeof ConversationWorkspace>[0]["documents"],
+          panelNavigation: {
+            terminalOpen: false,
+            setTerminalOpen: vi.fn(),
+            showPanel: vi.fn(),
+          } as unknown as Parameters<typeof ConversationWorkspace>[0]["panelNavigation"],
+          composerWorkspace: {
+            appEntries: [],
+            worktreeSelection: undefined,
+            changeWorktreeSelection: vi.fn(),
+          } as unknown as Parameters<typeof ConversationWorkspace>[0]["composerWorkspace"],
+          annotation: { openImageAnnotation: vi.fn() } as unknown as Parameters<
+            typeof ConversationWorkspace
+          >[0]["annotation"],
+          surfaces: {
+            setWorktreeSettingsTarget: vi.fn(),
+            setSettingsTab: vi.fn(),
+            setSettingsOpen: vi.fn(),
+          } as unknown as Parameters<typeof ConversationWorkspace>[0]["surfaces"],
+          tasks: {} as Parameters<typeof ConversationWorkspace>[0]["tasks"],
+          startup: {
+            restorationFailed: false,
+            restorationError: "",
+            viewFailure: undefined,
+            viewRefreshing: false,
+            currentRestoration: { pending: false },
+          } as unknown as Parameters<typeof ConversationWorkspace>[0]["startup"],
+          navigationCommands: {
+            newTask: vi.fn(),
+            choose: vi.fn(),
+            leaveProject: vi.fn(),
+            open: vi.fn(),
+          } as unknown as Parameters<typeof ConversationWorkspace>[0]["navigationCommands"],
+          setError: vi.fn(),
+          conversationReferences: [],
+          readTurnReview: vi.fn(),
+          pending: false,
+        }),
+      ),
+    );
+
+  // 场景 1：另一窗口显式停止了项目，普通发送必须拒绝且不能调用 connect 解除停止。
+  latestProjects = [
+    {
+      id: "p1",
+      root: "/tmp/LoopMe",
+      scheduling: { suppressed: true },
+      state: { connected: false, hostState: "stopped" },
+    },
+  ];
+  renderDraft();
+  await expect(capturedPrepareProject?.()).rejects.toThrow(/手动停止/);
+  expect(resourceAction).not.toHaveBeenCalled();
+
+  // 场景 2：空闲休眠项目的普通发送按需唤醒，不带 resumeScheduling: true。
+  latestProjects = [
+    { id: "p1", root: "/tmp/LoopMe", state: { connected: false, hostState: "stopped" } },
+  ];
+  resourceAction.mockImplementationOnce(async () => {
+    latestProjects = [
+      {
+        id: "p1",
+        root: "/tmp/LoopMe",
+        core: { features: { permissionPresets: true, permissionFullAccess: false } },
+        state: { connected: true, hostState: "ready" },
+      },
+    ];
+    return {};
+  });
+  renderDraft();
+  const readyProject = (await capturedPrepareProject?.()) as Record<string, unknown>;
+  expect(resourceAction).toHaveBeenCalledWith("connect", { projectId: "p1" });
+  expect(readyProject).toMatchObject({ id: "p1", state: { connected: true } });
 });

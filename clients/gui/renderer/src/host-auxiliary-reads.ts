@@ -73,13 +73,23 @@ export function refreshModelCatalogs(
     // 后台目录逐批读取，让用户请求有连接容量。
     if (flights.count >= 2) break;
     flights.count++;
+    const carriedValue =
+      previous?.connectionId === connection.identity.connectionId && previous.value
+        ? previous.scope === scope
+          ? previous.value
+          : {
+              // 同一连接上 Core 换代时，不把旧代的实时能力（如 fullAccess）或旧 Profile 列表带入新代。
+              models: previous.value.models,
+              ...(previous.value.defaultProfile !== undefined
+                ? { defaultProfile: previous.value.defaultProfile }
+                : {}),
+            }
+        : undefined;
     const entry: NonNullable<ReturnType<Cache["get"]>> = {
       identity,
       scope,
       connectionId: connection.identity.connectionId,
-      ...(previous?.connectionId === connection.identity.connectionId && previous.value
-        ? { value: previous.value }
-        : {}),
+      ...(carriedValue ? { value: carriedValue } : {}),
     };
     catalogs.set(project.projectId, entry);
     void client
