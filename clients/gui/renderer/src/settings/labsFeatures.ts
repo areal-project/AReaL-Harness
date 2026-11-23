@@ -5,9 +5,8 @@ export type LabsFeatureId = "bots";
 const STORAGE_KEY = "areal.gui.labs.v1";
 const CHANGE_EVENT = "areal-labs-changed";
 
-/** 本地构建默认提供 Labs 入口，具体实验功能仍需逐项打开。 */
-export const labsAvailable =
-  import.meta.env.DEV || import.meta.env.VITE_AREAL_LOCAL_BUILD === "true";
+/** 独立的 Labs 实验配置入口始终可见，具体实验功能默认关闭、按需逐项开启。 */
+export const labsAvailable = true;
 
 const defaultFeatures: Record<LabsFeatureId, boolean> = { bots: false };
 const listeners = new Set<() => void>();

@@ -966,6 +966,7 @@ export const commonMessages = {
   "settings.navigation.personal": { "zh-CN": "个人", en: "Personal" },
   "settings.navigation.integrations": { "zh-CN": "集成", en: "Integrations" },
   "settings.navigation.coding": { "zh-CN": "编码", en: "Coding" },
+  "settings.navigation.labs": { "zh-CN": "实验功能", en: "Experimental" },
   "settings.general.title": { "zh-CN": "常规", en: "General" },
   "settings.appearance.title": { "zh-CN": "外观", en: "Appearance" },
   "settings.shortcuts.title": { "zh-CN": "键盘快捷键", en: "Keyboard shortcuts" },

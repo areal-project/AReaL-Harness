@@ -9,7 +9,7 @@ import { recoverySettings } from "./recoveryPresentation.js";
 import { type Data, type PlatformServices } from "./services.js";
 import { useApplicationPreferences } from "./settings/applicationPreferences.js";
 import { settingsNavigationGroups } from "./settings/settingsNavigation.js";
-import { labsAvailable } from "./settings/labsFeatures.js";
+import { labsAvailable, useLabsFeature } from "./settings/labsFeatures.js";
 import { SettingsNavigation } from "./settings/SettingsWorkspace.js";
 import { useGuardedQuit } from "./settings/UnsavedChanges.js";
 import { useTrajectoryPolling } from "./settings/useTrajectoryPolling.js";
@@ -196,6 +196,10 @@ function AppContent({ services }: { services: PlatformServices }) {
   useEffect(() => {
     workspacePanels.reconcileTerminals(terminalState.ids);
   }, [terminalState.ids]);
+  const botsEnabled = useLabsFeature("bots");
+  useEffect(() => {
+    if (!botsEnabled && botsOpen) surfaces.leaveBots();
+  }, [botsEnabled, botsOpen, surfaces]);
   const observation = useConversationObservation(
     session,
     action,

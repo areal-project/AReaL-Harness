@@ -100,6 +100,12 @@ export const settingsNavigationGroups = [
         label: "settings.mobile.title",
         icon: <Smartphone strokeWidth={1.5} />,
       },
+    ],
+  },
+  {
+    id: "labs",
+    label: "settings.navigation.labs",
+    items: [
       {
         id: "Labs",
         keywords: "settings.search.labs",

@@ -130,13 +130,16 @@ export function WorkbenchRail({
               if (matchMedia("(max-width: 640px)").matches) setSidebar(false);
             }),
         },
-      ].filter(
-        (item) =>
+      ].filter((item) => {
+        if (item.id === "bots") {
+          return botsEnabled && (!readOnly || Boolean(services.capabilities?.bots));
+        }
+        return (
           !readOnly ||
           item.id === "home" ||
-          (item.id === "tasks" && services.capabilities?.taskCatalog) ||
-          (item.id === "bots" && services.capabilities?.bots && botsEnabled),
-      )}
+          (item.id === "tasks" && services.capabilities?.taskCatalog)
+        );
+      })}
       footer={
         readOnly && !services.capabilities?.settings?.length ? null : (
           <>
