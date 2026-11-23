@@ -290,7 +290,8 @@ export function TurnNavigation({
     };
   }, [preview?.turnId, preview?.source, container]);
 
-  if (!turns.length) return null;
+  // 仅在 2 轮及以上对话显示轮次导航条，避免单轮对话左边缘出现孤立的杂点。
+  if (turns.length < 2) return null;
   const prompt = (turn: Data) =>
     goalContinuationLabel(turn) ??
     ((turn.items ?? []).find((item: Data) => item.type === "userMessage")?.content ?? [])
