@@ -32,7 +32,7 @@ onDesktopEvent(
     for (const listener of quitProgressListeners) listener(quitProgress);
   },
 );
-/** @param {(id:number,allowed:boolean)=>void} reply */
+/** @param {(id:number,allowed:boolean,reason?:'noSubscriber')=>void} reply */
 function decisionSubscription(reply) {
   /** @type {QuitSubscription|null} */
   let current = null;
@@ -48,7 +48,12 @@ function decisionSubscription(reply) {
     request(id) {
       if (typeof id !== "number") return;
       const subscription = current;
-      if (!subscription || subscription.pending !== null) {
+      if (!subscription) {
+        // 本 frame 尚未挂载订阅者（如黑屏或 React 尚未完成 mount），显式上报 noSubscriber，不冒充用户拒绝。
+        reply(id, false, "noSubscriber");
+        return;
+      }
+      if (subscription.pending !== null) {
         reply(id, false);
         return;
       }
@@ -72,8 +77,8 @@ function decisionSubscription(reply) {
     },
   };
 }
-const quitDecision = decisionSubscription((id, allowed) =>
-  sendDesktop("areal-core:quit-decision", { id, allowed }),
+const quitDecision = decisionSubscription((id, allowed, reason) =>
+  sendDesktop("areal-core:quit-decision", reason ? { id, allowed, reason } : { id, allowed }),
 );
 const closeDecision = decisionSubscription((id, allowed) =>
   sendDesktop("areal-core:window-close-decision", { id, allowed }),

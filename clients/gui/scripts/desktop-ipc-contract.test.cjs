@@ -13,8 +13,8 @@ const commandDefinitionPath = resolve("packages/workbench/client/desktop-contrac
 const mainPath = resolve("app/src/core/main.cjs");
 const preloadPath = resolve("app/src/core/preload.cjs");
 const { commandDefinitions } = require(contractPath);
-const source = (path, text = readFileSync(path, "utf8")) =>
-  ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+const source = (path, text = readFileSync(path, "utf8"), kind = ts.ScriptKind.JS) =>
+  ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, kind);
 const visit = (node, accept) => {
   accept(node);
   ts.forEachChild(node, (child) => visit(child, accept));
@@ -22,8 +22,14 @@ const visit = (node, accept) => {
 const sorted = (values) => [...values].sort();
 
 function mainSource(text = readFileSync(mainPath, "utf8")) {
-  const snapshots = readFileSync(resolve("app/src/core/snapshots/host.cjs"), "utf8");
-  return source(mainPath, text + "\n" + snapshots);
+  const parts = [
+    text,
+    readFileSync(resolve("app/src/core/window-controller.ts"), "utf8"),
+    readFileSync(resolve("app/src/core/quit-coordinator.ts"), "utf8"),
+    readFileSync(resolve("app/src/core/desktop-ipc-handlers.ts"), "utf8"),
+    readFileSync(resolve("app/src/core/snapshots/host.cjs"), "utf8"),
+  ];
+  return source(mainPath, parts.join("\n"), ts.ScriptKind.TS);
 }
 
 function maps(override) {

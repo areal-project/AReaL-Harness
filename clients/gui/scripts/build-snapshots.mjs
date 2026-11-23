@@ -56,6 +56,32 @@ results.push(
     external: ["@areal/client/node", "@areal/browser-automation/host-tool"],
   }),
 );
+results.push(
+  await build({
+    metafile: true,
+    absWorkingDir: gui,
+    entryPoints: [
+      "app/src/core/bundle-guard.ts",
+      "app/src/core/window-controller.ts",
+      "app/src/core/quit-coordinator.ts",
+      "app/src/core/desktop-ipc-handlers.ts",
+    ],
+    outdir: "app/src/core/generated",
+    outExtension: { ".js": ".cjs" },
+    bundle: true,
+    platform: "node",
+    format: "cjs",
+    target: "node22",
+    external: [
+      "electron",
+      "@areal/*",
+      "../*.cjs",
+      "../../*.cjs",
+      "../../ipc/generated/*.cjs",
+      "../../update/*.cjs",
+    ],
+  }),
+);
 const built = new Set(results.flatMap((result) => Object.keys(result.metafile.inputs)));
 const { readdirSync, readFileSync } = await import("node:fs");
 const orphans = readdirSync(`${gui}/app/src`, { recursive: true })

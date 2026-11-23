@@ -17,6 +17,7 @@ const {
   crashReporter,
   session,
 } = require("electron");
+const { join, resolve } = require("node:path");
 const {
   handleDesktopIpc,
   onDesktopIpc,
@@ -25,10 +26,6 @@ const {
   desktopDialogs,
   registerDesktopShell,
 } = require("./desktop-ipc.cjs");
-const { realpath, stat } = require("node:fs/promises");
-const { join, resolve } = require("node:path");
-/** @type {typeof import("../ipc/window-close.js")} */
-const { WindowCloseGate } = require("../ipc/generated/window-close.cjs");
 const { createOwner } = require("@areal/workbench/node/application-owner");
 const { setupUpdater } = require("../update/electron.cjs");
 const {
@@ -37,13 +34,8 @@ const {
   nativeNotificationDelivery,
 } = require("@areal/workbench/node/native-notifications");
 const { MenuBar } = require("./menu-bar.cjs");
-const { fileOpen, fileWorkspace } = require("./file-open.cjs");
+const { fileWorkspace } = require("./file-open.cjs");
 const { normalizeNativeImage, exportDiagnostics: saveDiagnostics } = require("./bug-reports.cjs");
-const { PluginArchives } = require("./plugin-archives.cjs");
-const { readCommandInvocation, desktopError } = require("@areal/workbench/desktop-contract");
-/** @type {typeof import("@areal/workbench/desktop-contract").validatePreview} */
-const validatePreview = require("@areal/workbench/desktop-contract").validatePreview;
-const { modelRecord } = require("@areal/workbench/core-model-contract");
 const { CorePreview, developmentApproval } = require("./preview.cjs");
 const diagnostics = require("@areal/workbench/node/diagnostics");
 const { startSnapShots } = require("./snapshots/host.cjs");
@@ -51,9 +43,17 @@ const cfg = require("./service-config.cjs");
 const { readLibraryStartupSettings } = require("@areal/workbench/node/library-startup");
 const { applyDesktopSessionNetworkPolicy } = require("@areal/workbench/node/desktop-network");
 const { SharedCoreBackend } = require("./service-client.cjs");
-const { setNativeLocale, nativeText } = require("@areal/workbench/node/native-i18n");
+const { nativeText } = require("@areal/workbench/node/native-i18n");
 const { confirmHostQuit, confirmHostStop, hostActivityLabel } = require("./host-quit.cjs");
 const { loadThemes, desktopTheme } = require("../themes");
+/** @type {typeof import("./bundle-guard.js")} */
+const { createBundleGuard } = require("./generated/bundle-guard.cjs");
+/** @type {typeof import("./window-controller.js")} */
+const { createWindowController } = require("./generated/window-controller.cjs");
+/** @type {typeof import("./quit-coordinator.js")} */
+const { createQuitCoordinator } = require("./generated/quit-coordinator.cjs");
+/** @type {typeof import("./desktop-ipc-handlers.js")} */
+const { registerDesktopIpcHandlers } = require("./generated/desktop-ipc-handlers.cjs");
 
 startDesktop();
 
@@ -114,11 +114,16 @@ function startDesktop() {
   });
   diagnostics.startCrashReporter({ app, crashReporter });
   registerDesktopShell(app, diagnostics);
+
   const guiRoot = app.isPackaged
     ? join(process.resourcesPath, "areal-gui")
     : resolve(__dirname, "../../../renderer/dist");
-  /** @type {Electron.BrowserWindow|undefined} */
-  let window;
+
+  const bundleGuard = createBundleGuard({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+  });
+
   /** @type {import("./snapshots/DesktopSnapShots.js").DesktopSnapShots|undefined} */
   let snapShots;
   /** @type {InstanceType<typeof SharedCoreBackend>|undefined} */
@@ -127,268 +132,62 @@ function startDesktop() {
   let preview;
   /** @type {Awaited<ReturnType<typeof setupUpdater>>|undefined} */
   let updates;
-  let quitting = false,
-    exitReady = false,
-    themeId = "system";
-  let browserWindowClosed = false;
-  /** @type {Promise<void>|null} */
-  let windowClosePromise = null;
-  const windowCloseGate = new WindowCloseGate((owner, id) =>
-    sendDesktopEvent(owner, "areal-core:window-closing", id),
-  );
-  function announceWindowOpened() {
-    if (window && !window.isDestroyed())
-      sendDesktopEvent(window.webContents, "areal-core:window-opened");
-  }
-  /** @param {Electron.BrowserWindow} owner */
-  async function settleWindow(owner) {
-    if (!(await windowCloseGate.request(owner.webContents)))
-      throw new Error("窗口资源尚未确认清理，请保留窗口并核对原操作");
-  }
-  /** @type {Map<string,()=>void>} */
-  const previewSubscriptions = new Map();
-  /** @type {WeakMap<Electron.WebContents,{frame:Electron.WebFrameMain,last?:string}>} */
-  const nativeStateOwners = new WeakMap();
-  let startupPresentation = "requested",
-    startupPainted = false,
-    startupReady = false;
-  /** @typedef {import('@areal/workbench/desktop-contract/desktop-control').LifecycleResult|{kind?:string,canceled:boolean}|{stopped:boolean,quitting:true}} QuitResult */
-  /** @typedef {{id:number,intent:string,owner:Electron.WebContents|null,frame:Electron.WebFrameMain|null,decide:((allowed:boolean)=>void)|null,approved:boolean,phase:'checking'|'stopping'|'finishing'|null,startedAt:number,promise:Promise<QuitResult>|null}} QuitAttempt */
-  let focusRequested = false,
-    quitRequestSequence = 0;
-  /** @type {QuitAttempt|null} */
-  let quitAttempt = null;
-  /** @type {ReturnType<typeof startupTrace>|undefined} */
-  let startupShowTrace;
-  /** @type {ReturnType<typeof startupTrace>|undefined} */
-  let startupPaintTrace;
-  /** @type {ReturnType<typeof startupTrace>|undefined} */
-  let startupPresentTrace;
-  function presentStartup() {
-    if (
-      startupPresentation !== "requested" ||
-      quitting ||
-      windowClosePromise ||
-      !window ||
-      window.isDestroyed() ||
-      !startupPainted ||
-      !startupReady
-    )
-      return;
-    startupPresentation = "presented";
-    browserWindowClosed = false;
-    window.show();
-    if (focusRequested) {
-      focusRequested = false;
-      window.focus();
-    }
-  }
-  function revealWindow() {
-    if (quitting || exitReady) return;
-    if (windowClosePromise) {
-      const owner = window;
-      void windowClosePromise.then(() => {
-        if (window === owner && owner && !owner.isDestroyed()) revealWindow();
-      });
-      return;
-    }
-    if (!window || window.isDestroyed()) {
-      focusRequested = true;
-      return;
-    }
-    if (startupPresentation !== "presented") {
-      startupPresentation = "requested";
-      focusRequested = true;
-      presentStartup();
-      return;
-    }
-    browserWindowClosed = false;
-    if (window.isMinimized()) window.restore();
-    window.show();
-    window.focus();
-  }
-  /** @param {QuitAttempt} attempt @returns {Promise<boolean>} */
-  function confirmRendererQuit(attempt) {
-    if (!window || window.isDestroyed()) return Promise.resolve(false);
-    const owner = window.webContents,
-      frame = owner.mainFrame;
-    if (owner.isDestroyed() || !frame.url.startsWith("areal-ui://app/"))
-      return Promise.resolve(false);
-    attempt.owner = owner;
-    attempt.frame = frame;
-    return new Promise((resolveDecision) => {
-      const cancel = () => finish(false);
-      /** @param {Electron.Event} _event @param {string} _url @param {boolean} _inPlace @param {boolean} mainFrame */
-      const navigate = (_event, _url, _inPlace, mainFrame) => {
-        if (mainFrame) cancel();
-      };
-      /** @param {boolean} allowed */
-      const finish = (allowed) => {
-        if (attempt.decide !== finish) return;
-        attempt.decide = null;
-        owner.removeListener("destroyed", cancel);
-        owner.removeListener("render-process-gone", cancel);
-        owner.removeListener("did-start-navigation", navigate);
-        resolveDecision(allowed);
-      };
-      attempt.decide = finish;
-      owner.once("destroyed", cancel);
-      owner.once("render-process-gone", cancel);
-      owner.on("did-start-navigation", navigate);
-      revealWindow();
-      sendDesktopEvent(owner, "areal-core:quit-request", attempt.id);
+  let themeId = "system";
+
+  /** @type {ReturnType<typeof createQuitCoordinator>} */
+  let quitCoordinator;
+  /** @type {ReturnType<typeof createWindowController>} */
+  let windowController;
+
+  const checkStaleBundle = () =>
+    bundleGuard.triggerRelaunchIfReplaced({
+      isBusy: () => quitCoordinator.isBusy(),
+      requestRelaunchQuit: (execPath) => quitCoordinator.requestRelaunchQuit(execPath),
     });
-  }
-  /** @param {QuitAttempt} attempt @param {QuitAttempt["phase"]} phase */
-  function setQuitProgress(attempt, phase) {
-    if (quitAttempt !== attempt || attempt.intent === "install") return;
-    attempt.phase = phase;
-    if (attempt.owner && !attempt.owner.isDestroyed() && attempt.owner.mainFrame === attempt.frame)
-      sendDesktopEvent(
-        attempt.owner,
-        "areal-core:quit-progress",
-        phase ? { state: "quitting", phase } : { state: "idle" },
-      );
-  }
-  /** @param {QuitAttempt} attempt @param {Extract<import("@areal/workbench/node/diagnostics").Incident,{type:"quit-stage"}>["stage"]} stage */
-  function recordQuitStage(attempt, stage) {
-    if (quitAttempt !== attempt) return;
-    diagnostics.record({
-      type: "quit-stage",
-      attempt: attempt.id,
-      elapsedMs: Math.floor(performance.now() - attempt.startedAt),
-      stage,
-    });
-  }
-  /** @param {string} [intent] @returns {Promise<QuitResult>} */
-  function requestQuit(intent = "application") {
-    if (quitAttempt?.promise) return quitAttempt.promise;
-    if (quitting) return Promise.resolve({ canceled: true });
-    /** @type {QuitAttempt} */
-    const attempt = {
-      id: ++quitRequestSequence,
-      intent,
-      owner: null,
-      frame: null,
-      decide: null,
-      approved: false,
-      phase: null,
-      startedAt: performance.now(),
-      promise: null,
-    };
-    quitAttempt = attempt;
-    /** @param {QuitAttempt["phase"]} phase */
-    const beginQuit = (phase) => {
-      attempt.approved = true;
-      quitting = true;
-      if (intent !== "install") preview?.setPresentationSuppressed(true);
-      setQuitProgress(attempt, phase);
-    };
-    /** @param {Electron.MessageBoxOptions} options */
-    const notify = async (options) => {
-      recordQuitStage(attempt, "native-confirmation");
-      setQuitProgress(attempt, null);
-      const answer = await (process.platform === "darwin" && intent !== "install"
-        ? dialog.showMessageBox(options)
-        : showMessageBox(options));
-      return answer;
-    };
-    /** @returns {Promise<QuitResult>} */
-    const runQuit = async () => {
-      if (!backend) throw new Error(nativeText("lifecycle.preparing"));
-      if (!(await confirmRendererQuit(attempt))) {
-        recordQuitStage(attempt, "canceled");
-        return { canceled: true };
-      }
-      if (quitting) {
-        recordQuitStage(attempt, "canceled");
-        return { canceled: true };
-      }
-      if (!window || window.isDestroyed()) return { canceled: true };
-      // 检查和窗口清理也可能等待；先反馈，但保留清理所需的 IPC 准入。
-      if (intent !== "install") {
-        preview?.setPresentationSuppressed(true);
-        setQuitProgress(attempt, "checking");
-        recordQuitStage(attempt, "checking");
-      }
-      await settleWindow(window);
-      if (intent === "install") {
-        beginQuit("checking");
-        recordQuitStage(attempt, "checking");
-      }
-      recordQuitStage(attempt, "readiness");
-      await backend.waitForApplicationReady();
-      let stopped = intent === "install";
-      if (intent !== "install") {
-        const confirm = intent === "stop" ? confirmHostStop : confirmHostQuit;
-        const decision = await confirm(backend, notify, () => {
-          beginQuit("stopping");
-          recordQuitStage(attempt, "stop");
-        });
-        if ("canceled" in decision) {
-          recordQuitStage(attempt, "canceled");
-          return { canceled: true };
-        }
-        stopped = "stopped" in decision && decision.stopped === true;
-        beginQuit("finishing");
-      } else {
-        recordQuitStage(attempt, "reconcile");
-        await backend.checkLifecycle();
-        if (!backend.serviceExited && backend.status.connected) {
-          recordQuitStage(attempt, "stop");
-          const result = await confirmHostStop(backend, notify, () => {
-            beginQuit("stopping");
-            recordQuitStage(attempt, "stop");
-          });
-          if (!("stopped" in result) || result.stopped !== true) {
-            recordQuitStage(
-              attempt,
-              "canceled" in result && result.canceled ? "canceled" : "incomplete",
-            );
-            if (!("canceled" in result) || !result.canceled)
-              backend.reportLifecycleError(new Error(nativeText("lifecycle.stopIncomplete")));
-            return result;
-          }
-        }
-      }
-      setQuitProgress(attempt, "finishing");
-      recordQuitStage(attempt, "terminal");
-      await backend.prepareQuit();
-      if (intent === "install")
-        await require("../update/package-users.cjs").releasePackageForInstall({
-          backend,
-          packaged: app.isPackaged,
-          profile: app.getPath("userData"),
-        });
-      recordQuitStage(attempt, "finalizing");
-      // 已确认停止的 Host 不再接受后台保留策略，退出时也不能把它交给后继代际。
-      if (intent === "install" || !stopped)
-        await backend.completeApplicationQuit({ keepBackground: intent !== "install" });
-      recordQuitStage(attempt, "disconnect");
-      await backend.shutdown();
+
+  windowController = createWindowController({
+    BrowserWindow,
+    diagnostics,
+    sendDesktopEvent,
+    preloadPath: join(__dirname, "preload.cjs"),
+    isQuitting: () => quitCoordinator.isQuitting(),
+    isExitReady: () => quitCoordinator.isExitReady(),
+    hasActiveQuitPhase: () => quitCoordinator.hasActiveQuitPhase(),
+    shouldPreventUnload: (contents) => quitCoordinator.shouldPreventUnload(contents),
+    onBeforeReveal: checkStaleBundle,
+    onDidFailLoad: checkStaleBundle,
+    onWindowBlur: () => snapShots?.setSnapShotShortcutSuppressed(false),
+    onRendererReset: () => snapShots?.setSnapShotShortcutSuppressed(false),
+    onDisposePreview: async () => {
       await preview?.dispose();
-      exitReady = true;
-      recordQuitStage(attempt, "exit-ready");
-      if (intent !== "install") setImmediate(() => app.quit());
-      return { stopped, quitting: true };
-    };
-    attempt.promise = runQuit()
-      .catch((error) => {
-        recordQuitStage(attempt, "failed");
-        throw error;
-      })
-      .finally(() => {
-        if (!exitReady && quitAttempt === attempt) {
-          announceWindowOpened();
-          if (attempt.approved) quitting = false;
-          setQuitProgress(attempt, null);
-          if (intent !== "install") preview?.setPresentationSuppressed(false);
-          quitAttempt = null;
-        }
-      });
-    return attempt.promise;
-  }
-  const { showMessageBox, showOpenDialog, showSaveDialog } = desktopDialogs(() => window);
+    },
+    onReportLifecycleError: (error) => backend?.reportLifecycleError(error),
+  });
+
+  const { showMessageBox, showOpenDialog, showSaveDialog } = desktopDialogs(() =>
+    windowController.getWindow(),
+  );
+
+  quitCoordinator = createQuitCoordinator({
+    app,
+    dialog,
+    diagnostics,
+    showMessageBox,
+    confirmHostQuit,
+    confirmHostStop,
+    sendDesktopEvent,
+    getWindow: () => windowController.getWindow(),
+    isRendererAlive: () => windowController.isRendererAlive(),
+    isRendererResponsive: () => windowController.isRendererResponsive(),
+    hasPreloadFailed: () => windowController.hasPreloadFailed(),
+    isPreloadActive: () => windowController.isPreloadActive(),
+    revealWindow: (opts) => windowController.revealWindow(opts),
+    announceWindowOpened: () => windowController.announceWindowOpened(),
+    settleWindow: (owner) => windowController.settleWindow(owner),
+    getBackend: () => backend,
+    getPreview: () => preview,
+  });
+
   const bugReports = new (require("./bug-reports.cjs").BugReports)({
     endpoint: process.env.AREAL_BUG_REPORT_URL,
     root: join(applicationOwner.profile, "bug-reports"),
@@ -396,17 +195,17 @@ function startDesktop() {
     normalizeImage: (data) => normalizeNativeImage(data, nativeImage),
   });
   const exportDiagnostics = () => saveDiagnostics(app, diagnosticsRoots, showSaveDialog);
-  const requestStopAndQuit = () => requestQuit("stop");
   const stopAndQuitFromMenu = () => {
-    void requestStopAndQuit().catch((error) => {
+    void quitCoordinator.requestStopAndQuit().catch((error) => {
       backend?.reportLifecycleError(error);
-      revealWindow();
+      windowController.revealWindow();
     });
   };
   const menuBar = new MenuBar(() => {
-    if (startupPresentation === "presented") revealWindow();
+    if (windowController.isStartupPresented()) windowController.revealWindow();
   }, stopAndQuitFromMenu);
   app.on("will-quit", () => menuBar?.close());
+
   /** @type {(import("@areal/workbench/desktop-contract").NotificationTarget & {id:number})|null} */
   let notificationTarget = null;
   let notificationSequence = 0;
@@ -416,16 +215,18 @@ function startDesktop() {
     const parsed = readNotificationTarget(target);
     if (!parsed) return;
     notificationTarget = { ...parsed, id: ++notificationSequence };
+    const window = windowController.getWindow();
     if (!window || window.isDestroyed()) return;
-    if (startupPresentation === "presented") revealWindow();
+    if (windowController.isStartupPresented()) windowController.revealWindow();
     sendDesktopEvent(window.webContents, "areal-core:notification-open");
   }
   const themes = loadThemes();
-  app.on("second-instance", revealWindow);
+  app.on("second-instance", () => windowController.revealWindow());
 
   function theme() {
     return desktopTheme(themes, themeId, nativeTheme.shouldUseDarkColors);
   }
+
   let publishPending = false;
   let hostActivityPending = false;
   let hostActivityRefreshedAt = 0;
@@ -434,7 +235,7 @@ function startDesktop() {
     if (
       !backend ||
       !item ||
-      quitting ||
+      quitCoordinator.isQuitting() ||
       hostActivityPending ||
       Date.now() - hostActivityRefreshedAt < 5000
     )
@@ -451,24 +252,7 @@ function startDesktop() {
         hostActivityRefreshedAt = Date.now();
       });
   }
-  function publish() {
-    refreshHostMenu();
-    preview?.releaseInvalidOwners();
-    if (publishPending) return;
-    publishPending = true;
-    setImmediate(() => {
-      publishPending = false;
-      if (!window || window.isDestroyed()) return;
-      const owner = window.webContents;
-      const subscription = nativeStateOwners.get(owner);
-      if (!backend || subscription?.frame !== owner.mainFrame) return;
-      const snapshot = nativeState();
-      const fingerprint = JSON.stringify(snapshot);
-      if (subscription.last === fingerprint) return;
-      subscription.last = fingerprint;
-      sendDesktopEvent(owner, "areal-core:native-state-changed", snapshot);
-    });
-  }
+
   let diagnosticTopology = "";
   function desktopSnapshot() {
     if (!backend) throw new Error(nativeText("lifecycle.preparing"));
@@ -487,7 +271,7 @@ function startDesktop() {
     }
     // Wait for the authoritative saved Library before applying the default.
     // A temporary disconnect must not reset the native preference.
-    if (state.connection?.state === "ready" && state.library && !quitting) {
+    if (state.connection?.state === "ready" && state.library && !quitCoordinator.isQuitting()) {
       menuBar?.sync(state.library.settings?.showInMenuBar !== false);
       void updates?.setChannel(state.library.settings?.betaUpdates === true);
       void snapShots
@@ -496,6 +280,7 @@ function startDesktop() {
     }
     return { ...state, menuBar: menuBar?.snapshot() ?? null };
   }
+
   function nativeState() {
     const snapshot = desktopSnapshot();
     const settings = snapshot.library.settings;
@@ -521,187 +306,16 @@ function startDesktop() {
     };
   }
 
-  /** @param {Electron.IpcMainEvent|Electron.IpcMainInvokeEvent} event */
-  function trustedSender(event) {
-    if (
-      !window ||
-      event.sender !== window.webContents ||
-      event.senderFrame !== window.webContents.mainFrame ||
-      !event.senderFrame.url.startsWith("areal-ui://app/")
-    )
-      throw new Error(nativeText("boundary.untrustedSender"));
-    return window;
-  }
-  /** @param {Electron.IpcMainEvent|Electron.IpcMainInvokeEvent} event */
-  function trusted(event) {
-    if (quitting) throw new Error(nativeText("boundary.quitting"));
-    return trustedSender(event);
-  }
-  onDesktopIpc("areal-core:interface-locale", (event, locale) => {
-    try {
-      trustedSender(event);
-    } catch {
-      return;
-    }
-    setNativeLocale(locale);
-  });
-  onDesktopIpc("areal-core:window-close-decision", (event, decision) => {
-    windowCloseGate.decide(event, decision);
-  });
-  onDesktopIpc("areal-core:quit-decision", (event, decision) => {
-    const attempt = quitAttempt;
-    if (
-      !attempt?.decide ||
-      !modelRecord(decision) ||
-      decision.id !== attempt.id ||
-      typeof decision.allowed !== "boolean" ||
-      event.sender !== attempt.owner ||
-      event.senderFrame !== attempt.frame ||
-      event.senderFrame !== event.sender.mainFrame ||
-      !event.senderFrame.url.startsWith("areal-ui://app/")
-    )
-      return;
-    attempt.decide(decision.allowed);
-  });
-
-  /** @param {InstanceType<typeof SharedCoreBackend>} backend */
-  async function createWindow(backend) {
-    const trace = startupTrace("gui.window");
-    trace.advance("create");
-    const showTrace = (startupShowTrace = startupTrace("gui.first_show"));
-    startupShowTrace.advance("show");
-    const paintTrace = (startupPaintTrace = startupTrace("gui.ready_to_show"));
-    startupPaintTrace.advance("ready_to_show");
-    startupPresentTrace = startupTrace("gui.present_ready");
-    startupPresentTrace.advance("present_ready");
-    try {
-      browserWindowClosed = false;
-      const createdWindow = (window = new BrowserWindow({
-        width: 1440,
-        height: 900,
-        minWidth: 980,
-        minHeight: 620,
-        show: false,
-        title: "AReaL Harness",
-        titleBarStyle: "hiddenInset",
-        trafficLightPosition: { x: 14, y: 15 },
-        backgroundColor: "#1b1b1c",
-        webPreferences: {
-          preload: join(__dirname, "preload.cjs"),
-          contextIsolation: true,
-          sandbox: true,
-          nodeIntegration: false,
-        },
-      }));
-      {
-        // Native recovery dialogs may reveal their parent before the normal gate.
-        createdWindow.once("show", () => {
-          startupPresentation = "presented";
-          showTrace.finish("ok");
-        });
-        createdWindow.once("ready-to-show", () => {
-          startupPainted = true;
-          paintTrace.finish("ok");
-          presentStartup();
-        });
-      }
-      preview = new CorePreview(
-        createdWindow,
-        WebContentsView,
-        (projectId, threadId) => backend.ownsThread(projectId, threadId),
-        () => backend.snapshot().library?.settings ?? {},
-        (projectId, threadId) => backend.browserCoreIdentity(projectId, threadId),
-        () => backend.status.browserControlEndpoints ?? [],
-        developmentApproval(
-          createdWindow,
-          () =>
-            !quitting &&
-            backend.status.connected === true &&
-            backend.nativeBrowser?.closed === false,
-          () => preview,
-        ),
-        undefined,
-        (projectId, threadId) =>
-          fileWorkspace(backend, { projectId, threadId, operation: "openDocument" }),
-      );
-      createdWindow.on("unresponsive", () => {
-        diagnostics.record({ type: "renderer-unresponsive" });
-      });
-      createdWindow.on("responsive", () => {
-        diagnostics.record({ type: "renderer-responsive" });
-      });
-      createdWindow.on("blur", () => snapShots?.setSnapShotShortcutSuppressed(false));
-      const owner = createdWindow.webContents;
-      owner.on("did-start-navigation", (_event, _url, inPlace, mainFrame) => {
-        if (mainFrame && !inPlace) {
-          snapShots?.setSnapShotShortcutSuppressed(false);
-          nativeStateOwners.delete(owner);
-        }
-      });
-      owner.on("did-finish-load", () => {
-        diagnostics.record({ type: "window-ready", windows: BrowserWindow.getAllWindows().length });
-      });
-      owner.on("console-message", (_event, _level, message) => {
-        if (typeof message === "string" && message.startsWith("[startup-renderer] "))
-          process.stderr.write(`${message}\n`);
-      });
-      owner.on("destroyed", () => {
-        snapShots?.setSnapShotShortcutSuppressed(false);
-        nativeStateOwners.delete(owner);
-      });
-      owner.on("render-process-gone", () => {
-        snapShots?.setSnapShotShortcutSuppressed(false);
-        nativeStateOwners.delete(owner);
-      });
-      createdWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-      createdWindow.webContents.on("will-navigate", (event) => event.preventDefault());
-      createdWindow.webContents.on("will-prevent-unload", (event) => {
-        if (
-          exitReady &&
-          quitAttempt?.approved &&
-          quitAttempt.owner === createdWindow.webContents &&
-          quitAttempt.frame === createdWindow.webContents.mainFrame
-        )
-          event.preventDefault();
-      });
-      createdWindow.on("show", () => {
-        browserWindowClosed = false;
-        announceWindowOpened();
-      });
-      createdWindow.on("close", (event) => {
-        if (exitReady) return;
-        event.preventDefault();
-        if (quitting || quitAttempt?.phase || windowClosePromise) return;
-        // A close-to-background still ends this createdWindow's Browser ownership. Fence
-        // native callbacks before hiding; reopening creates fresh Pages on demand.
-        browserWindowClosed = true;
-        if (startupPresentation !== "presented") {
-          startupPresentation = "suppressed";
-          focusRequested = false;
-        }
-        const owner = createdWindow;
-        windowClosePromise = settleWindow(owner)
-          .then(async () => {
-            await preview?.dispose();
-            if (!owner.isDestroyed()) owner.hide();
-          })
-          .catch((error) => {
-            browserWindowClosed = false;
-            announceWindowOpened();
-            backend.reportLifecycleError(error);
-          })
-          .finally(() => {
-            windowClosePromise = null;
-          });
-      });
-      trace.advance("load");
-      await createdWindow.loadURL("areal-ui://app/");
-      trace.finish("ok");
-      return createdWindow;
-    } catch (error) {
-      trace.finish("error", error);
-      throw error;
-    }
+  function publish() {
+    refreshHostMenu();
+    preview?.releaseInvalidOwners();
+    if (publishPending) return;
+    publishPending = true;
+    setImmediate(() => {
+      publishPending = false;
+      if (!backend) return;
+      windowController.publishNativeState(nativeState);
+    });
   }
 
   app
@@ -714,7 +328,11 @@ function startDesktop() {
           startupTraceMain.advance("upgrade");
           if (await cfg.upgrade(app, dialog, cfg.serviceOptions, settingsError)) return;
           startupTraceMain.advance("snapshots");
-          snapShots = startSnapShots({ window: () => window ?? null, revealWindow, trusted });
+          snapShots = startSnapShots({
+            window: () => windowController.getWindow() ?? null,
+            revealWindow: () => windowController.revealWindow(),
+            trusted: windowController.trusted,
+          });
           startupTraceMain.advance("network_policy");
           await Promise.all(
             [session.defaultSession, session.fromPartition("persist:areal-embedded-browser")].map(
@@ -725,19 +343,22 @@ function startDesktop() {
           require("../ipc/generated/host-ticket.cjs").registerHostTicket({
             home: cfg.serviceOptions(app).hostHome,
             profile: app.getPath("userData"),
-            trusted,
+            trusted: windowController.trusted,
           });
           if (process.platform === "darwin")
             app.dock?.setIcon(join(__dirname, "../../assets/icon-1024.png"));
           registerUiProtocol(guiRoot);
           startupTraceMain.finish("ok");
+
           const serviceBackend = new SharedCoreBackend({
             app,
             ...cfg.serviceOptions(app),
             applicationOwner,
             onChange: publish,
             onNotification: (notice) => {
-              if (!backend || !window || window.isDestroyed() || quitting) return;
+              const window = windowController.getWindow();
+              if (!backend || !window || window.isDestroyed() || quitCoordinator.isQuitting())
+                return;
               const delivery = acceptNotice(
                 notice,
                 backend.snapshot().library?.settings ?? {},
@@ -754,21 +375,28 @@ function startDesktop() {
             await serviceBackend.init({ automatic: connectedOnce });
             if (serviceBackend.status.connected) connectedOnce = true;
           };
+
           /** @type {typeof import("./native-browser-tools")} */
           const { NativeBrowserTools } = require("./generated/native-browser-tools.cjs");
           const nativeBrowserTools = new NativeBrowserTools({
             preview: () => {
-              if (quitting || !preview || !window || window.isDestroyed())
+              const window = windowController.getWindow();
+              if (quitCoordinator.isQuitting() || !preview || !window || window.isDestroyed())
                 throw new Error("Browser host unavailable");
               return preview;
             },
-            current: (frame) =>
-              !quitting &&
-              !!window &&
-              !window.isDestroyed() &&
-              serviceBackend.nativeBrowserCurrent(frame),
+            current: (frame) => {
+              const window = windowController.getWindow();
+              return (
+                !quitCoordinator.isQuitting() &&
+                !!window &&
+                !window.isDestroyed() &&
+                serviceBackend.nativeBrowserCurrent(frame)
+              );
+            },
             call: (method, params) => serviceBackend.nativeBrowserCall(method, params),
             reveal: (projectId, threadId, pageId) => {
+              const window = windowController.getWindow();
               if (window && !window.isDestroyed())
                 sendDesktopEvent(window.webContents, "areal-core:preview-event", {
                   kind: "reveal",
@@ -785,9 +413,10 @@ function startDesktop() {
           serviceBackend.onBrowserDisconnected = () => {
             preview?.revokeAll();
           };
-          app.on("will-quit", () => {});
+
           /** @param {Parameters<InstanceType<typeof CorePreview>["openDocument"]>[0]} request */
           const openHtml = async (request) => {
+            const window = windowController.getWindow();
             if (!preview || !window || window.isDestroyed())
               throw new Error("Browser host unavailable");
             const result = await preview.openDocument(request);
@@ -800,336 +429,7 @@ function startDesktop() {
               });
             return result;
           };
-          handleDesktopIpc("areal-core:preview", async (event, request) => {
-            const ownerWindow = trustedSender(event);
-            validatePreview(request);
-            if (quitting) {
-              if (preview?.suppressedPresentation && request.operation === "show") return null;
-              throw new Error(nativeText("boundary.quitting"));
-            }
-            if (!preview) throw new Error(nativeText("browser.previewUnavailable"));
-            const activePreview = preview;
-            if (
-              request.operation === "newPage" ||
-              request.operation === "openLink" ||
-              request.operation === "subscribe"
-            )
-              await serviceBackend.ensureBrowserThread(request.projectId, request.threadId);
-            if (request?.operation === "subscribe") {
-              const key = JSON.stringify([request.projectId, request.threadId]);
-              previewSubscriptions.get(key)?.();
-              const subscription = activePreview.subscribe(
-                request.projectId,
-                request.threadId,
-                (update) => {
-                  if (!ownerWindow.isDestroyed())
-                    sendDesktopEvent(ownerWindow.webContents, "areal-core:preview-event", update);
-                },
-              );
-              previewSubscriptions.set(key, subscription.unsubscribe);
-              return subscription.snapshot;
-            }
-            if (request?.operation === "unsubscribe") {
-              const key = JSON.stringify([request.projectId, request.threadId]);
-              previewSubscriptions.get(key)?.();
-              previewSubscriptions.delete(key);
-              return null;
-            }
-            if (
-              browserWindowClosed &&
-              ["show", "newPage", "navigate", "reload"].includes(request?.operation)
-            )
-              throw new Error(nativeText("browser.windowClosed"));
-            if (request?.operation === "claim") {
-              const identity = await activePreview.claim(
-                request.projectId,
-                request.threadId,
-                request.pageId,
-              );
-              const currentClaimPage = () => {
-                const page = activePreview.page(
-                  request.projectId,
-                  request.threadId,
-                  request.pageId,
-                );
-                return page &&
-                  activePreview.pageStillOwned(page) &&
-                  page.view &&
-                  !page.view.webContents.isDestroyed() &&
-                  page.control === "agent" &&
-                  page.coreInstanceId === identity.coreInstanceId &&
-                  activePreview.browserHostId === identity.browserHostId &&
-                  activePreview.hostGeneration === identity.hostGeneration &&
-                  page.pageGeneration === identity.pageGeneration &&
-                  page.controlEpoch === identity.controlEpoch
-                  ? page
-                  : null;
-              };
-              try {
-                await serviceBackend.browserClaim(identity);
-                trusted(event);
-                if (!currentClaimPage()) throw new Error(nativeText("browser.claimExpired"));
-              } catch (error) {
-                if (currentClaimPage())
-                  activePreview.takeover(request.projectId, request.threadId, request.pageId);
-                throw error;
-              }
-              return activePreview.state(
-                activePreview.page(request.projectId, request.threadId, request.pageId),
-              );
-            }
-            if (request?.operation === "takeover") {
-              return activePreview.takeover(request.projectId, request.threadId, request.pageId);
-            }
-            try {
-              return await activePreview.command(request);
-            } catch (error) {
-              return { previewFailure: desktopError(error) };
-            }
-          });
-          handleDesktopIpc("areal-core:notification-target", (event) => {
-            trusted(event);
-            return notificationTarget;
-          });
-          handleDesktopIpc("areal-core:notification-consumed", (event, id) => {
-            trusted(event);
-            if (notificationTarget?.id === id) notificationTarget = null;
-          });
-          handleDesktopIpc("areal-core:snapshot", (event) => {
-            trusted(event);
-            return desktopSnapshot();
-          });
-          handleDesktopIpc("areal-core:install-command-line-tools", async (event) => {
-            trusted(event);
-            if (
-              serviceBackend.connectionState.state !== "unavailable" ||
-              !modelRecord(serviceBackend.connectionState.prerequisite) ||
-              serviceBackend.connectionState.prerequisite.kind !== "macos-command-line-tools"
-            ) {
-              return { started: false, message: nativeText("prerequisite.installUnavailable") };
-            }
-            const { requestCommandLineToolsInstallation } = require("./host-prerequisites.cjs");
-            const result = await requestCommandLineToolsInstallation();
-            trusted(event);
-            return result;
-          });
-          handleDesktopIpc("areal-core:native-state", (event) => {
-            const frame = trusted(event).webContents.mainFrame;
-            /** @type {{frame:Electron.WebFrameMain,last?:string}} */
-            const owner = { frame };
-            nativeStateOwners.set(event.sender, owner);
-            const snapshot = nativeState();
-            owner.last = JSON.stringify(snapshot);
-            return snapshot;
-          });
-          handleDesktopIpc("areal-core:present-ready", (event) => {
-            trusted(event);
-            startupReady = true;
-            startupPresentTrace?.finish("ok");
-            presentStartup();
-          });
-          handleDesktopIpc("areal-core:theme", (event, id) => {
-            trusted(event);
-            if (id !== undefined) {
-              if (
-                typeof id !== "string" ||
-                (id !== "system" && !themes.some((item) => item.id === id))
-              )
-                throw new Error(nativeText("gui.unknownTheme"));
-              themeId = id;
-            }
-            return theme();
-          });
-          nativeTheme.on("updated", () => {
-            if (window) sendDesktopEvent(window.webContents, "areal-core:theme-changed", theme());
-          });
-          handleDesktopIpc("areal-core:choose-project", async (event) => {
-            trusted(event);
-            const result = await showOpenDialog({
-              title: nativeText("picker.project"),
-              properties: ["openDirectory"],
-            });
-            if (result.canceled) return null;
-            const path = await realpath(result.filePaths[0]);
-            trusted(event);
-            return serviceBackend.addProject(path);
-          });
-          handleDesktopIpc("areal-core:choose-task-directory", async (event) => {
-            trusted(event);
-            const result = await showOpenDialog({
-              title: nativeText("picker.taskDirectory"),
-              properties: ["openDirectory"],
-            });
-            if (result.canceled) return null;
-            const cwd = await realpath(result.filePaths[0]);
-            if (!(await stat(cwd)).isDirectory())
-              throw new Error(nativeText("picker.existingDirectory"));
-            trusted(event);
-            return { cwd };
-          });
-          handleDesktopIpc("areal-core:choose-projectless-directory", async (event) => {
-            trusted(event);
-            const result = await showOpenDialog({
-              title: nativeText("picker.projectlessDirectory"),
-              properties: ["openDirectory", "createDirectory"],
-            });
-            if (result.canceled) return null;
-            trusted(event);
-            return serviceBackend.command("projectless", {
-              operation: "directory",
-              path: result.filePaths[0],
-            });
-          });
-          // 登录授权页等外部链接只交给系统浏览器；只放行 https 与本机回环 http。
-          handleDesktopIpc("areal-core:open-external", async (event, url) => {
-            trusted(event);
-            const target = new URL(String(url));
-            if (
-              target.protocol !== "https:" &&
-              !(
-                target.protocol === "http:" &&
-                ["localhost", "127.0.0.1", "[::1]"].includes(target.hostname)
-              )
-            )
-              throw new Error(nativeText("auth.unsupportedUrl"));
-            await shell.openExternal(target.href);
-          });
-          handleDesktopIpc("areal-core:file-open", async (event, request) => {
-            trusted(event);
-            return fileOpen(
-              {
-                backend: serviceBackend,
-                shell,
-                home: app.getPath("home"),
-                openHtml,
-                authorize: () => trusted(event),
-                chooseSave: (options) => showSaveDialog(options),
-              },
-              request,
-            );
-          });
-          const pluginArchives = new PluginArchives({
-            backend: serviceBackend,
-            choose: (options) => showOpenDialog(options),
-          });
-          handleDesktopIpc("areal-core:command", async (event, rawName, rawParams) => {
-            trusted(event);
-            const started = performance.now();
-            let succeeded = true;
-            try {
-              if (typeof rawName !== "string") throw new Error("Invalid command name");
-              const { name, request: params } = readCommandInvocation(rawName, rawParams, {
-                serviceOnly: false,
-              });
-              if (name === "bugReport") {
-                if (params.operation !== "export")
-                  return { ok: true, value: await bugReports.command(params) };
-                const report = await bugReports.read(params.id);
-                const result = await showSaveDialog({
-                  defaultPath: `areal-bug-${report.id}.json`,
-                  filters: [{ name: "JSON", extensions: ["json"] }],
-                });
-                trusted(event);
-                if (result.canceled || !result.filePath)
-                  return { ok: true, value: { canceled: true } };
-                await require("./bug-reports.cjs").exportReport(result.filePath, report);
-                return { ok: true, value: { path: result.filePath } };
-              }
-              if (name === "browserData") {
-                if (!preview) throw new Error(nativeText("browser.previewUnavailable"));
-                const value = await preview.browserData(params.operation, {
-                  importChrome: (options) =>
-                    require("@areal/browser-data").importChromeBrowserData({
-                      ...options,
-                      logger: console,
-                    }),
-                });
-                trusted(event);
-                return { ok: true, value };
-              }
-              if (name === "providers" && params.operation === "revealKey") {
-                const value = await require("../ipc/generated/provider-key.cjs").revealProviderKey(
-                  {
-                    home: cfg.serviceOptions(app).hostHome,
-                    binary: cfg.serviceOptions(app).binary,
-                    profile: app.getPath("userData"),
-                    trusted: () => trusted(event),
-                  },
-                  params,
-                );
-                return { ok: true, value };
-              }
-              // 非原生资料库写入只允许 Host 的带回执入口，不能从 IPC 绕过准入。
-              if (name === "library")
-                throw Object.assign(new Error("资料库操作请通过 Host 提交"), {
-                  code: "CAPABILITY_UNAVAILABLE",
-                  outcome: { kind: "noMutation" },
-                });
-              if (name === "exportDiagnostics")
-                return { ok: true, value: await exportDiagnostics() };
-              if (
-                name === "manage" &&
-                ["pluginArchivePick", "pluginArchiveImport"].includes(params.operation)
-              )
-                return {
-                  ok: true,
-                  value: await pluginArchives.command(params, () => trusted(event)),
-                };
-              if (name === "serviceLifecycle") {
-                if (params.operation === "quitInterface")
-                  return { ok: true, value: await requestQuit() };
-                if (params.operation === "stopAndQuit")
-                  return { ok: true, value: await requestStopAndQuit() };
-                const value =
-                  params.operation === "update"
-                    ? await serviceBackend.applyUpdate({
-                        notify: (options) => showMessageBox(options),
-                      })
-                    : params.operation === "stop"
-                      ? await requestStopService()
-                      : params.operation === "recover"
-                        ? await serviceBackend.recoverBackend()
-                        : await serviceBackend.checkLifecycle();
-                return { ok: true, value };
-              }
-              if (name === "serviceStatus")
-                return { ok: true, value: await serviceBackend.serviceStatus() };
-              if (name === "hostUpdate")
-                return { ok: true, value: await serviceBackend.hostUpdate(params) };
-              if (name === "hostInstallation") {
-                return {
-                  ok: true,
-                  value: await serviceBackend.hostInstallation(
-                    params.operation,
-                    requestStopService,
-                  ),
-                };
-              }
-              if (name === "stopService") return { ok: true, value: await requestStopService() };
-              if (name === "recoverResources")
-                return {
-                  ok: true,
-                  value: await serviceBackend.recoverBackend(),
-                };
-              if (name === "connectService") {
-                await serviceBackend.init();
-                return { ok: true, value: null };
-              }
-              trusted(event);
-              const value = await serviceBackend.command(name, params);
-              return { ok: true, value };
-            } catch (error) {
-              succeeded = false;
-              return { ok: false, error: desktopError(error) };
-            } finally {
-              diagnostics.record({
-                type: "command-complete",
-                command: rawName,
-                outcome: succeeded ? "ok" : "failed",
-                durationMs: Math.round(performance.now() - started),
-              });
-            }
-          });
+
           let recoveryPending = 0;
           const hasUpdateWork = async () => {
             const lifecycle = serviceBackend.snapshot().lifecycle;
@@ -1154,36 +454,59 @@ function startDesktop() {
             recoverInstall,
             hasWork: hasUpdateWork,
             onState: (state) => {
+              const window = windowController.getWindow();
               if (window && !window.isDestroyed())
                 sendDesktopEvent(window.webContents, "areal-core:update-changed", state);
             },
             prepareInstall: async () => {
-              if (quitting || (await hasUpdateWork()))
+              if (quitCoordinator.isQuitting() || (await hasUpdateWork()))
                 throw Object.assign(new Error(nativeText("lifecycle.activeWork")), {
                   code: "LIFECYCLE_BLOCKED",
                 });
-              const result = await requestQuit("install");
+              const result = await quitCoordinator.requestQuit("install");
               if (!("stopped" in result) || result.stopped !== true)
                 throw Object.assign(new Error(nativeText("lifecycle.installCanceled")), {
                   code: "LIFECYCLE_BLOCKED",
                 });
             },
           }));
-          handleDesktopIpc("areal-core:update-state", (event) => {
-            trusted(event);
-            return updater.state();
-          });
-          handleDesktopIpc("areal-core:update-download", (event) => {
-            trusted(event);
-            void updater.download();
-            return updater.state();
-          });
-          handleDesktopIpc("areal-core:update-recover-resources", async (event) => {
-            trusted(event);
-            await recoverInstall();
-            return updater.state();
-          });
+
           const requestStopService = () => confirmHostStop(serviceBackend, showMessageBox);
+
+          registerDesktopIpcHandlers({
+            app,
+            shell,
+            nativeTheme,
+            cfg,
+            diagnostics,
+            handleDesktopIpc,
+            onDesktopIpc,
+            sendDesktopEvent,
+            windowController,
+            quitCoordinator,
+            serviceBackend,
+            getPreview: () => preview,
+            openHtml,
+            bugReports,
+            exportDiagnostics,
+            showMessageBox,
+            showOpenDialog,
+            showSaveDialog,
+            desktopSnapshot,
+            nativeState,
+            getNotificationTarget: () => notificationTarget,
+            consumeNotificationTarget: (id) => {
+              if (notificationTarget?.id === id) notificationTarget = null;
+            },
+            themes,
+            getTheme: theme,
+            setThemeId: (id) => {
+              themeId = id;
+            },
+            requestStopService,
+            updater,
+            recoverInstall,
+          });
 
           Menu.setApplicationMenu(
             Menu.buildFromTemplate([
@@ -1246,7 +569,9 @@ function startDesktop() {
               { role: "windowMenu" },
             ]),
           );
+
           // 先启动后台初始化（与窗口创建并行），避免等待 createWindow 同步阶段之后才触发依赖与指纹检查。
+          /** @type {Promise<Electron.BrowserWindow> | undefined} */
           let windowLoaded;
           const serviceStarted = (async () => {
             const trace = startupTrace("gui.backend_init");
@@ -1263,11 +588,55 @@ function startDesktop() {
             } /* 错误由后台连接快照展示，用户显式重试。 */
             publish();
           })();
-          windowLoaded = createWindow(serviceBackend);
-          await windowLoaded;
+
+          windowLoaded = windowController.createWindow((createdWindow) => {
+            preview = new CorePreview(
+              createdWindow,
+              WebContentsView,
+              (projectId, threadId) => serviceBackend.ownsThread(projectId, threadId),
+              () => serviceBackend.snapshot().library?.settings ?? {},
+              (projectId, threadId) => serviceBackend.browserCoreIdentity(projectId, threadId),
+              () => serviceBackend.status.browserControlEndpoints ?? [],
+              developmentApproval(
+                createdWindow,
+                () =>
+                  !quitCoordinator.isQuitting() &&
+                  serviceBackend.status.connected === true &&
+                  serviceBackend.nativeBrowser?.closed === false,
+                () => preview,
+              ),
+              undefined,
+              (projectId, threadId) =>
+                fileWorkspace(serviceBackend, { projectId, threadId, operation: "openDocument" }),
+            );
+          });
+          let createdWindow;
+          try {
+            createdWindow = await windowLoaded;
+          } catch (error) {
+            // 首次加载失败时先消费 bundleGuard 与 quitCoordinator 结果，避免在重拉清理完成前 app.exit(1)。
+            const recovery = await bundleGuard.recoverStartupLoadFailure({
+              isBusy: () => quitCoordinator.isBusy(),
+              isExitReady: () => quitCoordinator.isExitReady(),
+              getPendingQuit: () => quitCoordinator.getQuitAttempt()?.promise ?? null,
+              requestRelaunchQuit: (execPath) => quitCoordinator.requestRelaunchQuit(execPath),
+            });
+            if (recovery === "handled") return false;
+            if (recovery === "retry") {
+              const existing = windowController.getWindow();
+              if (existing && !existing.isDestroyed()) {
+                await existing.loadURL("areal-ui://app/");
+                createdWindow = existing;
+              } else {
+                throw error;
+              }
+            } else {
+              throw error;
+            }
+          }
           const menuTimer = setInterval(refreshHostMenu, 5000);
-          window
-            ?.on("focus", refreshHostMenu)
+          createdWindow
+            .on("focus", refreshHostMenu)
             .on("blur", refreshHostMenu)
             .on("hide", refreshHostMenu)
             .on("minimize", refreshHostMenu)
@@ -1276,13 +645,14 @@ function startDesktop() {
           refreshHostMenu();
           await serviceStarted;
           refreshHostMenu();
-          return !!window && !window.isDestroyed() && serviceBackend.status.connected;
+          return !createdWindow.isDestroyed() && serviceBackend.status.connected;
         },
         (ready) => (ready ? "ok" : "unknown"),
       ),
     )
     .catch((error) => {
       startupTraceMain.finish("error", error);
+      if (quitCoordinator.isExitReady()) return;
       if (error.code !== "STARTUP_CANCELLED") {
         console.error(error);
         dialog.showErrorBox(nativeText("gui.startupFailed"), error.message);
@@ -1294,15 +664,7 @@ function startDesktop() {
       app.exit(error.code === "STARTUP_CANCELLED" ? 0 : 1);
     });
 
-  app.on("activate", revealWindow);
+  app.on("activate", () => windowController.revealWindow());
   app.on("window-all-closed", () => {});
-  app.on("before-quit", (event) => {
-    if (exitReady) return;
-    event.preventDefault();
-    if (quitting) return;
-    void requestQuit().catch((error) => {
-      backend?.reportLifecycleError(error);
-      revealWindow();
-    });
-  });
+  app.on("before-quit", (event) => quitCoordinator.handleBeforeQuit(event));
 }
