@@ -50,7 +50,7 @@ test("default and custom palettes retain input roles and component aliases", () 
       expect(variables["--color-brand"]).toBe(palette.accent);
       expect(variables["--color-composer-action"]).toBe("var(--color-primary)");
       expect(variables["--color-input-border"]).toBe("var(--color-border)");
-      expect(variables["--color-user-message"]).toBe(dark ? "#173e76" : "#e8f3fe");
+      expect(variables["--color-user-message"]).toBe(dark ? "#2a2a2d" : "#f3f3f4");
       for (const role of TEXT_ROLES)
         expect(textContrast(variables[role], palette.background)).toBeGreaterThanOrEqual(4.5);
     }

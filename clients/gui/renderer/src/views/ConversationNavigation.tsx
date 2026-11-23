@@ -13,7 +13,6 @@ import {
   SidebarWorkspaceHeader,
 } from "../app-shell/ApplicationNavigation.js";
 import { NavigationSidebar } from "../app-shell/WorkbenchShell.js";
-import { PopoverSidebar } from "@areal/ui/compositions";
 import { Button } from "../components/ui/button.js";
 import {
   DropdownMenu,
@@ -52,9 +51,8 @@ export function ConversationNavigation(props: SidebarNavigationProps) {
   const archive = useArchiveConfirm();
   return (
     <SidebarScope model={model} confirmArchive={archive.confirm}>
-      <PopoverSidebar collapsed={!props.visible} label="项目导航">
-        <SidebarContent onUpgradeHistory={props.onUpgradeHistory} />
-      </PopoverSidebar>
+      {/* 切到 Bots / 设置等自有侧栏视图时 visible 为 false，必须卸载对话侧栏，不能挂成悬停浮层盖住目标侧栏。 */}
+      {props.visible && <SidebarContent onUpgradeHistory={props.onUpgradeHistory} />}
       <SidebarSearch />
       {archive.dialog}
     </SidebarScope>
