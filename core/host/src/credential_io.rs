@@ -127,7 +127,16 @@ fn spawn(owner: Option<&File>) -> Result<(Child, UnixStream)> {
             Ok(())
         });
     }
-    let process = command.spawn()?;
+    let process = command.spawn().map_err(|cause| {
+        if cause.kind() == std::io::ErrorKind::NotFound {
+            error(
+                "credentialHostRestartRequired",
+                "Host executable was replaced or removed on disk; restart the background Host",
+            )
+        } else {
+            cause.into()
+        }
+    })?;
     drop(child);
     Ok((process, parent))
 }
@@ -487,8 +496,27 @@ pub fn run(channel_fd: i32, owner_fd: i32) -> Result<()> {
     let mut channel = unsafe { UnixStream::from_raw_fd(channel_fd) };
     // 继承原 open-file description；不能重新打开或显式 unlock，否则会提前解除共享锁。
     let owner = unsafe { File::from_raw_fd(owner_fd) };
-    let invocation: Invocation = receive(&mut channel)?;
-    let home = authenticate(&channel, &owner, &invocation.authority)?;
+    run_with_authenticator(&mut channel, &owner, authenticate)
+}
+
+fn run_with_authenticator<F>(channel: &mut UnixStream, owner: &File, auth: F) -> Result<()>
+where
+    F: FnOnce(&UnixStream, &File, &Authority) -> Result<PathBuf>,
+{
+    let invocation: Invocation = receive(channel)?;
+    let home = match auth(channel, owner, &invocation.authority) {
+        Ok(home) => home,
+        // 已通过 peer/lock/token 鉴权后仅因磁盘可执行文件被替换失败，必须把明确错误码回传给父进程，
+        // 不能直接 ? 退出导致父进程误判为 storageLocked（钥匙串已锁定）。
+        Err(cause)
+            if cause
+                .downcast_ref::<crate::wire::Error>()
+                .is_some_and(|err| err.code == "credentialHostRestartRequired") =>
+        {
+            return send(channel, &credential_reply(Err(cause)));
+        }
+        Err(cause) => return Err(cause),
+    };
     let service = master_key_service(&home);
     match &invocation.request {
         Request::Read { entry, .. } | Request::Write { entry, .. } => ensure!(
@@ -521,14 +549,14 @@ pub fn run(channel_fd: i32, owner_fd: i32) -> Result<()> {
         #[cfg(test)]
         Request::Hold => {
             send(
-                &mut channel,
+                channel,
                 &Reply {
                     status: 0,
                     value: None,
                     diagnostic: None,
                 },
             )?;
-            let _: Value = receive(&mut channel)?;
+            let _: Value = receive(channel)?;
             Reply {
                 status: 0,
                 value: None,
@@ -536,7 +564,7 @@ pub fn run(channel_fd: i32, owner_fd: i32) -> Result<()> {
             }
         }
     };
-    send(&mut channel, &response)
+    send(channel, &response)
 }
 
 /// 主密钥仍受系统 Keychain ACL 保护；加密文件不会绕过授权。
@@ -1011,4 +1039,41 @@ fn existing_envelopes_prevent_replacement_master_key() {
     storage::private_dir(&root.path().join("host/vault-sealed")).unwrap();
     storage::write_bytes(&sealed_path(root.path(), "fixture"), b"encrypted").unwrap();
     assert!(sealed_credentials_exist(root.path()).unwrap());
+}
+
+#[cfg(test)]
+#[test]
+fn executable_mismatch_replies_over_channel_instead_of_exiting_empty() {
+    let root = tempfile::tempdir().unwrap();
+    let owner = storage::open_private(&root.path().join("host.lock"), true).unwrap();
+    let (mut parent, mut child) = UnixStream::pair().unwrap();
+    send(
+        &mut parent,
+        &Invocation {
+            authority: Authority {
+                host_id: "host".into(),
+                generation: "gen".into(),
+                token: "tok".into(),
+            },
+            request: Request::Read {
+                entry: "entry".into(),
+                interaction_allowed: false,
+            },
+        },
+    )
+    .unwrap();
+    run_with_authenticator(&mut child, &owner, |_, _, _| {
+        Err(error(
+            "credentialHostRestartRequired",
+            "Host executable was replaced on disk; restart the background Host",
+        ))
+    })
+    .unwrap();
+    let reply: Reply = receive(&mut parent).unwrap();
+    assert_eq!(reply.status, EXECUTABLE_MISMATCH);
+    let err = reply_value(reply).unwrap_err();
+    assert_eq!(
+        err.downcast_ref::<crate::wire::Error>().unwrap().code,
+        "credentialHostRestartRequired"
+    );
 }
