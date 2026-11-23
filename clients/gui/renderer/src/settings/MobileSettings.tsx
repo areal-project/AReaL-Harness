@@ -127,7 +127,14 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
         : "";
   const entryReady = transport === "relay" ? state.connected : state.directEnabled;
   const localRelay =
-    state.relay?.startsWith("http:") || state.relayService?.local?.address === state.relay;
+    state.relay?.startsWith("http:") ||
+    state.relayService?.local?.address === state.relay ||
+    (Array.isArray(state.relayService?.profiles) &&
+      state.relayService.profiles.some(
+        (profile: Data) =>
+          profile.kind === "local" && (profile.active || profile.origin === state.relay),
+      ));
+  const localRelayFailed = localRelay && state.relayService?.local?.phase === "failed";
   const pending: Data | undefined = state.pending?.[0];
   const step: AddDeviceStep = pairedName ? "done" : pending ? "review" : "scan";
   const relayHost = (() => {
@@ -150,11 +157,19 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
             { host: relayHost },
           ),
         }
-      : {
-          tone: "warning",
-          title: t("settings.mobileConnect.relayOffline"),
-          description: t("settings.mobileConnect.relayOfflineDescription", { host: relayHost }),
-        }
+      : localRelayFailed
+        ? {
+            tone: "warning",
+            title: t("settings.mobileConnect.relayOffline"),
+            description:
+              state.relayService?.local?.error ||
+              t("settings.mobileConnect.relayOfflineDescription", { host: relayHost }),
+          }
+        : {
+            tone: "warning",
+            title: t("settings.mobileConnect.relayOffline"),
+            description: t("settings.mobileConnect.relayOfflineDescription", { host: relayHost }),
+          }
     : state.directEnabled
       ? reconnectUrl.startsWith("https://")
         ? {
