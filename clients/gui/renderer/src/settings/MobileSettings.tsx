@@ -17,6 +17,7 @@ type Tone = "good" | "warning" | "idle";
 const credentialErrors = new Set([
   "remoteCredentialUnreadable",
   "storageAuthorizationRequired",
+  "credentialHostRestartRequired",
   "storageLocked",
   "storageMissing",
 ]);

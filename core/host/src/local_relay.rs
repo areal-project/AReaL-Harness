@@ -405,6 +405,20 @@ pub(crate) fn address() -> Result<IpAddr> {
     select_address(local_addresses()?).ok_or_else(unavailable_address)
 }
 
+/// 计算当前可用内网地址对应的本机 Relay origin，用于 DHCP 换址后直接引导一键切换。
+pub(crate) fn suggested_origin(config: &Value) -> Option<String> {
+    let port = config["relayLocal"]["port"].as_u64().unwrap_or(47820);
+    if !(1024..=65535).contains(&port) {
+        return None;
+    }
+    let addr = address().ok()?;
+    Some(match addr {
+        IpAddr::V4(ip) if !ip.is_private() => format!("https://{addr}:{port}"),
+        IpAddr::V4(_) => format!("http://{addr}:{port}"),
+        IpAddr::V6(_) => format!("http://[{addr}]:{port}"),
+    })
+}
+
 pub(crate) fn ensure_local_address(origin: &url::Url) -> Result<()> {
     let address = match origin.host() {
         Some(url::Host::Ipv4(address)) => IpAddr::V4(address),

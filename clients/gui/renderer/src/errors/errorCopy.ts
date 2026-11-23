@@ -71,6 +71,7 @@ export const ERROR_CODES = {
   storageAuthorizationRequired: { action: "none", retryable: false },
   storageMissing: { action: "none", retryable: false },
   storageLocked: { action: "retry", retryable: true },
+  credentialHostRestartRequired: { action: "none", retryable: false },
   remoteCredentialUnreadable: { action: "none", retryable: false },
   remoteStateUnavailable: { action: "retry", retryable: true },
   localRelayUnavailable: { action: "none", retryable: false },

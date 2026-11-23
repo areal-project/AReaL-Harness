@@ -243,6 +243,10 @@ export const errorMessages = {
     "zh-CN": "本地凭据存储已锁定，请解锁钥匙串后重试。",
     en: "Credential storage is locked. Unlock your Keychain and try again.",
   },
+  "errors.credentialHostRestartRequired": {
+    "zh-CN": "新版应用已安装，但旧后台仍在运行，请重启后台服务后重试。",
+    en: "A newer version is installed while the old background service is still running. Restart the background service and try again.",
+  },
   "errors.remoteCredentialUnreadable": {
     "zh-CN": "无法解密手机连接凭据，请从同份备份恢复钥匙串，或重新配置并配对。",
     en: "The saved mobile connection credentials cannot be decrypted. Restore the matching Keychain master key and mobile connection settings from the same backup, then try again. Without a usable backup, set up mobile access again and re-pair your devices. A Provider API key cannot restore mobile access.",

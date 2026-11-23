@@ -276,6 +276,7 @@ impl RemoteCommands {
                     "storageLocked"
                         | "storageMissing"
                         | "storageAuthorizationRequired"
+                        | "credentialHostRestartRequired"
                         | "remoteCredentialUnreadable"
                 )
             });

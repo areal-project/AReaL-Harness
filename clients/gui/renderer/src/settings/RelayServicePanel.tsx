@@ -26,6 +26,17 @@ export function RelayServicePanel({ state, busy, run }: { state: Data; busy: boo
   }, [deployment?.target, deployment?.port, deployment?.address]);
   const working = busy || job?.phase === "running";
   const running = service?.local?.phase === "running";
+  const pendingBlocked = Boolean(state.pendingOperation?.requestId);
+  const suggestedOrigin =
+    typeof service?.local?.suggestedOrigin === "string" ? service.local.suggestedOrigin : "";
+  const suggestedHost = (() => {
+    try {
+      return suggestedOrigin ? new URL(suggestedOrigin).host : "";
+    } catch {
+      return suggestedOrigin;
+    }
+  })();
+  const switchSuggested = !running && service?.local?.phase === "failed" && Boolean(suggestedHost);
   return (
     <SettingsSection
       title={t("settings.relayService.title")}
@@ -39,12 +50,16 @@ export function RelayServicePanel({ state, busy, run }: { state: Data; busy: boo
           </div>
           <Button
             variant={running ? "outline" : "default"}
-            disabled={working || service?.local?.phase === "starting"}
+            disabled={working || service?.local?.phase === "starting" || pendingBlocked}
             onClick={() =>
               void run({ operation: running ? "relayServiceStopLocal" : "relayServiceStartLocal" })
             }
           >
-            {t(running ? "settings.relayService.stopLocal" : "settings.relayService.startLocal")}
+            {running
+              ? t("settings.relayService.stopLocal")
+              : switchSuggested
+                ? `改用 ${suggestedHost}`
+                : t("settings.relayService.startLocal")}
           </Button>
         </div>
         {running && (

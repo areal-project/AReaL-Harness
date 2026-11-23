@@ -171,6 +171,7 @@ pub(crate) const MASTER_KEY_BYTES: usize = 32;
 const SEAL_TAG_BYTES: usize = 16;
 const SEAL_NONCE_BYTES: usize = 12;
 const ENVELOPE_INVALID: i32 = -2;
+const EXECUTABLE_MISMATCH: i32 = -3;
 
 #[derive(Debug)]
 pub(crate) struct EnvelopeInvalid(&'static str);
@@ -238,6 +239,12 @@ fn reply_value(response: Reply) -> Result<Option<Value>> {
                 .unwrap_or_else(|| "credential envelope could not be verified".into()),
         )
         .context(EnvelopeInvalid("credential envelope could not be verified"))),
+        EXECUTABLE_MISMATCH => Err(error(
+            "credentialHostRestartRequired",
+            response.diagnostic.unwrap_or_else(|| {
+                "Host executable was replaced on disk; restart the background Host".into()
+            }),
+        )),
         -1 => Err(error(
             "storageLocked",
             response
@@ -271,6 +278,8 @@ fn credential_reply(result: Result<Option<Value>>) -> Reply {
             Reply {
                 status: if known.is_some_and(|error| error.code == "storageAuthorizationRequired") {
                     -25293
+                } else if known.is_some_and(|error| error.code == "credentialHostRestartRequired") {
+                    EXECUTABLE_MISMATCH
                 } else {
                     -1
                 },
@@ -385,11 +394,14 @@ fn authenticate(channel: &UnixStream, owner: &File, authority: &Authority) -> Re
         .iter()
         .position(|byte| *byte == 0)
         .ok_or_else(|| error("storageLocked", "invalid Host executable"))?;
-    ensure!(
-        PathBuf::from(std::ffi::OsString::from_vec(executable[..end].to_vec())).canonicalize()?
-            == std::env::current_exe()?.canonicalize()?,
-        "credential helper peer is not the Host executable"
-    );
+    if PathBuf::from(std::ffi::OsString::from_vec(executable[..end].to_vec())).canonicalize()?
+        != std::env::current_exe()?.canonicalize()?
+    {
+        return Err(error(
+            "credentialHostRestartRequired",
+            "Host executable was replaced on disk; restart the background Host",
+        ));
+    }
     Ok(home)
 }
 
