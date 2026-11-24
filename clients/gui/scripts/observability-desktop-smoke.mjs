@@ -479,7 +479,7 @@ try {
     assert.ok(!preview.includes(secret), `diagnostics excludes ${secret}`);
   await page.screenshot({ path: join(scratch, "feedback-preview.png"), animations: "disabled" });
   await dialog.getByRole("button", { name: "保存到本机" }).click();
-  await dialog.getByText("已保存到本机，尚未发送。请检查内容后导出。").waitFor();
+  await dialog.getByText("已保存到本机，尚未发送。可检查内容后提交或导出。").waitFor();
   await dialog.getByRole("button", { name: "本机反馈", exact: true }).click();
   await dialog.getByRole("button", { name: "查看反馈" }).click();
   await dialog.getByText("查看将附带的诊断内容").click();

@@ -671,7 +671,7 @@ export async function runComposerFilesAcceptance({
     async () => page.evaluate(() => globalThis.filesListCompleted),
     "delayed privileged workspace listing completed",
   );
-  await page.getByText("正在核对工作区引用…", { exact: true }).waitFor({ state: "hidden" });
+  await page.getByText("正在确认工作区引用…", { exact: true }).waitFor({ state: "hidden" });
   assert.equal(await input().textContent(), "FILES_STALE_DRAFT");
   await input().fill("");
   checks.push(
@@ -735,7 +735,7 @@ export async function runComposerFilesAcceptance({
     async () => page.evaluate(() => globalThis.filesListCompleted),
     "delayed privileged workspace listing completed",
   );
-  await page.getByText("正在核对工作区引用…", { exact: true }).waitFor({ state: "hidden" });
+  await page.getByText("正在确认工作区引用…", { exact: true }).waitFor({ state: "hidden" });
   assert.equal(await input().textContent(), "FILES_NORMAL_DRAFT");
   checks.push(
     "canceling queue edit invalidates its pending directory reference and preserves the restored normal draft",

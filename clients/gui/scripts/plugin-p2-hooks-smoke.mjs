@@ -202,7 +202,7 @@ async function recoverPlugin(operation, trigger) {
   await button(trigger).click();
   await until(() => loss.dropped || loss.failed, `original ${operation} replied`);
   assert.equal(loss.dropped, true, String(loss.failed));
-  await button("核对插件提交").click();
+  await button("查看插件提交").click();
   const original = await until(
     () => loss.lookup?.confirmed && loss.lookup,
     "original plugin receipt",

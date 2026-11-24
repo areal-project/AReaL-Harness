@@ -814,7 +814,7 @@ try {
     "Branch opens its target dialog directly",
   );
   assert.equal(await forkDialog.getByText("在当前工作区中创建", { exact: true }).count(), 1);
-  assert.equal(await forkDialog.getByText("在新工作树中创建", { exact: true }).count(), 0);
+  assert.equal(await forkDialog.getByText(/^在新工作树中创建$/).count(), 0);
   assert.equal(await forkDialog.getByRole("button").count(), 1);
   assert.equal(
     await forkDialog.locator("select, details, [data-slot=popover-description]").count(),

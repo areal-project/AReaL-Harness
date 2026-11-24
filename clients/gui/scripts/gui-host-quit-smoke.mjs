@@ -293,7 +293,7 @@ try {
   await page.getByRole("button", { name: "常规", exact: true }).click();
   await page.getByRole("button", { name: "打开高级诊断", exact: true }).click();
   const quitDescription = page.getByText(
-    "默认保持共享后台运行。有活动任务时可选择停止任务并退出，停止需要再次确认。",
+    "默认保持共享后台运行。有任务时可停止任务并退出，需再次确认。",
     { exact: true },
   );
   await quitDescription.waitFor();

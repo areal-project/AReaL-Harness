@@ -132,7 +132,7 @@ export function RelayEnrollForm({ state, busy, run }: { state: Data; busy: boole
               : t("settings.mobileConnect.turnOn")}
         </Button>
       </div>
-      {state.enabled && state.connected && (
+      {state.enabled && Boolean(state["connected"]) && (
         <p className="remote-muted">
           {t(
             state.pushSupported

@@ -171,7 +171,7 @@ export const pluginMessages = {
     en: "Another conversation creation is unconfirmed. You can manage plugins. The original request is retained and will not be resent automatically.",
   },
   "settings.pluginCenter.projectOperationStillUnconfirmed": {
-    "zh-CN": "已核对，原操作仍未确认。未重新提交。",
+    "zh-CN": "已查看，原操作仍未确认，未重新提交。",
     en: "Checked. The original operation is still unconfirmed. It was not resubmitted.",
   },
   "settings.pluginCenter.projectOperationConfirmedComplete": {
@@ -259,11 +259,11 @@ export const pluginMessages = {
     en: "Could not check the original submission: {value0}",
   },
   "settings.pluginCenter.checkConnectionResult": {
-    "zh-CN": "核对连接结果",
+    "zh-CN": "查看连接结果",
     en: "Check connection result",
   },
   "settings.pluginCenter.checkPluginSubmission": {
-    "zh-CN": "核对插件提交",
+    "zh-CN": "查看插件提交",
     en: "Check plugin submission",
   },
   "settings.pluginCenter.aProjectOperationHasAnUnconfirmedResult": {
@@ -271,7 +271,7 @@ export const pluginMessages = {
     en: "A project operation has an unconfirmed result. Plugin changes are unavailable. Checking reads the original request result without resubmitting it.",
   },
   "settings.pluginCenter.checkProjectOperation": {
-    "zh-CN": "核对项目操作",
+    "zh-CN": "查看项目操作",
     en: "Check project operation",
   },
   "settings.pluginCenter.checkingProjectOperation": {
@@ -631,7 +631,7 @@ export const pluginMessages = {
     en: "Plugin submission status",
   },
   "settings.pluginCenter.connectionResultUnconfirmed": {
-    "zh-CN": "连接结果待核对",
+    "zh-CN": "连接结果待确认",
     en: "Connection result unconfirmed",
   },
   "settings.pluginCenter.operationResultUnconfirmed": {
@@ -643,7 +643,7 @@ export const pluginMessages = {
     en: "The previous operation is not confirmed complete. Check the original request first.",
   },
   "settings.pluginCenter.resultUnconfirmed": {
-    "zh-CN": "结果待核对",
+    "zh-CN": "结果待确认",
     en: "Result unconfirmed",
   },
   "settings.pluginCenter.hideThisSubmission": {
@@ -747,7 +747,7 @@ export const pluginMessages = {
     en: "Save within the current project scope.",
   },
   "settings.pluginCenter.iHaveReviewedTheSourceVersionAnd": {
-    "zh-CN": "我已核对以上来源、版本和摘要",
+    "zh-CN": "我已确认以上来源、版本和摘要",
     en: "I have reviewed the source, version, and digests above",
   },
   "settings.pluginCenter.theCatalogChangedResolveTheSourceAgain": {
@@ -847,7 +847,7 @@ export const pluginMessages = {
     en: "Developer",
   },
   "settings.pluginCenter.currentInstallationSnapshot": {
-    "zh-CN": "当前安装快照",
+    "zh-CN": "当前安装版本",
     en: "Current installation snapshot",
   },
   "settings.pluginCenter.couldNotCopyTheContentDigest": {
@@ -1059,7 +1059,7 @@ export const pluginMessages = {
     en: "Authentication in progress",
   },
   "settings.pluginConnectionPanel.checkAuthenticationStatus": {
-    "zh-CN": "核对认证状态",
+    "zh-CN": "查看认证状态",
     en: "Check authentication status",
   },
   "settings.pluginConnectionPanel.cancelThisAuthentication": {
@@ -1103,7 +1103,7 @@ export const pluginMessages = {
     en: "Allow the MCP services declared by this plugin to start and use their tools in conversations.",
   },
   "settings.pluginConnectionPanel.installationSnapshot": {
-    "zh-CN": "安装快照",
+    "zh-CN": "安装版本",
     en: "Installation snapshot",
   },
   "settings.pluginConnectionPanel.hideFullDigest": {
@@ -1115,7 +1115,7 @@ export const pluginMessages = {
     en: "View full digest",
   },
   "settings.pluginConnectionPanel.iTrustTheCurrentInstallationSnapshotAnd": {
-    "zh-CN": "我信任当前安装快照，并允许启动其 MCP 服务。",
+    "zh-CN": "我信任当前安装版本，并允许启动其 MCP 服务。",
     en: "I trust the current installation snapshot and allow its MCP services to start.",
   },
   "settings.pluginConnectionPanel.trustAndConnect": {

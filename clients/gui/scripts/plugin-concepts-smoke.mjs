@@ -616,7 +616,7 @@ async function detailFromResource(row) {
   return detail;
 }
 async function reconcilePluginSubmission(container) {
-  const recovery = container.getByRole("button", { name: "核对插件提交", exact: true });
+  const recovery = container.getByRole("button", { name: "查看插件提交", exact: true });
   const before = await manage("plugins");
   if (!(await recovery.isVisible())) return;
   try {
@@ -687,7 +687,7 @@ async function connectPackage(detail) {
     false,
   );
   await detail
-    .getByRole("checkbox", { name: "我信任当前安装快照，并允许启动其 MCP 服务。", exact: true })
+    .getByRole("checkbox", { name: "我信任当前安装版本，并允许启动其 MCP 服务。", exact: true })
     .check();
   await detail.getByRole("button", { name: "信任并连接", exact: true }).click();
   return until(async () => {
@@ -1064,7 +1064,7 @@ try {
     );
     await button("安装").click();
     await page
-      .getByRole("checkbox", { name: "我已核对以上来源、版本和摘要", exact: true })
+      .getByRole("checkbox", { name: "我已确认以上来源、版本和摘要", exact: true })
       .waitFor();
     await scopeProject();
     assert.equal(
@@ -1072,7 +1072,7 @@ try {
       false,
       "package install needs source review",
     );
-    await page.getByRole("checkbox", { name: "我已核对以上来源、版本和摘要", exact: true }).check();
+    await page.getByRole("checkbox", { name: "我已确认以上来源、版本和摘要", exact: true }).check();
     await button("安装到当前项目").click();
     await button("管理").waitFor();
     const installed = (await manage("plugins")).data.find(
@@ -1238,7 +1238,7 @@ try {
     );
     assert.equal(imported.enabled, false);
     await page
-      .getByRole("checkbox", { name: "我已核对以上来源、版本和摘要", exact: true })
+      .getByRole("checkbox", { name: "我已确认以上来源、版本和摘要", exact: true })
       .waitFor();
     await scopeProject();
     assert.equal(
@@ -1248,7 +1248,7 @@ try {
     );
     assert.equal((await events()).length, 0, "archive import cannot start MCP");
     assert.equal(requests.length, 0, "archive import cannot start inference");
-    await page.getByRole("checkbox", { name: "我已核对以上来源、版本和摘要", exact: true }).check();
+    await page.getByRole("checkbox", { name: "我已确认以上来源、版本和摘要", exact: true }).check();
     await button("安装到当前项目").click();
     await button("管理").waitFor();
     const archiveInstalled = (await manage("plugins")).data.find(

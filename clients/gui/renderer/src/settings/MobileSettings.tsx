@@ -152,7 +152,8 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
       : state.directUrl && state.directHostId
         ? `${state.directUrl}/#host=${encodeURIComponent(state.directHostId)}`
         : "";
-  const entryReady = transport === "relay" ? state.connected : state.directEnabled;
+  const relayConnected = Boolean(state["connected"]);
+  const entryReady = transport === "relay" ? relayConnected : state.directEnabled;
   const pendingOperation: { requestId?: string; operation?: string } | null =
     state.pendingOperation && typeof state.pendingOperation === "object"
       ? state.pendingOperation
@@ -177,7 +178,7 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
   })();
 
   const status: { tone: Tone; title: string; description: string } = state.enabled
-    ? state.connected
+    ? relayConnected
       ? {
           tone: "good",
           title: t("settings.mobileConnect.ready"),

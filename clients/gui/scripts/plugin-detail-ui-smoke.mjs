@@ -179,11 +179,11 @@ async function checkProjectRecovery() {
   await page.getByText(/areal\/mcp\/configure/).waitFor();
   await page.getByText(/00000000-0000-4000-a000-000000000222/).waitFor();
   const previousCalls = await page.evaluate(() => window.pluginFixture.calls.length);
-  await button("核对项目操作").click();
+  await button("查看项目操作").click();
   await page.waitForFunction(() =>
     window.pluginFixture.calls.some((call) => call.name === "reconcile"),
   );
-  await button("核对项目操作").waitFor({ state: "visible" });
+  await button("查看项目操作").waitFor({ state: "visible" });
   const checkedCalls = await page.evaluate(
     (offset) => window.pluginFixture.calls.slice(offset),
     previousCalls,
@@ -194,7 +194,7 @@ async function checkProjectRecovery() {
       .map((call) => ({ projectId: call.projectId, requestId: call.requestId })),
     [{ projectId: "fixture", requestId: originalOperation[0].params.requestId }],
   );
-  await page.getByText("已核对，原操作仍未确认。未重新提交。", { exact: true }).waitFor();
+  await page.getByText("已查看，原操作仍未确认，未重新提交。", { exact: true }).waitFor();
   assert.deepEqual(await page.evaluate(() => window.pluginFixture.pending), originalOperation);
   assert.equal(await skillSwitch.isEnabled(), false);
   assert.equal(
@@ -229,9 +229,7 @@ try {
       const before = await page.evaluate(() => window.pluginFixture.calls.length);
       await open(mode);
       await page
-        .getByText("尚未观察当前项目的运行状态。目录与支持信息来自本地 Store 快照。", {
-          exact: true,
-        })
+        .getByText(/^尚未观察当前项目的运行状态。目录与支持信息来自本地 Store 快照。$/)
         .first()
         .waitFor();
       const calls = await page.evaluate(
@@ -310,10 +308,10 @@ try {
       0,
     );
     await button("在浏览器中认证").click();
-    await button("核对认证状态").waitFor();
+    await button("查看认证状态").waitFor();
     await capture("auth-pending");
     await page.evaluate(() => window.pluginFixture.setReady());
-    await button("核对认证状态").click();
+    await button("查看认证状态").click();
     await button("审阅并连接").waitFor();
     const beforeConnect = await page.evaluate(
       () =>
@@ -347,7 +345,7 @@ try {
       await open(mode);
       await button("审阅并连接").click();
       await button("信任并连接").click();
-      await page.getByRole("heading", { name: "连接结果待核对", exact: true }).waitFor();
+      await page.getByRole("heading", { name: "连接结果待确认", exact: true }).waitFor();
       const before = await page.evaluate(
         () =>
           window.pluginFixture.calls.filter((call) => call.operation === "pluginConnection").length,
@@ -358,11 +356,11 @@ try {
         .getByRole("heading", { name: "Other Plugin", exact: true })
         .waitFor();
       await button("GitHub").click();
-      await page.getByRole("heading", { name: "连接结果待核对", exact: true }).waitFor();
-      await button("核对连接结果").click();
+      await page.getByRole("heading", { name: "连接结果待确认", exact: true }).waitFor();
+      await button("查看连接结果").click();
       if (mode === "unknown") await button("断开并撤销信任").waitFor();
       if (mode === "unresolved")
-        await page.getByRole("heading", { name: "连接结果待核对", exact: true }).waitFor();
+        await page.getByRole("heading", { name: "连接结果待确认", exact: true }).waitFor();
       if (mode === "failed")
         await page
           .getByText(/PLUGIN_EXECUTION_FAILED_SENTINEL/)

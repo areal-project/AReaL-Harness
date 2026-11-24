@@ -611,7 +611,7 @@ try {
     await input.fill(draft);
     const before = modelCalls.length;
     await page.getByTestId("chat-send-button").click();
-    const inspection = page.getByRole("dialog", { name: "核对浏览器结果", exact: true });
+    const inspection = page.getByRole("dialog", { name: "查看浏览器结果", exact: true });
     await inspection.waitFor();
     assert.equal(
       modelCalls.length,
@@ -629,12 +629,12 @@ try {
     await page.screenshot({ path: join(scratch, "navigation-inspection.png") });
     await inspection.getByRole("button", { name: "取消核查", exact: true }).click();
     assert.equal(await input.innerText(), draft, "cancel keeps the draft");
-    await page.getByRole("button", { name: "核对后继续", exact: true }).click();
+    await page.getByRole("button", { name: "确认后继续", exact: true }).click();
     await inspection
       .getByLabel("核查说明", { exact: true })
       .fill("已在当前浏览器打开测试页面，页面可交互；未重放原超时导航。");
     await inspection
-      .getByRole("checkbox", { name: "已核对当前页面及操作结果", exact: true })
+      .getByRole("checkbox", { name: "已查看当前页面及操作结果", exact: true })
       .check();
     await inspection.getByRole("button", { name: "确认已核查", exact: true }).click();
     await inspection.waitFor({ state: "hidden" });

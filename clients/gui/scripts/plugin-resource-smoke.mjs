@@ -156,7 +156,10 @@ export async function verifyPluginResourceSlice({
     await button("返回应用").click();
     await page.getByTestId("chat-input").fill("请生成插件管理前的完整阅读记录。");
     await page.getByTestId("chat-send-button").click();
-    await page.getByTestId("chat-view").getByText("【插件第48段】", { exact: false }).waitFor();
+    await page
+      .getByTestId("chat-view")
+      .getByText(/【插件第48段】/)
+      .waitFor();
     const original = await until(
       (snapshot) =>
         Object.values(
@@ -303,9 +306,9 @@ export async function verifyPluginResourceSlice({
     await arm("pluginConfigure", "response-loss");
     await button("在项目范围启用").click();
     const lost = await waitBoundary("pluginConfigure", "response-loss", true);
-    await button("核对插件提交").waitFor();
+    await button("查看插件提交").waitFor();
     await shot("resource-plugin-configure-unknown");
-    await button("核对插件提交").focus();
+    await button("查看插件提交").focus();
     await page.keyboard.press("Enter");
     await page.getByText("原提交已确认完成，未重新执行。", { exact: true }).waitFor();
     await pluginState((plugin) => plugin?.enabled === true, "real project enable recovered");
@@ -333,9 +336,9 @@ export async function verifyPluginResourceSlice({
       true,
       "admitted stale mutation requires original receipt reconciliation",
     );
-    await button("核对插件提交").waitFor();
+    await button("查看插件提交").waitFor();
     await shot("resource-plugin-stale-unknown");
-    await button("核对插件提交").click();
+    await button("查看插件提交").click();
     await page.getByTestId("plugin-detail-page").getByRole("alert").waitFor();
     const staleReceipt = await boundaryEvents();
     assert.equal(

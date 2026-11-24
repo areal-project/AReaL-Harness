@@ -322,11 +322,11 @@ try {
   await button("设置").click();
   await button("常规").click();
   await button("打开高级诊断").click();
-  await page.getByRole("heading", { name: "待核对的会话创建", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "待确认的会话创建", exact: true }).waitFor();
   await page.getByText(requestId, { exact: false }).waitFor();
   assert.doesNotMatch(await page.locator("body").innerText(), /NaN|ORIGINAL_PRIVATE_CREATION/);
   await button("检查操作状态").click();
-  await page.getByText("已核对，原操作仍未确认。未重新提交。", { exact: true }).waitFor();
+  await page.getByText("已查看，原操作仍未确认，未重新提交。", { exact: true }).waitFor();
   const check = observed.find((entry) => entry.method === "desktop.command");
   assert.deepEqual(check?.request, {
     projectId: executionProjectId,
@@ -391,7 +391,7 @@ try {
   });
   await skillSwitch.waitFor();
   assert.equal(await skillSwitch.isEnabled(), true);
-  assert.equal(await button("核对项目操作").count(), 0);
+  assert.equal(await button("查看项目操作").count(), 0);
   await skillSwitch.click();
   await until(async () => !(await skillSwitch.isChecked()), "Skill disabled");
   const disabled = await manage("plugin", { id: pluginId });

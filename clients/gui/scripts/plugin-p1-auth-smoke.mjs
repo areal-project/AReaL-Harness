@@ -378,7 +378,7 @@ try {
   const detailUrl = page.url(),
     windowCount = (await app.windows()).length;
   await button("复制隐私政策链接").click();
-  await page.getByText("已复制隐私政策链接。", { exact: true }).waitFor();
+  await page.getByText(/^已复制隐私政策链接。$/).waitFor();
   assert.equal(
     await app.evaluate(({ clipboard }) => clipboard.readText()),
     privacyUrl,

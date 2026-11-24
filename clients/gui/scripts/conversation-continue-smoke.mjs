@@ -1448,7 +1448,7 @@ try {
   const inspection =
     "Inspected synthetic acceptance fixture. This record was injected after the isolated Core stopped. No Runtime or external operation was dispatched. Preserve UNKNOWN history; cleanup may proceed.";
   // 使用用户实际入口记录核对，并让 Desktop 同步 Core 的权威结果。
-  await page.getByRole("button", { name: "核对后继续", exact: true }).click();
+  await page.getByRole("button", { name: "确认后继续", exact: true }).click();
   const inspectionDialog = page.getByRole("dialog", { name: "核查工具结果 UNKNOWN", exact: true });
   await inspectionDialog.getByLabel("核查说明", { exact: true }).fill(inspection);
   await inspectionDialog

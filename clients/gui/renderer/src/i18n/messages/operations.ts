@@ -24,7 +24,7 @@ export const operationMessages = {
     "zh-CN": "已记录页面确认，可继续发送消息，原操作不会重放。",
     en: "Page inspection recorded. You can send another message; the original operation will not be replayed.",
   },
-  "operations.browserInspect": { "zh-CN": "核对浏览器结果", en: "Check browser result" },
+  "operations.browserInspect": { "zh-CN": "查看浏览器结果", en: "Check browser result" },
   "operations.browserInspectionHelp": {
     "zh-CN": "请先查看浏览器当前页面状态，再发送保留的草稿继续。",
     en: "Check the current browser page (signed in? submitted?), then send your saved draft to continue.",
@@ -34,7 +34,7 @@ export const operationMessages = {
     en: "For example: Signed in and the task list is visible. I did not submit again.",
   },
   "operations.browserInspectionChecked": {
-    "zh-CN": "已核对当前页面及操作结果",
+    "zh-CN": "已查看当前页面及操作结果",
     en: "I checked the current page and operation result",
   },
   "operations.browserRecovery": {
@@ -45,8 +45,8 @@ export const operationMessages = {
     "zh-CN": "上次操作结果待确认。查看实际状态后可继续，草稿已保留。",
     en: "The previous operation needs checking. Inspect its actual result before sending. Your draft is preserved.",
   },
-  "operations.inspectToContinue": { "zh-CN": "核对后继续", en: "Check to continue" },
-  "operations.inspectBeforeSend": { "zh-CN": "核对后发送", en: "Check before sending" },
+  "operations.inspectToContinue": { "zh-CN": "确认后继续", en: "Check to continue" },
+  "operations.inspectBeforeSend": { "zh-CN": "确认后发送", en: "Check before sending" },
   "operations.outputStyles": { "zh-CN": "输出样式", en: "Output styles" },
   "operations.themes": { "zh-CN": "主题", en: "Themes" },
   "operations.languageServers": { "zh-CN": "语言服务器", en: "Language servers" },
@@ -336,7 +336,7 @@ export const operationMessages = {
     en: "View declarations and requirements",
   },
   "operations.snapshot": {
-    "zh-CN": "快照",
+    "zh-CN": "版本记录",
     en: "Snapshot",
   },
   "operations.noComponents": {

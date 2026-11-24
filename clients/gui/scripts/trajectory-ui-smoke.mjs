@@ -602,9 +602,9 @@ try {
     for (const record of window.fixture.records) delete record.model_call_duration_ms;
   });
   await advance(2600);
-  await page.getByText("当前 Core 未提供模型调用耗时汇总，耗时未知。", { exact: true }).waitFor();
+  await page.getByText("当前版本未提供模型调用耗时汇总，耗时未知。", { exact: true }).waitFor();
   assert.equal(await page.getByText(/^模型调用耗时（含网络\/重试）/).count(), 0);
-  assert.equal(await page.getByText("0毫秒 / 0毫秒 / 0毫秒", { exact: true }).count(), 0);
+  assert.equal(await page.getByText(/^0毫秒 \/ 0毫秒 \/ 0毫秒$/).count(), 0);
   checks.push("legacy missing model durations remain unknown instead of becoming zero");
 
   // 修改桌面侧状态而不点击刷新，确认页内轮询实际更新队列与失败提示。

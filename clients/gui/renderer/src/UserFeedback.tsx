@@ -418,7 +418,7 @@ export function UserFeedback({
                   {active && (
                     <div className="feedback-progress" role="status">
                       <span />
-                      正在理解你的意见…
+                      {"正在理解你的意见…"}
                     </div>
                   )}
                   {active && latest?.text && (

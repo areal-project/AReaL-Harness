@@ -864,7 +864,7 @@ async function installEcosystem() {
   const detail = await ecosystemDetail();
   await detail.getByRole("button", { name: "安装", exact: true }).click();
   await detail
-    .getByRole("checkbox", { name: "我已核对以上来源、版本和摘要", exact: true })
+    .getByRole("checkbox", { name: "我已确认以上来源、版本和摘要", exact: true })
     .waitFor();
   await detail.getByRole("button", { name: "资源范围", exact: true }).click();
   await page.getByRole("menuitemradio", { name: "当前项目", exact: true }).click();
@@ -873,7 +873,7 @@ async function installEcosystem() {
     false,
     "source review is required",
   );
-  await detail.getByRole("checkbox", { name: "我已核对以上来源、版本和摘要", exact: true }).check();
+  await detail.getByRole("checkbox", { name: "我已确认以上来源、版本和摘要", exact: true }).check();
   await detail.getByRole("button", { name: "安装到当前项目", exact: true }).click();
   const installed = await until(
     async () =>

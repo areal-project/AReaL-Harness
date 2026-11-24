@@ -527,7 +527,7 @@ try {
     await button("运行设置").click();
     await page
       .getByTestId("plugin-detail-page")
-      .getByRole("button", { name: "核对插件提交", exact: true })
+      .getByRole("button", { name: "查看插件提交", exact: true })
       .click();
     await button("打开设置对话").waitFor();
     await button("打开设置对话").click();

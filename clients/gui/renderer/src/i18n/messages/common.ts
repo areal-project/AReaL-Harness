@@ -671,7 +671,7 @@ export const commonMessages = {
     en: "Confirmed that the original conversation was not created. Your draft is retained.",
   },
   "recovery.creationRecords": {
-    "zh-CN": "待核对的会话创建",
+    "zh-CN": "待确认的会话创建",
     en: "Unconfirmed conversation creation",
   },
   "recovery.creationRecordDescription": {
@@ -811,7 +811,7 @@ export const commonMessages = {
     en: "Use Add to chat in the file tree, or drag an entry into the composer",
   },
   "chat.composer.workspaceReferencePending": {
-    "zh-CN": "正在核对工作区引用…",
+    "zh-CN": "正在确认工作区引用…",
     en: "Checking workspace reference…",
   },
   "chat.composer.workspaceReferenceCurrentOnly": {
