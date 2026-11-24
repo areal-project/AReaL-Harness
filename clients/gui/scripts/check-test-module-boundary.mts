@@ -16,8 +16,6 @@ const sourceSuffix = /\.[cm]?[jt]sx?$/;
 // 门禁引入前已进入分支、尚未进入上游的历史文件。
 const existingBranchModules = new Set([
   "clients/gui/packages/client/node/desktop-upgrade.cjs",
-  "clients/gui/renderer/src/mobile/mobile-commands.mjs",
-  "clients/gui/renderer/src/mobile/mobile-workspace.mjs",
   "clients/gui/scripts/prepare-recording.mjs",
 ]);
 

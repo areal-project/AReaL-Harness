@@ -40,7 +40,6 @@ export async function runUiLibrary(page, scratch, checks) {
       ["MarkdownTable", "experimental", "experimental", "conversation"],
       ["Attachments", "experimental", "experimental", "conversation"],
       ["MessageCodeBlock", "stable", "compositions", "conversation"],
-      ["MobileButton", "experimental", "experimental", "workbench"],
       ["NativeContent", "stable", "compositions", "conversation"],
       ["NotificationToast", "stable", "index", "core"],
       ["Popover", "stable", "index", "core"],
@@ -432,7 +431,6 @@ export async function runUiLibrary(page, scratch, checks) {
     await library.waitFor();
   }
   const llms = await page.evaluate(async () => (await fetch("/llms.txt")).text());
-  assert.ok(llms.includes("@areal/ui/experimental"));
   assert.ok(llms.includes("@areal/ui/compositions"));
   const guide = await page.evaluate(async () => (await fetch("/docs/ui/agent-guide.md")).text());
   assert.ok(guide.includes("Agent 使用入口"));

@@ -1,7 +1,6 @@
 packages:
   - app
   - ../../schemas/provider-config
-  - ../mobile
   - renderer
   - packages/*
   - oxlint-plugin-areal

@@ -120,30 +120,6 @@
     "fingerprint": "ef109b56264afa8fa100a238a998c1d5bc9d7d93e74e0cc24cac4cd98f445851"
   },
   {
-    "file": "renderer/src/i18n/messages/mobile.ts",
-    "kind": "internal-term",
-    "snippet": "mobile.fingerprint: 核对",
-    "fingerprint": "5826bc0727b287cd2a7c5274316278da61fdcaf0244b1c42b53b10d99ca7371a"
-  },
-  {
-    "file": "renderer/src/i18n/messages/mobile.ts",
-    "kind": "internal-term",
-    "snippet": "mobile.notSent: 核对",
-    "fingerprint": "2cd314be4c61ddca66d164601a0586afa1ef612f4bdd7eddd8f2782fb8fde944"
-  },
-  {
-    "file": "renderer/src/i18n/messages/mobile.ts",
-    "kind": "internal-term",
-    "snippet": "mobile.commandRecoveryFailed: 核对",
-    "fingerprint": "3344de5bdf58bff90fd1abb128e02c5f3456a52b0312223ee1b292e30487b1a5"
-  },
-  {
-    "file": "renderer/src/i18n/messages/mobile.ts",
-    "kind": "internal-term",
-    "snippet": "mobile.queryCommand: 核对",
-    "fingerprint": "d1bb31ef00dfa57e510108e031de20f840bed14d5bbc6a0a73f1791d531a549c"
-  },
-  {
     "file": "renderer/src/i18n/messages/operations.ts",
     "kind": "internal-term",
     "snippet": "operations.browserUnconfirmed: 核对",
@@ -1192,12 +1168,6 @@
     "kind": "cjk-identifier",
     "snippet": "结果待确认",
     "fingerprint": "e427288558ec438d5cf88415c1b58df3f892b21da779d5f95a599fa47d89fa46"
-  },
-  {
-    "file": "renderer/src/mobile/product-driver.ts",
-    "kind": "cjk-identifier",
-    "snippet": "高",
-    "fingerprint": "7ffb1c8daa3f17c9281b49fadbc5db919dd06f376ac611918359d11bf96ce561"
   },
   {
     "file": "renderer/src/prompt-editor/ComposerCatalog.tsx",

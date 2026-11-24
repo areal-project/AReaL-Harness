@@ -61,7 +61,6 @@ WORKFLOW_GROUPS = {
         "core-contracts",
         "gui-native-checks",
         "smoke",
-        "mobile",
     },
     "verify": {"early", "verify", "native", "container", "audit"},
 }
@@ -74,7 +73,6 @@ JOB_GROUPS = {
         "gui": {"gui-build"},
         "core-contracts": {"core-contracts", "gui-native-checks"},
         "smoke": {"smoke"},
-        "mobile": {"mobile"},
     },
     "verify": {
         "plan": None,
@@ -484,22 +482,6 @@ def build_plan(paths, source, manifest):
             expected=portable,
         )
         add("gui-audit", ["pnpm", "--dir", "clients/gui", "audit"], "gui-portable")
-        # 手机浏览器专项已随旧远程网关删除；这里只保留类型检查和中继依赖安装。
-        add(
-            "mobile-types",
-            ["pnpm", "--dir", "clients/gui", "mobile:typecheck"],
-            "mobile",
-            requires=("node-24.22.1",),
-            phase="commit",
-            platforms=("darwin", "linux"),
-        )
-        add(
-            "mobile-relay-install",
-            ["npm", "ci", "--ignore-scripts", "--prefix", "services/remote-relay"],
-            "mobile",
-            requires=("node-24.2.0",),
-            platforms=("darwin", "linux"),
-        )
     if affected["relay"]:
         _, _, renderer = gui_builds("relay:", "relay-build")
         add(

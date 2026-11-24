@@ -1,4 +1,8 @@
 export const remoteMessages = {
+  "remote.projects": {
+    "zh-CN": "项目",
+    en: "Projects",
+  },
   "settings.relayService.reconfigure": {
     "zh-CN": "原服务器程序、服务及数据已移除，可修改信息重新部署。",
     en: "The previous program, service and data are removed. Edit the server details to deploy again.",

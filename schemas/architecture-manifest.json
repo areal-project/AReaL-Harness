@@ -22,9 +22,7 @@
       "owner": "clients",
       "appliesTo": [
         "clients/gui/renderer/src/**/*.ts",
-        "clients/gui/renderer/src/**/*.tsx",
-        "clients/mobile/**/*.ts",
-        "clients/mobile/**/*.tsx"
+        "clients/gui/renderer/src/**/*.tsx"
       ],
       "excludedPaths": [],
       "forbiddenImportSubstrings": ["core/engine", "core/store", "runtime/supervisor"],

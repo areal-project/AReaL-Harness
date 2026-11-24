@@ -1,4 +1,0 @@
-{
-  "extends": "./tsconfig.json",
-  "include": ["src/mobile.ts", "src/mobile-probe.ts", "vite.mobile.config.ts", "src/vite-env.d.ts"]
-}

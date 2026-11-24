@@ -112,7 +112,6 @@ def select_checks(plan, phase, failures):
         "journey-registry",
         "gui-check",
         "gui-types",
-        "mobile-types",
         "rust-lint",
     }
     names = {

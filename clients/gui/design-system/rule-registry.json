@@ -2864,22 +2864,6 @@
       "check": "clients/gui/design-system/verified-components.json"
     },
     {
-      "id": "R-MOBILEBUTTON-002",
-      "title": "页面只能追加布局类，不再写字号、内边距、圆角或颜色",
-      "owner": "clients/gui/packages/ui/src/workbench/mobile-button/mobile-button.md#组成",
-      "strength": "default",
-      "textSha256": "5fe9e69d92c47f55bb4ca43ea791fdb981c26a949d814df2cb229afdb1926f0e",
-      "check": "clients/gui/packages/ui/src/workbench/mobile-button/mobile-button.test.tsx"
-    },
-    {
-      "id": "R-MOBILEBUTTON-001",
-      "title": "每种 kind 的最小高度都等于 --size-touch-target，触控目标不随桌面字号缩放",
-      "owner": "clients/gui/packages/ui/src/workbench/mobile-button/mobile-button.md#规则",
-      "strength": "default",
-      "textSha256": "cae424249362a0fb0a8832c08f08b40a111a34a74876158e15bc78802562c4d9",
-      "check": "clients/gui/packages/ui/src/workbench/mobile-button/mobile-button.test.tsx"
-    },
-    {
       "id": "R-THREADSUMMARY-001",
       "title": "在会话顶部固定呈现当前任务的关键上下文（变更文件、待确认项、活跃子任务或关联计划），供用户随时展开、收起或取消固定",
       "owner": "clients/gui/packages/ui/src/conversation/thread-summary-panel/thread-summary-panel.md#何时使用",

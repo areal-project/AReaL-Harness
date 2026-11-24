@@ -546,11 +546,6 @@
     "status": "active"
   },
   {
-    "path": "clients/gui/packages/ui/src/workbench/mobile-button/mobile-button.md",
-    "role": "consumer",
-    "status": "active"
-  },
-  {
     "path": "clients/gui/packages/ui/src/workbench/task-list-item/task-list-item.md",
     "role": "consumer",
     "status": "active"

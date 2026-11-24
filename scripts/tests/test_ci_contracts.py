@@ -170,13 +170,9 @@ class CiContracts(unittest.TestCase):
         plan, reports = self.gate_fixture(("clients/gui/renderer/src/Composer.tsx",))
         required = {
             "smoke:test:composer-files",
-            "mobile-types",
-            "mobile-relay-install",
         }
         items = {item["id"]: item for item in plan["items"]}
         self.assertTrue(required <= items.keys(), required - items.keys())
-        self.assertEqual(scope.CI_PLATFORMS["mobile"], "linux")
-        self.assertEqual(scope.JOB_GROUPS["gui"]["mobile"], {"mobile"})
         for name in required:
             missing = copy.deepcopy(reports)
             for report in missing:
@@ -203,7 +199,7 @@ class CiContracts(unittest.TestCase):
         }
         self.assertTrue(expensive <= full)
         self.assertFalse(expensive & quick)
-        self.assertTrue({"portable:renderer", "portable:bundle", "mobile-types"} <= quick)
+        self.assertTrue({"portable:renderer", "portable:bundle"} <= quick)
         for item in plan["items"]:
             if item["id"] in quick:
                 self.assertTrue(set(item["dependsOn"]) <= quick, item["id"])
@@ -823,7 +819,6 @@ class CiContracts(unittest.TestCase):
             "gui",
             "core-contracts",
             "smoke",
-            "mobile",
         }
         self.assertEqual(set(scope.JOB_GROUPS["gui"]), expected)
         jobs = {name: {"result": "success"} for name in expected}

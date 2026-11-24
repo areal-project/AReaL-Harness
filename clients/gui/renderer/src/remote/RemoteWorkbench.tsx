@@ -88,7 +88,7 @@ function Home({ view, api }: { view: View; api: API }) {
   return (
     <TooltipProvider>
       <div className="remote-project-heading">
-        <h2>{t("mobile.projects")}</h2>
+        <h2>{t("remote.projects")}</h2>
       </div>
       {view.notice && <p role="status">{view.notice}</p>}
       <nav aria-label="项目与会话">

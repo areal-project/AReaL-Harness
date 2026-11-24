@@ -2,7 +2,7 @@
 
 先用一句话说明本次目标。按用户要求完成变更和验证，审阅本次 diff 后做本地提交。未经授权不推送。
 
-从仓库根启动任务时，修改或审查 [Core](core/AGENTS.md)、[GUI](clients/gui/AGENTS.md) 或 [移动端](clients/mobile/AGENTS.md) 前，读取涉及目录的指引。跨目录任务读取所有适用的指引。
+从仓库根启动任务时，修改或审查 [Core](core/AGENTS.md) 或 [GUI](clients/gui/AGENTS.md) 前，读取涉及目录的指引。跨目录任务读取所有适用的指引。
 
 ## 安全与授权
 

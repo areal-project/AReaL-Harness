@@ -517,13 +517,6 @@
       "enforces": []
     },
     {
-      "id": "mobile-button",
-      "contract": "clients/gui/packages/ui/src/workbench/mobile-button/mobile-button.md",
-      "styles": ["clients/gui/packages/ui/src/workbench/mobile-surface/mobile-surface.css"],
-      "internalSelectors": [".mobile-sheet-content"],
-      "enforces": []
-    },
-    {
       "id": "thread-summary-panel",
       "contract": "clients/gui/packages/ui/src/conversation/thread-summary-panel/thread-summary-panel.md",
       "styles": [
