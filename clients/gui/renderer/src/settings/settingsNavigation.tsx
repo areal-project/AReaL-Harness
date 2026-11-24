@@ -16,19 +16,19 @@ export const settingsNavigationGroups = [
     label: "settings.navigation.personal",
     items: [
       {
-        id: "常规",
+        id: "general",
         keywords: "settings.search.general",
         label: "settings.general.title",
         icon: <SettingsGeneralIcon />,
       },
       {
-        id: "外观",
+        id: "appearance",
         keywords: "settings.search.appearance",
         label: "settings.appearance.title",
         icon: <SettingsAppearanceIcon />,
       },
       {
-        id: "用量",
+        id: "usage",
         keywords: "settings.search.usage",
         label: "settings.usage.title",
         icon: <SettingsUsageIcon />,
@@ -40,14 +40,14 @@ export const settingsNavigationGroups = [
     label: "settings.navigation.integrations",
     items: [
       {
-        id: "插件",
+        id: "plugins",
         keywords: "settings.search.plugins",
         label: "settings.plugins.title",
         icon: <SettingsPluginIcon />,
       },
       { id: "SnapShots", label: "settings.snapshots.title", icon: <Camera strokeWidth={1.5} /> },
       {
-        id: "浏览器",
+        id: "browser",
         keywords: "settings.search.browser",
         label: "settings.browser.title",
         icon: <SettingsBrowserIcon />,
@@ -65,19 +65,19 @@ export const settingsNavigationGroups = [
         icon: <GitFork strokeWidth={1.5} />,
       },
       {
-        id: "钩子",
+        id: "hooks",
         keywords: "settings.search.hooks",
         label: "settings.hooks.title",
         icon: <SettingsHooksIcon />,
       },
       {
-        id: "模型服务",
+        id: "providers",
         keywords: "settings.search.models",
         label: "settings.models.title",
         icon: <Cpu strokeWidth={1.5} />,
       },
       {
-        id: "会话配置",
+        id: "session",
         keywords: "settings.search.session",
         label: "settings.session.title",
         icon: <SettingsConfigurationIcon />,
@@ -89,13 +89,13 @@ export const settingsNavigationGroups = [
         icon: <Server strokeWidth={1.5} />,
       },
       {
-        id: "数据飞轮",
+        id: "trajectory",
         keywords: "settings.search.trajectory",
         label: "settings.trajectory.title",
         icon: <Database strokeWidth={1.5} />,
       },
       {
-        id: "手机连接",
+        id: "mobile",
         keywords: "settings.search.mobile",
         label: "settings.mobile.title",
         icon: <Smartphone strokeWidth={1.5} />,
@@ -117,10 +117,10 @@ export const settingsNavigationGroups = [
 ] as const satisfies readonly SettingsNavigationGroup[];
 
 const settingsSubtitles = {
-  浏览器: "settings.browser.subtitle",
+  browser: "settings.browser.subtitle",
   Worktrees: "worktree.settings.description",
-  手机连接: "settings.mobileConnect.intro",
-  钩子: "settings.hooksSettings.runToolEventCommandsInOrderRestart",
+  mobile: "settings.mobileConnect.intro",
+  hooks: "settings.hooksSettings.runToolEventCommandsInOrderRestart",
   Labs: "settings.labs.description",
 } as const;
 

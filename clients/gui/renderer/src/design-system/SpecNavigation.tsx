@@ -120,7 +120,7 @@ export function SpecNavigation({
   const selectPanel = (name: string) => {
     setPanel(name);
     if (name) setLastPanel(name);
-    if (name && name !== "功能")
+    if (name && name !== "launcher")
       setPanelTabs((tabs) => (tabs.includes(name) ? tabs : [...tabs, name]));
   };
   const root = `/${fixture.project.name}`;
@@ -238,7 +238,7 @@ export function SpecNavigation({
           aria-label={t("settings.title")}
           title={t("settings.title")}
           aria-current={settingsTab ? "page" : undefined}
-          onClick={() => setSettingsTab("常规")}
+          onClick={() => setSettingsTab("general")}
         >
           <Settings />
         </Button>
@@ -360,9 +360,9 @@ export function SpecNavigation({
                         panel
                           ? hidePanel()
                           : selectPanel(
-                              lastPanel === "功能" || panelTabs.includes(lastPanel)
+                              lastPanel === "launcher" || panelTabs.includes(lastPanel)
                                 ? lastPanel
-                                : (panelTabs.at(-1) ?? "功能"),
+                                : (panelTabs.at(-1) ?? "launcher"),
                             )
                       }
                     >
@@ -390,12 +390,12 @@ export function SpecNavigation({
               onSelect={selectPanel}
               onChange={setPanelTabs}
               onHide={hidePanel}
-              auxiliary={panel === "文件" ? fileTree : undefined}
+              auxiliary={panel === "files" ? fileTree : undefined}
               titleFor={(name) =>
                 name.startsWith("file:") ? name.slice(5).split("/").pop() : undefined
               }
               render={(name) =>
-                name === "文件" ? (
+                name === "files" ? (
                   <div className="file-preview-empty">{t("common.files.selectPreview")}</div>
                 ) : name.startsWith("file:") ? (
                   <WorkspaceFilePane
@@ -411,7 +411,7 @@ export function SpecNavigation({
                   />
                 ) : renderPanel?.(name, { show: selectPanel, hide: hidePanel }) ? (
                   renderPanel(name, { show: selectPanel, hide: hidePanel })
-                ) : name === "改动" ? (
+                ) : name === "changes" ? (
                   <GitPane
                     projectId="spec-project"
                     root={`/${fixture.project.name}`}

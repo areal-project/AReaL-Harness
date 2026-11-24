@@ -61,7 +61,7 @@ export function RecoveryNotices({ recovery, startup, session, surfaces }: Recove
                   }}
                 >
                   {t(
-                    notice.settings === "模型服务"
+                    notice.settings === "providers"
                       ? "recovery.checkModelSettings"
                       : "recovery.checkSessionSettings",
                   )}

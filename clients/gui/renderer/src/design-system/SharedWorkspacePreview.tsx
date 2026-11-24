@@ -13,8 +13,8 @@ import type { Action, Data } from "../services.js";
 // 只组合生产表面；不模拟受理或执行，真实提交由桌面专项验证。
 export function SharedWorkspacePreview({ dark }: { dark: boolean }) {
   const [mode, setMode] = useState<"split" | "panel" | "conversation">("split");
-  const [active, setActive] = useState("旁路讨论");
-  const [tabs, setTabs] = useState(["旁路讨论", "文件"]);
+  const [active, setActive] = useState("side-chat");
+  const [tabs, setTabs] = useState(["side-chat", "files"]);
   const [draft, setDraft] = useState("主会话未发送草稿");
   const [settings, setSettings] = useState(false);
   const [modelConfig, setModelConfig] = useState<Data>({
@@ -84,8 +84,8 @@ export function SharedWorkspacePreview({ dark }: { dark: boolean }) {
         <Button
           ref={trigger}
           onClick={() => {
-            setActive("旁路讨论");
-            setTabs((t) => (t.includes("旁路讨论") ? t : [...t, "旁路讨论"]));
+            setActive("side-chat");
+            setTabs((t) => (t.includes("side-chat") ? t : [...t, "side-chat"]));
             setMode("split");
           }}
         >
@@ -153,7 +153,7 @@ export function SharedWorkspacePreview({ dark }: { dark: boolean }) {
             canClose={() => true}
             workspaceView={{ mode, title: "共享交互验证", onChange: setMode }}
             render={(name) =>
-              name === "旁路讨论" ? (
+              name === "side-chat" ? (
                 <SideChatPane
                   project={project}
                   source={thread}

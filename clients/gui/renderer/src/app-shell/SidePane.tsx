@@ -40,6 +40,29 @@ import { isBrowserTab } from "./useBrowserWorkspace.js";
 import { SidePaneLauncher } from "./SidePaneLauncher.js";
 import type { WorkspaceSidePaneTab, RecentClosedSidePaneTab } from "./sidePaneModel.js";
 
+export const SIDE_PANE_TITLES: Record<string, string> = {
+  changes: "审查",
+  files: "文件",
+  terminal: "终端",
+  preview: "浏览器",
+  "side-chat": "侧边聊天",
+  "side-chat-history": "历史旁路讨论",
+  subagents: "子代理",
+  context: "上下文",
+  processes: "进程",
+  plan: "执行计划",
+  permissions: "已保存授权",
+  workgroups: "工作组",
+  "edit-goal": "编辑目标",
+  trajectory: "调用轨迹",
+  subtasks: "子任务",
+  usage: "用量",
+  queue: "队列",
+  settings: "设置",
+  "task-resources": "任务资源",
+  "image-annotation": "图片标注",
+};
+
 export function SidePane({
   workspaceKey,
   ownerTaskId,
@@ -131,9 +154,7 @@ export function SidePane({
         id: name,
         title: name.startsWith("file:")
           ? name.slice(5).split("/").pop()!
-          : (({ 改动: "审查", 预览: "浏览器", 旁路讨论: "侧边聊天" } as Record<string, string>)[
-              name
-            ] ?? name),
+          : (SIDE_PANE_TITLES[name] ?? name),
         openedAt: Date.now(),
         ownerTaskId,
         workspaceKey,
@@ -224,7 +245,7 @@ export function SidePane({
       ? [
           {
             id: "side",
-            panel: "旁路讨论",
+            panel: "side-chat",
             label: t(sideCreationUnconfirmed ? "chat.side.inspectCreation" : "chat.side.title"),
             shortcut: "",
             icon: MessageCircle,
@@ -234,39 +255,39 @@ export function SidePane({
       : []),
     {
       id: "review",
-      panel: "改动",
+      panel: "changes",
       label: "审查",
       shortcut: mac ? "⌃⇧G" : "Ctrl+Shift+G",
       icon: ReviewPanelIcon,
-      onOpen: () => onSelect("改动"),
+      onOpen: () => onSelect("changes"),
     },
     ...(ownerTaskId
       ? [
           {
             id: "terminal",
-            panel: "终端",
+            panel: "terminal",
             label: "终端",
             shortcut: mac ? "⌃`" : "Ctrl+`",
             icon: TerminalPanelIcon,
-            onOpen: () => onSelect("终端"),
+            onOpen: () => onSelect("terminal"),
           },
         ]
       : []),
     {
       id: "browser",
-      panel: "预览",
+      panel: "preview",
       label: "浏览器",
       shortcut: mac ? "⌘T" : "Ctrl+T",
       icon: BrowserPanelIcon,
-      onOpen: () => onSelect("预览"),
+      onOpen: () => onSelect("preview"),
     },
     {
       id: "files",
-      panel: "文件",
+      panel: "files",
       label: "文件",
       shortcut: mac ? "⌘P" : "Ctrl+P",
       icon: FilesPanelIcon,
-      onOpen: () => onSelect("文件"),
+      onOpen: () => onSelect("files"),
     },
   ].filter(
     (item) =>
@@ -314,7 +335,9 @@ export function SidePane({
       <div className="side-pane-tabbar">
         {fullView && workspaceView.navigation}
         {transient ? (
-          <strong className="flex-1 px-3 text-ui-sm">{active}</strong>
+          <strong className="flex-1 px-3 text-ui-sm">
+            {titleFor?.(active) ?? SIDE_PANE_TITLES[active] ?? active}
+          </strong>
         ) : (
           <Tabs
             value={conversationActive ? "__conversation" : active}
@@ -471,8 +494,10 @@ export function SidePane({
       <SidePaneFrame.Layout data-file-preview={active.startsWith("file:") || undefined}>
         <SidePaneFrame.Content
           fullHeight={
-            active === "功能" ||
-            ["预览", "终端", "改动", "文件", "旁路讨论", "图片标注"].includes(active) ||
+            active === "launcher" ||
+            ["preview", "terminal", "changes", "files", "side-chat", "image-annotation"].includes(
+              active,
+            ) ||
             active.startsWith("file:") ||
             active.startsWith("terminal:") ||
             active.startsWith("side:") ||
@@ -497,7 +522,7 @@ export function SidePane({
           ))}
           {active &&
             !retainedPanels.some((pane) => pane.visible) &&
-            (active === "功能" ? <SidePaneLauncher items={items} /> : render(active))}
+            (active === "launcher" ? <SidePaneLauncher items={items} /> : render(active))}
         </SidePaneFrame.Content>
         {auxiliary && (
           <SidePaneFrame.Auxiliary aria-label="文件列表">{auxiliary}</SidePaneFrame.Auxiliary>

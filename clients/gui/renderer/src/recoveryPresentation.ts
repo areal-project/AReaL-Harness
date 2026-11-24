@@ -16,7 +16,7 @@ export type RecoveryNotice = RecoveryOwner & {
   kind: "error" | "unconfirmed";
   requestId?: string;
   operation?: RecoveryOperation;
-  settings?: "模型服务" | "会话配置";
+  settings?: "providers" | "session";
   detail?: string;
 };
 type PendingOperation = {
@@ -177,9 +177,9 @@ export function recoveryMessage(
 
 export function recoverySettings(failure: RecoveryFailure): RecoveryNotice["settings"] {
   const reason = reasonAndCode(failure);
-  if (/auth|credential|api.?key|unauthorized|鉴权|凭据/i.test(reason)) return "模型服务";
+  if (/auth|credential|api.?key|unauthorized|鉴权|凭据/i.test(reason)) return "providers";
   if (failure.code === -32003 || /permission|forbidden|权限|denied|config|配置/i.test(reason))
-    return "会话配置";
+    return "session";
 }
 
 export function isTechnicalErrorMessage(message: string) {

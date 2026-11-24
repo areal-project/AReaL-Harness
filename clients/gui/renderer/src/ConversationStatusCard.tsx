@@ -204,7 +204,7 @@ export function ConversationStatusCard({
               title={t("chat.context.changes")}
               aria-label={`${t("chat.context.changes")} · ${t("chat.context.changeScope", { count: files.length })} · +${intl.formatNumber(additions)} −${intl.formatNumber(deletions)}`}
               icon={<ReviewPanelIcon />}
-              onClick={() => onPanel("改动")}
+              onClick={() => onPanel("changes")}
               meta={
                 <span className="diff-count">
                   <b>+{intl.formatNumber(additions)}</b>
@@ -247,7 +247,7 @@ export function ConversationStatusCard({
           {git.info?.branch && (
             <TaskContext.Item
               title={`${t("resources.branch")} · ${git.info.branch}`}
-              onClick={() => onPanel("改动")}
+              onClick={() => onPanel("changes")}
               icon={<ReviewPanelIcon />}
             />
           )}
@@ -263,7 +263,7 @@ export function ConversationStatusCard({
           thread={thread}
           action={action}
           onOpen={onAgent}
-          summary={{ onOpen: onAgents ?? (() => onPanel("子代理")) }}
+          summary={{ onOpen: onAgents ?? (() => onPanel("subagents")) }}
         />
         {entries.length > 0 && (
           <TaskContext.Sources
@@ -325,7 +325,7 @@ export function ConversationStatusCard({
                 type="button"
                 key={process.id}
                 className="task-resource-row"
-                onClick={() => onPanel("进程")}
+                onClick={() => onPanel("processes")}
                 title={process.id}
               >
                 <TerminalPanelIcon />

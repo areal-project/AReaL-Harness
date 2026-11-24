@@ -488,7 +488,7 @@ function ActiveConversation() {
           onReview={(turnId) => {
             rememberPanelTrigger();
             setReviewRequest({ owner: panelOwner, turnId });
-            workspacePanels.selectPanel("改动");
+            workspacePanels.selectPanel("changes");
             workspacePanels.exposePanel();
           }}
           readTurnReview={readTurnReview}

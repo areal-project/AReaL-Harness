@@ -438,7 +438,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     />
   );
   const openModelSettings = () => {
-    setSettingsTab("模型服务");
+    setSettingsTab("providers");
     setSettingsOpen(true);
   };
   const settingsPage = (
@@ -531,7 +531,8 @@ function AppContent({ services }: { services: PlatformServices }) {
                 snapshot.connection?.state === "unavailable" ||
                 !!startupLifecycle?.error;
               setSettingsTab(
-                (viewFailure && recoverySettings(viewFailure)) || (failed ? "diagnostics" : "常规"),
+                (viewFailure && recoverySettings(viewFailure)) ||
+                  (failed ? "diagnostics" : "general"),
               );
               setSettingsOpen(true);
             }}
@@ -548,7 +549,7 @@ function AppContent({ services }: { services: PlatformServices }) {
               <SettingsNavigation
                 width={sidebarWidth}
                 rail={applicationRail}
-                activeId={["Skills", "MCP"].includes(settingsTab) ? "插件" : settingsTab}
+                activeId={["Skills", "MCP"].includes(settingsTab) ? "plugins" : settingsTab}
                 onSelect={setSettingsTab}
                 onBack={() => setSettingsOpen(false)}
                 groups={settingsNavigationGroups
@@ -566,7 +567,7 @@ function AppContent({ services }: { services: PlatformServices }) {
                         ...item,
                         keywords: "keywords" in item ? t(item.keywords) : undefined,
                         label: t(
-                          item.id === "数据飞轮" && trajectoryAttention
+                          item.id === "trajectory" && trajectoryAttention
                             ? "settings.trajectory.attentionTitle"
                             : item.label,
                         ),
@@ -706,7 +707,7 @@ function AppContent({ services }: { services: PlatformServices }) {
                       onLink={onLink}
                       onReview={(pid, tid, turnId) => {
                         setReviewRequest({ owner: `${pid}:${tid}`, turnId });
-                        workspacePanels.selectPanel("改动");
+                        workspacePanels.selectPanel("changes");
                       }}
                     />
                   ) : (

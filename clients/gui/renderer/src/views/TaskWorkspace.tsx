@@ -57,7 +57,7 @@ export function TaskWorkspace({
       connected={snapshot.connection?.state === "ready"}
       action={action}
       onOpenThread={(pid, id) => void onOpenThread(pid, id)}
-      onOpenModelSettings={() => onPanel("设置")}
+      onOpenModelSettings={() => onPanel("settings")}
       renderConversation={(owner, managementThread, beforeTurns, options) => (
         <>
           <Messages
@@ -99,8 +99,8 @@ export function TaskWorkspace({
               action={action}
               readAction={action}
               onPanel={(name) => {
-                if (name === "设置") {
-                  onPanel("设置");
+                if (name === "settings") {
+                  onPanel("settings");
                 } else {
                   void onOpenThread(owner.id, managementThread.id).then(() => onPanel(name));
                 }

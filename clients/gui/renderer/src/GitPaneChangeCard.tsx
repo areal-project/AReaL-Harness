@@ -91,18 +91,28 @@ export function GitPaneChangeCard({
   );
   const file = resolveFileDisplayDescriptor(change.workspaceRelativePath);
   const fileActions = [
-    { label: "复制相对路径", icon: CopyIcon, run: () => onCopyRelativePath(change) },
     {
+      id: "copy-relative",
+      label: "复制相对路径",
+      icon: CopyIcon,
+      run: () => onCopyRelativePath(change),
+    },
+    {
+      id: "open-external",
       label: "在默认应用中打开",
       icon: undefined,
       run: onOpenOutside ? () => onOpenOutside(change) : undefined,
+      external: true,
     },
     {
+      id: "reveal-external",
       label: "在文件管理器中显示",
       icon: undefined,
       run: onOpenLocation ? () => onOpenLocation(change) : undefined,
+      external: true,
     },
     {
+      id: "open-tab",
       label: "在标签页中打开文件",
       icon: undefined,
       run: onOpenFile ? () => onOpenFile(change) : undefined,
@@ -185,14 +195,10 @@ export function GitPaneChangeCard({
                     }
                   />
                   <DropdownMenuContent align="end" className="w-56">
-                    {fileActions.map(({ label, icon: Icon, run }) => (
+                    {fileActions.map(({ id, label, icon: Icon, run, external }) => (
                       <DropdownMenuItem
-                        key={label}
-                        disabled={
-                          !run ||
-                          (openingFile &&
-                            (label === "在默认应用中打开" || label === "在文件管理器中显示"))
-                        }
+                        key={id ?? label}
+                        disabled={!run || (openingFile && !!external)}
                         onClick={run}
                       >
                         {Icon && <Icon className="size-4" />}
@@ -215,13 +221,10 @@ export function GitPaneChangeCard({
           }
         />
         <ContextMenuContent className="w-56">
-          {fileActions.map(({ label, icon: Icon, run }) => (
+          {fileActions.map(({ id, label, icon: Icon, run, external }) => (
             <ContextMenuItem
-              key={label}
-              disabled={
-                !run ||
-                (openingFile && (label === "在默认应用中打开" || label === "在文件管理器中显示"))
-              }
+              key={id ?? label}
+              disabled={!run || (openingFile && !!external)}
               onClick={run}
             >
               {Icon && <Icon className="size-4" />}

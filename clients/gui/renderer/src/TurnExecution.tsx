@@ -86,7 +86,7 @@ export function TurnActivity({
     items.findLast((item) => item.type === "dynamicToolCall" && toolPresentation(item).running);
   const detail = currentTool ? statusTarget(toolPresentation(currentTool).detail) : undefined;
   const unconfirmed = items.some(
-    (item) => item.type === "dynamicToolCall" && toolPresentation(item).status === "结果待确认",
+    (item) => item.type === "dynamicToolCall" && toolPresentation(item).unsettled,
   );
   const last = items.filter((item) => item.type !== "modelContext").at(-1);
   const summary =

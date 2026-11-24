@@ -82,9 +82,9 @@ export function WorkbenchSettings({
   const library = snapshot.library ?? {};
   const { theme, setTheme, uiFontSize, setUiFontSize } = appearance;
   const { backendActionPending, backendActionError, runBackendAction } = backend;
-  const pageClass = ["插件", "Skills", "MCP"].includes(settingsTab)
+  const pageClass = ["plugins", "Skills", "MCP"].includes(settingsTab)
     ? "plugins-settings-page"
-    : settingsTab === "模型服务"
+    : settingsTab === "providers"
       ? "model-settings-page"
       : undefined;
   return (
@@ -105,14 +105,14 @@ export function WorkbenchSettings({
           onAction={(kind) => void runBackendAction(kind)}
         />
       )}
-      {settingsTab === "外观" ? (
+      {settingsTab === "appearance" ? (
         <AppearanceSettings
           theme={theme}
           setTheme={setTheme}
           fontSize={uiFontSize}
           setFontSize={setUiFontSize}
         />
-      ) : settingsTab === "常规" ? (
+      ) : settingsTab === "general" ? (
         <GeneralSettings
           settings={library.settings}
           power={snapshot.power}
@@ -132,7 +132,7 @@ export function WorkbenchSettings({
           action={resourceAction}
           connected={snapshot.connection?.state === "ready"}
         />
-      ) : settingsTab === "浏览器" ? (
+      ) : settingsTab === "browser" ? (
         <BrowserSettings
           settings={library.settings}
           action={resourceAction}
@@ -152,29 +152,29 @@ export function WorkbenchSettings({
           initialProjectId={worktreeSettingsTarget.projectId}
           initialTab={worktreeSettingsTarget.tab}
         />
-      ) : settingsTab === "钩子" ? (
+      ) : settingsTab === "hooks" ? (
         <HooksSettings
           action={resourceAction}
           connected={snapshot.connection?.state === "ready"}
           onConnect={reconnectService}
         />
-      ) : settingsTab === "模型服务" ? (
+      ) : settingsTab === "providers" ? (
         <ModelSettings
           action={action}
           subscription={snapshot.subscription}
           providerRevision={snapshot.providerRevision}
           connectionState={snapshot.connection?.state ?? "connecting"}
         />
-      ) : settingsTab === "会话配置" ? (
+      ) : settingsTab === "session" ? (
         <SessionSettings
           key={`${project?.id}:${thread?.id}`}
           project={project}
           thread={thread}
           action={resourceAction}
         />
-      ) : settingsTab === "手机连接" ? (
+      ) : settingsTab === "mobile" ? (
         <MobileSettings action={resourceAction} projects={snapshot.projects} />
-      ) : settingsTab === "数据飞轮" ? (
+      ) : settingsTab === "trajectory" ? (
         <TrajectorySettings
           action={resourceAction}
           connected={snapshot.connection?.state === "ready"}
@@ -182,9 +182,9 @@ export function WorkbenchSettings({
         />
       ) : settingsTab === "Labs" ? (
         <LabsSettings />
-      ) : ["diagnostics", "后台服务"].includes(settingsTab) ? (
+      ) : ["diagnostics", "service"].includes(settingsTab) ? (
         <>
-          <Button variant="ghost" onClick={() => setSettingsTab("常规")}>
+          <Button variant="ghost" onClick={() => setSettingsTab("general")}>
             {t("settings.diagnostics.back")}
           </Button>
           <p className="settings-section-desc">{t("settings.diagnostics.description")}</p>
@@ -220,7 +220,7 @@ export function WorkbenchSettings({
             }
           />
         </>
-      ) : settingsTab === "用量" ? (
+      ) : settingsTab === "usage" ? (
         <Suspense fallback={<div className="settings-empty">{t("common.loading")}</div>}>
           <UsageDashboard action={resourceAction} />
         </Suspense>

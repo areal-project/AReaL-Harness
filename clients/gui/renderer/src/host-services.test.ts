@@ -1230,7 +1230,7 @@ describe("Host renderer read authority", () => {
           taskCatalog: permitted,
           taskManage: permitted,
           bots: permitted,
-          settings: permitted ? ["模型服务"] : [],
+          settings: permitted ? ["providers"] : [],
           mutations: false,
           conversationSubmit: false,
           conversationCreate: false,

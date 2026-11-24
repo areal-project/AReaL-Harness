@@ -444,7 +444,7 @@ function Session({ view, api }: { view: View; api: API }) {
                     label: "设置目标",
                     description: "设置持续目标与停止条件",
                     icon: <GoalIcon />,
-                    group: "功能",
+                    group: "features",
                     disabled: disabled || running || !!editing,
                     run: () => setGoalMode(true),
                   },

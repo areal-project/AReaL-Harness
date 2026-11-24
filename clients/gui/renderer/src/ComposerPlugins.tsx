@@ -279,7 +279,7 @@ export function useComposerPlugins({
         label: row.name,
         description: row.description ?? "",
         source: isSide(context) ? t("chat.composer.pluginReferenceOnly") : undefined,
-        group: "应用" as const,
+        group: "apps" as const,
         icon: <Package size={16} />,
         mention: {
           id: `plugin:${row.id}`,

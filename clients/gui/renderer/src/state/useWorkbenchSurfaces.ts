@@ -20,7 +20,7 @@ export function useWorkbenchSurfaces(
   const onTrajectoryStatus = useCallback((status: TrajectoryStatus | null) => {
     setTrajectoryAttention(!status || status.state === "degraded" || status.state === "invalid");
   }, []);
-  const [settingsTab, updateSettingsTab] = useState("常规");
+  const [settingsTab, updateSettingsTab] = useState("general");
   const setSettingsTab = (next: string) => {
     if (next !== settingsTab) requestNavigation(() => updateSettingsTab(next));
   };
@@ -115,7 +115,7 @@ export function useWorkbenchSurfaces(
     });
     return () => cancelAnimationFrame(frame);
   };
-  const pluginSettingsOpen = settingsOpen && ["插件", "Skills", "MCP"].includes(settingsTab);
+  const pluginSettingsOpen = settingsOpen && ["plugins", "Skills", "MCP"].includes(settingsTab);
   return {
     pluginSettingsOpen,
     pluginCenterActive: pluginsOpen || pluginSettingsOpen,
@@ -152,7 +152,7 @@ export function useWorkbenchSurfaces(
     openPluginSettings() {
       setPluginsOpen(false);
       setBotsOpen(false);
-      updateSettingsTab("插件");
+      updateSettingsTab("plugins");
       updateSettingsOpen(true);
     },
   };

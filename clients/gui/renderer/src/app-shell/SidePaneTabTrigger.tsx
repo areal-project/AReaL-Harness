@@ -39,18 +39,18 @@ export function SidePaneTabIcon({ tab }: { tab: WorkspaceSidePaneTab }) {
   const Icon =
     (
       {
-        旁路讨论: SideChatIcon,
-        任务资源: TaskSummaryIcon,
-        文件: FilesPanelIcon,
-        改动: ReviewPanelIcon,
-        预览: BrowserPanelIcon,
-        终端: TerminalPanelIcon,
-        进程: TerminalPanelIcon,
-        编辑目标: TargetIcon,
-        执行计划: ListChecksIcon,
-        上下文: FileTextIcon,
-        已保存授权: ShieldCheckIcon,
-        自动化: CalendarClockIcon,
+        "side-chat": SideChatIcon,
+        "task-resources": TaskSummaryIcon,
+        files: FilesPanelIcon,
+        changes: ReviewPanelIcon,
+        preview: BrowserPanelIcon,
+        terminal: TerminalPanelIcon,
+        processes: TerminalPanelIcon,
+        "edit-goal": TargetIcon,
+        plan: ListChecksIcon,
+        context: FileTextIcon,
+        permissions: ShieldCheckIcon,
+        automation: CalendarClockIcon,
         CalendarClockIcon,
       } as Record<string, typeof FilesPanelIcon>
     )[tab.id] ?? BoxesIcon;

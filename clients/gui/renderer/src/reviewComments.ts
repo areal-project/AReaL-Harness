@@ -256,12 +256,16 @@ export function sentReviewFeedback(text: string): { text: string; comments: Revi
     const scopeName = comparison.replace(/（.*）$/, "");
     const scope = scopes[scopeName];
     if (!scope) return { text, comments: [] };
+    const sideMap: Record<string, "additions" | "deletions"> = {
+      新版: "additions",
+      旧版: "deletions",
+    };
     const comment: ReviewComment = {
       id: `sent:${index}`,
       body,
       path,
       root: location.slice(0, -path.length - 1),
-      side: side === "新版" ? "additions" : "deletions",
+      side: sideMap[side] ?? "deletions",
       start: Number(first),
       end: Number(last ?? first),
       snippet,

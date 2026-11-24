@@ -174,7 +174,7 @@ export function ComposerModelMenu({
         size="sm"
         className="composer-model-trigger composer-model-empty"
         aria-label={emptyGuidance}
-        onClick={() => openSettings("模型服务")}
+        onClick={() => openSettings("providers")}
       >
         {t("chat.composer.noModels")}
       </Button>
@@ -288,7 +288,7 @@ export function ComposerModelMenu({
                   aria-label={t("chat.composer.configureModels")}
                   onClick={() => {
                     setModelOpen(false);
-                    openSettings("模型服务");
+                    openSettings("providers");
                   }}
                 >
                   {t("chat.composer.configureModels")}

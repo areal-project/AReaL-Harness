@@ -613,10 +613,10 @@ export function hostPlatformCapabilities(
       settings: commands
         ? settingsNavigationGroups.flatMap((group) => group.items.map((item) => item.id))
         : [
-            ...(available("providers.read") ? ["模型服务"] : []),
+            ...(available("providers.read") ? ["providers"] : []),
             ...(available("worktree.read") ? ["Worktrees"] : []),
-            ...(available("trajectory.read") ? ["数据飞轮"] : []),
-            ...(client.writable("analytics.read") ? ["用量"] : []),
+            ...(available("trajectory.read") ? ["trajectory"] : []),
+            ...(client.writable("analytics.read") ? ["usage"] : []),
           ],
     }),
   };

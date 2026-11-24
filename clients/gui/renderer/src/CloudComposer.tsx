@@ -207,7 +207,7 @@ export function CloudComposer({
               value: "upload",
               label: t("cloud.upload"),
               description: t("cloud.uploadDescription"),
-              group: "功能",
+              group: "features",
               icon: <AttachmentIcon />,
               run: () => upload.current?.click(),
             },

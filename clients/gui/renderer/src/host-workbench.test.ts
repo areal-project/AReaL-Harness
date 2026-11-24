@@ -812,7 +812,7 @@ describe("local web desktop commands", () => {
     ]);
     const capabilities = hostPlatformCapabilities(client, undefined, "source");
     expect(capabilities?.mutations).toBe(true);
-    expect(capabilities?.settings).toContain("模型服务");
+    expect(capabilities?.settings).toContain("providers");
     expect(capabilities?.settings).not.toContain("电脑控制");
     expect(hostPlatformCapabilities(client, undefined, undefined)?.mutations).toBe(false);
   });

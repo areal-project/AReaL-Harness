@@ -84,7 +84,7 @@ export function WorkspacePanelContent({
   if (!project) return null;
   const props = { project, thread, action };
   if (
-    (panel === "旁路讨论" || panel === "历史旁路讨论") &&
+    (panel === "side-chat" || panel === "side-chat-history") &&
     thread &&
     project.core?.features?.sidePreview === true &&
     !thread.parentThreadId &&
@@ -103,7 +103,7 @@ export function WorkspacePanelContent({
     );
   }
   if (isSideChatTab(panel) || parseSideResourceTab(panel)) return null;
-  if ((panel === "子代理" || panel.startsWith("agent:")) && thread) {
+  if ((panel === "subagents" || panel.startsWith("agent:")) && thread) {
     const childId = panel.startsWith("agent:") ? panel.slice(6) : undefined;
     const parent = childId && project.state?.threads[childId]?.parentThreadId;
     const ownerThread = (parent && project.state?.threads[parent]) || thread;
@@ -121,12 +121,12 @@ export function WorkspacePanelContent({
         onAgent={(id) => showPanel(`agent:${id}`)}
         onReview={(id, turnId) => {
           setReviewRequest({ owner: panelOwner, threadId: id, turnId });
-          showPanel("改动");
+          showPanel("changes");
         }}
       />
     );
   }
-  if (panel === "编辑目标" && thread)
+  if (panel === "edit-goal" && thread)
     return (
       <GoalEditor
         key={`${project.id}:${thread.id}:${thread.goals?.goal?.id ?? "new"}`}
@@ -155,9 +155,9 @@ export function WorkspacePanelContent({
         tree={workspaceFileTree}
       />
     );
-  if (panel === "文件")
+  if (panel === "files")
     return <div className="file-preview-empty">{t("common.files.selectPreview")}</div>;
-  if (panel === "改动") {
+  if (panel === "changes") {
     const reviewedId =
       (reviewRequest?.owner === panelOwner ? (reviewRequest.threadId ?? threadId) : threadId) ||
       "new";
@@ -198,13 +198,13 @@ export function WorkspacePanelContent({
         <McpSettings key={project.id} {...props} action={resourceAction} />
       </div>
     );
-  if (panel === "设置")
+  if (panel === "settings")
     return (
       <div className="utility-content">
         <panels.Providers {...props} />
       </div>
     );
-  if (panel === "预览")
+  if (panel === "preview")
     return services.capabilities?.native === false ? (
       <p role="status" className="p-3 text-ui-base text-foreground-subtle">
         {t("browser.desktopRequired")}
@@ -230,7 +230,7 @@ export function WorkspacePanelContent({
         onReview={(turnId) => {
           rememberPanelTrigger();
           setReviewRequest({ owner: panelOwner, turnId });
-          workspacePanels.selectPanel("改动");
+          workspacePanels.selectPanel("changes");
         }}
         onTool={(itemId) => {
           workspacePanels.selectLayout("split");
@@ -243,13 +243,13 @@ export function WorkspacePanelContent({
         onError={setError}
       />
     );
-  if (panel === "工作组")
+  if (panel === "workgroups")
     return <WorkgroupsPane key={project.id} project={project} action={resourceAction} />;
   if (!thread) return <div className="utility-content">{t("common.tasks.select")}</div>;
   const threadProps = { project, thread, action };
-  if (panel === "执行计划")
+  if (panel === "plan")
     return <PlanPane key={`${project.id}:${threadId}`} {...threadProps} action={resourceAction} />;
-  if (panel === "已保存授权")
+  if (panel === "permissions")
     return (
       <SavedPermissionsPane
         key={`${project.id}:${threadId}`}
@@ -257,11 +257,11 @@ export function WorkspacePanelContent({
         action={resourceAction}
       />
     );
-  if (panel === "上下文")
+  if (panel === "context")
     return (
       <ContextPane key={`${project.id}:${threadId}`} {...threadProps} action={resourceAction} />
     );
-  if (panel === "进程")
+  if (panel === "processes")
     return (
       <ProcessesPane
         key={`${project.id}:${threadId}`}
@@ -282,7 +282,7 @@ export function WorkspacePanelContent({
         />
       </div>
     );
-  if (panel === "调用轨迹")
+  if (panel === "trajectory")
     return (
       <ModelTrajectoryPane
         key={`${project.id}:${threadId}`}
@@ -294,7 +294,7 @@ export function WorkspacePanelContent({
         onClose={() => workspacePanels.selectPanel("")}
       />
     );
-  if (panel === "子任务")
+  if (panel === "subtasks")
     return (
       <ExecutionsPane
         key={`${project.id}:${threadId}`}
@@ -305,8 +305,8 @@ export function WorkspacePanelContent({
         }
       />
     );
-  if (panel === "用量") return <ConversationUsage thread={thread} />;
-  if (panel === "队列")
+  if (panel === "usage") return <ConversationUsage thread={thread} />;
+  if (panel === "queue")
     return queue ? (
       <Queue
         queue={queue}

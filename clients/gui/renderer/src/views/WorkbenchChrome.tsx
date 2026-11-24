@@ -151,7 +151,7 @@ export function WorkbenchRail({
               aria-label={t("settings.title")}
               title={t(trajectoryAttention ? "settings.attention" : "settings.title")}
               aria-current={settingsOpen ? "page" : undefined}
-              onClick={() => showPanel("设置")}
+              onClick={() => showPanel("settings")}
             >
               <Settings />
               {trajectoryAttention && (
@@ -255,7 +255,7 @@ export function WorkspaceTaskActions({
           {thread && project && (
             <DropdownMenuItem
               onClick={() => {
-                workspacePanels.selectPanel("调用轨迹");
+                workspacePanels.selectPanel("trajectory");
                 workspacePanels.exposePanel();
               }}
             >
@@ -333,7 +333,7 @@ export function ConversationHeader({
                 }
                 onReadAgents={(restore) => {
                   contextReturn.current = restore;
-                  showPanel("子代理");
+                  showPanel("subagents");
                 }}
                 project={project}
                 thread={thread}
@@ -356,7 +356,8 @@ export function ConversationHeader({
                   });
                 }}
                 onPanel={(name) => {
-                  if (name === "改动") setReviewRequest({ owner: panelOwner, scope: "unstaged" });
+                  if (name === "changes")
+                    setReviewRequest({ owner: panelOwner, scope: "unstaged" });
                   showPanel(name);
                 }}
                 onAgent={(id) => showPanel(`agent:${id}`)}

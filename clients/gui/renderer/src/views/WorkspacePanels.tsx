@@ -2,7 +2,7 @@ import React from "react";
 import { projectUserState } from "../state/userStates.js";
 import { currentErrorText } from "../errors/currentErrorText.js";
 import { agentAssignment, agentName } from "../AgentIdentity.js";
-import { SidePane } from "../app-shell/SidePane.js";
+import { SIDE_PANE_TITLES, SidePane } from "../app-shell/SidePane.js";
 import {
   browserPageId,
   isBrowserTab,
@@ -129,19 +129,19 @@ function usePanelTabLifecycle(props: WorkspacePanelsProps) {
     if (!project) return;
     const childId = isSideChatTab(name) ? name.slice(5) : parseSideResourceTab(name)?.childId;
     if (childId && !sideChats.hasChild(project.id, childId)) {
-      workspacePanels.selectPanel("功能");
+      workspacePanels.selectPanel("launcher");
       return;
     }
     if (workspaceView !== "split") workspacePanels.selectLayout("panel");
-    if (name === "文件") {
+    if (name === "files") {
       showFiles();
       return;
     }
-    if (name === "终端") {
+    if (name === "terminal") {
       openTerminal(true);
       return;
     }
-    if (name === "预览") {
+    if (name === "preview") {
       void openBrowser(true);
       return;
     }
@@ -296,8 +296,8 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
             hideDisabled={annotationPending}
             workspaceKey={project?.root ?? "projectless"}
             ownerTaskId={threadId || null}
-            active="图片标注"
-            names={["图片标注"]}
+            active="image-annotation"
+            names={["image-annotation"]}
             onSelect={() => {}}
             onChange={() => {}}
             onHide={finishImageAnnotation}
@@ -334,7 +334,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
             title: empty ? t("common.navigation.newConversation") : currentTitle,
             onChange: (mode) => {
               if (
-                (panel === "旁路讨论" || isSideChatTab(panel)) &&
+                (panel === "side-chat" || isSideChatTab(panel)) &&
                 mode === "split" &&
                 matchMedia("(max-width: 1200px)").matches
               )
@@ -379,7 +379,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
                     ? "浏览器"
                     : resource.startsWith("file:")
                       ? resource.slice(5).split("/").pop()
-                      : resource;
+                      : (SIDE_PANE_TITLES[resource] ?? resource);
                 })()
               : isSideChatTab(name)
                 ? t("chat.side.numbered", {
@@ -419,7 +419,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
             )
           }
           onHide={hidePanel}
-          auxiliary={panel === "文件" ? workspaceFileTree : undefined}
+          auxiliary={panel === "files" ? workspaceFileTree : undefined}
           render={panelBody}
         />
       )}

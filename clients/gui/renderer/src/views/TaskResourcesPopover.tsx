@@ -139,7 +139,7 @@ export function TaskResourcesPopover({
             onAgents={() => {
               setOpen(false);
               if (onReadAgents) onReadAgents(() => setOpen(true));
-              else onPanel("子代理");
+              else onPanel("subagents");
             }}
             onPanel={navigate(onPanel)}
             onAgent={navigate(onAgent)}

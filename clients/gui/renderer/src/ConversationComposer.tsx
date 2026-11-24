@@ -100,7 +100,7 @@ export function ConversationComposer({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => openSettings("模型服务")}
+                    onClick={() => openSettings("providers")}
                   >
                     {t("recovery.openModelSettings")}
                   </Button>

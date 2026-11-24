@@ -199,7 +199,7 @@ export function ExecutableSideChatPane({
   );
   const openReview = (threadId: string, turnId: string) => {
     setReview({ threadId, turnId });
-    setResource("改动");
+    setResource("changes");
   };
   const onReview = (turnId: string) => openReview(tab.childId, turnId);
   useEffect(() => {
@@ -242,7 +242,7 @@ export function ExecutableSideChatPane({
           }}
         />
       );
-    if (resource === "改动")
+    if (resource === "changes")
       return (
         <GitPane
           projectId={project.id}
@@ -272,10 +272,10 @@ export function ExecutableSideChatPane({
           onLink={onLink}
           fileOpen={fileOpen}
           filesOpen={false}
-          onToggleFiles={() => setResource("文件")}
+          onToggleFiles={() => setResource("files")}
         />
       );
-    if (resource === "文件")
+    if (resource === "files")
       return (
         <WorkspaceFileTree
           projectId={project.id}
@@ -305,8 +305,8 @@ export function ExecutableSideChatPane({
     const props = { project, thread, action };
     if (resource === "MCP") return <McpSettings {...props} />;
     if (resource === "Skills") return <TaskSkillsSettings {...props} />;
-    if (resource === "上下文") return <ContextPane {...props} />;
-    if (resource === "进程")
+    if (resource === "context") return <ContextPane {...props} />;
+    if (resource === "processes")
       return (
         <ProcessesPane
           {...props}
@@ -315,8 +315,8 @@ export function ExecutableSideChatPane({
           }}
         />
       );
-    if (resource === "执行计划") return <PlanPane {...props} />;
-    if (resource === "已保存授权") return <SavedPermissionsPane {...props} />;
+    if (resource === "plan") return <PlanPane {...props} />;
+    if (resource === "permissions") return <SavedPermissionsPane {...props} />;
     return null;
   };
   return (
@@ -396,7 +396,7 @@ export function ExecutableSideChatPane({
             action={action}
             readAction={action}
             onPanel={(name) =>
-              name === "预览"
+              name === "preview"
                 ? void openBrowser().catch((cause) => setError(errorText(t, cause)))
                 : setResource(name)
             }

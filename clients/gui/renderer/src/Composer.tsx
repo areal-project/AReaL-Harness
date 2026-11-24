@@ -774,7 +774,7 @@ export function Composer({
     ),
     ...composerFeatureEntries(t, {
       upload: { run: () => upload.current?.click() },
-      files: { run: () => onPanel("文件") },
+      files: { run: () => onPanel("files") },
       plan: {
         active: planActive,
         disabled:
@@ -797,7 +797,7 @@ export function Composer({
       label: "压缩",
       description: "压缩当前上下文",
       icon: <ArchiveChatIcon />,
-      group: "功能",
+      group: "features",
       disabled: !!running,
       run: () => {
         void action("manage", {
@@ -897,7 +897,7 @@ export function Composer({
           project={project}
           thread={thread}
           action={action}
-          onEdit={() => onPanel("编辑目标")}
+          onEdit={() => onPanel("edit-goal")}
         />
       )}
       <Input
@@ -1026,7 +1026,7 @@ export function Composer({
                     detail: storageKey,
                   }),
                 );
-                onPanel("工作组");
+                onPanel("workgroups");
               }}
             >
               查看关联工作流结果
@@ -1150,7 +1150,7 @@ export function Composer({
               disabled:
                 entry.disabled ||
                 (!!queueEditor.edit &&
-                  entry.group !== "会话" &&
+                  entry.group !== "conversations" &&
                   !["upload", "files"].includes(entry.value)),
             })),
           }}

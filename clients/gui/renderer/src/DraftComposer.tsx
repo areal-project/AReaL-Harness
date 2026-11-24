@@ -968,7 +968,7 @@ export function DraftComposer({
                   ? {
                       disabled: !executionReady,
                       run: () => {
-                        if (executionReady) onPanel("文件");
+                        if (executionReady) onPanel("files");
                       },
                     }
                   : undefined,
