@@ -70,6 +70,9 @@
 | [Kbd](../packages/ui/src/components/kbd/kbd.tsx) |
 | [Badge](../packages/ui/src/components/badge/badge.tsx) |
 | [Callout](../packages/ui/src/components/callout/callout.tsx) |
+| [EmptyState](../packages/ui/src/components/empty-state/empty-state.tsx) |
+| [ConfirmDialog](../packages/ui/src/components/confirm-dialog/confirm-dialog.tsx) |
+| [Sheet](../packages/ui/src/components/sheet/sheet.tsx) |
 | [ComposerRequestStack](../packages/ui/src/conversation/composer-request-stack/composer-request-stack.tsx) |
 | [WorkedForDivider](../packages/ui/src/conversation/worked-for-divider/worked-for-divider.tsx) |
 | [ThreadFindBar](../packages/ui/src/conversation/thread-find-bar/thread-find-bar.tsx) |

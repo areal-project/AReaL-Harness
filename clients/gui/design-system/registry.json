@@ -426,6 +426,24 @@
       "importFrom": "@areal/ui"
     },
     {
+      "id": "EmptyState",
+      "source": "packages/ui/src/components/empty-state/empty-state.tsx",
+      "purpose": "居中克制的空状态与首次行动引导",
+      "importFrom": "@areal/ui"
+    },
+    {
+      "id": "ConfirmDialog",
+      "source": "packages/ui/src/components/confirm-dialog/confirm-dialog.tsx",
+      "purpose": "不可逆高危操作的阻断确认弹窗",
+      "importFrom": "@areal/ui"
+    },
+    {
+      "id": "Sheet",
+      "source": "packages/ui/src/components/sheet/sheet.tsx",
+      "purpose": "保留主任务上下文的边缘抽屉容器",
+      "importFrom": "@areal/ui"
+    },
+    {
       "id": "ComposerRequestStack",
       "source": "packages/ui/src/conversation/composer-request-stack/composer-request-stack.tsx",
       "purpose": "底部待处理请求导航栈（1/N 切换）",
@@ -648,7 +666,10 @@
       "Feedback",
       "Kbd",
       "Badge",
-      "Callout"
+      "Callout",
+      "EmptyState",
+      "ConfirmDialog",
+      "Sheet"
     ],
     "compositions": [
       "SettingsPage",
@@ -1233,6 +1254,43 @@
         "states": ["default"],
         "evidence": ["E-SETTINGS"],
         "exports": ["Callout"]
+      },
+      {
+        "id": "EmptyState",
+        "contract": "packages/ui/src/components/empty-state/empty-state.md",
+        "consumers": ["packages/ui/src/components/empty-state/empty-state.test.tsx"],
+        "variants": ["default", "compact"],
+        "states": ["default"],
+        "evidence": ["E-SETTINGS"],
+        "exports": ["EmptyState"]
+      },
+      {
+        "id": "ConfirmDialog",
+        "contract": "packages/ui/src/components/confirm-dialog/confirm-dialog.md",
+        "consumers": ["packages/ui/src/components/confirm-dialog/confirm-dialog.test.tsx"],
+        "variants": ["default", "destructive", "warning"],
+        "states": ["default", "pending"],
+        "evidence": ["E-DECISION"],
+        "exports": ["ConfirmDialog"]
+      },
+      {
+        "id": "Sheet",
+        "contract": "packages/ui/src/components/sheet/sheet.md",
+        "consumers": ["packages/ui/src/components/sheet/sheet.test.tsx"],
+        "variants": ["right", "left", "bottom"],
+        "states": ["default"],
+        "evidence": ["E-SETTINGS"],
+        "exports": [
+          "Sheet",
+          "SheetBody",
+          "SheetClose",
+          "SheetContent",
+          "SheetDescription",
+          "SheetFooter",
+          "SheetHeader",
+          "SheetTitle",
+          "SheetTrigger"
+        ]
       },
       {
         "id": "ComposerRequestStack",

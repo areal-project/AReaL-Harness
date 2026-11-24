@@ -3020,6 +3020,51 @@
       "strength": "default",
       "textSha256": "0dfea39892d865f159d4df8a07cc1535474c83ec5562196a0116c7c4dba3d9c9",
       "check": "clients/gui/packages/ui/src/workbench/popover-sidebar/popover-sidebar.test.tsx"
+    },
+    {
+      "id": "R-CONFIRMDIALOG-001",
+      "title": "仅在不可逆高危操作（如删除未备份数据、移除工作树、覆盖自定义配置）时使用 ConfirmDialog",
+      "owner": "clients/gui/packages/ui/src/components/confirm-dialog/confirm-dialog.md#何时使用",
+      "strength": "default",
+      "textSha256": "786c7cbebf2cece510f76ca241720cef76ab771b4fcbe0a339c16d4aa83ebd6f"
+    },
+    {
+      "id": "R-CONFIRMDIALOG-002",
+      "title": "pending 期间禁用双按钮、隐藏关闭按钮并暴露 aria-busy=\"true\"，防止重复提交",
+      "owner": "clients/gui/packages/ui/src/components/confirm-dialog/confirm-dialog.md#状态与可访问性",
+      "strength": "default",
+      "textSha256": "38eb3413d1bc6443eaf768afee8c3756669f0fa3929c21886f7706241a7804ad",
+      "check": "clients/gui/packages/ui/src/components/confirm-dialog/confirm-dialog.test.tsx"
+    },
+    {
+      "id": "R-EMPTYSTATE-001",
+      "title": "首次使用、列表为空或筛选无结果时统一使用 EmptyState，不再在页面手写居中空盒或只写孤立的“暂无数据”",
+      "owner": "clients/gui/packages/ui/src/components/empty-state/empty-state.md#何时使用",
+      "strength": "default",
+      "textSha256": "0821f1d8a23e5b3b1ee2f6865585de2eec7e85851fe67990c396fe73b89aa8d5"
+    },
+    {
+      "id": "R-EMPTYSTATE-002",
+      "title": "装饰图标自动带 aria-hidden=\"true\"",
+      "owner": "clients/gui/packages/ui/src/components/empty-state/empty-state.md#可访问性",
+      "strength": "default",
+      "textSha256": "ec1dde8072da2482fa25605c771b79b55b5ac7a267d8101147eb4b667bb15640",
+      "check": "clients/gui/packages/ui/src/components/empty-state/empty-state.test.tsx"
+    },
+    {
+      "id": "R-SHEET-001",
+      "title": "需要编辑详情、筛选配置或临时查阅资料同时保留主画面感知时使用 Sheet",
+      "owner": "clients/gui/packages/ui/src/components/sheet/sheet.md#何时使用",
+      "strength": "default",
+      "textSha256": "76b437ee886092536230bcd19b4e66e927f862fb0dc8039d537d46d35b33e2d2"
+    },
+    {
+      "id": "R-SHEET-002",
+      "title": "基于 @base-ui/react/dialog，保留键盘焦点、Esc 关闭、关闭后归还触发器焦点与 Electron ",
+      "owner": "clients/gui/packages/ui/src/components/sheet/sheet.md#可访问性",
+      "strength": "default",
+      "textSha256": "ae044fd64ef0c6f72a175ebd5fae98732ad6eb9186e8432aa1ff96ea15bd4b61",
+      "check": "clients/gui/packages/ui/src/components/sheet/sheet.test.tsx"
     }
   ]
 }

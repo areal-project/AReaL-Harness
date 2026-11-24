@@ -67,6 +67,9 @@
 | Kbd | [合同](../packages/ui/src/components/kbd/kbd.md) | E-DECISION |
 | Badge | [合同](../packages/ui/src/components/badge/badge.md) | E-CONVERSATION |
 | Callout | [合同](../packages/ui/src/components/callout/callout.md) | E-SETTINGS |
+| EmptyState | [合同](../packages/ui/src/components/empty-state/empty-state.md) | E-SETTINGS |
+| ConfirmDialog | [合同](../packages/ui/src/components/confirm-dialog/confirm-dialog.md) | E-DECISION |
+| Sheet | [合同](../packages/ui/src/components/sheet/sheet.md) | E-SETTINGS |
 | ComposerRequestStack | [合同](../packages/ui/src/conversation/composer-request-stack/composer-request-stack.md) | E-DECISION |
 | WorkedForDivider | [合同](../packages/ui/src/conversation/worked-for-divider/worked-for-divider.md) | E-CONVERSATION |
 | ThreadFindBar | [合同](../packages/ui/src/conversation/thread-find-bar/thread-find-bar.md) | E-CONVERSATION |

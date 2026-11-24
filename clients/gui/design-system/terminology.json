@@ -1,0 +1,34 @@
+{
+  "$description": "AReaL GUI 界面术语与 UX Writing 确定性护栏的唯一真源，由 scripts/terms-lint.mjs 读取校验。",
+  "terms": [
+    { "use": "定时任务", "avoid": ["自动化", "定时安排"] },
+    { "use": "工作树", "avoid": ["Worktree"] },
+    { "use": "侧边聊天", "avoid": ["旁路"] },
+    { "use": "子代理", "avoid": ["子智能体"] },
+    { "use": "Bot", "avoid": ["Personal Agent", "私人助理"] },
+    { "use": "Skills", "avoid": ["技能"] },
+    { "use": "会话", "avoidWord": ["Thread"] },
+    { "use": "轮次", "avoidWord": ["Turn"] },
+    { "use": "分支会话", "avoidWord": ["Fork"] },
+    { "use": "…", "avoid": ["..."] },
+    { "use": "“”", "avoid": ["「", "」"] }
+  ],
+  "enTerms": [
+    { "use": "Canceled", "avoid": ["Cancelled", "cancelled"] },
+    { "use": "Canceling", "avoid": ["Cancelling", "cancelling"] }
+  ],
+  "uxCopyBans": {
+    "filler": {
+      "message": "删掉客套废话，直接写结果或动作",
+      "phrases": ["亲爱的", "温馨提示", "为了便于", "以便于"]
+    },
+    "bareEmptyState": {
+      "message": "空状态禁止只写“暂无数据/暂无内容”，需说明用途并给出行动引导",
+      "exact": ["暂无数据", "暂无内容", "暂无数据。", "暂无内容。"]
+    },
+    "genericConfirm": {
+      "message": "禁止孤立的“确定”，改为“动词 + 具体结果”（如“移除工作树”）",
+      "exact": ["确定"]
+    }
+  }
+}

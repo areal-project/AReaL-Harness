@@ -593,6 +593,27 @@
       "styles": ["clients/gui/packages/ui/src/settings/shortcut-capture/shortcut-capture.css"],
       "internalSelectors": [".areal-shortcut-capture"],
       "enforces": []
+    },
+    {
+      "id": "empty-state",
+      "contract": "clients/gui/packages/ui/src/components/empty-state/empty-state.md",
+      "styles": ["clients/gui/packages/ui/src/components/empty-state/empty-state.css"],
+      "internalSelectors": [".areal-empty-state"],
+      "enforces": []
+    },
+    {
+      "id": "confirm-dialog",
+      "contract": "clients/gui/packages/ui/src/components/confirm-dialog/confirm-dialog.md",
+      "styles": [],
+      "internalSelectors": ["[data-slot=\"confirm-dialog\"]"],
+      "enforces": []
+    },
+    {
+      "id": "sheet",
+      "contract": "clients/gui/packages/ui/src/components/sheet/sheet.md",
+      "styles": ["clients/gui/packages/ui/src/components/sheet/sheet.css"],
+      "internalSelectors": [".areal-sheet-overlay", ".areal-sheet-content"],
+      "enforces": []
     }
   ],
   "rules": [

@@ -75,6 +75,19 @@ export { WorktreeWorkspace } from "@areal/ui/compositions";
 export { Kbd } from "@areal/ui";
 export { Badge } from "@areal/ui";
 export { Callout } from "@areal/ui";
+export { EmptyState } from "@areal/ui";
+export { ConfirmDialog } from "@areal/ui";
+export {
+  Sheet,
+  SheetBody,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@areal/ui";
 export { ComposerRequestStack } from "@areal/ui/compositions";
 export { WorkedForDivider } from "@areal/ui/compositions";
 export { ThreadFindBar } from "@areal/ui/compositions";

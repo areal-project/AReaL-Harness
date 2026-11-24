@@ -130,3 +130,20 @@ export {
 export { Kbd, type KbdProps } from "./components/kbd/kbd.js";
 export { Badge, type BadgeProps } from "./components/badge/badge.js";
 export { Callout, type CalloutProps } from "./components/callout/callout.js";
+export { EmptyState, type EmptyStateProps } from "./components/empty-state/empty-state.js";
+export {
+  ConfirmDialog,
+  type ConfirmDialogProps,
+} from "./components/confirm-dialog/confirm-dialog.js";
+export {
+  Sheet,
+  SheetBody,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+  type SheetContentProps,
+} from "./components/sheet/sheet.js";

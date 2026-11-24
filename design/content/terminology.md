@@ -1,5 +1,7 @@
 # 界面术语
 
+> 机器检查词典唯一真源：[terminology.json](../../clients/gui/design-system/terminology.json)（由 `clients/gui/scripts/terms-lint.mjs` 在 CI 中强制校验，包含禁用同义词与 UX Writing 铁律）。
+
 | 对象 | 界面称呼建议 | 避免歧义 | 详细来源 |
 | --- | --- | --- | --- |
 | `R-TERM-003` Thread | 会话 | 一段会话不等于一次执行。标题、头像不能替代 Thread 身份 | [身份与所有权](../people-and-agents/identity-and-ownership.md#会话身份与执行职责) |

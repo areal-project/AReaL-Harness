@@ -1052,5 +1052,20 @@
     "path": "clients/gui/packages/ui/src/settings/shortcut-capture/shortcut-capture.md",
     "role": "consumer",
     "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/components/empty-state/empty-state.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/components/confirm-dialog/confirm-dialog.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/components/sheet/sheet.md",
+    "role": "consumer",
+    "status": "active"
   }
 ]
