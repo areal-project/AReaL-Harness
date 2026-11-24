@@ -228,7 +228,7 @@
   content: "";
   width: var(--spacing-inline);
   height: var(--spacing-inline);
-  border-radius: var(--radius-status-dot);
+  border-radius: var(--radius-pill);
   background: currentColor;
   opacity: 0.55;
 }

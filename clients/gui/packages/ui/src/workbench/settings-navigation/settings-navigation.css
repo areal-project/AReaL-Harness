@@ -21,7 +21,7 @@
 
 .settings-sidebar .settings-navigation-search input {
   height: var(--spacing-control-lg);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-pill);
   background: var(--color-sidebar-item);
   border: var(--border-width-default) solid transparent;
   font-size: var(--text-ui-base);

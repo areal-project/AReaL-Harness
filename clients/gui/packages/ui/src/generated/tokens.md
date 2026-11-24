@@ -69,6 +69,12 @@
 | `--spacing-control` | `max(28px, calc(var(--ui-font-size) + 14px))` | 默认控件高度（h-control / size-control），按钮、图标按钮 |
 | `--spacing-control-lg` | `max(32px, calc(var(--ui-font-size) + 18px))` | 较大控件高度（h-control-lg） |
 | `--spacing-control-form` | `max(38px, calc(var(--ui-font-size) + 24px))` | 表单输入框高度 |
+| `--spacing-1` | `4px` | 4px 极紧凑间距：图标与紧邻标签、微元素内边距 |
+| `--spacing-2` | `8px` | 8px 常规行内间距（等价 spacing-inline） |
+| `--spacing-3` | `12px` | 12px 中等分组与控件内留白 |
+| `--spacing-4` | `16px` | 16px 字段与面板内留白（等价 spacing-field / spacing-panel） |
+| `--spacing-6` | `24px` | 24px 分区间距（等价 spacing-section） |
+| `--spacing-8` | `32px` | 32px 大区块呼吸间距与页面上下留白 |
 | `--spacing-inline` | `8px` | 同行相邻内容的间距 |
 | `--spacing-field` | `16px` | 内容块与内侧留白 |
 | `--spacing-section` | `24px` | 分区间距 |
@@ -90,21 +96,10 @@
 | `--radius-panel` | `var(--radius-xl)` | 面板与分组卡片 |
 | `--radius-dialog` | `var(--radius-2xl)` | 对话框 |
 | `--radius-message` | `var(--radius-2xl)` | 用户消息气泡圆角 |
-| `--radius-compact` | `var(--radius-sm)` | 紧凑工具按钮与小型输入的既有圆角。 D3 保留原几何，不改变数值。 |
-| `--radius-micro` | `var(--radius-xs)` | 微型工具、缩略图内部和细粒度选择区圆角。 D3 保留原几何，不改变数值。 |
-| `--radius-compact-row` | `var(--radius-sm)` | 紧凑队列和菜单行圆角。 D3 保留原几何，不改变数值。 |
-| `--radius-inline` | `var(--radius-sm)` | 嵌入式输入和紧凑标注工具圆角。 D3 保留原几何，不改变数值。 |
-| `--radius-card` | `var(--radius-2xl)` | 中型资源列表与提示卡片圆角。 D3 保留原几何，不改变数值。 |
-| `--radius-choice` | `var(--radius-2xl)` | 选择菜单和主题预览卡片圆角。 D3 保留原几何，不改变数值。 |
-| `--radius-attachment` | `var(--radius-lg)` | 图片附件与紧凑批注圆角。D3 保留原几何。 |
-| `--radius-feedback` | `var(--radius-xl)` | 输入反馈与提示卡片圆角。D3 保留原几何。 |
-| `--radius-full` | `9999px` | 全圆角胶囊，保留原最大半径。D3 保留原几何。 |
-| `--radius-composer-large` | `var(--radius-4xl)` | 大输入区外框圆角。D3 保留原几何。 |
-| `--radius-status-dot` | `99px` | 供应商状态点的原固定圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
-| `--radius-composer-queue-menu` | `var(--radius-2xl)` | 输入器队列菜单的原圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
-| `--radius-turn-marker` | `var(--radius-2xs)` | 轮次导航细标记的原圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
-| `--radius-inspection-dialog` | `var(--radius-4xl)` | Hook 统计检查对话框的原圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
-| `--radius-context-category-dot` | `var(--radius-2xs)` | 上下文组成类别标记的原圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
+| `--radius-indicator` | `var(--radius-2xs)` | 微型指示条与细标记圆角（2px 档） |
+| `--radius-micro` | `var(--radius-xs)` | 行内代码、键帽与微型徽标圆角（4px 档） |
+| `--radius-compact` | `var(--radius-sm)` | 紧凑按钮、小型标签与紧凑行圆角（6px 档） |
+| `--radius-composer-large` | `var(--radius-4xl)` | 大输入区与大型检查面板外框圆角（24px 档） |
 | `--radius-2xs` | `calc(2px * var(--corner-radius-scale))` | Codex 9 档圆角阶梯：微型指示器与进度条圆角 |
 | `--radius-xs` | `calc(4px * var(--corner-radius-scale))` | Codex 9 档圆角阶梯：行内代码与微型徽章圆角 |
 | `--radius-sm` | `calc(6px * var(--corner-radius-scale))` | Codex 9 档圆角阶梯：紧凑按钮与小型标签圆角 |
@@ -225,7 +220,6 @@
 | `--focus-width` | `2px` | 键盘焦点轮廓线宽 |
 | `--focus-offset` | `2px` | 键盘焦点轮廓与元素边缘的距离 |
 | `--browser-file-status-max-height` | `112px` | 浏览器文件交接状态列表的既有最大高度；来自renderer/src/BrowserFileHandoff.layout.css，D2保持原几何。 |
-| `--browser-file-status-inline-gap` | `6px` | 浏览器文件交接状态项的既有内容间距；来自renderer/src/BrowserFileHandoff.layout.css，D2保持原几何。 |
 | `--browser-file-status-block-padding` | `3px` | 浏览器文件交接状态项的既有纵向内边距；来自renderer/src/BrowserFileHandoff.layout.css，D2保持原几何。 |
 | `--size-status-dot` | `7px` | 移动端会话状态圆点尺寸 |
 | `--size-touch-target` | `44px` | 移动端按钮与输入框的最小触控目标 |

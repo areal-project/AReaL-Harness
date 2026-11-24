@@ -694,7 +694,7 @@ button.composer-project:hover > svg,
 .tool-call {
   font-size: var(--text-ui-caption);
   margin: var(--spacing-inline) 0;
-  border-radius: var(--radius-attachment);
+  border-radius: var(--radius-control);
   border: var(--border-width-default) solid var(--color-border);
   padding: var(--spacing-inline) calc(var(--spacing-inline) * 3 / 2);
 }
@@ -1060,7 +1060,7 @@ button.composer-project:hover > svg,
 .provider-catalog-dot {
   width: calc(var(--spacing-inline) * 3 / 4);
   height: calc(var(--spacing-inline) * 3 / 4);
-  border-radius: var(--radius-status-dot);
+  border-radius: var(--radius-pill);
   background: var(--color-foreground-subtle);
   flex-shrink: 0;
 }
@@ -1527,7 +1527,7 @@ button.composer-project:hover > svg,
   display: flex;
   align-items: center;
   gap: var(--spacing-inline);
-  border-radius: var(--radius-compact-row);
+  border-radius: var(--radius-compact);
 }
 .composer-queue-row:hover {
   background: var(--color-hover);
@@ -1633,7 +1633,7 @@ button.composer-project:hover > svg,
 }
 .composer-queue-menu {
   width: 198px;
-  border-radius: var(--radius-composer-queue-menu);
+  border-radius: var(--radius-dialog);
   padding: calc(var(--spacing-inline) * 3 / 4);
   background: var(--color-composer-catalog, var(--color-surface));
 }
@@ -1799,7 +1799,7 @@ button.composer-project:hover > svg,
 .preview-viewport-toolbar input {
   width: 64px;
   background: var(--color-input);
-  border-radius: var(--radius-inline);
+  border-radius: var(--radius-compact);
   padding: calc(var(--spacing-inline) / 2);
 }
 .skill-resource-path {
@@ -1914,7 +1914,7 @@ button[aria-label="停止"] {
   flex: none;
   width: var(--turn-marker-length);
   height: var(--turn-marker-thickness);
-  border-radius: var(--radius-turn-marker);
+  border-radius: var(--radius-indicator);
   background: var(--turn-marker-color, var(--color-foreground-subtle));
   opacity: var(--turn-opacity, 0.55);
   transform-origin: left center;
@@ -2525,7 +2525,7 @@ button[aria-label="停止"] {
   max-height: min(92vh, 800px);
   padding: calc(var(--spacing-inline) * 5 / 2);
   border-width: 0.5px;
-  border-radius: var(--radius-inspection-dialog);
+  border-radius: var(--radius-composer-large);
   background: color-mix(in srgb, var(--color-popover) 90%, transparent);
   backdrop-filter: var(--material-overlay-filter);
   font-size: var(--ui-font-size);
@@ -2790,7 +2790,7 @@ button[aria-label="停止"] {
 }
 .project-picker-menu [role="menuitem"] {
   padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
-  border-radius: var(--radius-choice);
+  border-radius: var(--radius-dialog);
   font-size: var(--text-ui-caption);
   font-weight: 430;
   line-height: 1.42857;
@@ -3122,7 +3122,7 @@ button[aria-label="停止"] {
   min-height: 0;
   padding: calc(var(--spacing-inline) / 2) calc(var(--spacing-inline) * 7 / 2)
     calc(var(--spacing-inline) / 2) var(--spacing-inline);
-  border-radius: var(--radius-choice);
+  border-radius: var(--radius-dialog);
   font-weight: 430;
   line-height: 1.42857;
 }
@@ -3881,7 +3881,7 @@ button[aria-label="停止"] {
   padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
   font-size: var(--text-ui-base);
   text-align: left;
-  border-radius: var(--radius-choice);
+  border-radius: var(--radius-dialog);
 }
 .composer-catalog-scroll [role="option"][aria-selected="true"],
 .composer-catalog-row[aria-selected="true"] {
@@ -4266,7 +4266,7 @@ button[aria-label="停止"] {
   height: var(--spacing-control);
   margin: calc(calc(var(--spacing-inline) * 3 / 4) * -1)
     calc(calc(var(--spacing-inline) * 3 / 4) * -1) calc(calc(var(--spacing-inline) * 3 / 4) * -1) 0;
-  border-radius: var(--radius-compact-row);
+  border-radius: var(--radius-compact);
   color: var(--color-muted-foreground);
 }
 .context-usage-close:hover {
@@ -4440,7 +4440,7 @@ button[aria-label="停止"] {
   display: inline-block;
   width: var(--spacing-inline);
   height: var(--spacing-inline);
-  border-radius: var(--radius-context-category-dot);
+  border-radius: var(--radius-indicator);
   margin-right: calc(var(--spacing-inline) * 3 / 4);
 }
 .context-color-systemPrompt {

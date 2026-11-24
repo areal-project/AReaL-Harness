@@ -9,7 +9,7 @@
   height: calc(var(--spacing-inline) * 12);
   flex: 0 0 calc(var(--spacing-inline) * 12);
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-attachment);
+  border-radius: var(--radius-control);
   background: var(--color-surface-elevated);
   transition: border-color var(--motion-fast) var(--ease-standard);
 }
@@ -121,7 +121,7 @@
   align-items: center;
   gap: calc(var(--spacing-inline) * 3 / 8);
   padding: calc(var(--spacing-inline) * 3 / 8) calc(var(--spacing-inline) * 5 / 8);
-  border-radius: var(--radius-inline);
+  border-radius: var(--radius-compact);
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-xs);
 }

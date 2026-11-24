@@ -25,7 +25,7 @@
   color: inherit;
   background: var(--color-background);
   border: var(--border-width-default) solid var(--color-border);
-  border-radius: var(--radius-inline);
+  border-radius: var(--radius-compact);
   padding: calc(var(--spacing-inline) / 2);
 }
 .browser-style-trial textarea {

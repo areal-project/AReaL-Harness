@@ -80,7 +80,7 @@
   width: 100%;
   padding: var(--spacing-inline) calc(var(--spacing-inline) * 3 / 2);
   border: var(--border-width-default) solid var(--color-border);
-  border-radius: var(--radius-feedback);
+  border-radius: var(--radius-panel);
   background: var(--color-background);
   color: inherit;
   font: inherit;

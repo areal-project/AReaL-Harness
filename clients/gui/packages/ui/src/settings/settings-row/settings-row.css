@@ -192,7 +192,7 @@
 
 .settings-field-row .settings-field-control input[type="range"]::-webkit-slider-runnable-track {
   height: calc(var(--spacing-inline) / 4);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-pill);
   background: var(--color-brand);
 }
 

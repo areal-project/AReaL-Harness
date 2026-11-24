@@ -1391,9 +1391,9 @@ try {
               height: el.getBoundingClientRect().height,
             };
           };
-          // 圆角按规格取令牌 radius-card，不写死像素值。
+          // 圆角按规格取令牌 radius-dialog（2xl），不写死像素值。
           const probe = document.body.appendChild(document.createElement("div"));
-          probe.style.borderRadius = "var(--radius-card)";
+          probe.style.borderRadius = "var(--radius-dialog)";
           const cardRadius = getComputedStyle(probe).borderRadius;
           probe.remove();
           return {

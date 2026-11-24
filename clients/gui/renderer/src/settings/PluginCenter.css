@@ -159,7 +159,7 @@
   background: transparent;
   color: inherit;
   padding: calc(var(--spacing-inline) / 4) 0;
-  border-radius: var(--radius-inline);
+  border-radius: var(--radius-compact);
 }
 .plugin-row-info:hover strong,
 .plugin-skill-link:hover {
@@ -220,7 +220,7 @@
 .plugin-skills-compact .plugin-resource-icon {
   width: var(--spacing-control);
   height: var(--spacing-control);
-  border-radius: var(--radius-compact-row);
+  border-radius: var(--radius-compact);
 }
 .plugin-center-settings .plugin-resource-icon svg {
   width: var(--icon-size-control);
@@ -270,7 +270,7 @@
 .plugin-detail-header > .plugin-resource-icon {
   height: 58px;
   width: 58px;
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-dialog);
 }
 .plugin-detail-header > div:first-of-type {
   flex: 1;
@@ -538,7 +538,7 @@
   margin: calc(var(--spacing-inline) * 3 / 2) 0 0;
   padding: calc(var(--spacing-inline) * 3 / 4) calc(var(--spacing-inline) / 2);
   border: 0;
-  border-radius: var(--radius-inline);
+  border-radius: var(--radius-compact);
   background: transparent;
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-fine);

@@ -116,7 +116,7 @@
   max-width: calc(100% - var(--icon-size-control));
   margin: auto;
   padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
-  border-radius: var(--radius-compact-row);
+  border-radius: var(--radius-compact);
   background: var(--color-popover);
   font-size: var(--text-ui-xs);
   color: var(--color-foreground-subtle);
@@ -129,7 +129,7 @@
   right: var(--spacing-inline);
   z-index: 6;
   padding: calc(var(--spacing-inline) * 3 / 4);
-  border-radius: var(--radius-attachment);
+  border-radius: var(--radius-control);
   border: var(--border-width-default) solid var(--color-border);
   background: var(--color-popover);
   font-size: var(--text-ui-xs);

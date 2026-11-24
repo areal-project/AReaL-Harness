@@ -496,7 +496,7 @@
 .side-pane-tabs-scroll [role="tab"] {
   height: var(--spacing-control-sm);
   padding-inline: var(--spacing-inline);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-pill);
   font-size: var(--text-ui-caption);
   font-weight: var(--ui-font-weight);
   line-height: var(--line-height-ui-sm);
@@ -700,7 +700,7 @@
   gap: calc(var(--spacing-inline) * 5 / 4);
   text-align: center;
   border: 1px dashed var(--color-border);
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-dialog);
   padding: calc(var(--spacing-inline) * 7 / 2);
 }
 .resource-empty > svg,

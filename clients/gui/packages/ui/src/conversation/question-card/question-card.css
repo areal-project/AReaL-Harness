@@ -70,7 +70,7 @@
   display: grid;
   place-items: center;
   border: var(--border-width-default) solid var(--color-border-hairline);
-  border-radius: var(--radius-inline);
+  border-radius: var(--radius-compact);
   background: var(--color-card);
   box-shadow: var(--shadow-inset-control);
   color: var(--color-foreground-subtle);

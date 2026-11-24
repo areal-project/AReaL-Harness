@@ -8,7 +8,7 @@
 }
 .areal-skeleton[data-shape="block"] {
   height: auto;
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-dialog);
 }
 .areal-skeleton[data-shape="pill"] {
   border-radius: var(--radius-pill);

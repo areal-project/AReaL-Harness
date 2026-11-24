@@ -42,7 +42,7 @@
 .slash-command-row,
 .slash-command-empty {
   padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
-  border-radius: var(--radius-choice);
+  border-radius: var(--radius-dialog);
   text-align: left;
 }
 .slash-command-row {

@@ -74,7 +74,7 @@
 .usage-section-heading select,
 .usage-section-heading input {
   border: var(--border-width-default) solid var(--color-border);
-  border-radius: var(--radius-compact-row);
+  border-radius: var(--radius-compact);
   padding: calc(var(--spacing-inline) * 3 / 4) var(--spacing-inline);
   background: transparent;
   font-size: var(--text-ui-sm);

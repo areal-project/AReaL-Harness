@@ -2,7 +2,7 @@
   margin-bottom: var(--spacing-inline);
   padding: var(--spacing-field);
   border: var(--border-width-default) solid var(--color-border-hairline);
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-dialog);
   background: var(--color-surface-card);
   box-shadow: var(--shadow-card-codex);
   color: var(--color-foreground);

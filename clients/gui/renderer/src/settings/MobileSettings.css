@@ -17,7 +17,7 @@
   display: block;
   width: var(--spacing-inline);
   height: var(--spacing-inline);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-pill);
   background: var(--color-foreground-subtle);
 }
 .remote-status[data-tone="good"] .remote-dot,
