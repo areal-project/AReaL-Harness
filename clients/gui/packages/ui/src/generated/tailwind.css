@@ -26,10 +26,11 @@
   --shadow-overlay: 0 4px 12px rgb(0 0 0 / 10%), 0 14px 40px rgb(0 0 0 / 8%);
   --shadow-dialog: 0 12px 32px rgb(0 0 0 / 20%);
   --font-sans: -apple-system, system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", monospace;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", monospace;
   --line-height-ui: max(20px, calc(var(--ui-font-size) + 6px));
   --line-height-ui-sm: max(18px, calc(var(--ui-font-size) + 4px));
   --text-ui-xl: calc(var(--ui-font-size) + 4px);
+  --text-heading-app: calc(var(--ui-font-size) + 14px);
   --text-page-title: calc(var(--ui-font-size) + 8px);
   --text-ui-lg: calc(var(--ui-font-size) + 2px);
   --text-ui-base: var(--ui-font-size);
@@ -63,7 +64,7 @@
   --radius-4xl: calc(24px * var(--corner-radius-scale));
   --height-toolbar: 46px;
   --tracking-conversation: 0.025em;
-  --tracking-heading-tight: -0.02em;
+  --tracking-heading-tight: -0.025em;
   --tracking-ui-tight: -0.01em;
   --tracking-ui-subtle: -0.15px;
   --reading-width-compact: 640px;

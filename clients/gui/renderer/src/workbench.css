@@ -238,7 +238,7 @@ kbd {
   background: transparent;
   border: 0;
   padding: 0;
-  font-size: var(--text-ui-base);
+  font-size: var(--text-ui-caption);
   font-weight: var(--ui-font-weight);
   color: var(--color-foreground);
   cursor: var(--interactive-cursor, pointer);
@@ -371,10 +371,10 @@ kbd {
 }
 .draft-task-prompt p {
   margin: 0;
-  font-size: var(--text-page-title);
-  font-weight: var(--font-weight-medium);
+  font-size: var(--text-heading-app);
+  font-weight: var(--ui-font-weight);
   line-height: var(--line-height-title);
-  letter-spacing: var(--tracking-heading-tight, -0.02em);
+  letter-spacing: var(--tracking-heading-tight);
   overflow-wrap: anywhere;
 }
 .draft-task-project {

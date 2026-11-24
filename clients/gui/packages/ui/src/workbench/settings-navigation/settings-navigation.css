@@ -26,6 +26,16 @@
   padding: var(--spacing-inline) var(--spacing-3) var(--spacing-panel);
 }
 
+.settings-modal-sidebar .settings-group-label {
+  font-size: var(--text-ui-sm);
+}
+
+.settings-modal-sidebar .settings-navigation-item,
+.settings-modal-sidebar .settings-navigation-item span {
+  font-size: var(--text-ui-caption);
+  line-height: var(--line-height-ui-sm);
+}
+
 .settings-sidebar .settings-sidebar-header {
   display: flex;
   flex-direction: column;

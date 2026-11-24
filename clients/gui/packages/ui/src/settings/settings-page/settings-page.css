@@ -163,6 +163,13 @@
   gap: var(--spacing-section);
 }
 
+.settings-modal-dialog .settings-workspace .settings-page-title,
+.settings-modal-dialog .settings-workspace .settings-page > h1 {
+  font-size: var(--text-heading-app);
+  font-weight: var(--ui-font-weight);
+  letter-spacing: var(--tracking-heading-tight);
+}
+
 .settings-modal-dialog .settings-workspace[data-width="wide"] > .settings-page {
   max-width: 100%;
 }

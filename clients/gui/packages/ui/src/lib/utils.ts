@@ -8,6 +8,7 @@ const mergeUiClasses = extendTailwindMerge({
       size: [{ size: ["control", "control-xs", "control-sm", "control-lg"] }],
       // text-ui-* 是字号而不是 text color；显式注册，避免和 text-foreground 等颜色类互相覆盖。
       "font-size": [
+        "text-heading-app",
         "text-page-title",
         "text-ui-xl",
         "text-ui-lg",

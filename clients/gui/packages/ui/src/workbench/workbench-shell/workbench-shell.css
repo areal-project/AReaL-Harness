@@ -87,7 +87,7 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: var(--text-ui-xl);
+  font-size: var(--text-ui-lg);
   line-height: var(--line-height-title);
   font-weight: var(--font-weight-strong);
   letter-spacing: var(--tracking-ui-tight);
@@ -636,13 +636,13 @@
 
 .navigation-task-row {
   min-height: var(--navigation-row-height);
-  padding: calc((var(--navigation-row-height) - var(--line-height-ui)) / 2)
-    calc((var(--navigation-row-height) - var(--line-height-ui)) / 2)
-    calc((var(--navigation-row-height) - var(--line-height-ui)) / 2) var(--spacing-inline);
+  padding: calc((var(--navigation-row-height) - var(--line-height-ui-sm)) / 2)
+    calc((var(--navigation-row-height) - var(--line-height-ui-sm)) / 2)
+    calc((var(--navigation-row-height) - var(--line-height-ui-sm)) / 2) var(--spacing-inline);
   border-radius: var(--radius-navigation);
-  font-size: var(--text-ui-base);
+  font-size: var(--text-ui-caption);
   font-weight: var(--ui-font-weight);
-  line-height: var(--line-height-ui);
+  line-height: var(--line-height-ui-sm);
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
 .navigation-task-row:hover,
@@ -666,8 +666,8 @@
   padding-right: calc(var(--spacing-control-xs) * 3 + var(--spacing-inline) * 2);
 }
 .navigation-task-title {
-  font-size: var(--text-ui-base);
-  line-height: var(--line-height-ui);
+  font-size: var(--text-ui-caption);
+  line-height: var(--line-height-ui-sm);
   color: var(--color-foreground);
   text-overflow: clip;
   mask-image: linear-gradient(

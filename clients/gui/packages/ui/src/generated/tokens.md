@@ -11,6 +11,7 @@
 | `--ui-font-weight` | `400` | 界面常规字重 |
 | `--text-conversation` | `var(--content-font-size, 14px)` | 对话时间线字号：正文、活动行、子代理行与过程状态共用，跟随内容字号偏好 |
 | `--text-ui-xl` | `calc(var(--ui-font-size) + 4px)` | 区块标题 |
+| `--text-heading-app` | `calc(var(--ui-font-size) + 14px)` | 应用级展示大标题（默认 28px，对齐 Codex 首页欢迎语与设置弹窗主标题） |
 | `--text-page-title` | `calc(var(--ui-font-size) + 8px)` | 页面标题、空态大标题 |
 | `--text-ui-lg` | `calc(var(--ui-font-size) + 2px)` | 输入框文字、卡片标题等较突出内容 |
 | `--text-ui-base` | `var(--ui-font-size)` | 界面正文、卡片内容、普通反馈；在消息正文内被重映射为内容字号 |
@@ -37,7 +38,7 @@
 | `--line-height-relaxed` | `1.625` | 按钮与工具栏入口文字的宽松行高倍数 |
 | `--line-height-toolbar` | `1.5` | 输入框工具栏里模型与强度入口的行高倍数 |
 | `--line-height-title` | `1.2` | 首页迎宾标题等大标题的行高倍数 |
-| `--tracking-heading-tight` | `-0.02em` | 首页迎宾大标题与页面主标题的紧凑负字距 |
+| `--tracking-heading-tight` | `-0.025em` | 首页迎宾大标题与页面主标题的紧凑负字距 |
 | `--tracking-ui-tight` | `-0.01em` | 紧凑界面标签、按钮与 Tooltip 的精细负字距 |
 | `--tracking-ui-subtle` | `-0.15px` | 常规表单项与界面说明的微调负字距 |
 
@@ -178,7 +179,7 @@
 | --- | --- | --- |
 | `--border-width-default` | `1px` | 描边、分隔线的默认宽度 |
 | `--font-sans` | `-apple-system, system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif` | 基础界面字体及平台回退 |
-| `--font-mono` | `ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", monospace` | 代码字体及CJK无衬线回退 |
+| `--font-mono` | `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", monospace` | 代码字体及CJK无衬线回退 |
 | `--conversation-line` | `1.43` | 对话时间线行高（无单位比例）：14px 时为 20px；标题与更大的内容字号按比例增长 |
 | `--message-reading-inset` | `32px` | 对话信息流上下留白：首条消息与列顶部、末条内容与输入框之间 |
 | `--message-bubble-max` | `70%` | 用户消息气泡相对阅读列的最大宽度 |

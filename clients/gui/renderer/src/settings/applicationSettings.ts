@@ -11,7 +11,7 @@ export const UI_FONTS = {
 };
 export const CODE_FONTS = {
   system:
-    'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", "PingFang SC", monospace',
+    'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", "PingFang SC", monospace',
   Menlo: "Menlo, Consolas, monospace",
   Courier: '"Courier New", monospace',
 };

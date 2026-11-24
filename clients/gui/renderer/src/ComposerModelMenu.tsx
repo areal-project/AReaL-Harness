@@ -4,7 +4,7 @@ import { Zap } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { useOpenSettings } from "./settings/openSettingsContext.js";
-import { MenuChevronIcon, MenuSelectedIcon } from "./interfaceIcons.js";
+import { MenuSelectedIcon } from "./interfaceIcons.js";
 import { Button } from "./components/ui/button.js";
 import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover.js";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./components/ui/tooltip.js";
@@ -218,9 +218,9 @@ export function ComposerModelMenu({
             />
           }
         >
-          <span className="composer-model-name min-w-0 flex-1 truncate">{label}</span>
-
-          <MenuChevronIcon size={14} aria-hidden="true" />
+          <span className="composer-model-name min-w-0 flex-1 truncate font-medium text-foreground">
+            {label}
+          </span>
         </PopoverTrigger>
         <PopoverContent
           aria-label={t("chat.composer.chooseModel")}
@@ -337,8 +337,9 @@ export function ComposerModelMenu({
             }
           >
             {fast && <Zap size={14} className="composer-fast-indicator" aria-hidden="true" />}
-            <span className="truncate">{fast ? `Fast · ${effortLabel}` : effortLabel}</span>
-            <MenuChevronIcon size={14} aria-hidden="true" />
+            <span className="truncate font-normal text-foreground-subtle">
+              {fast ? `Fast · ${effortLabel}` : effortLabel}
+            </span>
           </PopoverTrigger>
           <PopoverContent
             aria-label={t("chat.composer.chooseEffort")}
