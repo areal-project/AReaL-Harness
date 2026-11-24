@@ -778,6 +778,7 @@
     "platforms": ["darwin"],
     "areas": ["recovery", "lifecycle"],
     "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
+    "testFiles": ["scripts/support/native-recovery-observation.mjs"],
     "platformReason": "Runner explicitly asserts darwin and uses its existing macOS acceptance setup."
   },
   {
@@ -1096,6 +1097,7 @@
     "platformReason": "Upgrade acceptance from 0.1.18 to 0.1.19 uses /private/tmp, packaged Electron and real legacy data layouts on macOS.",
     "areas": ["lifecycle", "service"],
     "requires": ["electron", "core-binary", "gui-build"],
+    "testFiles": ["scripts/support/published-source.mjs"],
     "notes": "Web client against a partially migrated Host; needs AREAL_PARTIAL_CORE_SHA256 of the old Core."
   },
   {
@@ -1165,6 +1167,7 @@
     "platforms": ["darwin", "linux"],
     "areas": ["testing", "recovery"],
     "requires": [],
+    "testFiles": ["scripts/support/recovery-exploration.mjs"],
     "notes": "Mutation applicability and report verdict classification; no product acceptance claim."
   },
   {

@@ -563,7 +563,7 @@ function ActiveConversation() {
                 executionBlocked={
                   snapshot.connection?.state !== "ready" ||
                   (viewRefreshing &&
-                    (!project.state?.connected ||
+                    (!projectUserState(project).canAct ||
                       ("persistedHistory" in thread && thread.persistedHistory === true) ||
                       !!startup.viewFailure)) ||
                   projectExecutionBlocked(snapshot.lifecycle, project.id)

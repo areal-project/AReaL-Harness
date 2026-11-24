@@ -15,8 +15,26 @@ const testSuffix = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
 const sourceSuffix = /\.[cm]?[jt]sx?$/;
 // 门禁引入前已进入分支、尚未进入上游的历史文件。
 const existingBranchModules = new Set([
+  "clients/gui/packages/browser-automation/src/host-tool-types.cjs",
+  "clients/gui/packages/browser-automation/src/host-tool.cjs",
   "clients/gui/packages/client/node/desktop-upgrade.cjs",
+  "clients/gui/packages/client/node/gui-source.cjs",
+  "clients/gui/packages/workbench/node/application-owner.cjs",
+  "clients/gui/packages/workbench/node/bundle.cjs",
+  "clients/gui/packages/workbench/node/desktop-network.cjs",
+  "clients/gui/packages/workbench/node/diagnostics.cjs",
+  "clients/gui/packages/workbench/node/library-startup.cjs",
+  "clients/gui/packages/workbench/node/model-diagnostics.cjs",
+  "clients/gui/packages/workbench/node/monitoring-envelope.cjs",
+  "clients/gui/packages/workbench/node/native-i18n.cjs",
+  "clients/gui/packages/workbench/node/native-notifications.cjs",
+  "clients/gui/packages/workbench/node/startup-timing.cjs",
+  "clients/gui/packages/workbench/node/system-proxy.cjs",
+  "clients/gui/scripts/design-health-report.mjs",
+  "clients/gui/scripts/macos-icon.mjs",
   "clients/gui/scripts/prepare-recording.mjs",
+  "clients/gui/scripts/relay-resources.cjs",
+  "clients/gui/scripts/ui-guardrails-lint.mjs",
 ]);
 
 function gitPaths(...args: string[]) {

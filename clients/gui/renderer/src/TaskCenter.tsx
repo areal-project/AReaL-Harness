@@ -122,7 +122,9 @@ type OwnerRead =
       previous?: OwnerRows;
       explicit?: boolean;
     };
-const ownerRows = (read?: OwnerRead) => (read?.status === "ready" ? read.value : read?.previous);
+function ownerRows(read?: OwnerRead) {
+  return read?.status === "ready" ? read.value : read?.previous;
+}
 // 进程内热缓存：切走再回到定时任务页时首帧先展示最近一次目录，同时后台静默复核，避免冷空态与“正在读取任务…”闪烁。
 const warmTaskCatalog = new Map<string, OwnerRows>();
 const warmCatalogIdentity: CatalogIdentity = { requestId: "warm-cache", viewEpoch: 0 };
