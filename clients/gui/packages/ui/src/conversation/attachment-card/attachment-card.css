@@ -47,7 +47,7 @@
   display: flex;
   flex-direction: column;
   gap: calc(var(--spacing-inline) / 4);
-  font-size: var(--text-fixed-body);
+  font-size: var(--text-ui-base);
   line-height: 1.2;
 }
 .composer-text-copy > span {
@@ -57,7 +57,7 @@
 }
 .composer-text-copy > button {
   text-align: left;
-  font-size: var(--text-fixed-label);
+  font-size: var(--text-ui-caption);
   color: var(--color-foreground-subtle);
   text-decoration: underline;
   text-underline-offset: calc(var(--spacing-inline) * 3 / 8);
@@ -83,7 +83,7 @@
 }
 .composer-attachment-error {
   margin: 0;
-  font-size: var(--text-fixed-caption);
+  font-size: var(--text-ui-sm);
   color: var(--color-destructive);
   overflow-wrap: anywhere;
 }

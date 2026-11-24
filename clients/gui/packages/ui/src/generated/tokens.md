@@ -23,24 +23,6 @@
 | `--text-ui-sm` | `max(12px, calc(var(--ui-font-size) - 2px))` | 说明文字、次要反馈、表格辅助列 |
 | `--text-ui-xs` | `max(11px, calc(var(--ui-font-size) - 3px))` | 来源细节、元信息；最小 11px，不用于正文 |
 | `--text-ui-2xs` | `calc(var(--ui-font-size) - 5px)` | 仅限工作流图轴面的例外刻度 |
-| `--text-mobile-input-safe` | `16px` | 移动端聚焦输入的安全字号下限 |
-| `--text-fixed-metadata` | `10px` | 标注编号、图表刻度与固定几何元信息。该角色固定像素，保持原行为；支持随用户字号变化的正文继续使用 text-ui/content 系列。 |
-| `--text-fixed-caption` | `12px` | 固定几何的紧凑说明与代码预览字号。该角色固定像素，保持原行为；支持随用户字号变化的正文继续使用 text-ui/content 系列。 |
-| `--text-fixed-label` | `13px` | 固定尺寸控件标签、附件文字和远程连接说明。该角色固定像素，保持原行为；支持随用户字号变化的正文继续使用 text-ui/content 系列。 |
-| `--text-fixed-body` | `14px` | 现有固定布局的正文与默认字号回退。该角色固定像素，保持原行为；支持随用户字号变化的正文继续使用 text-ui/content 系列。 |
-| `--text-fixed-control` | `15px` | 固定高度队列和远程设置控件文字。该角色固定像素，保持原行为；支持随用户字号变化的正文继续使用 text-ui/content 系列。 |
-| `--text-fixed-emphasis` | `16px` | 固定布局的强调文字。该角色固定像素，保持原行为；支持随用户字号变化的正文继续使用 text-ui/content 系列。 |
-| `--text-fixed-section-title` | `20px` | 固定布局的任务、远程和用量分区标题。该角色固定像素，保持原行为；支持随用户字号变化的正文继续使用 text-ui/content 系列。 |
-| `--text-fixed-dialog-title` | `22px` | 远程配对和连接卡片标题。该角色固定像素，保持原行为；支持随用户字号变化的正文继续使用 text-ui/content 系列。 |
-| `--text-fixed-page-title` | `28px` | 现有页面标题和新建任务提示。该角色固定像素，保持原行为；支持随用户字号变化的正文继续使用 text-ui/content 系列。 |
-| `--text-ui-fine` | `calc(var(--ui-font-size) - 3px)` | 插件次要标记，保留原 ui-font-size 减 3px，不额外加最小字号。 |
-| `--text-ui-section` | `calc(var(--ui-font-size) + 6px)` | 界面分区标题，跟随界面字号增加 6px。 |
-| `--text-ui-hero` | `calc(var(--ui-font-size) + 10px)` | 界面大标题，跟随界面字号增加 10px。 |
-| `--text-ui-display` | `calc(var(--ui-font-size) + 12px)` | 插件详情展示标题，跟随界面字号增加 12px。 |
-| `--text-compact-caption` | `0.75rem` | 紧凑说明与元信息，保持既有 text-xs 的 rem 缩放。 |
-| `--text-compact-caption--line-height` | `1rem` | 紧凑说明行高，保持既有 text-xs 的 1rem。 |
-| `--text-compact-body` | `0.875rem` | 紧凑正文，保持既有 text-sm 的 rem 缩放。 |
-| `--text-compact-body--line-height` | `1.25rem` | 紧凑正文行高，保持既有 text-sm 的 1.25rem。 |
 | `--text-user-message-heading` | `1.5em` | 用户消息 Markdown 一级标题相对于该消息正文的字号关系。 D2 保留 renderer/src/workbench.css 原几何。 |
 
 ## 行高与字重
@@ -114,22 +96,10 @@
 
 | 变量 | 默认值 | 用途 |
 | --- | --- | --- |
+| `--shadow-subtle` | `0 1px 2px rgb(0 0 0 / 6%), 0 0 0 0.5px var(--color-border-hairline)` | 控件、卡片与分段滑块的轻微抬起阴影 |
 | `--shadow-menu` | `0 0 0 0.5px var(--color-menu-border, var(--color-border)), 0 8px 16px -4px rgb(0 0 0 / 12%)` | 下拉菜单与右键菜单 |
 | `--shadow-overlay` | `0 4px 12px rgb(0 0 0 / 10%), 0 14px 40px rgb(0 0 0 / 8%)` | Popover 与悬浮面板 |
 | `--shadow-dialog` | `0 12px 32px rgb(0 0 0 / 20%)` | 对话框 |
-| `--shadow-inset-control` | `0 1px 1px rgba(0, 0, 0, 0.04)` | 微型设置按钮的轻投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
-| `--shadow-raised-control` | `0 1px 2px rgba(0, 0, 0, 0.06)` | 设置控件的轻投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
-| `--shadow-tooltip` | `0 5px 18px #00000014` | 时间线与更新提示的浮层投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
-| `--shadow-large-overlay` | `0 16px 64px #0005` | 大预览浮层的投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
-| `--shadow-menu-wide` | `0 8px 28px #0003` | 宽目录菜单的投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
-| `--shadow-dark-control` | `0 8px 18px rgb(15 23 42 / 20%)` | 暗色快捷入口的投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
-| `--shadow-menu-double-stroke` | `0 0 0 .5px color-mix(in srgb, var(--color-foreground) 8.2%, transparent), 0 0 0 .5px color-mix(in srgb, var(--color-foreground) 8.2%, transparent), 0 8px 16px -4px #0000001f` | 双层细描边菜单投影，保留既有重复描边和前景比例。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
-| `--shadow-floating-toolbar` | `0 8px 24px #0002` | 浮动工具条投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
-| `--shadow-elevated-chip` | `0 1px 4px #0003, 0 0 0 1px #0000000d` | 悬浮小控件投影与外描边。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
-| `--shadow-leading-panel` | `-8px 0 16px -8px #0000002e` | 侧面板起始边投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
-| `--shadow-compact-overlay` | `0 3px 12px #0003` | 紧凑浮层投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
-| `--shadow-popover-overlay` | `0 0 0 0.5px var(--color-border-hairline), 0 10px 28px -6px rgb(0 0 0 / 14%)（暗色 0 0 0 0.5px var(--color-border-hairline), 0 12px 32px -4px rgb(0 0 0 / 42%)）` | 带 0.5px 极细描边的轻盈浮层阴影，用于 Popover、置顶摘要卡与浮起侧栏 |
-| `--shadow-card-codex` | `0 0 0 0.5px var(--color-border-hairline), 0 4px 16px 0 rgb(0 0 0 / 5%)（暗色 0 0 0 0.5px var(--color-border-hairline), 0 4px 16px 0 rgb(0 0 0 / 28%)）` | Codex 精细卡片阴影（0.5px 极细描边 + 柔和 16px 扩散），用于设置卡片、Composer 与任务卡 |
 
 ## 状态色与语义色
 
@@ -220,7 +190,6 @@
 | `--focus-width` | `2px` | 键盘焦点轮廓线宽 |
 | `--focus-offset` | `2px` | 键盘焦点轮廓与元素边缘的距离 |
 | `--browser-file-status-max-height` | `112px` | 浏览器文件交接状态列表的既有最大高度；来自renderer/src/BrowserFileHandoff.layout.css，D2保持原几何。 |
-| `--browser-file-status-block-padding` | `3px` | 浏览器文件交接状态项的既有纵向内边距；来自renderer/src/BrowserFileHandoff.layout.css，D2保持原几何。 |
 | `--size-status-dot` | `7px` | 移动端会话状态圆点尺寸 |
 | `--size-touch-target` | `44px` | 移动端按钮与输入框的最小触控目标 |
 | `--blur-header` | `18px` | 工作台顶栏与吸顶摘要栏的毛玻璃模糊半径 |

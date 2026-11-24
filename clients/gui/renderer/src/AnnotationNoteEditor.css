@@ -10,7 +10,7 @@
   border-radius: 50%;
   color: #fff;
   background: #368bee;
-  font-size: var(--text-fixed-metadata);
+  font-size: var(--text-ui-xs);
   pointer-events: none;
 }
 .browser-annotation-editor {

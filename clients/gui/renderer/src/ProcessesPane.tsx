@@ -651,7 +651,7 @@ export function ProcessesPane({
               role="log"
               aria-label="进程输出"
               aria-live="off"
-              className="max-h-96 min-h-24 overflow-auto whitespace-pre-wrap break-words rounded-control bg-background-secondary p-2 font-mono text-compact-caption"
+              className="max-h-96 min-h-24 overflow-auto whitespace-pre-wrap break-words rounded-control bg-background-secondary p-2 font-mono text-ui-sm"
             >
               {output || "暂无输出"}
             </pre>
@@ -768,7 +768,7 @@ export function ProcessesPane({
             <DialogTitle>停止此进程？</DialogTitle>
             <DialogDescription>{t("common.processes.stopConfirm")}</DialogDescription>
           </DialogHeader>
-          <p className="break-all font-mono text-compact-body">{confirm?.argv.join(" ")}</p>
+          <p className="break-all font-mono text-ui-base">{confirm?.argv.join(" ")}</p>
           {stopError && (
             <p role="alert" className="text-destructive">
               {stopError}

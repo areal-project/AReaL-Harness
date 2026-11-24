@@ -31,6 +31,6 @@
   padding: 0 calc(var(--spacing-inline) / 2);
   border: var(--border-width-default) solid var(--color-border-hairline);
   background: var(--color-surface-card);
-  box-shadow: var(--shadow-inset-control);
+  box-shadow: var(--shadow-subtle);
   color: var(--color-foreground-subtle);
 }

@@ -9,5 +9,5 @@
   align-items: center;
   gap: calc(var(--spacing-2) * 0.75);
   overflow-wrap: anywhere;
-  padding: var(--browser-file-status-block-padding) 0;
+  padding: var(--spacing-1) 0;
 }

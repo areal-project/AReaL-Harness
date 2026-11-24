@@ -145,7 +145,7 @@
   border: var(--border-width-default) solid var(--color-menu-border);
   background: color-mix(in oklab, var(--color-menu) 92%, transparent);
   backdrop-filter: var(--material-overlay-filter);
-  box-shadow: var(--shadow-popover-overlay);
+  box-shadow: var(--shadow-overlay);
 }
 .task-resources {
   padding: var(--spacing-inline) calc(var(--spacing-inline) * 3 / 2);
@@ -199,7 +199,7 @@
   font-size: var(--text-ui-xs);
 }
 .task-resources-heading > span:last-child {
-  font-size: var(--text-fixed-metadata);
+  font-size: var(--text-ui-xs);
 }
 .task-resource-agent-body {
   flex: 1;

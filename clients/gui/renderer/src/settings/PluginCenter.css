@@ -96,7 +96,7 @@
   margin-bottom: calc(var(--spacing-inline) * 7 / 2);
 }
 .plugin-center h1 {
-  font-size: var(--text-ui-display);
+  font-size: var(--text-page-title);
   font-weight: 600;
   line-height: 1.3;
   letter-spacing: -0.025em;
@@ -450,14 +450,14 @@
 }
 
 .plugin-center-settings .plugin-row-info small {
-  font-size: var(--text-ui-fine);
+  font-size: var(--text-ui-xs);
 }
 
 .plugin-center-workspace .plugin-center-content {
   max-width: 1000px;
 }
 .plugin-center-workspace h1 {
-  font-size: var(--text-ui-section);
+  font-size: var(--text-ui-xl);
 }
 .plugin-center-sidebar > button > svg {
   width: var(--icon-size-control);
@@ -488,7 +488,7 @@
 .plugin-skill-section-heading small {
   margin-left: calc(var(--spacing-inline) * 3 / 4);
   color: var(--color-foreground-subtle);
-  font-size: var(--text-ui-fine);
+  font-size: var(--text-ui-xs);
   font-weight: 400;
 }
 .plugin-skill-section {
@@ -515,7 +515,7 @@
   line-height: 1.6;
 }
 .plugin-skills-workspace .plugin-row-info small:not(.sr-only) {
-  font-size: var(--text-ui-fine);
+  font-size: var(--text-ui-xs);
   line-height: 1.6;
 }
 .plugin-skills-workspace .plugin-skill-icon {
@@ -541,7 +541,7 @@
   border-radius: var(--radius-compact);
   background: transparent;
   color: var(--color-foreground-subtle);
-  font-size: var(--text-ui-fine);
+  font-size: var(--text-ui-xs);
   text-align: left;
 }
 .plugin-skills-more:hover {

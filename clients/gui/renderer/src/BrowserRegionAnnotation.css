@@ -142,7 +142,7 @@
   color: var(--color-foreground-subtle);
 }
 .browser-annotation-attachments > span {
-  font-size: var(--text-fixed-metadata);
+  font-size: var(--text-ui-xs);
 }
 .browser-annotation-attachment-card {
   display: flex;
@@ -175,7 +175,7 @@
 .browser-annotation-attachment-card small {
   display: block;
   margin-top: calc(var(--spacing-inline) / 2);
-  font-size: var(--text-fixed-metadata);
+  font-size: var(--text-ui-xs);
   color: var(--color-foreground-subtle);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -188,7 +188,7 @@
 .browser-annotation-attachment-card pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: var(--text-fixed-metadata);
+  font-size: var(--text-ui-xs);
 }
 
 .browser-annotation-attachment-card [data-message-attachment="image"] {

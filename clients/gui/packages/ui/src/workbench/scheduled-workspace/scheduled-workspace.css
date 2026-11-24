@@ -135,7 +135,7 @@
   padding: var(--spacing-inline) var(--spacing-inline) var(--spacing-inline) var(--spacing-panel);
   border: var(--border-width-default) solid var(--color-border-hairline);
   background: var(--color-surface-card);
-  box-shadow: var(--shadow-card-codex);
+  box-shadow: var(--shadow-subtle);
   max-width: calc(var(--spacing-inline) * 80);
   transition:
     border-color var(--motion-fast) var(--ease-standard),

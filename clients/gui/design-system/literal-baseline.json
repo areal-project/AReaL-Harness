@@ -3,7 +3,7 @@
   "total": {
     "color": 40,
     "radius": 3,
-    "typography": 3
+    "typography": 2
   },
   "files": {
     "renderer/src/AnnotationNoteEditor.css": {
@@ -33,9 +33,6 @@
     },
     "packages/ui/src/components/tabs/tabs.tsx": {
       "color": 1
-    },
-    "packages/ui/src/conversation/command-details/command-details.css": {
-      "typography": 1
     },
     "packages/ui/src/conversation/message-attachments/message-attachments.tsx": {
       "color": 2
@@ -342,13 +339,6 @@
       "occurrence": 1,
       "reason": "扫描器把焦点环宽度任意值归入颜色。3px 是现有焦点几何，不是颜色字面量。",
       "exitCondition": "校正审计的宽度识别时移除此记录。"
-    },
-    {
-      "file": "packages/ui/src/conversation/command-details/command-details.css",
-      "finding": "literal typography: font-size: calc(var(--code-font-size, var(--text-fixed-caption)) + 1px)",
-      "occurrence": 1,
-      "reason": "保留该具体内容或标题的局部字号关系。当前通用 text-ui/content 角色没有完全相同的固定值或相对关系。",
-      "exitCondition": "该组件在 D2 采用统一排版合同后复核，不能只为减少计数改变字号。"
     },
     {
       "file": "packages/ui/src/conversation/message-attachments/message-attachments.tsx",

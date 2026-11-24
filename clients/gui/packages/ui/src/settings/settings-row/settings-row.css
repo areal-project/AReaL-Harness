@@ -53,7 +53,7 @@
   border: var(--border-width-default) solid var(--color-border-hairline);
   background-color: var(--color-surface-card);
   overflow: hidden;
-  box-shadow: var(--shadow-card-codex);
+  box-shadow: var(--shadow-subtle);
 }
 
 .settings-group-content {

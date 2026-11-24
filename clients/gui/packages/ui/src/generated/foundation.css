@@ -42,6 +42,7 @@
   --radius-composer: var(--radius-2xl);
   --radius-panel: var(--radius-xl);
   --radius-dialog: var(--radius-2xl);
+  --shadow-subtle: 0 1px 2px rgb(0 0 0 / 6%), 0 0 0 0.5px var(--color-border-hairline);
   --shadow-menu: 0 0 0 0.5px var(--color-menu-border, var(--color-border)), 0 8px 16px -4px rgb(0 0 0 / 12%);
   --shadow-overlay: 0 4px 12px rgb(0 0 0 / 10%), 0 14px 40px rgb(0 0 0 / 8%);
   --shadow-dialog: 0 12px 32px rgb(0 0 0 / 20%);
@@ -87,7 +88,6 @@
   --text-ui-xs: max(11px, calc(var(--ui-font-size) - 3px));
   --text-ui-2xs: calc(var(--ui-font-size) - 5px);
   --tracking-wf-label: 0.09em;
-  --text-mobile-input-safe: 16px;
   --color-destructive: #e03131;
   --color-destructive-foreground: var(--color-foreground-inverse);
   --color-warning: #e07b00;
@@ -116,38 +116,9 @@
   --color-syntax-regexp: #001bcb;
   --color-syntax-decorator: #1a85d4;
   --color-syntax-error: #f44747;
-  --text-fixed-metadata: 10px;
-  --text-fixed-caption: 12px;
-  --text-fixed-label: 13px;
-  --text-fixed-body: 14px;
-  --text-fixed-control: 15px;
-  --text-fixed-emphasis: 16px;
-  --text-fixed-section-title: 20px;
-  --text-fixed-dialog-title: 22px;
-  --text-fixed-page-title: 28px;
-  --text-ui-fine: calc(var(--ui-font-size) - 3px);
-  --text-ui-section: calc(var(--ui-font-size) + 6px);
-  --text-ui-hero: calc(var(--ui-font-size) + 10px);
-  --text-ui-display: calc(var(--ui-font-size) + 12px);
   --line-height-code-example: 22px;
-  --shadow-inset-control: 0 1px 1px rgba(0, 0, 0, 0.04);
-  --shadow-raised-control: 0 1px 2px rgba(0, 0, 0, 0.06);
-  --shadow-tooltip: 0 5px 18px #00000014;
-  --shadow-large-overlay: 0 16px 64px #0005;
-  --shadow-menu-wide: 0 8px 28px #0003;
-  --shadow-dark-control: 0 8px 18px rgb(15 23 42 / 20%);
-  --shadow-menu-double-stroke: 0 0 0 .5px color-mix(in srgb, var(--color-foreground) 8.2%, transparent), 0 0 0 .5px color-mix(in srgb, var(--color-foreground) 8.2%, transparent), 0 8px 16px -4px #0000001f;
-  --shadow-floating-toolbar: 0 8px 24px #0002;
-  --shadow-elevated-chip: 0 1px 4px #0003, 0 0 0 1px #0000000d;
-  --shadow-leading-panel: -8px 0 16px -8px #0000002e;
-  --shadow-compact-overlay: 0 3px 12px #0003;
-  --text-compact-caption: 0.75rem;
-  --text-compact-caption--line-height: 1rem;
-  --text-compact-body: 0.875rem;
-  --text-compact-body--line-height: 1.25rem;
   --text-user-message-heading: 1.5em;
   --browser-file-status-max-height: 112px;
-  --browser-file-status-block-padding: 3px;
   --size-status-dot: 7px;
   --size-touch-target: 44px;
   --blur-header: 18px;
@@ -189,14 +160,12 @@
   --reading-width-expanded: 672px;
   --color-surface-fog: color-mix(in oklab, var(--color-foreground) 3%, transparent);
   --color-border-hairline: color-mix(in oklab, var(--color-foreground) 8%, transparent);
-  --shadow-popover-overlay: 0 0 0 0.5px var(--color-border-hairline), 0 10px 28px -6px rgb(0 0 0 / 14%);
   --corner-shape: round;
   --color-surface-under: #f9f9f9;
   --color-surface-card: #ffffff;
   --color-surface-composer: #ffffff;
   --color-surface-popover: #ffffff;
   --color-surface-docked-sidebar: color-mix(in oklab, var(--color-surface-under) 82%, transparent);
-  --shadow-card-codex: 0 0 0 0.5px var(--color-border-hairline), 0 4px 16px 0 rgb(0 0 0 / 5%);
 }
 .dark {
   --color-destructive: #ff5c5c;
@@ -220,13 +189,11 @@
   --color-syntax-decorator: #69b1ff;
   --color-surface-fog: color-mix(in oklab, var(--color-foreground) 5%, transparent);
   --color-border-hairline: color-mix(in oklab, var(--color-foreground) 11%, transparent);
-  --shadow-popover-overlay: 0 0 0 0.5px var(--color-border-hairline), 0 12px 32px -4px rgb(0 0 0 / 42%);
   --color-surface-under: #1f1f22;
   --color-surface-card: #212121;
   --color-surface-composer: #282828;
   --color-surface-popover: #303030;
   --color-surface-docked-sidebar: color-mix(in oklab, var(--color-surface-under) 85%, transparent);
-  --shadow-card-codex: 0 0 0 0.5px var(--color-border-hairline), 0 4px 16px 0 rgb(0 0 0 / 28%);
 }
 :root[data-reduced-motion="true"] { --motion-fast: 0ms; --motion-normal: 0ms; --motion-slow: 0ms; --motion-emphasis: 0ms; --motion-reveal: 0ms; --motion-cycle: 0ms; --motion-cycle-slow: 0ms; --motion-loop: 0; }
 @media (prefers-reduced-motion: reduce) { :root:not([data-reduced-motion="false"]) { --motion-fast: 0ms; --motion-normal: 0ms; --motion-slow: 0ms; --motion-emphasis: 0ms; --motion-reveal: 0ms; --motion-cycle: 0ms; --motion-cycle-slow: 0ms; --motion-loop: 0; } }

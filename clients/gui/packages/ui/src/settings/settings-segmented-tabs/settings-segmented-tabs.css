@@ -44,7 +44,7 @@
   background: var(--color-card);
   border-color: var(--color-border-hairline);
   color: var(--color-foreground);
-  box-shadow: var(--shadow-raised-control);
+  box-shadow: var(--shadow-subtle);
 }
 
 .settings-segmented-tabs [data-slot="tabs-trigger"]:hover:not([data-active]) {
@@ -60,5 +60,5 @@
 }
 
 .settings-segmented-tabs[data-scrollable="true"] [data-slot="tabs-trigger"] {
-  font-size: var(--text-ui-fine);
+  font-size: var(--text-ui-xs);
 }

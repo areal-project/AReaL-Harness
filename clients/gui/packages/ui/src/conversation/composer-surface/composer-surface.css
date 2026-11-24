@@ -9,7 +9,7 @@
   border: var(--border-width-default) solid var(--color-border-hairline);
   border-radius: var(--radius-composer);
   background: var(--color-surface-composer);
-  box-shadow: var(--shadow-card-codex);
+  box-shadow: var(--shadow-subtle);
   transition:
     box-shadow var(--motion-fast) var(--ease-standard),
     border-color var(--motion-fast) var(--ease-standard);
@@ -17,7 +17,7 @@
 .composer-surface:focus-within {
   border-color: var(--color-border-hover);
   box-shadow:
-    var(--shadow-card-codex),
+    var(--shadow-subtle),
     0 0 0 calc(var(--spacing-inline) * 3 / 8) var(--color-focus-ring-soft);
 }
 .composer-surface[data-dragging] {

@@ -17,7 +17,7 @@
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: var(--code-font-size, var(--text-fixed-caption));
+  font-size: var(--code-font-size, var(--text-ui-sm));
 }
 
 .tool-event-body.command-card {
@@ -111,7 +111,7 @@
 }
 .command-text pre {
   padding-right: calc(var(--spacing-inline) * 7 / 2);
-  font-size: calc(var(--code-font-size, var(--text-fixed-caption)) + 1px);
+  font-size: var(--code-font-size, var(--text-ui-caption));
   line-height: 1.5;
 }
 .command-copy {

@@ -67,6 +67,9 @@ export async function collectDesignHealth(root = gui) {
     .map(([group, value]) => ({ group, count: countLeafTokens(value) }))
     .filter((item) => item.count > 0);
   const tokenTotal = tokenGroups.reduce((sum, item) => sum + item.count, 0);
+  const foundationTokens =
+    countLeafTokens(tokensJson.foundation) + countLeafTokens(tokensJson.themes);
+  const paletteEngineTokens = countLeafTokens(tokensJson.palette);
 
   const uiSrcDir = resolve(root, "packages/ui/src");
   const uiMdFiles = (await readdir(uiSrcDir, { recursive: true }))
@@ -197,6 +200,8 @@ export async function collectDesignHealth(root = gui) {
     tokens: {
       lines: tokensRaw.trimEnd().split("\n").length,
       total: tokenTotal,
+      foundation: foundationTokens,
+      paletteEngine: paletteEngineTokens,
       groups: tokenGroups,
     },
     components: {
@@ -224,7 +229,7 @@ export function formatTerminalReport(report) {
   lines.push("========================================================");
   lines.push(`人看入口: ${report.humanEntries.join(" | ")}`);
   lines.push(
-    `Tokens  : ${report.tokens.total} 个（tokens.json ${report.tokens.lines} 行，${report.tokens.groups.length} 大类）`,
+    `Tokens  : 语义基础 ${report.tokens.foundation} 个 + 调色板引擎参数 ${report.tokens.paletteEngine} 个（合计 ${report.tokens.total}，tokens.json ${report.tokens.lines} 行）`,
   );
   lines.push(
     `组件库  : ${report.components.total} 个（verified ${report.components.verified} / stable ${report.components.stable} / experimental ${report.components.experimental}，生产豁免 ${report.components.experimentalAllowlist} 条）`,

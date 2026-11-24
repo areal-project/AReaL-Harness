@@ -72,7 +72,7 @@
   border: var(--border-width-default) solid var(--color-border-hairline);
   border-radius: var(--radius-compact);
   background: var(--color-card);
-  box-shadow: var(--shadow-inset-control);
+  box-shadow: var(--shadow-subtle);
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-sm);
   font-variant-numeric: tabular-nums;

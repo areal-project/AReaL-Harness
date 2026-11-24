@@ -7,7 +7,7 @@
   border: var(--border-width-default) solid var(--color-border-hairline);
   border-radius: var(--radius-panel);
   background: var(--color-surface-popover);
-  box-shadow: var(--shadow-popover-overlay);
+  box-shadow: var(--shadow-overlay);
   backdrop-filter: var(--material-overlay-filter);
 }
 

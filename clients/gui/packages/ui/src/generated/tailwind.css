@@ -21,6 +21,7 @@
   --radius-composer: var(--radius-2xl);
   --radius-panel: var(--radius-xl);
   --radius-dialog: var(--radius-2xl);
+  --shadow-subtle: 0 1px 2px rgb(0 0 0 / 6%), 0 0 0 0.5px var(--color-border-hairline);
   --shadow-menu: 0 0 0 0.5px var(--color-menu-border, var(--color-border)), 0 8px 16px -4px rgb(0 0 0 / 12%);
   --shadow-overlay: 0 4px 12px rgb(0 0 0 / 10%), 0 14px 40px rgb(0 0 0 / 8%);
   --shadow-dialog: 0 12px 32px rgb(0 0 0 / 20%);
@@ -38,7 +39,6 @@
   --text-ui-xs: max(11px, calc(var(--ui-font-size) - 3px));
   --text-ui-2xs: calc(var(--ui-font-size) - 5px);
   --tracking-wf-label: 0.09em;
-  --text-mobile-input-safe: 16px;
   --color-destructive: #e03131;
   --color-destructive-foreground: var(--color-foreground-inverse);
   --color-warning: #e07b00;
@@ -50,23 +50,6 @@
   --color-muted: var(--color-surface);
   --color-muted-foreground: var(--color-foreground-subtle);
   --color-success: #1e8a3e;
-  --text-fixed-metadata: 10px;
-  --text-fixed-caption: 12px;
-  --text-fixed-label: 13px;
-  --text-fixed-body: 14px;
-  --text-fixed-control: 15px;
-  --text-fixed-emphasis: 16px;
-  --text-fixed-section-title: 20px;
-  --text-fixed-dialog-title: 22px;
-  --text-fixed-page-title: 28px;
-  --text-ui-fine: calc(var(--ui-font-size) - 3px);
-  --text-ui-section: calc(var(--ui-font-size) + 6px);
-  --text-ui-hero: calc(var(--ui-font-size) + 10px);
-  --text-ui-display: calc(var(--ui-font-size) + 12px);
-  --text-compact-caption: 0.75rem;
-  --text-compact-caption--line-height: 1rem;
-  --text-compact-body: 0.875rem;
-  --text-compact-body--line-height: 1.25rem;
   --blur-header: 18px;
   --blur-popover: 24px;
   --radius-2xs: calc(2px * var(--corner-radius-scale));
@@ -87,13 +70,11 @@
   --reading-width-expanded: 672px;
   --color-surface-fog: color-mix(in oklab, var(--color-foreground) 3%, transparent);
   --color-border-hairline: color-mix(in oklab, var(--color-foreground) 8%, transparent);
-  --shadow-popover-overlay: 0 0 0 0.5px var(--color-border-hairline), 0 10px 28px -6px rgb(0 0 0 / 14%);
   --color-surface-under: #f9f9f9;
   --color-surface-card: #ffffff;
   --color-surface-composer: #ffffff;
   --color-surface-popover: #ffffff;
   --color-surface-docked-sidebar: color-mix(in oklab, var(--color-surface-under) 82%, transparent);
-  --shadow-card-codex: 0 0 0 0.5px var(--color-border-hairline), 0 4px 16px 0 rgb(0 0 0 / 5%);
 }
 @theme {
   --color-surface-elevated: color-mix(in oklab, #1a1c1f 4%, #ffffff);

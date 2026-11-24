@@ -71,7 +71,7 @@
   background: var(--color-surface);
   border: var(--border-width-default) solid var(--color-border);
   color: var(--color-foreground);
-  box-shadow: var(--shadow-inset-control);
+  box-shadow: var(--shadow-subtle);
 }
 .settings-card-empty {
   margin: 0;
@@ -90,7 +90,7 @@
   background: var(--color-card);
   color: var(--color-foreground);
   font:
-    430 var(--text-fixed-caption)/var(--line-height-code-example) ui-monospace,
+    430 var(--text-ui-sm)/var(--line-height-code-example) ui-monospace,
     SFMono-Regular,
     Menlo,
     Consolas,

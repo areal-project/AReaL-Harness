@@ -164,7 +164,7 @@
 }
 
 .task-create-welcome h2 {
-  font-size: var(--text-fixed-section-title);
+  font-size: var(--text-ui-xl);
   line-height: 28px;
   font-weight: 500;
 }

@@ -233,7 +233,7 @@ export function TerminalPane({
       )}
       {status && (status.runtime?.state !== "running" || status.partialOutput || status.error) && (
         <div
-          className="flex shrink-0 flex-wrap gap-x-3 gap-y-1 border-b border-border px-3 py-1 text-compact-caption"
+          className="flex shrink-0 flex-wrap gap-x-3 gap-y-1 border-b border-border px-3 py-1 text-ui-sm"
           aria-label="终端运行状态"
         >
           <span role="status">
