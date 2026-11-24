@@ -619,14 +619,21 @@ pub(super) async fn backend_command(
         "workbench-{}",
         areal_local_service::storage::digest(principal.as_bytes())
     );
-    let (revision, mut snapshot) = host.journal.native_snapshot(&scope)?;
     let unknown = json!({"commandId":command,"method":method,"admissionState":"accepted","submissionUnknown":true,"semanticDigest":digest});
-    // 未知操作只按摘要查询，永不重放；不持久化可能含供应商凭据的请求参数。
-    snapshot["pending"]
-        .as_array_mut()
-        .unwrap()
-        .push(json!({"requestId":command,"operationId":command,"method":method,"params":{},"result":unknown}));
-    host.journal.native_replace(&scope, revision, snapshot)?;
+    if let Some(mut original) =
+        host.journal
+            .native_admit_workbench(&scope, &command, method, unknown.clone())?
+    {
+        ensure!(original["semanticDigest"] == digest, "COMMAND_CONFLICT");
+        if let Some(code) = original["settledFailure"].as_str() {
+            return Err(anyhow::anyhow!("{code}"));
+        }
+        if let Some(error) = original.get("error") {
+            return Err(backend_rejection(&original, error));
+        }
+        original.as_object_mut().unwrap().remove("semanticDigest");
+        return Ok(original);
+    }
     let source = params["sourceId"]
         .as_str()
         .context("INVALID_PARAMS")?
@@ -727,16 +734,15 @@ pub(super) async fn backend_command(
         },
     };
     if receipt["submissionUnknown"] == false {
-        let (revision, mut snapshot) = host.journal.native_snapshot(&scope)?;
-        snapshot["pending"]
-            .as_array_mut()
-            .unwrap()
-            .retain(|row| row["requestId"] != command);
-        snapshot["outcomes"][&command] = receipt.clone();
-        host.journal.native_replace(&scope, revision, snapshot)?;
+        receipt = host
+            .journal
+            .native_settle_workbench(&scope, &command, method, &digest, receipt)?;
     }
     if let Some(error) = failure {
         return Err(error);
+    }
+    if let Some(code) = receipt["settledFailure"].as_str() {
+        return Err(anyhow::anyhow!("{code}"));
     }
     if let Some(error) = receipt.get("error") {
         return Err(backend_rejection(&receipt, error));

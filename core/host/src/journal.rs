@@ -77,8 +77,30 @@ pub(crate) const CAPACITY: usize = 4096;
 /// 超过软阈值时回收最旧的已结算回执，降到目标值为止。
 const RECLAIM_THRESHOLD: usize = 3072;
 const RECLAIM_TARGET: usize = 2048;
+/// 单条回执体积较大（如 library.command 内嵌完整项目库快照）时，仅按条数回收会让单文件
+/// 膨胀到十余 MB 并阻塞单线程 Host 主循环；超过字节软预算时同样回收已满保留期的最旧回执。
+const RECLAIM_BYTES_THRESHOLD: usize = 1024 * 1024;
+const RECLAIM_BYTES_TARGET: usize = 512 * 1024;
 /// 结算后至少保留一天，保证同一 commandId 的重试仍得到原回执而不是被当成新命令。
 const RECLAIM_MIN_AGE_SECS: u64 = storage::SETTLED_RECEIPT_RETENTION.as_secs();
+
+struct ByteCounter(usize);
+
+impl std::io::Write for ByteCounter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0 = self.0.saturating_add(buf.len());
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn outcome_entry_bytes(id: &str, value: &Value) -> usize {
+    let mut counter = ByteCounter(id.len().saturating_add(6));
+    let _ = serde_json::to_writer(&mut counter, value);
+    counter.0
+}
 
 pub(crate) fn has_capacity(snapshot: &Value) -> bool {
     snapshot["pending"].as_array().map_or(0, Vec::len)
@@ -117,7 +139,7 @@ fn drop_legacy_remote(snapshot: &mut Snapshot) {
         .retain(|_, outcome| !legacy_remote(outcome) || retained_forever(outcome));
 }
 
-/// 记录新结算回执的时间，并在超过软阈值时按结算时间从旧到新回收。
+/// 记录新结算回执的时间，并在超过条数或字节软阈值时按结算时间从旧到新回收。
 /// 仍被待决行引用、未满最短保留时间或长期授权类的回执不回收。
 fn reclaim(record: &mut Record, now: u64) {
     let outcomes = &mut record.snapshot.outcomes;
@@ -127,12 +149,19 @@ fn reclaim(record: &mut Record, now: u64) {
     }
     let pending = &record.snapshot.pending;
     let total = pending.len() + outcomes.len();
-    if total <= RECLAIM_THRESHOLD {
+    let entry_bytes: BTreeMap<String, usize> = outcomes
+        .iter()
+        .map(|(id, value)| (id.clone(), outcome_entry_bytes(id, value)))
+        .collect();
+    let total_bytes: usize = entry_bytes.values().copied().sum();
+    let count_exceeded = total > RECLAIM_THRESHOLD;
+    let bytes_exceeded = total_bytes > RECLAIM_BYTES_THRESHOLD;
+    if !count_exceeded && !bytes_exceeded {
         return;
     }
     let referenced: std::collections::BTreeSet<&str> =
         pending.iter().filter_map(submission_id).collect();
-    let mut candidates: Vec<(u64, String)> = record
+    let mut candidates: Vec<(u64, String, usize)> = record
         .settled_at
         .iter()
         .filter(|(id, at)| {
@@ -140,13 +169,22 @@ fn reclaim(record: &mut Record, now: u64) {
                 && !referenced.contains(id.as_str())
                 && !outcomes.get(*id).is_some_and(retained_forever)
         })
-        .map(|(id, at)| (*at, id.clone()))
+        .map(|(id, at)| (*at, id.clone(), entry_bytes.get(id).copied().unwrap_or(0)))
         .collect();
-    candidates.sort();
-    let excess = total - RECLAIM_TARGET;
-    for (_, id) in candidates.into_iter().take(excess) {
-        outcomes.remove(&id);
-        record.settled_at.remove(&id);
+    candidates.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+    let mut remaining_count = total;
+    let mut remaining_bytes = total_bytes;
+    for (_, id, bytes) in candidates {
+        let count_done = !count_exceeded || remaining_count <= RECLAIM_TARGET;
+        let bytes_done = !bytes_exceeded || remaining_bytes <= RECLAIM_BYTES_TARGET;
+        if count_done && bytes_done {
+            break;
+        }
+        if outcomes.remove(&id).is_some() {
+            record.settled_at.remove(&id);
+            remaining_count = remaining_count.saturating_sub(1);
+            remaining_bytes = remaining_bytes.saturating_sub(bytes);
+        }
     }
 }
 
@@ -156,17 +194,19 @@ thread_local! {
     pub(crate) static FAIL_RECORD_WRITES: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-fn write_record<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+fn write_record_with_stamp<T: Serialize>(path: &Path, value: &T) -> Result<Option<RecordStamp>> {
     #[cfg(test)]
     if FAIL_RECORD_WRITES.with(std::cell::Cell::get) {
         return Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied).into());
     }
-    storage::write(path, value)
+    let metadata = storage::write_returning_metadata(path, value)?;
+    Ok(metadata
+        .as_ref()
+        .and_then(|meta| record_stamp_metadata(meta).ok()))
 }
 
 type RecordStamp = [u64; 9];
-fn record_stamp(path: &Path) -> Result<RecordStamp> {
-    let metadata = std::fs::symlink_metadata(path)?;
+fn record_stamp_metadata(metadata: &std::fs::Metadata) -> Result<RecordStamp> {
     ensure!(
         metadata.is_file()
             && metadata.uid() == unsafe { libc::geteuid() }
@@ -185,12 +225,17 @@ fn record_stamp(path: &Path) -> Result<RecordStamp> {
         metadata.uid() as u64,
     ])
 }
+fn record_stamp(path: &Path) -> Result<RecordStamp> {
+    record_stamp_metadata(&std::fs::symlink_metadata(path)?)
+}
 
 pub(crate) struct Journal {
     root: PathBuf,
     epoch: String,
     reads: RefCell<BTreeMap<String, Vec<PathBuf>>>,
     records: RefCell<BTreeMap<String, (RecordStamp, Record)>>,
+    /// 只读诊断投影缓存（供 pending_read 复用）；不触发恢复或旧行清理，与 records 独立失效。
+    pending_cache: RefCell<BTreeMap<String, (RecordStamp, Vec<Value>)>>,
 }
 
 #[derive(Deserialize)]
@@ -230,6 +275,7 @@ impl Journal {
             epoch: String::new(),
             reads: RefCell::new(BTreeMap::new()),
             records: RefCell::new(BTreeMap::new()),
+            pending_cache: RefCell::new(BTreeMap::new()),
         };
         let Some(operation) = journal.prepared(id)? else {
             let directory = journal.root.join("records");
@@ -269,6 +315,7 @@ impl Journal {
             epoch: uuid::Uuid::new_v4().to_string(),
             reads: RefCell::new(BTreeMap::new()),
             records: RefCell::new(BTreeMap::new()),
+            pending_cache: RefCell::new(BTreeMap::new()),
         };
         for path in storage::json_records(&journal.root.join("records"), true)? {
             let record: Record = read_large(&path)?;
@@ -304,7 +351,7 @@ impl Journal {
             );
             return Ok(());
         }
-        self.store_record(
+        self.store_record_cold(
             &path,
             &Record {
                 project_id: project_id.into(),
@@ -349,26 +396,38 @@ impl Journal {
     }
     pub(crate) fn pending_read(&self, project_id: &str) -> Result<Vec<Value>> {
         let path = self.record_path(project_id)?;
-        match std::fs::symlink_metadata(&path) {
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            other => {
-                other?;
+        let metadata = match std::fs::symlink_metadata(&path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                self.pending_cache.borrow_mut().remove(project_id);
+                return Ok(Vec::new());
             }
+            other => other?,
+        };
+        let stamp = record_stamp_metadata(&metadata)?;
+        if let Some((cached_stamp, pending)) = self.pending_cache.borrow().get(project_id)
+            && *cached_stamp == stamp
+        {
+            return Ok(pending.clone());
         }
-        let record: Record = read_large(&path)?;
+        self.pending_cache.borrow_mut().remove(project_id);
+        let (opened_stamp, record): (RecordStamp, Record) = read_large_with_stamp(&path)?;
         ensure!(
             record.project_id == project_id,
             "journal project identity mismatch"
         );
         record.snapshot.validate()?;
-        Ok(record
+        let pending: Vec<Value> = record
             .snapshot
             .pending
             .into_iter()
             .filter(|entry| {
                 !submission_id(entry).is_some_and(|id| record.snapshot.outcomes.contains_key(id))
             })
-            .collect())
+            .collect();
+        self.pending_cache
+            .borrow_mut()
+            .insert(project_id.into(), (opened_stamp, pending.clone()));
+        Ok(pending)
     }
     pub(crate) fn native_replace(
         &self,
@@ -376,7 +435,7 @@ impl Journal {
         expected_revision: u64,
         snapshot: Value,
     ) -> Result<()> {
-        let mut record = self.load(project_id)?;
+        let (_, mut record) = self.take_record(project_id)?;
         ensure!(
             record.revision == expected_revision,
             error("revisionConflict", "journal revision changed")
@@ -389,7 +448,120 @@ impl Journal {
             .checked_add(1)
             .context("journal revision exhausted")?;
         reclaim(&mut record, now_secs());
-        self.store_record(&self.record_path(project_id)?, &record)
+        let path = self.record_path(project_id)?;
+        self.store_record_owned(&path, record)
+    }
+
+    /// Workbench 命令原地准入：直接操作缓存/落盘中的 `Record`，避免整库 `Value` 往返拷贝；
+    /// 若同一 `commandId` 已存在（已结算或已待决），原样返回既有回执交由调用方校验摘要。
+    pub(crate) fn native_admit_workbench(
+        &self,
+        project_id: &str,
+        command: &str,
+        method: &str,
+        unknown_result: Value,
+    ) -> Result<Option<Value>> {
+        self.ensure_empty(project_id)?;
+        let (stamp, mut record) = self.take_record(project_id)?;
+        if let Some(existing) = record.snapshot.outcomes.get(command).cloned().or_else(|| {
+            record
+                .snapshot
+                .pending
+                .iter()
+                .find(|row| row["requestId"] == command)
+                .map(|row| row["result"].clone())
+        }) {
+            if let Some(stamp) = stamp {
+                self.records
+                    .borrow_mut()
+                    .insert(project_id.into(), (stamp, record));
+            }
+            return Ok(Some(existing));
+        }
+        let now = now_secs();
+        reclaim(&mut record, now);
+        ensure!(
+            record.snapshot.pending.len() + record.snapshot.outcomes.len() < CAPACITY,
+            "CAPACITY_EXCEEDED"
+        );
+        // 未知操作只按摘要查询，永不重放；不持久化可能含供应商凭据的请求参数。
+        record.snapshot.pending.push(json!({
+            "requestId": command,
+            "operationId": command,
+            "method": method,
+            "params": {},
+            "result": unknown_result
+        }));
+        record.revision = record
+            .revision
+            .checked_add(1)
+            .context("journal revision exhausted")?;
+        let path = self.record_path(project_id)?;
+        self.store_record_owned(&path, record)?;
+        Ok(None)
+    }
+
+    /// Workbench 命令原地结算：在 `await` 后读取最新记录，仅结算匹配的待决行（校验方法与语义摘要），
+    /// 若已由同 ID 并发结算则校验一致性并返回原回执，不覆盖原结果。
+    pub(crate) fn native_settle_workbench(
+        &self,
+        project_id: &str,
+        command: &str,
+        method: &str,
+        digest: &str,
+        receipt: Value,
+    ) -> Result<Value> {
+        self.ensure_empty(project_id)?;
+        let (stamp, mut record) = self.take_record(project_id)?;
+        if let Some(previous) = record.snapshot.outcomes.get(command).cloned() {
+            ensure!(
+                previous["method"] == method && previous["semanticDigest"] == digest,
+                "COMMAND_CONFLICT"
+            );
+            if let Some(stamp) = stamp {
+                self.records
+                    .borrow_mut()
+                    .insert(project_id.into(), (stamp, record));
+            }
+            return Ok(previous);
+        }
+        let Some(original) = record
+            .snapshot
+            .pending
+            .iter()
+            .find(|row| row["requestId"] == command)
+        else {
+            if let Some(stamp) = stamp {
+                self.records
+                    .borrow_mut()
+                    .insert(project_id.into(), (stamp, record));
+            }
+            return Err(anyhow::anyhow!("SUBMISSION_UNKNOWN"));
+        };
+        if original["method"] != method || original["result"]["semanticDigest"] != digest {
+            if let Some(stamp) = stamp {
+                self.records
+                    .borrow_mut()
+                    .insert(project_id.into(), (stamp, record));
+            }
+            return Err(anyhow::anyhow!("COMMAND_CONFLICT"));
+        }
+        record
+            .snapshot
+            .pending
+            .retain(|row| row["requestId"] != command);
+        record
+            .snapshot
+            .outcomes
+            .insert(command.into(), receipt.clone());
+        record.revision = record
+            .revision
+            .checked_add(1)
+            .context("journal revision exhausted")?;
+        reclaim(&mut record, now_secs());
+        let path = self.record_path(project_id)?;
+        self.store_record_owned(&path, record)?;
+        Ok(receipt)
     }
 
     /// 准入与结算共用同一快照事务；调用方只负责授权与方法特有的权威前置条件。
@@ -423,41 +595,78 @@ impl Journal {
         outcome: Option<Value>,
     ) -> Result<Value> {
         let id = submission_id(entry).context("INVALID_PARAMS")?;
-        let (revision, mut snapshot) = self.native_snapshot(project)?;
-        if let Some(previous) = snapshot["outcomes"].get(id) {
-            return Ok(previous.clone());
+        self.ensure_empty(project)?;
+        let (stamp, mut record) = self.take_record(project)?;
+        if let Some(previous) = record.snapshot.outcomes.get(id).cloned() {
+            if let Some(stamp) = stamp {
+                self.records
+                    .borrow_mut()
+                    .insert(project.into(), (stamp, record));
+            }
+            return Ok(previous);
         }
-        let original = snapshot["pending"]
-            .as_array()
-            .unwrap()
+        let Some(original) = record
+            .snapshot
+            .pending
             .iter()
             .find(|row| submission_id(row) == Some(id))
-            .context("SUBMISSION_UNKNOWN")?;
-        ensure!(
-            original["method"] == entry["method"] && original["params"] == entry["params"],
-            "COMMAND_CONFLICT"
-        );
-        snapshot["pending"]
-            .as_array_mut()
-            .unwrap()
+        else {
+            if let Some(stamp) = stamp {
+                self.records
+                    .borrow_mut()
+                    .insert(project.into(), (stamp, record));
+            }
+            return Err(anyhow::anyhow!("SUBMISSION_UNKNOWN"));
+        };
+        if original["method"] != entry["method"] || original["params"] != entry["params"] {
+            if let Some(stamp) = stamp {
+                self.records
+                    .borrow_mut()
+                    .insert(project.into(), (stamp, record));
+            }
+            return Err(anyhow::anyhow!("COMMAND_CONFLICT"));
+        }
+        record
+            .snapshot
+            .pending
             .retain(|row| submission_id(row) != Some(id));
         if let Some(outcome) = &outcome {
-            snapshot["outcomes"][id] = outcome.clone();
+            record.snapshot.outcomes.insert(id.into(), outcome.clone());
         }
-        self.native_replace(project, revision, snapshot)?;
+        record.revision = record
+            .revision
+            .checked_add(1)
+            .context("journal revision exhausted")?;
+        reclaim(&mut record, now_secs());
+        let path = self.record_path(project)?;
+        self.store_record_owned(&path, record)?;
         Ok(outcome.unwrap_or(Value::Null))
     }
 
     pub(crate) fn native_dismiss(&self, project: &str, id: &str) -> Result<()> {
-        let (revision, mut snapshot) = self.native_snapshot(project)?;
-        if snapshot["outcomes"]
+        self.ensure_empty(project)?;
+        let (stamp, mut record) = self.take_record(project)?;
+        if record
+            .snapshot
+            .outcomes
             .get(id)
             .is_some_and(|outcome| outcome["remote"].is_object())
         {
+            if let Some(stamp) = stamp {
+                self.records
+                    .borrow_mut()
+                    .insert(project.into(), (stamp, record));
+            }
             return Ok(());
         }
-        snapshot["outcomes"].as_object_mut().unwrap().remove(id);
-        self.native_replace(project, revision, snapshot)
+        record.snapshot.outcomes.remove(id);
+        record.revision = record
+            .revision
+            .checked_add(1)
+            .context("journal revision exhausted")?;
+        reclaim(&mut record, now_secs());
+        let path = self.record_path(project)?;
+        self.store_record_owned(&path, record)
     }
 
     pub(crate) fn dispatch(
@@ -543,24 +752,31 @@ impl Journal {
     fn prepared(&self, id: &str) -> Result<Option<Prepared>> {
         storage::read_optional(&self.operation_path(id))
     }
-    fn store_record(&self, path: &Path, record: &Record) -> Result<()> {
-        // 落盘失败可能已原子替换文件，先失效；下一次读取必须重新核验并恢复提交证据。
+    /// 冷落盘：写入前失效两份缓存且写后不回填；用于初始化导入与带 `last_operation` 的两阶段提交，
+    /// 确保外部导入仍走首次时间戳归一化，且 `journal.commit` 后续独立回执文件写失败时下次读取必执行 `recover()`。
+    fn store_record_cold(&self, path: &Path, record: &Record) -> Result<()> {
         self.records.borrow_mut().remove(&record.project_id);
-        write_record(path, record)
+        self.pending_cache.borrow_mut().remove(&record.project_id);
+        let _ = write_record_with_stamp(path, record)?;
+        Ok(())
     }
-    fn load(&self, project_id: &str) -> Result<Record> {
-        self.with_record(project_id, Clone::clone)
-    }
-    fn with_record<T>(&self, project_id: &str, read: impl FnOnce(&Record) -> T) -> Result<T> {
-        let path = self.record_path(project_id)?;
-        let stamp = record_stamp(&path)?;
-        if let Some((cached_stamp, record)) = self.records.borrow().get(project_id)
-            && *cached_stamp == stamp
+    /// 受保护写穿落盘：I/O 前先失效缓存，写失败保持未缓存；仅在无 `last_operation` 且取得已落盘句柄印记时
+    /// 将所有权直接移回内存缓存，避免下一次读写重新解析整个文件。
+    fn store_record_owned(&self, path: &Path, record: Record) -> Result<()> {
+        self.records.borrow_mut().remove(&record.project_id);
+        self.pending_cache.borrow_mut().remove(&record.project_id);
+        let stamp = write_record_with_stamp(path, &record)?;
+        if record.last_operation.is_none()
+            && let Some(stamp) = stamp
         {
-            return Ok(read(record));
+            self.records
+                .borrow_mut()
+                .insert(record.project_id.clone(), (stamp, record));
         }
-        self.records.borrow_mut().remove(project_id);
-        let mut record: Record = read_large(&path)?;
+        Ok(())
+    }
+    fn load_from_disk(&self, project_id: &str, path: &Path) -> Result<(RecordStamp, Record)> {
+        let (opened_stamp, mut record): (RecordStamp, Record) = read_large_with_stamp(path)?;
         ensure!(
             record.project_id == project_id,
             "journal project identity mismatch"
@@ -574,10 +790,52 @@ impl Journal {
             }
         }
         reclaim(&mut record, now_secs());
+        Ok((opened_stamp, record))
+    }
+    fn take_record(&self, project_id: &str) -> Result<(Option<RecordStamp>, Record)> {
+        let path = self.record_path(project_id)?;
+        let stamp = record_stamp(&path)?;
+        let hit = self
+            .records
+            .borrow()
+            .get(project_id)
+            .is_some_and(|(cached_stamp, _)| *cached_stamp == stamp);
+        if hit {
+            let (cached_stamp, record) = self
+                .records
+                .borrow_mut()
+                .remove(project_id)
+                .expect("checked cached journal record");
+            return Ok((Some(cached_stamp), record));
+        }
+        self.records.borrow_mut().remove(project_id);
+        let (opened_stamp, record) = self.load_from_disk(project_id, &path)?;
+        Ok((Some(opened_stamp), record))
+    }
+    fn load(&self, project_id: &str) -> Result<Record> {
+        self.with_record(project_id, Clone::clone)
+    }
+    fn with_record<T>(&self, project_id: &str, read: impl FnOnce(&Record) -> T) -> Result<T> {
+        let path = self.record_path(project_id)?;
+        let stamp = record_stamp(&path)?;
+        {
+            let mut cache = self.records.borrow_mut();
+            if let Some((cached_stamp, record)) = cache.get_mut(project_id)
+                && *cached_stamp == stamp
+            {
+                // 已满缓存记录跨过 24 小时保留期后需先回收，避免持续误报容量耗尽。
+                if record.snapshot.pending.len() + record.snapshot.outcomes.len() >= CAPACITY {
+                    reclaim(record, now_secs());
+                }
+                return Ok(read(record));
+            }
+            cache.remove(project_id);
+        }
+        let (opened_stamp, record) = self.load_from_disk(project_id, &path)?;
         let result = read(&record);
         self.records
             .borrow_mut()
-            .insert(project_id.into(), (stamp, record));
+            .insert(project_id.into(), (opened_stamp, record));
         Ok(result)
     }
     fn recover(&self, record: &Record) -> Result<()> {
@@ -742,7 +1000,7 @@ impl Journal {
             ..record
         };
         reclaim(&mut next, now_secs());
-        self.store_record(&self.record_path(&operation.project_id)?, &next)?;
+        self.store_record_cold(&self.record_path(&operation.project_id)?, &next)?;
         storage::write(&self.operation_path(&operation.request_id), &operation)?;
         remove_transfer(&operation.write_path)?;
         Ok(operation.receipt)
@@ -891,26 +1149,27 @@ fn preserve_pending_identity(before: &Snapshot, after: &Snapshot) -> Result<()> 
     }
     Ok(())
 }
-fn open_read(path: &Path) -> Result<File> {
+fn open_read_with_stamp(path: &Path) -> Result<(File, RecordStamp)> {
     let file = OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
         .open(path)?;
-    let metadata = file.metadata()?;
-    ensure!(
-        metadata.is_file()
-            && metadata.uid() == unsafe { libc::geteuid() }
-            && metadata.permissions().mode() & 0o077 == 0,
-        "journal file must be private and owned by current UID"
-    );
-    Ok(file)
+    let stamp = record_stamp_metadata(&file.metadata()?)?;
+    Ok((file, stamp))
+}
+fn open_read(path: &Path) -> Result<File> {
+    Ok(open_read_with_stamp(path)?.0)
 }
 #[cfg(test)]
 thread_local! { static RECORD_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
-fn read_large<T: DeserializeOwned>(path: &Path) -> Result<T> {
+fn read_large_with_stamp<T: DeserializeOwned>(path: &Path) -> Result<(RecordStamp, T)> {
     #[cfg(test)]
     RECORD_READS.with(|count| count.set(count.get() + 1));
-    Ok(serde_json::from_reader(BufReader::new(open_read(path)?))?)
+    let (file, stamp) = open_read_with_stamp(path)?;
+    Ok((stamp, serde_json::from_reader(BufReader::new(file))?))
+}
+fn read_large<T: DeserializeOwned>(path: &Path) -> Result<T> {
+    Ok(read_large_with_stamp(path)?.1)
 }
 fn remove_transfer(path: &Path) -> Result<()> {
     match std::fs::remove_file(path) {
@@ -1481,4 +1740,290 @@ fn owned_journal_reads_do_not_reparse_accumulated_history() {
         before,
         "single-owner reads must not reopen and parse accumulated receipts"
     );
+}
+
+#[cfg(test)]
+#[test]
+fn byte_budget_reclaim_shrinks_oversized_journal_while_preserving_protected_receipts() {
+    let root = tempfile::tempdir().unwrap();
+    let journal = Journal::new(root.path()).unwrap();
+    let project = "workbench-oversized";
+    journal.native_snapshot(project).unwrap();
+    let path = journal.record_path(project).unwrap();
+
+    let now = now_secs();
+    let old = now.saturating_sub(RECLAIM_MIN_AGE_SECS + 120);
+    let recent = now.saturating_sub(60);
+    let payload = "x".repeat(6500);
+    let mut outcomes_map = BTreeMap::new();
+    let mut settled_at = BTreeMap::new();
+    // 260 条超期大回执（~1.7 MiB），远低于条数阈值 3072，但超过 1 MiB 字节软上限。
+    for index in 0..260 {
+        let id = format!("old-{index:04}");
+        outcomes_map.insert(
+            id.clone(),
+            json!({"method":"library.command","receipt":{"blob":payload}}),
+        );
+        settled_at.insert(id, old + index as u64);
+    }
+    // 受保护的三类回执：长期授权 goalCreate、被 pending 引用的旧回执、以及 24h 内的新回执。
+    outcomes_map.insert(
+        "goal-old".into(),
+        json!({"remote":{"method":"session.control","target":{"operation":"goalCreate"}},"blob":payload}),
+    );
+    settled_at.insert("goal-old".into(), old);
+    outcomes_map.insert(
+        "referenced-old".into(),
+        json!({"method":"library.command","receipt":{"blob":payload}}),
+    );
+    settled_at.insert("referenced-old".into(), old);
+    for index in 0..10 {
+        let id = format!("recent-{index:02}");
+        outcomes_map.insert(
+            id.clone(),
+            json!({"method":"library.command","receipt":{"blob":payload}}),
+        );
+        settled_at.insert(id, recent);
+    }
+    let mut pending = vec![json!({
+        "requestId":"referenced-old","operationId":"referenced-old",
+        "method":"library.command","params":{}
+    })];
+    for index in 0..13 {
+        let id = format!("pending-provider-{index:02}");
+        pending.push(json!({
+            "requestId":id,"operationId":id,"method":"providers.command","params":{},
+            "result":{"commandId":id,"method":"providers.command","admissionState":"accepted","submissionUnknown":true,"semanticDigest":"prov"}
+        }));
+    }
+    let seeded = Record {
+        project_id: project.into(),
+        revision: 10,
+        initial_digest: String::new(),
+        snapshot: Snapshot {
+            version: 1,
+            pending,
+            outcomes: outcomes_map,
+        },
+        last_operation: None,
+        settled_at,
+    };
+    storage::write(&path, &seeded).unwrap();
+    let before_len = std::fs::metadata(&path).unwrap().len();
+    assert!(before_len > RECLAIM_BYTES_THRESHOLD as u64);
+
+    // 首次正常 Workbench 写入会触发按字节回收并写穿回填缓存，后续读/结算均不再重读磁盘。
+    let unknown = json!({"commandId":"cmd-1","method":"library.command","admissionState":"accepted","submissionUnknown":true,"semanticDigest":"d1"});
+    assert!(
+        journal
+            .native_admit_workbench(project, "cmd-1", "library.command", unknown.clone())
+            .unwrap()
+            .is_none()
+    );
+    let after_admit_len = std::fs::metadata(&path).unwrap().len();
+    assert!(
+        after_admit_len < RECLAIM_BYTES_THRESHOLD as u64,
+        "oversized expired journal should shrink on durable mutation, got {after_admit_len}"
+    );
+
+    let reads_after_admit = RECORD_READS.with(std::cell::Cell::get);
+    // 同一 commandId 并发重复到达，直接命中缓存里的待决回执，且零磁盘重读。
+    assert_eq!(
+        journal
+            .native_admit_workbench(project, "cmd-1", "library.command", unknown)
+            .unwrap(),
+        Some(
+            json!({"commandId":"cmd-1","method":"library.command","admissionState":"accepted","submissionUnknown":true,"semanticDigest":"d1"})
+        )
+    );
+    // 结算时摘要不匹配被拒绝；匹配摘要正常结算且不触发额外磁盘解析。
+    let final_receipt = json!({"commandId":"cmd-1","method":"library.command","admissionState":"accepted","submissionUnknown":false,"semanticDigest":"d1","receipt":{"ok":true}});
+    assert!(
+        journal
+            .native_settle_workbench(
+                project,
+                "cmd-1",
+                "library.command",
+                "wrong-digest",
+                final_receipt.clone()
+            )
+            .is_err()
+    );
+    assert_eq!(
+        journal
+            .native_settle_workbench(
+                project,
+                "cmd-1",
+                "library.command",
+                "d1",
+                final_receipt.clone()
+            )
+            .unwrap(),
+        final_receipt
+    );
+    // 重复结算返回原回执且不覆盖。
+    assert_eq!(
+        journal
+            .native_settle_workbench(
+                project,
+                "cmd-1",
+                "library.command",
+                "d1",
+                json!({"commandId":"cmd-1","method":"library.command","semanticDigest":"d1","receipt":{"ok":false}})
+            )
+            .unwrap(),
+        final_receipt
+    );
+    assert_eq!(
+        journal.native_receipt(project, "cmd-1").unwrap(),
+        Some(final_receipt)
+    );
+    assert_eq!(
+        RECORD_READS.with(std::cell::Cell::get),
+        reads_after_admit,
+        "write-through native cache should avoid reparsing across admit/settle/receipt"
+    );
+
+    // 校验落盘结果：受保护回执全部保留，最旧超期回执被回收，settled_at 与 outcomes 同步。
+    let stored: Record = read_large(&path).unwrap();
+    assert!(stored.snapshot.outcomes.contains_key("goal-old"));
+    assert!(stored.snapshot.outcomes.contains_key("referenced-old"));
+    assert!(stored.snapshot.outcomes.contains_key("cmd-1"));
+    assert!(
+        (0..10).all(|i| stored
+            .snapshot
+            .outcomes
+            .contains_key(&format!("recent-{i:02}"))),
+        "recent receipts within 24h must never be evicted"
+    );
+    assert!(!stored.snapshot.outcomes.contains_key("old-0000"));
+    assert_eq!(stored.settled_at.len(), stored.snapshot.outcomes.len());
+
+    // 若 24h 内的新回执本身就超过字节目标，一条也不得回收。
+    let mut all_recent = Record {
+        project_id: "recent-heavy".into(),
+        revision: 0,
+        initial_digest: String::new(),
+        snapshot: Snapshot {
+            version: 1,
+            pending: vec![],
+            outcomes: (0..180)
+                .map(|i| (format!("fresh-{i:03}"), json!({"blob":payload})))
+                .collect(),
+        },
+        last_operation: None,
+        settled_at: (0..180)
+            .map(|i| (format!("fresh-{i:03}"), recent))
+            .collect(),
+    };
+    reclaim(&mut all_recent, now);
+    assert_eq!(all_recent.snapshot.outcomes.len(), 180);
+}
+
+#[cfg(test)]
+#[test]
+fn pending_read_caches_read_only_and_write_failures_or_commit_last_op_stay_recoverable() {
+    let root = tempfile::tempdir().unwrap();
+    let journal = Journal::new(root.path()).unwrap();
+
+    // 缺失记录返回空。
+    assert!(journal.pending_read("missing").unwrap().is_empty());
+
+    // 构造含旧版远程 pending 行的记录，确认 pending_read 既走缓存又不会静默丢弃旧行。
+    let project = "diag-project";
+    let path = journal.record_path(project).unwrap();
+    let legacy_row = json!({
+        "method":"areal/turn/start",
+        "params":{"requestId":"legacy-1"},
+        "remote":{"method":"session.send","commandId":"legacy-1"}
+    });
+    let seeded = Record {
+        project_id: project.into(),
+        revision: 1,
+        initial_digest: String::new(),
+        snapshot: Snapshot {
+            version: 1,
+            pending: vec![legacy_row.clone()],
+            outcomes: BTreeMap::new(),
+        },
+        last_operation: None,
+        settled_at: BTreeMap::new(),
+    };
+    storage::write(&path, &seeded).unwrap();
+    let reads_before = RECORD_READS.with(std::cell::Cell::get);
+    assert_eq!(
+        journal.pending_read(project).unwrap(),
+        vec![legacy_row.clone()]
+    );
+    assert_eq!(RECORD_READS.with(std::cell::Cell::get), reads_before + 1);
+    assert_eq!(journal.pending_read(project).unwrap(), vec![legacy_row]);
+    assert_eq!(
+        RECORD_READS.with(std::cell::Cell::get),
+        reads_before + 1,
+        "warm pending_read must hit read-only cache without reparsing"
+    );
+
+    // 磁盘被外部损坏时，pending_read 必须报错而不是返回缓存或空。
+    std::fs::write(&path, b"{corrupt").unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert!(journal.pending_read(project).is_err());
+
+    // 写前注入 FAIL_RECORD_WRITES：不污染缓存、不改磁盘，恢复后读取仍准确。
+    let wb = "workbench-fault";
+    let unknown = json!({"commandId":"c1","method":"library.command","admissionState":"accepted","submissionUnknown":true,"semanticDigest":"d1"});
+    journal
+        .native_admit_workbench(wb, "c1", "library.command", unknown.clone())
+        .unwrap();
+    FAIL_RECORD_WRITES.with(|flag| flag.set(true));
+    let failed = journal.native_admit_workbench(
+        wb,
+        "c2",
+        "library.command",
+        json!({"commandId":"c2","method":"library.command","admissionState":"accepted","submissionUnknown":true,"semanticDigest":"d2"}),
+    );
+    FAIL_RECORD_WRITES.with(|flag| flag.set(false));
+    assert!(failed.is_err());
+    assert!(journal.native_receipt(wb, "c2").unwrap().is_none());
+    assert_eq!(journal.native_receipt(wb, "c1").unwrap(), Some(unknown));
+
+    // 两阶段 journal.commit 写主记录后若独立回执文件丢失，不能因写穿缓存跳过 recover()。
+    let two_phase = "two-phase";
+    journal
+        .initialize(two_phase, json!({"version":1,"pending":[],"outcomes":{}}))
+        .unwrap();
+    let next = json!({"version":1,"pending":[],"outcomes":{"done":{"accepted":true}}});
+    let bytes = serde_json::to_vec(&next).unwrap();
+    let req_id = uuid::Uuid::new_v4().to_string();
+    let prepared = journal
+        .dispatch(
+            "journal.prepare",
+            json!({
+                "requestId":req_id,"expectedGeneration":"g","projectId":two_phase,
+                "expectedRevision":0,"sha256":storage::digest(&bytes),"byteLength":bytes.len()
+            }),
+            "conn",
+        )
+        .unwrap();
+    std::fs::write(prepared["writePath"].as_str().unwrap(), &bytes).unwrap();
+    let committed = journal
+        .dispatch(
+            "journal.commit",
+            json!({"requestId":req_id,"expectedGeneration":"g","slotId":prepared["slotId"]}),
+            "conn",
+        )
+        .unwrap();
+    assert_eq!(committed["state"], "completed");
+    // 模拟主记录落盘后独立回执仍停留在 prepared，验证重试 commit 不会误报 revisionConflict。
+    let op_path = journal.operation_path(&req_id);
+    let mut op: Prepared = storage::read(&op_path).unwrap();
+    op.receipt = prepared.clone();
+    storage::write(&op_path, &op).unwrap();
+    let retried = journal
+        .dispatch(
+            "journal.commit",
+            json!({"requestId":req_id,"expectedGeneration":"g","slotId":prepared["slotId"]}),
+            "conn",
+        )
+        .unwrap();
+    assert_eq!(retried, committed);
 }
