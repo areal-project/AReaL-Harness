@@ -1932,10 +1932,10 @@ fn pending_read_caches_read_only_and_write_failures_or_commit_last_op_stay_recov
     // 构造含旧版远程 pending 行的记录，确认 pending_read 既走缓存又不会静默丢弃旧行。
     let project = "diag-project";
     let path = journal.record_path(project).unwrap();
-    let legacy_row = json!({
+    let prior_row = json!({
         "method":"areal/turn/start",
-        "params":{"requestId":"legacy-1"},
-        "remote":{"method":"session.send","commandId":"legacy-1"}
+        "params":{"requestId":"prior-1"},
+        "remote":{"method":"session.send","commandId":"prior-1"}
     });
     let seeded = Record {
         project_id: project.into(),
@@ -1943,7 +1943,7 @@ fn pending_read_caches_read_only_and_write_failures_or_commit_last_op_stay_recov
         initial_digest: String::new(),
         snapshot: Snapshot {
             version: 1,
-            pending: vec![legacy_row.clone()],
+            pending: vec![prior_row.clone()],
             outcomes: BTreeMap::new(),
         },
         last_operation: None,
@@ -1953,10 +1953,10 @@ fn pending_read_caches_read_only_and_write_failures_or_commit_last_op_stay_recov
     let reads_before = RECORD_READS.with(std::cell::Cell::get);
     assert_eq!(
         journal.pending_read(project).unwrap(),
-        vec![legacy_row.clone()]
+        vec![prior_row.clone()]
     );
     assert_eq!(RECORD_READS.with(std::cell::Cell::get), reads_before + 1);
-    assert_eq!(journal.pending_read(project).unwrap(), vec![legacy_row]);
+    assert_eq!(journal.pending_read(project).unwrap(), vec![prior_row]);
     assert_eq!(
         RECORD_READS.with(std::cell::Cell::get),
         reads_before + 1,

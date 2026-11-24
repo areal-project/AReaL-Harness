@@ -655,7 +655,7 @@ fn read_sealed(home: &Path, service: &str, entry: &str) -> Result<Option<Value>>
         // 迁移：旧版把每个凭据直接存成一条 keychain 条目。读到就搬到加密文件并删除旧条目，
         // 之后不再依赖绑定二进制路径的 ACL。旧条目读不出（含授权失败）时保持原状，
         // 交由上层呈现待恢复，不在这里静默丢弃。
-        // 过渡：到 0.1.22 删；升级窗口内校验密文读回后才删除旧 Keychain 项。
+        // 过渡：到 0.2.0 删；0.1.23 升级窗口内校验密文读回后才删除旧 Keychain 项。
         return match legacy_secret(home, entry) {
             Ok(Some(bytes)) => {
                 let value: Value = serde_json::from_slice(&bytes)
@@ -665,7 +665,7 @@ fn read_sealed(home: &Path, service: &str, entry: &str) -> Result<Option<Value>>
                     && read_sealed_file(home, service, entry)? == Some(value.clone())
                 {
                     let _ = security_framework::passwords::delete_generic_password(
-                        // 过渡：到 0.1.22 删；升级窗口内校验密文读回后才删除旧 Keychain 项。
+                        // 过渡：到 0.2.0 删；0.1.23 升级窗口内校验密文读回后才删除旧 Keychain 项。
                         &legacy_service(home),
                         entry,
                     );
@@ -692,7 +692,7 @@ fn read_sealed_file(home: &Path, service: &str, entry: &str) -> Result<Option<Va
 }
 
 /// 旧版条目按「Home + 每凭据一条」存放，只为迁移读取。
-// 过渡：到 0.1.22 删；升级窗口内校验密文读回后才删除旧 Keychain 项。
+// 过渡：到 0.2.0 删；0.1.23 升级窗口内校验密文读回后才删除旧 Keychain 项。
 fn legacy_service(home: &Path) -> String {
     format!(
         "org.areal.host.v1.{}",
@@ -700,7 +700,7 @@ fn legacy_service(home: &Path) -> String {
     )
 }
 
-// 过渡：到 0.1.22 删；升级窗口内校验密文读回后才删除旧 Keychain 项。
+// 过渡：到 0.2.0 删；0.1.23 升级窗口内校验密文读回后才删除旧 Keychain 项。
 fn legacy_secret(home: &Path, entry: &str) -> Result<Option<Vec<u8>>> {
     match security_framework::passwords::get_generic_password(&legacy_service(home), entry) {
         Ok(bytes) => Ok(Some(bytes)),
@@ -711,7 +711,7 @@ fn legacy_secret(home: &Path, entry: &str) -> Result<Option<Vec<u8>>> {
         )),
         Err(cause) => Err(error(
             "storageLocked",
-            // 过渡：到 0.1.22 删；升级窗口内校验密文读回后才删除旧 Keychain 项。
+            // 过渡：到 0.2.0 删；0.1.23 升级窗口内校验密文读回后才删除旧 Keychain 项。
             format!("Keychain legacy read failed ({})", cause.code()),
         )),
     }

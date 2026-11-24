@@ -883,11 +883,13 @@ mod tests {
         let source = crate::migration::Source {
             profile: root.join("profile"),
             core_home: root.join("old-core"),
+            // 过渡：到 0.2.0 删；旧版服务目录一次性导入测试。
             legacy_service_home: root.join("old-services"),
         };
         for directory in [
             &source.profile,
             &source.core_home,
+            // 过渡：到 0.2.0 删；旧版服务目录一次性导入测试。
             &source.legacy_service_home,
         ] {
             storage::private_dir(directory).unwrap();
@@ -908,8 +910,10 @@ mod tests {
         std::fs::remove_dir(&workspace).unwrap();
         // 旧服务已完成清理；新 Host 尚未启动该项目，不能伪造新服务身份。
         let service_id = storage::digest(data.as_os_str().as_encoded_bytes())[..24].to_owned();
-        let legacy_directory = storage::registry(&source.legacy_service_home, &service_id).unwrap();
-        storage::private_dir(&legacy_directory).unwrap();
+        // 过渡：到 0.2.0 删；旧版服务目录一次性导入测试。
+        let prior_service_dir =
+            storage::registry(&source.legacy_service_home, &service_id).unwrap();
+        storage::private_dir(&prior_service_dir).unwrap();
         let service: areal_protocol::service::Service = serde_json::from_value(json!({
             "protocolVersion": 1,
             "serviceId": service_id,
@@ -919,16 +923,16 @@ mod tests {
             "configFingerprint": "fixture",
             "endpoint": "http://127.0.0.1:1",
             "webUrl": "http://127.0.0.1:1",
-            "authFile": legacy_directory.join("auth.json"),
-            "logFile": legacy_directory.join("host.log"),
+            "authFile": prior_service_dir.join("auth.json"),
+            "logFile": prior_service_dir.join("host.log"),
             "hostPid": 1,
             "corePid": 1,
             "state": "stopped"
         }))
         .unwrap();
-        storage::write(&legacy_directory.join("service.json"), &service).unwrap();
+        storage::write(&prior_service_dir.join("service.json"), &service).unwrap();
         storage::write(
-            &legacy_directory.join("cleanup.json"),
+            &prior_service_dir.join("cleanup.json"),
             &storage::CleanupReceipt {
                 version: 1,
                 identity: service.identity.clone(),

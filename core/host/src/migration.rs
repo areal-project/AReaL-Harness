@@ -75,6 +75,7 @@ pub(crate) struct Alias {
 }
 impl Alias {
     fn submission_file(&self, role: &str) -> String {
+        // 过渡：到 0.2.0 删；保留旧项目别名提交文件映射直至 0.1.23 导入窗口完成。
         format!("{}-{role}.json", self.legacy_project_id)
     }
 }

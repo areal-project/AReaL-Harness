@@ -64,7 +64,7 @@ export function refreshModelCatalogs(
   }
   const flights = owner;
   for (const project of projects) {
-    // 过渡：到 0.1.22 删；一次停机导入发布项目后移除隔离状态。
+    // 过渡：到 0.2.0 删；0.1.23 首次公开发布完成一次停机导入后移除隔离状态。
     if (project.state === "legacyPending") continue;
     const scope = JSON.stringify([connection.identity.connectionId, project.serviceGeneration]);
     const identity = `${scope}#${stale.epoch}#${String(project.modelCatalogRevision ?? "")}#${providerRevision ?? ""}`;

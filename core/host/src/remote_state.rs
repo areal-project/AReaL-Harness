@@ -1767,40 +1767,37 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn legacy_combined_vault_blob_upgrades_cleanly_without_extra_vault_write() {
+    async fn combined_vault_blob_upgrades_cleanly_without_extra_vault_write() {
         use std::sync::atomic::{AtomicUsize, Ordering};
         let root = tempfile::tempdir().unwrap();
         let home = root.path();
         storage::private_dir(&home.join("host")).unwrap();
         let mut migration = Migration::new(home).unwrap();
         migration.vault = crate::vault::Vault::isolated_files(home);
-        let legacy_entry = uuid::Uuid::new_v4().to_string();
-        let legacy_config = json!({
+        let prior_entry = uuid::Uuid::new_v4().to_string();
+        let prior_config = json!({
             "schemaVersion": 2,
-            "identity": "legacy-noise-key",
+            "identity": "prior-noise-key",
             "enabled": false,
             "directEnabled": false,
             "relay": "http://192.168.1.2:47820",
             "room": "d".repeat(64),
-            "capability": "legacy-cap",
+            "capability": "prior-cap",
             "relayProtocol": "areal.remote.v2",
             "relayLocal": { "enabled": false, "origin": "http://192.168.1.2:47820", "port": 47820 },
             "relayProfiles": [
-                { "origin": "http://192.168.1.2:47820", "kind": "local", "room": "d".repeat(64), "capability": "legacy-cap" }
+                { "origin": "http://192.168.1.2:47820", "kind": "local", "room": "d".repeat(64), "capability": "prior-cap" }
             ],
             "deviceGrants": []
         });
-        migration
-            .vault
-            .write(&legacy_entry, &legacy_config)
-            .unwrap();
+        migration.vault.write(&prior_entry, &prior_config).unwrap();
         // 模拟旧版无 settings 字段的 remote-state.json。
         storage::write(
             &home.join("host/remote-state.json"),
             &State {
                 source_id: "source".into(),
                 revision: 5,
-                entry_id: legacy_entry.clone(),
+                entry_id: prior_entry.clone(),
                 secrets_format: None,
                 settings: None,
                 allowed_projects: Vec::new(),
@@ -1817,10 +1814,10 @@ mod tests {
 
         let remote = RemoteState::new(home);
         let loaded = remote.snapshot_async(&migration).await.unwrap();
-        assert_eq!(loaded["config"], legacy_config);
+        assert_eq!(loaded["config"], prior_config);
 
         // 升级后首次开启内网连接（仅改非敏感开关与 LAN IP）：零次 vault.write！
-        let mut next = legacy_config.clone();
+        let mut next = prior_config.clone();
         next["enabled"] = json!(true);
         next["relayLocal"]["enabled"] = json!(true);
         next["relay"] = json!("http://192.168.1.99:47820");
@@ -1844,7 +1841,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(receipt["revision"], 6);
-        assert_eq!(receipt["entryId"], legacy_entry);
+        assert_eq!(receipt["entryId"], prior_entry);
         assert_eq!(vault_writes.load(Ordering::SeqCst), 0);
 
         // 重启后再冷读：即使旧 vault 密文里还写着 enabled: false，合并结果必须以新 settings 为准！
@@ -1988,34 +1985,31 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn legacy_config_containing_format_version_2_is_not_misread_as_secrets_envelope() {
+    async fn prior_config_containing_format_version_2_is_not_misread_as_secrets_envelope() {
         let root = tempfile::tempdir().unwrap();
         let home = root.path();
         storage::private_dir(&home.join("host")).unwrap();
         let mut migration = Migration::new(home).unwrap();
         migration.vault = crate::vault::Vault::isolated_files(home);
-        let legacy_entry = uuid::Uuid::new_v4().to_string();
-        let legacy_config = json!({
+        let prior_entry = uuid::Uuid::new_v4().to_string();
+        let prior_config = json!({
             "formatVersion": 2,
-            "identity": "legacy-v2-field-noise",
+            "identity": "prior-v2-field-noise",
             "enabled": false,
             "room": "f".repeat(64),
-            "capability": "legacy-v2-field-cap",
+            "capability": "prior-v2-field-cap",
             "relayProfiles": [
-                { "origin": "http://192.168.1.5:47820", "kind": "local", "room": "f".repeat(64), "capability": "legacy-v2-field-cap" }
+                { "origin": "http://192.168.1.5:47820", "kind": "local", "room": "f".repeat(64), "capability": "prior-v2-field-cap" }
             ],
             "deviceGrants": []
         });
-        migration
-            .vault
-            .write(&legacy_entry, &legacy_config)
-            .unwrap();
+        migration.vault.write(&prior_entry, &prior_config).unwrap();
         storage::write(
             &home.join("host/remote-state.json"),
             &State {
                 source_id: "source".into(),
                 revision: 2,
-                entry_id: legacy_entry.clone(),
+                entry_id: prior_entry.clone(),
                 secrets_format: None,
                 settings: None,
                 allowed_projects: Vec::new(),
@@ -2026,10 +2020,10 @@ mod tests {
 
         let remote = RemoteState::new(home);
         let loaded = remote.snapshot_async(&migration).await.unwrap();
-        assert_eq!(loaded["config"], legacy_config);
+        assert_eq!(loaded["config"], prior_config);
 
         // 首次非敏感写复用旧 entry_id（secrets_format 保持 None），冷重启后仍能无损还原凭据。
-        let mut toggled = legacy_config.clone();
+        let mut toggled = prior_config.clone();
         toggled["enabled"] = json!(true);
         remote
             .dispatch_async(

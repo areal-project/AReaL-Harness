@@ -1305,6 +1305,7 @@ mod tests {
             "library.json",
             json!({
                 "projects": {
+                    // 过渡：到 0.2.0 删；旧项目别名离线缓存测试。
                     "legacy": {
                         "navigationSummaries": [
                             {"id":"stale","desktop":{"archived":false},"activity":"working"}
