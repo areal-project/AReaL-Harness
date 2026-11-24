@@ -288,7 +288,7 @@ async function transportProxy(metadata, events) {
   };
 }
 async function cleanup(run) {
-  assert.ok([await realpath(tmpdir()), "/private/tmp"].includes(dirname(run.state)));
+  assert.equal(dirname(run.state), await realpath(tmpdir()));
   assert.match(run.state, /\/arec-[^/]+$/);
   assert.equal(await readFile(join(run.state, ".owner"), "utf8"), run.owner);
   const core = binary || (await resolveAcceptanceBinary(root, process.env.AREAL_CORE_BIN));

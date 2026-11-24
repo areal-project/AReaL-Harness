@@ -108,4 +108,44 @@ export const conversationMessages = {
     "zh-CN": "你已暂停队列。",
     en: "You paused the queue.",
   },
+  "chat.questions.submittedSummary": {
+    "zh-CN": "已提交 {count} 项回答，等待继续执行",
+    en: "Submitted {count} answers, waiting to continue",
+  },
+  "chat.composer.pendingRequests": {
+    "zh-CN": "待处理请求",
+    en: "Pending requests",
+  },
+  "chat.draft.promptPrefix": {
+    "zh-CN": "你想让我们在",
+    en: "What should we build in",
+  },
+  "chat.draft.promptSuffix": {
+    "zh-CN": "中构建什么？",
+    en: "?",
+  },
+  "chat.draft.promptGeneric": {
+    "zh-CN": "你想构建什么？",
+    en: "What would you like to build?",
+  },
+  "chat.summary.currentConversation": {
+    "zh-CN": "当前会话",
+    en: "Current conversation",
+  },
+  "chat.summary.pendingDecisions": {
+    "zh-CN": "待处理确认",
+    en: "Pending confirmations",
+  },
+  "chat.summary.changedFiles": {
+    "zh-CN": "本会话变更文件",
+    en: "Changed files",
+  },
+  "chat.summary.turns": {
+    "zh-CN": "对话轮次",
+    en: "Conversation turns",
+  },
+  "chat.summary.showPinned": {
+    "zh-CN": "显示置顶摘要 · {summary}",
+    en: "Show pinned summary · {summary}",
+  },
 } as const;

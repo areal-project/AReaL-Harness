@@ -529,7 +529,7 @@ export function ProcessesPane({
               size="compact"
               icon={<Terminal size={18} />}
               title="此任务暂无受管进程"
-              description="运行中的后台命令会显示在这里，方便查看输出或及时停止。"
+              description={t("common.processes.emptyDescription")}
               action={
                 <Button
                   size="sm"
@@ -537,7 +537,7 @@ export function ProcessesPane({
                   disabled={disabled}
                   onClick={() => setCreateOpen(true)}
                 >
-                  新建命令
+                  {t("common.processes.newCommand")}
                 </Button>
               }
             />
@@ -752,11 +752,15 @@ export function ProcessesPane({
               }}
             >
               <SelectTrigger size="sm" aria-label="保留范围">
-                <SelectValue>{lifetime === "thread" ? "随会话保留" : "随本轮执行"}</SelectValue>
+                <SelectValue>
+                  {lifetime === "thread"
+                    ? t("common.processes.lifetimeThread")
+                    : t("common.processes.lifetimeTurn")}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="turn">随本轮执行</SelectItem>
-                <SelectItem value="thread">随会话保留</SelectItem>
+                <SelectItem value="turn">{t("common.processes.lifetimeTurn")}</SelectItem>
+                <SelectItem value="thread">{t("common.processes.lifetimeThread")}</SelectItem>
               </SelectContent>
             </Select>
           </div>

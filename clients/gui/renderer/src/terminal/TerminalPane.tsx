@@ -8,6 +8,7 @@ import {
   TitleTooltip,
 } from "@areal/ui";
 import { currentErrorText } from "../errors/currentErrorText.js";
+import { useI18n } from "../i18n/IntlProvider.js";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Plus, X } from "lucide-react";
 import type { Action, Data } from "../services.js";
@@ -48,6 +49,7 @@ export function TerminalPane({
   onClosed?: (id: string) => void;
   canStart: boolean;
 }) {
+  const { t } = useI18n();
   const owner = terminalOwner(project.id, thread.id),
     state = useTerminalWorkspace(owner);
   const id = terminalId ?? state.active;
@@ -201,13 +203,15 @@ export function TerminalPane({
             <TitleTooltip title={"Turn 终端需要正在执行的任务，范围由 Core 校验"}>
               <SelectTrigger size="sm" aria-label="新终端保留范围">
                 <SelectValue>
-                  {nextLifetime === "turn" ? "Turn · 当前任务" : "Thread · 当前对话"}
+                  {nextLifetime === "turn"
+                    ? t("common.terminal.lifetimeTurn")
+                    : t("common.terminal.lifetimeThread")}
                 </SelectValue>
               </SelectTrigger>
             </TitleTooltip>
             <SelectContent>
-              <SelectItem value="thread">Thread · 当前对话</SelectItem>
-              <SelectItem value="turn">Turn · 当前任务</SelectItem>
+              <SelectItem value="thread">{t("common.terminal.lifetimeThread")}</SelectItem>
+              <SelectItem value="turn">{t("common.terminal.lifetimeTurn")}</SelectItem>
             </SelectContent>
           </Select>
           <Button

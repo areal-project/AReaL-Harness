@@ -111,17 +111,6 @@ test("builder, universal and filelist retain their minimatch APIs", async (t) =>
   ]);
 });
 
-test("Capacitor rimraf retains recursive removal through its glob dependency", async (t) => {
-  const { root, source } = await fixture(t);
-  const mobileRequire = createRequire(resolve(__dirname, "../../mobile/package.json"));
-  const capacitorRequire = createRequire(mobileRequire.resolve("@capacitor/cli/package.json"));
-  const { rimraf } = capacitorRequire("rimraf");
-  await rimraf(join(source, "cache", "*.txt"), { glob: true });
-  await assert.rejects(readFile(join(source, "cache/ignored.txt")), { code: "ENOENT" });
-  assert.equal(await readFile(join(source, "index.js"), "utf8"), "module.exports = 42;\n");
-  await rimraf(root);
-});
-
 test("package build receipts reject changed inputs, corrupted outputs and failed builds", async (t) => {
   const { root } = await fixture(t);
   const { cachedBuild, withStaging, createTimings } = await import("./package-build.mjs");

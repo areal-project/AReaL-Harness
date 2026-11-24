@@ -332,7 +332,7 @@
   },
   {
     "script": "test:provider-startup-recovery",
-    "layer": "contract",
+    "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["provider"],
     "requires": ["browser", "gui-build"],

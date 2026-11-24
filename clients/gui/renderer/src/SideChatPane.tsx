@@ -717,22 +717,24 @@ function SideChatEditor({
                 }}
                 disabled={busy || !!pendingId}
               >
-                <SelectTrigger aria-label="文件访问范围">
+                <SelectTrigger aria-label={t("common.sideChat.workspaceAccess")}>
                   <SelectValue>
                     {workspaceAccess === "readOnly"
                       ? workspaceReadAvailable
-                        ? "只读当前工作区"
-                        : "只读当前工作区（当前不可用）"
-                      : "仅会话证据"}
+                        ? t("common.sideChat.workspaceReadOnly")
+                        : t("common.sideChat.workspaceReadOnlyUnavailable")
+                      : t("common.sideChat.evidenceOnly")}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {(workspaceReadAvailable || workspaceAccess === "readOnly") && (
                     <SelectItem value="readOnly" disabled={!workspaceReadAvailable}>
-                      {workspaceReadAvailable ? "只读当前工作区" : "只读当前工作区（当前不可用）"}
+                      {workspaceReadAvailable
+                        ? t("common.sideChat.workspaceReadOnly")
+                        : t("common.sideChat.workspaceReadOnlyUnavailable")}
                     </SelectItem>
                   )}
-                  <SelectItem value="none">仅会话证据</SelectItem>
+                  <SelectItem value="none">{t("common.sideChat.evidenceOnly")}</SelectItem>
                 </SelectContent>
               </Select>
             </label>

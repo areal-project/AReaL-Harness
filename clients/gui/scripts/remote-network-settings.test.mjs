@@ -84,7 +84,7 @@ test("Phone connection settings keep the main path short and the network consent
     assert.match(html, /手机.*tailnet/);
     assert.match(html, /本机检测成功不代表手机能连接/);
     assert.match(html, /生成方案后，确认再应用/);
-    assert.match(html, /Host.*离线/);
+    assert.match(html, /后台离线/);
     assert.match(html, />启用本机入口</);
 
     const devices = render(
@@ -289,11 +289,11 @@ test("relay enrollment retains failed input and invitations render QR images in 
     await page.getByRole("button", { name: "开启手机连接", exact: true }).click();
     await page.getByRole("button", { name: "正在登记中继…" }).waitFor();
     await page.evaluate(() => window.finishEnrollment());
-    await page.getByRole("status").filter({ hasText: "已登记中继 relay.example.org" }).waitFor();
-    assert.match(
-      await page.locator(".remote-status-card").innerText(),
-      /注册码已使用，无需再次填写/,
-    );
+    const enrolledStatus = page
+      .getByRole("status")
+      .filter({ hasText: "已登记中继 relay.example.org" });
+    await enrolledStatus.waitFor();
+    assert.match(await enrolledStatus.innerText(), /注册码已使用，无需再次填写/);
     await page.getByRole("button", { name: "添加设备", exact: true }).click();
     await image.waitFor();
     assert.match(await page.getByRole("dialog").innerText(), /用手机扫描二维码/);
@@ -322,10 +322,9 @@ test("relay enrollment retains failed input and invitations render QR images in 
     });
     const startLocal = page.getByRole("button", { name: "开启内网连接", exact: true });
     await startLocal.click();
-    const recovery = page.getByRole("alert").filter({ hasText: "无法解密原有的手机连接凭据" });
+    const recovery = page.getByRole("alert").filter({ hasText: "无法解密手机连接凭据" });
     await recovery.waitFor();
-    assert.match(await recovery.innerText(), /从备份恢复|重新配对/);
-    assert.match(await recovery.innerText(), /API Key 无法恢复/);
+    assert.match(await recovery.innerText(), /从同份备份恢复|重新配置并配对/);
     await page.evaluate(() => {
       window.relayFailureCode = "COMMAND_FAILED";
     });
@@ -333,7 +332,7 @@ test("relay enrollment retains failed input and invitations render QR images in 
     await page.evaluate(
       () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
     );
-    assert.match(await recovery.textContent({ timeout: 1000 }), /无法解密原有的手机连接凭据/);
+    assert.match(await recovery.textContent({ timeout: 1000 }), /无法解密手机连接凭据/);
     await page.evaluate(() => {
       window.relayFailureCode = "";
     });

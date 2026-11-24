@@ -43,6 +43,9 @@ COPY clients/tui ./clients/tui
 COPY runtime ./runtime
 COPY scripts/launch.py ./scripts/launch.py
 COPY scripts/install.py ./scripts/install.py
+COPY schemas/provider-config/definitions.json ./schemas/provider-config/definitions.json
+COPY schemas/areal-core-v1.json ./schemas/areal-core-v1.json
+COPY clients/gui/packages/workbench/assets ./clients/gui/packages/workbench/assets
 RUN cargo build --locked --profile "${BUILD_PROFILE}" -p areal-runtime -p areal-runtime-fs -p areal-runtime-exec-native -p areal-cli
 
 FROM runtime-builder AS runtime-tests

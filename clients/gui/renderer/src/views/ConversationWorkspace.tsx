@@ -411,7 +411,7 @@ function ActiveConversation() {
       {showPinnedSummary && (
         <div className="composer-dock">
           <ThreadSummaryPanel
-            title={thread.title || "当前会话"}
+            title={thread.title || t("chat.summary.currentConversation")}
             summary={summaryParts.join(" · ")}
             variant={summaryOpen ? "card" : "compact"}
             open={summaryOpen}
@@ -420,17 +420,25 @@ function ActiveConversation() {
             onPinnedChange={setSummaryPinned}
           >
             {pendingDecisions > 0 && (
-              <ThreadSummaryItem label="待处理确认" meta={`${pendingDecisions}`} tone="attention" />
+              <ThreadSummaryItem
+                label={t("chat.summary.pendingDecisions")}
+                meta={`${pendingDecisions}`}
+                tone="attention"
+              />
             )}
             {changedFileCount > 0 && (
               <ThreadSummaryItem
-                label="本会话变更文件"
+                label={t("chat.summary.changedFiles")}
                 meta={`${changedFileCount}`}
                 onClick={() => showPanel("changes")}
               />
             )}
             {turns.length > 0 && (
-              <ThreadSummaryItem label="对话轮次" meta={`${turns.length}`} tone="muted" />
+              <ThreadSummaryItem
+                label={t("chat.summary.turns")}
+                meta={`${turns.length}`}
+                tone="muted"
+              />
             )}
           </ThreadSummaryPanel>
         </div>
@@ -438,7 +446,7 @@ function ActiveConversation() {
       {hasSummaryContext && !summaryPinned && (
         <div className="composer-dock">
           <Button type="button" variant="ghost" size="xs" onClick={() => setSummaryPinned(true)}>
-            显示置顶摘要 · {summaryParts.join(" · ")}
+            {t("chat.summary.showPinned", { summary: summaryParts.join(" · ") })}
           </Button>
         </div>
       )}

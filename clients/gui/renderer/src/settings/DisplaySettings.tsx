@@ -234,21 +234,21 @@ export function GeneralSettings({
           )}
         </SettingsGroupCard>
       </SettingsSection>
-      <SettingsSection title="快捷键">
+      <SettingsSection title={t("settings.displaySettings.shortcuts")}>
         <SettingsGroupCard>
           <SettingsRow
             label={
               <span className="inline-flex items-center gap-2">
-                置顶 / 展开会话摘要
+                {t("settings.displaySettings.pinSummaryTitle")}
                 <Badge tone="neutral" size="sm">
-                  对话流
+                  {t("settings.displaySettings.shortcutScopeConversation")}
                 </Badge>
               </span>
             }
-            description="在活跃对话顶部快速固定或展开 Pin Summary 面板。"
+            description={t("settings.displaySettings.pinSummaryDescription")}
             control={
               <ShortcutCapture
-                label="置顶或展开会话摘要快捷键"
+                label={t("settings.displaySettings.pinSummaryShortcutLabel")}
                 value={shortcuts.pinSummary}
                 onChange={(combo) => setWorkspaceShortcut("pinSummary", combo)}
                 onReset={() => resetWorkspaceShortcut("pinSummary")}
@@ -258,16 +258,16 @@ export function GeneralSettings({
           <SettingsRow
             label={
               <span className="inline-flex items-center gap-2">
-                对话内查找
+                {t("settings.displaySettings.threadFindTitle")}
                 <Badge tone="neutral" size="sm">
-                  对话流
+                  {t("settings.displaySettings.shortcutScopeConversation")}
                 </Badge>
               </span>
             }
-            description="在当前会话消息中打开查找浮条并跳转匹配项。"
+            description={t("settings.displaySettings.threadFindDescription")}
             control={
               <ShortcutCapture
-                label="对话内查找快捷键"
+                label={t("settings.displaySettings.threadFindShortcutLabel")}
                 value={shortcuts.threadFind}
                 onChange={(combo) => setWorkspaceShortcut("threadFind", combo)}
                 onReset={() => resetWorkspaceShortcut("threadFind")}

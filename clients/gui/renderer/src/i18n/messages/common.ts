@@ -1256,4 +1256,39 @@ export const commonMessages = {
   "cloud.settings.tokenInput": { "zh-CN": "输入 token", en: "Enter token" },
   "cloud.settings.saving": { "zh-CN": "保存中…", en: "Saving…" },
   "cloud.settings.save": { "zh-CN": "保存", en: "Save" },
+  "common.processes.emptyDescription": {
+    "zh-CN": "运行中的后台命令会显示在这里，方便查看输出或及时停止。",
+    en: "Running background commands appear here so you can inspect output or stop them.",
+  },
+  "common.processes.newCommand": { "zh-CN": "新建命令", en: "New command" },
+  "common.processes.lifetimeTurn": { "zh-CN": "随本轮执行", en: "For this turn" },
+  "common.processes.lifetimeThread": { "zh-CN": "随会话保留", en: "For this conversation" },
+  "common.sideChat.workspaceAccess": { "zh-CN": "文件访问范围", en: "File access scope" },
+  "common.sideChat.workspaceReadOnly": { "zh-CN": "只读当前工作区", en: "Read-only workspace" },
+  "common.sideChat.workspaceReadOnlyUnavailable": {
+    "zh-CN": "只读当前工作区（当前不可用）",
+    en: "Read-only workspace (unavailable)",
+  },
+  "common.sideChat.evidenceOnly": { "zh-CN": "仅会话证据", en: "Conversation evidence only" },
+  "common.hooks.turnDescription": {
+    "zh-CN": "仅包含当前轮次的工具钩子运行记录。",
+    en: "Includes only tool hook runs from the current turn.",
+  },
+  "common.hooks.noResult": { "zh-CN": "暂无返回结果", en: "No return payload" },
+  "common.workgroups.emptyTitle": {
+    "zh-CN": "此项目尚无工作组",
+    en: "No workgroups in this project",
+  },
+  "common.workgroups.emptyDescription": {
+    "zh-CN": "需要多代理协作拆分任务时，可从上方表单启动新的工作组。",
+    en: "Start a workgroup above when you want multiple agents to split a task.",
+  },
+  "common.terminal.lifetimeThread": {
+    "zh-CN": "Thread · 当前对话",
+    en: "Thread · Conversation",
+  },
+  "common.terminal.lifetimeTurn": {
+    "zh-CN": "Turn · 当前任务",
+    en: "Turn · Current turn",
+  },
 } as const;

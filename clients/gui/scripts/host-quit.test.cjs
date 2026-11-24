@@ -435,7 +435,7 @@ test("bundle guard ignores transient missing files and relaunches only when new 
   const guard = createBundleGuard({
     isPackaged: true,
     resourcesPath: "/Applications/AReaL Harness GUI.app/Contents/Resources",
-    execPath: "/private/tmp/backup.app/Contents/MacOS/AReaL Harness GUI",
+    execPath: "/opt/backup.app/Contents/MacOS/AReaL Harness GUI",
     platform: "darwin",
     readText: () => {
       if (diskText === null) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
@@ -597,7 +597,7 @@ test("startup load failure awaits in-flight relaunch and handles transient bundl
   const guard = createBundleGuard({
     isPackaged: true,
     resourcesPath: "/Applications/AReaL Harness GUI.app/Contents/Resources",
-    execPath: "/private/tmp/backup.app/Contents/MacOS/AReaL Harness GUI",
+    execPath: "/opt/backup.app/Contents/MacOS/AReaL Harness GUI",
     platform: "darwin",
     readText: () => {
       if (diskText === null) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });

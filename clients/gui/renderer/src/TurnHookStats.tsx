@@ -56,7 +56,7 @@ export function TurnHookStats({ turn }: { turn: Data }) {
       <SheetContent side="right" size="md" closeLabel="关闭钩子统计">
         <SheetHeader>
           <SheetTitle>钩子统计</SheetTitle>
-          <SheetDescription>仅包含当前轮次的工具钩子运行记录。</SheetDescription>
+          <SheetDescription>{t("common.hooks.turnDescription")}</SheetDescription>
         </SheetHeader>
         <SheetBody>
           <div className="flex min-h-0 flex-1 flex-col gap-[var(--spacing-field)]">
@@ -90,7 +90,7 @@ export function TurnHookStats({ turn }: { turn: Data }) {
                       >
                         <pre aria-label={t("common.hooks.result")}>
                           {hook.result == null
-                            ? "暂无返回结果"
+                            ? t("common.hooks.noResult")
                             : JSON.stringify(hook.result, null, 2)}
                         </pre>
                       </SettingsDisclosure>

@@ -139,6 +139,9 @@ test("dependency failure reaches the connection snapshot before any background o
     app: { isPackaged: false, getPath: () => home },
     home,
     binary: join(home, "must-not-execute"),
+    hostHome: home,
+    guiProfile: home,
+    harnessHome: home,
     prerequisiteCheck: () => checkHostPrerequisites(f.options),
   });
   await assert.rejects(backend.init(), { code: "HOST_PREREQUISITE_UNAVAILABLE" });
@@ -155,10 +158,14 @@ test("a prerequisite failure is visible while the concurrent identity check is s
   const identityStarted = Promise.withResolvers();
   const identity = Promise.withResolvers();
   const prerequisite = Promise.withResolvers();
-  t.mock.method(require("../app/src/core/service-config.cjs"), "serviceIdentity", () => {
-    identityStarted.resolve();
-    return identity.promise;
-  });
+  t.mock.method(
+    require("../packages/client/node/desktop-upgrade.cjs"),
+    "desktopBuildIdentity",
+    () => {
+      identityStarted.resolve();
+      return identity.promise;
+    },
+  );
   const unavailable = Object.assign(new Error("missing tools"), {
     code: "HOST_PREREQUISITE_UNAVAILABLE",
   });

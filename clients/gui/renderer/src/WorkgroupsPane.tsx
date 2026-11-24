@@ -803,8 +803,8 @@ export function WorkgroupsPane({ project, action }: { project: Data; action: Act
               {!groups.length && !reading && (
                 <EmptyState
                   size="compact"
-                  title="此项目尚无工作组"
-                  description="需要多代理协作拆分任务时，可从上方表单启动新的工作组。"
+                  title={t("common.workgroups.emptyTitle")}
+                  description={t("common.workgroups.emptyDescription")}
                 />
               )}
             </div>

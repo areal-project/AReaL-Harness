@@ -2211,4 +2211,20 @@ export const remoteMessages = {
     "zh-CN": "已连接",
     en: "Connected",
   },
+  "settings.mobileConnect.pendingOperationTitle": {
+    "zh-CN": "上次手机连接操作结果尚未确认",
+    en: "Last mobile connection change is unconfirmed",
+  },
+  "settings.mobileConnect.pendingOperationDescription": {
+    "zh-CN": "原请求 {requestId}… 仍在确认，完成前无法发起新的手机连接更改。",
+    en: "Request {requestId}… is still being confirmed. Wait before starting another mobile connection change.",
+  },
+  "settings.mobileConnect.checkPendingOperation": {
+    "zh-CN": "检查上次操作",
+    en: "Check last action",
+  },
+  "settings.relayService.useSuggestedHost": {
+    "zh-CN": "改用 {host}",
+    en: "Use {host}",
+  },
 } as const;

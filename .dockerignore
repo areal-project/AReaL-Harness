@@ -13,5 +13,10 @@ target
 tests/perf/model.toml
 tests/perf/**/output
 
-# GUI 不参与 Runtime/CLI 容器构建，避免传输与缓存失效。
-clients/gui
+# GUI 不参与 Runtime/CLI 容器构建，避免传输与缓存失效；仅保留 areal-host 编译期嵌入的静态资源。
+clients/gui/*
+!clients/gui/packages
+clients/gui/packages/*
+!clients/gui/packages/workbench
+clients/gui/packages/workbench/*
+!clients/gui/packages/workbench/assets

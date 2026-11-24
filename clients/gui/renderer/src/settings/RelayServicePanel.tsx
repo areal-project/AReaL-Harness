@@ -58,7 +58,7 @@ export function RelayServicePanel({ state, busy, run }: { state: Data; busy: boo
             {running
               ? t("settings.relayService.stopLocal")
               : switchSuggested
-                ? `改用 ${suggestedHost}`
+                ? t("settings.relayService.useSuggestedHost", { host: suggestedHost })
                 : t("settings.relayService.startLocal")}
           </Button>
         </div>

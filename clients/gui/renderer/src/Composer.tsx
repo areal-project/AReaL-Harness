@@ -970,7 +970,7 @@ export function Composer({
             index={safeRequestIndex}
             total={pendingRequests.length}
             onIndexChange={setRequestIndex}
-            label="待处理请求"
+            label={t("chat.composer.pendingRequests")}
           >
             {activePendingRequest.kind === "approval" ? (
               <ApprovalRequest

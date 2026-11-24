@@ -21,7 +21,6 @@ use std::{
     os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Component, Path, PathBuf},
     rc::Rc,
-    time::Duration,
 };
 use tokio::sync::{Mutex, Notify};
 
@@ -1126,7 +1125,7 @@ async fn run_plutil(format: &str, input: &[u8]) -> Option<String> {
     if let Some(mut stdin) = child.stdin.take() {
         let _ = stdin.write_all(input).await;
     }
-    let out = tokio::time::timeout(Duration::from_secs(1), child.wait_with_output())
+    let out = tokio::time::timeout(std::time::Duration::from_secs(1), child.wait_with_output())
         .await
         .ok()?
         .ok()?;
@@ -1424,29 +1423,36 @@ async fn resolve_terminal_presentation(home: &Path, host: &Host, source: &str) -
         .or_else(|| current_posix_user().ok().and_then(|(_, _, h)| h))
         .or_else(|| Some(home.to_path_buf()));
 
-    let mut detected_family: Option<String> = None;
-    let mut detected_size: Option<f64> = None;
-    let mut detected_theme: Option<BTreeMap<String, String>> = None;
+    #[cfg(target_os = "macos")]
+    let (mut detected_family, detected_size, detected_theme) = if settings["terminalInheritSystemProfile"]
+        != false
+        && let Some(user_home) = user_home.as_deref().filter(|p| p.is_absolute())
+    {
+        tokio::time::timeout(
+            std::time::Duration::from_millis(2500),
+            read_mac_terminal_profile(user_home),
+        )
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or((None, None, None))
+    } else {
+        (None, None, None)
+    };
+    #[cfg(not(target_os = "macos"))]
+    let (mut detected_family, detected_size, detected_theme): (
+        Option<String>,
+        Option<f64>,
+        Option<BTreeMap<String, String>>,
+    ) = (None, None, None);
 
     if settings["terminalInheritSystemProfile"] != false
-        && let Some(user_home) = user_home.filter(|p| p.is_absolute())
+        && detected_family.is_none()
+        && detected_size.is_none()
+        && detected_theme.is_none()
+        && let Some(user_home) = user_home.as_deref().filter(|p| p.is_absolute())
     {
-        #[cfg(target_os = "macos")]
-        {
-            if let Ok(Some((fam, size, theme))) = tokio::time::timeout(
-                Duration::from_millis(2500),
-                read_mac_terminal_profile(&user_home),
-            )
-            .await
-            {
-                detected_family = fam;
-                detected_size = size;
-                detected_theme = theme;
-            }
-        }
-        if detected_family.is_none() && detected_size.is_none() && detected_theme.is_none() {
-            detected_family = read_kitty_profile(&user_home);
-        }
+        detected_family = read_kitty_profile(user_home);
     }
 
     let chosen = custom

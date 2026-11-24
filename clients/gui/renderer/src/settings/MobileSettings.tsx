@@ -313,10 +313,11 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
         {!adding && pendingOperation?.requestId && (
           <div className="remote-status" data-tone="warning" role="status">
             <div className="remote-status-text">
-              <strong>上次手机连接操作结果尚未确认</strong>
+              <strong>{t("settings.mobileConnect.pendingOperationTitle")}</strong>
               <small>
-                原请求 {String(pendingOperation.requestId).slice(0, 8)}…
-                尚未核对完成，核对前无法发起新的手机连接更改。
+                {t("settings.mobileConnect.pendingOperationDescription", {
+                  requestId: String(pendingOperation.requestId).slice(0, 8),
+                })}
               </small>
             </div>
             <Button
@@ -325,7 +326,7 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
               disabled={busy}
               onClick={() => void run({ operation: "status" })}
             >
-              核对上次操作
+              {t("settings.mobileConnect.checkPendingOperation")}
             </Button>
           </div>
         )}

@@ -1771,4 +1771,33 @@ export const generalMessages = {
     "zh-CN": "授权失效，请重新登录",
     en: "Authorization expired. Sign in again.",
   },
+  "settings.displaySettings.shortcuts": { "zh-CN": "快捷键", en: "Shortcuts" },
+  "settings.displaySettings.shortcutScopeConversation": {
+    "zh-CN": "对话流",
+    en: "Conversation",
+  },
+  "settings.displaySettings.pinSummaryTitle": {
+    "zh-CN": "置顶 / 展开会话摘要",
+    en: "Pin / expand thread summary",
+  },
+  "settings.displaySettings.pinSummaryDescription": {
+    "zh-CN": "在活跃对话顶部快速固定或展开 Pin Summary 面板。",
+    en: "Quickly pin or expand the Pin Summary panel at the top of the active conversation.",
+  },
+  "settings.displaySettings.pinSummaryShortcutLabel": {
+    "zh-CN": "置顶或展开会话摘要快捷键",
+    en: "Pin or expand thread summary shortcut",
+  },
+  "settings.displaySettings.threadFindTitle": {
+    "zh-CN": "对话内查找",
+    en: "Find in conversation",
+  },
+  "settings.displaySettings.threadFindDescription": {
+    "zh-CN": "在当前会话消息中打开查找浮条并跳转匹配项。",
+    en: "Open the find bar in the current conversation and jump between matches.",
+  },
+  "settings.displaySettings.threadFindShortcutLabel": {
+    "zh-CN": "对话内查找快捷键",
+    en: "Find in conversation shortcut",
+  },
 } as const;

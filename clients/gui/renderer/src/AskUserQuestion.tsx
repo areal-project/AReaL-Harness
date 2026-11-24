@@ -106,7 +106,7 @@ export function AskUserQuestion({
   if (submitted) {
     return (
       <QuestionSummary
-        summary={`已提交 ${questions.length} 项回答，等待继续执行`}
+        summary={t("chat.questions.submittedSummary", { count: questions.length })}
         items={questions.map((entry) => ({
           question: String(entry.title ?? ""),
           answer: answer(drafts[entry.id]),
