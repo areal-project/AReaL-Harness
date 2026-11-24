@@ -100,6 +100,7 @@ export default defineConfig({
           input: [
             { pattern: "packages/ui/src/**", base: "workspace" },
             { pattern: "packages/ui/scripts/**", base: "workspace" },
+            { pattern: "packages/ui/skills/**", base: "workspace" },
             { pattern: "packages/ui/*.json", base: "workspace" },
             { pattern: "packages/ui/*.md", base: "workspace" },
             { pattern: "pnpm-lock.yaml", base: "workspace" },
