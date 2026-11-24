@@ -596,7 +596,7 @@ async function recoverScheduledCreation() {
     facts.ui.draftTiming.editableAt = await page.evaluate(
       () => performance.timeOrigin + performance.now(),
     );
-    await page.locator(".composer-model-trigger").filter({ hasText: "fixture" }).waitFor();
+    await page.getByTestId("composer-model-trigger").filter({ hasText: "fixture" }).waitFor();
     facts.ui.draftTiming.modelLabelAt = await page.evaluate(
       () => performance.timeOrigin + performance.now(),
     );

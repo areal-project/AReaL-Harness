@@ -142,9 +142,9 @@ export function SettingsPreview() {
         </SettingsSection>
       </div>
       <div data-settings-host="mobile">
-        <SettingsGroupCard className="remote-access-panel">
+        <SettingsGroupCard layout="grid" className="remote-access-panel">
           <div className="remote-access-fields">
-            Mobile 的直接 card-content 插槽与专用 padding。
+            Mobile 的直接 card-content 插槽与 layout="grid" 间距。
           </div>
         </SettingsGroupCard>
       </div>

@@ -85,10 +85,11 @@
   font: inherit;
   font-size: var(--text-ui-sm);
 }
-.decision-card .decision-primary kbd {
+.decision-card .decision-primary kbd,
+.decision-card .decision-card-footer [data-variant="default"] kbd {
   color: var(--color-primary-foreground);
   background: transparent;
-  opacity: 0.65;
+  opacity: 0.78;
 }
 .decision-card .ui-feedback {
   margin: var(--spacing-inline) 0 0;
@@ -137,6 +138,7 @@
 .decision-card .approval-split > [data-slot="button"]:last-child {
   width: calc(var(--spacing-inline) * 13 / 4);
   padding: 0 calc(var(--spacing-inline) * 3 / 4) 0 calc(var(--spacing-inline) / 4);
+  border-left: var(--border-width-default) solid var(--color-border);
   border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
   background: var(--color-primary);
   color: var(--color-primary-foreground);

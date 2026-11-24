@@ -2511,32 +2511,6 @@ button[aria-label="停止"] {
   }
 }
 
-.hook-stats-overlay {
-  background: var(--color-inspection-scrim);
-  backdrop-filter: none;
-}
-.hook-stats-dialog {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-field);
-  width: 680px;
-  max-width: 92vw;
-  height: min(92vh, 800px);
-  max-height: min(92vh, 800px);
-  padding: calc(var(--spacing-inline) * 5 / 2);
-  border-width: 0.5px;
-  border-radius: var(--radius-composer-large);
-  background: color-mix(in srgb, var(--color-popover) 90%, transparent);
-  backdrop-filter: var(--material-overlay-filter);
-  font-size: var(--ui-font-size);
-  line-height: 1.5;
-}
-.hook-stats-title {
-  padding-right: calc(var(--spacing-field) * 2);
-  font-size: var(--text-ui-xl);
-  font-weight: 600;
-  line-height: 1.4;
-}
 .hook-stats-counts,
 .hook-stats-counts dd {
   margin: 0;
@@ -2549,8 +2523,7 @@ button[aria-label="停止"] {
 .hook-stats-counts dt,
 .hook-stats-status,
 .hook-stats-event > span,
-.hook-stats-history h3,
-.hook-stats-scope {
+.hook-stats-history h3 {
   color: var(--color-foreground-subtle);
 }
 .hook-stats-history {
@@ -2600,10 +2573,6 @@ button[aria-label="停止"] {
   padding: var(--spacing-inline);
   border-radius: var(--radius-inset);
   background: var(--color-surface);
-}
-.hook-stats-scope {
-  margin: 0;
-  font-size: var(--text-ui-sm);
 }
 
 /* Shared user/project resource catalogs: fixed icon/control tracks, one text column. */

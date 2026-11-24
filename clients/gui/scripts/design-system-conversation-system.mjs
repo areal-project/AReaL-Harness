@@ -114,7 +114,7 @@ export async function runConversationSystem(page, scratch, checks) {
     true,
     "rows inside an expanded group keep their own icon",
   );
-  const readName = read.locator(".areal-activity-row-detail, .tool-file-link").first();
+  const readName = read.locator('.areal-activity-row-detail, [data-variant="inline-link"]').first();
   assert.equal(await readName.innerText(), "section-2.tsx");
   await readName.hover();
   await page

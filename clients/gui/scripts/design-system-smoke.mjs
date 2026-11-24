@@ -119,7 +119,7 @@ async function settingsChecks() {
       const wide = getComputedStyle(el.querySelector(".settings-field-layout-wide"));
       const text = getComputedStyle(el.querySelector('input[type="text"]'));
       const probe = document.createElement("span");
-      probe.style.background = "var(--color-settings-card)";
+      probe.style.background = "var(--color-surface-card)";
       probe.style.color = "var(--color-settings-secondary)";
       el.append(probe);
       const semantic = {
@@ -204,11 +204,16 @@ async function settingsChecks() {
     // 按 settings-page 规格解析角色令牌，字号变化时不沿用旧的固定几何值。
     const settingsTokens = await page.evaluate(() => {
       const probe = document.body.appendChild(document.createElement("div"));
+      probe.style.height = "var(--spacing-control)";
+      const controlHeight = getComputedStyle(probe).height;
       probe.style.borderRadius = "var(--radius-panel)";
       probe.style.lineHeight = "var(--line-height-ui)";
-      probe.style.minHeight = "var(--size-touch-target)";
+      probe.style.minHeight = "calc(var(--spacing-control) + var(--spacing-field))";
       probe.style.maxHeight = "calc(var(--spacing-control-sm) + var(--spacing-field))";
       probe.style.width = "calc(var(--reading-width) * 3 / 8)";
+      probe.style.padding = "var(--composer-inset) var(--spacing-field)";
+      probe.style.left = "var(--spacing-field)";
+      probe.style.fontSize = "var(--text-ui-caption)";
       const css = getComputedStyle(probe);
       const values = {
         radius: css.borderRadius,
@@ -216,6 +221,10 @@ async function settingsChecks() {
         rowMinHeight: css.minHeight,
         compactMinHeight: css.maxHeight,
         wideControlWidth: css.width,
+        rowPadding: css.padding,
+        fieldSpacing: css.left,
+        controlFont: css.fontSize,
+        controlHeight,
       };
       probe.remove();
       return values;
@@ -235,12 +244,12 @@ async function settingsChecks() {
       assert.equal(value.description.color, value.semantic.secondary);
       assert.equal(value.description.margin, "2px 0px 0px");
       assert.equal(value.row.minHeight, settingsTokens.rowMinHeight);
-      assert.equal(value.row.padding, "12px 16px");
+      assert.equal(value.row.padding, settingsTokens.rowPadding);
       assert.deepEqual(value.separator, {
         height: "0.5px",
         content: '""',
-        left: "16px",
-        right: "16px",
+        left: settingsTokens.fieldSpacing,
+        right: settingsTokens.fieldSpacing,
       });
       assert.equal(
         value.columns,
@@ -255,8 +264,8 @@ async function settingsChecks() {
           `${name} keeps the wide control column`,
         );
       assert.deepEqual(value.nativeText, {
-        font: `${Number(sample.font) - 1}px`,
-        height: `${Number(sample.font) + 14}px`,
+        font: settingsTokens.controlFont,
+        height: settingsTokens.controlHeight,
       });
       assert.deepEqual(
         value.overflow,
@@ -295,8 +304,8 @@ async function settingsChecks() {
       });
     assert.deepEqual(
       mobile,
-      { direct: true, padding: "16px", display: "flex" },
-      "the real Mobile stylesheet retains its direct content slot and padding",
+      { direct: true, padding: "16px", display: "grid" },
+      "the real Mobile SettingsGroupCard layout='grid' retains its direct content slot and padding",
     );
     assert.equal(
       await preview.evaluate((el) => el.scrollWidth <= el.clientWidth + 1),

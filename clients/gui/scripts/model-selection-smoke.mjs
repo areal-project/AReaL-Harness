@@ -416,7 +416,7 @@ async function waitForSavedEffort(name) {
         .querySelector('input[type=range][aria-label="选择思考强度"]')
         ?.getAttribute("aria-valuetext") === name &&
       document.querySelector(".composer-effort-center strong")?.textContent === name &&
-      !document.querySelector(".composer-model-trigger")?.hasAttribute("aria-busy"),
+      !document.querySelector('[data-testid="composer-model-trigger"]')?.hasAttribute("aria-busy"),
     name,
   );
 }

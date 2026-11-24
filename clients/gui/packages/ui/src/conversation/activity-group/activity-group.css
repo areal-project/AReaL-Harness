@@ -128,11 +128,13 @@
   inherits: false;
   initial-value: 0px;
 }
+/* 99% 即归零，避免 Chromium 子像素布局下 End 键停在 maxScroll - 0.5px 时残余 1px 渐隐。 */
 @keyframes areal-activity-list-fade {
   from,
   90% {
     --areal-activity-list-fade: var(--activity-list-fade);
   }
+  99%,
   to {
     --areal-activity-list-fade: 0px;
   }

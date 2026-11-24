@@ -29,7 +29,7 @@ const buttonVariants = cva(
         floating:
           "rounded-pill border-border bg-background text-foreground shadow-subtle backdrop-blur-sm hover:bg-hover",
         "inline-link":
-          "h-auto min-h-0 border-0 bg-transparent p-0 text-inherit hover:bg-transparent hover:text-foreground hover:underline",
+          "h-auto min-h-0 min-w-0 shrink border-0 bg-transparent p-0 text-inherit hover:bg-transparent hover:text-foreground hover:underline",
         row: "w-full justify-start border-0 bg-transparent text-left text-foreground hover:bg-hover aria-current:bg-selected",
         "media-trigger":
           "block h-auto min-h-0 cursor-zoom-in overflow-hidden rounded-xl border-border bg-surface p-0 hover:border-border-hover",

@@ -1,11 +1,14 @@
 import {
+  ConfirmDialog,
   DelayedVisible,
+  EmptyState,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@areal/ui";
+import { Terminal } from "lucide-react";
 import { currentErrorText } from "./errors/currentErrorText.js";
 import { errorText } from "./errors/errorCopy.js";
 import { useI18n } from "./i18n/IntlProvider.js";
@@ -520,7 +523,25 @@ export function ProcessesPane({
             <p role="status">读取进程中…</p>
           </DelayedVisible>
         ) : (
-          !items.length && !error && <p>此任务暂无受管进程</p>
+          !items.length &&
+          !error && (
+            <EmptyState
+              size="compact"
+              icon={<Terminal size={18} />}
+              title="此任务暂无受管进程"
+              description="运行中的后台命令会显示在这里，方便查看输出或及时停止。"
+              action={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={disabled}
+                  onClick={() => setCreateOpen(true)}
+                >
+                  新建命令
+                </Button>
+              }
+            />
+          )
         )}
         <div className="flex flex-col gap-1" aria-label="受管进程列表">
           {items.map((p) => (
@@ -761,33 +782,30 @@ export function ProcessesPane({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog
+      <ConfirmDialog
         open={!!confirm}
         onOpenChange={(open) => {
           if (!open && !busy) setConfirm(null);
         }}
-      >
-        <DialogContent className="max-w-md" showCloseButton={!busy}>
-          <DialogHeader>
-            <DialogTitle>停止此进程？</DialogTitle>
-            <DialogDescription>{t("common.processes.stopConfirm")}</DialogDescription>
-          </DialogHeader>
-          <p className="break-all font-mono text-ui-base">{confirm?.argv.join(" ")}</p>
-          {stopError && (
-            <p role="alert" className="text-destructive">
-              {stopError}
-            </p>
-          )}
-          <DialogFooter>
-            <Button variant="outline" disabled={busy} onClick={() => setConfirm(null)}>
-              取消
-            </Button>
-            <Button variant="destructive" disabled={disabled} onClick={() => void stop()}>
-              {busy ? "停止中…" : "确认停止"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        tone="destructive"
+        title="停止此进程？"
+        description={t("common.processes.stopConfirm")}
+        impact={
+          confirm ? (
+            <div className="flex flex-col gap-1">
+              <span className="break-all font-mono text-ui-base">{confirm.argv.join(" ")}</span>
+              {stopError && <span role="alert">{stopError}</span>}
+            </div>
+          ) : undefined
+        }
+        confirmLabel="停止并清理"
+        cancelLabel="保留运行"
+        pending={busy}
+        pendingLabel="停止中…"
+        onConfirm={() => {
+          if (!disabled) void stop();
+        }}
+      />
     </section>
   );
 }

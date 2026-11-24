@@ -1,7 +1,7 @@
 import { useI18n } from "./i18n/IntlProvider.js";
 import { errorText } from "./errors/errorCopy.js";
 import type { ManagementRequestMap } from "./services.js";
-import { Input } from "@areal/ui";
+import { EmptyState, Input } from "@areal/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "./components/ui/button.js";
 import {
@@ -800,7 +800,13 @@ export function WorkgroupsPane({ project, action }: { project: Data; action: Act
                   {group.objective} · {status[group.status] ?? group.status}
                 </Button>
               ))}
-              {!groups.length && !reading && <p>此项目尚无工作组。</p>}
+              {!groups.length && !reading && (
+                <EmptyState
+                  size="compact"
+                  title="此项目尚无工作组"
+                  description="需要多代理协作拆分任务时，可从上方表单启动新的工作组。"
+                />
+              )}
             </div>
             {record && (
               <div

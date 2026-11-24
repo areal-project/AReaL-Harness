@@ -57,7 +57,8 @@ async function openRoute(
   route,
   { dark = false, width = 1280, height = 800, fontSize = 14, locale = "zh-CN" } = {},
 ) {
-  const page = await context.newPage({ viewport: { width, height }, deviceScaleFactor: 2 });
+  const page = await context.newPage();
+  await page.setViewportSize({ width, height });
   const errors = [];
   page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
   page.on("console", (msg) => {

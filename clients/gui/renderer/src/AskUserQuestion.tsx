@@ -137,7 +137,7 @@ export function AskUserQuestion({
           if (
             (e.key === "ArrowDown" || e.key === "ArrowUp") &&
             options.length > 0 &&
-            !(e.target as HTMLElement).closest("textarea")
+            !(e.target as HTMLElement).closest('textarea, input[type="radio"]')
           ) {
             e.preventDefault();
             const currentIndex = custom ? -1 : options.indexOf(draft.option);

@@ -665,7 +665,7 @@ export const baseCandidate = {
     {
       id: "EmptyState",
       contract: "packages/ui/src/components/empty-state/empty-state.md",
-      consumers: ["packages/ui/src/components/empty-state/empty-state.test.tsx"],
+      consumers: ["renderer/src/ProcessesPane.tsx", "renderer/src/WorkgroupsPane.tsx"],
       variants: ["default", "compact"],
       states: ["default"],
       evidence: ["E-SETTINGS"],
@@ -674,7 +674,7 @@ export const baseCandidate = {
     {
       id: "ConfirmDialog",
       contract: "packages/ui/src/components/confirm-dialog/confirm-dialog.md",
-      consumers: ["packages/ui/src/components/confirm-dialog/confirm-dialog.test.tsx"],
+      consumers: ["renderer/src/ProcessesPane.tsx"],
       variants: ["default", "destructive", "warning"],
       states: ["default", "pending"],
       evidence: ["E-DECISION"],
@@ -683,7 +683,7 @@ export const baseCandidate = {
     {
       id: "Sheet",
       contract: "packages/ui/src/components/sheet/sheet.md",
-      consumers: ["packages/ui/src/components/sheet/sheet.test.tsx"],
+      consumers: ["renderer/src/TurnHookStats.tsx"],
       variants: ["right", "left", "bottom"],
       states: ["default"],
       evidence: ["E-SETTINGS"],
