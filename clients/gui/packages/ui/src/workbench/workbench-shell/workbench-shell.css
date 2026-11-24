@@ -69,7 +69,8 @@
   min-width: 0;
   min-height: 0;
   background: transparent;
-  clip-path: inset(0 calc(-1 * var(--page-radius)) 0 0 round var(--page-radius));
+  /* 图标栏与会话列表之间保留克制分割线，对齐 Codex 桌面侧栏层次。 */
+  border-left: var(--border-width-default) solid var(--color-border-hairline);
 }
 .sidebar-with-rail {
   background: transparent;
