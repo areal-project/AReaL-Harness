@@ -80,6 +80,10 @@ description: 在 AReaL GUI 里新增或修改组件、页面、样式、Token �
 
 ## 迁移或新增一个组件
 
+**样式写法约定（L1 vs L2/L3）：**
+- **L1 基础原语（`packages/ui/src/components/*`）**：优先使用 Tailwind 工具类 + CVA 变体（如 `Button`、`Input`、`Dialog`、`Tabs`），减少无意义的胶水 CSS；外观差异收敛为语义 `variant` / `size` / `tone` props，宿主页面只传布局类（`restyle-lint.mjs` 强制保障）。
+- **L2/L3 复杂组合与业务容器（`conversation/*`、`settings/*`、`workbench/*`）**：允许保留独立的同目录语义 `.css`（便于表达复杂状态机、网格与动画），但必须全部引用语义 Token 变量，严禁裸写颜色/字号/圆角/间距魔法值。
+
 1. 把组件 CSS 里的数值换成 Token，缺的先加进 `tokens.json`（只提炼跨组件语义角色，不把一次性局部像素塞进全局 foundation）。
 2. 把宿主 CSS 里选中组件内部 class 的规则移回组件；外观差异用 variant / slot 或 Token 表达。
 3. 把合同压到 80 行以内，含 frontmatter、`## 何时使用` 与 `## 示例`。强制规则写成“规则 + **为什么：** + **推广：** + **检查：**”，检查写测试路径，测试里写明规则 ID。

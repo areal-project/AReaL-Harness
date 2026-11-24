@@ -152,10 +152,13 @@ export function validateRuleDocuments({
         assert.ok(rules.has(block.id), `unknown rule definition: ${block.id}`);
         definitions.set(block.id, [...(definitions.get(block.id) ?? []), { ...block, path }]);
       }
+      // 组件合同（packages/ui/src/**/*.md）用显式规则 ID 与自动化检查表达硬边界，
+      // 不再对普通说明段落做关键字正则拦截，避免为日常用语维护无意义的 nonNormative 哈希。
       if (
         normative.test(block.text) &&
         !block.id &&
         !item.translationOf &&
+        !/\/packages\/ui\/src\/.+\.md$/.test(path) &&
         !registry.rules.some(
           (rule) =>
             rule.locator === "paragraph" &&

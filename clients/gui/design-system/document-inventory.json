@@ -217,11 +217,7 @@
   {
     "path": "clients/gui/packages/ui/src/components/button/button.md",
     "role": "consumer",
-    "status": "active",
-    "nonNormative": ["2d5870931de9f3aabb564e3f05b4e5838552ead593c5617a0fda91ba7755ba17"],
-    "nonNormativeNotes": {
-      "2d5870931de9f3aabb564e3f05b4e5838552ead593c5617a0fda91ba7755ba17": "导航或已有生成实例的说明，事实由链接所有者定义"
-    }
+    "status": "active"
   },
   {
     "path": "clients/gui/packages/ui/src/components/card/card.md",
@@ -261,11 +257,7 @@
   {
     "path": "clients/gui/packages/ui/src/components/disclosure/disclosure.md",
     "role": "consumer",
-    "status": "active",
-    "nonNormative": ["0c4505a254c2c24cc2f4d2d7812a5a56e672b164d1fd010693111b3421a0f870"],
-    "nonNormativeNotes": {
-      "0c4505a254c2c24cc2f4d2d7812a5a56e672b164d1fd010693111b3421a0f870": "导航或已有生成实例的说明，事实由链接所有者定义"
-    }
+    "status": "active"
   },
   {
     "path": "clients/gui/packages/ui/src/components/dropdown-menu/dropdown-menu.md",
@@ -345,11 +337,7 @@
   {
     "path": "clients/gui/packages/ui/src/conversation/activity-group/activity-group.md",
     "role": "consumer",
-    "status": "active",
-    "nonNormative": ["788d50409774c8d55a3bfb5a93b4cd493a66a466f1ed9036f86a6aafc07ed878"],
-    "nonNormativeNotes": {
-      "788d50409774c8d55a3bfb5a93b4cd493a66a466f1ed9036f86a6aafc07ed878": "导航或已有生成实例的说明，事实由链接所有者定义"
-    }
+    "status": "active"
   },
   {
     "path": "clients/gui/packages/ui/src/conversation/activity-row/activity-row.md",
@@ -374,11 +362,7 @@
   {
     "path": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.md",
     "role": "consumer",
-    "status": "active",
-    "nonNormative": ["5ad16944f48c72e46f063809cb074f49f75693f7d78e3212bc9c3b8c9e97d846"],
-    "nonNormativeNotes": {
-      "5ad16944f48c72e46f063809cb074f49f75693f7d78e3212bc9c3b8c9e97d846": "导航或已有生成实例的说明，事实由链接所有者定义"
-    }
+    "status": "active"
   },
   {
     "path": "clients/gui/packages/ui/src/conversation/composer-toolbar/composer-toolbar.md",
@@ -393,11 +377,7 @@
   {
     "path": "clients/gui/packages/ui/src/conversation/image-disclosure/image-disclosure.md",
     "role": "consumer",
-    "status": "active",
-    "nonNormative": ["d7c05df231d52e5047233c0ce70baf4162b767a4659e4d771c75c99e0b60952a"],
-    "nonNormativeNotes": {
-      "d7c05df231d52e5047233c0ce70baf4162b767a4659e4d771c75c99e0b60952a": "导航或已有生成实例的说明，事实由链接所有者定义"
-    }
+    "status": "active"
   },
   {
     "path": "clients/gui/packages/ui/src/conversation/markdown-blockquote/markdown-blockquote.md",
@@ -447,29 +427,17 @@
   {
     "path": "clients/gui/packages/ui/src/conversation/subagent-panel/subagent-panel.md",
     "role": "consumer",
-    "status": "active",
-    "nonNormative": ["1eed7359eced0ee969dae0372e6b9572d9d88fb79185548c703b128012838514"],
-    "nonNormativeNotes": {
-      "1eed7359eced0ee969dae0372e6b9572d9d88fb79185548c703b128012838514": "导航或已有生成实例的说明，事实由链接所有者定义"
-    }
+    "status": "active"
   },
   {
     "path": "clients/gui/packages/ui/src/conversation/task-context/task-context.md",
     "role": "consumer",
-    "status": "active",
-    "nonNormative": ["9a3fe44c264b3433cf25d66e3bd6ecc5c4340aecbbafcb82a20789057c6fb825"],
-    "nonNormativeNotes": {
-      "9a3fe44c264b3433cf25d66e3bd6ecc5c4340aecbbafcb82a20789057c6fb825": "导航或已有生成实例的说明，事实由链接所有者定义"
-    }
+    "status": "active"
   },
   {
     "path": "clients/gui/packages/ui/src/conversation/thinking-status/thinking-status.md",
     "role": "consumer",
-    "status": "active",
-    "nonNormative": ["e49d0df435a47246e82a86af7d1e05bd896d51282c2f246f1ddcc52c55ca1fcc"],
-    "nonNormativeNotes": {
-      "e49d0df435a47246e82a86af7d1e05bd896d51282c2f246f1ddcc52c55ca1fcc": "导航或已有生成实例的说明，事实由链接所有者定义"
-    }
+    "status": "active"
   },
   {
     "path": "clients/gui/packages/ui/src/generated/tokens.md",
@@ -489,11 +457,7 @@
   {
     "path": "clients/gui/packages/ui/src/settings/settings-page/settings-page.md",
     "role": "consumer",
-    "status": "active",
-    "nonNormative": ["6cd99d64cc92e808f1746d9a5d24c2016cc64a14ffbd7c1aafa59245fd61897c"],
-    "nonNormativeNotes": {
-      "6cd99d64cc92e808f1746d9a5d24c2016cc64a14ffbd7c1aafa59245fd61897c": "导航或已有生成实例的说明，事实由链接所有者定义"
-    }
+    "status": "active"
   },
   {
     "path": "clients/gui/packages/ui/src/settings/settings-row/settings-row.md",
