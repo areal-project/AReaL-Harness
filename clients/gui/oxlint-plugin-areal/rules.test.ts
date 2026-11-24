@@ -403,6 +403,8 @@ describe("no-restyle", () => {
     '<Button variant="ghost" />',
     '<Button className="w-full sm:max-w-md flex-1" />',
     "<Button className={cn('mt-2', open && 'hidden')} />",
+    '<Button className={open ? undefined : "ml-auto"} />',
+    '<Button className="absolute top-1/2 right-1.5 -translate-y-1/2 pointer-events-auto truncate" />',
     '<ChevronIcon className="text-muted size-3" />',
     '<button className="text-red-500" style={{ color: "red" }} />',
   ])("accepts %s", (jsx) => {

@@ -180,10 +180,9 @@ function AttachmentTile({
     <>
       {compact ? (
         <Button
-          unstyled
-          data-slot={undefined}
           type="button"
-          className="task-resource-row"
+          variant="row"
+          size="auto"
           onClick={open}
           aria-label={image ? `预览图片 ${name}` : `下载附件 ${name}`}
         >
@@ -198,7 +197,9 @@ function AttachmentTile({
           )}
           <span className="task-resource-agent-body">
             <span>{name}</span>
-            <small className="task-resource-description">{image ? "参考图片" : "用户附件"}</small>
+            <small className="task-resource-description text-ui-xs text-foreground-subtle">
+              {image ? "参考图片" : "用户附件"}
+            </small>
           </span>
           <ActivityIcon kind="chevron" size={14} />
         </Button>
@@ -228,12 +229,12 @@ function AttachmentTile({
           )}
           {open && (
             <Button
-              unstyled
-              data-slot={undefined}
               type="button"
+              variant="inline-link"
+              size="none"
               onClick={open}
               aria-label={image ? `预览图片 ${name}` : `下载附件 ${name}`}
-              className="absolute inset-0 rounded-[inherit] focus-visible:-outline-offset-2"
+              className="absolute inset-0"
             />
           )}
           {onRemove ? (
@@ -283,65 +284,63 @@ export function ImagePreview({
         if (!open) onClose();
       }}
     >
-      <DialogContent
-        showCloseButton={false}
-        aria-describedby={undefined}
-        className="image-inspection-dialog h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-none overflow-hidden border-0 bg-transparent shadow-none [app-region:no-drag]"
-      >
-        <DialogTitle className="sr-only">{name}</DialogTitle>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          aria-label={`下载附件 ${name}`}
-          className="absolute right-16 top-4 z-10"
-          onClick={() => downloadMedia(url, name)}
-        >
-          下载
-        </Button>
-        <DialogClose
-          render={
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="关闭图片预览"
-              className="absolute right-4 top-4 z-10 rounded-full border border-border bg-background text-foreground"
-            />
-          }
-        >
-          <XIcon />
-        </DialogClose>
-        {annotation ? (
-          <div className="image-preview-body">
-            <div className="image-preview-original">
-              <img src={url} alt={name} />
-              {annotation?.points.map((point, index) => (
-                <TitleTooltip key={point.id} title={point.comment}>
-                  <span
-                    className="browser-annotation-marker"
-                    aria-label={`已确认标注 ${index + 1}`}
-                    style={{ left: `${point.xPercent}%`, top: `${point.yPercent}%` }}
-                  >
-                    {index + 1}
-                  </span>
-                </TitleTooltip>
-              ))}
-            </div>
-            <ImageAnnotationList note={annotation} />
-          </div>
-        ) : (
-          <ImageInspection url={url} name={name} />
-        )}
-        {onAnnotate && (
+      <DialogContent size="fullscreen" showCloseButton={false} aria-describedby={undefined}>
+        <div className="image-inspection-dialog relative grid size-full [app-region:no-drag]">
+          <DialogTitle className="sr-only">{name}</DialogTitle>
           <Button
             type="button"
-            className="absolute bottom-4 left-1/2 -translate-x-1/2"
-            onClick={onAnnotate}
+            variant="outline"
+            size="sm"
+            aria-label={`下载附件 ${name}`}
+            className="absolute right-16 top-4 z-10"
+            onClick={() => downloadMedia(url, name)}
           >
-            标注
+            下载
           </Button>
-        )}
+          <DialogClose
+            render={
+              <Button
+                type="button"
+                variant="floating"
+                size="icon"
+                aria-label="关闭图片预览"
+                className="absolute right-4 top-4 z-10"
+              />
+            }
+          >
+            <XIcon />
+          </DialogClose>
+          {annotation ? (
+            <div className="image-preview-body">
+              <div className="image-preview-original">
+                <img src={url} alt={name} />
+                {annotation?.points.map((point, index) => (
+                  <TitleTooltip key={point.id} title={point.comment}>
+                    <span
+                      className="browser-annotation-marker"
+                      aria-label={`已确认标注 ${index + 1}`}
+                      style={{ left: `${point.xPercent}%`, top: `${point.yPercent}%` }}
+                    >
+                      {index + 1}
+                    </span>
+                  </TitleTooltip>
+                ))}
+              </div>
+              <ImageAnnotationList note={annotation} />
+            </div>
+          ) : (
+            <ImageInspection url={url} name={name} />
+          )}
+          {onAnnotate && (
+            <Button
+              type="button"
+              className="absolute bottom-4 left-1/2 -translate-x-1/2"
+              onClick={onAnnotate}
+            >
+              标注
+            </Button>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );

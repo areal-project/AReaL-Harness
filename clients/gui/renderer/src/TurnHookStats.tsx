@@ -1,5 +1,7 @@
+import { TitleTooltip } from "@areal/ui";
 import { recordItems } from "./data-shapes.js";
 import { useI18n } from "./i18n/IntlProvider.js";
+import { Button } from "./components/ui/button.js";
 import {
   Dialog,
   DialogContent,
@@ -42,55 +44,59 @@ export function TurnHookStats({ turn }: { turn: Data }) {
   ];
   return (
     <Dialog>
-      <DialogTrigger className="icon-button" aria-label="钩子统计" title="钩子统计">
-        <HookStatsIcon width={14} height={14} />
-      </DialogTrigger>
-      <DialogContent className="hook-stats-dialog" overlayClassName="hook-stats-overlay">
-        <DialogTitle className="hook-stats-title">钩子统计</DialogTitle>
-        <dl className="hook-stats-counts">
-          {counts.map(([label, count]) => (
-            <div key={label}>
-              <dt>{label}</dt>
-              <dd>{count}</dd>
-            </div>
-          ))}
-        </dl>
-        <div className="hook-stats-history">
-          <h3 id={`hook-history-${turn.id}`}>运行历史</h3>
-          {runs.length ? (
-            <ul aria-labelledby={`hook-history-${turn.id}`}>
-              {runs.map(({ hook, tool, itemId }: Data, index: number) => (
-                <li key={`${itemId}:${hook.operationId}:${index}`}>
-                  <div className="hook-stats-row">
-                    <span className="hook-stats-status">
-                      {blocked(hook) ? "已阻止" : (labels[hook.outcome] ?? "状态未知")}
-                    </span>
-                    <span className="hook-stats-event">
-                      {hook.event}
-                      <span>{hook.name}</span>
-                      <span>{tool}</span>
-                    </span>
-                  </div>
-                  <SettingsDisclosure
-                    className="hook-stats-details"
-                    title={t("common.hooks.result")}
-                  >
-                    <pre aria-label={t("common.hooks.result")}>
-                      {hook.result == null
-                        ? "Core 未返回结果"
-                        : JSON.stringify(hook.result, null, 2)}
-                    </pre>
-                  </SettingsDisclosure>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p>本轮没有钩子运行记录。</p>
-          )}
+      <TitleTooltip title="钩子统计">
+        <DialogTrigger
+          render={<Button type="button" variant="ghost-subtle" size="icon" aria-label="钩子统计" />}
+        >
+          <HookStatsIcon width={14} height={14} />
+        </DialogTrigger>
+      </TitleTooltip>
+      <DialogContent size="lg" overlayClassName="hook-stats-overlay">
+        <div className="hook-stats-dialog flex min-h-0 flex-1 flex-col gap-[var(--spacing-field)]">
+          <DialogTitle>钩子统计</DialogTitle>
+          <dl className="hook-stats-counts">
+            {counts.map(([label, count]) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd>{count}</dd>
+              </div>
+            ))}
+          </dl>
+          <div className="hook-stats-history">
+            <h3 id={`hook-history-${turn.id}`}>运行历史</h3>
+            {runs.length ? (
+              <ul aria-labelledby={`hook-history-${turn.id}`}>
+                {runs.map(({ hook, tool, itemId }: Data, index: number) => (
+                  <li key={`${itemId}:${hook.operationId}:${index}`}>
+                    <div className="hook-stats-row">
+                      <span className="hook-stats-status">
+                        {blocked(hook) ? "已阻止" : (labels[hook.outcome] ?? "状态未知")}
+                      </span>
+                      <span className="hook-stats-event">
+                        {hook.event}
+                        <span>{hook.name}</span>
+                        <span>{tool}</span>
+                      </span>
+                    </div>
+                    <SettingsDisclosure
+                      className="hook-stats-details"
+                      title={t("common.hooks.result")}
+                    >
+                      <pre aria-label={t("common.hooks.result")}>
+                        {hook.result == null
+                          ? "Core 未返回结果"
+                          : JSON.stringify(hook.result, null, 2)}
+                      </pre>
+                    </SettingsDisclosure>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>本轮没有钩子运行记录。</p>
+            )}
+          </div>
+          <DialogDescription>仅包含 Core 返回的本轮工具钩子记录。</DialogDescription>
         </div>
-        <DialogDescription className="hook-stats-scope">
-          仅包含 Core 返回的本轮工具钩子记录。
-        </DialogDescription>
       </DialogContent>
     </Dialog>
   );

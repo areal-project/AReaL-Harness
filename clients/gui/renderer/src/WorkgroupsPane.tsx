@@ -791,7 +791,10 @@ export function WorkgroupsPane({ project, action }: { project: Data; action: Act
                   key={group.id}
                   data-testid={`workgroup-${group.id}`}
                   variant={selected === group.id ? "secondary" : "ghost"}
-                  className="h-auto justify-start whitespace-normal text-left"
+                  size="auto"
+                  align="start"
+                  wrap
+                  className="w-full"
                   onClick={() => select(group.id)}
                 >
                   {group.objective} · {status[group.status] ?? group.status}

@@ -1427,11 +1427,11 @@ export function Composer({
               !skills.selected.length &&
               !references.length ? (
               <ControlHintTooltip title={ordinary ? "暂停执行" : "停止"} shortcut="Esc">
-                <Button
+                <ComposerActionButton
                   type="button"
                   variant="secondary"
                   size="icon"
-                  className="composer-primary-action composer-stop-action"
+                  mode="stop"
                   aria-label={ordinary ? "暂停执行" : "停止"}
                   disabled={executionBlocked}
                   onClick={() => {
@@ -1440,7 +1440,7 @@ export function Composer({
                   }}
                 >
                   <StopIcon className="size-4" />
-                </Button>
+                </ComposerActionButton>
               </ControlHintTooltip>
             ) : running ? (
               <ControlHintTooltip

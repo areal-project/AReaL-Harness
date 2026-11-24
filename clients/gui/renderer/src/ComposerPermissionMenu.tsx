@@ -94,11 +94,13 @@ export function ComposerPermissionMenu({
           <Button
             key={option.id}
             variant={value === option.id ? "secondary" : "ghost"}
+            size="auto"
+            align="start"
             aria-pressed={value === option.id}
             data-permission-preset={option.id}
             disabled={disabled}
             onClick={() => onChange(option.id)}
-            className="min-h-[var(--size-touch-target)] h-auto w-full justify-start gap-inline whitespace-normal text-start"
+            className="min-h-(--size-touch-target) w-full"
           >
             {content}
           </Button>
@@ -112,44 +114,47 @@ export function ComposerPermissionMenu({
     );
   return (
     <DropdownMenu>
-      <ControlHintTooltip title={t("chat.permissions.change")}>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={disabled}
-              aria-label={t("chat.permissions.change")}
-              data-composer-collapse-priority="0"
-              className="group/permission size-7 gap-1 rounded-navigation p-0 text-ui-caption text-foreground-subtle @xl/composer:w-auto @xl/composer:px-2 data-[composer-compact=true]:w-7 data-[composer-compact=true]:px-0"
-            >
-              <Icon />
-              <span className="hidden @xl/composer:inline group-data-[composer-compact=true]/permission:hidden">
-                {selected
-                  ? t(selected.labelId)
-                  : t(
-                      effectiveValue === "readOnly"
-                        ? "chat.permissions.readOnly"
-                        : effectiveValue === "plan"
-                          ? "chat.permissions.plan"
-                          : effectiveValue === "auto"
-                            ? "chat.permissions.auto"
-                            : effectiveValue === "restricted"
-                              ? "chat.permissions.restricted"
-                              : effectiveValue === "unsupported"
-                                ? "chat.permissions.unsupported"
-                                : "chat.permissions.custom",
-                    )}
-              </span>
-            </Button>
-          }
-        />
-      </ControlHintTooltip>
+      <span className="group/permission inline-flex" data-composer-collapse-priority="0">
+        <ControlHintTooltip title={t("chat.permissions.change")}>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                type="button"
+                variant="ghost-subtle"
+                size="none"
+                disabled={disabled}
+                aria-label={t("chat.permissions.change")}
+                className="size-7 @xl/composer:w-auto group-data-[composer-compact=true]/permission:w-7"
+              >
+                <span className="inline-flex items-center gap-1 px-0 @xl/composer:px-2 group-data-[composer-compact=true]/permission:px-0">
+                  <Icon />
+                  <span className="hidden @xl/composer:inline group-data-[composer-compact=true]/permission:hidden">
+                    {selected
+                      ? t(selected.labelId)
+                      : t(
+                          effectiveValue === "readOnly"
+                            ? "chat.permissions.readOnly"
+                            : effectiveValue === "plan"
+                              ? "chat.permissions.plan"
+                              : effectiveValue === "auto"
+                                ? "chat.permissions.auto"
+                                : effectiveValue === "restricted"
+                                  ? "chat.permissions.restricted"
+                                  : effectiveValue === "unsupported"
+                                    ? "chat.permissions.unsupported"
+                                    : "chat.permissions.custom",
+                        )}
+                  </span>
+                </span>
+              </Button>
+            }
+          />
+        </ControlHintTooltip>
+      </span>
       <DropdownMenuContent
         side="top"
         sideOffset={4}
-        className="composer-permission-menu w-[300px]"
+        className="w-75"
         aria-label={t("chat.permissions.choose")}
         finalFocus={() => {
           onClose();
@@ -164,12 +169,7 @@ export function ComposerPermissionMenu({
           }}
         >
           {choices.map(({ option, disabled, content }) => (
-            <DropdownMenuRadioItem
-              key={option.id}
-              value={option.id}
-              disabled={disabled}
-              className="permission-choice items-start gap-2 text-ui-caption [&_[data-slot=dropdown-menu-radio-item-indicator]]:top-1/2 [&_[data-slot=dropdown-menu-radio-item-indicator]]:-translate-y-1/2"
-            >
+            <DropdownMenuRadioItem key={option.id} value={option.id} disabled={disabled} multiline>
               {content}
             </DropdownMenuRadioItem>
           ))}

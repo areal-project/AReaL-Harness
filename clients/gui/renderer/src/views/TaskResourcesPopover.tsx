@@ -77,11 +77,12 @@ export function TaskResourcesPopover({
         <PopoverTrigger
           render={
             <Button
-              unstyled
+              variant={hasChanges ? "surface" : "ghost-subtle"}
+              size={hasChanges ? "chip" : "icon"}
+              active={open}
               type="button"
               ref={trigger}
               data-has-changes={hasChanges || undefined}
-              className={`icon-button task-resources-trigger ${open ? "active" : ""}`}
               aria-label={t("chat.resources.trigger")}
             />
           }
@@ -97,6 +98,7 @@ export function TaskResourcesPopover({
       </TitleTooltip>
       <PopoverContent
         keepMounted
+        variant="flush"
         finalFocus={() => {
           if (composerHandoff.current) {
             composerHandoff.current = false;
@@ -106,46 +108,48 @@ export function TaskResourcesPopover({
         }}
         align="end"
         sideOffset={8}
-        className="task-resources-popup"
+        className="w-[calc(var(--ui-font-size)*22+var(--spacing-inline)/2)]"
         aria-label={t("chat.resources.panel")}
       >
-        <Activity mode={open ? "visible" : "hidden"}>
-          <ConversationStatusCard
-            changes={changes}
-            fileOpen={fileOpen}
-            onLink={onLink}
-            onAddSource={
-              onAddSource
-                ? () => {
-                    setOpen(false);
-                    onAddSource();
-                  }
-                : undefined
-            }
-            project={project}
-            thread={thread}
-            action={action}
-            scheduledTask={scheduledTask}
-            onAddSchedule={
-              onAddSchedule
-                ? () => {
-                    composerHandoff.current = true;
-                    setOpen(false);
-                    onAddSchedule();
-                  }
-                : undefined
-            }
-            onOpenSchedule={onOpenSchedule ? navigate(onOpenSchedule) : undefined}
-            onAgents={() => {
-              setOpen(false);
-              if (onReadAgents) onReadAgents(() => setOpen(true));
-              else onPanel("subagents");
-            }}
-            onPanel={navigate(onPanel)}
-            onAgent={navigate(onAgent)}
-            onFile={navigate(onFile)}
-          />
-        </Activity>
+        <div className="task-resources-popup">
+          <Activity mode={open ? "visible" : "hidden"}>
+            <ConversationStatusCard
+              changes={changes}
+              fileOpen={fileOpen}
+              onLink={onLink}
+              onAddSource={
+                onAddSource
+                  ? () => {
+                      setOpen(false);
+                      onAddSource();
+                    }
+                  : undefined
+              }
+              project={project}
+              thread={thread}
+              action={action}
+              scheduledTask={scheduledTask}
+              onAddSchedule={
+                onAddSchedule
+                  ? () => {
+                      composerHandoff.current = true;
+                      setOpen(false);
+                      onAddSchedule();
+                    }
+                  : undefined
+              }
+              onOpenSchedule={onOpenSchedule ? navigate(onOpenSchedule) : undefined}
+              onAgents={() => {
+                setOpen(false);
+                if (onReadAgents) onReadAgents(() => setOpen(true));
+                else onPanel("subagents");
+              }}
+              onPanel={navigate(onPanel)}
+              onAgent={navigate(onAgent)}
+              onFile={navigate(onFile)}
+            />
+          </Activity>
+        </div>
       </PopoverContent>
     </Popover>
   );

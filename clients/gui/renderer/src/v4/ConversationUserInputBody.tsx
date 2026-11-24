@@ -125,12 +125,12 @@ export function ConversationUserInputBody({
           <Button
             type="button"
             size="sm"
-            variant="outline"
+            variant="floating"
+            shape="pill"
             aria-label={toggleLabel}
             aria-expanded={expanded}
             title={toggleLabel}
             onClick={() => setExpanded((current) => !current)}
-            className="rounded-full bg-background shadow-sm backdrop-blur-sm transition-colors"
           >
             {expanded ? (
               <ChevronUpIcon aria-hidden="true" className="size-4" />

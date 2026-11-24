@@ -25,9 +25,10 @@ function ToolActivityDisclosure({ activities }: { activities: BotToolActivity[] 
   return (
     <div className="bot-activity-block">
       <Button
-        unstyled
         type="button"
-        className="bot-activity-toggle"
+        variant="surface"
+        size="chip"
+        className="self-start"
         aria-expanded={expanded}
         onClick={() => setExpanded((prev) => !prev)}
       >
@@ -54,9 +55,9 @@ function CopyTextButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <Button
-      unstyled
       type="button"
-      className="bot-msg-action"
+      variant="ghost-subtle"
+      size="icon-sm"
       aria-label={copied ? t("bots.chat.copied") : t("bots.chat.copy")}
       onClick={() => {
         void navigator.clipboard?.writeText(text).then(() => {
@@ -164,10 +165,10 @@ export function BotMessages({
               <div className="bot-starter-grid">
                 {bot.starterPrompts.map((prompt, index) => (
                   <Button
-                    unstyled
                     key={`${index}-${prompt}`}
                     type="button"
-                    className="bot-starter-chip"
+                    variant="surface"
+                    shape="pill"
                     disabled={Boolean(bot.pendingSubmission)}
                     onClick={() => onStarterPrompt(prompt)}
                   >

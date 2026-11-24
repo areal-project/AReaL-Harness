@@ -91,7 +91,7 @@ export function CreateBotDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bot-dialog" data-testid="bot-create-dialog">
+      <DialogContent size="md" data-testid="bot-create-dialog">
         <DialogHeader>
           <DialogTitle>{t("bots.create.title")}</DialogTitle>
           <DialogDescription>{t("bots.create.subtitle")}</DialogDescription>
@@ -241,7 +241,7 @@ export function ArenaConfigDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bot-dialog" data-testid="bot-arena-dialog">
+      <DialogContent size="md" data-testid="bot-arena-dialog">
         <DialogHeader>
           <DialogTitle>{t("bots.arena.title")}</DialogTitle>
           <DialogDescription>{t("bots.arena.subtitle")}</DialogDescription>

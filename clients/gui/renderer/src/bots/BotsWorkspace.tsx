@@ -186,7 +186,7 @@ export function BotsWorkspace({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className={settingsOpen ? "is-active" : undefined}
+                    active={settingsOpen}
                     aria-label={t("bots.actions.settings")}
                     title={t("bots.actions.settings")}
                     aria-pressed={settingsOpen}
@@ -307,7 +307,8 @@ export function BotsWorkspace({
                         type="button"
                         size="icon"
                         variant="secondary"
-                        className="bot-send-button"
+                        shape="pill"
+                        className="size-8"
                         aria-label={t("bots.chat.stop")}
                         title={t("bots.chat.stop")}
                         onClick={() => void model.interruptBot(selectedBot.id)}
@@ -319,7 +320,8 @@ export function BotsWorkspace({
                       <Button
                         type="button"
                         size="icon"
-                        className="bot-send-button"
+                        shape="pill"
+                        className="size-8"
                         aria-label={t("bots.chat.send")}
                         title={t("bots.chat.send")}
                         disabled={!draft.trim() || isSending || isLockedByUnknown}

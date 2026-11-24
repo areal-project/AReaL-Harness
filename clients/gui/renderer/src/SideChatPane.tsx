@@ -9,6 +9,7 @@ import {
   Textarea,
   TitleTooltip,
 } from "@areal/ui";
+import { ComposerActionButton } from "@areal/ui/compositions";
 import { useComposerPrediction } from "./useComposerPrediction.js";
 import { ContextMeter } from "./ContextMeter.js";
 import { useI18n } from "./i18n/IntlProvider.js";
@@ -123,43 +124,45 @@ export function SideChatPane({
               }
             />
           </TitleTooltip>
-          <PopoverContent align="end" className="side-chat-related">
-            <Button
-              unstyled
-              data-slot={undefined}
-              type="button"
-              aria-pressed={contextOpen}
-              onClick={() => {
-                setContextOpen((open) => !open);
-                setRelatedOpen(false);
-              }}
-            >
-              上下文与文件访问
-            </Button>
-            <RelatedSideChats
-              project={project}
-              sourceId={source.id}
-              selectedId={selected.kind === "side" ? selected.id : ""}
-              action={action}
-              showNew={false}
-              onSelect={(id) => choose(id ? workspace.selectSide(id) : workspace.newDraft())}
-            />
-            {workspace
-              .availableDrafts()
-              .filter((draft) => draft.id !== selected.id)
-              .map((draft) => (
-                <Button
-                  unstyled
-                  data-slot={undefined}
-                  type="button"
-                  key={draft.id}
-                  onClick={() => choose(workspace.selectDraft(draft.id))}
-                >
-                  {localStorage.getItem(workspace.pendingKey(draft))
-                    ? "待核对的讨论"
-                    : "未发送的草稿"}
-                </Button>
-              ))}
+          <PopoverContent align="end" variant="flush">
+            <div className="side-chat-related flex flex-col gap-field p-2.5">
+              <Button
+                unstyled
+                data-slot={undefined}
+                type="button"
+                aria-pressed={contextOpen}
+                onClick={() => {
+                  setContextOpen((open) => !open);
+                  setRelatedOpen(false);
+                }}
+              >
+                上下文与文件访问
+              </Button>
+              <RelatedSideChats
+                project={project}
+                sourceId={source.id}
+                selectedId={selected.kind === "side" ? selected.id : ""}
+                action={action}
+                showNew={false}
+                onSelect={(id) => choose(id ? workspace.selectSide(id) : workspace.newDraft())}
+              />
+              {workspace
+                .availableDrafts()
+                .filter((draft) => draft.id !== selected.id)
+                .map((draft) => (
+                  <Button
+                    unstyled
+                    data-slot={undefined}
+                    type="button"
+                    key={draft.id}
+                    onClick={() => choose(workspace.selectDraft(draft.id))}
+                  >
+                    {localStorage.getItem(workspace.pendingKey(draft))
+                      ? "待核对的讨论"
+                      : "未发送的草稿"}
+                  </Button>
+                ))}
+            </div>
           </PopoverContent>
         </Popover>
       </div>
@@ -848,26 +851,24 @@ function SideChatEditor({
             onReview={() => {}}
             readTurnReview={async () => ({})}
             responseActions={(answer) => (
-              <>
+              <span className="inline-flex items-center gap-1">
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="ghost-subtle"
                   size="sm"
-                  className="side-bring-action"
                   onClick={() => prepareBringBack(answer.text, true)}
                 >
                   带回整条回复
                 </Button>
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="ghost-subtle"
                   size="sm"
-                  className="side-bring-action"
                   onClick={() => prepareBringBack(answer.text, false)}
                 >
                   带回选中文字
                 </Button>
-              </>
+              </span>
             )}
           />
         )}
@@ -1069,17 +1070,17 @@ function SideChatEditor({
             )}
             submitControl={
               active && !text.trim() ? (
-                <Button
+                <ComposerActionButton
                   type="button"
                   variant="secondary"
                   size="icon"
-                  className="composer-primary-action composer-stop-action"
+                  mode="stop"
                   aria-label={t("chat.side.stop")}
                   disabled={executionBlocked}
                   onClick={stop}
                 >
                   <StopIcon className="size-4" />
-                </Button>
+                </ComposerActionButton>
               ) : undefined
             }
           />

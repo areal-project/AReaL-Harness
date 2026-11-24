@@ -339,72 +339,76 @@ export function SidePane({
             {titleFor?.(active) ?? SIDE_PANE_TITLES[active] ?? active}
           </strong>
         ) : (
-          <Tabs
-            value={conversationActive ? "__conversation" : active}
-            onValueChange={(id) =>
-              id === "__conversation" ? workspaceView?.onChange("conversation") : onSelect(id)
-            }
+          <div
             className="side-pane-tabs-root"
             style={{ width: Math.max(0, tabs.length * 240 - 2 + (fullView ? 220 : 0)) }}
           >
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={({ active, over }) => {
-                if (over && active.id !== over.id)
-                  onChange(
-                    arrayMove(
-                      names,
-                      names.indexOf(String(active.id)),
-                      names.indexOf(String(over.id)),
-                    ),
-                  );
-              }}
+            <Tabs
+              value={conversationActive ? "__conversation" : active}
+              onValueChange={(id) =>
+                id === "__conversation" ? workspaceView?.onChange("conversation") : onSelect(id)
+              }
+              className="min-w-0 flex-1"
             >
-              <SortableContext items={names} strategy={horizontalListSortingStrategy}>
-                <TabsList
-                  variant="line"
-                  className="side-pane-tabs-scroll"
-                  aria-label="侧边面板标签"
-                >
-                  {fullView && (
-                    <TabsTrigger
-                      value="__conversation"
-                      className="side-pane-conversation-tab"
-                      aria-label={workspaceView.title}
-                    >
-                      <MessageCircle className="size-4 shrink-0" />
-                      <span className="truncate">{workspaceView.title}</span>
-                    </TabsTrigger>
-                  )}
-                  {fullView && workspaceView.actions}
-                  {tabs.map((tab) => (
-                    <SortableSidePaneTabTrigger
-                      key={tab.id}
-                      tab={tab}
-                      title={tab.title}
-                      closeTabLabel={`关闭 ${tab.title} 标签`}
-                      closeTabMenuLabel="关闭标签页"
-                      closeOtherTabsLabel="关闭其他标签页"
-                      closeAllTabsLabel="关闭所有标签页"
-                      diffBadgeLabel="改动"
-                      isActive={!conversationActive && active === tab.id}
-                      isPreview={tab.id === previewTabId}
-                      onDoubleClick={() => {
-                        onKeepTab?.(tab.id);
-                        workspaceView?.onChange(fullView ? "split" : "panel");
-                      }}
-                      onKeepTab={onKeepTab}
-                      onCloseTab={close}
-                      onCloseOtherTabs={closeGroup}
-                      onCloseAllTabs={() => closeGroup()}
-                      canCloseOtherTabs={tabs.length > 1}
-                    />
-                  ))}
-                </TabsList>
-              </SortableContext>
-            </DndContext>
-          </Tabs>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={({ active, over }) => {
+                  if (over && active.id !== over.id)
+                    onChange(
+                      arrayMove(
+                        names,
+                        names.indexOf(String(active.id)),
+                        names.indexOf(String(over.id)),
+                      ),
+                    );
+                }}
+              >
+                <SortableContext items={names} strategy={horizontalListSortingStrategy}>
+                  <TabsList
+                    variant="strip"
+                    className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden"
+                    aria-label="侧边面板标签"
+                  >
+                    {fullView && (
+                      <TabsTrigger
+                        value="__conversation"
+                        className="max-w-52 shrink-0"
+                        aria-label={workspaceView.title}
+                      >
+                        <MessageCircle className="size-4 shrink-0" />
+                        <span className="truncate">{workspaceView.title}</span>
+                      </TabsTrigger>
+                    )}
+                    {fullView && workspaceView.actions}
+                    {tabs.map((tab) => (
+                      <SortableSidePaneTabTrigger
+                        key={tab.id}
+                        tab={tab}
+                        title={tab.title}
+                        closeTabLabel={`关闭 ${tab.title} 标签`}
+                        closeTabMenuLabel="关闭标签页"
+                        closeOtherTabsLabel="关闭其他标签页"
+                        closeAllTabsLabel="关闭所有标签页"
+                        diffBadgeLabel="改动"
+                        isActive={!conversationActive && active === tab.id}
+                        isPreview={tab.id === previewTabId}
+                        onDoubleClick={() => {
+                          onKeepTab?.(tab.id);
+                          workspaceView?.onChange(fullView ? "split" : "panel");
+                        }}
+                        onKeepTab={onKeepTab}
+                        onCloseTab={close}
+                        onCloseOtherTabs={closeGroup}
+                        onCloseAllTabs={() => closeGroup()}
+                        canCloseOtherTabs={tabs.length > 1}
+                      />
+                    ))}
+                  </TabsList>
+                </SortableContext>
+              </DndContext>
+            </Tabs>
+          </div>
         )}
         {!transient && tabs.length > 0 && (
           <DropdownMenu>

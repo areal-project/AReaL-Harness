@@ -78,18 +78,20 @@ export function AnnotationNoteEditor({
           <span>批注 {number}</span>
         )}
         {!expanded && (
-          <Button
-            unstyled
-            data-slot={undefined}
-            type="button"
-            className="browser-annotation-confirm"
-            aria-label="加入聊天草稿"
-            title="确认批注，加入 Composer"
-            disabled={disabled}
-            onClick={confirm}
-          >
-            <Check size={14} />
-          </Button>
+          <span className="shrink-0">
+            <Button
+              type="button"
+              variant="default"
+              size="icon"
+              shape="pill"
+              aria-label="加入聊天草稿"
+              title="确认批注，加入 Composer"
+              disabled={disabled}
+              onClick={confirm}
+            >
+              <Check size={14} />
+            </Button>
+          </span>
         )}
       </div>
       {expanded && (
@@ -121,10 +123,10 @@ export function AnnotationNoteEditor({
               取消此条
             </Button>
             <Button
-              unstyled
-              data-slot={undefined}
               type="button"
-              className="browser-annotation-confirm"
+              variant="default"
+              size="icon"
+              shape="pill"
               aria-label="加入聊天草稿"
               disabled={disabled}
               onClick={confirm}

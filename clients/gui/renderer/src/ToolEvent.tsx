@@ -280,10 +280,12 @@ export function ToolEvent({
       data-tool-status={view.status}
     >
       {childId ? (
-        <div className="agent-spawn-row agent-event-row" data-agent-event="started">
+        <div className="agent-spawn-row agent-event-row group" data-agent-event="started">
           <Button
-            variant="ghost"
-            className="agent-spawn-link"
+            variant="inline-link"
+            size="none"
+            align="start"
+            className="min-w-0 flex-1 gap-[var(--spacing-inline)]"
             aria-label={t("chat.agent.openConversation", { id: childId })}
             title={childTitle}
             onClick={() => onAgent?.(childId)}
@@ -293,8 +295,10 @@ export function ToolEvent({
             <span className="agent-spawn-status">{t("chat.agent.started")}</span>
           </Button>
           <Button
-            variant="ghost"
-            className="agent-spawn-record"
+            variant="ghost-subtle"
+            size="icon-xs"
+            revealOnGroupHover
+            className="ml-auto"
             aria-label={t("chat.activity.rawRecord")}
             aria-expanded={open}
             aria-controls={recordId}
@@ -310,10 +314,16 @@ export function ToolEvent({
       ) : settlements.length ? (
         <div className="agent-event-list">
           {settlements.map(({ threadId: id, label }, index) => (
-            <div key={id} className="agent-spawn-row agent-event-row" data-agent-event="settled">
+            <div
+              key={id}
+              className="agent-spawn-row agent-event-row group"
+              data-agent-event="settled"
+            >
               <Button
-                variant="ghost"
-                className="agent-spawn-link"
+                variant="inline-link"
+                size="none"
+                align="start"
+                className="min-w-0 flex-1 gap-[var(--spacing-inline)]"
                 aria-label={t("chat.agent.openConversation", { id })}
                 title={settledTitle(id)}
                 onClick={() => onAgent?.(id)}
@@ -324,8 +334,10 @@ export function ToolEvent({
               </Button>
               {index === 0 && (
                 <Button
-                  variant="ghost"
-                  className="agent-spawn-record"
+                  variant="ghost-subtle"
+                  size="icon-xs"
+                  revealOnGroupHover
+                  className="ml-auto"
                   aria-label={t("chat.activity.rawRecord")}
                   aria-expanded={open}
                   aria-controls={recordId}
@@ -362,10 +374,10 @@ export function ToolEvent({
             </div>
           </ImageDisclosure>
           <Button
-            unstyled
-            data-slot={undefined}
             type="button"
-            className="agent-spawn-record"
+            variant="ghost-subtle"
+            size="icon-xs"
+            className="ml-auto"
             aria-label={t("chat.activity.rawRecord")}
             aria-expanded={open}
             aria-controls={recordId}
@@ -379,8 +391,9 @@ export function ToolEvent({
           <span className="areal-activity-row-action">{toolActionText(item, "done", t)}</span>
           <ActivityRowHint hint={file.path}>
             <Button
-              variant="ghost"
-              className="tool-file-link"
+              variant="inline-link"
+              size="none"
+              className="block min-w-0 max-w-full truncate"
               aria-label={t("chat.activity.openFile", { path: file.path })}
               onClick={() => onFile?.(file.path)}
             >
@@ -389,8 +402,9 @@ export function ToolEvent({
           </ActivityRowHint>
           {current && !current.error && (
             <Button
-              variant="ghost"
-              className="tool-file-diff-toggle"
+              variant="ghost-subtle"
+              size="none"
+              className="gap-[calc(var(--spacing-inline)/2)]"
               aria-label="查看本次文件更改"
               aria-expanded={diffOpen}
               aria-controls={diffId}
@@ -413,8 +427,9 @@ export function ToolEvent({
             </TitleTooltip>
           )}
           <Button
-            variant="ghost"
-            className="tool-file-record"
+            variant="ghost-subtle"
+            size="icon-xs"
+            className="shrink-0"
             aria-label={t("chat.activity.rawRecord")}
             title={t("chat.activity.rawRecord")}
             aria-expanded={open}
@@ -465,8 +480,9 @@ export function ToolEvent({
         <div className="tool-file-diff" id={diffId} role="region" aria-label="本次文件更改">
           <div className="tool-file-diff-header">
             <Button
-              variant="ghost"
-              className="tool-file-link"
+              variant="inline-link"
+              size="none"
+              className="block min-w-0 max-w-full truncate"
               aria-label={`打开 ${file.path}`}
               title={file.path}
               onClick={() => onFile?.(file.path)}

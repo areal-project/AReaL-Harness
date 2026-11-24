@@ -254,8 +254,10 @@ function SidebarProjectGroup({ owner }: { owner: Data }) {
         )}
       >
         <Button
-          unstyled
-          className="project-label"
+          variant="row"
+          size="sm"
+          align="start"
+          className="h-full min-w-0 flex-1 gap-2"
           aria-current={!taskCenterOpen && projectId === owner.id && !threadId ? "page" : undefined}
           aria-expanded={!collapsed}
           aria-controls={`project-threads-${owner.id}`}
@@ -268,16 +270,19 @@ function SidebarProjectGroup({ owner }: { owner: Data }) {
           }}
         >
           {collapsed ? <ProjectFolderIcon /> : <ProjectOpenFolderIcon />}
-          <span>{library.projects?.[owner.id]?.title || owner.root.split("/").pop()}</span>
+          <span className="min-w-0 flex-1 truncate">
+            {library.projects?.[owner.id]?.title || owner.root.split("/").pop()}
+          </span>
         </Button>
         {!libraryReadOnly && (
-          <HoverActions className="project-actions">
+          <HoverActions className="absolute right-[calc(var(--spacing-inline)/2)] top-1/2 -translate-y-1/2 z-10 gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
                   <Button
-                    unstyled
-                    className="icon-button"
+                    variant="ghost-subtle"
+                    size="icon-xs"
+                    className="shrink-0"
                     aria-label={t("common.navigation.projectActions", {
                       project: library.projects?.[owner.id]?.title || owner.root.split("/").pop(),
                     })}
@@ -384,9 +389,10 @@ function SidebarProjectGroup({ owner }: { owner: Data }) {
             </DropdownMenu>
             {!conversationCreateReadOnly && (
               <Button
-                unstyled
+                variant="ghost-subtle"
+                size="icon-xs"
                 type="button"
-                className="icon-button"
+                className="shrink-0"
                 aria-label={t("common.navigation.newProjectChat", {
                   project: library.projects?.[owner.id]?.title || owner.root.split("/").pop(),
                 })}
@@ -410,9 +416,11 @@ function SidebarProjectGroup({ owner }: { owner: Data }) {
         </ul>
         {rows.length > visibleCount && (
           <Button
-            unstyled
+            variant="ghost-subtle"
+            size="sm"
+            align="start"
             type="button"
-            className="project-show-more"
+            className="w-full"
             onClick={() =>
               setProjectVisibleCounts((current) => ({
                 ...current,
@@ -534,9 +542,8 @@ function SidebarContent({ onUpgradeHistory }: { onUpgradeHistory?: () => void })
                   {!libraryReadOnly && !readOnly && (
                     <Button
                       type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="section-action-btn"
+                      variant="ghost-subtle"
+                      size="icon-xs"
                       aria-label={t("settings.openProject")}
                       title={t("settings.openProject")}
                       onClick={() => void requestNavigation(() => void choose())}
@@ -549,8 +556,8 @@ function SidebarContent({ onUpgradeHistory }: { onUpgradeHistory?: () => void })
                       <DropdownMenuTrigger
                         render={
                           <Button
-                            unstyled
-                            className="section-action-btn"
+                            variant="ghost-subtle"
+                            size="icon-xs"
                             aria-label={t("common.navigation.organize")}
                           >
                             <MoreOptionsIcon size={16} />

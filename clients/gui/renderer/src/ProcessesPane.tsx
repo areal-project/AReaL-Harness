@@ -525,19 +525,23 @@ export function ProcessesPane({
         <div className="flex flex-col gap-1" aria-label="受管进程列表">
           {items.map((p) => (
             <Button
-              unstyled
-              data-slot={undefined}
               key={p.id}
               data-testid={`process-${p.id}`}
               type="button"
+              variant="surface"
+              size="auto"
+              align="start"
+              active={selected === p.id}
               aria-pressed={selected === p.id}
-              className={`rounded-control border border-border p-2 text-left ${selected === p.id ? "bg-selected" : "hover:bg-hover"}`}
+              className="w-full"
               onClick={() => setSelected(p.id)}
             >
-              <span className="block break-all font-mono">{p.argv.join(" ")}</span>
-              <span className="text-foreground-subtle">
-                {p.cleanupConfirmed ? "已清理" : (records[p.state] ?? p.state)} ·{" "}
-                {p.lifetime === "turn" ? "随本轮执行" : "随会话保留"}
+              <span className="flex min-w-0 flex-col">
+                <span className="block break-all font-mono">{p.argv.join(" ")}</span>
+                <span className="text-foreground-subtle">
+                  {p.cleanupConfirmed ? "已清理" : (records[p.state] ?? p.state)} ·{" "}
+                  {p.lifetime === "turn" ? "随本轮执行" : "随会话保留"}
+                </span>
               </span>
             </Button>
           ))}

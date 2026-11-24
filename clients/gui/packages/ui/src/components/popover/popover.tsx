@@ -24,7 +24,7 @@ function PopoverContent({
     React.ComponentProps<typeof PopoverPrimitive.Positioner>,
     "align" | "side" | "sideOffset" | "anchor"
   > & {
-    variant?: "default" | "menu";
+    variant?: "default" | "menu" | "compact" | "flush";
     keepMounted?: boolean;
   }) {
   return (
@@ -40,8 +40,14 @@ function PopoverContent({
         <PopoverPrimitive.Popup
           data-slot="popover-content"
           className={cn(
-            "ui-popup flex w-72 max-w-(--available-width) max-h-(--available-height) flex-col gap-field rounded-overlay border border-popover-border text-ui-base text-popover-foreground shadow-overlay overflow-y-auto outline-none [app-region:no-drag]",
-            variant === "menu" ? "bg-menu p-0" : "bg-popover p-2.5",
+            "ui-popup flex max-w-(--available-width) max-h-(--available-height) rounded-overlay border border-popover-border text-ui-base text-popover-foreground shadow-overlay overflow-y-auto outline-none [app-region:no-drag]",
+            variant === "menu"
+              ? "w-72 flex-col gap-0 bg-menu p-0"
+              : variant === "compact"
+                ? "w-auto flex-row gap-inline bg-popover p-1"
+                : variant === "flush"
+                  ? "w-auto flex-col gap-0 bg-popover p-0"
+                  : "w-72 flex-col gap-field bg-popover p-2.5",
             className,
           )}
           {...props}

@@ -392,10 +392,11 @@ export function ModelSettings({
                   <p className="provider-catalog-label">{label as string}</p>
                   {(group as typeof catalog).map((item) => (
                     <Button
-                      unstyled
-                      data-slot={undefined}
                       type="button"
-                      className="provider-catalog-row"
+                      variant="row"
+                      size="auto"
+                      active={current === item.id}
+                      className="min-h-10 w-full"
                       key={item.id}
                       aria-current={current === item.id}
                       data-enabled={item.enabled}
@@ -403,7 +404,7 @@ export function ModelSettings({
                       onClick={() => choose(item.id)}
                     >
                       <span className="provider-catalog-dot" aria-hidden="true" />
-                      <span>{item.name}</span>
+                      <span className="min-w-0 flex-1 break-words">{item.name}</span>
                     </Button>
                   ))}
                 </section>
@@ -420,7 +421,7 @@ export function ModelSettings({
             )}
           </div>
           <Button
-            className="provider-catalog-add"
+            className="mt-2 shrink-0 self-stretch"
             variant="outline"
             disabled={busy}
             onClick={() =>
@@ -597,7 +598,8 @@ export function ModelSettings({
                       size="lg"
                       value={provider.name}
                       onChange={(event) => edit({ name: event.target.value })}
-                      className="flex-1 font-semibold"
+                      emphasis="strong"
+                      className="flex-1"
                     />
                     {provider.id && (
                       <Button

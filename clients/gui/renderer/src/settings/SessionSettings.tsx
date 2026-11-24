@@ -310,7 +310,8 @@ export function SessionSettings({
                       min={1}
                       max={1024}
                       value={draft.options.maxModelRounds ?? ""}
-                      className="w-20 text-center"
+                      align="center"
+                      className="w-20"
                       onChange={(event) =>
                         update({
                           options: {
@@ -425,7 +426,8 @@ export function SessionSettings({
                     max={2}
                     step={0.1}
                     value={draft.parameters.temperature ?? ""}
-                    className="w-24 text-center"
+                    align="center"
+                    className="w-24"
                     onChange={(event) =>
                       update({
                         parameters: {
@@ -447,7 +449,8 @@ export function SessionSettings({
                     aria-label={t("settings.sessionSettings.maximumOutputTokens")}
                     min={1}
                     value={draft.parameters.maxOutputTokens ?? ""}
-                    className="w-24 text-center"
+                    align="center"
+                    className="w-24"
                     onChange={(event) =>
                       update({
                         parameters: {

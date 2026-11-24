@@ -171,14 +171,8 @@
   opacity: 1;
 }
 .conversation-selection-details {
-  width: 320px;
-  gap: 0;
+  width: 100%;
   padding: calc(var(--spacing-inline) / 2);
-  border: var(--border-width-default) solid var(--color-border);
-  border-radius: var(--radius-panel);
-  background: var(--color-tooltip);
-  color: var(--color-tooltip-foreground);
-  box-shadow: var(--shadow-overlay);
 }
 .conversation-selection-detail-list {
   max-height: 256px;

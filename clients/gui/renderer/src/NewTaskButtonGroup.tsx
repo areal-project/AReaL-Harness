@@ -33,8 +33,8 @@ export function NewTaskButtonGroup({
         <SquarePen size={16} aria-hidden="true" />
         <span>{label}</span>
       </TooltipTrigger>
-      <TooltipContent role="tooltip" side="top" sideOffset={2} className="new-task-shortcut">
-        {mac ? "⌘N" : "Ctrl+N"}
+      <TooltipContent role="tooltip" side="top" sideOffset={2}>
+        <span className="text-ui-caption">{mac ? "⌘N" : "Ctrl+N"}</span>
       </TooltipContent>
     </Tooltip>
   );

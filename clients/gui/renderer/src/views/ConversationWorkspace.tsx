@@ -721,8 +721,9 @@ function DraftConversation() {
               <DropdownMenuTrigger
                 render={
                   <Button
-                    unstyled
-                    className="composer-project"
+                    variant="ghost-subtle"
+                    size="chip"
+                    className="shrink-0"
                     aria-label={
                       project
                         ? t("common.conversation.newInProject", {
@@ -736,7 +737,7 @@ function DraftConversation() {
                     }
                   >
                     {project ? <ProjectFolderIcon /> : <LeaveProjectIcon />}
-                    <span>
+                    <span className="max-w-80 truncate">
                       {project
                         ? library.projects?.[project.id]?.title ||
                           (project.projectless
@@ -747,7 +748,7 @@ function DraftConversation() {
                   </Button>
                 }
               />
-              <DropdownMenuContent align="start" className="project-picker-menu">
+              <DropdownMenuContent align="start" className="gap-0">
                 {projects
                   .filter((p) => !p.projectless)
                   .map((p) => (

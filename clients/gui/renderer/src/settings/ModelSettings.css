@@ -38,6 +38,9 @@
   border-radius: var(--radius-control);
   padding-block: var(--spacing-inline);
 }
+.model-settings .provider-catalog [data-enabled="true"] .provider-catalog-dot {
+  background: var(--color-brand);
+}
 .model-settings .provider-catalog-row > span:not(.provider-catalog-dot) {
   flex: 1;
   min-width: 0;
@@ -101,6 +104,7 @@
 .model-settings .provider-method-copy {
   display: grid;
   gap: calc(var(--spacing-inline) / 2);
+  padding: var(--spacing-inline);
   min-width: 0;
   overflow-wrap: anywhere;
 }

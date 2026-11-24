@@ -71,7 +71,7 @@ export function ReviewCommentView({
     <form
       role={editing ? undefined : "article"}
       aria-label={editing ? "编辑审查评论" : reviewCommentLabel(comment)}
-      className={editing ? "review-comment-editor" : "review-comment-card"}
+      className={editing ? "review-comment-editor" : "review-comment-card group"}
       onSubmit={(event) => {
         event.preventDefault();
         if (editing) onSave();
@@ -114,9 +114,9 @@ export function ReviewCommentView({
         {existing && editing && (
           <Button
             size="sm"
-            variant="ghost"
+            variant="destructive-subtle"
             type="button"
-            className="review-comment-delete-editing"
+            className="me-auto"
             aria-label="移除评论"
             disabled={disabled}
             onClick={onRemove}
@@ -163,10 +163,10 @@ export function ReviewCommentView({
               <DropdownMenuTrigger
                 render={
                   <Button
-                    size="icon-xs"
-                    variant="ghost"
+                    size="icon-sm"
+                    variant="ghost-subtle"
+                    revealOnGroupHover
                     type="button"
-                    className="review-comment-menu"
                     aria-label="评论操作"
                   >
                     <Ellipsis className="size-4" />
@@ -226,11 +226,7 @@ export function ReviewCommentAttachment({
     <div className="review-comment-attachment" data-testid="review-comment-attachment">
       <div className="review-comment-chip">
         <Popover>
-          <PopoverTrigger
-            render={
-              <Button variant="ghost" size="sm" className="review-comment-attachment-trigger" />
-            }
-          >
+          <PopoverTrigger render={<Button variant="surface" size="sm" className="max-w-80" />}>
             <ReviewCommentGlyph />
             <span>{comments.length} 个评论</span>
           </PopoverTrigger>

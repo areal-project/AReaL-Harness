@@ -107,8 +107,9 @@ export function BrowserToolbar({
         ref={annotationControl}
         type="button"
         size="sm"
-        variant="ghost"
-        className="browser-annotation-trigger"
+        variant={annotating ? "secondary" : "surface"}
+        shape="pill"
+        active={annotating}
         data-testid="browser-annotation-button"
         aria-label="批注"
         aria-pressed={annotating}
@@ -118,41 +119,45 @@ export function BrowserToolbar({
         <SquareDashedMousePointer className="size-4" />
         <span>批注</span>
       </Button>
-      <Input
-        type="text"
-        value={addressValue}
-        data-testid={"browser-address-input"}
-        size="sm"
-        className="browser-address"
-        onChange={(event) => onAddressChange(event.target.value)}
-        placeholder={formatMessage({ id: "browser.addressPlaceholder" })}
-        aria-label="预览地址"
-        onMouseDown={(event) => {
-          selectOnPointerUp.current = event.currentTarget !== document.activeElement;
-        }}
-        onFocus={(event) => {
-          // 先显示完整地址再选中，避免域名展开时把新输入追加到旧 URL。
-          flushSync(onAddressFocus);
-          event.currentTarget.select();
-        }}
-        onMouseUp={(event) => {
-          if (!selectOnPointerUp.current) return;
-          selectOnPointerUp.current = false;
-          event.preventDefault();
-          event.currentTarget.select();
-        }}
-        onBlur={() => {
-          selectOnPointerUp.current = false;
-          onAddressBlur();
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            onAddressEscape();
-            event.currentTarget.blur();
-          }
-        }}
-        spellCheck={false}
-      />
+      <div className="min-w-0 flex-1 rounded-control px-2 transition-colors hover:bg-hover focus-within:bg-hover focus-within:ring-1 focus-within:ring-border">
+        <Input
+          type="text"
+          variant="bare"
+          align="center"
+          size="sm"
+          value={addressValue}
+          data-testid={"browser-address-input"}
+          className="w-full"
+          onChange={(event) => onAddressChange(event.target.value)}
+          placeholder={formatMessage({ id: "browser.addressPlaceholder" })}
+          aria-label="预览地址"
+          onMouseDown={(event) => {
+            selectOnPointerUp.current = event.currentTarget !== document.activeElement;
+          }}
+          onFocus={(event) => {
+            // 先显示完整地址再选中，避免域名展开时把新输入追加到旧 URL。
+            flushSync(onAddressFocus);
+            event.currentTarget.select();
+          }}
+          onMouseUp={(event) => {
+            if (!selectOnPointerUp.current) return;
+            selectOnPointerUp.current = false;
+            event.preventDefault();
+            event.currentTarget.select();
+          }}
+          onBlur={() => {
+            selectOnPointerUp.current = false;
+            onAddressBlur();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              onAddressEscape();
+              event.currentTarget.blur();
+            }
+          }}
+          spellCheck={false}
+        />
+      </div>
       <BrowserIconButton
         icon={<MonitorSmartphone className="h-4 w-4" />}
         title={formatMessage({

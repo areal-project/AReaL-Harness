@@ -1643,12 +1643,11 @@ export function TaskCenter({
   const updatedTask = useCallback(() => {
     void refresh();
   }, [refresh]);
+  const newTaskButton = useRef<HTMLButtonElement>(null);
   const closeDetails = () => {
     setCreating(false);
     setSelected("");
-    requestAnimationFrame(() =>
-      layout.current?.querySelector<HTMLButtonElement>(".task-new")?.focus(),
-    );
+    requestAnimationFrame(() => newTaskButton.current?.focus());
   };
   const visibleRows = listed.filter(
     (row) =>
@@ -1993,10 +1992,12 @@ export function TaskCenter({
             />
           )}
           <Button
-            unstyled
-            data-slot={undefined}
-            type="submit"
-            className="task-new"
+            ref={newTaskButton}
+            type="button"
+            variant="row"
+            size="lg"
+            active={creating}
+            className="w-full shrink-0"
             aria-label={t("operations.schedules.newLabel")}
             aria-pressed={creating}
             disabled={!connected}

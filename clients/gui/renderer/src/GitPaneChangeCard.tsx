@@ -132,12 +132,13 @@ export function GitPaneChangeCard({
           render={
             <div className="review-file-header sticky top-0 z-10 flex w-full items-center gap-2 bg-background supports-[backdrop-filter]:backdrop-blur-sm">
               <Button
-                unstyled
-                data-slot={undefined}
                 type="button"
+                variant="ghost"
+                size="none"
+                align="start"
                 aria-label={change.workspaceRelativePath}
                 aria-expanded={isExpanded}
-                className="review-file-identity min-w-0 flex-1 overflow-hidden text-left"
+                className="min-w-0 flex-1 gap-[var(--spacing-inline)] overflow-hidden"
                 title={change.workspaceRelativePath}
                 onClick={() => onOpenChange(change, !isExpanded)}
               >
@@ -171,13 +172,16 @@ export function GitPaneChangeCard({
                     variant="ghost"
                     size="icon-xs"
                     shape="pill"
-                    className="review-file-disclosure"
                     aria-label="切换文件差异对比"
                     title={isExpanded ? "折叠文件" : "展开文件"}
                     aria-expanded={isExpanded}
                     onClick={() => onOpenChange(change, !isExpanded)}
                   >
-                    <ActivityIcon kind="chevron" size={14} className="size-3.5" />
+                    <ActivityIcon
+                      kind="chevron"
+                      size={14}
+                      className={`size-3.5 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                    />
                   </Button>
                 </div>
                 <DropdownMenu>

@@ -1,9 +1,8 @@
 {
   "$description": "生产 UI 字面量存量上限，由 scripts/design-system-baseline.mjs --write 生成；只允许减少。",
   "total": {
-    "color": 40,
-    "radius": 3,
-    "typography": 2
+    "color": 36,
+    "radius": 1
   },
   "files": {
     "renderer/src/AnnotationNoteEditor.css": {
@@ -16,26 +15,11 @@
     "renderer/src/BrowserRegionAnnotation.css": {
       "color": 4
     },
-    "renderer/src/lib/fileDisplay.tsx": {
-      "color": 1
-    },
-    "renderer/src/remote/remote.css": {
-      "typography": 2
-    },
     "renderer/src/settings/MobileSettings.css": {
       "color": 1
     },
     "renderer/src/settings/SettingsWorkspace.css": {
       "color": 26
-    },
-    "renderer/src/settings/usage.css": {
-      "radius": 2
-    },
-    "packages/ui/src/components/tabs/tabs.tsx": {
-      "color": 1
-    },
-    "packages/ui/src/conversation/message-attachments/message-attachments.tsx": {
-      "color": 2
     }
   },
   "exceptions": [
@@ -108,27 +92,6 @@
       "occurrence": 1,
       "reason": "浏览器批注叠层使用固定标记或选区样式，以保持对任意网页和截图的辨识。活动主题 accent 与这些原色不等价。",
       "exitCondition": "批注覆盖层集中参考值后逐项保持相同颜色与 alpha 迁移。"
-    },
-    {
-      "file": "renderer/src/lib/fileDisplay.tsx",
-      "finding": "literal color: color: light-dark(#199f43, #5ecc71)",
-      "occurrence": 1,
-      "reason": "文件差异摘要的浅暗新增色由 light-dark 明确选择，与全局 success 的旧值不同。",
-      "exitCondition": "Diff 内容配色统一到现有 Diff 所有者时迁移。"
-    },
-    {
-      "file": "renderer/src/remote/remote.css",
-      "finding": "literal typography: font-size: 21px",
-      "occurrence": 1,
-      "reason": "保留该具体内容或标题的局部字号关系。当前通用 text-ui/content 角色没有完全相同的固定值或相对关系。",
-      "exitCondition": "该组件在 D2 采用统一排版合同后复核，不能只为减少计数改变字号。"
-    },
-    {
-      "file": "renderer/src/remote/remote.css",
-      "finding": "literal typography: font-size: 17px",
-      "occurrence": 1,
-      "reason": "保留该具体内容或标题的局部字号关系。当前通用 text-ui/content 角色没有完全相同的固定值或相对关系。",
-      "exitCondition": "该组件在 D2 采用统一排版合同后复核，不能只为减少计数改变字号。"
     },
     {
       "file": "renderer/src/settings/MobileSettings.css",
@@ -318,41 +281,6 @@
       "occurrence": 1,
       "reason": "这是主题选择器的固定主题样本或 Diff 语法示例。示例必须展示被选主题，不能继承当前活动调色板。",
       "exitCondition": "主题预览改用统一主题样本数据时随该所有者收敛。"
-    },
-    {
-      "file": "renderer/src/settings/usage.css",
-      "finding": "literal radius: border-radius: 3px",
-      "occurrence": 1,
-      "reason": "这是微型图表柱或热力图单元的局部几何，2px 或 3px 不用于普通控件。",
-      "exitCondition": "图表布局所有者调整单元形状时复核。"
-    },
-    {
-      "file": "renderer/src/settings/usage.css",
-      "finding": "literal radius: border-radius: 3px",
-      "occurrence": 2,
-      "reason": "这是微型图表柱或热力图单元的局部几何，2px 或 3px 不用于普通控件。",
-      "exitCondition": "图表布局所有者调整单元形状时复核。"
-    },
-    {
-      "file": "packages/ui/src/components/tabs/tabs.tsx",
-      "finding": "literal color class: focus-visible:ring-[3px]",
-      "occurrence": 1,
-      "reason": "扫描器把焦点环宽度任意值归入颜色。3px 是现有焦点几何，不是颜色字面量。",
-      "exitCondition": "校正审计的宽度识别时移除此记录。"
-    },
-    {
-      "file": "packages/ui/src/conversation/message-attachments/message-attachments.tsx",
-      "finding": "literal color class: bg-black/55",
-      "occurrence": 1,
-      "reason": "这是图片上的半透明黑底或白色控件文字，属于媒体覆盖层，需要独立于图片和应用主题。",
-      "exitCondition": "媒体覆盖组件统一固定 overlay Token 后迁移。"
-    },
-    {
-      "file": "packages/ui/src/conversation/message-attachments/message-attachments.tsx",
-      "finding": "literal color class: text-white",
-      "occurrence": 1,
-      "reason": "这是图片上的半透明黑底或白色控件文字，属于媒体覆盖层，需要独立于图片和应用主题。",
-      "exitCondition": "媒体覆盖组件统一固定 overlay Token 后迁移。"
     }
   ],
   "classification": {

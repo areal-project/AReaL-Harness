@@ -147,21 +147,14 @@ export function UserPromptEdit({
             submitting={busy}
             submitLabel="发送"
             betweenCancelAndSubmitAction={
-              <Button
-                type="button"
-                variant="outline"
-                className="user-prompt-edit-cancel"
-                disabled={!!unknown || busy}
-                onClick={close}
-              >
+              <Button type="button" variant="outline" disabled={!!unknown || busy} onClick={close}>
                 取消
               </Button>
             }
             submitControl={
               <Button
                 type="submit"
-                variant="secondary"
-                className="user-prompt-edit-send"
+                variant="default"
                 aria-label="发送"
                 disabled={disabled || !text.trim()}
               >

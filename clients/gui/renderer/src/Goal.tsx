@@ -100,18 +100,20 @@ export function GoalCard({ project, thread, action, onEdit }: Props & { onEdit: 
   return (
     <section className="goal-dock" data-testid="goal-card" aria-label="当前目标">
       <div className="goal-strip">
-        <Button
-          unstyled
-          data-slot={undefined}
-          type="button"
-          className="goal-summary"
-          onClick={onEdit}
-        >
-          <Target size={14} aria-hidden="true" />
-          <span className="goal-status">{labels[goal.status]}</span>
-          <span className="goal-objective">{goal.objective}</span>
-          <span className="goal-elapsed">{duration(goal.usage.timeUsedSeconds)}</span>
-        </Button>
+        <div className="flex min-w-0 flex-1">
+          <Button
+            type="button"
+            variant="row"
+            size="none"
+            className="h-control-sm min-w-0 flex-1 gap-1"
+            onClick={onEdit}
+          >
+            <Target size={14} className="shrink-0" aria-hidden="true" />
+            <span className="goal-status">{labels[goal.status]}</span>
+            <span className="goal-objective">{goal.objective}</span>
+            <span className="goal-elapsed">{duration(goal.usage.timeUsedSeconds)}</span>
+          </Button>
+        </div>
         <ControlHintTooltip
           title={goal.status === "active" || goal.settling ? "暂停目标后可清除" : "清除目标"}
         >

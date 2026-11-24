@@ -145,9 +145,10 @@ export function WorkbenchRail({
           <>
             <UpdateIndicator services={services} />
             <Button
-              variant="ghost"
-              size="icon"
-              className="application-rail-button relative"
+              variant="ghost-subtle"
+              size="rail"
+              active={settingsOpen}
+              className="relative"
               aria-label={t("settings.title")}
               title={t(trajectoryAttention ? "settings.attention" : "settings.title")}
               aria-current={settingsOpen ? "page" : undefined}
@@ -365,8 +366,9 @@ export function ConversationHeader({
               />
             )}
             <Button
-              unstyled
-              className={`icon-button ${panel ? "active" : ""}`}
+              variant="ghost-subtle"
+              size="icon"
+              active={Boolean(panel)}
               aria-label={t("common.navigation.expandPanel")}
               aria-pressed={Boolean(panel)}
               disabled={!project}

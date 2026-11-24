@@ -456,10 +456,10 @@ export function TaskSkillsSettings(props: SettingsProps) {
         {items.map((item: Data) => (
           <article className="skill-resource-row" key={`${item.id}:${item.revision}`}>
             <Button
-              unstyled
-              data-slot={undefined}
-              type="submit"
-              className="resource-card"
+              type="button"
+              variant="row"
+              size="none"
+              className="min-w-0 flex-1 shrink"
               disabled={!item.available}
               aria-label={item.id}
               onClick={() => {
@@ -468,25 +468,27 @@ export function TaskSkillsSettings(props: SettingsProps) {
                 setResourcePath("SKILL.md");
               }}
             >
-              <BookOpen size={20} />
-              <span>
-                <strong>{item.name || item.id}</strong>
-                <TitleTooltip title={item.description}>
-                  <small>
-                    {item.description ||
-                      t("settings.resourceSettings.versionValueViewSkillContent", {
-                        value0: item.revision,
-                      })}
-                  </small>
-                </TitleTooltip>
+              <span className="resource-card">
+                <BookOpen size={20} />
+                <span>
+                  <strong>{item.name || item.id}</strong>
+                  <TitleTooltip title={item.description}>
+                    <small>
+                      {item.description ||
+                        t("settings.resourceSettings.versionValueViewSkillContent", {
+                          value0: item.revision,
+                        })}
+                    </small>
+                  </TitleTooltip>
+                </span>
+                <SettingsBadge>
+                  {!item.available
+                    ? t("settings.resourceSettings.unavailable")
+                    : state.value?.loaded?.[item.id]
+                      ? t("settings.resourceSettings.read")
+                      : t("settings.resourceSettings.available")}
+                </SettingsBadge>
               </span>
-              <SettingsBadge>
-                {!item.available
-                  ? t("settings.resourceSettings.unavailable")
-                  : state.value?.loaded?.[item.id]
-                    ? t("settings.resourceSettings.read")
-                    : t("settings.resourceSettings.available")}
-              </SettingsBadge>
             </Button>
           </article>
         ))}

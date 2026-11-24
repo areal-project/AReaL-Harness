@@ -132,8 +132,10 @@ describe("annotation region near an unresolved element", () => {
       );
       expect(markup).toContain('role="dialog" aria-label="编辑当前标注"');
       expect(markup).toContain("请调整这里的间距");
-      expect(markup).toMatch(/aria-label="加入聊天草稿"[^>]*>/);
-      expect(markup).not.toMatch(/aria-label="加入聊天草稿"[^>]*disabled/);
+      const confirmButton =
+        markup.match(/<button\b[^>]*aria-label="加入聊天草稿"[^>]*>/)?.[0] ?? "";
+      expect(confirmButton).not.toBe("");
+      expect(confirmButton).not.toMatch(/\sdisabled(?:=""|\s|>)/);
       expect(markup).toContain(browserMessages["browser.annotation.regionFallback"]["zh-CN"]);
       expect(markup).not.toContain(unavailableReason);
       expect(markup).toMatch(/aria-label="点选元素" aria-pressed="true"/);

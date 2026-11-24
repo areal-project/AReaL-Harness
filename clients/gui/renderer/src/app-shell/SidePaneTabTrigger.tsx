@@ -148,7 +148,6 @@ export function SortableSidePaneTabTrigger({
                     listeners?.onKeyDown?.(event);
                   }
                 }}
-                className="h-full min-w-0 flex-1 justify-start gap-[calc(var(--spacing-inline)/2)] border-0 bg-transparent py-0 pl-[calc(var(--spacing-inline)*1.25)] pr-[calc(var(--spacing-control-xs)+var(--spacing-inline))] text-ui-caption text-inherit data-active:bg-transparent after:hidden"
                 onPointerDown={(event) => {
                   // A new gesture must not inherit the previous drag's click guard.
                   wasDraggingRef.current = false;
@@ -185,13 +184,14 @@ export function SortableSidePaneTabTrigger({
               type="button"
               variant="ghost"
               size="icon-xs"
+              revealOnGroupHover={!isActive}
               aria-label={closeTabLabel}
               aria-hidden="true"
               tabIndex={-1}
               className={cn(
                 "absolute right-[calc(var(--spacing-inline)*3/4)] top-1/2 -translate-y-1/2",
                 !isActive &&
-                  "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100",
+                  "pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto",
               )}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => {

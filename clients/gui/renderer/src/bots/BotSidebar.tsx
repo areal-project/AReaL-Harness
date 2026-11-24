@@ -84,14 +84,24 @@ export function BotSidebar({
       footer={
         <div className="bot-sidebar-footer">
           <Button
-            unstyled
             type="button"
-            className={`bot-arena-pill ${arena?.ready ? "is-ready" : "is-unconfigured"}`}
+            variant="surface"
+            size="sm"
+            align="start"
+            className="w-full"
             onClick={onConfigureArena}
             data-testid="bot-arena-config-trigger"
           >
-            {arena?.ready ? <Cloud size={14} /> : <CloudOff size={14} />}
-            <span>{arena?.ready ? t("bots.arena.ready") : t("bots.arena.unconfigured")}</span>
+            <span
+              className={
+                arena?.ready
+                  ? "inline-flex items-center gap-2"
+                  : "inline-flex items-center gap-2 text-warning"
+              }
+            >
+              {arena?.ready ? <Cloud size={14} /> : <CloudOff size={14} />}
+              <span>{arena?.ready ? t("bots.arena.ready") : t("bots.arena.unconfigured")}</span>
+            </span>
           </Button>
         </div>
       }
@@ -151,13 +161,15 @@ export function BotSidebar({
               const time = formatRelativeTime(bot.lastActiveAt || bot.updatedAt, locale);
               return (
                 <Button
-                  unstyled
                   key={bot.id}
                   type="button"
+                  variant="row"
+                  size="auto"
+                  active={selected}
                   role="option"
                   aria-selected={selected}
                   data-testid={`bot-row-${bot.id}`}
-                  className={`bot-list-item ${selected ? "is-selected" : ""}`}
+                  className="w-full gap-2.5"
                   onClick={() => onSelect(bot.id)}
                 >
                   <div className="bot-list-avatar-wrap">

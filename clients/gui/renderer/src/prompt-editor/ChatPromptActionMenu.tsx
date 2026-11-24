@@ -61,7 +61,6 @@ export function ChatPromptActionMenu({
               type="button"
               variant="ghost"
               size="icon"
-              className="gap-1 rounded-lg text-ui-base"
               onMouseDown={(event) => event.preventDefault()}
               aria-label={actionMenuTitle}
               data-testid={attachmentAction?.testId}
@@ -81,8 +80,8 @@ export function ChatPromptActionMenu({
         align="start"
         side="top"
         sideOffset={8}
-        className="composer-add-menu w-(--anchor-width) max-w-(--available-width) max-h-80 p-1"
-        style={{ gap: 0 }}
+        variant="flush"
+        className="w-(--anchor-width) max-w-(--available-width) max-h-80"
         tabIndex={-1}
         initialFocus={contentRef}
         finalFocus={() => {
@@ -119,42 +118,44 @@ export function ChatPromptActionMenu({
           }
         }}
       >
-        <div className="px-2 py-1 text-ui-caption leading-[1.42857] text-foreground-subtle">
-          添加
-        </div>
-        {attachmentAction && (
-          <Button
-            unstyled
-            data-slot={undefined}
-            type="button"
-            onClick={() => select(attachmentAction.onSelect)}
-            className="flex w-full items-center gap-2 rounded-[15px] px-2 py-[5px] text-left text-ui-caption leading-[1.42857] hover:bg-hover focus-visible:bg-hover outline-none"
-          >
-            <PaperclipIcon className="size-4 shrink-0" />
-            <span className="truncate font-normal" data-testid={attachmentAction.menuItemTestId}>
-              {attachmentAction.label}
-            </span>
-          </Button>
-        )}
-        {actions.map((item) => (
-          <Button
-            unstyled
-            data-slot={undefined}
-            key={item.id}
-            type="button"
-            disabled={item.disabled}
-            onClick={() => select(item.onSelect)}
-            className="flex w-full items-center gap-2 rounded-[15px] px-2 py-[5px] text-left text-ui-caption leading-[1.42857] hover:bg-hover focus-visible:bg-hover outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <span className="size-4 shrink-0 [&>svg]:size-4">{item.icon}</span>
-            <span className="shrink-0">{item.label}</span>
-            {item.description && (
-              <span className="min-w-0 truncate text-ui-sm text-foreground-subtle">
-                {item.description}
+        <div className="composer-add-menu flex flex-col p-1">
+          <div className="px-2 py-1 text-ui-caption leading-[1.42857] text-foreground-subtle">
+            添加
+          </div>
+          {attachmentAction && (
+            <Button
+              type="button"
+              variant="row"
+              size="default"
+              className="gap-2"
+              onClick={() => select(attachmentAction.onSelect)}
+            >
+              <PaperclipIcon className="size-4 shrink-0" />
+              <span className="truncate font-normal" data-testid={attachmentAction.menuItemTestId}>
+                {attachmentAction.label}
               </span>
-            )}
-          </Button>
-        ))}
+            </Button>
+          )}
+          {actions.map((item) => (
+            <Button
+              key={item.id}
+              type="button"
+              variant="row"
+              size="default"
+              className="gap-2"
+              disabled={item.disabled}
+              onClick={() => select(item.onSelect)}
+            >
+              <span className="size-4 shrink-0 [&>svg]:size-4">{item.icon}</span>
+              <span className="shrink-0">{item.label}</span>
+              {item.description && (
+                <span className="min-w-0 truncate text-ui-sm text-foreground-subtle">
+                  {item.description}
+                </span>
+              )}
+            </Button>
+          ))}
+        </div>
       </PopoverContent>
     </Popover>
   );

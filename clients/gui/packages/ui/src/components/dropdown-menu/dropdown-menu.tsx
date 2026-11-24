@@ -143,9 +143,11 @@ function DropdownMenuRadioItem({
   className,
   children,
   inset,
+  multiline = false,
   ...props
 }: StyledProps<typeof DropdownMenuPrimitive.RadioItem> & {
   inset?: boolean;
+  multiline?: boolean;
 }) {
   return (
     <DropdownMenuPrimitive.RadioItem
@@ -153,7 +155,10 @@ function DropdownMenuRadioItem({
       data-slot="dropdown-menu-radio-item"
       data-inset={inset}
       className={cn(
-        "relative flex min-h-control cursor-default items-center gap-inline rounded-inset py-[calc(var(--spacing-inline)/2)] pr-[calc(var(--icon-size-control)+var(--spacing-inline)*2)] pl-inline text-ui-base/(--line-height-ui) text-foreground outline-hidden select-none data-[highlighted]:bg-menu-hover data-[highlighted]:text-foreground data-inset:pl-[calc(var(--icon-size-control)+var(--spacing-inline)*2)] data-disabled:pointer-events-none data-disabled:text-foreground-subtlest data-disabled:opacity-100 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-(--icon-size-control)",
+        "relative flex min-h-control cursor-default gap-inline rounded-inset py-[calc(var(--spacing-inline)/2)] pr-[calc(var(--icon-size-control)+var(--spacing-inline)*2)] pl-inline text-foreground outline-hidden select-none data-[highlighted]:bg-menu-hover data-[highlighted]:text-foreground data-inset:pl-[calc(var(--icon-size-control)+var(--spacing-inline)*2)] data-disabled:pointer-events-none data-disabled:text-foreground-subtlest data-disabled:opacity-100 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-(--icon-size-control)",
+        multiline
+          ? "items-start text-ui-caption [&_[data-slot=dropdown-menu-radio-item-indicator]]:top-1/2 [&_[data-slot=dropdown-menu-radio-item-indicator]]:-translate-y-1/2"
+          : "items-center text-ui-base/(--line-height-ui)",
         className,
       )}
       {...props}
@@ -174,16 +179,26 @@ function DropdownMenuRadioItem({
 function DropdownMenuLabel({
   className,
   inset,
+  wrap = false,
+  tone = "subtlest",
   ...props
 }: StyledProps<typeof DropdownMenuPrimitive.GroupLabel> & {
   inset?: boolean;
+  wrap?: boolean;
+  tone?: "subtlest" | "subtle" | "default";
 }) {
   return (
     <DropdownMenuPrimitive.GroupLabel
       data-slot="dropdown-menu-label"
       data-inset={inset}
       className={cn(
-        "px-inline py-[calc(var(--spacing-inline)/2)] text-ui-base/(--line-height-ui) font-medium text-foreground-subtlest data-inset:pl-[calc(var(--icon-size-control)+var(--spacing-inline)*2)]",
+        "px-inline py-[calc(var(--spacing-inline)/2)] text-ui-base/(--line-height-ui) data-inset:pl-[calc(var(--icon-size-control)+var(--spacing-inline)*2)]",
+        wrap ? "whitespace-normal font-normal" : "font-medium",
+        tone === "default"
+          ? "text-foreground"
+          : tone === "subtle"
+            ? "text-foreground-subtle"
+            : "text-foreground-subtlest",
         className,
       )}
       {...props}

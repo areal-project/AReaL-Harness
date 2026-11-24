@@ -367,7 +367,7 @@ export const AttachmentPreview = ({
       {mediaCategory === "video" && variant === "grid" ? (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 m-auto flex size-7 items-center justify-center rounded-full bg-black/55 text-white shadow-sm backdrop-blur-sm"
+          className="pointer-events-none absolute inset-0 m-auto flex size-7 items-center justify-center rounded-full bg-media-overlay/55 text-media-overlay-foreground shadow-sm backdrop-blur-sm"
           data-attachment-video-play-overlay="true"
         >
           <PlayIcon className="size-4 translate-x-px fill-current" />

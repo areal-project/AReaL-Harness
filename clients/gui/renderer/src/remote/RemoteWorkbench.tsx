@@ -107,8 +107,10 @@ function Home({ view, api }: { view: View; api: API }) {
             <section className="remote-project-group" key={p.projectId}>
               <div className="remote-project-header">
                 <Button
-                  variant="ghost"
-                  className="remote-project-row"
+                  variant="row"
+                  size="lg"
+                  align="start"
+                  className="min-h-12 min-w-0 flex-1 shrink gap-3"
                   aria-expanded={!closed}
                   aria-controls={listId}
                   onClick={() => {
@@ -122,12 +124,12 @@ function Home({ view, api }: { view: View; api: API }) {
                   ) : (
                     <ProjectOpenFolderIcon width={21} height={21} />
                   )}
-                  <span>{p.name}</span>
+                  <span className="truncate text-ui-heading">{p.name}</span>
                 </Button>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="remote-project-create"
+                  className="shrink-0"
                   aria-label={`在项目 ${p.name} 中新建会话`}
                   title={`在项目 ${p.name} 中新建会话`}
                   disabled={!view.canSubmit}
@@ -149,12 +151,14 @@ function Home({ view, api }: { view: View; api: API }) {
                   {sessions.slice(0, visibleCount).map((row) => (
                     <Button
                       key={row.threadId}
-                      variant="ghost"
-                      className="remote-session-row"
+                      variant="row"
+                      size="lg"
+                      align="start"
+                      className="min-h-12 w-full"
                       data-thread-id={row.threadId}
                       onClick={() => void api.open(p.projectId, row.threadId)}
                     >
-                      {row.title || "未命名会话"}
+                      <span className="min-w-0 truncate">{row.title || "未命名会话"}</span>
                     </Button>
                   ))}
                   {tasks.map((row) => (
@@ -196,8 +200,10 @@ function Home({ view, api }: { view: View; api: API }) {
                   ) : null}
                   {sessions.length > visibleCount && (
                     <Button
-                      variant="ghost"
-                      className="remote-session-more"
+                      variant="ghost-subtle"
+                      size="sm"
+                      align="start"
+                      className="w-full"
                       onClick={() =>
                         setVisibleCounts((c) => ({
                           ...c,
@@ -210,8 +216,10 @@ function Home({ view, api }: { view: View; api: API }) {
                   )}
                   {group?.hasMore && sessions.length <= visibleCount && (
                     <Button
-                      variant="ghost"
-                      className="remote-session-more"
+                      variant="ghost-subtle"
+                      size="sm"
+                      align="start"
+                      className="w-full"
                       onClick={() => {
                         setVisibleCounts((c) => ({ ...c, [p.projectId]: visibleCount + 5 }));
                         void api.select(p.projectId).then(api.more);
@@ -519,17 +527,17 @@ function Session({ view, api }: { view: View; api: API }) {
                   </ComposerActionButton>
                 </ControlHintTooltip>
               ) : (
-                <Button
+                <ComposerActionButton
                   type="button"
                   variant="secondary"
                   size="icon"
-                  className="composer-primary-action composer-stop-action"
+                  mode="stop"
                   aria-label="停止"
                   disabled={view.stopDisabled}
                   onClick={() => void api.stop()}
                 >
                   <StopIcon />
-                </Button>
+                </ComposerActionButton>
               )
             ) : undefined
           }

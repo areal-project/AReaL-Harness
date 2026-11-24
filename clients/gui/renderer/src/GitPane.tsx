@@ -800,12 +800,13 @@ export function GitPane({
               <DropdownMenuTrigger
                 render={
                   <Button
-                    variant="ghost"
+                    variant={scope === "last-turn" || scope === "turn" ? "surface" : "ghost"}
+                    shape="pill"
                     aria-label="改动范围"
                     title={
                       scope === "turn" ? selectedTurnId : scope === "commit" ? applied : undefined
                     }
-                    className="review-scope-trigger min-w-0 max-w-full"
+                    className="min-w-0 max-w-full shrink"
                   />
                 }
               >
@@ -825,10 +826,7 @@ export function GitPane({
                         <DropdownMenuSubTrigger>{label}</DropdownMenuSubTrigger>
                         <DropdownMenuSubContent className="max-w-[min(520px,var(--available-width))]">
                           {commitsError ? (
-                            <DropdownMenuLabel
-                              role="alert"
-                              className="max-w-72 whitespace-normal font-normal"
-                            >
+                            <DropdownMenuLabel role="alert" wrap className="max-w-72">
                               {commitsError}
                             </DropdownMenuLabel>
                           ) : commits === undefined ? (
@@ -1030,7 +1028,7 @@ export function GitPane({
                     <>
                       <DropdownMenuSeparator />
                       <DropdownMenuGroup>
-                        <DropdownMenuLabel className="max-w-72 whitespace-normal font-normal text-foreground-subtle">
+                        <DropdownMenuLabel wrap tone="subtle" className="max-w-72">
                           {notice}
                         </DropdownMenuLabel>
                       </DropdownMenuGroup>
@@ -1078,8 +1076,9 @@ export function GitPane({
                 render={
                   <Button
                     variant="ghost"
+                    shape="pill"
                     aria-label="比较基准"
-                    className="review-scope-trigger min-w-0"
+                    className="min-w-0 shrink"
                     title={shownReference?.id ?? applied}
                   />
                 }
@@ -1093,7 +1092,7 @@ export function GitPane({
                 align="end"
                 className="w-72 gap-0"
               >
-                <Command className="bg-transparent p-0 text-foreground">
+                <Command variant="embedded">
                   <CommandInput
                     aria-label="搜索分支"
                     placeholder="搜索分支"
@@ -1141,17 +1140,19 @@ export function GitPane({
                       </>
                     )}
                     {(branches !== undefined || branchesError) && (
-                      <CommandGroup className="border-t border-border">
-                        <CommandItem
-                          value="manual-reference"
-                          onSelect={() => {
-                            setManualRef(true);
-                            setBranchOpen(false);
-                          }}
-                        >
-                          输入引用…
-                        </CommandItem>
-                      </CommandGroup>
+                      <div className="border-t border-border">
+                        <CommandGroup>
+                          <CommandItem
+                            value="manual-reference"
+                            onSelect={() => {
+                              setManualRef(true);
+                              setBranchOpen(false);
+                            }}
+                          >
+                            输入引用…
+                          </CommandItem>
+                        </CommandGroup>
+                      </div>
                     )}
                   </CommandList>
                 </Command>

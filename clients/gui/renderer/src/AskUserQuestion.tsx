@@ -120,13 +120,13 @@ export function AskUserQuestion({
         <Button
           ref={deferred}
           type="button"
-          className="decision-deferred"
+          className="mb-(--spacing-inline)"
           variant="outline"
           aria-label="展开待回答问题"
           onClick={() => setCollapsed(false)}
         >
           <MessageCircleQuestion />
-          问题等待回答<span>展开</span>
+          问题等待回答<span className="ml-3">展开</span>
         </Button>
       )}
       <form

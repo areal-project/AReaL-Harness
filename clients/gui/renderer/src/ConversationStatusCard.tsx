@@ -320,11 +320,10 @@ export function ConversationStatusCard({
             </h3>
             {processes.map((process) => (
               <Button
-                unstyled
-                data-slot={undefined}
+                variant="row"
+                size="auto"
                 type="button"
                 key={process.id}
-                className="task-resource-row"
                 onClick={() => onPanel("processes")}
                 title={process.id}
               >
@@ -341,7 +340,7 @@ export function ConversationStatusCard({
                       } as Record<string, string>
                     )[process.state] ?? process.state}
                   </span>
-                  <small className="task-resource-description">
+                  <small className="task-resource-description text-ui-xs text-foreground-subtle">
                     {process.argv?.join(" ") || process.id}
                   </small>
                 </span>

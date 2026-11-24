@@ -1086,26 +1086,24 @@ export function Messages({
                     <>
                       {canFork && turn.status !== "inProgress" && (
                         <Button
-                          unstyled
-                          data-slot={undefined}
                           type="button"
-                          className="turn-fork-trigger"
+                          variant="ghost-subtle"
+                          size="xs"
                           disabled={forking || !!forkReason}
                           title={forkReason || undefined}
                           aria-label="从此轮创建聊天分支"
                           aria-describedby={forkReason ? `fork-reason-${turn.id}` : undefined}
                           onClick={(event) => forkAt(event.currentTarget)}
                         >
-                          <ForkIcon />
+                          <ForkIcon className="size-3.5" />
                           <span>分支</span>
                         </Button>
                       )}
                       {canFork && inspectTurn && turn.status !== "inProgress" && (
                         <Button
                           type="button"
-                          variant="ghost"
+                          variant="ghost-subtle"
                           size="xs"
-                          className="side-bring-action"
                           aria-label={t("chat.selection.inspectSourceTurn")}
                           onClick={() =>
                             document
@@ -1608,11 +1606,11 @@ export function Messages({
           <PopoverContent
             anchor={{ getBoundingClientRect: () => selectedSideText.rect }}
             side="top"
+            variant="compact"
             initialFocus={false}
             finalFocus={false}
             data-testid="transcript-selection-actions"
             aria-label={t("chat.selection.actions")}
-            className="w-auto flex-row gap-inline p-1"
             onMouseDown={(event) => event.preventDefault()}
           >
             {onAddSelection && (

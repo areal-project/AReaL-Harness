@@ -170,9 +170,9 @@ export function ComposerModelMenu({
     return openSettings ? (
       <Button
         type="button"
-        variant="ghost"
+        variant="ghost-subtle"
         size="sm"
-        className="composer-model-trigger composer-model-empty"
+        className="min-w-0 max-w-40 truncate"
         aria-label={emptyGuidance}
         onClick={() => openSettings("providers")}
       >
@@ -213,91 +213,102 @@ export function ComposerModelMenu({
               title={modelLabel}
               disabled={disabled || pending}
               aria-busy={pending || undefined}
-              className="composer-model-trigger"
+              className="min-w-0 max-w-55 gap-1"
               data-testid="composer-model-trigger"
             />
           }
         >
-          <span className="composer-model-name">{label}</span>
+          <span className="composer-model-name min-w-0 flex-1 truncate">{label}</span>
 
           <MenuChevronIcon size={14} aria-hidden="true" />
         </PopoverTrigger>
         <PopoverContent
           aria-label={t("chat.composer.chooseModel")}
+          variant="flush"
           side="top"
           align="end"
           sideOffset={8}
-          className="composer-model-menu"
           finalFocus={() => {
             if (!effortOpen) onClose();
             return false;
           }}
         >
-          {providers.size ? (
-            <Tabs
-              orientation="vertical"
-              value={activeProvider}
-              onValueChange={(next) => setProvider(String(next))}
-              className="composer-model-browser"
-            >
-              <TabsList
-                aria-label={t("chat.composer.providers")}
-                className="composer-provider-list"
+          <div className="composer-model-menu">
+            {providers.size ? (
+              <Tabs
+                orientation="vertical"
+                value={activeProvider}
+                onValueChange={(next) => setProvider(String(next))}
+                className="min-w-0 gap-(--spacing-inline)"
               >
-                {[...providers].map(([providerId, models]) => (
-                  <TabsTrigger
-                    key={providerId}
-                    value={providerId}
-                    disabled={disabled || pending}
-                    className="composer-provider-option"
+                <div className="min-w-0 w-2/5 shrink-0 max-h-[min(360px,60dvh)] overflow-y-auto border-r border-border pr-2">
+                  <TabsList
+                    variant="line"
+                    aria-label={t("chat.composer.providers")}
+                    className="w-full"
                   >
-                    {models[0]?.providerName || providerId || t("chat.composer.serviceDefault")}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-              {[...providers].map(([providerId, models]) => (
-                <TabsContent key={providerId} value={providerId} className="composer-model-list">
-                  {modelOptions(models)}
-                </TabsContent>
-              ))}
-            </Tabs>
-          ) : unavailableOptions.length ? (
-            <div className="composer-model-unavailable">
-              <div className="composer-model-unavailable-groups">
-                {[...unavailableGroups].map(([key, models]) => (
-                  <section key={key} className="composer-model-unavailable-group">
-                    <div className="composer-model-unavailable-provider">
-                      {models[0].providerName || models[0].providerId}
-                    </div>
-                    <p className="composer-model-source">{models[0].unavailableReason}</p>
-                    <ul>
-                      {models.map((option) => (
-                        <li key={option.value} aria-disabled="true">
-                          {option.label}
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                ))}
+                    {[...providers].map(([providerId, models]) => (
+                      <TabsTrigger
+                        key={providerId}
+                        value={providerId}
+                        disabled={disabled || pending}
+                        className="min-h-control-lg flex-none"
+                      >
+                        <span className="whitespace-normal wrap-anywhere text-left">
+                          {models[0]?.providerName ||
+                            providerId ||
+                            t("chat.composer.serviceDefault")}
+                        </span>
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </div>
+                <div className="composer-model-list min-w-0 flex-1">
+                  {[...providers].map(([providerId, models]) => (
+                    <TabsContent key={providerId} value={providerId}>
+                      {modelOptions(models)}
+                    </TabsContent>
+                  ))}
+                </div>
+              </Tabs>
+            ) : unavailableOptions.length ? (
+              <div className="composer-model-unavailable">
+                <div className="composer-model-unavailable-groups">
+                  {[...unavailableGroups].map(([key, models]) => (
+                    <section key={key} className="composer-model-unavailable-group">
+                      <div className="composer-model-unavailable-provider">
+                        {models[0].providerName || models[0].providerId}
+                      </div>
+                      <p className="composer-model-source">{models[0].unavailableReason}</p>
+                      <ul>
+                        {models.map((option) => (
+                          <li key={option.value} aria-disabled="true">
+                            {option.label}
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  ))}
+                </div>
+                {openSettings && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    aria-label={t("chat.composer.configureModels")}
+                    onClick={() => {
+                      setModelOpen(false);
+                      openSettings("providers");
+                    }}
+                  >
+                    {t("chat.composer.configureModels")}
+                  </Button>
+                )}
               </div>
-              {openSettings && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  aria-label={t("chat.composer.configureModels")}
-                  onClick={() => {
-                    setModelOpen(false);
-                    openSettings("providers");
-                  }}
-                >
-                  {t("chat.composer.configureModels")}
-                </Button>
-              )}
-            </div>
-          ) : (
-            <p className="composer-effort-unavailable">{t("chat.composer.noModelsGuidance")}</p>
-          )}
+            ) : (
+              <p className="composer-effort-unavailable">{t("chat.composer.noModelsGuidance")}</p>
+            )}
+          </div>
         </PopoverContent>
       </Popover>
       {model && onEffortChange && (
@@ -321,200 +332,214 @@ export function ComposerModelMenu({
                 title={fast ? `Fast · ${effortLabel}` : effortLabel}
                 disabled={disabled || pending}
                 aria-busy={pending || undefined}
-                className="composer-model-trigger composer-effort-trigger"
+                className="min-w-0 max-w-55 shrink-0 gap-1"
               />
             }
           >
             {fast && <Zap size={14} className="composer-fast-indicator" aria-hidden="true" />}
-            <span>{fast ? `Fast · ${effortLabel}` : effortLabel}</span>
+            <span className="truncate">{fast ? `Fast · ${effortLabel}` : effortLabel}</span>
             <MenuChevronIcon size={14} aria-hidden="true" />
           </PopoverTrigger>
           <PopoverContent
             aria-label={t("chat.composer.chooseEffort")}
+            variant="flush"
             side="top"
             align="end"
             sideOffset={8}
-            className="composer-effort-menu"
             finalFocus={() => {
               if (!modelOpen) onClose();
               return false;
             }}
           >
-            {onServiceTierChange && (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="composer-fast-toggle"
-                      aria-label={fastAction}
-                      aria-pressed={fast}
-                      aria-disabled={pending || undefined}
-                      disabled={disabled}
-                      onClick={() => {
-                        if (!pending) void onServiceTierChange(fast ? "default" : "fast");
-                      }}
+            <div className="composer-effort-menu relative flex flex-col">
+              {onServiceTierChange && (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost-subtle"
+                        size="icon"
+                        active={fast}
+                        className="absolute top-(--spacing-inline) left-(--spacing-inline)"
+                        aria-label={fastAction}
+                        aria-pressed={fast}
+                        aria-disabled={pending || undefined}
+                        disabled={disabled}
+                        onClick={() => {
+                          if (!pending) void onServiceTierChange(fast ? "default" : "fast");
+                        }}
+                      />
+                    }
+                  >
+                    <Zap
+                      size={16}
+                      className={fast ? "composer-fast-indicator" : undefined}
+                      aria-hidden="true"
                     />
-                  }
-                >
-                  <Zap size={16} aria-hidden="true" />
-                </TooltipTrigger>
-                <TooltipContent role="tooltip" sideOffset={8}>
-                  {fastAction}
-                </TooltipContent>
-              </Tooltip>
-            )}
-            <div
-              className="composer-effort-center"
-              data-fast-toggle={onServiceTierChange ? "true" : undefined}
-            >
-              <strong>{effortLabel}</strong>
-              <div className="composer-model-source">{identityLabel}</div>
-            </div>
-            {efforts.length > 0 && (
+                  </TooltipTrigger>
+                  <TooltipContent role="tooltip" sideOffset={8}>
+                    {fastAction}
+                  </TooltipContent>
+                </Tooltip>
+              )}
               <div
-                className="composer-slider-shell"
-                role="group"
-                aria-label={t("chat.composer.chooseEffort")}
+                className="composer-effort-center"
+                data-fast-toggle={onServiceTierChange ? "true" : undefined}
               >
-                <div className="composer-slider-track" aria-hidden="true">
-                  {sliderIndex >= 0 && <div style={{ width: sliderPosition(sliderIndex) }} />}
-                  {efforts.map((item, i) => (
-                    <i
-                      key={item}
-                      data-selected={sliderIndex >= i}
-                      style={{ left: sliderPosition(i) }}
-                    />
-                  ))}
-                </div>
-                {index >= 0 ? (
-                  <Tooltip open={feedbackIndex >= 0}>
-                    <TooltipTrigger
-                      render={
-                        <Input
-                          unstyled
-                          data-slot={undefined}
-                          type="range"
-                          disabled={disabled}
-                          aria-disabled={pending || undefined}
-                          onKeyDown={(event) => {
-                            if (
-                              pending &&
-                              [
-                                "ArrowLeft",
-                                "ArrowRight",
-                                "ArrowUp",
-                                "ArrowDown",
-                                "Home",
-                                "End",
-                                "PageUp",
-                                "PageDown",
-                              ].includes(event.key)
-                            )
-                              event.preventDefault();
-                          }}
-                          aria-label={t("chat.composer.chooseEffort")}
-                          aria-valuetext={effortName(efforts[sliderIndex])}
-                          min={0}
-                          max={efforts.length - 1}
-                          step={1}
-                          value={sliderIndex}
-                          onFocus={() => setSliderFocused(true)}
-                          onBlur={() => {
-                            setSliderFocused(false);
-                            setHoveredIndex(null);
-                            setPointerIndex(null);
-                            pointerActive.current = false;
-                          }}
-                          onPointerDown={(event) => {
-                            if (pending) {
-                              event.preventDefault();
-                              return;
-                            }
-                            pointerActive.current = true;
-                            setPointerIndex(index);
-                            event.currentTarget.setPointerCapture(event.pointerId);
-                          }}
-                          onPointerUp={(event) => {
-                            if (!pointerActive.current) return;
-                            pointerActive.current = false;
-                            const next = Number(event.currentTarget.value);
-                            if (next !== index) void commitEffort(next);
-                            else setPointerIndex(null);
-                          }}
-                          onPointerCancel={() => {
-                            pointerActive.current = false;
-                            setPointerIndex(null);
-                            setHoveredIndex(null);
-                          }}
-                          onLostPointerCapture={() => {
-                            if (pointerActive.current) {
-                              pointerActive.current = false;
-                              setPointerIndex(null);
-                            }
-                          }}
-                          onPointerMove={(event) => {
-                            const bounds = event.currentTarget.getBoundingClientRect();
-                            const fraction =
-                              (event.clientX - bounds.left - 14) / Math.max(1, bounds.width - 28);
-                            setHoveredIndex(
-                              Math.round(Math.max(0, Math.min(1, fraction)) * (efforts.length - 1)),
-                            );
-                          }}
-                          onPointerLeave={() => setHoveredIndex(null)}
-                          onChange={(event) => {
-                            if (pending) return;
-                            const next = Number(event.target.value);
-                            setHoveredIndex(next);
-                            if (pointerActive.current) setPointerIndex(next);
-                            else void commitEffort(next);
-                          }}
-                        />
-                      }
-                    />
-                    <TooltipContent role="tooltip" sideOffset={8}>
-                      {effortName(efforts[feedbackIndex])}
-                    </TooltipContent>
-                  </Tooltip>
-                ) : (
-                  efforts.map((item, i) => (
-                    <Tooltip key={item}>
+                <strong>{effortLabel}</strong>
+                <div className="composer-model-source">{identityLabel}</div>
+              </div>
+              {efforts.length > 0 && (
+                <div
+                  className="composer-slider-shell"
+                  role="group"
+                  aria-label={t("chat.composer.chooseEffort")}
+                >
+                  <div className="composer-slider-track" aria-hidden="true">
+                    {sliderIndex >= 0 && <div style={{ width: sliderPosition(sliderIndex) }} />}
+                    {efforts.map((item, i) => (
+                      <i
+                        key={item}
+                        data-selected={sliderIndex >= i}
+                        style={{ left: sliderPosition(i) }}
+                      />
+                    ))}
+                  </div>
+                  {index >= 0 ? (
+                    <Tooltip open={feedbackIndex >= 0}>
                       <TooltipTrigger
                         render={
-                          <Button
-                            type="button"
-                            disabled={disabled || pending}
-                            variant="ghost"
-                            size="icon"
-                            className="composer-slider-option"
-                            style={{ left: sliderPosition(i) }}
-                            aria-label={effortName(item)}
-                            aria-pressed={false}
-                            onClick={() => {
-                              void commitEffort(i);
+                          <Input
+                            unstyled
+                            data-slot={undefined}
+                            type="range"
+                            disabled={disabled}
+                            aria-disabled={pending || undefined}
+                            onKeyDown={(event) => {
+                              if (
+                                pending &&
+                                [
+                                  "ArrowLeft",
+                                  "ArrowRight",
+                                  "ArrowUp",
+                                  "ArrowDown",
+                                  "Home",
+                                  "End",
+                                  "PageUp",
+                                  "PageDown",
+                                ].includes(event.key)
+                              )
+                                event.preventDefault();
+                            }}
+                            aria-label={t("chat.composer.chooseEffort")}
+                            aria-valuetext={effortName(efforts[sliderIndex])}
+                            min={0}
+                            max={efforts.length - 1}
+                            step={1}
+                            value={sliderIndex}
+                            onFocus={() => setSliderFocused(true)}
+                            onBlur={() => {
+                              setSliderFocused(false);
+                              setHoveredIndex(null);
+                              setPointerIndex(null);
+                              pointerActive.current = false;
+                            }}
+                            onPointerDown={(event) => {
+                              if (pending) {
+                                event.preventDefault();
+                                return;
+                              }
+                              pointerActive.current = true;
+                              setPointerIndex(index);
+                              event.currentTarget.setPointerCapture(event.pointerId);
+                            }}
+                            onPointerUp={(event) => {
+                              if (!pointerActive.current) return;
+                              pointerActive.current = false;
+                              const next = Number(event.currentTarget.value);
+                              if (next !== index) void commitEffort(next);
+                              else setPointerIndex(null);
+                            }}
+                            onPointerCancel={() => {
+                              pointerActive.current = false;
+                              setPointerIndex(null);
+                              setHoveredIndex(null);
+                            }}
+                            onLostPointerCapture={() => {
+                              if (pointerActive.current) {
+                                pointerActive.current = false;
+                                setPointerIndex(null);
+                              }
+                            }}
+                            onPointerMove={(event) => {
+                              const bounds = event.currentTarget.getBoundingClientRect();
+                              const fraction =
+                                (event.clientX - bounds.left - 14) / Math.max(1, bounds.width - 28);
+                              setHoveredIndex(
+                                Math.round(
+                                  Math.max(0, Math.min(1, fraction)) * (efforts.length - 1),
+                                ),
+                              );
+                            }}
+                            onPointerLeave={() => setHoveredIndex(null)}
+                            onChange={(event) => {
+                              if (pending) return;
+                              const next = Number(event.target.value);
+                              setHoveredIndex(next);
+                              if (pointerActive.current) setPointerIndex(next);
+                              else void commitEffort(next);
                             }}
                           />
                         }
                       />
                       <TooltipContent role="tooltip" sideOffset={8}>
-                        {effortName(item)}
+                        {effortName(efforts[feedbackIndex])}
                       </TooltipContent>
                     </Tooltip>
-                  ))
-                )}
-              </div>
-            )}
-            <Button
-              type="button"
-              variant="ghost"
-              disabled={disabled || pending}
-              aria-pressed={effort === "default"}
-              onClick={() => void onEffortChange("default")}
-            >
-              {t("chat.composer.serviceDefault")}
-            </Button>
+                  ) : (
+                    efforts.map((item, i) => (
+                      <div
+                        key={item}
+                        className="composer-slider-option-slot absolute top-0 -translate-x-1/2"
+                        style={{ left: sliderPosition(i) }}
+                      >
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                type="button"
+                                disabled={disabled || pending}
+                                variant="ghost"
+                                size="icon"
+                                shape="pill"
+                                aria-label={effortName(item)}
+                                aria-pressed={false}
+                                onClick={() => {
+                                  void commitEffort(i);
+                                }}
+                              />
+                            }
+                          />
+                          <TooltipContent role="tooltip" sideOffset={8}>
+                            {effortName(item)}
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={disabled || pending}
+                aria-pressed={effort === "default"}
+                onClick={() => void onEffortChange("default")}
+              >
+                {t("chat.composer.serviceDefault")}
+              </Button>
+            </div>
           </PopoverContent>
         </Popover>
       )}

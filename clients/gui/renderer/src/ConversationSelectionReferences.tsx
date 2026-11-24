@@ -33,7 +33,7 @@ export function ConversationSelectionReferences({
   return (
     <div className="conversation-selection-references" aria-label={t("chat.selection.references")}>
       <Popover>
-        <div className="conversation-selection-pill" data-removable={removable || undefined}>
+        <div className="conversation-selection-pill group" data-removable={removable || undefined}>
           <PopoverTrigger
             openOnHover
             delay={0}
@@ -42,21 +42,26 @@ export function ConversationSelectionReferences({
               <Button
                 type="button"
                 variant="ghost"
-                className="conversation-selection-reference-trigger"
+                size="lg"
+                shape="pill"
+                align="start"
+                className="min-w-0 gap-1.5"
               />
             }
             aria-label={label}
             data-conversation-selection-reference-count={references.length}
           >
-            <QuoteIcon className="size-4" aria-hidden="true" />
-            <span>{label}</span>
+            <QuoteIcon className="size-4 text-foreground-subtle" aria-hidden="true" />
+            <span className="truncate">{label}</span>
           </PopoverTrigger>
           {removable && (
             <Button
               type="button"
-              variant="ghost"
+              variant="ghost-subtle"
               size="icon-xs"
-              className="conversation-selection-remove-all"
+              shape="pill"
+              revealOnGroupHover
+              className="mr-1.5"
               aria-label={t("chat.selection.removeAll")}
               title={t("chat.selection.removeAll")}
               disabled={disabled}
@@ -72,47 +77,54 @@ export function ConversationSelectionReferences({
         <PopoverContent
           align="start"
           side="top"
-          className="conversation-selection-details"
+          variant="flush"
+          className="w-80"
           data-testid="conversation-selection-details"
           aria-label={label}
         >
-          <div className="conversation-selection-detail-list">
-            {references.map((reference, index) => (
-              <div
-                className="conversation-selection-reference"
-                key={reference.id ?? `${index}:${reference.text}`}
-                data-testid="conversation-selection-reference"
-                data-reference-id={reference.id}
-                data-source-session-id={reference.sourceSessionId}
-                data-source-row-id={reference.sourceRowId}
-              >
-                <QuoteIcon className="conversation-selection-row-icon size-4" aria-hidden="true" />
-                <div className="conversation-selection-reference-body">
-                  <div className="conversation-selection-reference-text">{reference.text}</div>
-                  {reference.contentType && reference.sourceRowId && (
-                    <TitleTooltip title={reference.sourceSessionId}>
-                      <div className="conversation-selection-reference-source">
-                        {t(`chat.selection.type.${reference.contentType}`)} · #
-                        {reference.sourceRowId}
-                      </div>
-                    </TitleTooltip>
+          <div className="conversation-selection-details">
+            <div className="conversation-selection-detail-list">
+              {references.map((reference, index) => (
+                <div
+                  className="conversation-selection-reference group"
+                  key={reference.id ?? `${index}:${reference.text}`}
+                  data-testid="conversation-selection-reference"
+                  data-reference-id={reference.id}
+                  data-source-session-id={reference.sourceSessionId}
+                  data-source-row-id={reference.sourceRowId}
+                >
+                  <QuoteIcon
+                    className="conversation-selection-row-icon size-4"
+                    aria-hidden="true"
+                  />
+                  <div className="conversation-selection-reference-body">
+                    <div className="conversation-selection-reference-text">{reference.text}</div>
+                    {reference.contentType && reference.sourceRowId && (
+                      <TitleTooltip title={reference.sourceSessionId}>
+                        <div className="conversation-selection-reference-source">
+                          {t(`chat.selection.type.${reference.contentType}`)} · #
+                          {reference.sourceRowId}
+                        </div>
+                      </TitleTooltip>
+                    )}
+                  </div>
+                  {onRemove && reference.id && (
+                    <Button
+                      type="button"
+                      variant="ghost-subtle"
+                      size="icon-xs"
+                      revealOnGroupHover
+                      className="shrink-0"
+                      aria-label={t("chat.selection.removeReference")}
+                      disabled={disabled}
+                      onClick={() => onRemove(reference.id!)}
+                    >
+                      <Trash2Icon className="size-3.5" />
+                    </Button>
                   )}
                 </div>
-                {onRemove && reference.id && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    className="conversation-selection-remove"
-                    aria-label={t("chat.selection.removeReference")}
-                    disabled={disabled}
-                    onClick={() => onRemove(reference.id!)}
-                  >
-                    <Trash2Icon className="size-3.5" />
-                  </Button>
-                )}
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </PopoverContent>
       </Popover>

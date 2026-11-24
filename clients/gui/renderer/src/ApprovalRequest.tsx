@@ -336,26 +336,34 @@ export function ApprovalRequest({
                       </Button>
                     }
                   />
-                  <DropdownMenuContent
-                    side="top"
-                    align="end"
-                    sideOffset={8}
-                    className="approval-scope-menu"
-                  >
+                  <DropdownMenuContent side="top" align="end" sideOffset={8} className="w-72">
                     <DropdownMenuItem disabled={locked} onClick={() => void respond("allowOnce")}>
-                      允许一次<small>仅批准本次请求</small>
+                      <span className="flex flex-col items-start gap-0.5 py-1">
+                        <span>允许一次</span>
+                        <small className="text-ui-sm text-foreground-subtle">仅批准本次请求</small>
+                      </span>
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       disabled={locked}
                       onClick={() => void respond("allowSession")}
                     >
-                      本任务允许此操作<small>仅适用于当前任务的相同操作</small>
+                      <span className="flex flex-col items-start gap-0.5 py-1">
+                        <span>本任务允许此操作</span>
+                        <small className="text-ui-sm text-foreground-subtle">
+                          仅适用于当前任务的相同操作
+                        </small>
+                      </span>
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       disabled={locked}
                       onClick={() => void respond("allowProject")}
                     >
-                      本项目允许此操作<small>仅适用于当前项目的相同操作</small>
+                      <span className="flex flex-col items-start gap-0.5 py-1">
+                        <span>本项目允许此操作</span>
+                        <small className="text-ui-sm text-foreground-subtle">
+                          仅适用于当前项目的相同操作
+                        </small>
+                      </span>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

@@ -25,9 +25,9 @@ export function ApplicationRail({
       {items.map((item) => (
         <Button
           key={item.id}
-          variant="ghost"
-          size="icon"
-          className="application-rail-button"
+          variant="ghost-subtle"
+          size="rail"
+          active={activeId === item.id}
           aria-label={item.label}
           title={item.label}
           aria-current={activeId === item.id ? "page" : undefined}
@@ -75,17 +75,18 @@ export function SidebarSectionToggle({
 }) {
   return (
     <Button
-      unstyled
-      data-slot={undefined}
+      variant="ghost-subtle"
+      size="xs"
+      align="start"
       type="button"
-      className="sidebar-section-toggle"
+      className="min-w-0 flex-1 gap-1"
       title={label}
       aria-label={ariaLabel}
       aria-expanded={expanded}
       aria-controls={controls}
       onClick={onToggle}
     >
-      <span>{label}</span>
+      <span className="truncate">{label}</span>
       <FileMenuChevronIcon size={14} aria-hidden="true" />
     </Button>
   );

@@ -130,9 +130,10 @@ export function WorkspaceImage({
   return (
     <>
       <Button
-        unstyled
         type="button"
-        className="block max-w-full cursor-zoom-in overflow-hidden rounded-xl border border-border bg-surface"
+        variant="media-trigger"
+        size="none"
+        className="max-w-full"
         aria-label={t("content.workspaceImage.preview", { name })}
         title={path.replace(/^\.\//, "")}
         onClick={() => setPreviewOpen(true)}

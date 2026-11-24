@@ -455,7 +455,8 @@ export function AppearanceSettings({
         min={min}
         max={max}
         value={value}
-        className="w-16 text-center"
+        align="center"
+        className="w-16"
         onChange={(e) => {
           const n = Number(e.target.value);
           if (n >= min && n <= max) onChange(n);

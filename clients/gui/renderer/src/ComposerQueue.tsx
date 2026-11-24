@@ -340,7 +340,7 @@ export function ComposerQueue({
                   }
                 />
                 <DropdownMenuContent
-                  className="composer-queue-menu"
+                  className="w-50"
                   side="top"
                   align="end"
                   aria-label="排队消息操作"

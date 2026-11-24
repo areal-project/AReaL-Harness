@@ -24,9 +24,9 @@ function ComposerModeChip({
       <ControlHintTooltip title={exitLabel}>
         <Button
           type="button"
-          variant="ghost"
+          variant="ghost-subtle"
           size="default"
-          className="gap-1 rounded-full px-2 text-ui-caption leading-[18px] text-foreground-subtle"
+          shape="pill"
           aria-label={exitLabel}
           disabled={disabled}
           onClick={onExit}

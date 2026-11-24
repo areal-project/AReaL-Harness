@@ -6,7 +6,10 @@
   right: 0;
 }
 .worktrees-variables {
-  width: min(24rem, var(--available-width));
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-field);
+  min-width: 0;
 }
 .worktrees-variables dl {
   display: grid;

@@ -38,7 +38,7 @@ body[data-connection="connected"][data-detail="open"] .remote-header {
   margin: calc(var(--spacing-inline) * 5 / 2) 0 calc(var(--spacing-inline) * 3 / 2);
 }
 .remote-project-heading h2 {
-  font-size: 21px;
+  font-size: var(--text-ui-title);
   font-weight: 600;
 }
 .remote-project-group {
@@ -64,7 +64,7 @@ body[data-connection="connected"][data-detail="open"] .remote-header {
   justify-content: flex-start;
   gap: calc(var(--spacing-inline) * 3 / 2);
   min-height: calc(var(--spacing-field) * 3);
-  font-size: 17px;
+  font-size: var(--text-ui-heading);
 }
 .remote-project-row span {
   overflow: hidden;

@@ -336,7 +336,6 @@ export function WorkspaceFilePane({
             <Button
               size="sm"
               variant="ghost"
-              className="file-preview-control"
               disabled={!doc}
               onClick={() => setMarkdown((value) => !value)}
             >
@@ -345,8 +344,8 @@ export function WorkspaceFilePane({
           )}
           <Button
             size="icon"
-            variant="ghost"
-            className="file-preview-control file-preview-icon"
+            variant="ghost-subtle"
+            active={filesOpen}
             aria-label="切换文件树"
             aria-pressed={filesOpen}
             onClick={onToggleFiles}
@@ -366,8 +365,7 @@ export function WorkspaceFilePane({
           <div className="file-preview-open-group" role="group" aria-label="文件打开操作">
             <Button
               size="sm"
-              variant="ghost"
-              className="file-preview-control file-preview-open"
+              variant="surface"
               aria-label={
                 openTargets ? `在${openTargets.preferredLabel}中打开` : "在默认应用中打开"
               }
@@ -380,12 +378,7 @@ export function WorkspaceFilePane({
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="file-preview-control file-preview-open-options"
-                    aria-label="文件更多"
-                  >
+                  <Button size="icon" variant="surface" className="ml-0.5" aria-label="文件更多">
                     <ChevronDown className="size-3" />
                   </Button>
                 }
@@ -552,8 +545,8 @@ export function WorkspaceFilePane({
                 </Suspense>
                 <Button
                   size="icon"
-                  variant="ghost"
-                  className="workspace-markdown-copy"
+                  variant="ghost-subtle"
+                  className="absolute top-[var(--spacing-inline)] right-[var(--spacing-field)]"
                   aria-label="复制 Markdown"
                   onClick={() => {
                     void navigator.clipboard

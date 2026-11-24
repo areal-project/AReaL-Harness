@@ -282,9 +282,10 @@ export function BotSettingsPane({
             <SettingsGroupCard density="compact">
               <div className="bot-identity-hero">
                 <Button
-                  unstyled
                   type="button"
-                  className="bot-avatar-trigger"
+                  variant="surface"
+                  size="icon-lg"
+                  className="size-11 shrink-0"
                   aria-label={t("bots.settings.avatarPick")}
                   aria-expanded={avatarPickerOpen}
                   onClick={() => setAvatarPickerOpen((open) => !open)}
@@ -293,9 +294,8 @@ export function BotSettingsPane({
                 </Button>
                 <div className="bot-identity-inputs">
                   <Input
-                    unstyled
                     type="text"
-                    className="bot-inline-title-input"
+                    variant="inline-heading"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     maxLength={80}
@@ -305,9 +305,8 @@ export function BotSettingsPane({
                     data-testid="bot-settings-name"
                   />
                   <Input
-                    unstyled
                     type="text"
-                    className="bot-inline-desc-input"
+                    variant="inline-subtle"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     maxLength={512}
@@ -322,26 +321,28 @@ export function BotSettingsPane({
                   <div className="bot-avatar-preset-grid">
                     {AVATAR_PRESETS.map((emoji) => (
                       <Button
-                        unstyled
                         key={emoji}
                         type="button"
-                        className={`bot-avatar-preset ${avatar === emoji ? "is-selected" : ""}`}
+                        variant="outline"
+                        size="sm"
+                        active={avatar === emoji}
+                        className="h-8 w-full"
                         onClick={() => {
                           setAvatar(emoji);
                           setAvatarPickerOpen(false);
                         }}
                       >
-                        {emoji}
+                        <span className="text-ui-lg leading-none">{emoji}</span>
                       </Button>
                     ))}
                   </div>
                   <Input
+                    size="sm"
                     value={avatar}
                     onChange={(e) => setAvatar(e.target.value)}
                     maxLength={12}
                     placeholder="🤖"
                     aria-label={t("bots.settings.avatar")}
-                    className="bot-avatar-custom-input"
                   />
                 </div>
               )}
@@ -349,22 +350,25 @@ export function BotSettingsPane({
               <div className="bot-card-divider" />
               <div className="bot-card-row-stack">
                 <Button
-                  unstyled
                   type="button"
-                  className="bot-row-disclosure"
+                  variant="row"
+                  size="none"
+                  className="w-full"
                   aria-expanded={startersOpen}
                   onClick={() => setStartersOpen((open) => !open)}
                 >
-                  <span className="bot-row-label">{t("bots.settings.startersSummary")}</span>
-                  <span className="bot-row-meta">
-                    <span>
-                      {parsedStarters.length > 0
-                        ? t("bots.settings.startersCount", {
-                            count: parsedStarters.length,
-                          })
-                        : t("bots.settings.startersEmpty")}
+                  <span className="flex w-full items-center justify-between gap-2">
+                    <span className="bot-row-label">{t("bots.settings.startersSummary")}</span>
+                    <span className="bot-row-meta">
+                      <span>
+                        {parsedStarters.length > 0
+                          ? t("bots.settings.startersCount", {
+                              count: parsedStarters.length,
+                            })
+                          : t("bots.settings.startersEmpty")}
+                      </span>
+                      {startersOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     </span>
-                    {startersOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                   </span>
                 </Button>
                 {startersOpen && (
@@ -423,7 +427,6 @@ export function BotSettingsPane({
                   placeholder={t("bots.settings.preferencesPlaceholder")}
                   aria-label={t("bots.settings.preferencesLabel")}
                   data-testid="bot-settings-preferences"
-                  className="bot-instructions-textarea"
                 />
                 <p className="bot-settings-hint">{t("bots.settings.preferencesHint")}</p>
               </div>
@@ -535,17 +538,20 @@ export function BotSettingsPane({
               <div className="bot-card-divider" />
               <div className="bot-card-row-stack">
                 <Button
-                  unstyled
                   type="button"
-                  className="bot-row-disclosure"
+                  variant="row"
+                  size="none"
+                  className="w-full"
                   hidden={usesHarnessModel}
                   aria-expanded={providerOpen}
                   onClick={() => setProviderOpen((prev) => !prev)}
                   data-testid="bot-provider-form-toggle"
                 >
-                  <span className="bot-row-label">{t("bots.settings.configureProvider")}</span>
-                  <span className="bot-row-meta">
-                    {providerOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  <span className="flex w-full items-center justify-between gap-2">
+                    <span className="bot-row-label">{t("bots.settings.configureProvider")}</span>
+                    <span className="bot-row-meta">
+                      {providerOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </span>
                   </span>
                 </Button>
 
@@ -661,9 +667,8 @@ export function BotSettingsPane({
                 <code className="bot-workspace-code">{bot.workspace}</code>
                 <Button
                   type="button"
-                  size="icon"
+                  size="icon-sm"
                   variant="ghost"
-                  className="bot-mini-icon-btn"
                   aria-label={t("bots.settings.copyWorkspace")}
                   title={t("bots.settings.copyWorkspace")}
                   onClick={() => {
@@ -750,8 +755,7 @@ export function BotSettingsPane({
             <Button
               type="button"
               size="sm"
-              variant="ghost"
-              className="bot-danger-button"
+              variant="destructive-subtle"
               onClick={() => setConfirmDelete(true)}
             >
               <Trash2 size={13} />
