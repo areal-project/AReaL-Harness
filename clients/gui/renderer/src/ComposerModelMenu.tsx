@@ -327,7 +327,7 @@ export function ComposerModelMenu({
             render={
               <Button
                 type="button"
-                variant="ghost"
+                variant="ghost-subtle"
                 aria-label={t("chat.composer.chooseEffort")}
                 title={fast ? `Fast · ${effortLabel}` : effortLabel}
                 disabled={disabled || pending}

@@ -25,6 +25,7 @@ export function SettingsNavigation({
   navigationBusy = false,
   backIcon,
   forwardIcon,
+  variant = "sidebar",
 }: {
   groups: readonly SettingsNavigationGroup[];
   activeId: string;
@@ -47,6 +48,7 @@ export function SettingsNavigation({
   navigationBusy?: boolean;
   backIcon: ReactNode;
   forwardIcon: ReactNode;
+  variant?: "sidebar" | "modal";
 }) {
   const [query, setQuery] = useState("");
   const needle = query.trim().toLocaleLowerCase(locale);
@@ -76,31 +78,8 @@ export function SettingsNavigation({
     }
   }, [firstMatchedId, activeVisible, navigationBusy, onSelect]);
 
-  return (
-    <NavigationSidebar
-      className="settings-sidebar"
-      width={width}
-      rail={rail}
-      footer={footer}
-      chrome={
-        <div className="workspace-navigation">
-          <TitleTooltip title={labels.back}>
-            <button
-              type="button"
-              className="icon-button settings-back"
-              aria-label={labels.back}
-              disabled={navigationBusy}
-              onClick={onBack}
-            >
-              {backIcon}
-            </button>
-          </TitleTooltip>
-          <button type="button" className="icon-button" aria-label={labels.forward} disabled>
-            {forwardIcon}
-          </button>
-        </div>
-      }
-    >
+  const navigationBody = (
+    <>
       <div className="settings-sidebar-header">
         <h1 className="settings-sidebar-title">{labels.title}</h1>
         <SettingsSearchInput
@@ -165,6 +144,43 @@ export function SettingsNavigation({
           </p>
         )}
       </nav>
+    </>
+  );
+
+  if (variant === "modal") {
+    return (
+      <aside className="settings-sidebar settings-modal-sidebar" data-settings-variant="modal">
+        {navigationBody}
+      </aside>
+    );
+  }
+
+  return (
+    <NavigationSidebar
+      className="settings-sidebar"
+      width={width}
+      rail={rail}
+      footer={footer}
+      chrome={
+        <div className="workspace-navigation">
+          <TitleTooltip title={labels.back}>
+            <button
+              type="button"
+              className="icon-button settings-back"
+              aria-label={labels.back}
+              disabled={navigationBusy}
+              onClick={onBack}
+            >
+              {backIcon}
+            </button>
+          </TitleTooltip>
+          <button type="button" className="icon-button" aria-label={labels.forward} disabled>
+            {forwardIcon}
+          </button>
+        </div>
+      }
+    >
+      {navigationBody}
     </NavigationSidebar>
   );
 }

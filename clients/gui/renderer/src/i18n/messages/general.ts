@@ -340,6 +340,10 @@ export const generalMessages = {
     "zh-CN": "界面主题",
     en: "Interface theme",
   },
+  "settings.displaySettings.colorModeDescription": {
+    "zh-CN": "使用浅色或深色主题，或跟随系统外观",
+    en: "Use light or dark colors, or follow your system setting",
+  },
   "settings.displaySettings.system": {
     "zh-CN": "跟随系统",
     en: "System",

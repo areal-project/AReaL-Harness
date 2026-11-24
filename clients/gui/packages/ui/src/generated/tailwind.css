@@ -18,7 +18,7 @@
   --radius-pill: 999px;
   --radius-overlay: var(--radius-3xl);
   --radius-navigation: var(--radius-md);
-  --radius-composer: var(--radius-2xl);
+  --radius-composer: var(--radius-4xl);
   --radius-panel: var(--radius-xl);
   --radius-dialog: var(--radius-2xl);
   --shadow-subtle: 0 1px 2px rgb(0 0 0 / 6%), 0 0 0 0.5px var(--color-border-hairline);
@@ -103,8 +103,8 @@
   --color-composer-action-foreground: var(--color-primary-foreground);
   --color-accent: color-mix(in srgb, #1a1c1f 6%, #ffffff);
   --color-secondary: color-mix(in srgb, #1a1c1f 5%, transparent);
-  --color-user-message: #f3f3f4;
-  --color-user-message-text: #1a1c1f;
+  --color-user-message: #e8f1ff;
+  --color-user-message-text: #0c274a;
   --color-background-win-alt: color-mix(in srgb, #1a1c1f 4%, #ffffff);
   --color-shell: color-mix(in srgb, #1a1c1f 4%, #ffffff);
   --color-navigation-background: color-mix(in oklab, #ffffff 70%, transparent);

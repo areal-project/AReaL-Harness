@@ -187,26 +187,6 @@ export function WorkspaceNavigation({
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label={t("common.navigation.back")}
-        title={t("common.navigation.backShortcut")}
-        disabled={taskCenterOpen || workspaceHistory.index <= 0}
-        onClick={() => traverseWorkspaceHistory(-1)}
-      >
-        <NavigationBackIcon size={16} />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label={t("common.navigation.forward")}
-        title={t("common.navigation.forwardShortcut")}
-        disabled={taskCenterOpen || workspaceHistory.index >= workspaceHistory.entries.length - 1}
-        onClick={() => traverseWorkspaceHistory(1)}
-      >
-        <NavigationForwardIcon size={16} />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon-sm"
         aria-label={
           sidebar ? t("common.navigation.collapseSidebar") : t("common.navigation.expandSidebar")
         }
@@ -216,6 +196,28 @@ export function WorkspaceNavigation({
       >
         <SidebarToggleIcon />
       </Button>
+      <div className="workspace-history-controls">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t("common.navigation.back")}
+          title={t("common.navigation.backShortcut")}
+          disabled={taskCenterOpen || workspaceHistory.index <= 0}
+          onClick={() => traverseWorkspaceHistory(-1)}
+        >
+          <NavigationBackIcon size={16} />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t("common.navigation.forward")}
+          title={t("common.navigation.forwardShortcut")}
+          disabled={taskCenterOpen || workspaceHistory.index >= workspaceHistory.entries.length - 1}
+          onClick={() => traverseWorkspaceHistory(1)}
+        >
+          <NavigationForwardIcon size={16} />
+        </Button>
+      </div>
     </div>
   );
 }

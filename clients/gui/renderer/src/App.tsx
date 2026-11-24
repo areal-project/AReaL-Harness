@@ -2,8 +2,10 @@ import { AppProviders, WorkbenchProviders } from "./app-shell/WorkbenchProviders
 import React, { useEffect, useSyncExternalStore } from "react";
 import { WorkSurface, WorkbenchShell } from "./app-shell/WorkbenchShell.js";
 import { BackendStatusNotice } from "./BackendStatusNotice.js";
+import { Button } from "./components/ui/button.js";
 import { sending, subscribeSending } from "./Composer.js";
 import { useI18n } from "./i18n/IntlProvider.js";
+import { DismissIcon } from "./interfaceIcons.js";
 import { Inbox } from "./Inbox.js";
 import { recoverySettings } from "./recoveryPresentation.js";
 import { type Data, type PlatformServices } from "./services.js";
@@ -129,6 +131,17 @@ function AppContent({ services }: { services: PlatformServices }) {
   const navigationWorkspace = useNavigationWorkspace();
   const navigation = navigationWorkspace.workspace;
   useEffect(surfaces.restoreSettingsFocus, [settingsOpen]);
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (document.querySelector("[data-settings-modal] [data-popup-open]")) return;
+      event.preventDefault();
+      requestNavigation(() => setSettingsOpen(false));
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [settingsOpen, requestNavigation, setSettingsOpen]);
   const fork = useConversationFork(
     project,
     thread,
@@ -545,37 +558,6 @@ function AppContent({ services }: { services: PlatformServices }) {
                 <UpdateIndicator services={services} />
               </div>
             )}
-            {settingsOpen && (
-              <SettingsNavigation
-                width={sidebarWidth}
-                rail={applicationRail}
-                activeId={["Skills", "MCP"].includes(settingsTab) ? "plugins" : settingsTab}
-                onSelect={setSettingsTab}
-                onBack={() => setSettingsOpen(false)}
-                groups={settingsNavigationGroups
-                  .map((group) => ({
-                    ...group,
-                    label: t(group.label),
-                    items: group.items
-                      .filter((item) =>
-                        item.id === "Labs"
-                          ? labsAvailable
-                          : services.capabilities?.settings === undefined ||
-                            services.capabilities.settings.includes(item.id),
-                      )
-                      .map((item) => ({
-                        ...item,
-                        keywords: "keywords" in item ? t(item.keywords) : undefined,
-                        label: t(
-                          item.id === "trajectory" && trajectoryAttention
-                            ? "settings.trajectory.attentionTitle"
-                            : item.label,
-                        ),
-                      })),
-                  }))
-                  .filter((group) => group.items.length > 0)}
-              />
-            )}
             <ConversationNavigation
               services={services}
               setError={setError}
@@ -587,7 +569,7 @@ function AppContent({ services }: { services: PlatformServices }) {
               taskCenterOpen={taskCenterOpen}
               pluginsOpen={pluginsOpen}
               sidebar={sidebar}
-              visible={!settingsOpen && !botsOpen}
+              visible={!botsOpen}
               appearance={{
                 sidebarWidth,
                 setSidebarWidth,
@@ -631,7 +613,6 @@ function AppContent({ services }: { services: PlatformServices }) {
                   !annotationVisible &&
                   panel &&
                   !pluginsOpen &&
-                  !settingsOpen &&
                   !taskCenterOpen &&
                   workspaceView !== "split"
                     ? workspaceView
@@ -640,14 +621,9 @@ function AppContent({ services }: { services: PlatformServices }) {
               >
                 <WorkSurface
                   panelOpen={Boolean(
-                    (annotationVisible || (panel && project)) &&
-                    !pluginsOpen &&
-                    !settingsOpen &&
-                    !taskCenterOpen,
+                    (annotationVisible || (panel && project)) && !pluginsOpen && !taskCenterOpen,
                   )}
-                  split={
-                    workspaceView === "split" && !pluginsOpen && !settingsOpen && !taskCenterOpen
-                  }
+                  split={workspaceView === "split" && !pluginsOpen && !taskCenterOpen}
                 >
                   {!taskCenterOpen && (
                     <ConversationHeader
@@ -682,9 +658,7 @@ function AppContent({ services }: { services: PlatformServices }) {
                       navigationCommands={navigationCommands}
                     />
                   }
-                  {pluginCenterActive ? null : settingsOpen ? (
-                    settingsPage
-                  ) : taskSurface === "inbox" ? (
+                  {pluginCenterActive ? null : taskSurface === "inbox" ? (
                     <Inbox
                       projects={snapshot.projects}
                       connected={snapshot.connection?.state === "ready"}
@@ -765,6 +739,69 @@ function AppContent({ services }: { services: PlatformServices }) {
                   setError={setError}
                 />
               </main>
+            )}
+            {settingsOpen && (
+              <div
+                role="presentation"
+                className="settings-modal-overlay"
+                data-settings-modal="true"
+                onMouseDown={(event) => {
+                  if (event.target === event.currentTarget) {
+                    requestNavigation(() => setSettingsOpen(false));
+                  }
+                }}
+              >
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label={t("settings.title")}
+                  className="settings-modal-dialog"
+                >
+                  <SettingsNavigation
+                    variant="modal"
+                    activeId={["Skills", "MCP"].includes(settingsTab) ? "plugins" : settingsTab}
+                    onSelect={setSettingsTab}
+                    onBack={() => requestNavigation(() => setSettingsOpen(false))}
+                    groups={settingsNavigationGroups
+                      .map((group) => ({
+                        ...group,
+                        label: t(group.label),
+                        items: group.items
+                          .filter((item) =>
+                            item.id === "Labs"
+                              ? labsAvailable
+                              : services.capabilities?.settings === undefined ||
+                                services.capabilities.settings.includes(item.id),
+                          )
+                          .map((item) => ({
+                            ...item,
+                            keywords: "keywords" in item ? t(item.keywords) : undefined,
+                            label: t(
+                              item.id === "trajectory" && trajectoryAttention
+                                ? "settings.trajectory.attentionTitle"
+                                : item.label,
+                            ),
+                          })),
+                      }))
+                      .filter((group) => group.items.length > 0)}
+                  />
+                  <div className="settings-modal-body">
+                    <div className="settings-modal-close">
+                      <Button
+                        type="button"
+                        variant="ghost-subtle"
+                        size="icon-sm"
+                        aria-label={t("settings.settingsWorkspace.backToApp")}
+                        title={t("settings.settingsWorkspace.backToApp")}
+                        onClick={() => requestNavigation(() => setSettingsOpen(false))}
+                      >
+                        <DismissIcon size={16} />
+                      </Button>
+                    </div>
+                    {settingsPage}
+                  </div>
+                </div>
+              </div>
             )}
             {fork.dialog}
           </>

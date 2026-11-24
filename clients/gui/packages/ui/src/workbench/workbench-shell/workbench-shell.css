@@ -34,7 +34,8 @@
   --main-clip-end: calc(-1 * var(--page-radius));
 }
 .areal-workbench .work-surface {
-  background: transparent;
+  background: var(--color-background);
+  border-radius: var(--page-radius);
 }
 .platform-mac-desktop .areal-workbench {
   --window-inset: calc(var(--spacing-inline) * 11);

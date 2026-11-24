@@ -74,10 +74,10 @@
 | `--radius-pill` | `999px` | 胶囊形：发送等主动作、标签、计数徽标 |
 | `--radius-overlay` | `var(--radius-3xl)` | 大浮层与独立工作区：Worktree 设置、目录列表、定时任务 |
 | `--radius-navigation` | `var(--radius-md)` | 导航项、侧栏行与拖拽预览 |
-| `--radius-composer` | `var(--radius-2xl)` | 输入区外框 |
+| `--radius-composer` | `var(--radius-4xl)` | 输入区外框（24px 超椭圆连续圆角，对齐 Codex Composer） |
 | `--radius-panel` | `var(--radius-xl)` | 面板与分组卡片 |
 | `--radius-dialog` | `var(--radius-2xl)` | 对话框 |
-| `--radius-message` | `var(--radius-2xl)` | 用户消息气泡圆角 |
+| `--radius-message` | `var(--radius-3xl)` | 用户消息气泡圆角（20px 紧凑胶囊，对齐 Codex） |
 | `--radius-indicator` | `var(--radius-2xs)` | 微型指示条与细标记圆角（2px 档） |
 | `--radius-micro` | `var(--radius-xs)` | 行内代码、键帽与微型徽标圆角（4px 档） |
 | `--radius-compact` | `var(--radius-sm)` | 紧凑按钮、小型标签与紧凑行圆角（6px 档） |
@@ -139,7 +139,15 @@
 | `--color-border-hairline` | `color-mix(in oklab, var(--color-foreground) 8%, transparent)（暗色 color-mix(in oklab, var(--color-foreground) 11%, transparent)）` | 精细 oklab 语义描边色，用于浮层与内嵌表面边界 |
 | `--color-surface-under` | `#f9f9f9（暗色 #1f1f22）` | 最底层外壳与停靠侧栏基底（亮色 #f9f9f9 / 暗色 #1f1f22，对齐 Codex 一体化柔和深炭灰侧栏） |
 | `--color-surface-card` | `#ffffff（暗色 #212121）` | 抬升卡片表面（Codex 灰阶 200：亮色 #ffffff / 暗色 #212121），用于设置组、审批卡、Ask User 与置顶摘要卡 |
-| `--color-surface-composer` | `#ffffff（暗色 #282828）` | 输入区主表面（Codex 灰阶 250：亮色 #ffffff / 暗色 #282828），高于主阅读画布一层 |
+| `--color-surface-composer` | `#ffffff（暗色 #303034）` | 输入区主表面（亮色 #ffffff / 暗色 #303034，浮起于主阅读画布之上，对齐 Codex Composer） |
+| `--color-settings-modal-nav` | `#f7f7f8（暗色 #2b2b30）` | 设置弹窗左侧导航栏表面（对齐 Codex Settings Modal 导航栏层次） |
+| `--color-settings-modal-surface` | `#ffffff（暗色 #26262a）` | 设置弹窗右侧主内容区表面（对齐 Codex Settings Modal 主内容区） |
+| `--color-theme-preview-light-bg` | `#ffffff` | 外观主题缩略图浅色画布背景 |
+| `--color-theme-preview-light-sidebar` | `#f2f2f4` | 外观主题缩略图浅色侧栏背景 |
+| `--color-theme-preview-light-bar` | `#d4d4d8` | 外观主题缩略图浅色占位条颜色 |
+| `--color-theme-preview-dark-bg` | `#1c1c1f` | 外观主题缩略图深色画布背景 |
+| `--color-theme-preview-dark-sidebar` | `#28282c` | 外观主题缩略图深色侧栏背景 |
+| `--color-theme-preview-dark-bar` | `#4b4b52` | 外观主题缩略图深色占位条颜色 |
 | `--color-surface-popover` | `#ffffff（暗色 #303030）` | 浮层、折叠侧栏弹层与灵动摘要条表面（Codex 灰阶 300：亮色 #ffffff / 暗色 #303030） |
 | `--color-surface-docked-sidebar` | `color-mix(in oklab, var(--color-surface-under) 82%, transparent)（暗色 color-mix(in oklab, var(--color-surface-under) 85%, transparent)）` | 停靠侧栏轻透表面，对齐 Codex Docked Sidebar 层次 |
 
@@ -192,6 +200,7 @@
 | `--browser-file-status-max-height` | `112px` | 浏览器文件交接状态列表的既有最大高度；来自renderer/src/BrowserFileHandoff.layout.css，D2保持原几何。 |
 | `--size-status-dot` | `7px` | 移动端会话状态圆点尺寸 |
 | `--size-touch-target` | `44px` | 移动端按钮与输入框的最小触控目标 |
+| `--blur-backdrop` | `6px` | 居中模态弹窗遮罩的柔和模糊半径（保留底层工作台可辨识轮廓，对齐 Codex Settings Modal） |
 | `--blur-header` | `18px` | 工作台顶栏与吸顶摘要栏的毛玻璃模糊半径 |
 | `--blur-popover` | `24px` | 任务上下文摘要（Pin Summary）与大浮层的液态玻璃模糊半径 |
 | `--corner-radius-scale` | `1` | 内部圆角倍率：只乘原料刻度，用途圆角随之变化；不开放给用户（D-005） |
@@ -274,10 +283,10 @@
 | `default-accent` | `#3a83f7` | themes.accent 既有默认覆盖匹配值。 |
 | `file-link-default` | `#2c67c5` | palette.source.preMigration |
 | `primary-text-default-dark` | `#2d2d2d` | palette.source.preMigration |
-| `user-message-default-dark` | `#2a2a2d` | palette.source.preMigration |
-| `user-message-default-light` | `#f3f3f4` | palette.source.preMigration |
+| `user-message-default-dark` | `#20447a` | 对齐 Codex 桌面端深强调蓝用户消息胶囊（实采 #20447a，配 #f4f4f5 对比度 > 8.9:1）。 |
+| `user-message-default-light` | `#e8f1ff` | 对齐 Codex 亮色强调浅蓝用户消息胶囊（配 #0c274a 对比度 > 13.5:1）。 |
 | `user-text-default-dark` | `#f4f4f5` | palette.source.preMigration |
-| `user-text-default-light` | `#1a1c1f` | palette.source.preMigration |
+| `user-text-default-light` | `#0c274a` | 对齐 Codex 亮色用户气泡深海军蓝正文（--compact-message-bubble-foreground）。 |
 | `settings-sidebar-default-solid` | `rgb(40 40 40 / 1)` | palette.source.preMigration |
 | `settings-sidebar-default-translucent` | `rgb(40 40 40 / 0.7)` | palette.source.preMigration |
 | `settings-row-default-dark` | `rgba(255, 255, 255, 0.08)` | palette.source.preMigration |
@@ -431,8 +440,8 @@
 | `--color-composer-action-foreground` | component · 中性主动作上的可读文字。 | text-primary-inverse 保留已有组件变量名；仅引用 text-primary-inverse。中性主动作上的可读文字。 | `var(--color-primary-foreground)` | `var(--color-primary-foreground)` |
 | `--color-accent` | semantic · 弱强调背景。 | surface-accent  | `color-mix(in srgb, #1a1c1f 6%, #ffffff)` | `color-mix(in srgb, #ffffff 6%, #181818)` |
 | `--color-secondary` | semantic · 次要控件的前景透明层。 | surface-secondary  | `color-mix(in srgb, #1a1c1f 5%, transparent)` | `color-mix(in srgb, #ffffff 5%, transparent)` |
-| `--color-user-message` | component · 用户消息区分层，默认主题保留已采纳蓝色。 | surface-user-message 保留已有组件变量名；仅引用 surface-user-message。用户消息区分层，默认主题保留已采纳蓝色。 | `#f3f3f4` | `#2a2a2d` |
-| `--color-user-message-text` | component · 用户消息正文，默认主题保留蓝底配对前景。 | text-user-message 保留已有组件变量名；仅引用 text-user-message。用户消息正文，默认主题保留蓝底配对前景。 | `#1a1c1f` | `#f4f4f5` |
+| `--color-user-message` | component · 用户消息区分层，默认主题保留已采纳蓝色。 | surface-user-message 保留已有组件变量名；仅引用 surface-user-message。用户消息区分层，默认主题保留已采纳蓝色。 | `#e8f1ff` | `#20447a` |
+| `--color-user-message-text` | component · 用户消息正文，默认主题保留蓝底配对前景。 | text-user-message 保留已有组件变量名；仅引用 text-user-message。用户消息正文，默认主题保留蓝底配对前景。 | `#0c274a` | `#f4f4f5` |
 | `--color-background-win-alt` | semantic · 浅色外壳与次级窗口表面。 | surface-window-alt  | `color-mix(in srgb, #1a1c1f 4%, #ffffff)` | `color-mix(in srgb, #ffffff 4%, #181818)` |
 | `--color-shell` | semantic · 标题栏和外框表面。 | surface-shell  | `color-mix(in srgb, #1a1c1f 4%, #ffffff)` | `color-mix(in srgb, #ffffff 5.194805194805195%, #181818)` |
 | `--color-navigation-background` | semantic · 导航表面。浅色透明材料保留 OKLab 混色。 | surface-navigation  | `color-mix(in oklab, #ffffff 70%, transparent)` | `color-mix(in srgb, #ffffff 2.5974025974025974%, #181818)` |

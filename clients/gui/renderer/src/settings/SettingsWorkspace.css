@@ -22,6 +22,89 @@
   margin-top: 0;
 }
 
+/* Codex 风格三态外观模式缩略图选择器（跟随系统 / 浅色 / 深色）。 */
+.appearance-mode-cards {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-inline);
+}
+.appearance-mode-card {
+  position: relative;
+  display: inline-flex;
+  padding: 0;
+  width: calc(var(--spacing-inline) * 9.5);
+  height: calc(var(--spacing-inline) * 6.5);
+  border-radius: var(--radius-control);
+  border: var(--border-width-default) solid var(--color-border);
+  background: transparent;
+  overflow: hidden;
+  cursor: var(--interactive-cursor, pointer);
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+.appearance-mode-card:hover {
+  border-color: var(--color-border-hover);
+}
+.appearance-mode-card[data-selected="true"] {
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 calc(var(--border-width-default) * 2) var(--color-focus-ring-soft);
+}
+.appearance-mode-preview {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+.appearance-mode-light {
+  --preview-bg: var(--color-theme-preview-light-bg);
+  --preview-sidebar: var(--color-theme-preview-light-sidebar);
+  --preview-bar: var(--color-theme-preview-light-bar);
+}
+.appearance-mode-dark {
+  --preview-bg: var(--color-theme-preview-dark-bg);
+  --preview-sidebar: var(--color-theme-preview-dark-sidebar);
+  --preview-bar: var(--color-theme-preview-dark-bar);
+}
+.appearance-mode-half,
+.appearance-mode-full {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  background: var(--preview-bg);
+}
+.appearance-mode-half:first-child {
+  border-right: var(--border-width-default) solid var(--color-border-hairline);
+}
+.appearance-mode-sidebar {
+  width: 28%;
+  height: 100%;
+  background: var(--preview-sidebar);
+  border-right: var(--border-width-default) solid var(--color-border-hairline);
+}
+.appearance-mode-lines {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: calc(var(--spacing-inline) / 2);
+  padding: var(--spacing-inline);
+}
+.appearance-mode-bar {
+  display: block;
+  height: calc(var(--spacing-inline) / 2);
+  width: 72%;
+  border-radius: var(--radius-pill);
+  background: var(--preview-bar);
+}
+.appearance-mode-bar-accent {
+  width: 88%;
+  background: var(--color-brand);
+}
+.appearance-mode-bar-short {
+  width: 48%;
+}
+
 /* 6. Controls Styling in Settings */
 .settings-workspace select {
   height: var(--spacing-control);

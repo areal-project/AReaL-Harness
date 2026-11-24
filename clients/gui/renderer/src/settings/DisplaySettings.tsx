@@ -15,6 +15,7 @@ import {
 import { colorContrastRatio } from "@areal/ui/theme";
 import { useI18n, UiMessageError, formatUiMessage, type UiMessage } from "../i18n/IntlProvider.js";
 import { ActionButton } from "../components/ui/action-button.js";
+import { Button } from "../components/ui/button.js";
 import { SettingsSelect } from "./SettingsPageParts.js";
 import { SettingsDisclosure } from "./SettingsDisclosure.js";
 import { DesktopEnvironmentSettings } from "./DesktopEnvironmentSettings.js";
@@ -506,19 +507,96 @@ export function AppearanceSettings({
         <SettingsGroupCard>
           <SettingsRow
             label={t("settings.displaySettings.interfaceTheme")}
+            description={t("settings.displaySettings.colorModeDescription")}
             control={
-              <SettingsSelect
+              <div
+                role="radiogroup"
                 aria-label={t("settings.displaySettings.interfaceTheme")}
-                value={theme}
-                onValueChange={(value) => {
-                  setTheme(value);
-                  if (value !== "system") setMode(value === "data-dense" ? "dark" : "light");
-                }}
+                className="appearance-mode-cards"
               >
-                <option value="system">{t("settings.displaySettings.system")}</option>
-                <option value="soft-glass">{t("settings.displaySettings.light")}</option>
-                <option value="data-dense">{t("settings.displaySettings.dark")}</option>
-              </SettingsSelect>
+                {(
+                  [
+                    {
+                      value: "system",
+                      label: t("settings.displaySettings.system"),
+                      preview: "split",
+                    },
+                    {
+                      value: "soft-glass",
+                      label: t("settings.displaySettings.light"),
+                      preview: "light",
+                    },
+                    {
+                      value: "data-dense",
+                      label: t("settings.displaySettings.dark"),
+                      preview: "dark",
+                    },
+                  ] as const
+                ).map((option) => {
+                  const selected = theme === option.value;
+                  return (
+                    <div
+                      key={option.value}
+                      className="appearance-mode-card"
+                      data-selected={selected ? "true" : undefined}
+                    >
+                      <Button
+                        unstyled
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        aria-label={option.label}
+                        title={option.label}
+                        className="flex size-full"
+                        onClick={() => {
+                          setTheme(option.value);
+                          if (option.value !== "system")
+                            setMode(option.value === "data-dense" ? "dark" : "light");
+                        }}
+                      >
+                        <span className="appearance-mode-preview" aria-hidden="true">
+                          {option.preview === "split" ? (
+                            <>
+                              <span className="appearance-mode-half appearance-mode-light">
+                                <span className="appearance-mode-sidebar" />
+                                <span className="appearance-mode-lines">
+                                  <span className="appearance-mode-bar" />
+                                  <span className="appearance-mode-bar appearance-mode-bar-accent" />
+                                  <span className="appearance-mode-bar appearance-mode-bar-short" />
+                                </span>
+                              </span>
+                              <span className="appearance-mode-half appearance-mode-dark">
+                                <span className="appearance-mode-sidebar" />
+                                <span className="appearance-mode-lines">
+                                  <span className="appearance-mode-bar" />
+                                  <span className="appearance-mode-bar appearance-mode-bar-accent" />
+                                  <span className="appearance-mode-bar appearance-mode-bar-short" />
+                                </span>
+                              </span>
+                            </>
+                          ) : (
+                            <span
+                              className={`appearance-mode-full ${
+                                option.preview === "dark"
+                                  ? "appearance-mode-dark"
+                                  : "appearance-mode-light"
+                              }`}
+                            >
+                              <span className="appearance-mode-sidebar" />
+                              <span className="appearance-mode-lines">
+                                <span className="appearance-mode-bar" />
+                                <span className="appearance-mode-bar appearance-mode-bar-accent" />
+                                <span className="appearance-mode-bar appearance-mode-bar-short" />
+                              </span>
+                            </span>
+                          )}
+                        </span>
+                        <span className="sr-only">{option.label}</span>
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
             }
           />
           <SettingsRow

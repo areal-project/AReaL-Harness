@@ -355,17 +355,33 @@ kbd {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--spacing-section);
+  gap: var(--spacing-field);
   max-width: 100%;
   text-align: center;
+}
+.draft-task-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--spacing-inline) * 5.5);
+  height: calc(var(--spacing-inline) * 5.5);
+  border-radius: var(--radius-panel);
+  border: var(--border-width-default) solid var(--color-border-hairline);
+  color: var(--color-foreground-subtlest);
 }
 .draft-task-prompt p {
   margin: 0;
   font-size: var(--text-page-title);
-  font-weight: 400;
+  font-weight: var(--font-weight-medium);
   line-height: var(--line-height-title);
   letter-spacing: var(--tracking-heading-tight, -0.02em);
   overflow-wrap: anywhere;
+}
+.draft-task-project {
+  text-decoration: underline;
+  text-underline-offset: calc(var(--spacing-inline) * 3 / 4);
+  text-decoration-thickness: var(--border-width-default);
+  text-decoration-color: var(--color-border-hover);
 }
 .draft-composer {
   flex: 0 0 auto;
@@ -2389,8 +2405,7 @@ button[aria-label="停止"] {
   overflow-wrap: anywhere;
 }
 .turn-progress-divider {
-  margin-top: calc(var(--spacing-inline) / 2);
-  border-bottom: var(--border-width-default) solid var(--color-border-subtle);
+  display: none;
 }
 .turn-progress:not(:has(> .turn-progress-heading)) {
   margin: 0;

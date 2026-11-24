@@ -63,7 +63,7 @@ Curated semantic roles from [tokens.json](tokens.json). Business pages should pi
 | `--radius-control` | 输入框、选择器、设置卡片等控件外框 |
 | `--radius-panel` | 面板与分组卡片 |
 | `--radius-dialog` | 对话框 |
-| `--radius-composer` | 输入区外框 |
+| `--radius-composer` | 输入区外框（24px 超椭圆连续圆角，对齐 Codex Composer） |
 | `--radius-pill` | 胶囊形：发送等主动作、标签、计数徽标 |
 
 ## Elevation & Motion · 阴影、动效与层级

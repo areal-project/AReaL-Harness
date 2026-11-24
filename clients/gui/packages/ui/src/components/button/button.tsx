@@ -23,9 +23,9 @@ const buttonVariants = cva(
         secondary:
           "bg-button-surface text-foreground hover:bg-button-hover aria-expanded:bg-button-hover aria-expanded:text-foreground",
         ghost:
-          "text-foreground hover:bg-hover hover:text-foreground aria-expanded:bg-hover aria-expanded:text-foreground",
+          "text-foreground hover:bg-hover hover:text-foreground data-[popup-open]:bg-hover data-[popup-open]:text-foreground",
         "ghost-subtle":
-          "text-foreground-subtle hover:bg-hover hover:text-foreground aria-expanded:bg-hover aria-expanded:text-foreground aria-pressed:bg-selected aria-pressed:text-foreground",
+          "text-foreground-subtle hover:bg-hover hover:text-foreground data-[popup-open]:bg-hover data-[popup-open]:text-foreground aria-pressed:bg-selected aria-pressed:text-foreground",
         floating:
           "rounded-pill border-border bg-background text-foreground shadow-subtle backdrop-blur-sm hover:bg-hover",
         "inline-link":

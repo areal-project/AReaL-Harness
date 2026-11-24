@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "52f2cc7b00405f9017f9bc247f49acfec6f49dd3ddf388f0f087a96e5fbe4afe",
+  "sourceSha256": "19af8b09c5d70bcfeb5e94458c0fea778e90e1915e1f52d6c0e38a9e3a907081",
   "sourceFilesSha256": {
     "src/theme.ts": "98f3c580582c7648e34a3436e60596d63f3ccafcd939c27eeaa308a0cac800b9",
-    "src/generated/palette.ts": "d9374532c41054461383b9df3aede69361b81455896730b0b2d8ee9a66b93ff3"
+    "src/generated/palette.ts": "e2d7a92eb861f092a674cad20998d0ffdcbad5ffb32ecc57c8a15496f4f0a009"
   },
   "browser": "158.0.8127.36",
   "scope": "Actual paletteVariables output, CSS variable resolution and browser sRGB canvas pixels; five palettes, three contrast levels, both sidebar materials.",
@@ -120,12 +120,12 @@
           "rgba": [20, 20, 39, 13]
         },
         "--color-user-message": {
-          "color": "rgb(243, 243, 244)",
-          "rgba": [243, 243, 244, 255]
+          "color": "rgb(232, 241, 255)",
+          "rgba": [232, 241, 255, 255]
         },
         "--color-user-message-text": {
-          "color": "rgb(26, 28, 31)",
-          "rgba": [26, 28, 31, 255]
+          "color": "rgb(12, 39, 74)",
+          "rgba": [12, 39, 74, 255]
         },
         "--color-background-win-alt": {
           "color": "color(srgb 0.964078 0.964392 0.964863)",
@@ -485,12 +485,12 @@
           "rgba": [20, 20, 39, 13]
         },
         "--color-user-message": {
-          "color": "rgb(243, 243, 244)",
-          "rgba": [243, 243, 244, 255]
+          "color": "rgb(232, 241, 255)",
+          "rgba": [232, 241, 255, 255]
         },
         "--color-user-message-text": {
-          "color": "rgb(26, 28, 31)",
-          "rgba": [26, 28, 31, 255]
+          "color": "rgb(12, 39, 74)",
+          "rgba": [12, 39, 74, 255]
         },
         "--color-background-win-alt": {
           "color": "color(srgb 0.964078 0.964392 0.964863)",
@@ -850,12 +850,12 @@
           "rgba": [20, 20, 39, 13]
         },
         "--color-user-message": {
-          "color": "rgb(243, 243, 244)",
-          "rgba": [243, 243, 244, 255]
+          "color": "rgb(232, 241, 255)",
+          "rgba": [232, 241, 255, 255]
         },
         "--color-user-message-text": {
-          "color": "rgb(26, 28, 31)",
-          "rgba": [26, 28, 31, 255]
+          "color": "rgb(12, 39, 74)",
+          "rgba": [12, 39, 74, 255]
         },
         "--color-background-win-alt": {
           "color": "color(srgb 0.964078 0.964392 0.964863)",
@@ -1215,12 +1215,12 @@
           "rgba": [20, 20, 39, 13]
         },
         "--color-user-message": {
-          "color": "rgb(243, 243, 244)",
-          "rgba": [243, 243, 244, 255]
+          "color": "rgb(232, 241, 255)",
+          "rgba": [232, 241, 255, 255]
         },
         "--color-user-message-text": {
-          "color": "rgb(26, 28, 31)",
-          "rgba": [26, 28, 31, 255]
+          "color": "rgb(12, 39, 74)",
+          "rgba": [12, 39, 74, 255]
         },
         "--color-background-win-alt": {
           "color": "color(srgb 0.964078 0.964392 0.964863)",
@@ -1580,12 +1580,12 @@
           "rgba": [20, 20, 39, 13]
         },
         "--color-user-message": {
-          "color": "rgb(243, 243, 244)",
-          "rgba": [243, 243, 244, 255]
+          "color": "rgb(232, 241, 255)",
+          "rgba": [232, 241, 255, 255]
         },
         "--color-user-message-text": {
-          "color": "rgb(26, 28, 31)",
-          "rgba": [26, 28, 31, 255]
+          "color": "rgb(12, 39, 74)",
+          "rgba": [12, 39, 74, 255]
         },
         "--color-background-win-alt": {
           "color": "color(srgb 0.964078 0.964392 0.964863)",
@@ -1945,12 +1945,12 @@
           "rgba": [20, 20, 39, 13]
         },
         "--color-user-message": {
-          "color": "rgb(243, 243, 244)",
-          "rgba": [243, 243, 244, 255]
+          "color": "rgb(232, 241, 255)",
+          "rgba": [232, 241, 255, 255]
         },
         "--color-user-message-text": {
-          "color": "rgb(26, 28, 31)",
-          "rgba": [26, 28, 31, 255]
+          "color": "rgb(12, 39, 74)",
+          "rgba": [12, 39, 74, 255]
         },
         "--color-background-win-alt": {
           "color": "color(srgb 0.964078 0.964392 0.964863)",
@@ -2310,8 +2310,8 @@
           "rgba": [255, 255, 255, 13]
         },
         "--color-user-message": {
-          "color": "rgb(42, 42, 45)",
-          "rgba": [42, 42, 45, 255]
+          "color": "rgb(32, 68, 122)",
+          "rgba": [32, 68, 122, 255]
         },
         "--color-user-message-text": {
           "color": "rgb(244, 244, 245)",
@@ -2675,8 +2675,8 @@
           "rgba": [255, 255, 255, 13]
         },
         "--color-user-message": {
-          "color": "rgb(42, 42, 45)",
-          "rgba": [42, 42, 45, 255]
+          "color": "rgb(32, 68, 122)",
+          "rgba": [32, 68, 122, 255]
         },
         "--color-user-message-text": {
           "color": "rgb(244, 244, 245)",
@@ -3040,8 +3040,8 @@
           "rgba": [255, 255, 255, 13]
         },
         "--color-user-message": {
-          "color": "rgb(42, 42, 45)",
-          "rgba": [42, 42, 45, 255]
+          "color": "rgb(32, 68, 122)",
+          "rgba": [32, 68, 122, 255]
         },
         "--color-user-message-text": {
           "color": "rgb(244, 244, 245)",
@@ -3405,8 +3405,8 @@
           "rgba": [255, 255, 255, 13]
         },
         "--color-user-message": {
-          "color": "rgb(42, 42, 45)",
-          "rgba": [42, 42, 45, 255]
+          "color": "rgb(32, 68, 122)",
+          "rgba": [32, 68, 122, 255]
         },
         "--color-user-message-text": {
           "color": "rgb(244, 244, 245)",
@@ -3770,8 +3770,8 @@
           "rgba": [255, 255, 255, 13]
         },
         "--color-user-message": {
-          "color": "rgb(42, 42, 45)",
-          "rgba": [42, 42, 45, 255]
+          "color": "rgb(32, 68, 122)",
+          "rgba": [32, 68, 122, 255]
         },
         "--color-user-message-text": {
           "color": "rgb(244, 244, 245)",
@@ -4135,8 +4135,8 @@
           "rgba": [255, 255, 255, 13]
         },
         "--color-user-message": {
-          "color": "rgb(42, 42, 45)",
-          "rgba": [42, 42, 45, 255]
+          "color": "rgb(32, 68, 122)",
+          "rgba": [32, 68, 122, 255]
         },
         "--color-user-message-text": {
           "color": "rgb(244, 244, 245)",

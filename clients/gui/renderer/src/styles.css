@@ -202,7 +202,11 @@ body {
 }
 
 .dark {
-  --color-composer-action-bar: rgba(255, 255, 255, 0.032);
+  --color-composer-action-bar: color-mix(
+    in oklab,
+    var(--color-surface-composer) 76%,
+    var(--color-background)
+  );
   --color-trajectory-user: #60a5fa;
   --color-trajectory-assistant: #2dd4bf;
   --color-trajectory-reasoning: #a78bfa;
@@ -413,7 +417,11 @@ body {
 }
 
 .theme-areal-dark {
-  --color-composer-action-bar: rgba(255, 255, 255, 0.032);
+  --color-composer-action-bar: color-mix(
+    in oklab,
+    var(--color-surface-composer) 76%,
+    var(--color-background)
+  );
   --color-trajectory-user: #60a5fa;
   --color-trajectory-assistant: #2dd4bf;
   --color-trajectory-reasoning: #a78bfa;

@@ -39,7 +39,7 @@
   --radius-pill: 999px;
   --radius-overlay: var(--radius-3xl);
   --radius-navigation: var(--radius-md);
-  --radius-composer: var(--radius-2xl);
+  --radius-composer: var(--radius-4xl);
   --radius-panel: var(--radius-xl);
   --radius-dialog: var(--radius-2xl);
   --shadow-subtle: 0 1px 2px rgb(0 0 0 / 6%), 0 0 0 0.5px var(--color-border-hairline);
@@ -69,7 +69,7 @@
   --conversation-fade: 24px;
   --focus-width: 2px;
   --focus-offset: 2px;
-  --radius-message: var(--radius-2xl);
+  --radius-message: var(--radius-3xl);
   --radius-indicator: var(--radius-2xs);
   --radius-micro: var(--radius-xs);
   --radius-compact: var(--radius-sm);
@@ -121,6 +121,7 @@
   --browser-file-status-max-height: 112px;
   --size-status-dot: 7px;
   --size-touch-target: 44px;
+  --blur-backdrop: 6px;
   --blur-header: 18px;
   --blur-popover: 24px;
   --corner-radius-scale: 1;
@@ -164,6 +165,14 @@
   --color-surface-under: #f9f9f9;
   --color-surface-card: #ffffff;
   --color-surface-composer: #ffffff;
+  --color-settings-modal-nav: #f7f7f8;
+  --color-settings-modal-surface: #ffffff;
+  --color-theme-preview-light-bg: #ffffff;
+  --color-theme-preview-light-sidebar: #f2f2f4;
+  --color-theme-preview-light-bar: #d4d4d8;
+  --color-theme-preview-dark-bg: #1c1c1f;
+  --color-theme-preview-dark-sidebar: #28282c;
+  --color-theme-preview-dark-bar: #4b4b52;
   --color-surface-popover: #ffffff;
   --color-surface-docked-sidebar: color-mix(in oklab, var(--color-surface-under) 82%, transparent);
 }
@@ -191,7 +200,9 @@
   --color-border-hairline: color-mix(in oklab, var(--color-foreground) 11%, transparent);
   --color-surface-under: #1f1f22;
   --color-surface-card: #212121;
-  --color-surface-composer: #282828;
+  --color-surface-composer: #303034;
+  --color-settings-modal-nav: #2b2b30;
+  --color-settings-modal-surface: #26262a;
   --color-surface-popover: #303030;
   --color-surface-docked-sidebar: color-mix(in oklab, var(--color-surface-under) 85%, transparent);
 }

@@ -26,8 +26,8 @@
   --color-composer-action-foreground: var(--color-primary-foreground);
   --color-accent: color-mix(in srgb, #1a1c1f 6%, #ffffff);
   --color-secondary: color-mix(in srgb, #1a1c1f 5%, transparent);
-  --color-user-message: #f3f3f4;
-  --color-user-message-text: #1a1c1f;
+  --color-user-message: #e8f1ff;
+  --color-user-message-text: #0c274a;
   --color-background-win-alt: color-mix(in srgb, #1a1c1f 4%, #ffffff);
   --color-shell: color-mix(in srgb, #1a1c1f 4%, #ffffff);
   --color-navigation-background: color-mix(in oklab, #ffffff 70%, transparent);
@@ -120,7 +120,7 @@
   --color-composer-action-foreground: var(--color-primary-foreground);
   --color-accent: color-mix(in srgb, #ffffff 6%, #181818);
   --color-secondary: color-mix(in srgb, #ffffff 5%, transparent);
-  --color-user-message: #2a2a2d;
+  --color-user-message: #20447a;
   --color-user-message-text: #f4f4f5;
   --color-background-win-alt: color-mix(in srgb, #ffffff 4%, #181818);
   --color-shell: color-mix(in srgb, #ffffff 5.194805194805195%, #181818);

@@ -56,6 +56,16 @@ export function MessageTime({ createdAt }: { createdAt?: number }) {
   );
 }
 
+function formatModelChangeSide(side?: Data) {
+  if (!side) return "";
+  const provider =
+    side.providerName ||
+    (typeof side.providerId === "string" && !/^(restored_|app_)/.test(side.providerId)
+      ? side.providerId
+      : undefined);
+  return [provider, side.modelId].filter(Boolean).join(" / ");
+}
+
 export function ModelChanges({ changes, afterTurnId }: { changes?: Data[]; afterTurnId?: string }) {
   const { t } = useI18n();
   return (changes ?? [])
@@ -67,8 +77,8 @@ export function ModelChanges({ changes, afterTurnId }: { changes?: Data[]; after
         key={change.revision}
       >
         {t("chat.timeline.modelChange", {
-          from: [change.from.providerId, change.from.modelId].filter(Boolean).join(" / "),
-          to: [change.to.providerId, change.to.modelId].filter(Boolean).join(" / "),
+          from: formatModelChangeSide(change.from),
+          to: formatModelChangeSide(change.to),
         })}
       </TimelineNotice>
     ));
