@@ -1284,11 +1284,11 @@ export const commonMessages = {
     en: "Start a workgroup above when you want multiple agents to split a task.",
   },
   "common.terminal.lifetimeThread": {
-    "zh-CN": "Thread · 当前对话",
-    en: "Thread · Conversation",
+    "zh-CN": "当前会话",
+    en: "Current conversation",
   },
   "common.terminal.lifetimeTurn": {
-    "zh-CN": "Turn · 当前任务",
-    en: "Turn · Current turn",
+    "zh-CN": "当前轮次",
+    en: "Current turn",
   },
 } as const;
