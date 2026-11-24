@@ -112,10 +112,10 @@ describe("useSilentHibernatePrewarm", () => {
     expect(runHook({ project: hibernated, threadId: "t1", text: "   ", action })).toBe(false);
     expect(spy).not.toHaveBeenCalled();
 
-    // 键入非空文本 -> 静默 connect（不带 resumeScheduling）。
+    // 键入非空文本 -> 静默 connect（保留 threadId 以便工作树命中真实执行项目，不带 resumeScheduling）。
     runHook({ project: hibernated, threadId: "t1", text: "h", action });
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy).toHaveBeenCalledWith("connect", { projectId: "p1" });
+    expect(spy).toHaveBeenCalledWith("connect", { projectId: "p1", threadId: "t1" });
 
     // 继续打字不会重复触发 connect，且在 starting 阶段维持 warming 状态。
     const starting: Data = {
@@ -176,6 +176,20 @@ describe("useSilentHibernatePrewarm", () => {
     expect(spy).not.toHaveBeenCalled();
 
     runHook({ project: hibernated, threadId: "t2", text: "saved draft on t2!", action });
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith("connect", { projectId: "p1", threadId: "t2" });
+  });
+
+  it("omits threadId when prewarming a draft without a thread", () => {
+    const { spy, action } = createActionSpy();
+    const hibernated: Data = {
+      id: "p1",
+      root: "/tmp/demo",
+      state: { connected: false, hostState: "stopped" },
+    };
+
+    runHook({ project: hibernated, text: "", action });
+    runHook({ project: hibernated, text: "draft", action });
     expect(spy).toHaveBeenCalledTimes(1);
     expect(spy).toHaveBeenCalledWith("connect", { projectId: "p1" });
   });

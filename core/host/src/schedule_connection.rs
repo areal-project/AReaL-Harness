@@ -490,7 +490,22 @@ impl Connections {
         }
     }
     pub async fn ready(&self, host: &Host, id: &str, generation: &str) -> Result<()> {
-        tokio::time::timeout(Duration::from_secs(15), async {
+        self.ready_until(
+            host,
+            id,
+            generation,
+            tokio::time::Instant::now() + Duration::from_secs(15),
+        )
+        .await
+    }
+    pub async fn ready_until(
+        &self,
+        host: &Host,
+        id: &str,
+        generation: &str,
+        deadline: tokio::time::Instant,
+    ) -> Result<()> {
+        tokio::time::timeout_at(deadline, async {
             let mut host_changes = host.changes.subscribe();
             loop {
                 let changed = self.changed.notified();
@@ -1076,10 +1091,30 @@ impl Drop for Pending<'_> {
         self.session.pending.borrow_mut().remove(&self.id);
     }
 }
-struct SessionGuard(Rc<CoreSession>);
+struct SessionGuard {
+    host: Rc<Host>,
+    session: Rc<CoreSession>,
+}
 impl Drop for SessionGuard {
     fn drop(&mut self) {
-        self.0.close();
+        self.session.close();
+        // 迟到退出的旧连接只清理自己持有的共享会话，绝不能误删后继代际已安装的新会话。
+        let removed = {
+            let mut sessions = self.host.schedules.connections.sessions.borrow_mut();
+            if sessions
+                .get(&self.session.project_id)
+                .is_some_and(|current| Rc::ptr_eq(current, &self.session))
+            {
+                sessions.remove(&self.session.project_id);
+                true
+            } else {
+                false
+            }
+        };
+        if removed {
+            self.host.schedules.connections.changed.notify_waiters();
+            self.host.changed();
+        }
     }
 }
 struct DriverGuard(Rc<CoreSession>, std::rc::Weak<Host>);
@@ -1675,39 +1710,123 @@ async fn restore(host: &Host, session: &CoreSession, refresh: &mut Refresh) -> R
     Ok(())
 }
 
-async fn project(host: Rc<Host>, id: String) -> Result<()> {
+enum WorkerExit {
+    /// 正常休眠/停止、准备模式切换或被新代际替代引起的预期退役，不设故障退避也不写准备错误。
+    Retired,
+    /// 当前代际连接或准备失败，退避与错误记录均绑定本次实际代际与准备模式。
+    Failed {
+        generation: Option<String>,
+        preparation: bool,
+        error: anyhow::Error,
+    },
+}
+
+fn is_expected_retirement(
+    host: &Host,
+    id: &str,
+    preparation: bool,
+    generation: Option<&str>,
+) -> bool {
+    if refresh_path(host, id).exists() {
+        return false;
+    }
+    if host.admission().is_err() {
+        return true;
+    }
+    let current_preparation = !host.schedules.suppressed(id) && !host.schedules.import_blocked(id);
+    if current_preparation != preparation {
+        return true;
+    }
+    let slots = host.slots.borrow();
+    let Some(slot) = slots.get(id) else {
+        return true;
+    };
+    if matches!(slot.state.as_str(), "stopped" | "stopping") {
+        return true;
+    }
+    if let Some(generation) = generation
+        && slot.state == "ready"
+        && slot
+            .service
+            .as_ref()
+            .is_some_and(|service| service.identity.generation != generation)
+    {
+        return true;
+    }
+    false
+}
+
+async fn project(host: Rc<Host>, id: String) -> WorkerExit {
     let preparation = !host.schedules.suppressed(&id) && !host.schedules.import_blocked(&id);
-    let registration = host.slots.borrow()[&id].registration.clone();
+    let mut current_generation = host
+        .slots
+        .borrow()
+        .get(&id)
+        .and_then(|slot| slot.service.as_ref())
+        .map(|service| service.identity.generation.clone());
+    match project_inner(host.clone(), &id, preparation, &mut current_generation).await {
+        Ok(()) => WorkerExit::Retired,
+        Err(error) => {
+            if is_expected_retirement(&host, &id, preparation, current_generation.as_deref()) {
+                WorkerExit::Retired
+            } else {
+                WorkerExit::Failed {
+                    generation: current_generation,
+                    preparation,
+                    error,
+                }
+            }
+        }
+    }
+}
+
+async fn project_inner(
+    host: Rc<Host>,
+    id: &str,
+    preparation: bool,
+    current_generation: &mut Option<String>,
+) -> Result<()> {
+    let registration = host
+        .slots
+        .borrow()
+        .get(id)
+        .context("project slot missing")?
+        .registration
+        .clone();
     ensure!(
         !preparation
             || matches!(registration.source, crate::ProjectSource::Cli)
-            || inputs(&host, &id)?.schedule_preparation.is_some(),
+            || inputs(&host, id)?.schedule_preparation.is_some(),
         error(
             "configurationConflict",
             "GUI schedule preparation inputs are missing"
         )
     );
-    let mut refresh: Option<Refresh> = storage::read_optional(&refresh_path(&host, &id))?;
+    let mut refresh: Option<Refresh> = storage::read_optional(&refresh_path(&host, id))?;
     loop {
         if preparation && let Some(refresh) = &mut refresh {
-            restart(&host, &id, refresh).await?;
+            restart(&host, id, refresh).await?;
         }
         host.admission()?;
         ensure!(
-            preparation == (!host.schedules.suppressed(&id) && !host.schedules.import_blocked(&id)),
+            preparation == (!host.schedules.suppressed(id) && !host.schedules.import_blocked(id)),
             unavailable()
         );
-        let status = host.project_status(&id).await;
-        ensure!(!host.slots.borrow()[&id].uncertain_start, unavailable());
+        let status = host.project_status(id).await;
+        ensure!(!host.slots.borrow()[id].uncertain_start, unavailable());
         let service = status.service.context("scheduled Core unavailable")?;
-        let session = connect(host.clone(), &id, service).await?;
-        let _guard = SessionGuard(session.clone());
+        *current_generation = Some(service.identity.generation.clone());
+        let session = connect(host.clone(), id, service).await?;
+        let _guard = SessionGuard {
+            host: host.clone(),
+            session: session.clone(),
+        };
         if !preparation {
             host.schedules
                 .connections
                 .sessions
                 .borrow_mut()
-                .insert(id.clone(), session.clone());
+                .insert(id.to_owned(), session.clone());
             host.schedules.connections.changed.notify_waiters();
             host.changed();
             task_connection_ready(&host, &session);
@@ -1715,7 +1834,7 @@ async fn project(host: Rc<Host>, id: String) -> Result<()> {
             loop {
                 ensure!(
                     session.shared_current(&host)
-                        && (host.schedules.suppressed(&id) || host.schedules.import_blocked(&id)),
+                        && (host.schedules.suppressed(id) || host.schedules.import_blocked(id)),
                     unavailable()
                 );
                 tokio::select! {
@@ -1728,7 +1847,7 @@ async fn project(host: Rc<Host>, id: String) -> Result<()> {
         if let Some(refresh) = &mut refresh {
             restore(&host, &session, refresh).await?;
             session.require_current(&host)?;
-            std::fs::remove_file(refresh_path(&host, &id))?;
+            std::fs::remove_file(refresh_path(&host, id))?;
         }
         session.require_current(&host)?;
         let capabilities = session.request("areal/capabilities", json!({})).await?;
@@ -1743,12 +1862,12 @@ async fn project(host: Rc<Host>, id: String) -> Result<()> {
         session.request("areal/task/host/ready", ready).await?;
         session.require_current(&host)?;
         session.ready.set(true);
-        host.schedules.preparation_result(&id, Ok(()))?;
+        host.schedules.preparation_result(id, Ok(()))?;
         host.schedules
             .connections
             .sessions
             .borrow_mut()
-            .insert(id.clone(), session.clone());
+            .insert(id.to_owned(), session.clone());
         host.schedules.connections.changed.notify_waiters();
         host.changed();
         task_connection_ready(&host, &session);
@@ -1756,6 +1875,10 @@ async fn project(host: Rc<Host>, id: String) -> Result<()> {
         let mut changes = host.changes.subscribe();
         loop {
             if !session.current(&host) {
+                if is_expected_retirement(&host, id, preparation, current_generation.as_deref()) {
+                    session.close_reason("project_retired_or_mode_changed");
+                    return Ok(());
+                }
                 session.close_reason("project_identity_or_admission_changed");
                 return Err(unavailable());
             }

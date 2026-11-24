@@ -1,5 +1,5 @@
 //! 跨项目任务目录只聚合 Core 读模型；停止项目的 published 快照不代表实时执行状态。
-use super::{Ensure, Host};
+use super::Host;
 use anyhow::{Context, Result, bail, ensure};
 use areal_local_service::storage;
 use serde_json::{Value, json};
@@ -162,32 +162,27 @@ pub(super) async fn rpc(host: &Host, id: &str, method: &str, params: Value) -> R
         .remote_request(host, id, (&scope.0, &scope.1, &scope.2), method, params)
         .await
 }
-async fn ensure_project(host: &Host, id: &str) -> Result<()> {
+async fn ensure_project(host: &Rc<Host>, id: &str) -> Result<()> {
     if host.schedules.connections.shared_identity(host, id).is_ok() {
         return Ok(());
     }
-    host.ensure(Ensure {
-        request_id: uuid::Uuid::new_v4().to_string(),
-        expected_generation: host.identity.generation.clone(),
-        project_id: id.into(),
-        no_auto_restart: false,
-        resume_scheduling: false,
-        launch_inputs: None,
-        credentials: BTreeMap::new(),
-    })
-    .await?;
-    tokio::time::timeout(Duration::from_secs(15), async {
-        loop {
-            let changed = host.schedules.connections.changed.notified();
-            if host.schedules.connections.shared_identity(host, id).is_ok() {
-                return Ok(());
-            }
-            host.admission()?;
-            changed.await;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+    match host.activate_project_normal(id, deadline).await? {
+        super::ActivationOutcome::Ready { .. } => Ok(()),
+        super::ActivationOutcome::Blocked {
+            reason: "explicitlyStopped",
+            ..
+        } => Err(crate::wire::error(
+            "schedulingSuppressed",
+            "project scheduling was stopped",
+        )),
+        super::ActivationOutcome::Pending { .. } | super::ActivationOutcome::Blocked { .. } => {
+            Err(crate::wire::error(
+                "scheduleHostUnavailable",
+                "scheduled preparation connection is unavailable",
+            ))
         }
-    })
-    .await
-    .context("scheduleHostUnavailable")?
+    }
 }
 async fn published(host: &Host, id: &str, source_thread: Option<&str>) -> Result<Value> {
     let registration = host

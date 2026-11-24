@@ -115,6 +115,16 @@ export function RecoveryNotices({ recovery, startup, session, surfaces }: Recove
               <Button variant="ghost" size="sm" onClick={() => void retryRestoration()}>
                 {t("recovery.retryView")}
               </Button>
+              {(session.project?.scheduling?.suppressed === true ||
+                viewFailure?.activationReason === "explicitlyStopped") && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void retryRestoration({ resumeScheduling: true })}
+                >
+                  {t("recovery.reconnectProject")}
+                </Button>
+              )}
             </>
           }
         />

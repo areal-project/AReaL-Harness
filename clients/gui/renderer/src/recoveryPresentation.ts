@@ -3,7 +3,11 @@ import type { Data } from "./services.js";
 import { ERROR_CODES, errorCode, errorText, rawText } from "./errors/errorCopy.js";
 import { UiMessageError, type Translate } from "./i18n/uiMessage.js";
 
-export type RecoveryFailure = DesktopError;
+export type RecoveryFailure = DesktopError & {
+  activationState?: "pending" | "blocked";
+  activationReason?: string;
+  activationId?: string;
+};
 export type RecoveryOperation = Extract<
   NonNullable<DesktopError["outcome"]>,
   { operation: unknown }
@@ -133,6 +137,14 @@ export function recoveryMessage(
     return "服务需要更新才能继续打开对话。历史和草稿已保留，请重新连接以完成更新。";
   if (failure.code === "LIFECYCLE_INCOMPLETE")
     return "连接恢复尚未完成，历史和草稿已保留。请查看连接详情，确认恢复进度。";
+  if (failure.code === "ACTIVATION_BLOCKED" && failure.activationReason === "explicitlyStopped")
+    return context === "view"
+      ? "项目已手动停止，当前仅显示已保存记录。需要继续执行时请重新连接项目。"
+      : "项目已停止，请先恢复项目。";
+  if (failure.code === "ACTIVATION_PENDING")
+    return context === "view"
+      ? "项目仍在启动中，请稍后重试加载。"
+      : "项目启动尚未完成，消息尚未提交，草稿已保留。";
   if (t && failure instanceof UiMessageError) return errorText(t, failure);
   const code = errorCode(failure);
   if (t && code === "stopInProgress") return errorText(t, failure);

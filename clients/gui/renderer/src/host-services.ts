@@ -578,6 +578,11 @@ export function createHostReadServices(
       params.operation === undefined || ["create", "recover"].includes(String(params.operation))
     );
   }
+  function executionProjectId(project: ReadProject, threadId?: string) {
+    return threadId
+      ? (threadTargets.get(`${project.id}:${threadId}`) ?? project.hostProjectId)
+      : project.hostProjectId;
+  }
   function hostTarget(params: Record<string, unknown>) {
     const projectId = params.projectId;
     const threadId = params.threadId;
@@ -585,11 +590,12 @@ export function createHostReadServices(
     const project = snapshot.projects.find((value) => value.id === projectId) as
       | ReadProject
       | undefined;
-    const hostProjectId = threadTargets.get(`${projectId}:${threadId}`) ?? project?.hostProjectId;
+    const hostProjectId = project ? executionProjectId(project, threadId) : undefined;
     return project && hostProjectId ? { project, hostProjectId, threadId } : undefined;
   }
   async function activateProject(
     projectId: string,
+    intent: "connect" | "submit",
     resume?: { projectId: string; threadId?: string },
   ) {
     const activation = resume
@@ -606,10 +612,14 @@ export function createHostReadServices(
         new Error(
           activation.reason === "explicitlyStopped"
             ? "项目已停止，请先恢复项目。"
-            : "项目启动尚未完成，消息尚未提交，草稿已保留。",
+            : intent === "submit"
+              ? "项目启动尚未完成，消息尚未提交，草稿已保留。"
+              : "项目仍在启动中，请稍后重试。",
         ),
         {
           code: activation.state === "pending" ? "ACTIVATION_PENDING" : "ACTIVATION_BLOCKED",
+          activationState: activation.state,
+          activationReason: activation.reason,
           activationId: activation.activationId,
         },
       );
@@ -657,12 +667,13 @@ export function createHostReadServices(
       if (project && name === "connect") {
         const original = client.snapshot();
         if (original.connection !== "ready") throw new Error("Host unavailable");
-        const activationProjectId =
-          typeof params.threadId === "string"
-            ? (threadTargets.get(`${project.id}:${params.threadId}`) ?? project.hostProjectId)
-            : project.hostProjectId;
+        const activationProjectId = executionProjectId(
+          project,
+          typeof params.threadId === "string" ? params.threadId : undefined,
+        );
         const activation = await activateProject(
           activationProjectId,
+          "connect",
           params.resumeScheduling === true
             ? {
                 projectId: project.id,
@@ -886,11 +897,23 @@ export function createHostReadServices(
           });
           requireOriginal();
         }
-        await activateProject(project.hostProjectId);
+        const activationProjectId = executionProjectId(project, persistedThreadId);
+        const activation = await activateProject(activationProjectId, "submit");
         requireOriginal();
         await client.refreshShell();
         requireOriginal();
+        const refreshedShell = client.readsSnapshot().shell;
+        if (
+          refreshedShell.state !== "fresh" ||
+          refreshedShell.value.snapshot.projects.find(
+            (value) => value.projectId === activationProjectId,
+          )?.serviceGeneration !== activation.serviceGeneration
+        )
+          throw Object.assign(new Error("Original project activation changed"), {
+            code: "RESYNC_REQUIRED",
+          });
         await reads.selectSession({ projectId: project.id, threadId: persistedThreadId });
+        requireOriginal();
       }
       const target = hostTarget(params);
       if (!target) return undefined;

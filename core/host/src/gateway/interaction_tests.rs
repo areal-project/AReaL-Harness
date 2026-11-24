@@ -1404,6 +1404,177 @@ async fn project_activation_reconciles_the_original_unknown_ensure_without_repla
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn project_activation_coalesces_live_in_flight_ensure_and_waits_for_completion() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let f = Fixture::new().await;
+            let saved_service = f.host.slots.borrow()["project"].service.clone().unwrap();
+            let live_id = uuid::Uuid::new_v4().to_string();
+            let live_guard = f.host.install_live_ensure("project", &live_id).unwrap();
+            {
+                let mut slots = f.host.slots.borrow_mut();
+                let slot = slots.get_mut("project").unwrap();
+                slot.state = "starting".into();
+                slot.service = None;
+            }
+            let host = f.host.clone();
+            let id_for_task = live_id.clone();
+            tokio::task::spawn_local(async move {
+                let _live = live_guard;
+                tokio::time::sleep(Duration::from_millis(30)).await;
+                storage::write(
+                    &crate::wire::operation_path(&host.home, &id_for_task),
+                    &json!({
+                        "digest": "live",
+                        "receipt": {
+                            "requestId": id_for_task,
+                            "method": "project.ensure",
+                            "projectId": "project",
+                            "state": "completed"
+                        },
+                        "evidence": {}
+                    }),
+                )
+                .unwrap();
+                {
+                    let mut slots = host.slots.borrow_mut();
+                    let slot = slots.get_mut("project").unwrap();
+                    slot.state = "ready".into();
+                    slot.service = Some(saved_service);
+                }
+                host.changed();
+            });
+            let request = f.request("project.activate", json!({}), None);
+            let ready = f.session("a").request(&request).await.unwrap();
+            assert_eq!(ready["state"], "ready");
+            assert_eq!(ready["serviceGeneration"], "core-generation");
+            assert_eq!(ready["activationId"], live_id);
+            assert_eq!(
+                storage::json_records(&f.host.home.join("host/operations"), false)
+                    .unwrap()
+                    .len(),
+                1
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn project_activation_waits_for_live_idle_stop_and_never_replays_unknown_stop() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let f = Fixture::new().await;
+            // 场景 1：ifIdle 停止因 Core 忙被拒绝（blocked），原实例恢复 ready，唤醒直接复用旧代际。
+            let stop_id = uuid::Uuid::new_v4().to_string();
+            {
+                let host = f.host.clone();
+                let stop_req = stop_id.clone();
+                let (done, _) = tokio::sync::watch::channel(false);
+                let done = Rc::new(done);
+                {
+                    let mut slots = host.slots.borrow_mut();
+                    let slot = slots.get_mut("project").unwrap();
+                    slot.state = "stopping".into();
+                    slot.live_idle_stop = Some(crate::server::LiveIdleStop {
+                        request_id: stop_req.clone(),
+                        service_generation: "core-generation".into(),
+                        done: done.clone(),
+                    });
+                }
+                tokio::task::spawn_local(async move {
+                    tokio::time::sleep(Duration::from_millis(30)).await;
+                    storage::write(
+                        &crate::wire::operation_path(&host.home, &stop_req),
+                        &json!({
+                            "digest": "stop-blocked",
+                            "receipt": {
+                                "requestId": stop_req,
+                                "method": "project.stop",
+                                "projectId": "project",
+                                "strategy": "ifIdle",
+                                "state": "blocked"
+                            },
+                            "evidence": {}
+                        }),
+                    )
+                    .unwrap();
+                    {
+                        let mut slots = host.slots.borrow_mut();
+                        let slot = slots.get_mut("project").unwrap();
+                        slot.state = "ready".into();
+                        slot.live_idle_stop = None;
+                    }
+                    let _ = done.send(true);
+                    host.changed();
+                });
+            }
+            let request = f.request("project.activate", json!({}), None);
+            let ready = f.session("a").request(&request).await.unwrap();
+            assert_eq!(ready["state"], "ready");
+            assert_eq!(ready["serviceGeneration"], "core-generation");
+
+            // 场景 2：ifIdle 停止结果未知（admissionUnknown），绝不能启动后继代际。
+            let unknown_stop_id = uuid::Uuid::new_v4().to_string();
+            {
+                let host = f.host.clone();
+                let stop_req = unknown_stop_id.clone();
+                let (done, _) = tokio::sync::watch::channel(false);
+                let done = Rc::new(done);
+                {
+                    let mut slots = host.slots.borrow_mut();
+                    let slot = slots.get_mut("project").unwrap();
+                    slot.state = "stopping".into();
+                    slot.live_idle_stop = Some(crate::server::LiveIdleStop {
+                        request_id: stop_req.clone(),
+                        service_generation: "core-generation".into(),
+                        done: done.clone(),
+                    });
+                }
+                tokio::task::spawn_local(async move {
+                    tokio::time::sleep(Duration::from_millis(30)).await;
+                    storage::write(
+                        &crate::wire::operation_path(&host.home, &stop_req),
+                        &json!({
+                            "digest": "stop-unknown",
+                            "receipt": {
+                                "requestId": stop_req,
+                                "method": "project.stop",
+                                "projectId": "project",
+                                "strategy": "ifIdle",
+                                "state": "admissionUnknown"
+                            },
+                            "evidence": {}
+                        }),
+                    )
+                    .unwrap();
+                    {
+                        let mut slots = host.slots.borrow_mut();
+                        let slot = slots.get_mut("project").unwrap();
+                        slot.state = "stopped".into();
+                        slot.service = None;
+                        slot.live_idle_stop = None;
+                    }
+                    let _ = done.send(true);
+                    host.changed();
+                });
+            }
+            let pending = f.session("a").request(&request).await.unwrap();
+            assert_eq!(pending["state"], "pending");
+            assert_eq!(pending["reason"], "activationIncomplete");
+            assert!(
+                storage::json_records(&f.host.home.join("host/operations"), false)
+                    .unwrap()
+                    .iter()
+                    .all(|path| {
+                        let op: crate::server::Operation = storage::read(path).unwrap();
+                        op.receipt["method"] != "project.ensure"
+                    })
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn stopped_project_models_are_native_redacted_and_do_not_activate_execution() {
     tokio::task::LocalSet::new().run_until(async {
         let f = Fixture::new().await;

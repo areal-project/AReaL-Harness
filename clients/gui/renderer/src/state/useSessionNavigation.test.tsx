@@ -870,3 +870,85 @@ it("explicitly resumes an empty project without adding an empty thread identity"
   });
   expect(f.selectSession).toHaveBeenCalledExactlyOnceWith(null);
 });
+
+it.each([
+  { code: "ACTIVATION_PENDING", expectedError: false },
+  { code: "ACTIVATION_BLOCKED", expectedError: false },
+  { code: "ACTIVATION_PENDING", failureFields: { submissionUnknown: true }, expectedError: true },
+  {
+    code: "ACTIVATION_BLOCKED",
+    failureFields: { recovery: { kind: "needsUser" } },
+    expectedError: true,
+  },
+])(
+  "keeps loaded persisted history clean when background prewarm returns $code (%o)",
+  async ({ code, failureFields, expectedError }) => {
+    const failure = Object.assign(Error("项目仍在启动中，请稍后重试。"), {
+      code,
+      ...failureFields,
+    });
+    const f = fixture(
+      true,
+      async () => {
+        throw failure;
+      },
+      false,
+      true,
+    );
+    await f.navigation.selectConversation(owner.projectId, owner.threadId);
+    expect(f.events).toEqual(["read", "connect"]);
+    expect(seed.restoration?.pending).toBe(false);
+    expect(seed.restoration?.failure).toBe(expectedError ? failure : undefined);
+    if (expectedError) expect(seed.restoration?.error).toEqual(expect.any(String));
+    else expect(seed.restoration?.error).toBe("");
+  },
+);
+
+it("does not coalesce explicit resumeScheduling into an in-flight passive prewarm", async () => {
+  let resolvePassive!: () => void;
+  const connectCalls: Array<boolean | undefined> = [];
+  const f = fixture(
+    true,
+    async (resume) => {
+      connectCalls.push(resume);
+      if (!resume) {
+        await new Promise<void>((resolve) => {
+          resolvePassive = resolve;
+        });
+      }
+    },
+    false,
+    true,
+  );
+  const passive = f.navigation.restoreConversation(owner, "connect");
+  await vi.waitFor(() => expect(connectCalls).toEqual([false]));
+  const explicit = f.navigation.restoreConversation(owner, "connect", { resumeScheduling: true });
+  await explicit;
+  expect(connectCalls).toEqual([false, true]);
+  resolvePassive();
+  await passive;
+});
+
+it("retryRestoration does not lift explicit scheduling suppression unless requested", async () => {
+  seed.snapshot = {
+    connection: { state: "ready" },
+    projects: [
+      {
+        id: owner.projectId,
+        root: "/fixture",
+        scheduling: { suppressed: true },
+        state: { connected: false, hostState: "stopped", threads: {} },
+      },
+    ],
+  };
+  const f = fixture(true, async () => {}, false, true);
+  await f.navigation.retryRestoration();
+  expect(f.command).not.toHaveBeenCalledWith("connect", expect.anything());
+
+  await f.navigation.retryRestoration({ resumeScheduling: true });
+  expect(f.command).toHaveBeenCalledWith("connect", {
+    projectId: owner.projectId,
+    threadId: owner.threadId,
+    resumeScheduling: true,
+  });
+});

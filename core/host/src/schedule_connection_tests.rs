@@ -1231,3 +1231,100 @@ async fn restore_reconciles_old_generation_receipt_but_requires_current_live_con
         server.await.unwrap();
     }).await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn idle_retirement_avoids_spurious_error_and_late_guard_preserves_successor_session() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let host = Rc::new(super::super::schedules::tests::fixture(root.path()));
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let endpoint = format!("ws://{}/", listener.local_addr().unwrap());
+            let mut first = service(&host, endpoint.clone());
+            first.identity.generation = "gen-1".into();
+            host.slots.borrow_mut().get_mut("project").unwrap().service = Some(first.clone());
+            let mut second = first.clone();
+            second.identity.generation = "gen-2".into();
+
+            let core = tokio::task::spawn_local(async move {
+                for _ in 0..2 {
+                    let (stream, _) = listener.accept().await.unwrap();
+                    let mut socket = tokio_tungstenite::accept_hdr_async(stream, ScheduleHeaders)
+                        .await
+                        .unwrap();
+                    let initialize = receive(&mut socket).await;
+                    send(&mut socket, json!({"id": initialize["id"], "result": {}})).await;
+                    tokio::task::spawn_local(async move { while socket.next().await.is_some() {} });
+                }
+            });
+
+            let old_session = connect(host.clone(), "project", first.clone())
+                .await
+                .unwrap();
+            let old_guard = SessionGuard {
+                host: host.clone(),
+                session: old_session.clone(),
+            };
+            host.schedules
+                .connections
+                .sessions
+                .borrow_mut()
+                .insert("project".into(), old_session.clone());
+
+            // 模拟新代际已安装其共享连接，随后旧 worker 迟到退出。
+            host.slots.borrow_mut().get_mut("project").unwrap().service = Some(second.clone());
+            let new_session = connect(host.clone(), "project", second.clone())
+                .await
+                .unwrap();
+            host.schedules
+                .connections
+                .sessions
+                .borrow_mut()
+                .insert("project".into(), new_session.clone());
+            drop(old_guard);
+            assert!(
+                host.schedules
+                    .connections
+                    .sessions
+                    .borrow()
+                    .get("project")
+                    .is_some_and(|current| Rc::ptr_eq(current, &new_session)),
+                "迟到退出的旧 SessionGuard 不得误删后继代际的新连接"
+            );
+
+            // 同代仍 ready 时不属于正常退役；被新代际替代或进入 stopped/stopping 时属于正常退役。
+            assert!(!is_expected_retirement(
+                &host,
+                "project",
+                true,
+                Some("gen-2")
+            ));
+            assert!(is_expected_retirement(
+                &host,
+                "project",
+                true,
+                Some("gen-1")
+            ));
+            host.slots.borrow_mut().get_mut("project").unwrap().state = "stopped".into();
+            assert!(is_expected_retirement(
+                &host,
+                "project",
+                true,
+                Some("gen-2")
+            ));
+            // 调度资源刷新存在未完成日志时，stopped 不属于正常退役，必须保留刷新恢复与错误记录。
+            storage::private_dir(refresh_path(&host, "project").parent().unwrap()).unwrap();
+            std::fs::write(refresh_path(&host, "project"), "{}").unwrap();
+            assert!(!is_expected_retirement(
+                &host,
+                "project",
+                true,
+                Some("gen-2")
+            ));
+            std::fs::remove_file(refresh_path(&host, "project")).unwrap();
+
+            new_session.close();
+            core.abort();
+        })
+        .await;
+}

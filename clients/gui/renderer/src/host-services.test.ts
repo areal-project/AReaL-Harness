@@ -2848,3 +2848,161 @@ it("browser Host services apply explicit light/dark theme choices and react to s
     globalThis.matchMedia = originalMatchMedia;
   }
 });
+
+it("separates connect vs submit activation messages and wakes the execution worktree project for persisted threads", async () => {
+  const page = new EventTarget();
+  vi.stubGlobal("window", page);
+  let worktreePhase: ShellProject["state"] = "stopped";
+  let pendingOnce = true;
+  const activated: string[] = [];
+  const sent: Array<{ method: string; projectId: string }> = [];
+  const worktreeProject: ShellProject = {
+    ...project,
+    projectId: "worktree-canonical",
+    alias: { sourceId: "source", projectId: "worktree-alias" },
+    logicalProjectId: "canonical",
+    workspace: "/work/wt",
+    state: "stopped",
+    serviceGeneration: undefined,
+    worktree: {
+      state: "ready",
+      directory: "/work/wt",
+      checkoutRoot: "/work/wt",
+      branch: "feature",
+      base: "main",
+      sourceRoot: "/canonical",
+      requestId: "request",
+      automatic: true,
+    },
+    summaries: {
+      state: "fresh",
+      items: [{ ...project.summaries.items[0], id: "wt-thread" }],
+    },
+  };
+  const worktreeNav = {
+    ...navigation,
+    bindings: [
+      ...navigation.bindings,
+      { projectId: "worktree-canonical", alias: "worktree-alias", projectless: false },
+    ],
+  };
+  const liveObservation = {
+    ...observation,
+    thread: {
+      ...observation.thread,
+      id: "wt-thread",
+      desktop: { configuration: { revision: 11 } },
+    },
+  };
+  const wire = transport(liveObservation);
+  const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+    const base = await wire.factory(lifecycle);
+    return {
+      ...base,
+      identity: {
+        ...base.identity,
+        persistedHistory: true,
+        writeMethods: ["project.activate", "session.send"],
+      },
+      transport: {
+        ...base.transport,
+        async request(method, reqParams, context) {
+          if (method === "shell.subscribe")
+            return {
+              ...identity,
+              subscriptionId: "shell",
+              snapshot: {
+                projects: [
+                  { ...project, state: "stopped", serviceGeneration: undefined },
+                  {
+                    ...worktreeProject,
+                    state: worktreePhase,
+                    serviceGeneration: worktreePhase === "ready" ? "wt-gen" : undefined,
+                  },
+                ],
+                navigation: [worktreeNav],
+              },
+            };
+          if (method === "session.openPersisted")
+            return {
+              ...identity,
+              ...context,
+              projectId: "worktree-canonical",
+              serviceGeneration: "old-wt-gen",
+              threadId: "wt-thread",
+              snapshot: {
+                ...observation,
+                thread: {
+                  ...observation.thread,
+                  id: "wt-thread",
+                  desktop: { configuration: { revision: 5 } },
+                },
+              },
+              access: { kind: "persisted", readOnly: true, snapshotId: "saved" },
+            };
+          if (method === "session.open") return base.transport.request(method, reqParams, context);
+          return base.transport.request(method, reqParams, context);
+        },
+        async write(method, _params, context, commandId) {
+          if (method === "project.activate") {
+            const targetId = String(context?.projectId ?? "");
+            activated.push(targetId);
+            if (pendingOnce) {
+              pendingOnce = false;
+              return {
+                projectId: targetId,
+                state: "pending",
+                reason: "activationIncomplete",
+                activationId: "act-1",
+              };
+            }
+            worktreePhase = "ready";
+            return { projectId: targetId, state: "ready", serviceGeneration: "wt-gen" };
+          }
+          sent.push({ method, projectId: String(context?.projectId ?? "") });
+          return {
+            admissionState: "accepted",
+            commandId,
+            method,
+            target: { threadId: "wt-thread" },
+            nativeRequestId: commandId,
+          };
+        },
+      },
+    };
+  };
+  const services = createHostReadServices(undefined, options(factory));
+  try {
+    await until(services);
+    await services.reads!.selectSession({
+      projectId: "alias",
+      threadId: "wt-thread",
+      persisted: true,
+    });
+    // connect 预热遇到 pending 不应暴露“消息尚未提交，草稿已保留”。
+    const connectError = await services
+      .writes!.route("connect", { projectId: "alias", threadId: "wt-thread" })
+      .catch((error: unknown) => error);
+    expect(connectError).toMatchObject({
+      code: "ACTIVATION_PENDING",
+      activationState: "pending",
+      activationReason: "activationIncomplete",
+      activationId: "act-1",
+      message: "项目仍在启动中，请稍后重试。",
+    });
+    expect(activated).toEqual(["worktree-canonical"]);
+
+    // 真实发送必须唤醒工作树对应的执行项目（worktree-canonical），而不是逻辑主项目（canonical）。
+    await services.writes!.route("send", {
+      projectId: "alias",
+      threadId: "wt-thread",
+      text: "hello worktree",
+      requestId: crypto.randomUUID(),
+    });
+    expect(activated).toEqual(["worktree-canonical", "worktree-canonical"]);
+    expect(sent).toEqual([{ method: "session.send", projectId: "worktree-canonical" }]);
+  } finally {
+    page.dispatchEvent(new Event("pagehide"));
+    vi.unstubAllGlobals();
+  }
+});

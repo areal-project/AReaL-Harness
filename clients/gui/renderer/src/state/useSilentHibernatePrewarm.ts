@@ -44,9 +44,14 @@ export function useSilentHibernatePrewarm({
     if (prewarmedScopeRef.current === scope) return;
 
     prewarmedScopeRef.current = scope;
-    void requestRef.current("connect", { projectId: project.id }).catch(() => {
-      if (prewarmedScopeRef.current === scope) prewarmedScopeRef.current = null;
-    });
+    void requestRef
+      .current("connect", {
+        projectId: project.id,
+        ...(threadId ? { threadId } : {}),
+      })
+      .catch(() => {
+        if (prewarmedScopeRef.current === scope) prewarmedScopeRef.current = null;
+      });
   }, [enabled, hibernated, project, scope, text]);
 
   return (

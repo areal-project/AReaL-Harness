@@ -93,28 +93,20 @@ pub(super) async fn ensure_project(host: &Rc<Host>, id: &str) -> Result<()> {
     if host.schedules.connections.shared_identity(host, id).is_ok() {
         return Ok(());
     }
-    host.ensure_from_gateway(Ensure {
-        request_id: uuid::Uuid::new_v4().to_string(),
-        expected_generation: host.identity.generation.clone(),
-        project_id: id.into(),
-        no_auto_restart: false,
-        resume_scheduling: false,
-        launch_inputs: None,
-        credentials: BTreeMap::new(),
-    })
-    .await?;
-    tokio::time::timeout(Duration::from_secs(15), async {
-        loop {
-            let changed = host.schedules.connections.changed.notified();
-            if host.schedules.connections.shared_identity(host, id).is_ok() {
-                return Ok(());
-            }
-            host.admission()?;
-            changed.await;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+    match host.activate_project_normal(id, deadline).await? {
+        super::ActivationOutcome::Ready { .. } => Ok(()),
+        super::ActivationOutcome::Blocked {
+            reason: "explicitlyStopped",
+            ..
+        } => Err(crate::wire::error(
+            "CORE_STOPPED",
+            "项目已停止，请明确恢复调度",
+        )),
+        super::ActivationOutcome::Pending { .. } | super::ActivationOutcome::Blocked { .. } => {
+            bail!("RESOURCE_UNAVAILABLE")
         }
-    })
-    .await
-    .context("RESOURCE_UNAVAILABLE")?
+    }
 }
 
 pub(super) async fn resolve_project_scope(
@@ -533,6 +525,75 @@ async fn connect(host: &Rc<Host>, source: &str, request: &Value) -> Result<Value
         resume || !host.schedules.suppressed(id),
         crate::wire::error("CORE_STOPPED", "项目已停止，请明确恢复调度")
     );
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+    if !resume {
+        let outcome = host.activate_project_normal(id, deadline).await?;
+        let response = match outcome {
+            super::ActivationOutcome::Ready {
+                service_generation,
+                activation_id,
+            } => {
+                let mut result = json!({
+                    "projectId": id,
+                    "state": "ready",
+                    "serviceGeneration": service_generation,
+                });
+                if let Some(activation) = activation_id {
+                    result["activationId"] = json!(activation);
+                }
+                result
+            }
+            super::ActivationOutcome::Pending {
+                activation_id,
+                reason,
+            } => {
+                let mut result = json!({
+                    "projectId": id,
+                    "state": "pending",
+                    "reason": reason,
+                });
+                if let Some(activation) = activation_id {
+                    result["activationId"] = json!(activation);
+                }
+                result
+            }
+            super::ActivationOutcome::Blocked {
+                activation_id,
+                reason,
+            } => {
+                let mut result = json!({
+                    "projectId": id,
+                    "state": "blocked",
+                    "reason": reason,
+                });
+                if let Some(activation) = activation_id {
+                    result["activationId"] = json!(activation);
+                }
+                result
+            }
+        };
+        if response["state"] == "blocked" && response["reason"] == "explicitlyStopped" {
+            return Err(crate::wire::error(
+                "CORE_STOPPED",
+                "项目已停止，请明确恢复调度",
+            ));
+        }
+        return Ok(response);
+    }
+    if let Some((original, finished, admitted)) = host.wait_live_ensure_if_any(id, deadline).await?
+    {
+        if !finished {
+            let mut response = json!({
+                "projectId": id,
+                "state": "pending",
+                "reason": "activationIncomplete",
+            });
+            if admitted {
+                response["activationId"] = json!(original);
+            }
+            return Ok(response);
+        }
+    }
     // 未决启动只核对原回执；显式恢复也不能越过原启动另发一次。
     for path in storage::json_records(&host.home.join("host/operations"), false)? {
         let record: super::Operation = storage::read(&path)?;
@@ -547,11 +608,27 @@ async fn connect(host: &Rc<Host>, source: &str, request: &Value) -> Result<Value
                 .context("RESOURCE_UNAVAILABLE")?;
             if receipt["state"] == "completed"
                 && !host.schedules.suppressed(id)
-                && let Ok((_, generation, _)) = host.schedules.connections.shared_identity(host, id)
+                && let Some(generation) = host.ready_generation(id)
             {
-                return Ok(
-                    json!({"projectId":id,"state":"ready","activationId":original,"serviceGeneration":generation}),
-                );
+                let connected = host
+                    .schedules
+                    .connections
+                    .ready_until(host, id, &generation, deadline)
+                    .await;
+                if connected.is_ok()
+                    && !host.schedules.suppressed(id)
+                    && host.ready_generation(id).as_deref() == Some(generation.as_str())
+                {
+                    return Ok(
+                        json!({"projectId":id,"state":"ready","activationId":original,"serviceGeneration":generation}),
+                    );
+                }
+                return Ok(json!({
+                    "projectId": id,
+                    "state": if host.schedules.suppressed(id) { "blocked" } else { "pending" },
+                    "activationId": original,
+                    "reason": if host.schedules.suppressed(id) { "explicitlyStopped" } else { "activationIncomplete" },
+                }));
             }
             if matches!(receipt["state"].as_str(), Some("completed" | "blocked")) {
                 return Ok(
@@ -563,42 +640,50 @@ async fn connect(host: &Rc<Host>, source: &str, request: &Value) -> Result<Value
             );
         }
     }
-    let activation = if resume {
-        let original = uuid::Uuid::new_v4().to_string();
-        let result = host
-            .ensure(Ensure {
-                request_id: original.clone(),
-                expected_generation: host.identity.generation.clone(),
-                project_id: id.clone(),
-                no_auto_restart: false,
-                resume_scheduling: true,
-                launch_inputs: None,
-                credentials: BTreeMap::new(),
-            })
-            .await;
-        if let Some(record) = host.receipt(&original)?
-            && record.receipt["state"] != "completed"
-        {
-            return Ok(
-                json!({"projectId":id,"state":if record.settled() { "blocked" } else { "pending" },"activationId":original,"reason":"activationIncomplete"}),
-            );
-        }
-        result?;
-        Some(original)
-    } else {
-        ensure_project(host, id).await?;
-        None
-    };
-    let (_, generation, _) = host.schedules.connections.shared_identity(host, id)?;
-    let mut response = if host.schedules.suppressed(id) {
-        json!({"projectId":id,"state":"blocked","reason":"explicitlyStopped"})
-    } else {
-        json!({"projectId":id,"state":"ready","serviceGeneration":generation})
-    };
-    if let Some(activation) = activation {
-        response["activationId"] = json!(activation);
+    let original = uuid::Uuid::new_v4().to_string();
+    let result = host
+        .ensure(Ensure {
+            request_id: original.clone(),
+            expected_generation: host.identity.generation.clone(),
+            project_id: id.clone(),
+            no_auto_restart: false,
+            resume_scheduling: true,
+            launch_inputs: None,
+            credentials: BTreeMap::new(),
+        })
+        .await;
+    if let Some(record) = host.receipt(&original)?
+        && record.receipt["state"] != "completed"
+    {
+        return Ok(
+            json!({"projectId":id,"state":if record.settled() { "blocked" } else { "pending" },"activationId":original,"reason":"activationIncomplete"}),
+        );
     }
-    Ok(response)
+    result?;
+    if let Some(generation) = host.ready_generation(id) {
+        let connected = host
+            .schedules
+            .connections
+            .ready_until(host, id, &generation, deadline)
+            .await;
+        if connected.is_ok()
+            && !host.schedules.suppressed(id)
+            && host.ready_generation(id).as_deref() == Some(generation.as_str())
+        {
+            return Ok(json!({
+                "projectId": id,
+                "state": "ready",
+                "activationId": original,
+                "serviceGeneration": generation,
+            }));
+        }
+    }
+    Ok(json!({
+        "projectId": id,
+        "state": if host.schedules.suppressed(id) { "blocked" } else { "pending" },
+        "activationId": original,
+        "reason": if host.schedules.suppressed(id) { "explicitlyStopped" } else { "activationIncomplete" },
+    }))
 }
 
 async fn fork(host: &Rc<Host>, source: &str, request: &Value) -> Result<Value> {

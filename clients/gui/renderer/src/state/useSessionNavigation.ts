@@ -25,6 +25,9 @@ type RestorationAttempt = RestorationOwner & {
   operation: "connect" | "open";
   pending: boolean;
   promise: Promise<void>;
+  connectService?: boolean;
+  resumeScheduling?: boolean;
+  forceConnect?: boolean;
   prewarmDeferred?: "verification" | "successor";
   failure?: RecoveryFailure;
 };
@@ -254,7 +257,10 @@ export function useSessionNavigation(
       if (
         sameRestorationOwner(previous, owner) &&
         previous?.operation === operation &&
-        previous.pending
+        previous.pending &&
+        (!options.connectService || previous.connectService) &&
+        (!options.resumeScheduling || previous.resumeScheduling) &&
+        (!options.forceConnect || previous.forceConnect)
       )
         return previous.promise;
       const attempt: RestorationAttempt = {
@@ -262,6 +268,9 @@ export function useSessionNavigation(
         operation,
         pending: true,
         promise: Promise.resolve(),
+        connectService: options.connectService,
+        resumeScheduling: options.resumeScheduling,
+        forceConnect: options.forceConnect,
       };
       restorationAttempt.current = attempt;
       setRestoration((previous) =>
@@ -402,6 +411,19 @@ export function useSessionNavigation(
                   !unresolved
                 ) {
                   attempt.prewarmDeferred = "successor";
+                  return;
+                }
+                // 持久化历史已渲染成功时，后台静默预热的瞬态 pending/blocked 不应升级为“无法加载对话”红条；
+                // 共享客户端会在项目就绪后自动升级实时阅读，发送消息时仍按需激活并在输入区反馈。
+                if (
+                  persisted &&
+                  !options.resumeScheduling &&
+                  !options.forceConnect &&
+                  (failure?.code === "ACTIVATION_PENDING" ||
+                    failure?.code === "ACTIVATION_BLOCKED") &&
+                  failure.recovery?.kind !== "needsUser" &&
+                  !unresolved
+                ) {
                   return;
                 }
                 if (
@@ -582,18 +604,22 @@ export function useSessionNavigation(
       return;
     void restoreConversation(owner, project.state?.connected ? "open" : "connect");
   };
-  const retryRestoration = async () => {
+  const retryRestoration = async (options?: { resumeScheduling?: boolean }) => {
     if (!project) return;
     const forceConnect = isProjectCoreUnavailable(
       restoration?.failure ?? restorationAttempt.current?.failure,
     );
+    const suppressed = project.scheduling?.suppressed === true;
+    const resumeScheduling = options?.resumeScheduling === true;
+    // 普通“重试加载对话”不得隐式解除用户手动停止；显式恢复调度须经明确动作触发。
+    const allowConnect = resumeScheduling || !suppressed;
     await restoreConversation(
       restorationOwner,
-      !project.state?.connected || forceConnect ? "connect" : "open",
+      (!project.state?.connected || forceConnect) && allowConnect ? "connect" : "open",
       {
         connectService: snapshot.connection?.state !== "ready",
-        resumeScheduling: true,
-        forceConnect,
+        resumeScheduling,
+        forceConnect: forceConnect && allowConnect,
       },
     );
   };
