@@ -175,10 +175,8 @@ impl CloudSessions {
     ) -> Result<Scope> {
         let id = required(row, "id")?;
         let project = virtual_id(source, id);
-        if !reconnect {
-            if let Ok(scope) = self.scope(host, &project) {
-                return Ok(scope);
-            }
+        if !reconnect && let Ok(scope) = self.scope(host, &project) {
+            return Ok(scope);
         }
         if let Some(previous) = self.live.borrow_mut().remove(&project) {
             let _ = host.schedules.connections.workbench_detach(
@@ -462,13 +460,13 @@ impl CloudSessions {
             )
             .await?;
         ensure!(observed["thread"]["id"] == thread, "TARGET_CHANGED");
-        if let Some(cwd) = observed["thread"]["cwd"].as_str() {
-            if row["binding"]["cwd"] != cwd {
-                self.edit(host, source, &id, |row| {
-                    row["binding"]["cwd"] = json!(cwd);
-                    Ok(())
-                })?;
-            }
+        if let Some(cwd) = observed["thread"]["cwd"].as_str()
+            && row["binding"]["cwd"] != cwd
+        {
+            self.edit(host, source, &id, |row| {
+                row["binding"]["cwd"] = json!(cwd);
+                Ok(())
+            })?;
         }
         if matches!(operation, "open" | "reconnect") {
             return Ok(json!({"projects":[]}));

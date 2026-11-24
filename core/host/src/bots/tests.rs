@@ -103,6 +103,7 @@ async fn start_mock_arena(state: Arc<MockArenaState>) -> (String, tokio::task::J
                 let mut workspace = String::new();
                 let mut auth_ok = true;
                 let expected = state.expected_token.clone();
+                #[allow(clippy::result_large_err)]
                 let ws = tokio_tungstenite::accept_hdr_async(
                     stream,
                     |req: &tokio_tungstenite::tungstenite::handshake::server::Request,
@@ -823,13 +824,13 @@ async fn send_streaming_events_preview_and_control_ops() {
     let mut kinds = Vec::new();
     let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
     while tokio::time::Instant::now() < deadline {
-        if let Ok(Ok(ev)) = tokio::time::timeout(Duration::from_millis(500), rx.recv()).await {
-            if ev["botId"].as_str() == Some(&bot_id) {
-                let kind = ev["kind"].as_str().unwrap_or("").to_owned();
-                kinds.push(kind.clone());
-                if kind == "turnCompleted" {
-                    break;
-                }
+        if let Ok(Ok(ev)) = tokio::time::timeout(Duration::from_millis(500), rx.recv()).await
+            && ev["botId"].as_str() == Some(&bot_id)
+        {
+            let kind = ev["kind"].as_str().unwrap_or("").to_owned();
+            kinds.push(kind.clone());
+            if kind == "turnCompleted" {
+                break;
             }
         }
     }
@@ -1013,14 +1014,13 @@ async fn draining_transitions_to_sleeping_and_auto_wakes_on_next_send() {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
     let mut saw_sleeping = false;
     while tokio::time::Instant::now() < deadline {
-        if let Ok(Ok(ev)) = tokio::time::timeout(Duration::from_millis(200), rx.recv()).await {
-            if ev["kind"] == "stateChanged"
-                && ev["botId"] == bot_id
-                && ev["state"]["kind"] == "sleeping"
-            {
-                saw_sleeping = true;
-                break;
-            }
+        if let Ok(Ok(ev)) = tokio::time::timeout(Duration::from_millis(200), rx.recv()).await
+            && ev["kind"] == "stateChanged"
+            && ev["botId"] == bot_id
+            && ev["state"]["kind"] == "sleeping"
+        {
+            saw_sleeping = true;
+            break;
         }
     }
     assert!(

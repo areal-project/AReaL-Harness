@@ -418,13 +418,11 @@ impl Connections {
                 eprintln!("Host Core attach unavailable: projectId={id} stage=capabilities");
             })?;
         ensure!(session.shared_current(host), unavailable());
-        if scope.is_some() || desktop {
-            if scope == Some("terminal") {
-                ensure!(
-                    capabilities["features"]["connectionProcesses"] == true,
-                    "CORE_INCOMPATIBLE"
-                );
-            }
+        if scope == Some("terminal") {
+            ensure!(
+                capabilities["features"]["connectionProcesses"] == true,
+                "CORE_INCOMPATIBLE"
+            );
         }
         let lease = uuid::Uuid::new_v4().to_string();
         if let Some(previous) = session.workbench_lease.borrow().as_deref() {

@@ -282,11 +282,8 @@ pub(super) async fn read(host: &Rc<Host>, source: &str, request: &Value) -> Resu
                 entries
                     .iter()
                     .filter_map(creation_request)
-                    .filter_map(|id| {
-                        creations
-                            .insert(id.to_owned())
-                            .then(|| json!({"awaitingResponse":false,"creationRequestId":id}))
-                    }),
+                    .filter(|&id| creations.insert(id.to_owned()))
+                    .map(|id| json!({"awaitingResponse":false,"creationRequestId":id})),
             );
         }
         row["pendingRequests"] = json!(requests);

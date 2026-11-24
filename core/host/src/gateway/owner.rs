@@ -742,6 +742,7 @@ mod local_relay_tests {
                 let peer = tokio::task::spawn_local(async move {
                     let (stream, source) = listener.accept().await.unwrap();
                     assert_eq!(source.ip(), std::net::Ipv6Addr::LOCALHOST);
+                    #[allow(clippy::result_large_err)]
                     let mut socket = tokio_tungstenite::accept_hdr_async(
                         stream,
                         |request: &Request, response: Response| {

@@ -74,7 +74,7 @@ impl Engine {
                 let start = last_dispatched
                     .as_ref()
                     .map_or(0, |last| ids.partition_point(|id| id <= last));
-                for id in ids[start..].iter().chain(&ids[..start]).cloned() {
+                for id in ids[start..].iter().chain(&ids[..start]) {
                     if cancel.is_cancelled() {
                         break;
                     }
@@ -92,18 +92,19 @@ impl Engine {
                         ids: engine.task_modes.dispatching.clone(),
                         id: id.clone(),
                     };
+                    let task_id = id.clone();
                     let worker = engine.clone();
                     engine.tasks.spawn(async move {
                         let _lease = lease;
                         let engine = worker;
-                        if let Err(error) = engine.advance_task(&id).await {
+                        if let Err(error) = engine.advance_task(&task_id).await {
                             // 用户控制或其他结算已推进 CAS；下一次唤醒重读，不能自行暂停新状态。
                             if matches!(error, Error::Conflict) {
                                 return;
                             }
-                            tracing::error!(task_id=%id,%error,"task dispatch failed");
+                            tracing::error!(task_id=%task_id,%error,"task dispatch failed");
                             if let Err(error) = engine
-                                .edit_task(&id, |task| {
+                                .edit_task(&task_id, |task| {
                                     if task.cancelled
                                         || task.runs.last().is_some_and(|r| {
                                             r.status.terminal()

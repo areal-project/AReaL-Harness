@@ -1404,12 +1404,11 @@ async fn callback(
     }
     let inputs = inputs(host, &connection.project_id)?;
     if let Some(candidate) = super::gui_project::refresh_inputs(host, &project.registration).await?
+        && !super::gui_project::same_inputs(&inputs, &candidate)?
     {
-        if !super::gui_project::same_inputs(&inputs, &candidate)? {
-            connection.require_current(host)?;
-            connection.request_refresh_inputs(candidate)?;
-            return std::future::pending().await;
-        }
+        connection.require_current(host)?;
+        connection.request_refresh_inputs(candidate)?;
+        return std::future::pending().await;
     }
     let mut result = json!({"dynamicTools":[]});
     match &inputs.schedule_preparation {

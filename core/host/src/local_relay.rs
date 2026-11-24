@@ -180,7 +180,7 @@ pub(crate) async fn discover_bundle(
         .and_then(Path::parent)
         .and_then(Path::parent)
         .ok_or_else(|| fail("invalid app Contents path".into()))?;
-    if !contents.file_name().is_some_and(|name| name == "Contents")
+    if contents.file_name().is_none_or(|name| name != "Contents")
         || bin != contents.join("Resources/areal-core/bin")
     {
         return Err(fail("Host binary is outside packaged macOS app".into()));

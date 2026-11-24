@@ -119,7 +119,7 @@ fn is_git_oid(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
-fn optional_str<'a>(value: Option<&'a Value>) -> Result<Option<&'a str>> {
+fn optional_str(value: Option<&Value>) -> Result<Option<&str>> {
     match value {
         None => Ok(None),
         Some(v) => Ok(Some(v.as_str().context("INVALID_PARAMS")?)),
@@ -590,11 +590,9 @@ struct DirRow {
     hidden: bool,
 }
 
-fn list_directory_rows(
-    root: &Path,
-    rel: &str,
-    show_all: bool,
-) -> Result<Option<(String, Vec<DirRow>, bool, usize)>> {
+type DirectoryListing = (String, Vec<DirRow>, bool, usize);
+
+fn list_directory_rows(root: &Path, rel: &str, show_all: bool) -> Result<Option<DirectoryListing>> {
     let Some(dir) = resolve_inside(root, rel) else {
         return Ok(None);
     };
@@ -1267,61 +1265,61 @@ fn parse_git_patch(diff: &str, paths: Option<&[String]>) -> Result<Vec<Value>> {
                 });
                 continue;
             }
-            if let Some(hunk) = file.hunks.last_mut() {
-                if old_rem > 0 || new_rem > 0 || line.starts_with('\\') {
-                    match line.as_bytes().first() {
-                        Some(b'+') if new_rem > 0 => {
-                            file.additions += 1;
-                            new_rem -= 1;
-                            let ln = new_line;
-                            new_line += 1;
-                            hunk.lines.push(json!({
-                                "kind": "add",
-                                "text": &line[1..],
-                                "oldLine": Value::Null,
-                                "newLine": ln,
-                            }));
-                            continue;
-                        }
-                        Some(b'-') if old_rem > 0 => {
-                            file.deletions += 1;
-                            old_rem -= 1;
-                            let ln = old_line;
-                            old_line += 1;
-                            hunk.lines.push(json!({
-                                "kind": "del",
-                                "text": &line[1..],
-                                "oldLine": ln,
-                                "newLine": Value::Null,
-                            }));
-                            continue;
-                        }
-                        Some(b' ') if old_rem > 0 && new_rem > 0 => {
-                            old_rem -= 1;
-                            new_rem -= 1;
-                            let ol = old_line;
-                            let nl = new_line;
-                            old_line += 1;
-                            new_line += 1;
-                            hunk.lines.push(json!({
-                                "kind": "context",
-                                "text": &line[1..],
-                                "oldLine": ol,
-                                "newLine": nl,
-                            }));
-                            continue;
-                        }
-                        Some(b'\\') => {
-                            hunk.lines.push(json!({
-                                "kind": "meta",
-                                "text": &line[1..],
-                                "oldLine": Value::Null,
-                                "newLine": Value::Null,
-                            }));
-                            continue;
-                        }
-                        _ => {}
+            if let Some(hunk) = file.hunks.last_mut()
+                && (old_rem > 0 || new_rem > 0 || line.starts_with('\\'))
+            {
+                match line.as_bytes().first() {
+                    Some(b'+') if new_rem > 0 => {
+                        file.additions += 1;
+                        new_rem -= 1;
+                        let ln = new_line;
+                        new_line += 1;
+                        hunk.lines.push(json!({
+                            "kind": "add",
+                            "text": &line[1..],
+                            "oldLine": Value::Null,
+                            "newLine": ln,
+                        }));
+                        continue;
                     }
+                    Some(b'-') if old_rem > 0 => {
+                        file.deletions += 1;
+                        old_rem -= 1;
+                        let ln = old_line;
+                        old_line += 1;
+                        hunk.lines.push(json!({
+                            "kind": "del",
+                            "text": &line[1..],
+                            "oldLine": ln,
+                            "newLine": Value::Null,
+                        }));
+                        continue;
+                    }
+                    Some(b' ') if old_rem > 0 && new_rem > 0 => {
+                        old_rem -= 1;
+                        new_rem -= 1;
+                        let ol = old_line;
+                        let nl = new_line;
+                        old_line += 1;
+                        new_line += 1;
+                        hunk.lines.push(json!({
+                            "kind": "context",
+                            "text": &line[1..],
+                            "oldLine": ol,
+                            "newLine": nl,
+                        }));
+                        continue;
+                    }
+                    Some(b'\\') => {
+                        hunk.lines.push(json!({
+                            "kind": "meta",
+                            "text": &line[1..],
+                            "oldLine": Value::Null,
+                            "newLine": Value::Null,
+                        }));
+                        continue;
+                    }
+                    _ => {}
                 }
             }
             in_hunk = false;
@@ -1980,12 +1978,14 @@ struct ChangedVersion {
     after: String,
 }
 
+type ReconstructedTurnChanges = (Vec<(String, ChangedVersion)>, Vec<Value>);
+
 fn reconstruct_turn_changes(
     turn: &Value,
     item_id: Option<&str>,
     file_befores: &BTreeMap<String, Vec<u8>>,
     allow_partial: bool,
-) -> Result<(Vec<(String, ChangedVersion)>, Vec<Value>)> {
+) -> Result<ReconstructedTurnChanges> {
     if turn["status"] != "completed" {
         return Err(cmd_err("本轮尚未完成，无法比较文件版本"));
     }
@@ -2279,9 +2279,9 @@ fn reconstruct_turn_changes(
 }
 
 fn rewrite_patch_body_headers(raw_diff: &str, rel_path: &str) -> String {
-    let mut lines = raw_diff.split_terminator('\n');
+    let lines = raw_diff.split_terminator('\n');
     let mut out = String::new();
-    while let Some(line) = lines.next() {
+    for line in lines {
         if line.starts_with("--- ") {
             out.push_str(&format!("--- a/{rel_path}\n"));
         } else if line.starts_with("+++ ") {

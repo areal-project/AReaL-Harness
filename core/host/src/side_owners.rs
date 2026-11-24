@@ -262,12 +262,14 @@ impl SideWindowOwners {
         connection: &str,
         owner: &Rc<SideOwner>,
     ) -> Result<Value> {
-        if let Some(active) = owner.settlement.borrow().clone() {
+        let existing = owner.settlement.borrow().clone();
+        if let Some(active) = existing {
             loop {
                 let notified = active.done.notified();
                 tokio::pin!(notified);
                 notified.as_mut().enable();
-                if let Some(settled) = active.result.borrow().clone() {
+                let settled = active.result.borrow().clone();
+                if let Some(settled) = settled {
                     return unwrap_settled(settled);
                 }
                 notified.await;

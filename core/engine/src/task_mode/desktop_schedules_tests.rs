@@ -302,9 +302,11 @@ async fn scheduled_run_keeps_scheduler_when_gui_disconnects_without_adopting_suc
     let visible = engine
         .visible_tools(&cell, &Default::default(), true, &thread)
         .await;
-    for name in ["browser_v1"] {
-        assert!(visible.iter().any(|tool| tool["function"]["name"] == name));
-    }
+    assert!(
+        visible
+            .iter()
+            .any(|tool| tool["function"]["name"] == "browser_v1")
+    );
     let ordinary = engine.create_configured("owner".into(), serde_json::from_value(json!({"requestId":"ordinary-tools","cwd":"/workspace","dynamicTools":[areal_protocol::desktop::browser_v1_tool()]})).unwrap(), gui.clone()).await.unwrap();
     gui.closed.store(true, Ordering::Release);
     let successor = ScheduleConnection::new("successor", "owner");

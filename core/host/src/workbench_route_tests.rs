@@ -1423,7 +1423,7 @@ async fn feedback_refinement_recovers_the_original_core_receipt_and_closes_witho
         storage::write(&launch_record(&host),&input).unwrap();
         host.gateway.workbench.restore_source(&host).unwrap();
         let registration=host.slots.borrow()["project"].registration.clone();
-        let alias=host.migration.remote_bindings(&source,&[registration.clone()]).unwrap().remove(0).1;
+        let alias=host.migration.remote_bindings(&source,std::slice::from_ref(&registration)).unwrap().remove(0).1;
         storage::write(&root.join("data/projects.json"),&json!([{"id":alias,"root":registration.workspace}])).unwrap();
         let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let service=areal_protocol::service::Service {
@@ -1908,6 +1908,7 @@ async fn configured_cloud_handshake_cannot_publish_after_token_revision_changes(
             let (release, resume) = tokio::sync::oneshot::channel();
             let server = tokio::task::spawn_local(async move {
                 let (stream, _) = listener.accept().await.unwrap();
+                #[allow(clippy::result_large_err)]
                 let mut socket = tokio_tungstenite::accept_hdr_async(
                     stream,
                     |request: &Request, response: Response| {
@@ -2010,6 +2011,7 @@ async fn native_cloud_sessions_create_and_submit_without_node_or_local_core() {
         let creation_id=uuid::Uuid::new_v4().to_string();let requested_id=creation_id.clone();
         let server=tokio::task::spawn_local(async move {
             let (stream,_)=listener.accept().await.unwrap();
+            #[allow(clippy::result_large_err)]
             let mut socket=tokio_tungstenite::accept_hdr_async(stream,move|request:&Request,response:Response|{
                 assert_eq!(request.headers().get("authorization").unwrap(),"Bearer synthetic-cloud-token");
                 assert_eq!(request.uri().path(),format!("/app-server/{requested_id}/"));Ok(response)
@@ -2085,7 +2087,23 @@ async fn native_cloud_sessions_create_and_submit_without_node_or_local_core() {
         let uploaded=gateway.request(&json!({"id":"cloud-upload","method":"attachment.upload","context":{"projectId":virtual_id,"gatewayGeneration":host.identity.generation,"grantRevision":0,"serviceGeneration":remote["serviceGeneration"]},"params":{"threadId":"native-cloud-thread","uploadId":uuid::Uuid::new_v4().to_string(),"mimeType":"text/plain","sizeBytes":5,"offset":0,"base64":"aGVsbG8="}})).await.unwrap();
         assert_eq!(uploaded["attachment"]["uri"],format!("areal://blob/{}",storage::digest(b"hello")));
         assert!(host.gateway.workbench.cloud.sessions.scope(&host,virtual_id).is_ok());
-        let calls=calls.borrow();assert_eq!(calls.iter().filter(|call|call["method"]=="areal/thread/start").count(),1);assert_eq!(calls.iter().filter(|call|call["method"]=="areal/turn/start").count(),1);drop(calls);
+        {
+            let calls = calls.borrow();
+            assert_eq!(
+                calls
+                    .iter()
+                    .filter(|call| call["method"] == "areal/thread/start")
+                    .count(),
+                1
+            );
+            assert_eq!(
+                calls
+                    .iter()
+                    .filter(|call| call["method"] == "areal/turn/start")
+                    .count(),
+                1
+            );
+        }
         assert!(host.slots.borrow()[&registration.project_id].service.is_none());
         let unknown_id=uuid::Uuid::new_v4().to_string();
         let home=super::super::library_store::source_home(&host,&source).unwrap();

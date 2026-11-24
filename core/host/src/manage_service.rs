@@ -1493,7 +1493,7 @@ fn validate_goal_fields(operation: &str, request: &Value) -> Result<()> {
             "目标缺少有效的会话或版本，请刷新后重试",
         ));
     }
-    if operation != "goalCreate" && !request["goalId"].as_str().is_some_and(|s| !s.is_empty()) {
+    if operation != "goalCreate" && request["goalId"].as_str().is_none_or(|s| s.is_empty()) {
         return Err(crate::wire::error("COMMAND_FAILED", "缺少目标 ID"));
     }
     if operation == "goalCreate" || request.get("objective").is_some() {
@@ -1515,7 +1515,7 @@ fn validate_goal_fields(operation: &str, request: &Value) -> Result<()> {
     for key in ["tokenBudget", "maxTurns", "maxActiveSeconds"] {
         if let Some(limit) = request.get(key)
             && !limit.is_null()
-            && !limit.as_u64().is_some_and(|n| n > 0)
+            && limit.as_u64().is_none_or(|n| n == 0)
         {
             return Err(crate::wire::error("COMMAND_FAILED", "目标预算必须为正整数"));
         }
@@ -1974,7 +1974,7 @@ async fn plugin_user_config_save(
         let def = &fields[key]["definition"];
         if def["sensitive"] != true
             || def["type"] != "string"
-            || !secret.as_str().is_some_and(|s| !s.is_empty())
+            || secret.as_str().is_none_or(|s| s.is_empty())
         {
             return Err(crate::wire::error(
                 "COMMAND_FAILED",
@@ -2495,6 +2495,7 @@ impl ManageService {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn execute_journaled_mutation(
         &self,
         host: &Rc<Host>,

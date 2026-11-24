@@ -81,7 +81,7 @@ impl Session {
             !chunk.thread_id.is_empty()
                 && chunk.thread_id.len() <= 128
                 && chunk.offset < conversation_media::MAX_BYTES
-                && chunk.offset % CHUNK_BYTES == 0,
+                && chunk.offset.is_multiple_of(CHUNK_BYTES),
             "INVALID_PARAMS"
         );
         conversation_media::digest(&chunk.uri)?;

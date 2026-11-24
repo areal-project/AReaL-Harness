@@ -581,18 +581,17 @@ async fn connect(host: &Rc<Host>, source: &str, request: &Value) -> Result<Value
         return Ok(response);
     }
     if let Some((original, finished, admitted)) = host.wait_live_ensure_if_any(id, deadline).await?
+        && !finished
     {
-        if !finished {
-            let mut response = json!({
-                "projectId": id,
-                "state": "pending",
-                "reason": "activationIncomplete",
-            });
-            if admitted {
-                response["activationId"] = json!(original);
-            }
-            return Ok(response);
+        let mut response = json!({
+            "projectId": id,
+            "state": "pending",
+            "reason": "activationIncomplete",
+        });
+        if admitted {
+            response["activationId"] = json!(original);
         }
+        return Ok(response);
     }
     // 未决启动只核对原回执；显式恢复也不能越过原启动另发一次。
     for path in storage::json_records(&host.home.join("host/operations"), false)? {

@@ -163,14 +163,21 @@ async fn thread_creation_preparation_and_original_receipt_need_no_node_backend()
         assert_eq!(receipt["threadId"],"native-created");
         let again = host.gateway.workbench.prepare_execution(&host,"owner","project","workbench/thread/create",params.clone()).await.unwrap().unwrap().dispatch().await.unwrap();
         assert_eq!(again,receipt);
-        let calls = calls.borrow();
-        let starts:Vec<_> = calls.iter().filter(|(method,_)|method=="areal/thread/start").collect();
-        assert_eq!(starts.len(),1);
-        assert_eq!(starts[0].1["options"]["appendInstructions"],"keep this");
-        assert_eq!(starts[0].1["model"],params["model"]);
-        assert_eq!(starts[0].1["parameters"]["temperature"],params["parameters"]["temperature"]);
-        assert_eq!(starts[0].1["cwd"],json!(registration.workspace));
-        drop(calls);
+        {
+            let calls = calls.borrow();
+            let starts: Vec<_> = calls
+                .iter()
+                .filter(|(method, _)| method == "areal/thread/start")
+                .collect();
+            assert_eq!(starts.len(), 1);
+            assert_eq!(starts[0].1["options"]["appendInstructions"], "keep this");
+            assert_eq!(starts[0].1["model"], params["model"]);
+            assert_eq!(
+                starts[0].1["parameters"]["temperature"],
+                params["parameters"]["temperature"]
+            );
+            assert_eq!(starts[0].1["cwd"], json!(registration.workspace));
+        }
         let mut changed = params.clone();
         changed["model"]["modelId"] = json!("different-model");
         let rejected = host.gateway.workbench.prepare_execution(&host,"owner","project","workbench/thread/create",changed).await;
