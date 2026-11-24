@@ -61,19 +61,80 @@ pre {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--spacing-field);
+  gap: var(--spacing-3);
   max-width: 520px;
   padding: calc(var(--spacing-field) * 2);
   text-align: center;
 }
 .startup-content > img {
-  width: calc(var(--spacing-inline) * 5);
-  height: calc(var(--spacing-inline) * 5);
+  width: calc(var(--spacing-inline) * 6);
+  height: calc(var(--spacing-inline) * 6);
+  border-radius: var(--radius-panel);
   object-fit: contain;
 }
-.startup-content > p {
+.startup-progress {
+  position: relative;
+  width: calc(var(--spacing-inline) * 14);
+  height: calc(var(--border-width-default) * 2);
+  border-radius: var(--radius-pill);
+  background: var(--color-border-hairline);
+  overflow: hidden;
+  margin-top: calc(var(--spacing-inline) / 2);
+}
+.startup-progress-bar {
+  display: block;
+  width: 38%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-foreground-subtle);
+  animation: startup-progress-scan var(--motion-cycle-slow) var(--ease-in-out) var(--motion-loop);
+}
+@keyframes startup-progress-scan {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(265%);
+  }
+}
+@keyframes startup-recovery-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--spacing-1));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@scope (:root[data-reduced-motion="true"]) {
+  .startup-progress-bar {
+    width: 100%;
+    opacity: var(--opacity-resting);
+    animation: none;
+  }
+  .startup-recovery {
+    animation: none;
+  }
+}
+.startup-status {
   margin: 0;
+  font-size: var(--text-ui-caption);
+  line-height: var(--line-height-ui-sm);
   color: var(--color-foreground-subtle);
+}
+.startup-status-error {
+  font-size: var(--text-ui-base);
+  line-height: var(--line-height-ui);
+  color: var(--color-foreground);
+}
+.startup-recovery {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-inline);
+  margin-top: var(--spacing-inline);
+  animation: startup-recovery-in var(--motion-normal) var(--ease-standard) both;
 }
 .startup-actions {
   display: flex;
@@ -87,8 +148,10 @@ pre {
   -webkit-app-region: no-drag;
 }
 .startup-hint {
+  margin: 0;
   font-size: var(--text-ui-sm);
-  opacity: 0.85;
+  line-height: var(--line-height-ui-sm);
+  color: var(--color-foreground-subtlest);
 }
 .startup-content pre {
   max-height: 160px;

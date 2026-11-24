@@ -71,6 +71,10 @@ export function StartupScreen({
     const timer = window.setTimeout(() => setSlowHint(true), 3000);
     return () => window.clearTimeout(timer);
   }, [failed]);
+  const showRecoveryActions = actionable || delayed || slowHint;
+  const showQuitAction = services.capabilities?.native !== false && (actionable || delayed);
+  const hasRetryView = failed && state.restoration.failed;
+  const hasBackendAction = actionable && services.capabilities?.native !== false;
   return (
     <div className="startup-screen" data-testid="startup-loading">
       <div className="startup-drag-region" aria-hidden="true" />
@@ -82,8 +86,8 @@ export function StartupScreen({
           {settingsPage}
         </div>
       ) : (
-        <div className="startup-content">
-          <img src={startupIcon} alt="AReaL Harness" width={40} height={40} />
+        <div className="startup-content" data-state={actionable ? "error" : "loading"}>
+          <img src={startupIcon} alt="AReaL Harness" width={48} height={48} />
           {state.connection?.prerequisite ? (
             <HostPrerequisiteGuide
               prerequisite={state.connection.prerequisite}
@@ -93,56 +97,68 @@ export function StartupScreen({
             />
           ) : (
             <>
-              <p role={actionable ? "alert" : "status"}>
+              {!actionable && (
+                <div className="startup-progress" aria-hidden="true">
+                  <span className="startup-progress-bar" />
+                </div>
+              )}
+              <p
+                className={actionable ? "startup-status startup-status-error" : "startup-status"}
+                role={actionable ? "alert" : "status"}
+              >
                 {t(actionable ? "startup.failed" : "startup.loading")}
               </p>
-              {!actionable && (delayed || slowHint) && (
-                <p className="startup-hint">
-                  {t(delayed ? "startup.delayed" : "startup.elapsedHint")}
-                </p>
-              )}
-              <div className="startup-actions">
-                {failed && state.restoration.failed && (
-                  <Button variant="outline" size="sm" disabled={busy} onClick={onRetry}>
-                    {t("recovery.retryView")}
-                  </Button>
-                )}
-                {actionable && services.capabilities?.native !== false && (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => onBackendAction(reconnect ? "reconnect" : "check")}
-                    >
-                      {t(reconnect ? "startup.reconnect" : "startup.check")}
-                    </Button>
-                    {state.lifecycle?.recovery && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={busy}
-                        onClick={() => onBackendAction("recover")}
-                      >
-                        {t("startup.recover")}
+              {showRecoveryActions && (
+                <div className="startup-recovery">
+                  {!actionable && (delayed || slowHint) && (
+                    <p className="startup-hint">
+                      {t(delayed ? "startup.delayed" : "startup.elapsedHint")}
+                    </p>
+                  )}
+                  <div className="startup-actions">
+                    {hasRetryView && (
+                      <Button variant="default" size="sm" disabled={busy} onClick={onRetry}>
+                        {t("recovery.retryView")}
                       </Button>
                     )}
-                  </>
-                )}
-                <Button variant={actionable ? "ghost" : "outline"} size="sm" onClick={onSettings}>
-                  {t(actionable ? "recovery.checkSettings" : "startup.openSettings")}
-                </Button>
-                {services.capabilities?.native !== false && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={state.backend.pending}
-                    onClick={onQuit}
-                  >
-                    {t("startup.quit")}
-                  </Button>
-                )}
-              </div>
+                    {hasBackendAction && (
+                      <>
+                        <Button
+                          variant={hasRetryView ? "outline" : "default"}
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => onBackendAction(reconnect ? "reconnect" : "check")}
+                        >
+                          {t(reconnect ? "startup.reconnect" : "startup.check")}
+                        </Button>
+                        {state.lifecycle?.recovery && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={busy}
+                            onClick={() => onBackendAction("recover")}
+                          >
+                            {t("startup.recover")}
+                          </Button>
+                        )}
+                      </>
+                    )}
+                    <Button variant="ghost" size="sm" onClick={onSettings}>
+                      {t(actionable ? "recovery.checkSettings" : "startup.openSettings")}
+                    </Button>
+                    {showQuitAction && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={state.backend.pending}
+                        onClick={onQuit}
+                      >
+                        {t("startup.quit")}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
               {actionable && details && (
                 <SettingsDisclosure title={t("recovery.details")}>
                   <pre>{details}</pre>

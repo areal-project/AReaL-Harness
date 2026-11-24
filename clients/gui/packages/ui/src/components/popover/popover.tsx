@@ -40,7 +40,7 @@ function PopoverContent({
         <PopoverPrimitive.Popup
           data-slot="popover-content"
           className={cn(
-            "ui-popup flex max-w-(--available-width) max-h-(--available-height) rounded-overlay border border-popover-border text-ui-base text-popover-foreground shadow-overlay overflow-y-auto outline-none [app-region:no-drag]",
+            "ui-popup scrollbar-hide flex max-w-(--available-width) max-h-(--available-height) rounded-overlay border border-popover-border text-ui-base text-popover-foreground shadow-overlay overflow-x-hidden overflow-y-auto outline-none [app-region:no-drag]",
             variant === "menu"
               ? "w-72 flex-col gap-0 bg-menu p-0"
               : variant === "compact"

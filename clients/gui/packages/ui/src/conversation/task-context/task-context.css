@@ -34,9 +34,17 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 0 var(--spacing-section) var(--spacing-inline);
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-border) transparent;
   overflow-wrap: anywhere;
+}
+@media not all and ((prefers-contrast: more) or (forced-colors: active)) {
+  .areal-context-body {
+    scrollbar-width: none;
+  }
+  .areal-context-body::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
 }
 .areal-context-section {
   padding-block: var(--spacing-inline);

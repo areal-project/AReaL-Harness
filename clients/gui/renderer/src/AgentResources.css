@@ -139,13 +139,14 @@
   background: var(--color-diff-removed-surface);
 }
 .task-resources-popup {
-  width: calc(var(--ui-font-size) * 22 + var(--spacing-inline) / 2);
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
   padding: 0;
   gap: 0;
-  border: var(--border-width-default) solid var(--color-menu-border);
+  border-radius: inherit;
   background: color-mix(in oklab, var(--color-menu) 92%, transparent);
   backdrop-filter: var(--material-overlay-filter);
-  box-shadow: var(--shadow-overlay);
 }
 .task-resources {
   padding: var(--spacing-inline) calc(var(--spacing-inline) * 3 / 2);

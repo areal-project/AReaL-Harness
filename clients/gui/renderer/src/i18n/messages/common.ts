@@ -642,8 +642,8 @@ export const commonMessages = {
   "startup.loading": { "zh-CN": "正在加载…", en: "Loading…" },
   "startup.openSettings": { "zh-CN": "打开设置", en: "Open settings" },
   "startup.elapsedHint": {
-    "zh-CN": "启动时间比平时长，你可以随时打开设置或查看诊断状态。",
-    en: "Taking a little longer than usual. You can open Settings anytime.",
+    "zh-CN": "启动时间比平时稍长，可打开设置查看状态。",
+    en: "Starting slower than usual. Open settings if needed.",
   },
   "startup.delayed": {
     "zh-CN": "加载时间较长，历史和草稿已保留。",
@@ -656,7 +656,7 @@ export const commonMessages = {
   "startup.check": { "zh-CN": "检查后台", en: "Check backend" },
   "startup.reconnect": { "zh-CN": "重新连接后台", en: "Reconnect backend" },
   "startup.recover": { "zh-CN": "恢复后台…", en: "Recover backend…" },
-  "startup.quit": { "zh-CN": "退出界面", en: "Quit interface" },
+  "startup.quit": { "zh-CN": "退出应用", en: "Quit app" },
   "startup.back": { "zh-CN": "返回加载界面", en: "Back to loading" },
   "startup.projectStartFailed": {
     "zh-CN": "项目没有启动成功，可以重试。",

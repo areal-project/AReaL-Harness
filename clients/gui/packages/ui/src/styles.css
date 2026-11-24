@@ -65,6 +65,14 @@
   .scrollbar-on-hover:focus-within {
     scrollbar-color: var(--color-border-hover) transparent;
   }
+  .scrollbar-hide {
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
 }
 
 /* 单行尾部渐隐截断：用于摘要条、导航项等高密度文本，替代生硬省略号。 */

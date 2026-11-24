@@ -80,9 +80,19 @@
   gap: calc(var(--spacing-inline) / 4);
   max-height: var(--thread-summary-max-height);
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 0 var(--spacing-inline) var(--spacing-inline);
   border-top: var(--border-width-default) solid var(--color-border-hairline);
-  scrollbar-width: thin;
+}
+@media not all and ((prefers-contrast: more) or (forced-colors: active)) {
+  .areal-thread-summary-body {
+    scrollbar-width: none;
+  }
+  .areal-thread-summary-body::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
 }
 
 .areal-thread-summary-item {

@@ -108,7 +108,7 @@ export function TaskResourcesPopover({
         }}
         align="end"
         sideOffset={8}
-        className="w-[calc(var(--ui-font-size)*22+var(--spacing-inline)/2)]"
+        className="w-[calc(var(--ui-font-size)*22+var(--spacing-inline)/2)] overflow-hidden"
         aria-label={t("chat.resources.panel")}
       >
         <div className="task-resources-popup">
