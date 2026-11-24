@@ -58,7 +58,7 @@ export function useWorkbenchNavigation(
       surfaces.leavePlugins();
       tasks.close();
       if (matchMedia("(max-width: 640px)").matches) setSidebar(false);
-      await session.selectConversation(pid, id);
+      await session.selectConversation(pid, id, { waitForReady: navigation === "replace" });
     },
     [initialReleased, snapshot.projects, restoreConversation, recordWorkspaceLocation],
   );

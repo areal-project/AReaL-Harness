@@ -197,6 +197,16 @@ export function ChatPromptEditor({
   const { intl } = useZCodeIntl();
   const submitDescriptionId = useId();
   const submitBlockedReason = submitDisabled ? submitDisabledReason : undefined;
+  // 本地提交通常在数十毫秒内完成；延迟 150ms 显示旋转态，避免发送按钮短闪加载圈后再切停止图标。
+  const [showSpinner, setShowSpinner] = useState(false);
+  useEffect(() => {
+    if (!submitting) {
+      setShowSpinner(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowSpinner(true), 150);
+    return () => clearTimeout(timer);
+  }, [submitting]);
   const toolbarRef = useComposerToolbarFit();
   const internalInputApiRef = useRef<LexicalChatInputHandle | null>(null);
   const resolvedInputApiRef = inputApiRef ?? internalInputApiRef;
@@ -713,7 +723,7 @@ export function ChatPromptEditor({
                         aria-label={submitLabel}
                         aria-describedby={submitBlockedReason ? submitDescriptionId : undefined}
                       >
-                        {submitting ? (
+                        {showSpinner ? (
                           <Spinner className="size-4" />
                         ) : (
                           <SendMessageIcon className="size-5" />

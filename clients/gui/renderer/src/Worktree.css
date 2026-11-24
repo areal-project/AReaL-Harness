@@ -61,10 +61,16 @@
   }
 }
 
-/* 新建会话预览与正式消息共用阅读起点，避免创建回执到达时再次向上跳动。 */
+/* 新建会话预览与正式消息共用阅读起点和停靠几何，避免创建回执到达时跳动。 */
 .conversation-pane.draft-pane:has(.draft-message-preview) {
   padding-top: 0;
 }
+.draft-pane:has(.draft-message-preview) .composer-project-bar {
+  display: none;
+}
 .draft-pane:has(.draft-message-preview) .draft-message-preview {
   padding-top: var(--message-reading-inset);
+}
+.draft-pane:has(.draft-message-preview) .composer-input-stack {
+  padding-top: var(--spacing-inline);
 }

@@ -16,6 +16,7 @@ export { uploadComposerFiles } from "./ComposerUploads.js";
 import { requestTurnStart, cancelTurnStart, readingViews } from "./readingViews.js";
 import {
   acceptPendingMessage,
+  getPendingMessage,
   pendingMessageProjected,
   setPendingMessage,
   usePendingMessage,
@@ -308,7 +309,9 @@ export function Composer({
       !silentWarming &&
       !("persistedHistory" in thread && thread.persistedHistory === true)) ||
     !!project.observationErrors?.[thread.id];
-  const baseDisabled = archived || (busy && !configuring) || !!reviewDraft.error;
+  // 常规消息发送只阻断提交防重入，不把编辑区、权限与模型按钮整块置灰，避免每次发送短暂闪烁。
+  const sendingMessage = busy && !configuring;
+  const baseDisabled = archived || !!reviewDraft.error;
   const queueEditor = useComposerQueueEdit({
     project,
     threadId: thread.id,
@@ -596,12 +599,15 @@ export function Composer({
       !sideCommand && !creatingGoal && !steer && !enqueue
         ? requestTurnStart(project.id, thread.id, thread.turns?.at(-1)?.id)
         : undefined;
-    if (!sideCommand && !creatingGoal && !enqueue)
+    if (!sideCommand && !creatingGoal && !enqueue) {
       setPendingMessage(key, {
         text: submittedInput.text,
         files: submittedInput.files,
         previousUserIds: userMessageIds(thread.turns),
       });
+      // 与待发气泡同一帧清空编辑器，失败时在 catch 中恢复原文。
+      api.current?.clear();
+    }
     try {
       if (sideCommand && onSide) {
         await onSide(sideCommand.text);
@@ -654,6 +660,7 @@ export function Composer({
       } else acceptPendingMessage(key);
     } catch (e) {
       setPendingMessage(key);
+      if (!sideCommand && !creatingGoal && !enqueue && value) api.current?.setText(value);
       const error = e as Error & {
         submissionUnknown?: boolean;
         requestId?: string;
@@ -1109,6 +1116,7 @@ export function Composer({
           submitDisabled={
             workspaceReferencePending ||
             disabled ||
+            sendingMessage ||
             awaitingProjection ||
             (desktopUnsupported && !queueEditor.edit && !creatingGoal) ||
             (readOnly && creatingGoal) ||
@@ -1155,7 +1163,7 @@ export function Composer({
             })),
           }}
           onChange={(value) => {
-            if (outgoing) return;
+            if (outgoing || getPendingMessage(key)) return;
             setText(value);
             // 恢复编辑器原文也会通知 onChange，只有内容变化才推进草稿版本。
             if (value === (composerDraftStorage.getItem(key) ?? "")) return;
@@ -1455,6 +1463,7 @@ export function Composer({
                   aria-describedby={desktopUnsupported ? compatibilityDescription : undefined}
                   disabled={
                     disabled ||
+                    sendingMessage ||
                     awaitingProjection ||
                     desktopUnsupported ||
                     taskManagement ||

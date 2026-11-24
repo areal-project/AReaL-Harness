@@ -51,5 +51,7 @@ describe("pending message attachments", () => {
     expect(html).toContain('data-message-attachment="image"');
     expect(html).toContain("Analyze this image");
     expect(html).not.toContain("移除附件");
+    // 正文气泡与已发送用户消息保持同一排版类，避免 whitespace-pre-wrap 造成发送交接时高度抖动。
+    expect(html).not.toContain("whitespace-pre-wrap");
   });
 });

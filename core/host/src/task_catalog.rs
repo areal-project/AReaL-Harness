@@ -340,22 +340,77 @@ pub(super) async fn read(host: &Rc<Host>, principal: &str, params: &Value) -> Re
     let mut errors = Vec::new();
     let mut owner_states = BTreeMap::<String, Value>::new();
     let mut has_more = false;
-    for owner in owners(host, params).await? {
-        let result:Result<(Vec<Value>,bool,Value)>=async{
-            let live=operation!="preview"&&host.schedules.connections.shared_identity(host,&owner.id).is_ok();
-            if live{
-                if operation=="observe"{watch_owner(host,&owner.id).await?;}
-                let scope=host.schedules.connections.shared_identity(host,&owner.id)?;
-                let value=if operation=="inbox"{rpc(host,&owner.id,"areal/inbox/list",json!({"limit":limit.min(100)})).await?}else{directory(host,&owner.id).await?};
-                if operation=="observe" {
-                    super::library_service::record_scheduled_baseline(host,&owner.id,value["data"].as_array().context("INVALID_RESPONSE")?).await?;
-                    ensure!(host.schedules.connections.shared_identity(host,&owner.id)?==scope,"RESYNC_REQUIRED");
+    // 多项目/多工作树并发读取目录并保持输入顺序，避免按项目串行叠加延迟。
+    let results = futures_util::future::join_all(owners(host, params).await?.into_iter().map(
+        |owner| async move {
+            let result: Result<(Vec<Value>, bool, Value)> = async {
+                let live = operation != "preview"
+                    && host.schedules.connections.shared_identity(host, &owner.id).is_ok();
+                if live {
+                    if operation == "observe" {
+                        watch_owner(host, &owner.id).await?;
+                    }
+                    let scope = host.schedules.connections.shared_identity(host, &owner.id)?;
+                    let value = if operation == "inbox" {
+                        rpc(
+                            host,
+                            &owner.id,
+                            "areal/inbox/list",
+                            json!({"limit":limit.min(100)}),
+                        )
+                        .await?
+                    } else {
+                        directory(host, &owner.id).await?
+                    };
+                    if operation == "observe" {
+                        super::library_service::record_scheduled_baseline(
+                            host,
+                            &owner.id,
+                            value["data"].as_array().context("INVALID_RESPONSE")?,
+                        )
+                        .await?;
+                        ensure!(
+                            host.schedules.connections.shared_identity(host, &owner.id)? == scope,
+                            "RESYNC_REQUIRED"
+                        );
+                    }
+                    let rows = value["data"]
+                        .as_array()
+                        .context("INVALID_RESPONSE")?
+                        .iter()
+                        .filter(|row| {
+                            operation == "inbox"
+                                || (row["mode"] == "scheduled"
+                                    && (row["deletedAt"].is_null()
+                                        || row["hasUnsettledWork"] == true)
+                                    && source_thread
+                                        .is_none_or(|thread| row["sourceThreadId"] == thread))
+                        })
+                        .cloned()
+                        .collect();
+                    let scope = host.schedules.connections.shared_identity(host, &owner.id)?;
+                    Ok((
+                        rows,
+                        value["hasMore"] == true || value["nextCursor"].is_string(),
+                        json!({"projectId":owner.public,"status":"ready","source":"live","coverage":{"kind":"complete"},"readAt":now(),"connectionGeneration":connection_generation(host,&owner.id,&scope.2)?}),
+                    ))
+                } else {
+                    ensure!(operation != "inbox", "TASK_CATALOG_READ_FAILED");
+                    let value = published(host, &owner.id, source_thread).await?;
+                    require_published_catalog(&value)?;
+                    Ok((
+                        value["data"].as_array().cloned().unwrap_or_default(),
+                        value["hasMore"] == true,
+                        json!({"projectId":owner.public,"status":"unobserved","source":"published","coverage":{"kind":value["kind"]},"readAt":now()}),
+                    ))
                 }
-                let rows=value["data"].as_array().context("INVALID_RESPONSE")?.iter().filter(|row|operation=="inbox"||(row["mode"]=="scheduled"&&(row["deletedAt"].is_null()||row["hasUnsettledWork"]==true)&&source_thread.is_none_or(|thread|row["sourceThreadId"]==thread))).cloned().collect();
-                let scope=host.schedules.connections.shared_identity(host,&owner.id)?;
-                Ok((rows,value["hasMore"]==true||value["nextCursor"].is_string(),json!({"projectId":owner.public,"status":"ready","source":"live","coverage":{"kind":"complete"},"readAt":now(),"connectionGeneration":connection_generation(host,&owner.id,&scope.2)?})))
-            }else{ensure!(operation!="inbox","TASK_CATALOG_READ_FAILED");let value=published(host,&owner.id,source_thread).await?;require_published_catalog(&value)?;Ok((value["data"].as_array().cloned().unwrap_or_default(),value["hasMore"]==true,json!({"projectId":owner.public,"status":"unobserved","source":"published","coverage":{"kind":value["kind"]},"readAt":now()})))}
-        }.await;
+            }
+            .await;
+            (owner, result)
+        },
+    ))
+    .await;
+    for (owner, result) in results {
         match result {
             Ok((rows, more, state)) => {
                 if operation != "inbox"

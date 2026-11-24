@@ -36,12 +36,19 @@ export function acceptPendingMessage(key: string) {
   const message = messages.get(key);
   if (message) setPendingMessage(key, { ...message, accepted: true });
 }
-function subscribe(listener: () => void) {
+export function getPendingMessage(key: string) {
+  return messages.get(key);
+}
+export function subscribePendingMessages(listener: () => void) {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
   };
 }
 export function usePendingMessage(key: string) {
-  return useSyncExternalStore(subscribe, () => messages.get(key));
+  return useSyncExternalStore(
+    subscribePendingMessages,
+    () => messages.get(key),
+    () => messages.get(key),
+  );
 }

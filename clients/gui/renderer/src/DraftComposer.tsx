@@ -15,7 +15,12 @@ import { requestTurnStart, cancelTurnStart, type TurnStartRequest } from "./read
 import { composerUploadOwner } from "./ComposerUploadState.js";
 import type { DraftComposerProps } from "./draftComposerTypes.js";
 import { PendingMessageView } from "./UserMessageBody.js";
-import { acceptPendingMessage, setPendingMessage, usePendingMessage } from "./pendingMessage.js";
+import {
+  acceptPendingMessage,
+  getPendingMessage,
+  setPendingMessage,
+  usePendingMessage,
+} from "./pendingMessage.js";
 import { Input } from "@areal/ui";
 import { useComposerWorkspaceFiles } from "./lib/workspaceFileComposer.js";
 import { imageAnnotationBlocked, useImageAnnotationRevision } from "./imageAnnotations.js";
@@ -218,11 +223,13 @@ export function DraftComposer({
       backendReady &&
       project.id !== "projectless",
   });
-  const editLocked = busy || !!unknown || !!reviewDraft.error;
+  // 常规草稿发送只锁提交防重入，不把编辑区和底部工具栏集体置灰，避免 50ms 往返造成整块闪烁。
+  const editLocked =
+    !!unknown || !!reviewDraft.error || (busy && activeCreation?.worktree === true);
   const executionReady = backendReady && !!project.state?.connected;
   const modelReady = executionReady || (backendReady && !!prepareProject && modelCatalogReady);
   const modelSelectionDisabled = editLocked || !modelReady;
-  const submitDisabled = modelSelectionDisabled || !effectiveModel;
+  const submitDisabled = busy || modelSelectionDisabled || !effectiveModel;
   const models = draftModelChoices(project, effectiveModel, currentModel);
   const desktopUnsupported =
     conversationSubmitReadOnly ||
@@ -521,17 +528,21 @@ export function DraftComposer({
     )
       return;
     markSending(key, true);
-    if (!goalMode && selection?.mode !== "worktree")
+    if (!goalMode && selection?.mode !== "worktree") {
       setPendingMessage(key, {
         text: submittedInput.text,
         files: submittedInput.files,
         previousUserIds: [],
         starting: true,
       });
+      // 就地清空输入内容，不再通过切换 ChatPromptEditor key 强制卸载重挂载编辑器。
+      api.current?.clear();
+    }
     setDraftError("");
     let turnStart: TurnStartRequest | undefined;
     let sendStarted = false;
     let targetKey: string | undefined;
+    let opening: Promise<unknown> | undefined;
     let creationAttempted = false;
     const creationRequestId = crypto.randomUUID();
     try {
@@ -593,7 +604,7 @@ export function DraftComposer({
       }
       clear();
       // Show the accepted task immediately, including while the first model request waits.
-      if (mounted.current) void onOpen(owner.id, result.threadId);
+      if (mounted.current) opening = Promise.resolve(onOpen(owner.id, result.threadId));
       if (goalMode) {
         const latest = await action("manage", {
           projectId: owner.id,
@@ -651,6 +662,7 @@ export function DraftComposer({
       window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: targetKey }));
     } catch (e) {
       if (targetKey) setPendingMessage(targetKey);
+      else if (!goalMode && selection?.mode !== "worktree") api.current?.setText(value);
       const failure = e as RecoveryFailure;
       if (stoppedCreation.current.has(creationRequestId)) return;
       if (!sendStarted || !failure.submissionUnknown) cancelTurnStart(turnStart);
@@ -677,7 +689,8 @@ export function DraftComposer({
         }
       }
     } finally {
-      setPendingMessage(key);
+      if (targetKey && opening) void opening.finally(() => setPendingMessage(key));
+      else setPendingMessage(key);
       if (targetKey) {
         markSending(targetKey, false);
       }
@@ -890,7 +903,6 @@ export function DraftComposer({
       <div className="composer-input-stack">
         <div ref={setMenuAnchor} className="composer-menu-anchor" />
         <ChatPromptEditor
-          key={outgoing || (activeCreation?.worktree && busy) ? "waiting" : "draft"}
           surfaceLayout={surfaceLayout}
           surfacePlacement="home"
           triggerPanelContainer={menuAnchor}
@@ -1001,7 +1013,7 @@ export function DraftComposer({
             ],
           }}
           onChange={(value) => {
-            if (outgoing || (activeCreation?.worktree && busy)) return;
+            if (outgoing || getPendingMessage(key) || (activeCreation?.worktree && busy)) return;
             setText(value);
             composerDraftStorage.scheduleItem(key, value);
           }}

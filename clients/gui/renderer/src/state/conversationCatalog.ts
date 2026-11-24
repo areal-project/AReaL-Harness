@@ -1,4 +1,5 @@
 import { browserAnnotationTitle } from "../browserAnnotations.js";
+import { getPendingMessage } from "../pendingMessage.js";
 import { conversationUserState } from "./userStates.js";
 import { imageAnnotationTitle } from "../imageAnnotations.js";
 import type { Data } from "../services.js";
@@ -21,6 +22,8 @@ export function conversationCatalog(
           .find((i: Data) => i.type === "userMessage")
           ?.content?.find((p: Data) => p.type === "text")?.text ||
           summary.preview ||
+          // 新建会话首条消息发出但尚未投影前复用待发正文，避免侧栏先闪“新对话”再跳变标题。
+          getPendingMessage(`areal-gui:draft:${owner.id}:${summary.id}`)?.text ||
           "新对话",
       ),
     );

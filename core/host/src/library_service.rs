@@ -416,18 +416,115 @@ pub(super) async fn record_scheduled_baseline(
     project: &str,
     rows: &[Value],
 ) -> Result<()> {
-    if host.gateway.workbench.active_source().is_none() {
+    let scheduled: Vec<&Value> = rows
+        .iter()
+        .filter(|row| row["mode"] == "scheduled")
+        .collect();
+    if scheduled.is_empty() {
         return Ok(());
     }
-    for row in rows.iter().filter(|row| row["mode"] == "scheduled") {
-        let task = rpc(
+    let Some(source) = host.gateway.workbench.active_source() else {
+        return Ok(());
+    };
+    let aliases = bindings(host, &source)?;
+    let Some((_, alias)) = aliases.iter().find(|(canonical, _)| canonical == project) else {
+        return Ok(());
+    };
+    let home = library_store::source_home(host, &source)?;
+    let projects = worktree_catalog::saved_projects(&home)?;
+    let logical = projects
+        .iter()
+        .find(|p| p["id"] == *alias)
+        .and_then(|p| p["logicalProjectId"].as_str())
+        .unwrap_or(alias)
+        .to_owned();
+    let mut library_threads = library_store::read_source(host, &source)?["threads"].clone();
+    for row in scheduled {
+        // 目录行已明确无任何运行记录时跳过逐条 RPC，避免无谓阻塞目录观察。
+        if row.get("runs").is_none() && row.get("latestRun").is_some_and(Value::is_null) {
+            continue;
+        }
+        let owned_task;
+        let task = if row.get("runs").and_then(Value::as_array).is_some() {
+            row
+        } else {
+            owned_task = rpc(
+                host,
+                project,
+                "areal/task/read",
+                json!({"taskId":row["id"]}),
+            )
+            .await?;
+            &owned_task
+        };
+        record_scheduled_with_context(host, project, &source, &logical, &mut library_threads, task)
+            .await?;
+    }
+    Ok(())
+}
+
+async fn record_scheduled_with_context(
+    host: &Rc<Host>,
+    project: &str,
+    source: &str,
+    logical: &str,
+    library_threads: &mut Value,
+    task: &Value,
+) -> Result<()> {
+    if task["mode"] != "scheduled" {
+        return Ok(());
+    }
+    for run in task["runs"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|run| run["status"] == "completed")
+    {
+        let Some(thread) = run["threadId"].as_str() else {
+            continue;
+        };
+        let key = format!("{logical}:{thread}");
+        if library_threads[&key]["scheduledCompletionId"] == run["id"] {
+            continue;
+        }
+        let reply = rpc(
             host,
             project,
-            "areal/task/read",
-            json!({"taskId":row["id"]}),
+            "thread/read",
+            json!({"threadId":thread,"includeTurns":true}),
         )
         .await?;
-        record_scheduled(host, project, &task).await?;
+        let completion = reply["thread"]["turns"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .rev()
+            .find(|turn| turn["status"] == "completed")
+            .and_then(|turn| turn["id"].as_str());
+        let Some(completion) = completion else {
+            continue;
+        };
+        ensure!(
+            host.gateway.workbench.backend_has_source(source),
+            "RESYNC_REQUIRED"
+        );
+        library_store::change(host, source, |state| {
+            let meta = state["threads"]
+                .as_object_mut()
+                .unwrap()
+                .entry(key.clone())
+                .or_insert_with(|| json!({}));
+            if meta["scheduledCompletionId"] == run["id"] {
+                return Ok(());
+            }
+            meta["scheduledCompletionId"] = run["id"].clone();
+            if meta["completionId"] != completion {
+                meta["completionId"] = json!(completion);
+                meta["unread"] = json!(true);
+            }
+            Ok(())
+        })?;
+        library_threads[&key]["scheduledCompletionId"] = run["id"].clone();
     }
     Ok(())
 }
@@ -450,58 +547,6 @@ async fn record_scheduled(host: &Rc<Host>, project: &str, task: &Value) -> Resul
         .find(|p| p["id"] == *alias)
         .and_then(|p| p["logicalProjectId"].as_str())
         .unwrap_or(alias);
-    for run in task["runs"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|run| run["status"] == "completed")
-    {
-        let Some(thread) = run["threadId"].as_str() else {
-            continue;
-        };
-        let key = format!("{logical}:{thread}");
-        if library_store::read_source(host, &source)?["threads"][&key]["scheduledCompletionId"]
-            == run["id"]
-        {
-            continue;
-        }
-        let reply = rpc(
-            host,
-            project,
-            "thread/read",
-            json!({"threadId":thread,"includeTurns":true}),
-        )
-        .await?;
-        let completion = reply["thread"]["turns"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .rev()
-            .find(|turn| turn["status"] == "completed")
-            .and_then(|turn| turn["id"].as_str());
-        let Some(completion) = completion else {
-            continue;
-        };
-        ensure!(
-            host.gateway.workbench.backend_has_source(&source),
-            "RESYNC_REQUIRED"
-        );
-        library_store::change(host, &source, |state| {
-            let meta = state["threads"]
-                .as_object_mut()
-                .unwrap()
-                .entry(key.clone())
-                .or_insert_with(|| json!({}));
-            if meta["scheduledCompletionId"] == run["id"] {
-                return Ok(());
-            }
-            meta["scheduledCompletionId"] = run["id"].clone();
-            if meta["completionId"] != completion {
-                meta["completionId"] = json!(completion);
-                meta["unread"] = json!(true);
-            }
-            Ok(())
-        })?;
-    }
-    Ok(())
+    let mut library_threads = library_store::read_source(host, &source)?["threads"].clone();
+    record_scheduled_with_context(host, project, &source, logical, &mut library_threads, task).await
 }

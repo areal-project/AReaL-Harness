@@ -63,4 +63,24 @@ describe("Worktree identity badge (WT-IDENTITY-01)", () => {
     expect(html).toContain("Worktree task");
     expect(html).not.toContain("/Users/example/worktrees/secret-dir");
   });
+
+  it("keeps the leading status slot mounted for pinned idle rows to prevent horizontal jump when running", () => {
+    const html = renderToStaticMarkup(
+      createElement(MemoTaskItem, {
+        id: "pinned-thread",
+        title: "Pinned chat",
+        nested: false,
+        active: false,
+        pinned: true,
+        running: false,
+        attention: false,
+        archived: false,
+        disabled: false,
+        onSelect() {},
+        onRename() {},
+        onPin() {},
+      }),
+    );
+    expect(html).toContain("size-4 shrink-0");
+  });
 });

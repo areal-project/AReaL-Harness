@@ -109,7 +109,7 @@ export const MemoTaskItem = memo(function TaskListItem({
         "group/task-item navigation-task-row relative flex cursor-pointer gap-2 transition-[background-color,border-color,box-shadow] items-center",
       )}
     >
-      {(nested || statePending || running || attention || unread || archived) && (
+      {(nested || pinned || statePending || running || attention || unread || archived) && (
         <div className="relative flex size-4 shrink-0 items-center justify-center">
           {statePending ? (
             <TitleTooltip title={labels?.statePendingTooltip ?? "打开任务以更新状态"}>

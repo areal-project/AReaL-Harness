@@ -4581,7 +4581,11 @@ button[aria-label="停止"] {
 }
 
 .turn-activity {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing-inline) * 3 / 4);
   min-width: 0;
+  min-height: calc(var(--text-conversation) * var(--conversation-line));
   margin-block: var(--conversation-gap) 0;
 }
 .turn-retry-attention {

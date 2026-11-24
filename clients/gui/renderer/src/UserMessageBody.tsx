@@ -143,7 +143,13 @@ export function PendingMessageView({
             </div>
           )}
           {(message.text || !message.files.length) && (
-            <div className="user-bubble whitespace-pre-wrap break-words">
+            <div
+              className={
+                message.text
+                  ? "user-bubble break-words"
+                  : "user-bubble whitespace-pre-wrap break-words"
+              }
+            >
               {message.text ? (
                 <UserMessageBody theme={theme} fileReferenceRoot={fileReferenceRoot}>
                   {message.text}

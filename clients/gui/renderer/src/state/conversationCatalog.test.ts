@@ -1,4 +1,5 @@
 import { expect, test } from "vite-plus/test";
+import { setPendingMessage } from "../pendingMessage.js";
 import { conversationCatalog } from "./conversationCatalog.js";
 
 const summaries = [{ id: "named", preview: "读一下 README" }, { id: "blank" }, { id: "titled" }];
@@ -41,4 +42,22 @@ test("pending only while a started project is still loading its list", () => {
 test("cached Host summaries do not flash pending indicators during refresh", () => {
   const refreshing = { ...project(true), summariesLoaded: false, summariesFreshness: "cached" };
   expect(conversationCatalog([refreshing], library).some((row) => row.statePending)).toBe(false);
+});
+
+test("newly opened thread uses pending outgoing text before first turn projects", () => {
+  const key = "areal-gui:draft:p:blank";
+  setPendingMessage(key, {
+    text: "帮我检查日志",
+    files: [],
+    previousUserIds: [],
+  });
+  try {
+    const entry = conversationCatalog([project(true)], library, {
+      projectId: "p",
+      threadId: "blank",
+    }).find((row) => row.summary.id === "blank");
+    expect(entry?.title).toBe("帮我检查日志");
+  } finally {
+    setPendingMessage(key);
+  }
 });

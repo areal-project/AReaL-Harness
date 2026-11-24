@@ -671,6 +671,16 @@ export function createHostSnapshotProjector(
           observationErrors: Object.assign({}, ...owners.map((owner) => owner.observationErrors)),
           summaries: owners.flatMap((owner) => owner.summaries),
           summariesLoaded: owners.every((owner) => owner.summariesLoaded),
+          // 多工作树项目聚合 freshness：任一所有者尚未 fresh 时按 cached/unknown 聚合，
+          // 避免 summariesLoaded=false 与逻辑项目 summariesFreshness="fresh" 组合误触发全列表 statePending 闪烁。
+          summariesFreshness: owners.every((owner) => owner.summariesFreshness === "fresh")
+            ? "fresh"
+            : owners.some(
+                  (owner) =>
+                    owner.summariesFreshness === "cached" || owner.summariesFreshness === "fresh",
+                )
+              ? "cached"
+              : "unknown",
           state: {
             ...logical.state,
             ...(owners.some((owner) => owner.state.tasks)

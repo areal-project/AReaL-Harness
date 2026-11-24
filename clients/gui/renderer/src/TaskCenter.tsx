@@ -123,6 +123,9 @@ type OwnerRead =
       explicit?: boolean;
     };
 const ownerRows = (read?: OwnerRead) => (read?.status === "ready" ? read.value : read?.previous);
+// 进程内热缓存：切走再回到定时任务页时首帧先展示最近一次目录，同时后台静默复核，避免冷空态与“正在读取任务…”闪烁。
+const warmTaskCatalog = new Map<string, OwnerRows>();
+const warmCatalogIdentity: CatalogIdentity = { requestId: "warm-cache", viewEpoch: 0 };
 const catalogTrace = (
   kind: "begin" | "response_received" | "epoch_discarded" | "owner_committed" | "end" | "abandoned",
   identity: CatalogIdentity,
@@ -691,7 +694,16 @@ export function TaskCenter({
       mounted.current = false;
     };
   }, []);
-  const [catalog, setCatalog] = useState<Record<string, OwnerRead>>({});
+  const [catalog, setCatalog] = useState<Record<string, OwnerRead>>(() =>
+    Object.fromEntries(
+      projects.flatMap((owner) => {
+        const cached = warmTaskCatalog.get(owner.id);
+        return cached
+          ? [[owner.id, { status: "ready" as const, identity: warmCatalogIdentity, value: cached }]]
+          : [];
+      }),
+    ),
+  );
   const catalogState = useRef(catalog);
   catalogState.current = catalog;
   const committedOwners = useRef(new Map<string, string>());
@@ -780,10 +792,13 @@ export function TaskCenter({
     const byId = new Map<string, Data>(
       rows.filter((row) => row.projectId === owner.id).map((row) => [row.id, row]),
     );
+    const ownerSettled =
+      catalog[owner.id]?.status === "ready" || catalog[owner.id]?.status === "error";
     for (const live of Object.values<Data>(owner.state?.tasks ?? {})) {
       if (live.mode !== "scheduled") continue;
       const previous = byId.get(live.id);
-      if (!previous && !ownerRows(catalog[owner.id])?.hasMore) continue;
+      // 目录尚未读完时先展示项目内存里已有的实时定时任务，避免首帧空白；目录落定后再以目录边界为准。
+      if (ownerSettled && !previous && !ownerRows(catalog[owner.id])?.hasMore) continue;
       if (
         previous &&
         ownerRows(catalog[owner.id])?.source === "live" &&
@@ -1112,13 +1127,14 @@ export function TaskCenter({
             ),
         );
       await Promise.all(
-        Array.from({ length: Math.min(2, queue.length) }, async () => {
+        Array.from({ length: Math.min(6, queue.length) }, async () => {
           while (active && queue.length) {
             const owner = queue.shift();
             if (!owner) continue;
             const quiet = !!quietOwners && catalogState.current[owner.id]?.status === "ready";
             const explicit = !!retryProjectId || explicitRefresh;
-            if (!quiet)
+            const hasWarmRows = !explicit && catalogState.current[owner.id]?.status === "ready";
+            if (!quiet && !hasWarmRows)
               setCatalog((previous) => ({
                 ...previous,
                 [owner.id]: {
@@ -1197,6 +1213,7 @@ export function TaskCenter({
                 data: result.data,
                 hasMore: result.hasMore,
               };
+              warmTaskCatalog.set(owner.id, value);
               setCatalog((previous) => ({
                 ...previous,
                 [owner.id]: { status: "ready", identity, value },
@@ -1936,25 +1953,25 @@ export function TaskCenter({
       className={`task-center text-ui-base ${detailOpen ? "has-detail" : ""} ${narrow ? "is-narrow" : ""}`}
     >
       <div className="task-center-toolbar">
-        {navigation}
         <Button
           variant="ghost-subtle"
           size="icon"
-          type="submit"
-          aria-label={t("operations.schedules.forward")}
-          disabled
-        >
-          <ArrowRight size={16} />
-        </Button>
-        <Button
-          variant="ghost-subtle"
-          size="icon"
-          type="submit"
+          type="button"
           aria-label={t("operations.schedules.toggleSidebar")}
           aria-expanded={!navCollapsed}
           onClick={() => setNavCollapsed(!navCollapsed)}
         >
           <SidebarToggleIcon />
+        </Button>
+        {navigation}
+        <Button
+          variant="ghost-subtle"
+          size="icon"
+          type="button"
+          aria-label={t("operations.schedules.forward")}
+          disabled
+        >
+          <ArrowRight size={16} />
         </Button>
       </div>
       <ScheduledWorkspace>
@@ -2060,9 +2077,11 @@ export function TaskCenter({
                 />
               );
             })}
-            <DelayedVisible active={initialLoading && !listed.length}>
-              <p role="status">{t("operations.schedules.readingCatalog")}</p>
-            </DelayedVisible>
+            {!listed.length && (
+              <DelayedVisible active={initialLoading}>
+                <p role="status">{t("operations.schedules.readingCatalog")}</p>
+              </DelayedVisible>
+            )}
             {(
               [
                 [

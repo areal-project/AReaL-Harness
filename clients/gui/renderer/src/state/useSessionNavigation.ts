@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { beginSessionLoad } from "@areal/client";
 import { currentErrorText } from "../errors/currentErrorText.js";
+import { getPendingMessage, subscribePendingMessages } from "../pendingMessage.js";
 import {
   recoveryMessage,
   sameRestorationOwner,
@@ -136,9 +137,18 @@ export function useSessionNavigation(
         }),
     [snapshot.projects, library],
   );
+  const readActivePendingTitle = () =>
+    projectId && threadId
+      ? getPendingMessage(`areal-gui:draft:${projectId}:${threadId}`)?.text
+      : undefined;
+  const activePendingTitle = useSyncExternalStore(
+    subscribePendingMessages,
+    readActivePendingTitle,
+    readActivePendingTitle,
+  );
   const summaries = useMemo(
     () => conversationCatalog(projects, library, { projectId, threadId }),
-    [projects, library, projectId, threadId],
+    [projects, library, projectId, threadId, activePendingTitle],
   );
   // Sidebar visibility must not change the owner of an explicitly opened resource.
   const logicalProject = noProject
@@ -587,12 +597,12 @@ export function useSessionNavigation(
       },
     );
   };
-  const selectConversation = async (pid: string, id: string) => {
+  const selectConversation = async (
+    pid: string,
+    id: string,
+    options?: { waitForReady?: boolean },
+  ) => {
     beginSessionLoad(id);
-    setNoProject(false);
-    setProjectId(pid);
-    setThreadId(id);
-    localStorage.setItem(`areal-gui:thread:${pid}`, id);
     const target = conversationProject(
       snapshot.projects.find((item) => item.id === pid),
       id,
@@ -604,6 +614,27 @@ export function useSessionNavigation(
       ...readHostOwner(services.reads),
     };
     selectedRestoration.current = owner;
+    // 草稿首次发送切到新对话时，先等待本机 Host 完成 session 读取再切换 threadId，
+    // 让草稿预览直接一步落到活跃会话，避免中间闪现空白 loading 骨架输入框。
+    if (
+      options?.waitForReady &&
+      services.reads &&
+      services.reads.status().connection === "ready" &&
+      target?.state?.connected &&
+      !target.state?.threads?.[id]
+    ) {
+      await restoreConversation(owner, "open").catch(() => {});
+      if (!sameRestorationOwner(selectedRestoration.current, owner)) return;
+      setNoProject(false);
+      setProjectId(pid);
+      setThreadId(id);
+      localStorage.setItem(`areal-gui:thread:${pid}`, id);
+      return;
+    }
+    setNoProject(false);
+    setProjectId(pid);
+    setThreadId(id);
+    localStorage.setItem(`areal-gui:thread:${pid}`, id);
     // 选择保留到下次握手；离线时不向旧 Host 发起打开或预热。
     if (services.reads && services.reads.status().connection !== "ready") return;
     await restoreConversation(owner, target?.state?.connected ? "open" : "connect");
