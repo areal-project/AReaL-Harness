@@ -62,6 +62,20 @@ test("a conversation waiting on the user outranks one still working", () => {
   expect(conversationUserState(live(), "t1", { turns: [{ status: "failed" }] }).kind).toBe(
     "failed",
   );
+  // 非当前选中的后台对话没有展开完整 turns 时，仍按 Host 实时摘要感知运行中/待处理状态；离线项目不误报运行中。
+  expect(conversationUserState(live(), "bg", undefined, { activity: "working" }).kind).toBe(
+    "working",
+  );
+  expect(conversationUserState(live(), "bg", undefined, { activity: "needsYou" }).kind).toBe(
+    "needsYou",
+  );
+  expect(
+    conversationUserState({ state: { connected: false } }, "bg", undefined, { activity: "working" })
+      .kind,
+  ).toBe("idle");
+  expect(conversationUserState(live(), "t1", { turns: [] }, { activity: "working" }).kind).toBe(
+    "idle",
+  );
 });
 
 test("task run statuses map onto six user states", () => {

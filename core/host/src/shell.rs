@@ -128,6 +128,9 @@ pub(crate) struct NavigationSummary {
     pub updated_at: Option<f64>,
     #[serde(default)]
     pub desktop: SummaryDesktop,
+    /// Core 实时执行摘要态（仅活跃连接投影，不落盘到 library.json），用于非当前会话的侧栏感知。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -416,8 +419,12 @@ pub(crate) fn snapshot(
                 .projects
                 .get(&binding.alias)
                 .and_then(|metadata| metadata.navigation_summaries.clone());
-            project.summaries = if let Some(items) = cached {
+            project.summaries = if let Some(mut items) = cached {
                 validate_summaries(&items)?;
+                // 磁盘缓存只保留导航元数据，不把历史瞬时运行态当成离线项目正在执行。
+                for item in &mut items {
+                    item.activity = None;
+                }
                 Summaries::Cached { items }
             } else {
                 let prefix = format!("{}:", binding.alias);
@@ -435,6 +442,7 @@ pub(crate) fn snapshot(
                         created_at: None,
                         updated_at: None,
                         desktop: SummaryDesktop::default(),
+                        activity: None,
                     })
                     .collect();
                 Summaries::Unknown { items }
@@ -507,11 +515,32 @@ pub(crate) fn apply_cached_observation(
     Ok(())
 }
 
+fn summary_activity(raw: &Value) -> Option<String> {
+    if raw["desktop"]["interactions"]
+        .as_array()
+        .is_some_and(|items| items.iter().any(|item| item["status"] == "pending"))
+    {
+        return Some("needsYou".into());
+    }
+    match raw["status"]["type"].as_str() {
+        Some("active") => Some("working".into()),
+        Some("systemError") => Some("failed".into()),
+        _ => None,
+    }
+}
+
 fn decode_summaries(summaries: Vec<Value>) -> Result<Vec<NavigationSummary>> {
     let items: Vec<NavigationSummary> = summaries
         .into_iter()
-        .map(serde_json::from_value)
-        .collect::<std::result::Result<_, _>>()
+        .map(|raw| {
+            let derived = summary_activity(&raw);
+            let mut item: NavigationSummary = serde_json::from_value(raw)?;
+            if item.activity.is_none() {
+                item.activity = derived;
+            }
+            Ok(item)
+        })
+        .collect::<serde_json::Result<_>>()
         .context("invalid Core navigation summaries")?;
     validate_summaries(&items)?;
     Ok(items)
@@ -527,6 +556,12 @@ fn validate_summaries(items: &[NavigationSummary]) -> Result<()> {
         ensure!(
             !item.id.is_empty() && ids.insert(&item.id),
             "invalid or duplicate navigation summary id"
+        );
+        ensure!(
+            item.activity
+                .as_deref()
+                .is_none_or(|activity| matches!(activity, "working" | "needsYou" | "failed")),
+            "invalid navigation summary activity"
         );
     }
     Ok(())
@@ -1233,5 +1268,55 @@ mod tests {
         assert_eq!(project, fresh);
         project.state = "stopped".into();
         assert!(apply_observation(&mut project, "generation", vec![], Some(0)).is_err());
+    }
+
+    #[test]
+    fn live_observation_projects_activity_while_disk_cache_clears_transient_activity() {
+        let mut project = snapshot(&[status("canonical")], &[])
+            .unwrap()
+            .projects
+            .remove(0);
+        project.state = "ready".into();
+        project.service_generation = Some("generation".into());
+        apply_observation(
+            &mut project,
+            "generation",
+            vec![
+                json!({"id":"running","status":{"type":"active","activeFlags":[]},"desktop":{"archived":false}}),
+                json!({"id":"waiting","status":{"type":"active","activeFlags":[]},"desktop":{"archived":false,"interactions":[{"status":"pending"}]}}),
+                json!({"id":"failed","status":{"type":"systemError"},"desktop":{"archived":false}}),
+                json!({"id":"idle","status":{"type":"idle"},"desktop":{"archived":false}}),
+            ],
+            Some(1),
+        )
+        .unwrap();
+        let Summaries::Fresh { items } = &project.summaries else {
+            panic!("expected fresh summaries");
+        };
+        assert_eq!(items[0].activity.as_deref(), Some("working"));
+        assert_eq!(items[1].activity.as_deref(), Some("needsYou"));
+        assert_eq!(items[2].activity.as_deref(), Some("failed"));
+        assert_eq!(items[3].activity, None);
+
+        // 离线磁盘缓存中即便有旧 activity 字段也不当作正在运行。
+        let root = tempfile::tempdir().unwrap();
+        write(
+            root.path(),
+            "library.json",
+            json!({
+                "projects": {
+                    "legacy": {
+                        "navigationSummaries": [
+                            {"id":"stale","desktop":{"archived":false},"activity":"working"}
+                        ]
+                    }
+                }
+            }),
+        );
+        let cached = snapshot(&[status("canonical")], &[source(root.path())]).unwrap();
+        let Summaries::Cached { items } = &cached.projects[0].summaries else {
+            panic!("expected cached summaries");
+        };
+        assert_eq!(items[0].activity, None);
     }
 }

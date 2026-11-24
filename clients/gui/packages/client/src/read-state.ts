@@ -142,7 +142,11 @@ function summary(value: unknown): value is NavigationSummary {
     (value.conversation === undefined ||
       (record(value.conversation) && typeof value.conversation.kind === "string")) &&
     record(value.desktop) &&
-    typeof value.desktop.archived === "boolean"
+    typeof value.desktop.archived === "boolean" &&
+    (value.activity === undefined ||
+      value.activity === "working" ||
+      value.activity === "needsYou" ||
+      value.activity === "failed")
   );
 }
 function worktree(value: unknown): value is WorktreeDisplay {

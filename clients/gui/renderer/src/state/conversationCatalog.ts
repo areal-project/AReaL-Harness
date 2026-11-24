@@ -76,7 +76,7 @@ export function conversationCatalog(
       })
       .map((summary) => {
         const t = owner.state?.threads[summary.id];
-        const status = conversationUserState(owner, summary.id, t);
+        const status = conversationUserState(owner, summary.id, t, summary);
         return {
           owner,
           summary,

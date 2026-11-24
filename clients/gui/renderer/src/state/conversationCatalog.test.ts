@@ -61,3 +61,21 @@ test("newly opened thread uses pending outgoing text before first turn projects"
     setPendingMessage(key);
   }
 });
+
+test("background running and attention summaries stay visible even when another thread is open", () => {
+  const withActivity = {
+    ...project(true),
+    summaries: [
+      { id: "bg-run", preview: "执行 Python 命令", activity: "working" },
+      { id: "bg-ask", preview: "等待审批", activity: "needsYou" },
+      { id: "other", preview: "当前查看" },
+    ],
+  };
+  const catalog = conversationCatalog([withActivity], library, {
+    projectId: "p",
+    threadId: "other",
+  });
+  expect(catalog.find((row) => row.summary.id === "bg-run")?.running).toBe(true);
+  expect(catalog.find((row) => row.summary.id === "bg-ask")?.attention).toBe(true);
+  expect(catalog.find((row) => row.summary.id === "other")?.running).toBe(false);
+});

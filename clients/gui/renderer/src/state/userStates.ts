@@ -51,18 +51,24 @@ export function conversationUserState(
   project: Data | undefined,
   threadId: string,
   thread: Data | undefined,
+  summary?: Data,
 ): ConversationUserState {
-  const live = project?.state?.connected === true;
+  const live = (summary?.executionConnected ?? project?.state?.connected) === true;
   const needsYou =
     live &&
-    (project?.state?.interactions?.[threadId]?.data ?? []).some(
+    ((project?.state?.interactions?.[threadId]?.data ?? []).some(
       (item: Data) => item.status === "pending",
-    );
+    ) ||
+      (!thread && summary?.activity === "needsYou"));
   if (needsYou) return { kind: "needsYou", message: "userState.conversation.needsYou" };
   const turns: Data[] = thread?.turns ?? [];
-  if (live && turns.some((turn) => turn.status === "inProgress"))
+  if (
+    live &&
+    (turns.some((turn) => turn.status === "inProgress") ||
+      (!thread && summary?.activity === "working"))
+  )
     return { kind: "working", message: "userState.conversation.working" };
-  if (turns.at(-1)?.status === "failed")
+  if (turns.at(-1)?.status === "failed" || (!thread && summary?.activity === "failed"))
     return { kind: "failed", message: "userState.conversation.failed" };
   return { kind: "idle", message: "userState.conversation.idle" };
 }

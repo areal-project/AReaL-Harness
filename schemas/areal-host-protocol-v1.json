@@ -13638,6 +13638,14 @@
           ],
           "additionalProperties": false
         },
+        "activity": {
+          "type": "string",
+          "enum": [
+            "working",
+            "needsYou",
+            "failed"
+          ]
+        },
         "cloud": {
           "$ref": "#/$defs/CloudSummary"
         }
