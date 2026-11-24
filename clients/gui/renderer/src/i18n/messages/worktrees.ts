@@ -271,7 +271,7 @@ export const worktreeMessages = {
   "worktree.ready": { "zh-CN": "工作树已就绪", en: "Worktree ready" },
   "worktree.failed": { "zh-CN": "工作树准备失败", en: "Worktree preparation failed" },
   "worktree.unknown": {
-    "zh-CN": "工作树结果待核对，请勿重复创建",
+    "zh-CN": "工作树创建结果待确认，请勿重复创建",
     en: "Worktree result needs checking. Do not create a duplicate.",
   },
   "worktree.automaticEvent": {

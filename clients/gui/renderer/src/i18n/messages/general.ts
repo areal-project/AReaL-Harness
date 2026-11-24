@@ -137,7 +137,7 @@ export const generalMessages = {
     en: "Waiting for browser authorization",
   },
   "settings.chatGPTSubscription.refreshToCheckConnectionStatus": {
-    "zh-CN": "请刷新核对连接状态。",
+    "zh-CN": "请刷新以查看最新连接状态。",
     en: "Refresh to check connection status.",
   },
   "settings.chatGPTSubscription.cancelSignIn": {
@@ -1176,7 +1176,7 @@ export const generalMessages = {
     en: "Session settings",
   },
   "settings.sessionSettings.theConfigurationResultNeedsCheckingItWill": {
-    "zh-CN": "配置结果待核对，不会自动重发。",
+    "zh-CN": "配置结果待确认，不会自动重发。",
     en: "The configuration result needs checking. It will not be resent automatically.",
   },
   "settings.sessionSettings.sessionSettingsChangedReloadBeforeDecidingWhether": {
@@ -1328,7 +1328,7 @@ export const generalMessages = {
     en: "Archived tasks are read-only. Session settings cannot be changed.",
   },
   "settings.sessionSettings.theConfigurationResultNeedsCheckingYourDraft": {
-    "zh-CN": "配置结果待核对。草稿已保留，不会自动重发。",
+    "zh-CN": "配置结果待确认，草稿已保留，不会自动重发。",
     en: "The configuration result needs checking. Your draft is retained and will not be resent automatically.",
   },
   "settings.sessionSettings.saveSessionSettings": {
@@ -1356,7 +1356,7 @@ export const generalMessages = {
     en: "Use latest settings",
   },
   "settings.sessionSettings.reviewSessionSettings": {
-    "zh-CN": "核对会话配置",
+    "zh-CN": "查看会话配置",
     en: "Review session settings",
   },
   "settings.sessionSettings.reloadedSessionSettings": {
@@ -1748,7 +1748,7 @@ export const generalMessages = {
     en: "Signed out",
   },
   "settings.chatGPTSubscription.statusNeedsChecking": {
-    "zh-CN": "状态待核对",
+    "zh-CN": "状态待确认",
     en: "Status needs checking",
   },
   "settings.chatGPTSubscription.activeAccount": {

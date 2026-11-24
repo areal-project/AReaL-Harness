@@ -133,8 +133,8 @@ export function TaskWorkspace({
         <>
           {!sidebar && (
             <Button
-              unstyled
-              className="icon-button"
+              variant="ghost-subtle"
+              size="icon"
               aria-label={t("common.navigation.expandSidebar")}
               onClick={() => onShowSidebar()}
             >
@@ -142,8 +142,8 @@ export function TaskWorkspace({
             </Button>
           )}
           <Button
-            unstyled
-            className="icon-button"
+            variant="ghost-subtle"
+            size="icon"
             aria-label={t("common.navigation.backToChat")}
             onClick={() => {
               workspace.returnToConversation();

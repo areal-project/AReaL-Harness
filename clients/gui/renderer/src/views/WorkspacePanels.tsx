@@ -344,8 +344,8 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
             actions: taskActions,
             navigation: !sidebar ? (
               <Button
-                unstyled
-                className="icon-button"
+                variant="ghost-subtle"
+                size="icon"
                 aria-label={t("common.navigation.expandSidebar")}
                 aria-expanded={false}
                 aria-controls="areal-sidebar"

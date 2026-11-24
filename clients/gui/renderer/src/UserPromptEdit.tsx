@@ -112,9 +112,8 @@ export function UserPromptEdit({
     <>
       <ControlHintTooltip title="编辑消息">
         <Button
-          unstyled
-          data-slot={undefined}
-          className="icon-button"
+          variant="ghost-subtle"
+          size="icon"
           type="button"
           aria-label="编辑消息"
           disabled={busy || pending || !project.state?.connected || thread.desktop?.archived}

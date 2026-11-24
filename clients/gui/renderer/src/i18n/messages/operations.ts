@@ -17,16 +17,16 @@ export const operationMessages = {
     en: "View original operation and diagnostics",
   },
   "operations.browserUnconfirmed": {
-    "zh-CN": "浏览器操作未确认，任务已暂停。请核对当前页面后继续。",
+    "zh-CN": "浏览器操作未确认，任务已暂停。请查看当前页面后继续。",
     en: "The browser operation is unconfirmed. Check the current page to continue the paused task.",
   },
   "operations.browserInspected": {
-    "zh-CN": "已记录页面核对，可以继续发送消息。原操作不会重放。",
+    "zh-CN": "已记录页面确认，可继续发送消息，原操作不会重放。",
     en: "Page inspection recorded. You can send another message; the original operation will not be replayed.",
   },
   "operations.browserInspect": { "zh-CN": "核对浏览器结果", en: "Check browser result" },
   "operations.browserInspectionHelp": {
-    "zh-CN": "请核对浏览器当前页面（是否已登录、是否已提交），再发送保留的草稿继续。",
+    "zh-CN": "请先查看浏览器当前页面状态，再发送保留的草稿继续。",
     en: "Check the current browser page (signed in? submitted?), then send your saved draft to continue.",
   },
   "operations.browserInspectionPlaceholder": {
@@ -38,11 +38,11 @@ export const operationMessages = {
     en: "I checked the current page and operation result",
   },
   "operations.browserRecovery": {
-    "zh-CN": "请核对当前页面，需要时先登录，再点“核对后继续”。",
+    "zh-CN": "请查看当前页面，需要时先登录，再继续。",
     en: "Check the current page, sign in if needed, then choose “Check to continue”.",
   },
   "operations.toolRecovery": {
-    "zh-CN": "上次操作的结果待核对。请核查实际状态后继续发送，草稿已保留。",
+    "zh-CN": "上次操作结果待确认。查看实际状态后可继续，草稿已保留。",
     en: "The previous operation needs checking. Inspect its actual result before sending. Your draft is preserved.",
   },
   "operations.inspectToContinue": { "zh-CN": "核对后继续", en: "Check to continue" },
@@ -260,7 +260,7 @@ export const operationMessages = {
     en: "The component declaration is empty.",
   },
   "operations.installSnapshot": {
-    "zh-CN": "安装当前快照",
+    "zh-CN": "安装当前版本",
     en: "Install the current snapshot",
   },
   "operations.enableProject": {
@@ -308,11 +308,11 @@ export const operationMessages = {
     en: "Catalog component support",
   },
   "operations.unverifiedSupport": {
-    "zh-CN": "当前快照的支持报告尚未核实。",
+    "zh-CN": "当前版本的兼容性报告尚未确认。",
     en: "The support report for this snapshot is unverified.",
   },
   "operations.blockedSnapshot": {
-    "zh-CN": "必需组件不兼容，当前快照不可激活。",
+    "zh-CN": "必需组件不兼容，当前版本暂不可启用。",
     en: "Required components are incompatible. This snapshot cannot be activated.",
   },
   "operations.partialComponents": {
@@ -340,7 +340,7 @@ export const operationMessages = {
     en: "Snapshot",
   },
   "operations.noComponents": {
-    "zh-CN": "此快照未声明组件。",
+    "zh-CN": "此版本未声明可用组件。",
     en: "This snapshot declares no components.",
   },
   "operations.required": {
@@ -454,7 +454,7 @@ export const operationMessages = {
     en: "Open scheduled task {title}",
   },
   "operations.schedules.retryCreation": {
-    "zh-CN": "重试或核对原请求",
+    "zh-CN": "重试或查看原请求",
     en: "Retry or check the original request",
   },
   "operations.schedules.opening": {

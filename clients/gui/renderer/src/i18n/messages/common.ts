@@ -109,7 +109,7 @@ export const commonMessages = {
     en: "These records come from this task's tool history and do not prove the page was updated.",
   },
   "common.browserVerification.trialActive": {
-    "zh-CN": "页面试改仍在生效，请清除后重新观察再验证。",
+    "zh-CN": "页面试改仍在生效，请清除后重新查看再验证。",
     en: "A trial page edit is still active. Clear it and observe again before verifying.",
   },
   "common.context.otherItems": {
@@ -145,7 +145,7 @@ export const commonMessages = {
   "common.schedules.usageDetails": { "zh-CN": "用量明细", en: "Usage details" },
   "common.hooks.result": { "zh-CN": "钩子结果", en: "Hook result" },
   "common.inspection.help": {
-    "zh-CN": "请先核对实际文件或进程。确认只记录事实，不会重放原操作。",
+    "zh-CN": "请先查看实际文件或进程。确认仅记录现状，不会重放操作。",
     en: "Check the actual files or processes first. Confirming records facts only and never replays the operation.",
   },
   "common.promptEdit.note": {
@@ -191,11 +191,11 @@ export const commonMessages = {
     en: "The backend still has work. When it finishes, use the button below to continue.",
   },
   "common.update.installingHelp": {
-    "zh-CN": "应用即将重启，完成后请在“关于”中核对版本。",
+    "zh-CN": "应用即将重启，完成后可在“关于”中查看版本号。",
     en: "The app will restart shortly. Check the version in About after it reopens.",
   },
   "common.update.reopenHelp": {
-    "zh-CN": "请退出并重新打开应用，核对版本后再检查更新。",
+    "zh-CN": "请退出并重新打开应用，确认版本后再检查更新。",
     en: "Quit and reopen the app, check its version, then check for updates again.",
   },
   "common.update.retryHelp": {
@@ -290,7 +290,7 @@ export const commonMessages = {
     en: "Feedback includes the conversation up to this reply. Refining with an agent also collects that discussion.",
   },
   "common.workgroups.compatibilityHelp": {
-    "zh-CN": "兼容产物只能查看和核对。新的修改请在输入框提交。",
+    "zh-CN": "历史兼容结果仅支持查看，新修改请在输入框提交。",
     en: "Compatibility artifacts are view-only. Submit new changes in the composer.",
   },
   "common.navigation.markRead": { "zh-CN": "标为已读", en: "Mark as read" },
@@ -575,7 +575,7 @@ export const commonMessages = {
     en: "The action did not complete. View the details for the cause.",
   },
   "backend.operationUnconfirmed": {
-    "zh-CN": "操作结果尚未确认，请核对原操作状态。",
+    "zh-CN": "操作结果尚未确认，请先查看原操作状态。",
     en: "The result is not confirmed yet. Check the original action's status.",
   },
   "backend.updateStopped": {
@@ -675,7 +675,7 @@ export const commonMessages = {
     en: "Unconfirmed conversation creation",
   },
   "recovery.creationRecordDescription": {
-    "zh-CN": "原请求已保留。核对只查询结果，不会重新创建会话。",
+    "zh-CN": "原请求已保留。查看仅查询结果，不会重复创建会话。",
     en: "The original request is kept. Checking only looks up the result and never creates another conversation.",
   },
   "startup.loadingConversation": { "zh-CN": "正在加载对话…", en: "Loading conversation…" },
@@ -1069,9 +1069,9 @@ export const commonMessages = {
     "zh-CN": "侧边聊天创建结果尚未确认。",
     en: "Side Chat creation is not yet confirmed.",
   },
-  "chat.side.inspectCreation": { "zh-CN": "核对首问结果", en: "Inspect initial request" },
+  "chat.side.inspectCreation": { "zh-CN": "查看首问结果", en: "Inspect initial request" },
   "chat.side.pendingCreation": {
-    "zh-CN": "首问结果尚未确认，请核对原请求。",
+    "zh-CN": "首问结果尚未确认，请查看原请求状态。",
     en: "The initial request is not yet confirmed. Inspect the original request.",
   },
   "chat.side.missingIdentity": {
@@ -1083,14 +1083,14 @@ export const commonMessages = {
     en: "The initial request is not yet confirmed. It will not be sent again.",
   },
   "chat.side.closeUnconfirmed": {
-    "zh-CN": "关闭已请求，资源结算尚未确认。核对原请求后再关闭标签。",
+    "zh-CN": "已请求关闭，资源释放尚未确认，请确认后再关闭标签。",
     en: "Close was requested, but resource cleanup is not confirmed. Inspect the original request before closing the tab.",
   },
   "chat.side.closing": {
     "zh-CN": "正在关闭并等待执行结算…",
     en: "Closing and waiting for execution to settle…",
   },
-  "chat.side.inspectClose": { "zh-CN": "核对关闭状态", en: "Inspect close status" },
+  "chat.side.inspectClose": { "zh-CN": "查看关闭状态", en: "Inspect close status" },
   "chat.side.reading": { "zh-CN": "正在读取侧边聊天…", en: "Loading Side Chat…" },
   "chat.side.noneSent": { "zh-CN": "暂无已发送的侧边聊天", en: "No Side Chats sent yet" },
   "chat.side.ownerMismatch": {
@@ -1221,11 +1221,11 @@ export const commonMessages = {
   "cloud.send": { "zh-CN": "发送", en: "Send" },
   "cloud.stop": { "zh-CN": "停止", en: "Stop" },
   "cloud.submissionUnknown": {
-    "zh-CN": "提交结果未知，不会自动重发。请重新打开会话并核对历史。",
+    "zh-CN": "提交结果未知，不会自动重发。请重新打开会话查看历史。",
     en: "Submission outcome is unknown and will not be retried automatically. Reconnect and check the conversation history.",
   },
   "cloud.acknowledgeUnknown": {
-    "zh-CN": "已核对，编辑后续消息",
+    "zh-CN": "已确认，编辑后续消息",
     en: "History checked; edit a new message",
   },
   "cloud.retryConnection": { "zh-CN": "重试连接", en: "Retry connection" },

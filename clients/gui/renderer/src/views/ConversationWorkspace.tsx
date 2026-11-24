@@ -223,8 +223,8 @@ function ConversationContent() {
             <div className="panel-header">
               <strong>{t("terminal.title")}</strong>
               <Button
-                unstyled
-                className="icon-button"
+                variant="ghost-subtle"
+                size="icon"
                 aria-label={t("common.navigation.closePanel")}
                 onClick={() => setTerminalOpen(false)}
               >

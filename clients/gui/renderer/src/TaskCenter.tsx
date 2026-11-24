@@ -1939,20 +1939,18 @@ export function TaskCenter({
       <div className="task-center-toolbar">
         {navigation}
         <Button
-          unstyled
-          data-slot={undefined}
+          variant="ghost-subtle"
+          size="icon"
           type="submit"
-          className="icon-button"
           aria-label={t("operations.schedules.forward")}
           disabled
         >
           <ArrowRight size={16} />
         </Button>
         <Button
-          unstyled
-          data-slot={undefined}
+          variant="ghost-subtle"
+          size="icon"
           type="submit"
-          className="icon-button"
           aria-label={t("operations.schedules.toggleSidebar")}
           aria-expanded={!navCollapsed}
           onClick={() => setNavCollapsed(!navCollapsed)}

@@ -2,134 +2,14 @@
   {
     "file": "renderer/src/i18n/messages/common.ts",
     "kind": "internal-term",
-    "snippet": "common.browserVerification.trialActive: 观察",
-    "fingerprint": "5527452d6ed4e259db16d5c4fb33d77b40df27bac75949340462cd9040398962"
-  },
-  {
-    "file": "renderer/src/i18n/messages/common.ts",
-    "kind": "internal-term",
-    "snippet": "common.inspection.help: 核对",
-    "fingerprint": "a3a04506a98281b2195430e976c87811e13a6788d75dde249e8c66749fb6a758"
-  },
-  {
-    "file": "renderer/src/i18n/messages/common.ts",
-    "kind": "internal-term",
-    "snippet": "common.update.installingHelp: 核对",
-    "fingerprint": "e3011a055b9ccff6b83ef57b1dc219fed2564f1e8851b49705f52699ee4832a6"
-  },
-  {
-    "file": "renderer/src/i18n/messages/common.ts",
-    "kind": "internal-term",
-    "snippet": "common.update.reopenHelp: 核对",
-    "fingerprint": "1d509ee08cd99f9905f2f4aab339a20fed30c898b1f5d7a895be26d7c567317c"
-  },
-  {
-    "file": "renderer/src/i18n/messages/common.ts",
-    "kind": "internal-term",
-    "snippet": "common.workgroups.compatibilityHelp: 核对",
-    "fingerprint": "17331a57cc88d702043d62bbb123d8e8b6dfd4fcf458a214c10078e1e18d1d2e"
-  },
-  {
-    "file": "renderer/src/i18n/messages/common.ts",
-    "kind": "internal-term",
-    "snippet": "backend.operationUnconfirmed: 核对",
-    "fingerprint": "aa7d5acb3833e9cde05c2428d4b0b4330984b044fa9aa1f8ce283798937395b6"
-  },
-  {
-    "file": "renderer/src/i18n/messages/common.ts",
-    "kind": "internal-term",
     "snippet": "recovery.creationRecords: 核对",
     "fingerprint": "4bdff42432b41cc2c48196181b39fe7c764c8ba9887375b92a84120e61fa64a0"
   },
   {
     "file": "renderer/src/i18n/messages/common.ts",
     "kind": "internal-term",
-    "snippet": "recovery.creationRecordDescription: 核对",
-    "fingerprint": "dc7228999c4bebd22b13df7cba74b0e8bb644d16111d1fafde33960a5ce739e7"
-  },
-  {
-    "file": "renderer/src/i18n/messages/common.ts",
-    "kind": "internal-term",
     "snippet": "chat.composer.workspaceReferencePending: 核对",
     "fingerprint": "c1aa718f37ab6c969f8e7b1c58b4aee1cb52b3968ef971e13aa592cae949832d"
-  },
-  {
-    "file": "renderer/src/i18n/messages/common.ts",
-    "kind": "internal-term",
-    "snippet": "chat.side.inspectCreation: 核对",
-    "fingerprint": "056d51f376597b7ecddd1f1fe6022053ec33cf0a2d102acb39b0d810514d5575"
-  },
-  {
-    "file": "renderer/src/i18n/messages/common.ts",
-    "kind": "internal-term",
-    "snippet": "chat.side.pendingCreation: 核对",
-    "fingerprint": "0f209ef71901e135d34adc8c236b2f0fe7916e869e315f0188197508e3ab1b9a"
-  },
-  {
-    "file": "renderer/src/i18n/messages/common.ts",
-    "kind": "internal-term",
-    "snippet": "chat.side.closeUnconfirmed: 核对",
-    "fingerprint": "96ddebe833431c08bef4b8e4a72837b5943fdec0abccd761d86c90d007591b14"
-  },
-  {
-    "file": "renderer/src/i18n/messages/common.ts",
-    "kind": "internal-term",
-    "snippet": "chat.side.inspectClose: 核对",
-    "fingerprint": "77a2dbf2698c9f56782a322d5e88312fefca3bfab73ad9fe57cd34f63c76b63e"
-  },
-  {
-    "file": "renderer/src/i18n/messages/common.ts",
-    "kind": "internal-term",
-    "snippet": "cloud.submissionUnknown: 核对",
-    "fingerprint": "4190678dfa4980a6872bbd231b7bed3d4b750b7329682083c552e67af3018cb2"
-  },
-  {
-    "file": "renderer/src/i18n/messages/common.ts",
-    "kind": "internal-term",
-    "snippet": "cloud.acknowledgeUnknown: 核对",
-    "fingerprint": "d8f758fd44d60781004842ade7cb634c40c817277a1f33132a87d60b1376876f"
-  },
-  {
-    "file": "renderer/src/i18n/messages/general.ts",
-    "kind": "internal-term",
-    "snippet": "settings.chatGPTSubscription.refreshToCheckConnectionStatus: 核对",
-    "fingerprint": "0515b17dbeaad7d15cf83c821369a039d5eee3f142c54cbc6ec54b1414ef9e8d"
-  },
-  {
-    "file": "renderer/src/i18n/messages/general.ts",
-    "kind": "internal-term",
-    "snippet": "settings.sessionSettings.theConfigurationResultNeedsCheckingItWill: 核对",
-    "fingerprint": "229c03a9a4eac1a9ef111f782e105faa2b559b1f34fe900543be97528409d136"
-  },
-  {
-    "file": "renderer/src/i18n/messages/general.ts",
-    "kind": "internal-term",
-    "snippet": "settings.sessionSettings.theConfigurationResultNeedsCheckingYourDraft: 核对",
-    "fingerprint": "8d74d4f962425303a6d4e514651e008ded92f001a6d19ebfd3c93b6df9d6fde7"
-  },
-  {
-    "file": "renderer/src/i18n/messages/general.ts",
-    "kind": "internal-term",
-    "snippet": "settings.sessionSettings.reviewSessionSettings: 核对",
-    "fingerprint": "711c15118a5abb3b5114723f052b1c89d4e02563b449faf89d28460b9fb2c1d7"
-  },
-  {
-    "file": "renderer/src/i18n/messages/general.ts",
-    "kind": "internal-term",
-    "snippet": "settings.chatGPTSubscription.statusNeedsChecking: 核对",
-    "fingerprint": "ef109b56264afa8fa100a238a998c1d5bc9d7d93e74e0cc24cac4cd98f445851"
-  },
-  {
-    "file": "renderer/src/i18n/messages/operations.ts",
-    "kind": "internal-term",
-    "snippet": "operations.browserUnconfirmed: 核对",
-    "fingerprint": "4a4d4e6d422a952ea8ff49cbcc3c01faf74692d81a8298b894ee5be7b766ed43"
-  },
-  {
-    "file": "renderer/src/i18n/messages/operations.ts",
-    "kind": "internal-term",
-    "snippet": "operations.browserInspected: 核对",
-    "fingerprint": "6106c5600ddc3a5225e2afee4d4ad7cee20f2e30f183f205fb6a234767c0d4be"
   },
   {
     "file": "renderer/src/i18n/messages/operations.ts",
@@ -140,26 +20,8 @@
   {
     "file": "renderer/src/i18n/messages/operations.ts",
     "kind": "internal-term",
-    "snippet": "operations.browserInspectionHelp: 核对",
-    "fingerprint": "5c5036b255dc8d3d905c1c3abe301708e6d985aef01eccba6f57719795558a4b"
-  },
-  {
-    "file": "renderer/src/i18n/messages/operations.ts",
-    "kind": "internal-term",
     "snippet": "operations.browserInspectionChecked: 核对",
     "fingerprint": "ae39b1ce64de759b3e578c0561e78f53705af7fe7989d189b182a2d721cf4172"
-  },
-  {
-    "file": "renderer/src/i18n/messages/operations.ts",
-    "kind": "internal-term",
-    "snippet": "operations.browserRecovery: 核对",
-    "fingerprint": "8f4819e5c56fe13380685cc8f3ee633da03c3edbd77bc2e5ebc8e66580b62d59"
-  },
-  {
-    "file": "renderer/src/i18n/messages/operations.ts",
-    "kind": "internal-term",
-    "snippet": "operations.toolRecovery: 核对",
-    "fingerprint": "0027b906112f91af3a1cdd0fb0fc32707c9942b62c3ce30c3b944327f35af968"
   },
   {
     "file": "renderer/src/i18n/messages/operations.ts",
@@ -176,116 +38,14 @@
   {
     "file": "renderer/src/i18n/messages/operations.ts",
     "kind": "internal-term",
-    "snippet": "operations.installSnapshot: 快照",
-    "fingerprint": "1229c2aa2088afb7232dc774be85301ea52750e6f4b3b1a08496b4fd106a0abb"
-  },
-  {
-    "file": "renderer/src/i18n/messages/operations.ts",
-    "kind": "internal-term",
-    "snippet": "operations.unverifiedSupport: 快照",
-    "fingerprint": "e0ea8a75f8ff2d776cb638b222beff65a60853991788b746aabd6e0eba3fe3b3"
-  },
-  {
-    "file": "renderer/src/i18n/messages/operations.ts",
-    "kind": "internal-term",
-    "snippet": "operations.blockedSnapshot: 快照",
-    "fingerprint": "d6000b24a360d0a81d1b42fb0b44d86d082c1f853248bbac78886c3f23c4cd36"
-  },
-  {
-    "file": "renderer/src/i18n/messages/operations.ts",
-    "kind": "internal-term",
     "snippet": "operations.snapshot: 快照",
     "fingerprint": "d82f31cfb1a2ec400bfdad63355dde3568a2d72c38992c44521b56f7a2ed6a27"
-  },
-  {
-    "file": "renderer/src/i18n/messages/operations.ts",
-    "kind": "internal-term",
-    "snippet": "operations.noComponents: 快照",
-    "fingerprint": "f3c82ba410846872a9f11e763d9fb6234942f3dd842f0296452ba4f5a6d1d877"
-  },
-  {
-    "file": "renderer/src/i18n/messages/operations.ts",
-    "kind": "internal-term",
-    "snippet": "operations.schedules.retryCreation: 核对",
-    "fingerprint": "344d02dca198aeb2cf23cf85c3ab619202007aef74a1bcaccf56c30583254bf9"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.developmentLinkExplanation: 快照",
-    "fingerprint": "535746513ef288b1154dbd12418c0cfbc09cc707577fdf03c6b38ce41c18cd24"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.installTrustBoundary: 快照",
-    "fingerprint": "81f95f9075bd817eac9302ac039af44d9159ce38f21ac3d964c5176eba971c9b"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.pluginNotInSnapshot: 快照",
-    "fingerprint": "6835c75b50d1ca107b3310f307645371a60b63c4c507c97cec03ca701ae7edf3"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.refreshSnapshot: 快照",
-    "fingerprint": "202b2c39fccfecb86dff366be48a8314e6a0e8d463595351a0f53cd8c01ed363"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.previousCreationRecords: 核对",
-    "fingerprint": "c6c9788e41f2dc562303d44e6c6e888e37e91ca40401bfb97615efd8b06e75a4"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.unrelatedCreationUnconfirmed: 核对",
-    "fingerprint": "fe8a758aece4ffdf0f4bf6b246e7331175068994ffd19737962d04a5ab36983d"
   },
   {
     "file": "renderer/src/i18n/messages/plugins.ts",
     "kind": "internal-term",
     "snippet": "settings.pluginCenter.projectOperationStillUnconfirmed: 核对",
     "fingerprint": "46a565f701817a3bbc2a89a04376a40a16c0683f34ef0fe65d8fed918e3a9d8b"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.originalRequestIdUnavailable: 核对",
-    "fingerprint": "0191499177dfbc3983068d28ddad07264961dbd62eacdfdf78c9bfdcd09f0603"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.hostReadinessUnavailable: 快照",
-    "fingerprint": "d6b8ddf45b5ccb292e97ef595b6ce9d4d941cbb0af4d68287fdddcfa78209941"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.theOriginalAuthenticationSubmissionIsStillUnconfirmed: 核对",
-    "fingerprint": "c2439c43aee2738a04bbb7f2ddbbbc0fddcbc9a4e27193481bb54aac17d57aeb"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.theOriginalSubmissionIsStillProcessingCheck: 核对",
-    "fingerprint": "da4a890328fda452357436d3f4c25c5dfbed03d4ab4b28419be95c4c5481dcdb"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.theOriginalSubmissionResultIsStillUnconfirmed: 核对",
-    "fingerprint": "f27dbb326c28d85508532e1b04916420bd9e10e53c6dfd3d4dd99464f39f4962"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.couldNotCheckTheOriginalSubmissionValue: 核对",
-    "fingerprint": "1b2107f2e43be32de94a440da6343900b49c0032ba52023d64ff1341553b4e11"
   },
   {
     "file": "renderer/src/i18n/messages/plugins.ts",
@@ -302,68 +62,8 @@
   {
     "file": "renderer/src/i18n/messages/plugins.ts",
     "kind": "internal-term",
-    "snippet": "settings.pluginCenter.aProjectOperationHasAnUnconfirmedResult: 核对",
-    "fingerprint": "75d5367d575b4a400735f2c99c9f84f988008210acb1bc1b6793169502b0b087"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
     "snippet": "settings.pluginCenter.checkProjectOperation: 核对",
     "fingerprint": "650d90a4bcca381740ebf3bd9d71736d4a2e6aacf8a9e44d8e836b6c39e23524"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.checkingProjectOperation: 核对",
-    "fingerprint": "38e5969a68b9c1d35b6b9d3839b221df9e5c77974f9d549f8b15c609f88cdc0d"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.theOriginalPluginSubmissionResultIsUnconfirmed: 核对",
-    "fingerprint": "3aea4afc84b9bb8038862b9ce416307c59b6e77e3cb2277fcfa9eb866962d852"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.checkingTheOriginalSourceResolution: 核对",
-    "fingerprint": "95458bf9d14fc24bdd987d01092748efe92d86750b7a681402792f53b1fd195a"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.theSourceResolutionResultIsUnconfirmedAnd: 核对",
-    "fingerprint": "b67436f3aed055cb53bbc2a2c540548c120de9834ad9a58c989965f3da8f10d6"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.preservingTheOriginalSubmissionForProjectValue: 核对",
-    "fingerprint": "5b6257145334fa76f8a703785020c0f5012ae62216314a02ac22c3703382aa8a"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.thePluginCatalogIsManagedByThe: Core",
-    "fingerprint": "fa96d2d8f141e34573743eed95ab8fd37d8d1ef001175ff0ef94b525d5e5d9f0"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.theProjectSCoreIsDisconnectedCurrent: Core",
-    "fingerprint": "286c15c827f0d31abe320356ad37234fd742f76859618a23e68edbc283a9f999"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.thisCoreDoesNotSupportThePlugin: Core",
-    "fingerprint": "6867b28c16d04fb6da1f5b78491b6855c3c7cfed0c98e3a502176f7c4cccc378"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.refreshGitSourceSnapshot: 快照",
-    "fingerprint": "ee4865f2a69f171b9763361959250c709362424d34f7901f20f7e78dcb4a18b5"
   },
   {
     "file": "renderer/src/i18n/messages/plugins.ts",
@@ -374,62 +74,8 @@
   {
     "file": "renderer/src/i18n/messages/plugins.ts",
     "kind": "internal-term",
-    "snippet": "settings.pluginCenter.operationResultUnconfirmed: 核对",
-    "fingerprint": "aa1f4bef2b04599375ef1173768ad5e17dabcbe3c0f597011faed3a9b0e75e91"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.thePreviousOperationIsNotConfirmedComplete: 核对",
-    "fingerprint": "406c690a43c54cea3d515f1db5d0dd520da18e9a19ddcd4a4503d876eaa54469"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
     "snippet": "settings.pluginCenter.resultUnconfirmed: 核对",
     "fingerprint": "6179986da38a3fd13e48e517be460ac8b82c9239f75b0eee4557138eef5d3d1c"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.checkTheResultBeforeResubmittingOrChanging: 核对",
-    "fingerprint": "bcb02db918f96a4a75a8e0c641ad58fda43a1bcf8edfbbdc0ed84e3c61272201"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.checkingOriginalSubmission: 核对",
-    "fingerprint": "2f0f8f6bd24e30a386424d322bf055b0af4c02a5a889e526dfa1af0b183af550"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.reviewNewInstallationSnapshot: 快照",
-    "fingerprint": "e2f4da764aad1222757a0e9b2c6fa48ed4f6fb1f8225fbf38efd1761418a7572"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.reviewTheSourceThenChooseAnInstallation: 核对",
-    "fingerprint": "bfc12883046e4a8d01cdc78b3695d805d42fd3a3063a8ea191f201ef75aa5902"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.reviewTheSourceBeforeInstalling: 核对",
-    "fingerprint": "d055b70468747c3a4ddc71d30904907e02803cb417f6b396c82ad09d397e09b8"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.reviewSourceAndInstall: 核对",
-    "fingerprint": "0e318de214cb553694d05f12dc621998391c10415b7ce30ce4868c6ae84cf342"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.installedSnapshotDigest: 快照",
-    "fingerprint": "50683b4e182e8ce59a3813f31951ce39b0c1508134f89a8e9e6b8798a28ebc2e"
   },
   {
     "file": "renderer/src/i18n/messages/plugins.ts",
@@ -440,104 +86,14 @@
   {
     "file": "renderer/src/i18n/messages/plugins.ts",
     "kind": "internal-term",
-    "snippet": "settings.pluginCenter.installReviewedSnapshot: 快照",
-    "fingerprint": "b7da00c4968cb071960d524df04a2562580b1de7a9eb273b912fd4e9579b5d62"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.currentExecutionAndSettingsStillUseThe: 快照",
-    "fingerprint": "d4ea116c230914c1b6074251f6ce3aed64f660706f73cfa315dc1ccd7e2a7daa"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.reviewNewSnapshot: 快照",
-    "fingerprint": "924949c15404bb7f1c81312fdc9110acdcfa01142941efd6f082a685b63dc924"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
     "snippet": "settings.pluginCenter.currentInstallationSnapshot: 快照",
     "fingerprint": "e609f81976be9d4d713d1b91df9e00afe3fe40c42df3ef130232aff375e38723"
   },
   {
     "file": "renderer/src/i18n/messages/plugins.ts",
     "kind": "internal-term",
-    "snippet": "settings.pluginCenter.matchesInstalledSnapshot: 快照",
-    "fingerprint": "fd790cd1616160e7bcfd4b762cba4f7b050cae03d4a943af165cd681997e4771"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.differsFromInstalledSnapshot: 快照",
-    "fingerprint": "132e79038d70c5252b8490cae372149a5820a0f3e5eba7684459ca4db45263d3"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.sourceSnapshotPath: 快照",
-    "fingerprint": "d63ce7228c62e32add6f8b83d33e23ccc009e2bb61c39533be9ec5ee9e9636a2"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginConnectionPanel.authenticationStatusCouldNotBeConfirmedCheck: 核对",
-    "fingerprint": "e503a8e88691a1c1f72fef0b14a5d1f223f2b6ab2759f688fd8d6af48f208d98"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginConnectionPanel.theAuthenticationResultIsUnconfirmedCheckAuthentication: 核对",
-    "fingerprint": "22023b326e24905c5fe19a145c1013e560135e183755e27c9184ad54a3a0f6c3"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginConnectionPanel.cleanupResultUnconfirmed: 核对",
-    "fingerprint": "a6930691d09c1500ed44baac2046b293fac80a6bff9c63abbb87bb8a49068c43"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginConnectionPanel.connectionStatusUnconfirmed: 核对",
-    "fingerprint": "41516bf905f973685cab1a344aa6877276e40ef7360a4efb6aac98664b8373a5"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginConnectionPanel.authenticationResultUnconfirmed: 核对",
-    "fingerprint": "f3be39bd64144ff3516ed098cce2c1bb8904414f1687ba54ba18c359c1b05702"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginConnectionPanel.theAuthenticationResultHasNotBeenConfirmed: 核对",
-    "fingerprint": "86fb86f163c15f74c4ccf97b022a5c4dacdcb3775652f70c6abbbb43146e2727"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginConnectionPanel.completeAuthenticationAndCheckItsStatusDisconnected: 核对",
-    "fingerprint": "6c759bc1792864d3cdd143d78242fe273edda4cad698abab00735fa997a95477"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginConnectionPanel.confirmThatYouTrustTheCurrentInstallation: 快照",
-    "fingerprint": "e333740e7627579227ccba64a4db7eb0461d0a77f00e04c39034711c446f2ebd"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
     "snippet": "settings.pluginConnectionPanel.checkAuthenticationStatus: 核对",
     "fingerprint": "813023044a455201cb700c93acfcdeed4e71efd57b8e28434850f8bf471f33a2"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginConnectionPanel.checkConnectionStatus: 核对",
-    "fingerprint": "7901ae4605fcf5252471e5200796a004d7f51a42deecca531616da9ff9596024"
   },
   {
     "file": "renderer/src/i18n/messages/plugins.ts",
@@ -550,108 +106,6 @@
     "kind": "internal-term",
     "snippet": "settings.pluginConnectionPanel.iTrustTheCurrentInstallationSnapshotAnd: 快照",
     "fingerprint": "fb770a9cc16042364752e4ab046f7a9579f1d4d9f12c6f3697f40c7fed252feb"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginConnectionPanel.confirmThatYouTrustTheCurrentInstallation2: 快照",
-    "fingerprint": "9e33cc67162c4776e44fea6289c6af11240d699bb7f7fd37496bf5dbd48a18a9"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginHookSettings.hookConfigurationIsIncompleteCheckSubmissionStatus: 核对",
-    "fingerprint": "2656f1ce443eb4ab455825e43b7970946458318f2f42b2eb646057099e4f84b8"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginAuthConfiguration.authenticationConfigurationSavedEnableAuthenticationAndCheck: 核对",
-    "fingerprint": "4699f60e3cc7a06081ce00a3b9a9a14302e3216a6edf01abf52287dbca1102eb"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginAuthConfiguration.theResultIsStillUnconfirmedCheckAgain: 核对",
-    "fingerprint": "468f03597f189b883f883ae8db662d117082fd235f7f39fafb28da179eb81a54"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginAuthConfiguration.checkAuthenticationSubmission: 核对",
-    "fingerprint": "3457334828fb8344e71a6444df50ea69e5a3c8f56810603e8a2d589264a124fa"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.hooksSettings.theBackendReconnectedCheckTheLoadStatus: 核对",
-    "fingerprint": "67d3f4363f6cd3f9af73efe235d4efd0840ad2158978f677aefae04e6845d68f"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.hooksSettings.manageCoreExtensionHooksOtherFormatsFrom: Core",
-    "fingerprint": "ad25cd7299480799464c0452880666ae8c3063675b0ea1bd485167bcc84aad11"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.hooksSettings.commandsReceiveOneLineOfEventJSON: Core",
-    "fingerprint": "80df7d01d173d4c8f69f74cb648f268d815eef4c4cb22725de253794abeaaca6"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginResources.thePluginCatalogIsDisabledInThis: Core",
-    "fingerprint": "807ced2bfcae68672fff9b6102f86ba6d977b23496570fc9021e892cc74a0b52"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginResources.theInstallationSnapshotForPluginValueChanged: 快照",
-    "fingerprint": "8abea3dad76b162fe744927716379da913fb15871a22654fe544611aa6152145"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginResources.theProjectIsDisconnectedConnectCoreTo: Core",
-    "fingerprint": "924588b226ff54e66229ea5f93c275c329e36bcf348c2d12fb5fee2dbc6b36aa"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.pluginOperationFailed: 核对",
-    "fingerprint": "5f9419adcc7ba0604d8535ec12364dd37830ad3d649179091219cb3c34e89752"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.submissionResultUnconfirmed: 核对",
-    "fingerprint": "1f5fd01568617ced708b942a900646d87c8439b33c8bb433a771ebbbec5d1f57"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginResources.cleanupUnknownState: 核对",
-    "fingerprint": "19bf87085135c1c437a0dcb59df3ab88c4df29752fa0d7c7b8c0911491836eda"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginResources.unknownState: 核对",
-    "fingerprint": "d25806f4a56867589aa5811d4db1d456204d85693e694a299f2f66362007a661"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginResources.unknownStateDetails: 核对",
-    "fingerprint": "6dfbdabb4d60ea28e303326867401ce6dd1a9e16a14a74e18009367e99dd37de"
-  },
-  {
-    "file": "renderer/src/i18n/messages/plugins.ts",
-    "kind": "internal-term",
-    "snippet": "settings.pluginCenter.installDoesNotConnect: 核对",
-    "fingerprint": "025a448c2c709f36299c439ca3c92ef95eac276e9b9e92ce741820a656c04cb8"
   },
   {
     "file": "renderer/src/i18n/messages/remote.ts",
@@ -958,12 +412,6 @@
     "kind": "internal-term",
     "snippet": "settings.mobileConnect.stepReview: 核对",
     "fingerprint": "670f8ed5520f7d6b9e5085da9ed2921c4817de5d6db9cad175d2d675c3cdbd9d"
-  },
-  {
-    "file": "renderer/src/i18n/messages/worktrees.ts",
-    "kind": "internal-term",
-    "snippet": "worktree.unknown: 核对",
-    "fingerprint": "5469101ca6572dde91c799bdf8eab216663dd3b5842072fe6b442fabe787160e"
   },
   {
     "file": "renderer/src/App.tsx",

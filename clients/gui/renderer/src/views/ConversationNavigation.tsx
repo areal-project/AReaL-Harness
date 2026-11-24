@@ -723,8 +723,8 @@ function SidebarSearch() {
                 onChange={(e) => setSearch(e.target.value)}
               />
               <Button
-                unstyled
-                className="icon-button"
+                variant="ghost-subtle"
+                size="icon"
                 aria-label={t("common.navigation.closeSearch")}
                 onClick={() => {
                   setSearchOpen(false);

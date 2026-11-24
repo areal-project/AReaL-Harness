@@ -283,10 +283,9 @@ export function UserFeedback({
       {(["up", "down"] as const).map((value) => (
         <ControlHintTooltip key={value} title={value === "up" ? "回答得好" : "回答不好"}>
           <Button
-            unstyled
-            data-slot={undefined}
+            variant="ghost-subtle"
+            size="icon"
             type="button"
-            className="icon-button"
             aria-label={value === "up" ? "点赞" : "点踩"}
             aria-pressed={!!draft && rating === value}
             disabled={busy}
@@ -323,10 +322,9 @@ export function UserFeedback({
                 <strong>{rating === "up" ? "哪里做得好？" : "哪里需要改进？"}</strong>
               </span>
               <Button
-                unstyled
-                data-slot={undefined}
+                variant="ghost-subtle"
+                size="icon"
                 type="button"
-                className="icon-button"
                 aria-label="关闭评价"
                 onClick={close}
               >
@@ -372,10 +370,9 @@ export function UserFeedback({
                     <span>一起完善评价</span>
                     {active && (
                       <Button
-                        unstyled
-                        data-slot={undefined}
+                        variant="ghost-subtle"
+                        size="icon"
                         type="submit"
-                        className="icon-button"
                         aria-label="停止润色"
                         onClick={() =>
                           void action("stop", {

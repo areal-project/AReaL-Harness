@@ -63,7 +63,7 @@ export const pluginMessages = {
     en: "Local source linked. The next turn uses the new content. Execution trust needs to be confirmed again.",
   },
   "settings.pluginCenter.developmentLinkExplanation": {
-    "zh-CN": "显式链接当前本地来源后，后台会检查内容变化并发布不可变快照。",
+    "zh-CN": "关联当前本地来源后，后台会检测内容变化并发布只读版本。",
     en: "Link this local source to let Core check changes and publish immutable snapshots.",
   },
   "settings.pluginCenter.stopDevelopmentLink": {
@@ -113,11 +113,11 @@ export const pluginMessages = {
     en: "The component snapshot changed. Refresh plugin details before continuing.",
   },
   "settings.pluginCenter.installTrustBoundary": {
-    "zh-CN": "安装会自动核对来源与快照。MCP 执行和 Hook 信任需分别授权。",
+    "zh-CN": "安装前会检查来源与版本。MCP 执行和钩子信任需分别授权。",
     en: "Installation verifies the source and snapshot automatically. Authorize MCP execution and Hook trust separately.",
   },
   "settings.pluginCenter.pluginNotInSnapshot": {
-    "zh-CN": "当前快照中没有此插件，请返回列表刷新。",
+    "zh-CN": "当前列表中没有此插件，请返回刷新。",
     en: "This plugin is absent from the current snapshot. Return to the list and refresh.",
   },
   "settings.pluginCenter.snapshotScope": {
@@ -145,7 +145,7 @@ export const pluginMessages = {
     en: "Review installation",
   },
   "settings.pluginCenter.enablePlugin": { "zh-CN": "在当前项目启用", en: "Enable in this project" },
-  "settings.pluginCenter.refreshSnapshot": { "zh-CN": "刷新快照", en: "Refresh snapshot" },
+  "settings.pluginCenter.refreshSnapshot": { "zh-CN": "刷新版本", en: "Refresh snapshot" },
   "settings.pluginCenter.pluginOverview": {
     "zh-CN": "插件状态与下一步",
     en: "Plugin status and next step",
@@ -163,11 +163,11 @@ export const pluginMessages = {
     en: "Hook definitions require separate review and trust.",
   },
   "settings.pluginCenter.previousCreationRecords": {
-    "zh-CN": "历史会话创建记录（待核对）",
+    "zh-CN": "历史会话创建记录（待确认）",
     en: "Previous conversation creation records (awaiting review)",
   },
   "settings.pluginCenter.unrelatedCreationUnconfirmed": {
-    "zh-CN": "另一个对话创建结果待核对。你可以继续管理插件，原请求会保留且不会自动重发。",
+    "zh-CN": "另一个会话创建结果待确认。可继续管理插件，原请求已保留。",
     en: "Another conversation creation is unconfirmed. You can manage plugins. The original request is retained and will not be resent automatically.",
   },
   "settings.pluginCenter.projectOperationStillUnconfirmed": {
@@ -183,7 +183,7 @@ export const pluginMessages = {
     en: "The original operation is confirmed failed. It was not resubmitted.",
   },
   "settings.pluginCenter.originalRequestIdUnavailable": {
-    "zh-CN": "原请求 ID 缺失，无法定位并核对原操作。原记录已保留。",
+    "zh-CN": "原请求 ID 缺失，无法查询原操作结果，记录已保留。",
     en: "The original request ID is unavailable, so the original operation could not be located and checked. Its record is retained.",
   },
   "settings.pluginCenter.requiredHostToolsUnavailable": {
@@ -191,7 +191,7 @@ export const pluginMessages = {
     en: "Required tools are unavailable in this host: {tools}.",
   },
   "settings.pluginCenter.hostReadinessUnavailable": {
-    "zh-CN": "无法确认当前安装快照的工具可用性，请刷新插件详情。",
+    "zh-CN": "无法确认当前安装版本的工具可用性，请刷新插件详情。",
     en: "Could not confirm tool availability for this installed snapshot. Refresh plugin details.",
   },
   "settings.pluginCenter.hostToolDeploymentReady": {
@@ -223,7 +223,7 @@ export const pluginMessages = {
     en: "Plugin hooks are temporarily unavailable. {error}",
   },
   "settings.pluginCenter.theOriginalAuthenticationSubmissionIsStillUnconfirmed": {
-    "zh-CN": "原认证配置提交仍待核对，请先完成核对。",
+    "zh-CN": "原认证配置提交仍待确认，请先查看结果。",
     en: "The original authentication submission is still unconfirmed. Check it first.",
   },
   "settings.pluginCenter.sourceResolutionCompletedButTheReturnedPreview": {
@@ -239,11 +239,11 @@ export const pluginMessages = {
     en: "Operation completed.",
   },
   "settings.pluginCenter.theOriginalSubmissionIsStillProcessingCheck": {
-    "zh-CN": "原提交仍在处理中，请稍后再次核对。",
+    "zh-CN": "原提交仍在处理中，请稍后再次查看。",
     en: "The original submission is still processing. Check again later.",
   },
   "settings.pluginCenter.theOriginalSubmissionResultIsStillUnconfirmed": {
-    "zh-CN": "原提交结果仍未确认，请稍后再次核对。",
+    "zh-CN": "原提交结果仍未确认，请稍后再次查看。",
     en: "The original submission result is still unconfirmed. Check again later.",
   },
   "settings.pluginCenter.theOriginalPluginOperationIsConfirmedFailed": {
@@ -255,7 +255,7 @@ export const pluginMessages = {
     en: "The original submission is confirmed complete. It was not run again.",
   },
   "settings.pluginCenter.couldNotCheckTheOriginalSubmissionValue": {
-    "zh-CN": "无法核对原提交：{value0}",
+    "zh-CN": "无法查询原提交：{value0}",
     en: "Could not check the original submission: {value0}",
   },
   "settings.pluginCenter.checkConnectionResult": {
@@ -267,8 +267,7 @@ export const pluginMessages = {
     en: "Check plugin submission",
   },
   "settings.pluginCenter.aProjectOperationHasAnUnconfirmedResult": {
-    "zh-CN":
-      "项目中有结果待核对的操作，插件修改暂不可用。核对项目操作只读取原请求结果，不会重新提交。",
+    "zh-CN": "项目中有结果待确认的操作，插件修改暂不可用。查看结果不会重新提交。",
     en: "A project operation has an unconfirmed result. Plugin changes are unavailable. Checking reads the original request result without resubmitting it.",
   },
   "settings.pluginCenter.checkProjectOperation": {
@@ -276,7 +275,7 @@ export const pluginMessages = {
     en: "Check project operation",
   },
   "settings.pluginCenter.checkingProjectOperation": {
-    "zh-CN": "正在核对项目操作…",
+    "zh-CN": "正在查看项目操作结果…",
     en: "Checking project operation…",
   },
   "settings.pluginCenter.openOperationConversation": {
@@ -284,7 +283,7 @@ export const pluginMessages = {
     en: "Open operation conversation",
   },
   "settings.pluginCenter.theOriginalPluginSubmissionResultIsUnconfirmed": {
-    "zh-CN": "原插件提交结果待核对，不会自动重发。",
+    "zh-CN": "原插件提交结果待确认，不会自动重发。",
     en: "The original plugin submission result is unconfirmed and will not be resent automatically.",
   },
   "settings.pluginCenter.addingPluginMarketplace": {
@@ -296,7 +295,7 @@ export const pluginMessages = {
     en: "A project operation is processing. Plugin changes are unavailable until the original request completes.",
   },
   "settings.pluginCenter.checkingTheOriginalSourceResolution": {
-    "zh-CN": "正在核对原来源解析…",
+    "zh-CN": "正在查看原来源解析结果…",
     en: "Checking the original source resolution…",
   },
   "settings.pluginCenter.resolvingSource": {
@@ -304,7 +303,7 @@ export const pluginMessages = {
     en: "Resolving source…",
   },
   "settings.pluginCenter.theSourceResolutionResultIsUnconfirmedAnd": {
-    "zh-CN": "来源解析结果待核对，不会自动重发。",
+    "zh-CN": "来源解析结果待确认，不会自动重发。",
     en: "The source resolution result is unconfirmed and will not be resent automatically.",
   },
   "settings.pluginCenter.sourceResolvedReviewTheDigestBeforeInstalling": {
@@ -436,7 +435,7 @@ export const pluginMessages = {
     en: "Marketplace",
   },
   "settings.pluginCenter.preservingTheOriginalSubmissionForProjectValue": {
-    "zh-CN": "正在保留项目 {value0} 的原提交。核对完成后再切换管理上下文。",
+    "zh-CN": "已保留项目 {value0} 的原提交，请确认结果后再切换。",
     en: "Preserving the original submission for project {value0}. Check it before switching management context.",
   },
   "settings.pluginCenter.selectAProjectToBrowsePlugins": {
@@ -444,7 +443,7 @@ export const pluginMessages = {
     en: "Select a project to browse plugins",
   },
   "settings.pluginCenter.thePluginCatalogIsManagedByThe": {
-    "zh-CN": "插件目录由已打开项目的 Core 管理。",
+    "zh-CN": "插件目录由当前已打开项目的后台管理。",
     en: "The plugin catalog is managed by the open project's Core.",
   },
   "settings.pluginCenter.openProject": {
@@ -452,11 +451,11 @@ export const pluginMessages = {
     en: "Open project",
   },
   "settings.pluginCenter.theProjectSCoreIsDisconnectedCurrent": {
-    "zh-CN": "项目 Core 尚未连接。当前内容和原提交已保留。",
+    "zh-CN": "项目后台尚未连接，当前内容与原提交已保留。",
     en: "The project's Core is disconnected. Current content and the original submission have been preserved.",
   },
   "settings.pluginCenter.thisCoreDoesNotSupportThePlugin": {
-    "zh-CN": "当前 Core 不支持插件目录。请升级到支持插件包的 Core 后重新连接项目。",
+    "zh-CN": "当前项目后台不支持插件目录，请升级后重新连接。",
     en: "This Core does not support the plugin catalog. Upgrade to a Core with plugin package support and reconnect the project.",
   },
   "settings.pluginCenter.advancedStandaloneHooks": {
@@ -552,7 +551,7 @@ export const pluginMessages = {
     en: "Remove source",
   },
   "settings.pluginCenter.refreshGitSourceSnapshot": {
-    "zh-CN": "刷新 Git 来源快照",
+    "zh-CN": "刷新 Git 来源版本",
     en: "Refresh Git source snapshot",
   },
   "settings.pluginCenter.importAndInspectAZIPPluginPackage": {
@@ -636,11 +635,11 @@ export const pluginMessages = {
     en: "Connection result unconfirmed",
   },
   "settings.pluginCenter.operationResultUnconfirmed": {
-    "zh-CN": "操作结果待核对",
+    "zh-CN": "操作结果待确认",
     en: "Operation result unconfirmed",
   },
   "settings.pluginCenter.thePreviousOperationIsNotConfirmedComplete": {
-    "zh-CN": "尚未确认上次操作是否完成，请先核对原请求。",
+    "zh-CN": "上次操作尚未确认完成，请先查看原请求结果。",
     en: "The previous operation is not confirmed complete. Check the original request first.",
   },
   "settings.pluginCenter.resultUnconfirmed": {
@@ -656,7 +655,7 @@ export const pluginMessages = {
     en: "View this submission",
   },
   "settings.pluginCenter.checkTheResultBeforeResubmittingOrChanging": {
-    "zh-CN": "核对前暂不可重复提交或修改配置。",
+    "zh-CN": "确认结果前暂不可重复提交或修改配置。",
     en: "Check the result before resubmitting or changing configuration.",
   },
   "settings.pluginCenter.pluginOperationProgress": {
@@ -664,7 +663,7 @@ export const pluginMessages = {
     en: "Plugin operation progress",
   },
   "settings.pluginCenter.checkingOriginalSubmission": {
-    "zh-CN": "正在核对原提交…",
+    "zh-CN": "正在查看原提交结果…",
     en: "Checking original submission…",
   },
   "settings.pluginCenter.updatingConnection": {
@@ -684,7 +683,7 @@ export const pluginMessages = {
     en: "Source resolution and preview",
   },
   "settings.pluginCenter.reviewNewInstallationSnapshot": {
-    "zh-CN": "核对新安装快照",
+    "zh-CN": "查看新安装版本",
     en: "Review new installation snapshot",
   },
   "settings.pluginCenter.notInstalled": {
@@ -692,7 +691,7 @@ export const pluginMessages = {
     en: "Not installed",
   },
   "settings.pluginCenter.reviewTheSourceThenChooseAnInstallation": {
-    "zh-CN": "核对来源后，选择安装范围。",
+    "zh-CN": "确认来源信息后，再选择安装范围。",
     en: "Review the source, then choose an installation scope.",
   },
   "settings.pluginCenter.pluginPackage": {
@@ -700,11 +699,11 @@ export const pluginMessages = {
     en: "Plugin package",
   },
   "settings.pluginCenter.reviewTheSourceBeforeInstalling": {
-    "zh-CN": "安装前需要核对来源。",
+    "zh-CN": "安装前请先确认来源信息。",
     en: "Review the source before installing.",
   },
   "settings.pluginCenter.reviewSourceAndInstall": {
-    "zh-CN": "核对来源并安装",
+    "zh-CN": "确认来源并安装",
     en: "Review source and install",
   },
   "settings.pluginCenter.source2": {
@@ -724,7 +723,7 @@ export const pluginMessages = {
     en: "Effective definition review digest",
   },
   "settings.pluginCenter.installedSnapshotDigest": {
-    "zh-CN": "已安装快照摘要",
+    "zh-CN": "已安装版本摘要",
     en: "Installed snapshot digest",
   },
   "settings.pluginCenter.pinnedCommit": {
@@ -756,7 +755,7 @@ export const pluginMessages = {
     en: "The catalog changed. Resolve the source again before installing.",
   },
   "settings.pluginCenter.installReviewedSnapshot": {
-    "zh-CN": "安装已核对的新快照",
+    "zh-CN": "安装已确认的新版本",
     en: "Install reviewed snapshot",
   },
   "settings.pluginCenter.user": {
@@ -816,11 +815,11 @@ export const pluginMessages = {
     en: "Catalog contents changed",
   },
   "settings.pluginCenter.currentExecutionAndSettingsStillUseThe": {
-    "zh-CN": "当前运行和设置仍使用已安装快照。",
+    "zh-CN": "当前运行与设置仍使用已安装版本。",
     en: "Current execution and settings still use the installed snapshot.",
   },
   "settings.pluginCenter.reviewNewSnapshot": {
-    "zh-CN": "核对新快照",
+    "zh-CN": "查看新版本",
     en: "Review new snapshot",
   },
   "settings.pluginCenter.sourceAndInstallationDetails": {
@@ -868,11 +867,11 @@ export const pluginMessages = {
     en: "Catalog contents",
   },
   "settings.pluginCenter.matchesInstalledSnapshot": {
-    "zh-CN": "与已安装快照一致",
+    "zh-CN": "与已安装版本一致",
     en: "Matches installed snapshot",
   },
   "settings.pluginCenter.differsFromInstalledSnapshot": {
-    "zh-CN": "与已安装快照不同",
+    "zh-CN": "与已安装版本不同",
     en: "Differs from installed snapshot",
   },
   "settings.pluginCenter.catalogVersion": {
@@ -896,7 +895,7 @@ export const pluginMessages = {
     en: "Plugin ID",
   },
   "settings.pluginCenter.sourceSnapshotPath": {
-    "zh-CN": "来源快照路径",
+    "zh-CN": "来源版本路径",
     en: "Source snapshot path",
   },
   "settings.pluginCenter.catalogComponents": {
@@ -936,11 +935,11 @@ export const pluginMessages = {
     en: "Run setup",
   },
   "settings.pluginConnectionPanel.authenticationStatusCouldNotBeConfirmedCheck": {
-    "zh-CN": "认证状态未能确认，请核对后再继续。",
+    "zh-CN": "认证状态尚未确认，请先查看结果再继续。",
     en: "Authentication status could not be confirmed. Check it before continuing.",
   },
   "settings.pluginConnectionPanel.theAuthenticationResultIsUnconfirmedCheckAuthentication": {
-    "zh-CN": "认证结果尚未确认，请先核对认证状态。",
+    "zh-CN": "认证结果尚未确认，请先查看认证状态。",
     en: "The authentication result is unconfirmed. Check authentication status first.",
   },
   "settings.pluginConnectionPanel.loadingConnectionStatus": {
@@ -948,11 +947,11 @@ export const pluginMessages = {
     en: "Loading connection status…",
   },
   "settings.pluginConnectionPanel.cleanupResultUnconfirmed": {
-    "zh-CN": "清理结果待核对",
+    "zh-CN": "清理结果待确认",
     en: "Cleanup result unconfirmed",
   },
   "settings.pluginConnectionPanel.connectionStatusUnconfirmed": {
-    "zh-CN": "连接状态待核对",
+    "zh-CN": "连接状态待确认",
     en: "Connection status unconfirmed",
   },
   "settings.pluginConnectionPanel.servicesDisabled": {
@@ -968,7 +967,7 @@ export const pluginMessages = {
     en: "Some services are disconnected",
   },
   "settings.pluginConnectionPanel.authenticationResultUnconfirmed": {
-    "zh-CN": "认证结果待核对",
+    "zh-CN": "认证结果待确认",
     en: "Authentication result unconfirmed",
   },
   "settings.pluginConnectionPanel.waitingForAuthentication": {
@@ -1016,11 +1015,11 @@ export const pluginMessages = {
     en: "Service declarations are invalid or restricted by host policy. View connection diagnostics.",
   },
   "settings.pluginConnectionPanel.theAuthenticationResultHasNotBeenConfirmed": {
-    "zh-CN": "尚未确认认证结果，请先核对认证状态。",
+    "zh-CN": "尚未确认认证结果，请先查看认证状态。",
     en: "The authentication result has not been confirmed. Check authentication status first.",
   },
   "settings.pluginConnectionPanel.completeAuthenticationAndCheckItsStatusDisconnected": {
-    "zh-CN": "请完成认证并核对状态，尚未连接的服务不会自动启动。",
+    "zh-CN": "完成认证后请查看状态，未连接的服务不会自动启动。",
     en: "Complete authentication and check its status. Disconnected services will not start automatically.",
   },
   "settings.pluginConnectionPanel.completeAuthenticationThenConfirmTrustAndConnect": {
@@ -1044,7 +1043,7 @@ export const pluginMessages = {
     en: "The plugin is installed and enabled.",
   },
   "settings.pluginConnectionPanel.confirmThatYouTrustTheCurrentInstallation": {
-    "zh-CN": "连接前，请确认信任当前安装快照。",
+    "zh-CN": "连接前请确认信任当前安装版本。",
     en: "Confirm that you trust the current installation snapshot before connecting.",
   },
   "settings.pluginConnectionPanel.pluginConnectionStatus": {
@@ -1076,7 +1075,7 @@ export const pluginMessages = {
     en: "Authenticate in browser",
   },
   "settings.pluginConnectionPanel.checkConnectionStatus": {
-    "zh-CN": "核对连接状态",
+    "zh-CN": "查看连接状态",
     en: "Check connection status",
   },
   "settings.pluginConnectionPanel.startConversation": {
@@ -1128,7 +1127,7 @@ export const pluginMessages = {
     en: "Connect later",
   },
   "settings.pluginConnectionPanel.confirmThatYouTrustTheCurrentInstallation2": {
-    "zh-CN": "请先确认信任当前安装快照。",
+    "zh-CN": "请先确认信任当前安装版本。",
     en: "Confirm that you trust the current installation snapshot first.",
   },
   "settings.pluginConnectionPanel.connectionDiagnostics": {
@@ -1136,7 +1135,7 @@ export const pluginMessages = {
     en: "Connection diagnostics",
   },
   "settings.pluginHookSettings.hookConfigurationIsIncompleteCheckSubmissionStatus": {
-    "zh-CN": "钩子配置未完成，请核对提交状态。",
+    "zh-CN": "钩子配置尚未完成，请查看提交状态。",
     en: "Hook configuration is incomplete. Check submission status.",
   },
   "settings.pluginHookSettings.pluginHooks": {
@@ -1356,7 +1355,7 @@ export const pluginMessages = {
     en: "Skills for {value0}",
   },
   "settings.pluginAuthConfiguration.authenticationConfigurationSavedEnableAuthenticationAndCheck": {
-    "zh-CN": "认证配置已保存。启用认证后核对状态，再连接插件。",
+    "zh-CN": "认证配置已保存。启用认证后查看状态再连接插件。",
     en: "Authentication configuration saved. Enable authentication and check its status before connecting the plugin.",
   },
   "settings.pluginAuthConfiguration.authenticationConfigurationIncomplete": {
@@ -1364,7 +1363,7 @@ export const pluginMessages = {
     en: "Authentication configuration incomplete",
   },
   "settings.pluginAuthConfiguration.theResultIsStillUnconfirmedCheckAgain": {
-    "zh-CN": "结果仍待核对，请稍后查询。",
+    "zh-CN": "结果仍待确认，请稍后再次查询。",
     en: "The result is still unconfirmed. Check again later.",
   },
   "settings.pluginAuthConfiguration.authenticationConfigurationWasNotAccepted": {
@@ -1416,7 +1415,7 @@ export const pluginMessages = {
     en: "Save authentication configuration",
   },
   "settings.pluginAuthConfiguration.checkAuthenticationSubmission": {
-    "zh-CN": "核对认证配置提交",
+    "zh-CN": "查看认证提交结果",
     en: "Check authentication submission",
   },
   "settings.scopedSkillsSettings.resourceScope": {
@@ -1840,7 +1839,7 @@ export const pluginMessages = {
     en: "The backend has not stopped. Configuration has not been applied.",
   },
   "settings.hooksSettings.theBackendReconnectedCheckTheLoadStatus": {
-    "zh-CN": "后台已重新连接，请核对各项目的加载状态。",
+    "zh-CN": "后台已重新连接，请查看各项目的加载状态。",
     en: "The backend reconnected. Check the load status of each project.",
   },
   "settings.hooksSettings.hookManagement": {
@@ -1920,7 +1919,7 @@ export const pluginMessages = {
     en: "Loading configuration source…",
   },
   "settings.hooksSettings.manageCoreExtensionHooksOtherFormatsFrom": {
-    "zh-CN": "管理 Core 扩展钩子。命令直接执行，不经过 shell。",
+    "zh-CN": "管理项目扩展钩子，命令直接执行，不经由 shell。",
     en: "Manage Core extension hooks. Commands run directly, without a shell.",
   },
   "settings.hooksSettings.restartingDisconnectsAllWindowsRunningTasksTerminals": {
@@ -1932,7 +1931,7 @@ export const pluginMessages = {
     en: "Edit hook",
   },
   "settings.hooksSettings.commandsReceiveOneLineOfEventJSON": {
-    "zh-CN": "命令接收一行事件 JSON，并返回钩子响应。保存时由 Core 校验完整扩展配置。",
+    "zh-CN": "命令接收单行事件 JSON 并返回响应，保存时自动校验完整配置。",
     en: "Commands receive one line of event JSON and return a hook response. Core validates the full extension configuration when saving.",
   },
   "settings.hooksSettings.reloadHookConfiguration": {
@@ -1992,7 +1991,7 @@ export const pluginMessages = {
     en: "Save hook",
   },
   "settings.pluginResources.thePluginCatalogIsDisabledInThis": {
-    "zh-CN": "当前 Core 未启用插件目录。独立资源仍可使用。",
+    "zh-CN": "当前项目未启用插件目录，独立资源仍可使用。",
     en: "The plugin catalog is disabled in this Core. Standalone resources are still available.",
   },
   "settings.pluginResources.pluginCatalogValue": {
@@ -2000,7 +1999,7 @@ export const pluginMessages = {
     en: "Plugin catalog: {value0}",
   },
   "settings.pluginResources.theInstallationSnapshotForPluginValueChanged": {
-    "zh-CN": "插件 {value0} 的安装快照已变化，请刷新资源。",
+    "zh-CN": "插件 {value0} 的安装版本已更新，请刷新资源。",
     en: "The installation snapshot for plugin {value0} changed. Refresh resources.",
   },
   "settings.pluginResources.pluginMCPValue": {
@@ -2012,7 +2011,7 @@ export const pluginMessages = {
     en: "Select a project to view installed plugin resources.",
   },
   "settings.pluginResources.theProjectIsDisconnectedConnectCoreTo": {
-    "zh-CN": "项目尚未连接，请连接 Core 后查看插件资源。",
+    "zh-CN": "项目尚未连接，请连接后台后查看插件资源。",
     en: "The project is disconnected. Connect Core to view plugin resources.",
   },
   "settings.pluginHookSettings.thePluginHookResponseFormatIsInvalid": {
@@ -2052,11 +2051,11 @@ export const pluginMessages = {
     en: "The skill page is invalid.",
   },
   "settings.pluginCenter.pluginOperationFailed": {
-    "zh-CN": "插件操作失败，请刷新目录核对状态。",
+    "zh-CN": "插件操作失败，请刷新目录查看最新状态。",
     en: "The plugin operation failed. Refresh the catalog to check its status.",
   },
   "settings.pluginCenter.submissionResultUnconfirmed": {
-    "zh-CN": "提交结果待核对，不会自动重发。请核对原请求。",
+    "zh-CN": "提交结果待确认，不会自动重发，请先查看原请求。",
     en: "The submission result is unconfirmed and will not be resent automatically. Check the original request.",
   },
   "settings.pluginCenter.errorCode": {
@@ -2104,7 +2103,7 @@ export const pluginMessages = {
     en: "Some services are disconnected",
   },
   "settings.pluginResources.cleanupUnknownState": {
-    "zh-CN": "清理结果待核对",
+    "zh-CN": "清理结果待确认",
     en: "Cleanup result unconfirmed",
   },
   "settings.pluginResources.authenticationState": {
@@ -2128,7 +2127,7 @@ export const pluginMessages = {
     en: "Not applied",
   },
   "settings.pluginResources.unknownState": {
-    "zh-CN": "状态待核对",
+    "zh-CN": "状态待确认",
     en: "Status unconfirmed",
   },
   "settings.pluginResources.unsupportedState": {
@@ -2152,7 +2151,7 @@ export const pluginMessages = {
     en: "Plugin {value0} · {value1}",
   },
   "settings.pluginResources.unknownStateDetails": {
-    "zh-CN": "状态待核对，请在插件详情查看",
+    "zh-CN": "状态待确认，请在插件详情中查看",
     en: "Status unconfirmed. View plugin details.",
   },
   "settings.pluginResources.resourceDiagnosticsAvailable": {
@@ -2279,7 +2278,7 @@ export const pluginMessages = {
     en: "This plugin declares MCP services. Install to review each service and its authentication requirements.",
   },
   "settings.pluginCenter.installDoesNotConnect": {
-    "zh-CN": "安装不会启动服务或授权账户。请在管理中核对要求并明确连接。",
+    "zh-CN": "安装不会自动启动服务或授权账户，请在管理页确认后连接。",
     en: "Installation does not start services or authorize an account. Review requirements and explicitly connect in Manage.",
   },
   "settings.pluginCenter.declaredAuthenticationRequired": {
