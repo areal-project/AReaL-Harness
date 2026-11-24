@@ -218,6 +218,11 @@ impl Gateway {
         }
     }
 }
+pub(crate) fn grant_allows_project(grant: &Value, alias: &str) -> bool {
+    grant["projectIds"]
+        .as_array()
+        .is_some_and(|ids| ids.iter().any(|id| id == "*" || id == alias))
+}
 pub(super) fn grant(config: &Value, peer: &str) -> Option<Value> {
     config["deviceGrants"]
         .as_array()?

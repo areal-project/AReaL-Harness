@@ -31,6 +31,7 @@ export function GrantReview({
   const [selected, setSelected] = useState<string[]>(
     device.projectIds ?? (projects.length === 1 ? [projects[0].id] : []),
   );
+  const allProjects = selected.includes("*");
   // 新配对默认可查看、提交、审批；旧授权不变，管理需单独勾选。
   const [preset, setPreset] = useState<"Observer" | "Operator">(
     pending || device.capabilities?.includes("submit") ? "Operator" : "Observer",
@@ -63,6 +64,19 @@ export function GrantReview({
       )}
       <div className="remote-project-scope">
         <p className="remote-field-label">{t("settings.mobileConnect.projects")}</p>
+        <label className="remote-project-choice" htmlFor={`${fieldId}-all-projects`}>
+          <Input
+            id={`${fieldId}-all-projects`}
+            unstyled
+            data-slot={undefined}
+            type="checkbox"
+            checked={allProjects}
+            onChange={(event) =>
+              setSelected(event.target.checked ? ["*"] : projects.map((project) => project.id))
+            }
+          />
+          {t("settings.mobileConnect.allProjects")}
+        </label>
         {projects.map((project) => (
           <label
             className="remote-project-choice"
@@ -74,12 +88,13 @@ export function GrantReview({
               unstyled
               data-slot={undefined}
               type="checkbox"
-              checked={selected.includes(project.id)}
+              checked={allProjects || selected.includes(project.id)}
+              disabled={allProjects}
               onChange={(event) =>
                 setSelected((old) =>
                   event.target.checked
-                    ? [...old, project.id]
-                    : old.filter((value) => value !== project.id),
+                    ? [...old.filter((value) => value !== "*"), project.id]
+                    : old.filter((value) => value !== "*" && value !== project.id),
                 )
               }
             />

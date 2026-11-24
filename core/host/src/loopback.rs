@@ -991,7 +991,7 @@ struct ReadRequest {
 /// 等任一附加观察的下一条 Core 事件；广播接收可安全取消，未选中的不会丢事件。
 async fn next_watched(
     watched: &mut [super::conversation_read::ConversationReader],
-) -> (Result<super::schedule_connection::CoreEvent>, usize) {
+) -> (Result<Option<super::schedule_connection::CoreEvent>>, usize) {
     let (event, index, _) = futures_util::future::select_all(
         watched
             .iter_mut()

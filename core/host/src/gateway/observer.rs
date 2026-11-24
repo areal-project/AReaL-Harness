@@ -1,6 +1,39 @@
 use super::*;
 use crate::server::conversation_read::{ConversationReader, HistoryParams};
 use crate::server::schedule_connection::{CoreEvent, CoreObservation};
+use tokio::sync::broadcast::error::{RecvError, TryRecvError};
+
+const REMOTE_DELTA_COALESCE_WINDOW: Duration = Duration::from_millis(80);
+
+pub(super) enum ViewerEvent {
+    Core(CoreEvent),
+    Lagged,
+    FlushDelta,
+}
+
+fn classify_remote_event(viewer: &RemoteViewer, event: &CoreEvent) -> Option<bool> {
+    if event.sequence <= viewer.barrier {
+        return None;
+    }
+    let params = &event.value["params"];
+    let thread = params
+        .get("threadId")
+        .or_else(|| params["interaction"].get("threadId"))
+        .or_else(|| params["thread"].get("id"));
+    if thread.and_then(Value::as_str) != Some(viewer.thread_id.as_str()) {
+        return None;
+    }
+    let method = event.value["method"].as_str().unwrap_or_default();
+    if !method.starts_with("item/")
+        && !method.starts_with("turn/")
+        && !method.starts_with("areal/")
+        && !method.starts_with("thread/")
+    {
+        return None;
+    }
+    let is_delta = method.ends_with("/delta") || method.ends_with("Delta");
+    Some(!is_delta)
+}
 
 pub(super) enum Viewer {
     Remote(RemoteViewer),
@@ -34,6 +67,8 @@ pub(super) struct RemoteViewer {
     observation: CoreObservation,
     model: Option<Value>,
     body: Option<FrozenBody>,
+    last_pushed: Option<Instant>,
+    pending_delta_flush: Option<tokio::time::Instant>,
 }
 struct FrozenBody {
     id: String,
@@ -67,15 +102,31 @@ impl Session {
             }
         }
     }
-    pub(super) async fn next_event(&mut self) -> Result<CoreEvent> {
+    pub(super) async fn next_event(&mut self) -> Result<ViewerEvent> {
         match &mut self.viewer {
-            Some(Viewer::Remote(viewer)) => viewer
-                .observation
-                .events
-                .recv()
-                .await
-                .context("RESYNC_REQUIRED"),
-            Some(Viewer::Conversation { reader, .. }) => reader.next_event().await,
+            Some(Viewer::Remote(viewer)) => {
+                if let Some(deadline) = viewer.pending_delta_flush {
+                    tokio::select! {
+                        biased;
+                        _ = tokio::time::sleep_until(deadline) => Ok(ViewerEvent::FlushDelta),
+                        received = viewer.observation.events.recv() => match received {
+                            Ok(event) => Ok(ViewerEvent::Core(event)),
+                            Err(RecvError::Lagged(_)) => Ok(ViewerEvent::Lagged),
+                            Err(RecvError::Closed) => anyhow::bail!("RESYNC_REQUIRED"),
+                        },
+                    }
+                } else {
+                    match viewer.observation.events.recv().await {
+                        Ok(event) => Ok(ViewerEvent::Core(event)),
+                        Err(RecvError::Lagged(_)) => Ok(ViewerEvent::Lagged),
+                        Err(RecvError::Closed) => anyhow::bail!("RESYNC_REQUIRED"),
+                    }
+                }
+            }
+            Some(Viewer::Conversation { reader, .. }) => match reader.next_event().await? {
+                Some(event) => Ok(ViewerEvent::Core(event)),
+                None => Ok(ViewerEvent::Lagged),
+            },
             None => std::future::pending().await,
         }
     }
@@ -108,43 +159,78 @@ impl Session {
         self.authorize(Some(project), "observe")?;
         Ok(self.conversation_keys(value?, project))
     }
-    pub(super) async fn event(&mut self, event: CoreEvent) -> Result<Option<Value>> {
+    pub(super) async fn event(&mut self, incoming: ViewerEvent) -> Result<Option<Value>> {
         if let Some(Viewer::Conversation { project, .. }) = &self.viewer {
             let project = project.clone();
             self.authorize(Some(&project), "observe")?;
             let Some(Viewer::Conversation { reader, .. }) = &mut self.viewer else {
                 unreachable!()
             };
-            let value = reader.event(&self.host, event).await?;
+            let core_event = match incoming {
+                ViewerEvent::Core(event) => Some(event),
+                ViewerEvent::Lagged | ViewerEvent::FlushDelta => None,
+            };
+            let value = reader.event(&self.host, core_event).await?;
             self.authorize(Some(&project), "observe")?;
             return Ok(value.map(|value| self.conversation_keys(value, &project)));
         }
-        let Some(Viewer::Remote(viewer)) = &self.viewer else {
-            return Ok(None);
+        let (project, generation) = {
+            let Some(Viewer::Remote(viewer)) = self.viewer.as_mut() else {
+                return Ok(None);
+            };
+            ensure!(viewer.observation.current(&self.host), "RESYNC_REQUIRED");
+            let project = viewer.project.clone();
+            let generation = viewer.generation.clone();
+            let (mut relevant, mut immediate) = match incoming {
+                ViewerEvent::Lagged => (true, true),
+                ViewerEvent::FlushDelta => {
+                    viewer.pending_delta_flush = None;
+                    (true, true)
+                }
+                ViewerEvent::Core(event) => match classify_remote_event(viewer, &event) {
+                    Some(imm) => (true, imm),
+                    None => (false, false),
+                },
+            };
+            loop {
+                match viewer.observation.events.try_recv() {
+                    Ok(extra) => {
+                        if let Some(imm) = classify_remote_event(viewer, &extra) {
+                            relevant = true;
+                            immediate |= imm;
+                        }
+                    }
+                    Err(TryRecvError::Lagged(_)) => {
+                        relevant = true;
+                        immediate = true;
+                    }
+                    Err(TryRecvError::Empty) => break,
+                    Err(TryRecvError::Closed) => anyhow::bail!("RESYNC_REQUIRED"),
+                }
+            }
+            if !relevant {
+                return Ok(None);
+            }
+            if !immediate
+                && let Some(last) = viewer.last_pushed
+                && last.elapsed() < REMOTE_DELTA_COALESCE_WINDOW
+            {
+                let remaining = REMOTE_DELTA_COALESCE_WINDOW.saturating_sub(last.elapsed());
+                viewer
+                    .pending_delta_flush
+                    .get_or_insert_with(|| tokio::time::Instant::now() + remaining);
+                return Ok(None);
+            }
+            viewer.pending_delta_flush = None;
+            (project, generation)
         };
-        ensure!(viewer.observation.current(&self.host), "RESYNC_REQUIRED");
-        self.authorize(Some(&viewer.project), "observe")?;
-        if event.sequence <= viewer.barrier {
-            return Ok(None);
-        }
-        let params = &event.value["params"];
-        let thread = params
-            .get("threadId")
-            .or_else(|| params["interaction"].get("threadId"))
-            .or_else(|| params["thread"].get("id"));
-        if thread.and_then(Value::as_str) != Some(viewer.thread_id.as_str()) {
-            return Ok(None);
-        }
-        let method = event.value["method"].as_str().unwrap_or_default();
-        if !method.starts_with("item/")
-            && !method.starts_with("turn/")
-            && !method.starts_with("areal/")
-            && !method.starts_with("thread/")
-        {
-            return Ok(None);
-        }
-        let project = viewer.project.clone();
-        let (native, barrier) = viewer.observation.snapshot(&self.host).await?;
+        self.authorize(Some(&project), "observe")?;
+        let (native, barrier) = {
+            let Some(Viewer::Remote(viewer)) = self.viewer.as_ref() else {
+                anyhow::bail!("RESYNC_REQUIRED")
+            };
+            viewer.observation.snapshot(&self.host).await?
+        };
         self.authorize(Some(&project), "observe")?;
         ensure!(
             serde_json::to_vec(&native)?.len() <= 4 * 1024 * 1024,
@@ -152,7 +238,7 @@ impl Session {
         );
         let goal_control_allowed = self.goal_control_allowed(&project, &native["thread"])?;
         let models = self
-            .model_catalog(&project, &viewer.generation, || {
+            .model_catalog(&project, &generation, || {
                 Ok(native["thread"]["desktop"]["configuration"]
                     .get("model")
                     .cloned())
@@ -175,6 +261,7 @@ impl Session {
             .get("model")
             .cloned();
         viewer.barrier = barrier;
+        viewer.last_pushed = Some(Instant::now());
         let sequence = viewer.sequence;
         let Some(Viewer::Remote(viewer)) = self.viewer.as_ref() else {
             unreachable!()
@@ -289,6 +376,8 @@ impl Session {
                 .get("model")
                 .cloned(),
             body: None,
+            last_pushed: None,
+            pending_delta_flush: None,
         };
         let mut result = viewer.keys(self);
         result["sequence"] = json!(0);

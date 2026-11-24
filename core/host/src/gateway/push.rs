@@ -229,9 +229,7 @@ fn eligible(
         && grant(&snapshot["config"], peer).is_some_and(|grant| {
             grant["revision"] == *revision
                 && grant["push"] == *push
-                && grant["projectIds"]
-                    .as_array()
-                    .is_some_and(|ids| ids.iter().any(|id| id == alias))
+                && grant_allows_project(&grant, alias)
                 && grant["capabilities"]
                     .as_array()
                     .is_some_and(|caps| caps.iter().any(|cap| cap == capability))
@@ -264,9 +262,7 @@ impl Attention {
                 .filter(|grant| {
                     grant["status"] == "active"
                         && grant["push"].is_object()
-                        && grant["projectIds"]
-                            .as_array()
-                            .is_some_and(|ids| ids.iter().any(|id| id == &alias))
+                        && grant_allows_project(grant, &alias)
                         && grant["capabilities"].as_array().is_some_and(|caps| {
                             ["observe", "answer"]
                                 .iter()
@@ -374,12 +370,8 @@ impl Route {
                     .any(|binding| binding == &(self.project.clone(), self.alias.clone())),
             "RESYNC_REQUIRED"
         );
-        Ok(grant(&snapshot["config"], peer).filter(|grant| {
-            grant["push"].is_object()
-                && grant["projectIds"]
-                    .as_array()
-                    .is_some_and(|ids| ids.iter().any(|id| id == &self.alias))
-        }))
+        Ok(grant(&snapshot["config"], peer)
+            .filter(|grant| grant["push"].is_object() && grant_allows_project(grant, &self.alias)))
     }
     fn publish(
         &self,
@@ -544,9 +536,7 @@ pub(super) async fn historical(host: &Rc<Host>) {
                 .any(|grant| {
                     grant["status"] == "active"
                         && grant["push"].is_object()
-                        && grant["projectIds"]
-                            .as_array()
-                            .is_some_and(|ids| ids.iter().any(|id| id == &alias))
+                        && grant_allows_project(grant, &alias)
                         && grant["capabilities"]
                             .as_array()
                             .is_some_and(|caps| caps.iter().any(|cap| cap == "observe"))
@@ -588,9 +578,7 @@ pub(super) fn start_completions(host: &Rc<Host>, running: &mut Running) {
         if !grant["push"].is_object()
             || completion.record["remote"]["hostId"] != running.identity.peer().to_string()
             || completion.record["remote"]["projectId"] != completion.alias
-            || !grant["projectIds"]
-                .as_array()
-                .is_some_and(|ids| ids.iter().any(|id| id == &completion.alias))
+            || !grant_allows_project(&grant, &completion.alias)
         {
             continue;
         }

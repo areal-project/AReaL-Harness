@@ -1152,7 +1152,7 @@ async fn connect_authorized(
         sequence: Cell::new(0),
         closed: Cell::new(false),
         ready: Cell::new(false),
-        events: broadcast::channel(16).0,
+        events: broadcast::channel(512).0,
         event_sequence: Cell::new(0),
         shell_revision: Cell::new(0),
         task_revision: Cell::new(0),

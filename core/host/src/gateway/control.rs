@@ -27,6 +27,9 @@ fn grant_projects(request: &Value) -> Result<Vec<String>> {
     let mut projects = Vec::new();
     for value in values {
         let project = value.as_str().context("invalid Remote project")?.to_owned();
+        if project == "*" {
+            return Ok(vec!["*".to_owned()]);
+        }
         if !projects.contains(&project) {
             projects.push(project);
         }

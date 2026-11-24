@@ -578,7 +578,7 @@ impl Session {
         loop {
             enum Incoming {
                 Request(Option<RequestMessage>),
-                Event(Result<crate::server::schedule_connection::CoreEvent>),
+                Event(Result<observer::ViewerEvent>),
                 Shell,
             }
             let incoming = tokio::select! {
@@ -942,9 +942,7 @@ impl Session {
                 project
             };
             ensure!(
-                current["projectIds"]
-                    .as_array()
-                    .is_some_and(|ids| ids.iter().any(|id| id == project)),
+                gateway_owner::grant_allows_project(&current, project),
                 "FORBIDDEN"
             );
         }
@@ -1329,7 +1327,7 @@ impl Session {
                 .collect::<std::collections::BTreeMap<_, _>>();
             let projects: Vec<_> = self.host.slots.borrow().values().filter_map(|slot| {
                 let alias = aliases.get(&slot.registration.project_id)?;
-                (self.local || self.grant["projectIds"].as_array().is_some_and(|ids| ids.iter().any(|id| id == alias))).then(|| json!({"projectId":alias,"name":slot.registration.workspace.file_name().unwrap_or_default().to_string_lossy(),"connectionState":if slot.state=="ready" {"online"} else {"offline"},"serviceGeneration":slot.service.as_ref().map(|s|s.identity.generation.clone())}))
+                (self.local || gateway_owner::grant_allows_project(&self.grant, alias)).then(|| json!({"projectId":alias,"name":slot.registration.workspace.file_name().unwrap_or_default().to_string_lossy(),"connectionState":if slot.state=="ready" {"online"} else {"offline"},"serviceGeneration":slot.service.as_ref().map(|s|s.identity.generation.clone())}))
             }).collect();
             ensure!(offset <= projects.len(), "INVALID_PARAMS");
             let end = projects.len().min(offset + limit as usize);

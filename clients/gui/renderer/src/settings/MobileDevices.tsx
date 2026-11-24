@@ -96,7 +96,9 @@ export function MobileDevices({
             ? "settings.mobileSettings.clientKindAndroid"
             : "settings.mobileSettings.clientKindWeb",
       ),
-      t("settings.mobileConnect.projectCount", { count: device.projectIds?.length ?? 0 }),
+      device.projectIds?.includes("*")
+        ? t("settings.mobileConnect.allProjectsShort")
+        : t("settings.mobileConnect.projectCount", { count: device.projectIds?.length ?? 0 }),
       device.online
         ? t("settings.mobileConnect.online")
         : device.lastSeenAt

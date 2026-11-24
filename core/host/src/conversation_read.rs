@@ -369,24 +369,36 @@ impl ConversationReader {
         value["view"] = json!("conversation");
         value
     }
-    pub(super) async fn next_event(&mut self) -> Result<CoreEvent> {
+    pub(super) async fn next_event(&mut self) -> Result<Option<CoreEvent>> {
         let Some(observation) = self.observation.as_mut() else {
             return std::future::pending().await;
         };
-        observation.events.recv().await.context("RESYNC_REQUIRED")
-    }
-    pub(super) async fn event(&mut self, host: &Host, event: CoreEvent) -> Result<Option<Value>> {
-        ensure!(self.current(host), "RESYNC_REQUIRED");
-        if event.sequence <= self.barrier {
-            return Ok(None);
+        match observation.events.recv().await {
+            Ok(event) => Ok(Some(event)),
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => Ok(None),
+            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                anyhow::bail!("RESYNC_REQUIRED")
+            }
         }
-        let params = &event.value["params"];
-        let thread = params
-            .get("threadId")
-            .or_else(|| params["interaction"].get("threadId"))
-            .or_else(|| params["thread"].get("id"));
-        if thread.and_then(Value::as_str) != Some(self.identity.thread_id.as_str()) {
-            return Ok(None);
+    }
+    pub(super) async fn event(
+        &mut self,
+        host: &Host,
+        event: Option<CoreEvent>,
+    ) -> Result<Option<Value>> {
+        ensure!(self.current(host), "RESYNC_REQUIRED");
+        if let Some(event) = event {
+            if event.sequence <= self.barrier {
+                return Ok(None);
+            }
+            let params = &event.value["params"];
+            let thread = params
+                .get("threadId")
+                .or_else(|| params["interaction"].get("threadId"))
+                .or_else(|| params["thread"].get("id"));
+            if thread.and_then(Value::as_str) != Some(self.identity.thread_id.as_str()) {
+                return Ok(None);
+            }
         }
         let (snapshot, barrier) = self
             .observation

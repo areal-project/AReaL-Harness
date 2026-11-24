@@ -20,13 +20,13 @@ impl Session {
             method == "shell.subscribe" && exact(params, &[]),
             "INVALID_PARAMS"
         );
-        let allowed = self.grant["projectIds"]
+        let _allowed = self.grant["projectIds"]
             .as_array()
             .context("GRANT_CHANGED")?;
         let projects = self
             .bindings()?
             .into_iter()
-            .filter(|(_, alias)| allowed.iter().any(|id| id == alias))
+            .filter(|(_, alias)| gateway_owner::grant_allows_project(&self.grant, alias))
             .map(|(id, _)| id)
             .collect();
         let outcome = Subscription::open_remote(

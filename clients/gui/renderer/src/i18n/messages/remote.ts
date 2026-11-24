@@ -2175,6 +2175,14 @@ export const remoteMessages = {
     "zh-CN": "可以访问的项目",
     en: "Projects it can access",
   },
+  "settings.mobileConnect.allProjects": {
+    "zh-CN": "全部项目（自动包含后续新增项目）",
+    en: "All projects (automatically includes future projects)",
+  },
+  "settings.mobileConnect.allProjectsShort": {
+    "zh-CN": "全部项目",
+    en: "All projects",
+  },
   "settings.mobileConnect.viewOnlyDescription": {
     "zh-CN": "看会话和进度",
     en: "See conversations and progress",

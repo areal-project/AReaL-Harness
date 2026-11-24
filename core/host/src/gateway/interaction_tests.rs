@@ -2606,3 +2606,158 @@ async fn cloud_navigation_inherits_only_the_original_source_and_project_grant() 
         })
         .await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn remote_observer_recovers_from_broadcast_lag_without_invalidating_subscription() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let opening = Fixture::dispatch(
+                f.session("a"),
+                f.request("session.open", json!({"threadId": "thread"}), None),
+            );
+            let observe = f.call("areal/thread/observe").await;
+            let notifications = observe.responses.clone();
+            observe.reply(json!({
+                "thread": {
+                    "id": "thread",
+                    "preview": "测试一下",
+                    "status": {"type": "active"},
+                    "desktop": {"configuration": {"revision": 1}, "queue": {"items": []}},
+                    "turns": [{
+                        "id": "turn-1",
+                        "status": "inProgress",
+                        "items": [
+                            {"id": "u1", "type": "userMessage", "content": [{"type": "text", "text": "测试一下"}]},
+                            {"id": "a1", "type": "agentMessage", "text": ""}
+                        ]
+                    }]
+                },
+                "ownership": {"kind": "ordinary"}
+            }));
+            let (mut session, result) = opening.await.unwrap();
+            let opened = result.unwrap();
+            assert_eq!(opened["sequence"], 0);
+            assert_eq!(opened["snapshot"]["activeTurnId"], "turn-1");
+
+            // Flood more than the broadcast channel capacity (512) to force RecvError::Lagged.
+            for index in 0..600 {
+                notifications
+                    .send(CoreResponse::Message(json!({
+                        "method": "item/agentMessage/delta",
+                        "params": {"threadId": "thread", "turnId": "turn-1", "itemId": "a1", "delta": format!("t{index}")}
+                    })))
+                    .unwrap();
+            }
+            notifications
+                .send(CoreResponse::Message(json!({
+                    "method": "turn/completed",
+                    "params": {"threadId": "thread", "turn": {"id": "turn-1", "status": "completed"}}
+                })))
+                .unwrap();
+
+            let incoming = session.next_event().await.unwrap();
+            let updating = tokio::task::spawn_local(async move {
+                let res = session.event(incoming).await;
+                (session, res)
+            });
+            loop {
+                let call = f.calls.recv().await.expect("expected Core RPC");
+                match call.request["method"].as_str() {
+                    Some("areal/model/list") => call.reply(json!({"data": []})),
+                    Some("areal/capabilities") => call.reply(Fixture::capabilities()),
+                    Some("areal/thread/observe") => {
+                        call.reply(json!({
+                            "thread": {
+                                "id": "thread",
+                                "preview": "测试一下",
+                                "status": {"type": "idle"},
+                                "desktop": {"configuration": {"revision": 1}, "queue": {"items": []}},
+                                "turns": [{
+                                    "id": "turn-1",
+                                    "status": "completed",
+                                    "items": [
+                                        {"id": "u1", "type": "userMessage", "content": [{"type": "text", "text": "测试一下"}]},
+                                        {"id": "a1", "type": "agentMessage", "text": "最终回复"}
+                                    ]
+                                }]
+                            },
+                            "ownership": {"kind": "ordinary"}
+                        }));
+                        break;
+                    }
+                    other => panic!("unexpected Core RPC during lag recovery: {other:?}"),
+                }
+            }
+            let (session, updated) = updating.await.unwrap();
+            let updated = updated.unwrap().expect("lagged remote observer must emit fresh snapshot");
+            assert_eq!(updated["event"], "session.updated");
+            assert_eq!(updated["sequence"], 1);
+            assert!(updated["snapshot"]["activeTurnId"].is_null());
+            assert_eq!(updated["snapshot"]["turns"][0]["items"][1]["preview"], "最终回复");
+            assert!(session.viewer.is_some(), "subscription must stay alive after lag");
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn operator_without_manage_can_configure_full_access_and_wildcard_grant_lists_all_projects() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            // Default Operator capabilities (submit + answer, no manage) + wildcard "*" project scope.
+            f.grant("a", |grant| {
+                grant["capabilities"] = json!([
+                    "observe",
+                    "review",
+                    "submit",
+                    "interrupt",
+                    "answer",
+                    "pauseTask"
+                ]);
+                grant["projectIds"] = json!(["*"]);
+            });
+            // Wildcard "*" exposes registered projects.
+            let (_, listed) = Fixture::dispatch(
+                f.session("a"),
+                json!({"id": "projects", "method": "project.list", "params": {}}),
+            )
+            .await
+            .unwrap();
+            assert_eq!(listed.unwrap()["projects"][0]["projectId"], f.alias);
+
+            // Operator can configure fullAccess when Core supports permissionFullAccess.
+            let request = f.request(
+                "session.control",
+                json!({
+                    "threadId": "thread",
+                    "operation": "configure",
+                    "expectedRevision": 1,
+                    "values": {"options": {"permissionPreset": "fullAccess"}}
+                }),
+                Some(&uuid::Uuid::new_v4().to_string()),
+            );
+            let configuring = Fixture::dispatch(f.session("a"), request);
+            let mut caps = Fixture::capabilities();
+            caps["features"]["permissionPresets"] = json!(true);
+            caps["features"]["permissionFullAccess"] = json!(true);
+            f.call("areal/capabilities").await.reply(caps);
+            f.call("areal/thread/observe")
+                .await
+                .reply(Fixture::idle_thread(1));
+            f.call("areal/thread/inspect")
+                .await
+                .reply(json!({"configuration": {"revision": 1, "options": {}}}));
+            let configure = f.call("areal/thread/configure").await;
+            assert_eq!(
+                configure.request["params"]["options"]["permissionPreset"],
+                "fullAccess"
+            );
+            configure.reply(json!({"revision": 2}));
+            assert_eq!(
+                configuring.await.unwrap().1.unwrap()["admissionState"],
+                "accepted"
+            );
+        })
+        .await;
+}

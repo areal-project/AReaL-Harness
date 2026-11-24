@@ -168,8 +168,11 @@ impl Session {
         project: &str,
         options: &Value,
     ) -> Result<()> {
-        if options["permissionPreset"] == "fullAccess" {
-            self.authorize(Some(project), "manage")?;
+        if options["permissionPreset"] == "fullAccess"
+            && self.authorize(Some(project), "manage").is_err()
+        {
+            self.authorize(Some(project), "submit")?;
+            self.authorize(Some(project), "answer")?;
         }
         if options["permissionPreset"] == "autoReview"
             || options["preapprovedTools"]

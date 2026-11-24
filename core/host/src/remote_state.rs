@@ -1226,7 +1226,7 @@ pub(crate) fn validate(config: &Value, projects: &[String]) -> Result<()> {
                 if let Some(scope) = grant.get(key) {
                     for project in scope.as_array().context("invalid Remote scope")? {
                         let project = project.as_str().context("invalid Remote project alias")?;
-                        if !projects.iter().any(|id| id == project) {
+                        if project != "*" && !projects.iter().any(|id| id == project) {
                             return Err(error(
                                 "migrationConflict",
                                 "Remote grant references an unknown source project",
