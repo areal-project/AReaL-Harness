@@ -46,7 +46,10 @@ describe("Worktree identity badge (WT-IDENTITY-01)", () => {
       createElement(MemoTaskItem, {
         id: "wt-thread",
         title: "Worktree task",
-        worktree: { branch: "feat/demo-uuid", directory: "/Users/example/worktrees/secret-dir" },
+        worktree: {
+          branch: "feat/demo-uuid",
+          directory: "/workspace/example/worktrees/secret-dir",
+        },
         worktreeLabel: "在 Worktree 工作",
         worktreeTitle: "Worktree · feat/demo-uuid",
         active: false,
@@ -61,7 +64,7 @@ describe("Worktree identity badge (WT-IDENTITY-01)", () => {
       }),
     );
     expect(html).toContain("Worktree task");
-    expect(html).not.toContain("/Users/example/worktrees/secret-dir");
+    expect(html).not.toContain("/workspace/example/worktrees/secret-dir");
   });
 
   it("keeps the leading status slot mounted for pinned idle rows to prevent horizontal jump when running", () => {

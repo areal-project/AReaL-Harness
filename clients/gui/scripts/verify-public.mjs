@@ -10,8 +10,9 @@ const creatorManifest = JSON.parse(
   await readFile(join(root, `${creatorRoot}.source.json`), "utf8"),
 );
 const creatorSkill = `${creatorRoot}/SKILL.md`;
-// UI 包随包分发的使用与审查指南是公开产品文档，继续参与下方内容扫描。
-const publicSkills = new Set([
+// 仓库根目录与 UI 包随包分发的指引文档是公开产品/开发文档，继续参与下方内容扫描。
+const publicDocs = new Set([
+  "AGENTS.md",
   creatorSkill,
   "packages/ui/skills/areal-ui-guide/SKILL.md",
   "packages/ui/skills/areal-ui-critique/SKILL.md",
@@ -33,7 +34,7 @@ async function scan(dir) {
     const path = join(dir, item.name),
       rel = relative(root, path);
     assert.ok(
-      (publicSkills.has(rel) && item.isFile()) ||
+      (publicDocs.has(rel) && item.isFile()) ||
         !/^AGENTS\.md$|^SKILL\.md$|^\.env(?:\.|$)|\.(p12|p8|mobileprovision|key)$/i.test(item.name),
       `Private artifact: ${rel}`,
     );

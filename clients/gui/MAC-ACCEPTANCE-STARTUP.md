@@ -5,7 +5,7 @@
 ## 前提检查
 
 ```bash
-cd /Users/sailfish/CodeProject/AReaL-Harness
+cd /path/to/AReaL-Harness
 launchctl print "gui/$(id -u)" >/dev/null && echo "GUI session: ready"
 launchctl print system/com.apple.WindowServer >/dev/null && echo "WindowServer: ready"
 sw_vers
@@ -33,7 +33,7 @@ head -c 12000 "$latest" | grep -E 'app_version|os_version|signal|termination|Reg
 ## 启动页与真实历史会话
 
 ```bash
-cd /Users/sailfish/CodeProject/AReaL-Harness
+cd /path/to/AReaL-Harness
 export AREAL_CORE_BIN="$PWD/.local/dev-bin/areal"
 export AREAL_STARTUP_ROUNDS=1
 export AREAL_GUI_USER_DATA="$(mktemp -d /tmp/areal-gui-user.XXXXXX)"
@@ -50,7 +50,7 @@ pnpm --dir clients/gui run test:startup
 在同一隔离用户目录运行：
 
 ```bash
-cd /Users/sailfish/CodeProject/AReaL-Harness
+cd /path/to/AReaL-Harness
 export AREAL_CORE_BIN="$PWD/.local/dev-bin/areal"
 pnpm --dir clients/gui run test:recovery-electron -- run
 ```

@@ -28,6 +28,7 @@ test("public UI Skills retain content scanning and do not admit private Skills",
       JSON.stringify({ files: [] }),
     );
     for (const path of [
+      "AGENTS.md",
       "app/LICENSE",
       "renderer/ZCODE-LICENSE",
       "licenses/material-icon-theme-LICENSE",
@@ -40,6 +41,12 @@ test("public UI Skills retain content scanning and do not admit private Skills",
       await put(path, "Public distribution content\n");
     const accepted = check();
     assert.equal(accepted.status, 0, accepted.stderr);
+    const unexpectedAgents = "packages/ui/AGENTS.md";
+    await put(unexpectedAgents, "Private nested instructions\n");
+    const rejectedAgents = check();
+    assert.notEqual(rejectedAgents.status, 0);
+    assert.match(rejectedAgents.stderr, /Private artifact: packages\/ui\/AGENTS\.md/);
+    await rm(join(gui, unexpectedAgents));
     const unexpected = "packages/ui/skills/private/SKILL.md";
     await put(unexpected, "Private agent instructions\n");
     const rejected = check();
