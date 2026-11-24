@@ -2415,6 +2415,8 @@ async fn remote_authorization_uses_committed_grants_during_credential_io_and_rev
         let mut config = snapshot["config"].clone();
         config["deviceGrants"][0]["status"] = json!("revoked");
         config["deviceGrants"][0]["revision"] = json!(2);
+        // 附带一条凭据变更（如撤销/轮换 Relay capability），触发真正的加密 vault 写入屏障。
+        config["capability"] = json!("rotated-relay-capability-during-revoke");
         let projects = [f.alias.clone()];
         let mut writing = Box::pin(f.host.remote.dispatch_async("remote.gateway.replace", json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":f.host.identity.generation,"sourceId":f.source,"expectedRevision":snapshot["revision"],"config":config}), "fixture", &f.host.identity.generation, &f.host.migration, &projects));
         tokio::select! {
