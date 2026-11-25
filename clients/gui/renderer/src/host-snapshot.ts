@@ -331,6 +331,7 @@ export function createHostSnapshotProjector(
       fresh: boolean;
       localExecutionReady?: boolean;
       sessionFreshness?: string;
+      sessionError?: unknown;
       sessionState?: ReturnType<HostClient["readsSnapshot"]>["session"];
       sessionTarget?: ReturnType<HostClient["readsSnapshot"]>["sessionTarget"];
       outcomes?: Record<string, JsonObject>;
@@ -429,6 +430,12 @@ export function createHostSnapshotProjector(
       const displayVersion = selectedSession ? historyVersion : 0;
       const sessionFreshness = selectedSession ? client.readsSnapshot().session.state : undefined;
       const reads = client.readsSnapshot();
+      const selectedSessionError =
+        selectedSession && reads.session.state === "stale"
+          ? ("failure" in reads.session && reads.session.failure) ||
+            ("error" in reads.session && reads.session.error) ||
+            undefined
+          : undefined;
       const isCloudProject =
         project.kind === "cloud" || project.projectId.startsWith("cloud-session:");
       const sessionTarget =
@@ -448,6 +455,7 @@ export function createHostSnapshotProjector(
         cached.fresh === fresh &&
         cached.localExecutionReady === localExecutionReady &&
         cached.sessionFreshness === sessionFreshness &&
+        cached.sessionError === selectedSessionError &&
         cached.sessionState === sessionState &&
         cached.sessionTarget === sessionTarget &&
         cached.outcomes === outcomes &&
@@ -477,6 +485,15 @@ export function createHostSnapshotProjector(
         selectedSession.access?.kind !== "persisted" &&
         (sessionFreshness === "stale" ||
           selectedSession.serviceGeneration !== project.serviceGeneration),
+      );
+      // 仅在执行代际变更、项目不可用或会话收到失效错误时隐藏队列与交互控件；
+      // 同代际下的瞬态 Host WebSocket 重连保留队列投影（按钮由 connected=false 禁用），避免误报外部冲突。
+      const suppressStaleControls = Boolean(
+        isStaleHistory &&
+        selectedSession &&
+        (selectedSession.serviceGeneration !== project.serviceGeneration ||
+          project.state !== "ready" ||
+          Boolean(selectedSessionError)),
       );
       if (thread && isStaleHistory) thread = { ...thread, staleHistory: true };
       if (thread && session && readingWindow)
@@ -566,7 +583,7 @@ export function createHostSnapshotProjector(
                 .filter(([, side]) => side.desktop?.queue)
                 .map(([key, side]) => [key, side.desktop!.queue]),
             ),
-            ...(thread && !isStaleHistory && threadDesktop?.queue
+            ...(thread && !suppressStaleControls && threadDesktop?.queue
               ? { [thread.id]: threadDesktop.queue }
               : {}),
           },
@@ -582,7 +599,7 @@ export function createHostSnapshotProjector(
                   },
                 ]),
             ),
-            ...(thread && !isStaleHistory && threadDesktop?.interactions
+            ...(thread && !suppressStaleControls && threadDesktop?.interactions
               ? {
                   [thread.id]: {
                     revision: threadDesktop.interactionRevision ?? 0,
@@ -649,6 +666,7 @@ export function createHostSnapshotProjector(
         fresh,
         localExecutionReady,
         sessionFreshness,
+        sessionError: selectedSessionError,
         sessionState,
         sessionTarget,
         outcomes,

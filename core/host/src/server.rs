@@ -1382,8 +1382,11 @@ impl Host {
                 } else {
                     "probe_error"
                 };
-                let has_live_connection =
-                    observed.is_err() && self.schedules.connections.has_live_connection(self, id);
+                let connection_observation = if observed.is_err() {
+                    self.schedules.connections.observation_state(self, id)
+                } else {
+                    schedule_connection::ConnectionObservation::Closed
+                };
                 let mut slots = self.slots.borrow_mut();
                 let slot = slots.get_mut(id).unwrap();
                 slot.probe_failures = slot.probe_failures.saturating_add(1);
@@ -1392,11 +1395,17 @@ impl Host {
                         .service
                         .as_ref()
                         .is_some_and(|service| service.owner.as_ref() == Some(&self.owner()));
-                // 已有存活实时连接时允许继续保留 ready；无存活连接时仅给予有限次数的瞬态超时宽限（< 3 次）。
+                // 已有存活实时连接时保留 ready；尚未建连前给予有限次瞬态超时宽限（< 3 次）；原连接已关闭则立即撤销 ready。
                 let transient_timeout_protected = observed.is_err()
                     && supervised
                     && !slot.uncertain_start
-                    && (has_live_connection || slot.probe_failures < 3);
+                    && match connection_observation {
+                        schedule_connection::ConnectionObservation::Live => true,
+                        schedule_connection::ConnectionObservation::NeverConnected => {
+                            slot.probe_failures < 3
+                        }
+                        schedule_connection::ConnectionObservation::Closed => false,
+                    };
                 if slot.state == "ready" && !transient_timeout_protected {
                     slot.state = "unavailable".into();
                 }

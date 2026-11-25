@@ -150,6 +150,16 @@ impl Default for Connections {
         }
     }
 }
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ConnectionObservation {
+    /// 当前代际已有存活的实时 Core 连接：探测超时不得撤销其权威身份。
+    Live,
+    /// 尚未建立过实时 Core 连接：允许有限次瞬态超时宽限，连续超限后标为不可用。
+    NeverConnected,
+    /// 原实时 Core 连接已失效或关闭：不得沿用缓存 ready 状态。
+    Closed,
+}
+
 impl Connections {
     #[cfg(test)]
     pub(super) async fn connect_test_core(
@@ -240,12 +250,12 @@ impl Connections {
         .context("RESOURCE_UNAVAILABLE")?
     }
 
-    pub(super) fn has_live_connection(&self, host: &Host, id: &str) -> bool {
-        // 仅当存在已被证实仍在当前代际上的实时 Core 连接时，才允许无限期保护缓存的 ready 状态。
-        self.sessions
-            .borrow()
-            .get(id)
-            .is_some_and(|session| session.shared_current(host))
+    pub(super) fn observation_state(&self, host: &Host, id: &str) -> ConnectionObservation {
+        match self.sessions.borrow().get(id) {
+            Some(session) if session.shared_current(host) => ConnectionObservation::Live,
+            Some(_) => ConnectionObservation::Closed,
+            None => ConnectionObservation::NeverConnected,
+        }
     }
 
     pub(super) fn shared_identity(

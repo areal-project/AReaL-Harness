@@ -3131,3 +3131,95 @@ it("retains loaded Cloud history as stale on disconnect and skips model catalog 
   expect(afterDisconnectSnap.state.queues?.thread).toBeUndefined();
   expect(afterDisconnectSnap.state.interactions?.thread).toBeUndefined();
 });
+
+it("keeps queue projection during transient Host WebSocket reconnect on the same generation", async () => {
+  let onClose: (() => void) | undefined;
+  let connectCount = 0;
+  let releaseReconnect: (() => void) | undefined;
+  const factory: NonNullable<Parameters<typeof createHostReadServices>[1]["transport"]> = async (
+    lifecycle,
+  ) => {
+    connectCount += 1;
+    if (connectCount > 1) {
+      await new Promise<void>((resolve) => {
+        releaseReconnect = resolve;
+      });
+    }
+    onClose = lifecycle.onClose;
+    return {
+      identity: {
+        ...identity,
+        hostId: "host",
+        hostGeneration: identity.gatewayGeneration,
+        preferredSourceId: "source",
+        persistedHistory: true,
+        sessionOpenAuto: true,
+        writeMethods: ["project.models", "project.activate"],
+        writeLimits: {},
+      },
+      transport: {
+        close() {},
+        async request(method) {
+          if (method === "shell.subscribe") {
+            return {
+              ...identity,
+              subscriptionId: `shell-sub-${connectCount}`,
+              sequence: 0,
+              snapshot: {
+                projects: [project],
+                navigation: [navigation],
+              },
+            };
+          }
+          if (method === "session.open") {
+            return {
+              ...identity,
+              projectId: project.projectId,
+              serviceGeneration: project.serviceGeneration,
+              threadId: "thread",
+              view: "conversation",
+              snapshot: {
+                ...observation,
+                thread: {
+                  ...observation.thread,
+                  desktop: {
+                    archived: false,
+                    queue: {
+                      revision: 2,
+                      paused: true,
+                      items: [
+                        { id: "q1", status: "pending", input: [{ type: "text", text: "1" }] },
+                      ],
+                    },
+                  },
+                },
+              },
+            };
+          }
+          return { closed: true };
+        },
+        async write() {
+          return {};
+        },
+      },
+    };
+  };
+  const services = createHostReadServices(undefined, options(factory));
+  try {
+    await until(services);
+    await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
+    const connectedSnap = (await services.snapshot()).projects[0];
+    expect(connectedSnap.state.connected).toBe(true);
+    expect(connectedSnap.state.queues?.thread?.revision).toBe(2);
+
+    // 模拟 Host WebSocket 瞬断重连：connected=false 禁用编辑保存，但同代际队列投影保留，不误报外部冲突。
+    onClose?.();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const reconnectingSnap = (await services.snapshot()).projects[0];
+    expect(reconnectingSnap.state.connected).toBe(false);
+    expect(reconnectingSnap.state.queues?.thread?.revision).toBe(2);
+    expect(reconnectingSnap.state.queues?.thread?.paused).toBe(true);
+  } finally {
+    releaseReconnect?.();
+  }
+});
