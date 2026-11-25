@@ -109,6 +109,28 @@ pub(super) async fn ensure_project(host: &Rc<Host>, id: &str) -> Result<()> {
     }
 }
 
+/// 只读查询等待已在运行或启动中的项目就绪，绝不唤醒已停止或正在空闲回收的项目。
+pub(super) async fn wait_running_project(host: &Rc<Host>, id: &str) -> Result<()> {
+    ensure!(
+        !host.schedules.suppressed(id),
+        crate::wire::error("CORE_STOPPED", "项目已停止，请明确恢复调度")
+    );
+    if host.schedules.connections.shared_identity(host, id).is_ok() {
+        return Ok(());
+    }
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+    if host.wait_running_project(id, deadline).await? {
+        return Ok(());
+    }
+    if host.schedules.suppressed(id) {
+        return Err(crate::wire::error(
+            "CORE_STOPPED",
+            "项目已停止，请明确恢复调度",
+        ));
+    }
+    bail!("RESOURCE_UNAVAILABLE")
+}
+
 pub(super) async fn resolve_project_scope(
     host: &Rc<Host>,
     source: &str,

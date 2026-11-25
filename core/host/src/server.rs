@@ -2052,6 +2052,48 @@ impl Host {
         let admitted = live.admitted.get() || self.receipt(&live.request_id)?.is_some();
         Ok(Some((live.request_id, finished, admitted)))
     }
+    /// 等待已在运行或正在启动的项目建立共享连接；绝不为只读查询唤醒已停止或正在空闲回收的项目。
+    pub(super) async fn wait_running_project(
+        self: &Rc<Self>,
+        id: &str,
+        deadline: tokio::time::Instant,
+    ) -> Result<bool> {
+        if self.schedules.suppressed(id) {
+            return Ok(false);
+        }
+        if self.schedules.connections.shared_identity(self, id).is_ok() {
+            return Ok(true);
+        }
+        let stopped_or_stopping = || {
+            self.slots.borrow().get(id).is_none_or(|slot| {
+                slot.live_idle_stop.is_some()
+                    || matches!(slot.state.as_str(), "stopping" | "stopped")
+            })
+        };
+        if stopped_or_stopping() {
+            return Ok(false);
+        }
+        if let Some((_, finished, _)) = self.wait_live_ensure_if_any(id, deadline).await?
+            && (!finished || self.schedules.suppressed(id) || stopped_or_stopping())
+        {
+            return Ok(false);
+        }
+        let Some(generation) = self.ready_generation(id) else {
+            return Ok(false);
+        };
+        if self
+            .schedules
+            .connections
+            .ready_until(self, id, &generation, deadline)
+            .await
+            .is_ok()
+            && self.ready_generation(id).as_deref() == Some(generation.as_str())
+            && !stopped_or_stopping()
+        {
+            return Ok(true);
+        }
+        Ok(false)
+    }
     /// 规范普通唤醒入口：合并同项目在途启动、等待已有代际共享连接、并在安全边界内衔接 `ifIdle` 休眠。
     /// 显式恢复调度与崩溃遗留的 UNKNOWN 回执仍严格按原回执语义处理，绝不重放未知启动。
     pub(super) async fn activate_project_normal(
