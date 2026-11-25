@@ -87,6 +87,16 @@ def validate_jobs(plan, workflow, needs):
     return failures
 
 
+def current_identity(plan, ci_run):
+    run_id, run_attempt = ci_run
+    return {
+        "planHash": plan["planHash"],
+        **plan["source"],
+        "ciRunId": run_id,
+        "ciAttempt": run_attempt,
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -117,11 +127,12 @@ def main():
         value = json.loads(path.read_text())
         if value.get("kind") == "verification-report":
             reports.append(value)
+    ci_run = (os.environ.get("GITHUB_RUN_ID"), os.environ.get("GITHUB_RUN_ATTEMPT"))
     failures = validate(
         plan,
         reports,
         scope.WORKFLOW_GROUPS[args.workflow],
-        (os.environ.get("GITHUB_RUN_ID"), os.environ.get("GITHUB_RUN_ATTEMPT")),
+        ci_run,
     )
     failures += validate_jobs(plan, args.workflow, json.loads(os.environ.get("NEEDS_JSON", "{}")))
     try:
@@ -129,6 +140,7 @@ def main():
             plan,
             [result for report in reports for result in report.get("results", [])],
             "invalidated" if failures else None,
+            current_identity(plan, ci_run),
         )
     except ValueError as error:
         failures.append(str(error))

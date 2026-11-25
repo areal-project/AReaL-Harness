@@ -1,6 +1,9 @@
+from contextlib import redirect_stdout
 import copy
 import importlib.util
+import io
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -621,6 +624,85 @@ class ArchitectureAndJourneys(unittest.TestCase):
         self.assertIsNone(compact["fullCiPassed"])
         self.assertNotIn("artifacts", compact)
         self.assertLess(len(json.dumps(compact)), len(json.dumps(detail)))
+
+    def test_ci_gate_validates_journey_report_against_current_run_identity(self):
+        plan, report, contract, detail = self.fact_fixture()
+        plan["items"][0]["group"] = "smoke"
+        plan["items"][1]["group"] = "smoke"
+        plan["items"][2]["group"] = "smoke"
+        plan["items"] = plan["items"][:2]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "observation.json").write_text('{"requestId":"original"}')
+            (root / "cleanup.json").write_text('{"processesExited":true}')
+            detail_path = root / "journey.json"
+            detail_path.write_text(json.dumps(detail))
+            imported = evidence.read_journey_report(detail_path, contract, report["identity"])
+            report.update(
+                kind="verification-report",
+                results=[
+                    {
+                        "id": "smoke:send",
+                        "status": "passed",
+                        "exitCode": 0,
+                        "journeyEvidence": imported,
+                    },
+                    {"id": "smoke:read", "status": "passed", "exitCode": 0},
+                ],
+            )
+            report["evidence"] = evidence.build(plan, report)
+            reports_dir = root / "checks"
+            reports_dir.mkdir()
+            (reports_dir / "report.json").write_text(json.dumps(report))
+            needs = {
+                job: {"result": "success" if job in ("scope", "smoke") else "skipped"}
+                for job in scope.JOB_GROUPS["gui"]
+            }
+            env = {
+                "GITHUB_RUN_ID": "run",
+                "GITHUB_RUN_ATTEMPT": "2",
+                "NEEDS_JSON": json.dumps(needs),
+            }
+            with (
+                patch.object(gate.scope, "repository_plan", return_value=plan),
+                patch.dict(os.environ, env, clear=False),
+                patch.object(
+                    sys, "argv", ["ci-gate.py", "--workflow", "gui", "--reports", str(reports_dir)]
+                ),
+            ):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    code = gate.main()
+            payload = json.loads(buf.getvalue())
+            self.assertEqual(code, 0, payload)
+            self.assertEqual(payload["passed"], True)
+            self.assertEqual(payload["failures"], [])
+            self.assertEqual(payload["journeys"][0]["status"], "passed")
+
+            # 篡改旅程报告内的 ciAttempt 仍必须被门禁拒绝。
+            forged = copy.deepcopy(report)
+            forged["results"][0]["journeyEvidence"]["identity"]["ciAttempt"] = "1"
+            (reports_dir / "report.json").write_text(json.dumps(forged))
+            with (
+                patch.object(gate.scope, "repository_plan", return_value=plan),
+                patch.dict(os.environ, env, clear=False),
+                patch.object(
+                    sys, "argv", ["ci-gate.py", "--workflow", "gui", "--reports", str(reports_dir)]
+                ),
+            ):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    code = gate.main()
+            rejected = json.loads(buf.getvalue())
+            self.assertEqual(code, 1)
+            self.assertEqual(rejected["passed"], False)
+            self.assertTrue(
+                any(
+                    "journey report identity differs from its current plan/run" in msg
+                    for msg in rejected["failures"]
+                ),
+                rejected,
+            )
 
 
 if __name__ == "__main__":
