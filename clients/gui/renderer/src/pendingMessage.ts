@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import type { MessageId } from "./i18n/messages.js";
 
 // 本地输入预览保留到回执与历史投影交接完成；草稿和 Core 回执仍由原提交链路管理。
 export type PendingMessage = {
@@ -7,6 +8,11 @@ export type PendingMessage = {
   previousUserIds: readonly string[];
   starting?: boolean;
   accepted?: boolean;
+  status?: MessageId;
+  /** 实时计时起始时间戳（ms），用于云端沙箱启动等长耗时阶段。 */
+  startedAt?: number;
+  /** 阶段已结算的耗时（秒），如沙箱就绪后进入发送阶段时展示启动用时。 */
+  elapsedSeconds?: number;
 };
 const messages = new Map<string, PendingMessage>();
 const listeners = new Set<() => void>();

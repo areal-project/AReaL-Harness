@@ -616,6 +616,7 @@ function DraftConversation() {
     session,
     services,
     action,
+    dark,
     admitting,
     workspacePanels,
     panelNavigation,
@@ -896,6 +897,7 @@ function DraftConversation() {
             <CloudComposer
               key={`${project.id}:cloud-draft`}
               project={project}
+              dark={dark}
               action={resourceAction}
               onOpen={(pid, id) => open(pid, id, "replace")}
               cloudConfigured={cloudStatus.configured}

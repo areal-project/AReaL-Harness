@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useI18n, type MessageId } from "./i18n/IntlProvider.js";
 import type { PendingMessage } from "./pendingMessage.js";
 import { parsePromptConversationSelections } from "./conversationSelectionReference.js";
@@ -131,6 +132,29 @@ export function PendingMessageView({
   status?: MessageId;
 }) {
   const { t } = useI18n();
+  const [now, setNow] = useState(() => Date.now());
+  const ticking = message.startedAt != null && message.elapsedSeconds == null;
+  useEffect(() => {
+    if (!ticking) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [ticking, message.startedAt]);
+  const elapsed =
+    message.elapsedSeconds ??
+    (message.startedAt != null
+      ? Math.max(0, Math.floor((now - message.startedAt) / 1000))
+      : undefined);
+  const statusId =
+    status ??
+    message.status ??
+    (message.starting ? "chat.submission.starting" : "chat.submission.sending");
+  const statusLabel =
+    statusId === "cloud.startingSandbox" && elapsed != null && elapsed > 0
+      ? t("cloud.startingSandboxElapsed", { seconds: elapsed })
+      : statusId === "cloud.sandboxReadySending" && elapsed != null
+        ? t("cloud.sandboxReadySending", { seconds: elapsed })
+        : t(statusId);
   return (
     <section className="pending-message" data-testid="pending-message" aria-busy="true">
       <div className="user-message">
@@ -163,8 +187,8 @@ export function PendingMessageView({
         </div>
       </div>
       <div className="turn-activity">
-        <p className="execution-status" role="status">
-          {t(status ?? (message.starting ? "chat.submission.starting" : "chat.submission.sending"))}
+        <p className="execution-status tabular-nums" role="status">
+          {statusLabel}
         </p>
       </div>
     </section>

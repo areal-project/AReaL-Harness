@@ -1203,6 +1203,14 @@ export const commonMessages = {
     "zh-CN": "正在连接云端并启动沙箱…",
     en: "Connecting to Cloud and starting sandbox…",
   },
+  "cloud.startingSandboxElapsed": {
+    "zh-CN": "正在连接云端并启动沙箱… {seconds}s",
+    en: "Connecting to Cloud and starting sandbox… {seconds}s",
+  },
+  "cloud.sandboxReadySending": {
+    "zh-CN": "云端沙箱已就绪（{seconds}s），正在发送…",
+    en: "Cloud sandbox ready ({seconds}s), sending…",
+  },
   "cloud.draftHint": {
     "zh-CN": "发送后将在云端启动独立沙箱执行",
     en: "Starts an isolated Cloud sandbox when you send",

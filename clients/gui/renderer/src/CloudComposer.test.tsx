@@ -36,9 +36,12 @@ vi.mock("./prompt-editor/ChatPromptEditor.js", () => ({
 }));
 
 import { CloudComposer } from "./CloudComposer.js";
+import { setPendingMessage } from "./pendingMessage.js";
 
 beforeEach(() => {
   storage.clear();
+  setPendingMessage("areal-gui:draft:p1:new");
+  setPendingMessage("areal-gui:draft:p1:cloud-1");
 });
 
 function renderComposer(props: {
@@ -72,7 +75,7 @@ describe("CloudComposer", () => {
     expect(html).toContain('data-submit-disabled="false"');
   });
 
-  it("shows setup guidance with settings CTA and disables submission when Cloud is unconfigured", () => {
+  it("shows setup guidance below the composer and disables submission when Cloud is unconfigured", () => {
     storage.set("areal-gui:draft:p1:new", "pending prompt");
     const html = renderComposer({
       cloudConfigured: false,
@@ -82,6 +85,26 @@ describe("CloudComposer", () => {
     expect(html).toContain("前往云端设置");
     expect(html).toContain('data-submit-disabled="true"');
     expect(html).not.toContain("Cloud 未连接");
+    // 引导提示位于输入框下方，不占据输入框上方空间。
+    expect(html.indexOf('data-testid="cloud-chat-input"')).toBeLessThan(
+      html.indexOf("尚未配置云端服务"),
+    );
+  });
+
+  it("renders outgoing Cloud draft in draft-message-preview with sandbox elapsed time instead of a top banner", () => {
+    setPendingMessage("areal-gui:draft:p1:new", {
+      text: "run cloud tests",
+      files: [],
+      previousUserIds: [],
+      starting: true,
+      status: "cloud.startingSandbox",
+      startedAt: Date.now() - 8_000,
+    });
+    const html = renderComposer({ cloudConfigured: true });
+    expect(html).toContain("draft-message-preview");
+    expect(html).toContain("run cloud tests");
+    expect(html).toContain("正在连接云端并启动沙箱… 8s");
+    expect(html).not.toContain('data-testid="feedback-notice"');
   });
 
   it("renders exactly one Reconnect button for disconnected Cloud conversations", () => {
