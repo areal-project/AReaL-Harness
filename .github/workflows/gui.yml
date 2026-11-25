@@ -50,10 +50,13 @@ jobs:
       gui: ${{ steps.scope.outputs.gui }}
       release: ${{ steps.scope.outputs.release }}
       smoke_matrix: ${{ steps.scope.outputs.smoke_matrix }}
+      smoke_shards: ${{ steps.scope.outputs.smoke_shards }}
+      browser_matrix: ${{ steps.scope.outputs.browser_matrix }}
       core_matrix: ${{ steps.scope.outputs.core_matrix }}
       smoke_parallel: ${{ steps.scheduling.outputs.parallel }}
       gui_health: ${{ steps.scope.outputs.gui_health }}
       gui_portable: ${{ steps.scope.outputs.gui_portable }}
+      gui_browser: ${{ steps.scope.outputs.gui_browser }}
       relay: ${{ steps.scope.outputs.relay }}
       gui_build: ${{ steps.scope.outputs.gui_build }}
       baseline_matrix: ${{ steps.tests.outputs.baseline }}
@@ -162,11 +165,12 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-
   gui-portable:
     name: Linux GUI portable contracts
     needs: scope
     if: needs.scope.outputs.gui_portable == 'true'
+    outputs:
+      portable_ready: ${{ steps.browser-inputs.outputs.artifact-id != '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -214,7 +218,31 @@ jobs:
           git merge-base --is-ancestor "$design_base" HEAD
           echo "AREAL_DESIGN_BASE=$design_base" >> "$GITHUB_ENV"
       - name: Execute the required portable plan and collect independent failures
+        id: portable
         run: python3 scripts/ci-preflight.py --groups gui-portable --output target/ci/checks/gui-portable
+      - name: Archive Linux browser inputs from this exact build
+        if: ${{ always() && !cancelled() && steps.portable.outputs.portable_ready == 'true' }}
+        run: |
+          mkdir -p target/ci/gui
+          git rev-parse HEAD > target/ci/gui/portable-source.sha
+          tar -czf target/ci/gui/gui-browser-inputs.tar.gz \
+            target/ci/gui/portable-source.sha \
+            clients/gui/renderer/dist \
+            clients/gui/dist/design-system \
+            clients/gui/packages/ui/dist \
+            clients/gui/packages/browser-automation/dist \
+            clients/gui/packages/browser-data/dist \
+            clients/gui/app/src/core/snapshots/build \
+            target/ci/checks/gui-portable/report.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        id: browser-inputs
+        if: ${{ always() && !cancelled() && steps.portable.outputs.portable_ready == 'true' }}
+        with:
+          name: linux-gui-browser-inputs-${{ github.run_attempt }}
+          path: target/ci/gui/gui-browser-inputs.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
       - name: Record portable interval
         if: always()
         run: |
@@ -240,6 +268,72 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  gui-browser:
+    name: Linux GUI browser (${{ matrix.shard }})
+    needs: [scope, gui-portable]
+    if: ${{ always() && !cancelled() && needs.scope.outputs.gui_browser == 'true' && needs.gui-portable.outputs.portable_ready == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.scope.outputs.browser_matrix) }}
+    steps:
+      - name: Prepare isolated browser temporary root
+        run: |
+          mkdir -p "$RUNNER_TEMP/gui-browser"
+          echo "TMPDIR=$RUNNER_TEMP/gui-browser" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13'
+      - name: Install pinned pnpm
+        run: npm install --global pnpm@11.7.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24.22.1'
+          cache: pnpm
+          cache-dependency-path: clients/gui/pnpm-lock.yaml
+      - name: Install locked GUI dependencies without Electron binary
+        run: |
+          mkdir -p "$TMPDIR"
+          pnpm --dir clients/gui install --frozen-lockfile --ignore-scripts
+          chrome="$(command -v google-chrome)"
+          test -x "$chrome"
+          echo "AREAL_GUI_TEST_BROWSER=$chrome" >> "$GITHUB_ENV"
+          "$chrome" --version
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: linux-gui-browser-inputs-${{ github.run_attempt }}
+          path: target/ci/gui
+      - name: Restore and verify matching browser build
+        run: |
+          tar -xzf target/ci/gui/gui-browser-inputs.tar.gz
+          test "$(cat target/ci/gui/portable-source.sha)" = "$(git rev-parse HEAD)"
+          test -f clients/gui/renderer/dist/index.html
+          test -f clients/gui/dist/design-system/design-system.html
+      - name: Run ${{ matrix.shard }} browser checks
+        env:
+          BROWSER_ITEMS: ${{ matrix.items }}
+        run: python3 scripts/ci-preflight.py --groups gui-browser --item "$BROWSER_ITEMS" --dependencies target/ci/checks/gui-portable/report.json --output "target/ci/checks/gui-browser-${{ matrix.shard }}" 2>&1 | tee target/ci/gui/browser.log
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: linux-gui-browser-${{ matrix.shard }}-evidence
+          path: |
+            target/ci/gui/browser.log
+            ${{ runner.temp }}/gui-browser/
+          if-no-files-found: warn
+          retention-days: 7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: ci-checks-${{ github.run_id }}-${{ github.run_attempt }}-gui-browser-${{ matrix.shard }}
+          path: target/ci/checks/gui-browser-${{ matrix.shard }}/
+          if-no-files-found: warn
+          retention-days: 7
 
   relay-contracts:
     name: Linux Relay transport contracts
@@ -274,7 +368,7 @@ jobs:
           make build
       - name: Prepare locked GUI inputs with the supported build runtime
         run: |
-          pnpm --dir clients/gui install --frozen-lockfile
+          pnpm --dir clients/gui install --frozen-lockfile --ignore-scripts
           python3 scripts/ci-preflight.py --groups relay-build --output target/ci/checks/relay-build
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         if: ${{ !cancelled() }}
@@ -306,7 +400,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-
   gui:
     needs: [scope]
     if: needs.scope.outputs.gui_build == 'true'
@@ -314,7 +407,7 @@ jobs:
     outputs:
       artifact_ready: ${{ steps.smoke-inputs.outputs.artifact-id != '' }}
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
       - name: Prepare isolated build temporary root
         run: |
@@ -378,20 +471,20 @@ jobs:
           mkdir -p target/ci/gui
           python3 scripts/ci-preflight.py --groups gui-build --output target/ci/checks/gui-build 2>&1 | tee target/ci/gui/gui-build.log
       - name: Archive smoke inputs from this exact build
-        if: ${{ !cancelled() && steps.build.outputs.artifact_ready == 'true' }}
+        if: ${{ always() && !cancelled() && steps.build.outputs.artifact_ready == 'true' }}
         run: |
           git rev-parse HEAD > target/ci/gui/source.sha
           tar -czf target/ci/gui/gui-smoke-inputs.tar.gz \
             target/ci/gui/source.sha target/debug/verification-build.json target/debug/areal target/debug/areal-runtime \
             target/debug/areal-runtime-fs target/debug/areal-runtime-reaper \
-            target/debug/shells clients/gui/renderer/dist clients/gui/dist/design-system clients/gui/packages/ui/dist \
+            target/debug/shells clients/gui/renderer/dist clients/gui/packages/ui/dist \
             target/ci/checks/gui-build/report.json \
             clients/gui/packages/browser-automation/dist \
             clients/gui/packages/browser-data/dist clients/gui/app/src/core/snapshots/build \
             clients/gui/app/src/ipc/generated clients/gui/app/src/core/generated
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         id: smoke-inputs
-        if: ${{ !cancelled() && steps.build.outputs.artifact_ready == 'true' }}
+        if: ${{ always() && !cancelled() && steps.build.outputs.artifact_ready == 'true' }}
         with:
           name: macos-gui-smoke-inputs-${{ github.run_attempt }}
           path: target/ci/gui/gui-smoke-inputs.tar.gz
@@ -416,7 +509,6 @@ jobs:
           path: target/ci/checks/gui-build/
           if-no-files-found: warn
           retention-days: 7
-
 
   core-contract-shards:
     name: macOS Core contracts (${{ matrix.lane }})
@@ -493,7 +585,7 @@ jobs:
           args=()
           if [ -n "$CHECK_ITEM" ]; then args+=(--item "$CHECK_ITEM"); fi
           python3 scripts/ci-preflight.py --groups "$CHECK_GROUP" "${args[@]}" --dependencies target/ci/checks/gui-build/report.json --output "target/ci/checks/core-${{ matrix.lane }}" 2>&1 | tee target/ci/gui/core-contracts.log
-      - name: Verify independent native and design checks
+      - name: Verify independent native checks
         if: ${{ !cancelled() && matrix.native }}
         env:
           AREAL_CORE_BIN: ${{ github.workspace }}/target/debug/areal
@@ -518,7 +610,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-
   # 保留原检查名；两条 macOS lane 及各自的独立检查必须全部通过。
   core-contracts:
     name: macOS Core contracts
@@ -533,18 +624,17 @@ jobs:
           SHARDS_RESULT: ${{ needs.core-contract-shards.result }}
         run: test "$SCOPE_RESULT" = success && test "$SHARDS_RESULT" = success
 
-
   smoke:
-    name: macOS GUI smoke (${{ matrix.scenario }})
+    name: macOS GUI smoke (${{ matrix.shard }})
     needs: [scope, gui]
     if: ${{ always() && !cancelled() && needs.scope.outputs.gui_build == 'true' && needs.gui.outputs.artifact_ready == 'true' }}
     runs-on: macos-15
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
-      # 本矩阵按 scope 限流，与其他 workflow 共享 macOS 配额。
+      # 4 个均衡分片与限流上限 1:1 对齐，消除多波次排队与重复冷启动开销。
       max-parallel: ${{ fromJSON(needs.scope.outputs.smoke_parallel) }}
-      matrix: ${{ fromJSON(needs.scope.outputs.smoke_matrix) }}
+      matrix: ${{ fromJSON(needs.scope.outputs.smoke_shards) }}
     steps:
       - name: Prepare isolated smoke temporary root
         run: |
@@ -590,12 +680,12 @@ jobs:
           test -x target/debug/areal-runtime
           test -x target/debug/areal-runtime-fs
           test -x target/debug/areal-runtime-reaper
-      - name: Run ${{ matrix.scenario }} smoke
-        timeout-minutes: 10
+      - name: Run ${{ matrix.shard }} smoke (${{ matrix.scenarios }})
+        timeout-minutes: 15
         env:
-          SMOKE_SCRIPT: ${{ matrix.script }}
+          SMOKE_ITEMS: ${{ matrix.items }}
           AREAL_CORE_BIN: ${{ github.workspace }}/target/debug/areal
-        run: python3 scripts/ci-preflight.py --groups smoke --item "smoke:$SMOKE_SCRIPT" --dependencies target/ci/checks/gui-build/report.json --output "target/ci/checks/smoke-${{ matrix.scenario }}" 2>&1 | tee target/ci/gui/smoke.log
+        run: python3 scripts/ci-preflight.py --groups smoke --item "$SMOKE_ITEMS" --dependencies target/ci/checks/gui-build/report.json --output "target/ci/checks/smoke-${{ matrix.shard }}" 2>&1 | tee target/ci/gui/smoke.log
       - name: Collect isolated evidence
         if: always()
         run: |
@@ -612,7 +702,7 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: macos-gui-${{ matrix.scenario }}-evidence
+          name: macos-gui-${{ matrix.shard }}-evidence
           path: gui-smoke-evidence.tar.gz
           compression-level: 0
           if-no-files-found: error
@@ -620,11 +710,10 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: ci-checks-${{ github.run_id }}-${{ github.run_attempt }}-smoke-${{ matrix.scenario }}
-          path: target/ci/checks/smoke-${{ matrix.scenario }}/
+          name: ci-checks-${{ github.run_id }}-${{ github.run_attempt }}-smoke-${{ matrix.shard }}
+          path: target/ci/checks/smoke-${{ matrix.shard }}/
           if-no-files-found: warn
           retention-days: 7
-
 
   linux-feasibility:
     name: Linux Electron repeated qualification
@@ -729,7 +818,7 @@ jobs:
 
   gate:
     name: GUI gate
-    needs: [scope, gui-health, gui-portable, relay-contracts, gui, core-contracts, smoke]
+    needs: [scope, gui-health, gui-portable, gui-browser, relay-contracts, gui, core-contracts, smoke]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5

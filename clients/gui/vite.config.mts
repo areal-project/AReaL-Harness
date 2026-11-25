@@ -177,6 +177,18 @@ export default defineConfig({
         dependsOn: ["ui-build", "desktop-build"],
         cache: false,
       },
+      // CI 专用：排除已在 gui-health、gui-design-contracts 与 gui-portable 中独立执行的检查，避免重复双跑。
+      "verify-ci-suite": {
+        command: [
+          "pnpm contracts:check",
+          "node scripts/verify-public.mjs",
+          "node scripts/verify-i18n.mjs",
+          "node scripts/test-manifest.mjs",
+          "node --test scripts/conversation-content.test.mjs scripts/activity-runs.test.mjs scripts/bundle.test.mjs scripts/provider-affinity.test.mjs scripts/side-restore.test.mjs scripts/operation-contract.test.cjs scripts/side-model-intent.test.mjs scripts/bounded-history-client.test.mjs scripts/backend-status.test.mjs scripts/system-proxy.test.mjs scripts/history.test.mjs scripts/macos-signing-paths.test.mjs scripts/feedback.test.mjs",
+        ],
+        dependsOn: ["ui-build", "desktop-build"],
+        cache: false,
+      },
       "design-suite": {
         command: [
           "pnpm --filter @areal/ui check",

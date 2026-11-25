@@ -144,8 +144,10 @@ class ChangedChecks(unittest.TestCase):
                 names = {item["id"] for item in self.plan([path])["items"]}
                 self.assertTrue(
                     {
-                        "rust-types",
-                        "rust-behavior",
+                        "rust-lint",
+                        "rust-tests:engine",
+                        "rust-tests:host",
+                        "rust-tests:runtime",
                         "portable:bundle",
                         "native-replay",
                         "legacy-native-access",
@@ -480,11 +482,14 @@ class ChangedChecks(unittest.TestCase):
             }
             <= names
         )
-        self.assertNotIn("smoke:test:model-selection", names)
+        self.assertNotIn("smoke:test:model-selection-core", names)
         self.assertNotIn("core-contracts", names)
         for item in selected:
             self.assertTrue(set(item["dependsOn"]) <= names)
-        self.assertIn("smoke:test:model-selection", {item["id"] for item in plan["items"]})
+        self.assertTrue(
+            {"smoke:test:model-selection-core", "smoke:test:model-selection-defaults"}
+            <= {item["id"] for item in plan["items"]}
+        )
         self.assertEqual(checks.select_checks(plan, "full", {}), plan["items"])
 
     def test_push_selection_runs_static_checks_and_defers_slow_failed_smoke(self):
@@ -509,8 +514,9 @@ class ChangedChecks(unittest.TestCase):
             self.assertEqual(checks.main(["--base", self.base, "--phase", "push", "--plan"]), 0)
         printed = json.loads(output.getvalue())
         self.assertIn("rust-lint", printed["selected"])
-        self.assertIn("rust-types", printed["pendingFull"])
+        self.assertIn("rust-tests:engine", printed["pendingFull"])
         self.assertNotIn("rust-types", printed["selected"])
+        self.assertNotIn("rust-types", printed["pendingFull"])
         self.assertEqual(printed["failureChecks"], {"smoke:test:composer": ["failed"]})
         for item in selected:
             self.assertTrue(set(item["dependsOn"]) <= names)

@@ -55,6 +55,7 @@ WORKFLOW_GROUPS = {
     "gui": {
         "gui-health",
         "gui-portable",
+        "gui-browser",
         "relay-build",
         "relay",
         "gui-build",
@@ -62,13 +63,23 @@ WORKFLOW_GROUPS = {
         "gui-native-checks",
         "smoke",
     },
-    "verify": {"early", "verify", "native", "container", "audit"},
+    "verify": {
+        "early",
+        "verify",
+        "verify-build",
+        "verify-tests",
+        "verify-integration",
+        "native",
+        "container",
+        "audit",
+    },
 }
 JOB_GROUPS = {
     "gui": {
         "scope": None,
         "gui-health": {"gui-health"},
         "gui-portable": {"gui-portable"},
+        "gui-browser": {"gui-browser"},
         "relay-contracts": {"relay-build", "relay"},
         "gui": {"gui-build"},
         "core-contracts": {"core-contracts", "gui-native-checks"},
@@ -76,7 +87,11 @@ JOB_GROUPS = {
     },
     "verify": {
         "plan": None,
-        "host": {"early", "verify", "native"},
+        "host": {"early", "verify"},
+        "linux-build": {"verify-build"},
+        "rust-tests": {"verify-tests"},
+        "linux-integration": {"verify-integration"},
+        "native-macos": {"native"},
         "container": {"container"},
         "dependencies": {"audit"},
     },
@@ -88,6 +103,84 @@ CI_PLATFORMS = {
         else "linux"
     )
     for group in set().union(*WORKFLOW_GROUPS.values())
+}
+
+# 按实测时长把 Linux workspace 行为测试拆成 3 片并行执行（覆盖除 areal-runtime-exec-native 外的全部成员）。
+RUST_TEST_SHARDS = [
+    {
+        "shard": "engine",
+        "id": "rust-tests:engine",
+        "packages": ["areal-engine"],
+    },
+    {
+        "shard": "host",
+        "id": "rust-tests:host",
+        "packages": ["areal-host", "areal-app-server", "areal-server", "areal-cli", "areal-tui"],
+    },
+    {
+        "shard": "runtime",
+        "id": "rust-tests:runtime",
+        "packages": [
+            "areal-config",
+            "areal-protocol",
+            "areal-plugins",
+            "areal-mcp",
+            "areal-trajectory",
+            "areal-service-host",
+            "areal-local-service",
+            "areal-runtime-protocol",
+            "areal-runtime-host-tools",
+            "areal-runtime-client",
+            "areal-runtime-supervisor",
+            "areal-runtime",
+            "areal-runtime-fs",
+        ],
+    },
+]
+
+# 跨平台 Harness / Desktop API / Workgroup 集成拆为两片在 Linux 原生 bwrap 环境并行执行。
+LINUX_INTEGRATION_SHARDS = [
+    {
+        "shard": "core",
+        "id": "linux-integration:core",
+        "command": ["make", "-k", "-j2", "harness-smoke-core", "workgroup-smoke"],
+    },
+    {
+        "shard": "extended",
+        "id": "linux-integration:extended",
+        "command": ["make", "-k", "-j2", "harness-smoke-extended", "examples-desktop-api"],
+    },
+]
+
+# 纯 Chromium 前端验收按实测时长分两片在 Linux 并行执行，不占用 macOS 配额，也不等待 Rust 编译。
+BROWSER_SHARDS = [
+    {
+        "shard": "reading-audit",
+        "items": ["smoke:test:conversation-reading", "smoke:test:ui-audit"],
+    },
+    {
+        "shard": "design",
+        "items": ["smoke:test:design", "design-conversation", "design-popups"],
+    },
+]
+
+# 参考 CI 实测（run 45552994328）用于 LPT 装桶，让 macOS smoke 与 max-parallel=4 对齐、避免排队与冷启浪费。
+SMOKE_DURATION_ESTIMATES_S = {
+    "smoke:test:model-selection-core": 255,
+    "smoke:test:model-selection-defaults": 235,
+    "smoke:test:composer-files": 218,
+    "smoke:test:side-chat-parity": 216,
+    "smoke:test:composer": 147,
+    "smoke:test:e2e": 130,
+    "smoke:test:web-journeys": 125,
+    "smoke:test:connection-recovery": 114,
+    "smoke:test:ux-journeys": 112,
+    "smoke:test:conversation-derivation": 107,
+    "smoke:test:service-reopen": 89,
+    "smoke:test:stop-reopen": 85,
+    "smoke:test:browser-navigation": 77,
+    "smoke:test:queue": 56,
+    "smoke:test:history-compat": 54,
 }
 
 # 短原生检查复用第二个合同分片的准备；结果仍按原检查 ID 独立收集。
@@ -447,11 +540,20 @@ def build_plan(paths, source, manifest):
             phase="commit",
         )
         desktop, ui, renderer = gui_builds("portable:", "gui-portable", phase="commit")
+        portable_design = "portable:design-build"
+        add(
+            portable_design,
+            ["pnpm", "--dir", "clients/gui", "design:build"],
+            "gui-portable",
+            (desktop, ui),
+            ("node-24.22.1",),
+            phase="full",
+        )
         for name, command in (
             ("gui-check", "check"),
             ("gui-design-contracts", "verify:design"),
             ("gui-types", "typecheck"),
-            ("gui-public", "verify"),
+            ("gui-public", "verify:ci"),
             ("gui-regressions", "test:regressions"),
         ):
             add(
@@ -498,8 +600,8 @@ def build_plan(paths, source, manifest):
             ("node-24.2.0", "openssl"),
         )
     if affected["shared"]:
+        # rust-lint 的 cargo clippy --workspace --all-targets 已包含全量类型检查，不再单独重复跑 cargo check。
         for name, target in (
-            ("rust-types", "check"),
             ("rust-lint", "lint"),
             ("sdk", "sdk-test"),
             ("scripts", "script-test"),
@@ -509,15 +611,31 @@ def build_plan(paths, source, manifest):
                 name,
                 ["make", target],
                 "verify",
-                phase="commit" if name in {"rust-types", "rust-lint"} else "full",
+                phase="commit" if name == "rust-lint" else "full",
             )
-        add("verify-core-build", ["make", "build"], "verify")
+        add("verify-core-build", ["make", "build"], "verify-build")
         for name, target in (
-            ("rust-behavior", "test"),
             ("launcher", "launcher-test"),
             ("core-smoke", "smoke"),
         ):
-            add(name, ["make", target], "verify", ("verify-core-build",))
+            add(name, ["make", target], "verify-build", ("verify-core-build",))
+        for shard in RUST_TEST_SHARDS:
+            package_args = [arg for package in shard["packages"] for arg in ("-p", package)]
+            add(
+                shard["id"],
+                ["cargo", "test", "--locked", "--no-fail-fast", *package_args],
+                "verify-tests",
+                ("verify-core-build",),
+            )
+        for shard in LINUX_INTEGRATION_SHARDS:
+            add(
+                shard["id"],
+                shard["command"],
+                "verify-integration",
+                ("verify-core-build",),
+                ("native-runtime",),
+                platforms=("linux",),
+            )
         add("native-core-build", ["make", "build"], "native", platforms=("darwin",))
         for name, command in (
             (
@@ -564,17 +682,8 @@ def build_plan(paths, source, manifest):
                 ],
             ),
             (
-                "native-integration",
-                [
-                    "make",
-                    "-k",
-                    "-j4",
-                    "launcher-test",
-                    "runtime-smoke",
-                    "harness-smoke",
-                    "examples-desktop-api",
-                    "workgroup-smoke",
-                ],
+                "native-macos-smoke",
+                ["make", "macos-native-smoke"],
             ),
         ):
             add(
@@ -691,6 +800,7 @@ def build_plan(paths, source, manifest):
 
     if affected["gui"]:
         desktop, ui, renderer = gui_builds("macos:", "gui-build", ("darwin",))
+        add("gui-core-build", ["make", "build"], "gui-build", platforms=("darwin",))
         for entry in manifest:
             if (
                 entry["layer"] != "e2e"
@@ -700,34 +810,23 @@ def build_plan(paths, source, manifest):
                 add(
                     "native-contract:" + entry["script"],
                     ["pnpm", "--dir", "clients/gui", "run", entry["script"]],
-                    "gui-build",
+                    "gui-native-checks",
                     (desktop, renderer),
                     tuple(sorted(set(entry["requires"]) - {"gui-build"})),
                     platforms=("darwin",),
                 )
-        add("gui-core-build", ["make", "build"], "gui-build", platforms=("darwin",))
-        add(
-            "gui-design-build",
-            ["pnpm", "--dir", "clients/gui", "design:build"],
-            "gui-build",
-            (desktop, ui),
-            platforms=("darwin",),
-        )
         for name, command in (
-            (
-                "rpc-routes",
-                [
-                    "cargo",
-                    "test",
-                    "--locked",
-                    "-p",
-                    "areal-app-server",
-                    "--lib",
-                    "desktop_registered_methods_have_dispatch_routes",
-                ],
-            ),
             ("macos-process", ["pnpm", "--dir", "clients/gui", "test:core-process"]),
             ("macos-browser", ["pnpm", "--dir", "clients/gui", "test:browser-contracts"]),
+        ):
+            add(
+                name,
+                command,
+                "gui-native-checks",
+                ("gui-core-build", renderer, desktop),
+                platforms=("darwin",),
+            )
+        for name, command in (
             (
                 "design-conversation",
                 ["pnpm", "--dir", "clients/gui", "test:design", "--", "--conversation-system"],
@@ -740,9 +839,10 @@ def build_plan(paths, source, manifest):
             add(
                 name,
                 command,
-                "gui-build" if name == "rpc-routes" else "gui-native-checks",
-                ("gui-design-build", "gui-core-build", renderer, desktop),
-                platforms=("darwin",),
+                "gui-browser",
+                ("portable:renderer", "portable:design-build"),
+                ("browser", "node-24.22.1"),
+                platforms=("darwin", "linux"),
             )
         core_tests = {
             platform: [
@@ -766,15 +866,30 @@ def build_plan(paths, source, manifest):
             )
         for entry in manifest:
             if entry.get("ciSmoke") or "smoke:" + entry["script"] in required_journey_checks:
-                add(
-                    "smoke:" + entry["script"],
-                    ["pnpm", "--dir", "clients/gui", "run", entry["script"]],
-                    "smoke",
-                    ("gui-core-build", renderer, "gui-design-build", desktop),
-                    tuple(sorted(set(entry["requires"]) - {"core-binary", "gui-build"}))
-                    + ("node-24.22.1",),
-                    platforms=tuple(p for p in entry["platforms"] if p == "darwin"),
+                browser_only = (
+                    "browser" in entry["requires"]
+                    and "electron" not in entry["requires"]
+                    and "core-binary" not in entry["requires"]
                 )
+                if browser_only:
+                    add(
+                        "smoke:" + entry["script"],
+                        ["pnpm", "--dir", "clients/gui", "run", entry["script"]],
+                        "gui-browser",
+                        ("portable:renderer", "portable:design-build"),
+                        tuple(sorted(set(entry["requires"]) - {"gui-build"})) + ("node-24.22.1",),
+                        platforms=tuple(p for p in entry["platforms"] if p in ("darwin", "linux")),
+                    )
+                else:
+                    add(
+                        "smoke:" + entry["script"],
+                        ["pnpm", "--dir", "clients/gui", "run", entry["script"]],
+                        "smoke",
+                        ("gui-core-build", renderer, desktop),
+                        tuple(sorted(set(entry["requires"]) - {"core-binary", "gui-build"}))
+                        + ("node-24.22.1",),
+                        platforms=tuple(p for p in entry["platforms"] if p == "darwin"),
+                    )
     journey_registry.validate_checks(registry, items, affected_journeys)
     for contract in journey_evidence.values():
         item = next(item for item in items if item["id"] == contract["check"])
@@ -827,6 +942,70 @@ def smoke_matrix(plan, manifest):
     }
 
 
+def smoke_shards(plan, manifest, buckets=4):
+    """按实测时长 LPT 装桶，将 macOS Electron smoke 合并成均衡 shard，消除冷启动与队列等待。"""
+    entries = {entry["script"]: entry for entry in manifest}
+    smoke_items = [item for item in plan["items"] if item["group"] == "smoke"]
+    if not smoke_items:
+        return {"include": []}
+    count = max(1, min(buckets, len(smoke_items)))
+    ordered = sorted(
+        smoke_items,
+        key=lambda item: (-SMOKE_DURATION_ESTIMATES_S.get(item["id"], 120), item["id"]),
+    )
+    bins = [{"weight": 0, "items": [], "scenarios": []} for _ in range(count)]
+    for item in ordered:
+        target = min(bins, key=lambda bucket: (bucket["weight"], len(bucket["items"])))
+        target["weight"] += SMOKE_DURATION_ESTIMATES_S.get(item["id"], 120)
+        target["items"].append(item["id"])
+        script = item["command"][-1]
+        target["scenarios"].append(entries[script].get("ciSmoke") or script.removeprefix("test:"))
+    return {
+        "include": [
+            {
+                "shard": f"shard-{index + 1}",
+                "items": ",".join(bucket["items"]),
+                "scenarios": ",".join(bucket["scenarios"]),
+            }
+            for index, bucket in enumerate(bins)
+            if bucket["items"]
+        ]
+    }
+
+
+def browser_matrix(plan):
+    planned = {item["id"] for item in plan["items"] if item["group"] == "gui-browser"}
+    assigned = set()
+    include = []
+    for shard in BROWSER_SHARDS:
+        items = [name for name in shard["items"] if name in planned]
+        if items:
+            assigned.update(items)
+            include.append({"shard": shard["shard"], "items": ",".join(items)})
+    remainder = sorted(planned - assigned)
+    if remainder:
+        include.append({"shard": "extra", "items": ",".join(remainder)})
+    return {"include": include}
+
+
+FAST_CONTAINER_FILES = frozenset(
+    {
+        "tests/e2e/docker/Dockerfile.ci-fast",
+        "tests/e2e/docker/Dockerfile.ci-fast.dockerignore",
+    }
+)
+
+
+def full_container_required(paths, event_name=None, fallback=False):
+    if fallback or event_name in {"push", "workflow_dispatch"}:
+        return True
+    return any(
+        path not in FAST_CONTAINER_FILES
+        and path.startswith(("tests/e2e/docker/", "runtime/exec-native/"))
+        for path in paths
+    )
+
+
 def require_result(needed, result):
     # 不适用必须由成功的路径判定明确声明，取消和意外 skip 都失败。
     return result == ("success" if needed else "skipped")
@@ -845,27 +1024,37 @@ if __name__ == "__main__":
     groups = {item["group"] for item in plan["items"]}
     manifest = json.loads((ROOT / "clients/gui/scripts/test-manifest.json").read_text())
     matrix = smoke_matrix(plan, manifest)
+    shards = smoke_shards(plan, manifest)
+    browsers = browser_matrix(plan)
+    rust_test_matrix = {
+        "include": [
+            {"shard": shard["shard"], "item": shard["id"]}
+            for shard in RUST_TEST_SHARDS
+            if any(item["id"] == shard["id"] for item in plan["items"])
+        ]
+    }
+    linux_integration_matrix = {
+        "include": [
+            {"shard": shard["shard"], "item": shard["id"]}
+            for shard in LINUX_INTEGRATION_SHARDS
+            if any(item["id"] == shard["id"] for item in plan["items"])
+        ]
+    }
     host = [
         {
             "os": "ubuntu-24.04",
-            "name": "Linux portable checks",
-            "target": "early,verify",
+            "name": "Linux static and lint",
+            "target": "early,verify" if "verify" in groups else "early",
             "setup": "setup",
             "log": "verify",
             "rust_cache": "verify" in groups,
         }
     ]
-    if "native" in groups:
-        host.append(
-            {
-                "os": "macos-15",
-                "name": "macOS native Harness",
-                "target": "native",
-                "setup": "setup-node",
-                "log": "verify-native",
-                "rust_cache": True,
-            }
-        )
+    container_full = full_container_required(
+        plan["paths"],
+        os.environ.get("GITHUB_EVENT_NAME"),
+        bool(plan.get("selectionFallback")),
+    )
     outputs = {
         name.replace("-", "_"): str(name in groups).lower()
         for name in set().union(*WORKFLOW_GROUPS.values())
@@ -874,6 +1063,11 @@ if __name__ == "__main__":
         gui=str(bool(groups & WORKFLOW_GROUPS["gui"])).lower(),
         release=str(applicable("release", plan["paths"])).lower(),
         smoke_matrix=json.dumps(matrix, separators=(",", ":")),
+        smoke_shards=json.dumps(shards, separators=(",", ":")),
+        browser_matrix=json.dumps(browsers, separators=(",", ":")),
+        rust_test_matrix=json.dumps(rust_test_matrix, separators=(",", ":")),
+        linux_integration_matrix=json.dumps(linux_integration_matrix, separators=(",", ":")),
+        container_full=str(container_full).lower(),
         core_matrix=json.dumps(
             {"include": CORE_LANES},
             separators=(",", ":"),

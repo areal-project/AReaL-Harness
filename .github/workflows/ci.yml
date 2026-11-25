@@ -31,7 +31,14 @@ jobs:
     timeout-minutes: 5
     outputs:
       host_matrix: ${{ steps.plan.outputs.host_matrix }}
+      verify_build: ${{ steps.plan.outputs.verify_build }}
+      verify_tests: ${{ steps.plan.outputs.verify_tests }}
+      verify_integration: ${{ steps.plan.outputs.verify_integration }}
+      native: ${{ steps.plan.outputs.native }}
+      rust_test_matrix: ${{ steps.plan.outputs.rust_test_matrix }}
+      linux_integration_matrix: ${{ steps.plan.outputs.linux_integration_matrix }}
       container: ${{ steps.plan.outputs.container }}
+      container_full: ${{ steps.plan.outputs.container_full }}
       audit: ${{ steps.plan.outputs.audit }}
       input_hash: ${{ steps.plan.outputs.input_hash }}
     steps:
@@ -43,10 +50,11 @@ jobs:
         run: python3 scripts/check-workflows.py
       - id: plan
         run: python3 scripts/ci-scope.py
+
   host-protocol:
     name: Host protocol and desktop boundaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -59,18 +67,13 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.13'
-      # 这里有 GUI 依赖，要它的 Host 用例也在这里编译运行；与 Linux 主机检查共用构建缓存。
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          shared-key: host-debug-${{ runner.os }}
-          save-if: false
+      # 纯静态/TS/IPC 契约校验；areal-host Rust 行为测试由 rust-tests (host) 分片统一覆盖，不再在此重复编译 Rust。
       - name: Check generated contracts and rejection cases
         run: |
-          rustup show
           npm ci --ignore-scripts
           npm install --global pnpm@11.7.0
-          pnpm --dir clients/gui install --frozen-lockfile
-          make host-protocol-check
+          pnpm --dir clients/gui install --frozen-lockfile --ignore-scripts
+          make host-protocol-static
       - name: Reject desktop command and operation growth
         env:
           PR_BASE: ${{ github.event.pull_request.base.sha }}
@@ -94,7 +97,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.host_matrix) }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -111,8 +114,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
-      - if: runner.os == 'Linux'
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ~/.cache/uv
           key: uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('uv.lock') }}
@@ -121,26 +123,12 @@ jobs:
       - name: Prepare toolchain
         run: |
           rustup show
-          if [ "$RUNNER_OS" = macOS ] && ! command -v cmake; then brew install cmake; fi
           cmake --version
-          if [ "$RUNNER_OS" = Linux ]; then python3 -m pip install uv==0.12.2; fi
+          python3 -m pip install uv==0.12.2
       - if: matrix.rust_cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           shared-key: host-debug-${{ runner.os }}
-      - name: Identify private Bash cache
-        if: runner.os == 'macOS' && matrix.rust_cache
-        id: runtime-shell
-        run: |
-          key="$(python3 scripts/prepare-runtime-shell.py --cache-key)"
-          test -n "$key"
-          echo "key=$key" >> "$GITHUB_OUTPUT"
-      - name: Restore verified private Bash build
-        if: runner.os == 'macOS' && matrix.rust_cache
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
-        with:
-          path: target/runtime-shell/${{ steps.runtime-shell.outputs.key }}
-          key: runtime-shell-${{ runner.os }}-${{ runner.arch }}-${{ steps.runtime-shell.outputs.key }}
       - name: Install locked dependencies
         run: |
           if [ "${{ matrix.rust_cache }}" = true ]; then
@@ -156,9 +144,6 @@ jobs:
       - name: Verify host behavior
         env:
           NO_PROXY: 127.0.0.1,localhost
-          CARGO_TEST_ARGS: --exclude areal-runtime-exec-native
-          AREAL_UNIFIED_EVIDENCE_DIR: target/ci/unified
-          AREAL_TEST_EVIDENCE: target/ci/local-service.json
         run: python3 scripts/ci-preflight.py --groups "${{ matrix.target }}" --output "target/ci/checks/host-${{ runner.os }}" 2>&1 | tee "target/ci/${{ matrix.log }}.log"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
@@ -174,10 +159,250 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  linux-build:
+    name: Linux Core build and smoke
+    needs: plan
+    if: needs.plan.outputs.verify_build == 'true'
+    outputs:
+      build_ready: ${{ steps.core-artifact.outputs.artifact-id != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.22.1'
+          cache: npm
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: host-debug-${{ runner.os }}
+      - name: Install locked Node dependencies
+        run: |
+          rustup show
+          npm ci --ignore-scripts
+          mkdir -p target/ci
+      - name: Build Linux Core and run fast smoke
+        id: build
+        env:
+          NO_PROXY: 127.0.0.1,localhost
+        run: python3 scripts/ci-preflight.py --groups verify-build --output target/ci/checks/linux-build 2>&1 | tee target/ci/linux-build.log
+      - name: Archive Linux Core build outputs for downstream shards
+        if: ${{ always() && !cancelled() && steps.build.outputs.linux_build_ready == 'true' }}
+        run: |
+          git rev-parse HEAD > target/ci/linux-source.sha
+          tar -czf target/ci/linux-core-build.tar.gz \
+            target/ci/linux-source.sha \
+            target/debug/verification-build.json \
+            target/debug/areal \
+            target/debug/areal-runtime \
+            target/debug/areal-runtime-fs \
+            target/debug/areal-runtime-reaper \
+            target/ci/checks/linux-build/report.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        id: core-artifact
+        if: ${{ always() && !cancelled() && steps.build.outputs.linux_build_ready == 'true' }}
+        with:
+          name: linux-core-build-${{ github.run_attempt }}
+          path: target/ci/linux-core-build.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: ci-checks-${{ github.run_id }}-${{ github.run_attempt }}-linux-build
+          path: target/ci/checks/linux-build/
+          if-no-files-found: warn
+          retention-days: 7
+
+  rust-tests:
+    name: Linux Rust tests (${{ matrix.shard }})
+    needs: [plan, linux-build]
+    if: ${{ always() && !cancelled() && needs.plan.outputs.verify_tests == 'true' && needs.linux-build.outputs.build_ready == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.rust_test_matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13'
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          shared-key: host-debug-${{ runner.os }}
+          save-if: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: linux-core-build-${{ github.run_attempt }}
+          path: target/ci
+      - name: Restore matching Linux Core binaries
+        run: |
+          tar -xzf target/ci/linux-core-build.tar.gz
+          test "$(cat target/ci/linux-source.sha)" = "$(git rev-parse HEAD)"
+          test -x target/debug/areal
+          test -x target/debug/areal-runtime
+          test -x target/debug/areal-runtime-fs
+          test -x target/debug/areal-runtime-reaper
+      - name: Run Rust test shard ${{ matrix.shard }}
+        env:
+          NO_PROXY: 127.0.0.1,localhost
+        run: python3 scripts/ci-preflight.py --groups verify-tests --item "${{ matrix.item }}" --dependencies target/ci/checks/linux-build/report.json --output "target/ci/checks/rust-tests-${{ matrix.shard }}" 2>&1 | tee "target/ci/rust-tests-${{ matrix.shard }}.log"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: ci-checks-${{ github.run_id }}-${{ github.run_attempt }}-rust-tests-${{ matrix.shard }}
+          path: target/ci/checks/rust-tests-${{ matrix.shard }}/
+          if-no-files-found: warn
+          retention-days: 7
+
+  linux-integration:
+    name: Linux Harness integration (${{ matrix.shard }})
+    needs: [plan, linux-build]
+    if: ${{ always() && !cancelled() && needs.plan.outputs.verify_integration == 'true' && needs.linux-build.outputs.build_ready == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.linux_integration_matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24.22.1'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            runtime/sdk-typescript/package-lock.json
+            core/sdk-typescript/package-lock.json
+      # 保持系统 /usr/bin/python3 在 PATH 首位，避免 Bubblewrap 只挂载 /usr 时无法 exec /opt/hostedtoolcache Python。
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          shared-key: host-debug-${{ runner.os }}
+          save-if: false
+      - name: Prepare native Bubblewrap prerequisites and SDK dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          sudo apparmor_parser --replace <<'APPARMOR'
+          abi <abi/4.0>,
+          profile areal-ci-bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+          }
+          APPARMOR
+          make setup-node
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: linux-core-build-${{ github.run_attempt }}
+          path: target/ci
+      - name: Restore matching Linux Core binaries
+        run: |
+          tar -xzf target/ci/linux-core-build.tar.gz
+          test "$(cat target/ci/linux-source.sha)" = "$(git rev-parse HEAD)"
+          test -r target/debug/verification-build.json
+          test -x target/debug/areal
+          test -x target/debug/areal-runtime
+          test -x target/debug/areal-runtime-fs
+          test -x target/debug/areal-runtime-reaper
+      - name: Run Linux Harness integration shard ${{ matrix.shard }}
+        env:
+          NO_PROXY: 127.0.0.1,localhost
+          AREAL_PREBUILT_CORE: '1'
+        run: python3 scripts/ci-preflight.py --groups verify-integration --item "${{ matrix.item }}" --dependencies target/ci/checks/linux-build/report.json --output "target/ci/checks/linux-integration-${{ matrix.shard }}" 2>&1 | tee "target/ci/linux-integration-${{ matrix.shard }}.log"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: failure()
+        with:
+          name: linux-integration-${{ matrix.shard }}-logs
+          path: target/ci/
+          retention-days: 7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: ci-checks-${{ github.run_id }}-${{ github.run_attempt }}-linux-integration-${{ matrix.shard }}
+          path: target/ci/checks/linux-integration-${{ matrix.shard }}/
+          if-no-files-found: warn
+          retention-days: 7
+
+  native-macos:
+    name: macOS native Harness
+    needs: plan
+    if: needs.plan.outputs.native == 'true'
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.22.1'
+          cache: npm
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Prepare toolchain
+        run: |
+          rustup show
+          if ! command -v cmake; then brew install cmake; fi
+          cmake --version
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: host-debug-${{ runner.os }}
+      - name: Identify private Bash cache
+        id: runtime-shell
+        run: |
+          key="$(python3 scripts/prepare-runtime-shell.py --cache-key)"
+          test -n "$key"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+      - name: Restore verified private Bash build
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: target/runtime-shell/${{ steps.runtime-shell.outputs.key }}
+          key: runtime-shell-${{ runner.os }}-${{ runner.arch }}-${{ steps.runtime-shell.outputs.key }}
+      - name: Install locked dependencies
+        run: |
+          npm ci --ignore-scripts
+          mkdir -p target/ci
+      - name: Record tool and cache fingerprints
+        run: python3 scripts/ci-fingerprint.py > target/ci/fingerprint.json
+      - name: Verify macOS native differences
+        env:
+          NO_PROXY: 127.0.0.1,localhost
+          AREAL_UNIFIED_EVIDENCE_DIR: target/ci/unified
+          AREAL_TEST_EVIDENCE: target/ci/local-service.json
+        run: python3 scripts/ci-preflight.py --groups native --output target/ci/checks/host-macOS 2>&1 | tee target/ci/verify-native.log
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: macOS-host-logs
+          path: target/ci/
+          retention-days: 7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: ci-checks-${{ github.run_id }}-${{ github.run_attempt }}-host-macOS
+          path: target/ci/checks/host-macOS/
+          if-no-files-found: warn
+          retention-days: 7
+
   container:
     name: Linux container Runtime
-    needs: plan
-    if: needs.plan.outputs.container == 'true'
+    needs: [plan, linux-build]
+    if: ${{ always() && !cancelled() && needs.plan.outputs.container == 'true' && (needs.plan.outputs.container_full == 'true' || needs.linux-build.outputs.build_ready == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -188,6 +413,10 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24.22.1'
+          cache: npm
       - run: mkdir -p target/ci
       - name: Verify container namespace prerequisites
         run: |
@@ -207,7 +436,71 @@ jobs:
                 --ro-bind / / --proc /proc --dev /dev -- /bin/true
             '
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # 普通 PR 复用宿主同 glibc 构建与 rust-cache，避免容器内 16 分钟重复编译 Rust；
+      # Dockerfile / runtime/exec-native 变更或 main / 手动运行仍执行完整 Alpine 构建。
+      - if: needs.plan.outputs.container_full != 'true'
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: host-debug-${{ runner.os }}
+          save-if: false
+      - if: needs.plan.outputs.container_full != 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: linux-core-build-${{ github.run_attempt }}
+          path: target/ci
+      - name: Stage host binaries and native test executables for fast container verification
+        if: needs.plan.outputs.container_full != 'true'
+        run: |
+          tar -xzf target/ci/linux-core-build.tar.gz
+          test "$(cat target/ci/linux-source.sha)" = "$(git rev-parse HEAD)"
+          python3 scripts/prepare-fast-container.py --bin-dir target/debug
+      - name: Assemble fast PR container runtime profile
+        if: needs.plan.outputs.container_full != 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: tests/e2e/docker/Dockerfile.ci-fast
+          target: runtime
+          load: true
+          tags: areal-ci:runtime
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            io.areal.verification-input=${{ needs.plan.outputs.input_hash }}
+          cache-from: type=gha,scope=areal-runtime-fast
+          cache-to: type=gha,scope=areal-runtime-fast,mode=min
+      - name: Assemble fast PR native backend tests image
+        if: ${{ !cancelled() && needs.plan.outputs.container_full != 'true' }}
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: tests/e2e/docker/Dockerfile.ci-fast
+          target: runtime-tests
+          build-args: |
+            HOST_WORKSPACE=${{ github.workspace }}
+          load: true
+          tags: areal-ci:runtime-tests
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            io.areal.verification-input=${{ needs.plan.outputs.input_hash }}
+          cache-from: type=gha,scope=areal-runtime-fast
+      # 完整 Alpine 镜像构建：先建 runtime-tests 导出完整中间层缓存，再建最终运行镜像复用 runtime-builder。
+      - name: Build native backend tests
+        if: needs.plan.outputs.container_full == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: tests/e2e/docker/Dockerfile
+          target: runtime-tests
+          build-args: BUILD_PROFILE=ci
+          load: true
+          tags: areal-ci:runtime-tests
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            io.areal.verification-input=${{ needs.plan.outputs.input_hash }}
+          cache-from: type=gha,scope=areal-runtime-tests
+          cache-to: type=gha,scope=areal-runtime-tests,mode=max
       - name: Build the supported container profile
+        if: ${{ !cancelled() && needs.plan.outputs.container_full == 'true' }}
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
@@ -225,27 +518,6 @@ jobs:
             type=gha,scope=areal-runtime-tests
             type=gha,scope=areal-runtime
           cache-to: type=gha,scope=areal-runtime,mode=min
-      - name: Build native backend tests
-        if: ${{ !cancelled() }}
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          file: tests/e2e/docker/Dockerfile
-          target: runtime-tests
-          build-args: BUILD_PROFILE=ci
-          load: true
-          tags: areal-ci:runtime-tests
-          labels: |
-            org.opencontainers.image.revision=${{ github.sha }}
-            io.areal.verification-input=${{ needs.plan.outputs.input_hash }}
-          # 只恢复完整测试图；最终镜像的 min 图会干扰中间层候选的选择。
-          cache-from: type=gha,scope=areal-runtime-tests
-          cache-to: type=gha,scope=areal-runtime-tests,mode=max
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        if: ${{ !cancelled() }}
-        with:
-          node-version: '24.22.1'
-          cache: npm
       - name: Execute every supported container check and collect independent failures
         if: ${{ !cancelled() }}
         run: |
@@ -268,7 +540,7 @@ jobs:
   # 保留原检查名；矩阵和容器必须全部成功，不能把跳过或取消视为通过。
   linux:
     name: Linux checks and container Runtime
-    needs: [plan, host, container, dependencies]
+    needs: [plan, host, linux-build, rust-tests, linux-integration, native-macos, container, dependencies]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5

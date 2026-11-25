@@ -95,8 +95,12 @@ def predecessors(job, jobs):
         shards = [entry for entry in jobs if entry["name"].startswith("macOS Core contracts (")]
         if shards:
             return shards
+    if name.startswith("Linux GUI browser ("):
+        return [entry for entry in jobs if entry["name"] == "Linux GUI portable contracts"]
     if name.startswith("macOS GUI smoke (") or name.startswith("macOS Core contracts"):
         return [entry for entry in jobs if entry["name"] == "macOS GUI build and contracts"]
+    if name.startswith("Linux Rust tests (") or name.startswith("Linux Harness integration ("):
+        return [entry for entry in jobs if entry["name"] == "Linux Core build and smoke"]
     if name == "Native Linuxbrew install and upgrade":
         return [entry for entry in jobs if entry["name"].startswith("Bundle and install (")]
     if name not in ("Determine applicable work", "Determine required verification"):
