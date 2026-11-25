@@ -1,0 +1,20 @@
+clients/gui/scripts/connection-recovery-smoke.mjs
+  s_a8c06d4af66d17::t_d47e9f1b22090f 1374,1395-1396,1401-1402
+  s_a8c06d4af66d17::t_77c96599bb9949 1397-1400
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8dfdd3ce1b5b0b5c83afcda911ed12590f9c4e64",
+  "prompts": {},
+  "sessions": {
+    "s_a8c06d4af66d17": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a210af-b5fd-7f30-8e57-5b904979daeb",
+        "model": "gpt-6.2-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
