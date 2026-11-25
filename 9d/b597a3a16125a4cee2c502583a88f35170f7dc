@@ -1,0 +1,26 @@
+clients/gui/scripts/service-reopen-smoke.mjs
+  s_a8c06d4af66d17::t_fbee5f6013db03 843,848
+clients/gui/scripts/smoke-navigation.mjs
+  s_a8c06d4af66d17::t_fbee5f6013db03 5,36-43
+clients/gui/renderer/src/host-history-cache.ts
+  s_a8c06d4af66d17::t_4514658d22b0d5 34-60,70
+clients/gui/renderer/src/host-services.test.ts
+  s_a8c06d4af66d17::t_d8e71be9e39602 2006-2009,2028-2030
+  s_a8c06d4af66d17::t_0a3792786d42de 1998-2005,2010-2027,2031-2033
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9db597a3a16125a4cee2c502583a88f35170f7dc",
+  "prompts": {},
+  "sessions": {
+    "s_a8c06d4af66d17": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a210af-b5fd-7f30-8e57-5b904979daeb",
+        "model": "gpt-6.2-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
