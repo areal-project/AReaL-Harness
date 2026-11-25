@@ -25,7 +25,6 @@ import {
   makeFixtureDirectoriesWritable,
   readFixtureHost,
   settleFixtureHostAfterQuit,
-  stopFixtureHost,
 } from "./application-cleanup.mjs";
 
 const execute = promisify(execFile);
@@ -1333,7 +1332,6 @@ try {
     await browser?.close();
   });
   host?.close();
-  let sameHost = false;
   if (env)
     await cleanup("host-identity", async () => {
       const current = await readFixtureHost(env);
@@ -1352,11 +1350,7 @@ try {
         "Cleanup cannot target a replacement generation",
       );
       assert.equal(current.pid, originalHost.pid, "Cleanup cannot target a replacement process");
-      sameHost = true;
     });
-  // GUI 尚活时完成原停止回执，避免退出中的 idle release 与新 cancel 相互覆盖。
-  if (sameHost)
-    await cleanup("host-stop", () => stopFixtureHost(coreBin, env.AREAL_HARNESS_SERVICE_HOME, out));
   const pid = desktop?.process()?.pid;
   const cleanupDialog = { prompted: false, fixtureAnswersNativeConfirmation: true };
   const { nativeMessages } = require("@areal/workbench/node/native-i18n");
@@ -1377,7 +1371,7 @@ try {
   if (desktop)
     await cleanup("electron", () =>
       closeRecordedSmokeApplication(desktop, 20000, async () => {
-        // Host 已按原回执停止，退出检查会进入“后台状态未知”的原生三选项；只代替此系统确认，不修改应用状态。
+        // 只回答产品的原生退出确认；仍由 GUI 完成退出和后台交接。
         await desktop.evaluate(({ dialog }, prompts) => {
           dialog.showMessageBox = async (...args) => {
             const options = args.at(-1);
@@ -1398,9 +1392,14 @@ try {
     );
   await persist("cleanup-dialog.json", cleanupDialog);
   if (originalHost)
-    await cleanup("host-settlement", () =>
-      settleFixtureHostAfterQuit(coreBin, env, out, { host: originalHost, pid }),
-    );
+    await cleanup("host-settlement", async () => {
+      // 活跃 GUI 会按需唤醒 Host；先退出，再结算同一代 Host 的停止回执。
+      const receipt = await settleFixtureHostAfterQuit(coreBin, env, out, {
+        host: originalHost,
+        pid,
+      });
+      assert.equal(receipt?.state, "completed", "Original fixture Host stop is confirmed");
+    });
   if (env)
     await cleanup("process-exit", () =>
       assertApplicationStopped(coreBin, env, { pid, hostPid: originalHost?.pid }),
