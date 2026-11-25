@@ -70,6 +70,29 @@ test("tool replacements and removals survive a late snapshot of the old catalog"
   assert.deepEqual(current().turns, original.turns);
 });
 
+test("a budgeted display snapshot never turns a deferred toolset into an empty or older list", () => {
+  const model = new CoreTaskModel();
+  const id = "thread";
+  const deferred = { id, toolsetRevision: 2, deferredDynamicToolCount: 1 };
+  const tools = [{ name: "lookup", description: "Lookup", inputSchema: { type: "object" } }];
+  const head = () => model.getSnapshot().threads[id];
+  const event = (toolsetRevision, dynamicTools) =>
+    model.event("areal/thread/tools/attached", { threadId: id, toolsetRevision, dynamicTools });
+  model.replace({ id, toolsetRevision: 1, dynamicTools: [{ name: "retired" }] });
+  model.replace(deferred);
+  assert.equal(head().dynamicTools, undefined);
+  assert.equal(head().deferredDynamicToolCount, 1);
+  event(2, tools);
+  model.replace(deferred);
+  assert.deepEqual(head().dynamicTools, tools);
+  assert.equal(head().deferredDynamicToolCount, undefined);
+  event(3, []);
+  model.replace(deferred);
+  assert.equal(head().toolsetRevision, 3);
+  assert.deepEqual(head().dynamicTools, []);
+  assert.equal(head().deferredDynamicToolCount, undefined);
+});
+
 for (const status of ["completed", "interrupted", "failed"]) {
   test(`compacted ${status} turn preserves user, steer, attachments and earlier agent messages`, () => {
     const { model, previous, items, event, turn } = fixture();

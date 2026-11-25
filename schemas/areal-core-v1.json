@@ -121343,6 +121343,10 @@
             "cwd": {
               "type": "string"
             },
+            "deferredDynamicToolCount": {
+              "minimum": 1,
+              "type": "integer"
+            },
             "desktop": {
               "anyOf": [
                 {
@@ -152341,6 +152345,10 @@
             },
             "cwd": {
               "type": "string"
+            },
+            "deferredDynamicToolCount": {
+              "minimum": 1,
+              "type": "integer"
             },
             "desktop": {
               "anyOf": [

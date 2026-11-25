@@ -393,6 +393,10 @@ impl Engine {
             Some(id) => id.clone(),
             None => {
                 let created = self.create(self.default_cwd()).await?;
+                // 新根对话已进入目录，在发布后台归属前重新核对并持有该对话，不能接管客户端工具。
+                let cell = self.cell(&created.id).await?;
+                let state = cell.state.lock().await;
+                require_server_owned_tools(&state.thread)?;
                 self.edit_task(task_id, |t| {
                     t.runs.last_mut().unwrap().thread_id = Some(created.id.clone())
                 })

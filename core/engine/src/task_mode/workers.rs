@@ -79,6 +79,8 @@ impl Engine {
             let (thread,_)=engine.create_inner(state.thread.cwd.clone(),None,None,vec![],None,Some(areal_protocol::desktop::DesktopState{configuration,execution_policy:areal_protocol::delegation::ChildExecutionPolicy{exclusive_write,deferred_write},..Default::default()}),true).await?;
             let worker=engine.raw_cell(&thread.id).await?;
             let mut worker_state=worker.state.lock().await;
+            // 此时新 Thread 已可从目录读取；只在仍无客户端工具时交给后台 Run。
+            require_server_owned_tools(&worker_state.thread)?;
             let mut source=worker_state.thread.clone();
             source.source="nativeTaskAgent".into();
             source.goal_owner=Some(GoalOwner{thread_id:parent_id.clone(),goal_id:goal.id.clone()});

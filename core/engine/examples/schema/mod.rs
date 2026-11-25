@@ -31,6 +31,8 @@ pub fn projections() -> (Value, Value) {
     deferred["properties"]["type"] = json!({"const":"historyDeferred"});
     let display_item = json!({"anyOf":[schema::<Item>(),deferred.clone()]});
     let mut display_thread = thread.clone();
+    display_thread["properties"]["deferredDynamicToolCount"] =
+        json!({"type":"integer","minimum":1});
     let ordinary_item = display_thread["$defs"]["Item"].take();
     display_thread["$defs"]["Item"] = json!({"anyOf":[ordinary_item,deferred]});
     let history_window = object(

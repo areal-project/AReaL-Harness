@@ -747,6 +747,132 @@ async fn bounded_mode_is_negotiated_and_rejects_metadata_that_cannot_fit() {
 }
 
 #[tokio::test]
+async fn conversation_read_survives_tool_replacement_larger_than_its_page() {
+    const BUDGET: usize = 128 * 1024;
+    let directory = tempfile::tempdir().unwrap();
+    let (id, _) = fixture(directory.path(), false).await;
+    let mut running = Running::open(directory.path()).await;
+    let observe = |mode| json!({"threadId":id,"mode":mode,"maxBytes":BUDGET});
+    let initial = running
+        .call(
+            "areal/thread/observe",
+            observe("conversation"),
+            Some(BUDGET),
+        )
+        .await;
+    assert!(initial["result"]["thread"].get("dynamicTools").is_none());
+    assert!(
+        initial["result"]["thread"]
+            .get("deferredDynamicToolCount")
+            .is_none()
+    );
+    let history = initial["result"]["thread"]["turns"].clone();
+    assert!(history.as_array().is_some_and(|turns| !turns.is_empty()));
+    let definitions: Vec<_> = (0..20).map(|i| json!({"name":format!("lookup_{i}"),"description":"x".repeat(7000),"inputSchema":{"type":"object"}})).collect();
+    assert!(serde_json::to_vec(&definitions).unwrap().len() > BUDGET);
+    let set = |rev: u64, tools: &[Value]| json!({"threadId":id,"expectedToolsetRevision":rev,"dynamicTools":tools});
+    let updated = running
+        .call("areal/thread/tools/set", set(0, &definitions), None)
+        .await;
+    assert_eq!(updated["result"]["toolsetRevision"], 1, "{updated}");
+    let display = running
+        .call(
+            "areal/thread/observe",
+            observe("conversation"),
+            Some(BUDGET),
+        )
+        .await;
+    let check_display = |snapshot: &Value| {
+        let thread = &snapshot["thread"];
+        assert_eq!(thread["id"], id);
+        assert_eq!(thread["toolsetRevision"], 1);
+        assert_eq!(thread["deferredDynamicToolCount"], definitions.len());
+        assert!(thread.get("dynamicTools").is_none());
+        let last = thread["turns"].as_array().unwrap().last().unwrap();
+        assert_eq!(last["id"], "turn-29");
+        assert_eq!(last["items"][0]["content"][0]["text"], "question 29");
+    };
+    check_display(&display["result"]);
+    assert_eq!(display["result"]["thread"]["turns"], history);
+    let get_display = |max_bytes| json!({"threadId":id,"mode":"conversation","maxBytes":max_bytes});
+    let mut roomy = running
+        .call(
+            "areal/thread/observe",
+            get_display(4 * BUDGET),
+            Some(4 * BUDGET),
+        )
+        .await;
+    assert_eq!(
+        roomy["result"]["thread"]["dynamicTools"],
+        json!(definitions)
+    );
+    assert!(
+        roomy["result"]["thread"]
+            .get("deferredDynamicToolCount")
+            .is_none()
+    );
+    // 元数据本身恰好能放下，但没有余量显示必需的会话条目。
+    roomy["result"]["thread"]["turns"] = json!([]);
+    roomy["result"].as_object_mut().unwrap().remove("history");
+    let narrow = serde_json::to_vec(&roomy).unwrap().len() + 64;
+    let constrained = running
+        .call("areal/thread/observe", get_display(narrow), Some(narrow))
+        .await;
+    check_display(&constrained["result"]);
+    let bounded = running
+        .call("areal/thread/observe", observe("bounded"), Some(BUDGET))
+        .await;
+    assert_eq!(
+        bounded["error"]["data"]["reason"],
+        "HISTORY_BUDGET_TOO_SMALL"
+    );
+    let full = running
+        .call("thread/read", json!({"threadId":id}), None)
+        .await;
+    assert_eq!(full["result"]["thread"]["dynamicTools"], json!(definitions));
+    running.close().await;
+
+    let saved = areal_engine::PersistedConversation::read(
+        &directory.path().canonicalize().unwrap(),
+        std::path::Path::new("/bounded-fixture"),
+        &id,
+    )
+    .unwrap();
+    check_display(&saved.snapshot(BUDGET).unwrap());
+    assert_eq!(json!(saved.thread().dynamic_tools), json!(definitions));
+    let mut running = Running::open(directory.path()).await;
+    let resumed = running
+        .call("thread/resume", json!({"threadId":id}), None)
+        .await;
+    assert_eq!(
+        resumed["result"]["thread"]["dynamicTools"],
+        json!(definitions)
+    );
+    let small = [json!({"name":"short","description":"Lookup","inputSchema":{"type":"object"}})];
+    for (revision, tools) in [(2, small.as_slice()), (3, &[][..])] {
+        let result = running
+            .call("areal/thread/tools/set", set(revision - 1, tools), None)
+            .await;
+        assert_eq!(result["result"]["toolsetRevision"], revision, "{result}");
+        let result = running
+            .call(
+                "areal/thread/observe",
+                observe("conversation"),
+                Some(BUDGET),
+            )
+            .await;
+        let thread = &result["result"]["thread"];
+        assert_eq!(thread["toolsetRevision"], revision);
+        assert!(thread.get("deferredDynamicToolCount").is_none());
+        assert_eq!(
+            thread.get("dynamicTools"),
+            (!tools.is_empty()).then(|| json!(tools)).as_ref()
+        );
+    }
+    running.close().await;
+}
+
+#[tokio::test]
 async fn own_cursor_survives_append_and_compaction_but_real_suffix_edit_resets() {
     let dir = tempfile::tempdir().unwrap();
     let (id, _) = fixture(dir.path(), false).await;
