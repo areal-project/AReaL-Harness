@@ -1,0 +1,27 @@
+scripts/ci-preflight.py
+  s_a8c06d4af66d17::t_fa535f61e6248f 300
+scripts/ci-gate.py
+  s_a8c06d4af66d17::t_fa535f61e6248f 120,125,133
+scripts/tests/test_architecture_journeys.py
+  s_a8c06d4af66d17::t_a5b4fe720e8470 432-436,441-443,454-456
+  s_a8c06d4af66d17::t_d6b7d549956634 6,411-431,437-440,444-453
+  s_a8c06d4af66d17::t_db211ad1f12a13 457
+scripts/verification-evidence.py
+  s_a8c06d4af66d17::t_fa535f61e6248f 6,14-22,149
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a628acf840817868c534b9242a4287c1d87df175",
+  "prompts": {},
+  "sessions": {
+    "s_a8c06d4af66d17": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a210af-b5fd-7f30-8e57-5b904979daeb",
+        "model": "gpt-6.2-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
