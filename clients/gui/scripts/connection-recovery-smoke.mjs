@@ -922,7 +922,14 @@ try {
     await sendReady(page);
     const beforeIdle = await until(async () => {
       const state = await projectStatus(projectId);
-      return state.state === "ready" && state.serviceGeneration && state;
+      const initialActivation = wire.find(
+        (entry) =>
+          entry.method === "project.activate" &&
+          entry.projectId === projectId &&
+          entry.activation?.state === "ready" &&
+          entry.activation.serviceGeneration === state.serviceGeneration,
+      );
+      return state.state === "ready" && state.serviceGeneration && initialActivation && state;
     }, "Idle-recovery prerequisite: the UI-triggered activation must reach authoritative Host ready with a Core generation before reclamation");
     const idleRequestId = randomUUID();
     const idle = await host.stopProject(
