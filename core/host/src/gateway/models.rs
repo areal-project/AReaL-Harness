@@ -213,7 +213,14 @@ impl Session {
             self.persisted_model_catalog(project, request)?
         };
         result["serviceGeneration"] = json!(generation);
-        let caps = metadata.as_ref().map(|value| &value["capabilities"]);
+        let caps = match metadata.as_ref() {
+            Some(value) => Some(value["capabilities"].clone()),
+            None => self
+                .host
+                .schedules
+                .connections
+                .model_capabilities(&self.host, &id)?,
+        };
         let source = if self.local {
             let registration = self.host.slots.borrow()[&id].registration.clone();
             self.host
@@ -288,7 +295,7 @@ impl Session {
         }
         self.authorize(Some(project), "observe")?;
         ensure!(self.project(project)?.1 == generation, "RESYNC_REQUIRED");
-        if let Some(caps) = caps {
+        if let Some(caps) = caps.as_ref() {
             result["features"] = public_features(caps);
         }
         ensure!(

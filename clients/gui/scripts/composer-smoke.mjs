@@ -15,7 +15,8 @@ import {
 import {
   assertApplicationStopped,
   closeSmokeApplication,
-  stopFixtureHost,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
 } from "./application-cleanup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 import {
@@ -2230,6 +2231,8 @@ try {
       if (error.code === "ENOENT") return null;
       throw error;
     });
+  const originalHost = await readFixtureHost(env);
+  const quitPid = app?.process()?.pid ?? null;
   try {
     await quit();
   } catch (error) {
@@ -2238,7 +2241,10 @@ try {
     errors.push(`Electron cleanup: ${error.message}`);
   }
   try {
-    const receipt = await stopFixtureHost(binary, env.AREAL_HARNESS_SERVICE_HOME, scratch);
+    const receipt = await settleFixtureHostAfterQuit(binary, env, scratch, {
+      host: originalHost,
+      pid: quitPid,
+    });
     assert.ok(receipt, "the original fixture Host stop is confirmed");
     checks.push("explicit fixture Host stop completes with matching original project receipts");
   } catch (error) {

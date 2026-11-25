@@ -322,6 +322,16 @@ impl Connections {
         session.catalog.request(session.model_revision.get());
         Ok(session.catalog.snapshot(session.model_revision.get()))
     }
+    pub(super) fn model_capabilities(&self, host: &Host, id: &str) -> Result<Option<Value>> {
+        let sessions = self.sessions.borrow();
+        let session = sessions.get(id).ok_or_else(unavailable)?;
+        ensure!(session.shared_current(host), unavailable());
+        if let Some(cached) = session.catalog.latest_capabilities() {
+            return Ok(Some(cached));
+        }
+        let caps = session.capabilities.borrow().clone();
+        Ok((caps["methods"].is_array() && caps["features"].is_object()).then_some(caps))
+    }
     pub(super) async fn remote_request(
         &self,
         host: &Host,

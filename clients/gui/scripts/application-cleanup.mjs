@@ -109,6 +109,22 @@ export async function stopFixtureHost(binary, home, evidence) {
     } catch {
       host.close();
       receipt = await readOfflineHostReceipt(binary, reference);
+      if (!receipt) {
+        // 退出时的 releaseWhenUnused 可能先于显式 cancel 完成原代际停机；只认领同一 hostId+generation 的离线回执。
+        const [stopped, release] = await Promise.all([
+          readOptionalJson(join(home, "host", "stop.json")),
+          readOptionalJson(join(home, "host", "release.json")),
+        ]);
+        const matched =
+          stopped?.hostId === descriptor.hostId && stopped.generation === descriptor.generation
+            ? { requestId: stopped.requestId, strategy: stopped.strategy ?? "ifIdle" }
+            : release?.generation === descriptor.generation && release.stopRequestId
+              ? { requestId: release.stopRequestId, strategy: "ifIdle" }
+              : null;
+        if (matched?.requestId) {
+          receipt = await readOfflineHostReceipt(binary, { ...reference, ...matched });
+        }
+      }
     }
     await writeFile(join(evidence, "host-stop.json"), JSON.stringify(receipt ?? null, null, 2));
     assert.equal(receipt?.state, "completed", "original fixture Host stop remains UNKNOWN");

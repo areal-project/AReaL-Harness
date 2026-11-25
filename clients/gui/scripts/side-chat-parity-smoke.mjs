@@ -1300,6 +1300,15 @@ async function normalComposerAndSideCommands() {
         () => requests.some((item) => item.prompt === "PARITY:STREAM_P5_PARENT"),
         "busy parent reached the model before command request counting",
       );
+      await until(
+        async () =>
+          Boolean(
+            project(await state())?.state?.threads?.[parent]?.turns?.some(
+              (turn) => turn.id === busyParentTurnId && turn.status === "inProgress",
+            ),
+          ) && (await mainComposer().getByTestId("chat-input").textContent()) === "",
+        "busy parent projected in renderer before /btw input",
+      );
     }
     const parentBefore = await readCoreThread(parent);
     const queueBefore = parentBefore.desktop?.queue;

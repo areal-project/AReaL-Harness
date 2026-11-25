@@ -708,44 +708,55 @@ button.composer-project:hover > svg,
   margin-bottom: 0;
 }
 /* Compact top-level Markdown blocks without changing list/code internals or line height. */
-.conversation-markdown:not(.user-message-body) > :not(:last-child) {
+.conversation-markdown:not(.user-message-body) > :not(:last-child),
+.conversation-markdown:not(.user-message-body) > div > :not(:last-child) {
   margin-block: 0 var(--conversation-gap);
 }
-.conversation-markdown:not(.user-message-body) > p + p {
+.conversation-markdown:not(.user-message-body) > p + p,
+.conversation-markdown:not(.user-message-body) > div > p + p {
   margin-block-start: 0;
 }
-.conversation-markdown {
+.conversation-markdown,
+.conversation-markdown > div {
   min-width: 0;
   overflow-wrap: anywhere;
   line-height: var(--conversation-line);
 }
 
-.user-message-body {
+.user-message-body,
+.user-message-body > div {
   white-space: normal;
   letter-spacing: normal;
 }
-.user-message-body > * {
+.user-message-body > *,
+.user-message-body > div > * {
   margin-block: 0;
 }
-.user-message-body > p {
+.user-message-body > p,
+.user-message-body > div > p {
   white-space: pre-wrap;
 }
-.user-message-body > * + p {
+.user-message-body > * + p,
+.user-message-body > div > * + p {
   margin-block-start: var(--content-font-size, var(--text-ui-base));
 }
-.user-message-body > p + * {
+.user-message-body > p + *,
+.user-message-body > div > p + * {
   margin-block-start: var(--content-font-size, var(--text-ui-base));
 }
-.user-message-body > h1 {
+.user-message-body > h1,
+.user-message-body > div > h1 {
   font-size: var(--text-user-message-heading);
   line-height: 1.333333;
   margin-block: calc(var(--text-user-message-heading) * 2 / 3)
     calc(var(--text-user-message-heading) / 3);
 }
-.user-message-body > h1:first-child {
+.user-message-body > h1:first-child,
+.user-message-body > div > h1:first-child {
   margin-block-start: 0;
 }
-.user-message-body > ul {
+.user-message-body > ul,
+.user-message-body > div > ul {
   padding-inline-start: var(--spacing-section);
 }
 .user-message-body li {
@@ -756,7 +767,9 @@ button.composer-project:hover > svg,
   color: currentColor;
 }
 .user-message-with-skills > .user-message-body,
-.user-message-with-skills > .user-message-body > p:first-child {
+.user-message-with-skills > .user-message-body > div,
+.user-message-with-skills > .user-message-body > p:first-child,
+.user-message-with-skills > .user-message-body > div > p:first-child {
   display: inline;
 }
 .user-message-skill {

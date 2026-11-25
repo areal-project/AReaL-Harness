@@ -261,14 +261,16 @@ try {
   const anchorNode = () =>
     page
       .locator('[data-side-item-id="answer-5"] .conversation-markdown')
-      .locator(":scope > *")
+      .locator(":scope > div > *")
       .nth(anchor.index);
   const checkAnchor = async (label) => {
     await anchorNode().waitFor();
     await page.waitForFunction(({ index, offset }) => {
       const reader = document.querySelector(".messages");
-      const block = reader?.querySelector('[data-side-item-id="answer-5"] .conversation-markdown')
-        ?.children[index];
+      const root = reader?.querySelector('[data-side-item-id="answer-5"] .conversation-markdown');
+      const container =
+        root?.children.length === 1 && root.children[0].tagName === "DIV" ? root.children[0] : root;
+      const block = container?.children[index];
       return (
         block &&
         Math.abs(block.getBoundingClientRect().top - reader.getBoundingClientRect().top - offset) <=

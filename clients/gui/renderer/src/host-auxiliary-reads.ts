@@ -97,7 +97,14 @@ export function refreshModelCatalogs(
       .then((value) => {
         if (catalogs.get(project.projectId) !== entry) return;
         if (!object(value) || !Array.isArray(value.models)) throw new Error("INVALID_RESPONSE");
-        entry.value = value;
+        // 同一 Core 代际下目录刷新若回退到持久化模型列表，不擦除本代已确认的实时能力。
+        entry.value =
+          carriedValue &&
+          previous?.scope === scope &&
+          value.features === undefined &&
+          carriedValue.features !== undefined
+            ? { ...value, features: carriedValue.features }
+            : value;
       })
       .catch(() => {
         // 后台可能还在连接；这一代的条目先占着挡住重绘重读，过了退避再放开重试。
