@@ -1,0 +1,72 @@
+core/app-server/tests/dynamic_tools.rs
+  s_a8c06d4af66d17::t_3addd7a0a6ed79 77-87,148-157,162-167,373-375
+clients/gui/scripts/history.test.mjs
+  s_a8c06d4af66d17::t_3addd7a0a6ed79 31-72
+core/engine/examples/desktop-schema.rs
+  s_a8c06d4af66d17::t_3addd7a0a6ed79 200
+core/engine/examples/schema/mod.rs
+  s_a8c06d4af66d17::t_3addd7a0a6ed79 591
+core/engine/src/desktop/toolset.rs
+  s_a8c06d4af66d17::t_76fd739f273a78 53-57,61-66
+  s_a8c06d4af66d17::t_3addd7a0a6ed79 1-52,58-60,67-122
+  s_a8c06d4af66d17::t_0066cbe8cb1868 123-128
+docs/api/browser.en.md
+  s_a8c06d4af66d17::t_2a394d65730f90 260
+docs/api/browser.md
+  s_a8c06d4af66d17::t_2a394d65730f90 300
+core/app-server/src/lib.rs
+  s_a8c06d4af66d17::t_2a394d65730f90 539
+  s_a8c06d4af66d17::t_3addd7a0a6ed79 540-542,1260-1268,1355-1359
+docs/api/core.en.md
+  s_a8c06d4af66d17::t_33d218f545646d 295-301
+  s_a8c06d4af66d17::t_e3a304d1f08048 59,279,302-304
+docs/api/core.md
+  s_a8c06d4af66d17::t_33d218f545646d 290-296
+  s_a8c06d4af66d17::t_09da175fb87ac8 54,274,297-299
+clients/gui/packages/workbench/client/core-model.js
+  s_a8c06d4af66d17::t_3addd7a0a6ed79 42,47-54
+core/app-server/tests/dynamic_tools/update.rs
+  s_a8c06d4af66d17::t_3addd7a0a6ed79 1-620
+core/engine/src/desktop/mod.rs
+  s_a8c06d4af66d17::t_3addd7a0a6ed79 24
+clients/gui/packages/runtime-client/core.d.ts
+  s_a8c06d4af66d17::t_3addd7a0a6ed79 14-24,86-89
+core/host/src/schedule_connection_tests.rs
+  s_a8c06d4af66d17::t_c4a2b4131e3aec 838-911
+core/host/src/workbench_core.rs
+  s_a8c06d4af66d17::t_3e7a7ea0f6bf60 128
+core/protocol/src/desktop.rs
+  s_a8c06d4af66d17::t_9ff2fdb1eacd85 93,189-203
+core/protocol/src/lib.rs
+  s_a8c06d4af66d17::t_235fda86b4d27a 509
+docs/adr/0007-browser-tool-compatibility.en.md
+  s_a8c06d4af66d17::t_62e24104c8ba76 7
+docs/adr/0007-browser-tool-compatibility.md
+  s_a8c06d4af66d17::t_676449200328c9 7
+docs/design/browser.en.md
+  s_a8c06d4af66d17::t_6561d303624401 115
+docs/design/browser.md
+  s_a8c06d4af66d17::t_2cfdfe1e9deb05 115
+docs/features.en.md
+  s_a8c06d4af66d17::t_c9c8d52068d6d4 23
+docs/features.md
+  s_a8c06d4af66d17::t_f1e249399024c8 20
+schemas/areal-core-v1.json
+  s_a8c06d4af66d17::t_b26af242eedd95 30301-30347,125453-125470
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2303561d9cd3a5bbbf1a948dbd60b2322442cd94",
+  "prompts": {},
+  "sessions": {
+    "s_a8c06d4af66d17": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a210af-b5fd-7f30-8e57-5b904979daeb",
+        "model": "gpt-6.2-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
