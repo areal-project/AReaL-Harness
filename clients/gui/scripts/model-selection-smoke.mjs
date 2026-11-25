@@ -2,7 +2,12 @@ import { readCoreThread as observeCoreThread } from "./support/core-observation.
 import { installHostTransportBarrier } from "./support/host-transport-barrier.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import { desktopBridge, until as untilValue } from "./support/desktop-fixture.mjs";
-import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
+import {
+  assertApplicationStopped,
+  closeSmokeApplication,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
+} from "./application-cleanup.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -24,8 +29,6 @@ import {
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const { HostClient } = require("@areal/client/node");
-const { readHostReceipt, readOfflineHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
 const scratch = await makeTempDir("ams-");
 const workspace = join(scratch, "workspace"),
   userHome = join(scratch, "user");
@@ -171,6 +174,7 @@ let app,
   page,
   stoppingAdapter,
   stoppingHost,
+  stoppingGuiPid = null,
   failure = null,
   passed = false;
 const checks = [],
@@ -501,47 +505,16 @@ async function showModel(name) {
 async function stopServiceImpl() {
   console.log("[model-selection] stopping isolated Host");
   if (!stoppingHost) return;
-  const home = env.AREAL_HARNESS_SERVICE_HOME;
-  const reference = {
-    kind: "stopHost",
-    requestId: randomUUID(),
-    home,
-    hostId: stoppingHost.hostId,
-    generation: stoppingHost.generation,
-    strategy: "cancel",
-  };
-  const suffix = stoppedServices.length;
-  await writeFile(
-    join(scratch, `host-stop-reference-${suffix}.json`),
-    JSON.stringify(reference, null, 2),
-  );
-  const host = new HostClient();
-  try {
-    await host.connect(home);
-    assert.equal(host.hostId, reference.hostId);
-    assert.equal(host.generation, reference.generation);
-    let receipt;
-    try {
-      receipt = readHostReceipt(
-        reference,
-        await host.stop(reference.requestId, reference.generation, reference.strategy),
-      );
-    } catch {
-      host.close();
-      receipt = await readOfflineHostReceipt(coreBinary, reference);
-    }
-    await writeFile(
-      join(scratch, `host-stop-${suffix}.json`),
-      JSON.stringify(receipt ?? null, null, 2),
-    );
-    assert.equal(receipt?.state, "completed", "original fixture Host stop remains UNKNOWN");
-    await assertApplicationStopped(coreBinary, env, stoppingAdapter);
-    stoppedServices.push({ pid: stoppingHost.pid, exited: true });
-    stoppingHost = undefined;
-    stoppingAdapter = undefined;
-  } finally {
-    host.close();
-  }
+  const receipt = await settleFixtureHostAfterQuit(coreBinary, env, scratch, {
+    host: stoppingHost,
+    pid: stoppingGuiPid,
+  });
+  assert.equal(receipt?.state, "completed", "original fixture Host stop remains UNKNOWN");
+  await assertApplicationStopped(coreBinary, env, stoppingAdapter);
+  stoppedServices.push({ pid: stoppingHost.pid, exited: true });
+  stoppingHost = undefined;
+  stoppingAdapter = undefined;
+  stoppingGuiPid = null;
 }
 async function readCoreThread(threadId) {
   return observeCoreThread({
@@ -605,12 +578,8 @@ async function closeGuiImpl() {
   const current = app;
   if (!current) return;
   const child = current.process();
-  stoppingHost = await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/host.json"), "utf8")
-    .then(JSON.parse)
-    .catch((error) => {
-      if (error.code === "ENOENT") return null;
-      throw error;
-    });
+  stoppingGuiPid = child?.pid ?? null;
+  stoppingHost = await readFixtureHost(env);
   try {
     await closeSmokeApplication(
       {
