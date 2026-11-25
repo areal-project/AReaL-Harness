@@ -31,6 +31,33 @@ export function refreshReadingWindow(
         ),
       ].filter((page) => pinnedPage(cached, page))
     : [];
+  const items: ReadingWindow["items"] = new Map();
+  if (
+    cached?.items.size &&
+    cached.session.connectionId === session.connectionId &&
+    cached.session.gatewayGeneration === session.gatewayGeneration &&
+    cached.session.subscriptionId === session.subscriptionId &&
+    cached.session.serviceGeneration === session.serviceGeneration &&
+    cached.session.projectId === session.projectId &&
+    cached.session.threadId === session.threadId
+  ) {
+    // 新轮次会更换分页游标；同一订阅中仍由新快照确认的完整正文不必再次读取。
+    for (const turn of observation.thread.turns) {
+      for (const item of turn.items) {
+        const saved = cached.items.get(item.id);
+        if (
+          item.type === "historyDeferred" &&
+          saved &&
+          saved.version === item.version &&
+          saved.bytes === item.totalBytes &&
+          saved.entry.sourceThreadId === observation.thread.id &&
+          saved.entry.sourceTurnId === turn.id &&
+          saved.entry.sourceItemId === item.id
+        )
+          items.set(item.id, saved);
+      }
+    }
+  }
   return {
     session,
     observation,
@@ -40,7 +67,7 @@ export function refreshReadingWindow(
     stalePages: older,
     pageRecords: [],
     targets: new Map(cached?.targets),
-    items: new Map(),
+    items,
     loading: new Map(),
     nextCursor: observation.history?.nextCursor ?? undefined,
     complete: observation.history?.complete ?? true,

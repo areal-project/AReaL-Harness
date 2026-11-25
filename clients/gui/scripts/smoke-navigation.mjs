@@ -2,6 +2,7 @@ import {
   libraryCommand,
   observationSummary,
   readDesktopSnapshot,
+  until,
 } from "./support/desktop-fixture.mjs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -32,7 +33,14 @@ export async function selectConversation(page, threadId) {
 }
 
 export async function selectCreatedConversation(page, projectId, threadId) {
-  // 空对话默认不出现在侧栏；给测试夹具命名后再通过真实导航打开。
+  // 创建回执先于导航目录更新，重命名只接受原项目目录中已发布的会话。
+  await until(
+    async () =>
+      (await readDesktopSnapshot(page)).projects
+        .find((project) => project.id === projectId)
+        ?.summaries?.some((summary) => summary.id === threadId),
+    "new conversation appears in the original project's navigation summaries",
+  );
   await libraryCommand(page, {
     operation: "renameThread",
     projectId,
