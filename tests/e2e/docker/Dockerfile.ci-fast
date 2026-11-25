@@ -1,0 +1,54 @@
+# PR 快速容器验证镜像：直接复用 Ubuntu 24.04 宿主编译的同 glibc 二进制，跳过容器内重复 Rust 编译。
+# 改动 tests/e2e/docker/Dockerfile、runtime/exec-native/** 或 main/手动触发时，CI 仍执行完整 Alpine 构建。
+FROM ubuntu:24.04 AS base
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+      bash \
+      ca-certificates \
+      coreutils \
+      git \
+      openssh-client \
+      python3 \
+      zstd \
+      bubblewrap \
+    && rm -rf /var/lib/apt/lists/* \
+    && test -x /usr/bin/ssh-agent && test -x /usr/bin/ssh-keygen && test -x /usr/bin/ssh-add
+
+FROM base AS runtime
+
+COPY target/ci-container-bin/node /usr/local/bin/node
+COPY target/ci-container-bin/areal-runtime /usr/local/libexec/areal/areal-runtime
+COPY target/ci-container-bin/areal-runtime-fs /usr/local/libexec/areal/areal-runtime-fs
+COPY target/ci-container-bin/areal-runtime-reaper /usr/local/libexec/areal/areal-runtime-reaper
+COPY target/ci-container-bin/areal /usr/local/bin/areal
+COPY tests/perf/runner /opt/areal-perf
+COPY tests/perf/trace_metrics.py /opt/areal-perf/trace_metrics.py
+COPY scripts/launch.py /opt/areal-launch/launch.py
+
+ENTRYPOINT ["python3", "/opt/areal-perf/agent_entrypoint.py"]
+
+FROM base AS runtime-tests
+
+ARG HOST_WORKSPACE=/src
+WORKDIR /src
+COPY target/ci-container-tests /src/target/ci
+COPY tests/fixtures/mcp-server.py /src/tests/fixtures/mcp-server.py
+COPY Cargo.toml /src/Cargo.toml
+COPY core/app-server/Cargo.toml /src/core/app-server/Cargo.toml
+COPY core/engine/Cargo.toml /src/core/engine/Cargo.toml
+COPY runtime/daemon/Cargo.toml /src/runtime/daemon/Cargo.toml
+COPY runtime/exec-native/Cargo.toml /src/runtime/exec-native/Cargo.toml
+COPY core/engine/tests/fixtures /src/core/engine/tests/fixtures
+# 保持宿主编译测试二进制内嵌的 CARGO_MANIFEST_DIR 路径在容器内可解析。
+RUN if [ "$HOST_WORKSPACE" != "/src" ]; then \
+      mkdir -p "$(dirname "$HOST_WORKSPACE")" && ln -s /src "$HOST_WORKSPACE"; \
+    fi \
+    && test -x /src/target/ci/areal-runtime \
+    && test -x /src/target/ci/areal-runtime-fs \
+    && test -x /src/target/ci/deps/areal-runtime-reaper \
+    && test -r /src/tests/fixtures/mcp-server.py
+
+ENV AREAL_TEST_BIN_DIR=/src/target/ci
+CMD ["python3", "/src/target/ci/run-container-tests.py"]

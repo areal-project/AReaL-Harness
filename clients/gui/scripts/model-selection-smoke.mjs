@@ -105,6 +105,8 @@ const composerPicker = process.argv.includes("--composer-picker");
 const pickerEfforts = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 const composerFast = process.argv.includes("--composer-fast");
 const sendContinuity = process.argv.includes("--send-continuity");
+const coreOnly = process.argv.includes("--core-only");
+const defaultsOnly = process.argv.includes("--defaults-only");
 await writeFile(
   config,
   `schema_version=1\n[model]\ncatalog_version=1\nprovider="theta"\nname="theta-model"\n` +
@@ -120,7 +122,9 @@ await writeFile(
   (await readFile(config, "utf8")) +
     `\n[model.providers.env]\nname="env"\nenabled=false\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\nprotocol="chat-completions"\napi_key_env="AREAL_MODEL_FIXTURE_KEY"\nmodels=[{id="env-model",enabled=true}]\n`,
 );
-if (composerPicker || composerFast || sendContinuity) {
+if (defaultsOnly) {
+  await writeFile(config, "schema_version=1\n[model]\ncatalog_version=1\n");
+} else if (composerPicker || composerFast || sendContinuity) {
   await writeFile(
     config,
     `schema_version=1\n[model]\ncatalog_version=1\nprovider="alpha"\nname="alpha-model"\n` +
@@ -2773,6 +2777,17 @@ async function runFullModelSelection() {
   await openModelSettings();
   recordCheck("empty catalog provides neutral guidance and Settings > Models remains accessible");
   await timed("model capabilities", verifyModelCapabilities);
+  if (!coreOnly) {
+    await timed("model defaults and recovery", () => verifyModelDefaults(projectId));
+  }
+}
+async function runDefaultsOnly() {
+  const ready = await until(
+    (s) => fixtureProject(s)?.state?.connected,
+    "fixture project connected for defaults",
+  );
+  const projectId = fixtureProject(ready).id;
+  await openModelSettings();
   await timed("model defaults and recovery", () => verifyModelDefaults(projectId));
 }
 async function verifyFirstSendContinuity() {
@@ -2904,6 +2919,8 @@ try {
     await verifyComposerFast();
   } else if (composerPicker) {
     await verifyComposerPicker();
+  } else if (defaultsOnly) {
+    await runDefaultsOnly();
   } else {
     await runFullModelSelection();
   }

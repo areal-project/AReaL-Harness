@@ -18,11 +18,11 @@ endif
 .PHONY: help fetch build release check fmt fmt-check lint test test-core \
 	test-protocol test-concurrency verify smoke server tui schemas docs clean \
 	capacity capacity-primitives capacity-core perf runtime test-runtime runtime-smoke verify-runtime git-auth-smoke \
-	cordis-pin update-cordis sdk-test harness harness-smoke verify-harness \
+	cordis-pin update-cordis sdk-test harness harness-smoke harness-smoke-core harness-smoke-extended macos-native-smoke verify-harness \
 	setup setup-node sdk-build script-test launcher-test workgroup-smoke unified-execution-smoke delegation-permissions-smoke capacity-workgroup local-service-smoke upgrade-smoke tui-upgrade-smoke \
 	verify-native integration-boundaries ci-preflight ci-gui-static ci-gui-health \
 	ci-gui-portable ci-core-contracts workflow-lint hooks-install check-changed baseline-diff agent-setup check-refs check-transitional check-rust-size lazy-mcp-compare \
-	training-export training-check training-smoke verification-evidence compare-journey-triage
+	training-export training-check training-smoke verification-evidence compare-journey-triage host-protocol-static
 
 verification-evidence: ## 校验一份 ci-preflight 结构化 evidence 报告；REPORT=<report.json>
 	@test -n "$(REPORT)" || { echo 'REPORT is required' >&2; exit 2; }
@@ -210,6 +210,10 @@ harness: ## 通过可信独立启动器启动工具 Harness；ARGS 指定工作�
 	python3 scripts/launch.py $(ARGS)
 
 harness-smoke: build sdk-build ## 原生 SDK 与完整读改测试/强杀恢复
+	$(MAKE) harness-smoke-core
+	$(MAKE) harness-smoke-extended
+
+harness-smoke-core: build sdk-build ## 原生工具、SDK、权限与统一委派分片（CI 并行用）
 	python3 scripts/native-tools-smoke.py --bin-dir target/debug
 	python3 scripts/navigation-read-scope-smoke.py --bin-dir target/debug
 	python3 scripts/native-python-smoke.py --bin-dir target/debug
@@ -219,6 +223,8 @@ harness-smoke: build sdk-build ## 原生 SDK 与完整读改测试/强杀恢复
 	node scripts/workgroup-smoke.mjs
 	node scripts/unified-execution-smoke.mjs
 	node scripts/delegation-permissions-smoke.mjs
+
+harness-smoke-extended: build sdk-build ## 插件、权限模式、Git 认证、TUI 与共享服务分片（CI 并行用）
 	node scripts/plugin-smoke.mjs
 	node scripts/permissions-smoke.mjs
 	node scripts/permission-modes-smoke.mjs
@@ -227,6 +233,10 @@ harness-smoke: build sdk-build ## 原生 SDK 与完整读改测试/强杀恢复
 	python3 scripts/tui-local-smoke.py
 	node scripts/local-service-smoke.mjs
 	node scripts/runtime-rotation-smoke.mjs
+
+macos-native-smoke: build ## macOS 原生差异验证（Seatbelt、私有 Bash、共享服务与 Git 认证）
+	$(MAKE) -k -j2 runtime-smoke git-auth-smoke local-service-smoke
+	python3 scripts/native-tools-smoke.py --bin-dir target/debug
 
 unified-execution-smoke: build ## 真实 Runtime 的统一委派、组合交付、取消和恢复回归
 	node scripts/unified-execution-smoke.mjs
@@ -324,12 +334,14 @@ desktop-schema-check: ## 临时生成并规范化比较三份桌面 schema，不
 	python3 scripts/desktop-schemas.py
 
 .PHONY: host-protocol-check
-host-protocol-check: ## 检查 A0 协议生成物、桌面 IPC 冻结反例和要 GUI 依赖的用例（先装 clients/gui 依赖）
+host-protocol-static: ## 检查 A0 协议生成物、TS 类型与桌面 IPC 冻结反例（不重编 Rust，CI 复用 Rust 单测分片）
 	python3 scripts/generate-host-protocol.py --check
 	python3 -m unittest scripts.tests.test_host_protocol_schema
 	python3 -m unittest scripts/tests/host_protocol_typescript.py
 	node --test clients/gui/scripts/desktop-ipc-freeze.test.cjs
 	pnpm --dir clients/gui exec vp run desktop-build
+
+host-protocol-check: host-protocol-static ## 检查 A0 协议生成物、桌面 IPC 冻结反例和要 GUI 依赖的用例（先装 clients/gui 依赖）
 	cargo test --locked -p areal-host local_send_and_steer_dispatch_without_node
 
 package: release ## 生成 macOS arm64 / Linux x86_64 发行产物及完整性清单；ARGS 指定 --output

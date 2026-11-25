@@ -298,7 +298,25 @@
     "platforms": ["darwin", "linux"],
     "areas": ["provider"],
     "requires": ["electron", "core-binary", "git", "gui-build"],
-    "ciSmoke": "model-selection"
+    "notes": "Full local entry; CI runs test:model-selection-core and test:model-selection-defaults in parallel."
+  },
+  {
+    "script": "test:model-selection-core",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["provider"],
+    "requires": ["electron", "core-binary", "git", "gui-build"],
+    "ciSmoke": "model-selection-core",
+    "notes": "Credentials, save receipts, empty catalog and custom model capability boundaries."
+  },
+  {
+    "script": "test:model-selection-defaults",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["provider"],
+    "requires": ["electron", "core-binary", "git", "gui-build"],
+    "ciSmoke": "model-selection-defaults",
+    "notes": "Implicit/explicit model defaults, reasoning effort reconfiguration, and cold restart recovery."
   },
   {
     "script": "test:composer-files",

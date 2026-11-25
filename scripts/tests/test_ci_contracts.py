@@ -815,6 +815,7 @@ class CiContracts(unittest.TestCase):
             "scope",
             "gui-health",
             "gui-portable",
+            "gui-browser",
             "relay-contracts",
             "gui",
             "core-contracts",
@@ -830,6 +831,116 @@ class CiContracts(unittest.TestCase):
         for status in ("failure", "cancelled", "skipped", "", None):
             jobs["relay-contracts"]["result"] = status
             self.assertTrue(gate.validate_jobs(plan, "gui", jobs))
+        # Verify 工作流同样要求所有并行拆分后的 job，不允许缺失、失败、取消或意外跳过。
+        verify_plan, _ = self.gate_fixture(workflow="verify")
+        verify_expected = {
+            "plan",
+            "host",
+            "linux-build",
+            "rust-tests",
+            "linux-integration",
+            "native-macos",
+            "container",
+            "dependencies",
+        }
+        self.assertEqual(set(scope.JOB_GROUPS["verify"]), verify_expected)
+        verify_jobs = {name: {"result": "success"} for name in verify_expected}
+        self.assertEqual(gate.validate_jobs(verify_plan, "verify", verify_jobs), [])
+        for name in verify_expected:
+            missing = copy.deepcopy(verify_jobs)
+            del missing[name]
+            self.assertTrue(gate.validate_jobs(verify_plan, "verify", missing))
+
+    def test_rust_test_shards_cover_every_portable_workspace_crate_once(self):
+        workspace = tomllib.loads((ROOT / "Cargo.toml").read_text())["workspace"]["members"]
+        portable_crates = []
+        for member in workspace:
+            name = tomllib.loads((ROOT / member / "Cargo.toml").read_text())["package"]["name"]
+            if name != "areal-runtime-exec-native":
+                portable_crates.append(name)
+        sharded = [pkg for shard in scope.RUST_TEST_SHARDS for pkg in shard["packages"]]
+        self.assertEqual(len(sharded), len(set(sharded)))
+        self.assertCountEqual(sharded, portable_crates)
+
+    def test_browser_and_smoke_shards_partition_every_planned_item_once(self):
+        plan, reports = self.gate_fixture(
+            paths=("Makefile", "clients/gui/renderer/src/workbench.css")
+        )
+        manifest = json.loads((ROOT / "clients/gui/scripts/test-manifest.json").read_text())
+        ids = {item["id"] for item in plan["items"]}
+        # 已去除纯重复检查，由 Clippy 与 Linux workspace 测试统一覆盖。
+        self.assertNotIn("rust-types", ids)
+        self.assertNotIn("rpc-routes", ids)
+        self.assertEqual(scope.CI_PLATFORMS["gui-browser"], "linux")
+        browser_expected = [item["id"] for item in plan["items"] if item["group"] == "gui-browser"]
+        self.assertTrue(
+            {
+                "smoke:test:conversation-reading",
+                "smoke:test:ui-audit",
+                "smoke:test:design",
+                "design-conversation",
+                "design-popups",
+            }
+            <= set(browser_expected)
+        )
+        browser_assigned = [
+            name
+            for shard in scope.browser_matrix(plan)["include"]
+            for name in shard["items"].split(",")
+        ]
+        self.assertEqual(len(browser_assigned), len(set(browser_assigned)))
+        self.assertCountEqual(browser_assigned, browser_expected)
+        smoke_expected = [item["id"] for item in plan["items"] if item["group"] == "smoke"]
+        shards = scope.smoke_shards(plan, manifest, buckets=4)["include"]
+        self.assertLessEqual(len(shards), 4)
+        smoke_assigned = [name for shard in shards for name in shard["items"].split(",")]
+        self.assertEqual(len(smoke_assigned), len(set(smoke_assigned)))
+        self.assertCountEqual(smoke_assigned, smoke_expected)
+        self.assertEqual(
+            gate.validate(plan, reports, scope.WORKFLOW_GROUPS["gui"], ("run", "2")), []
+        )
+
+    def test_preflight_cli_supports_comma_separated_items_and_rejects_unknown(self):
+        plan_cmd = [
+            sys.executable,
+            str(ROOT / "scripts/ci-preflight.py"),
+            "--groups",
+            "early",
+            "--item",
+            "format,docs",
+            "--plan",
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            event = Path(directory) / "event.json"
+            event.write_text("{}")
+            env = {**os.environ, "GITHUB_EVENT_PATH": str(event)}
+            ok = subprocess.run(plan_cmd, cwd=ROOT, env=env, capture_output=True, text=True)
+            self.assertEqual(ok.returncode, 0, ok.stderr)
+            self.assertEqual(json.loads(ok.stdout)["selected"], ["format", "docs"])
+            bad = subprocess.run(
+                [*plan_cmd[:-2], "format,nonexistent", "--plan"],
+                cwd=ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(bad.returncode, 0)
+
+    def test_fast_container_routing_and_full_alpine_triggers(self):
+        self.assertFalse(scope.full_container_required(["core/host/src/lib.rs"], "pull_request"))
+        self.assertTrue(
+            scope.full_container_required(["tests/e2e/docker/Dockerfile"], "pull_request")
+        )
+        self.assertTrue(
+            scope.full_container_required(["runtime/exec-native/src/lib.rs"], "pull_request")
+        )
+        self.assertTrue(scope.full_container_required(["core/host/src/lib.rs"], "push"))
+        self.assertTrue(
+            scope.full_container_required(["core/host/src/lib.rs"], "workflow_dispatch")
+        )
+        self.assertTrue(
+            scope.full_container_required(["core/host/src/lib.rs"], "pull_request", fallback=True)
+        )
 
     def test_runner_subtest_omission_is_rejected_even_with_a_successful_job(self):
         plan, reports = self.gate_fixture()

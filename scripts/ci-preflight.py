@@ -131,7 +131,7 @@ def environment(item, root):
         env.setdefault("CARGO_TEST_ARGS", "--exclude areal-runtime-exec-native")
     if item["group"] in ("core-contracts", "gui-native-checks", "smoke"):
         env["AREAL_CORE_BIN"] = str(matching_core(root))
-    if item["id"] == "gui-portable":
+    if item["id"] == "gui-portable" or item["group"] == "gui-browser":
         env.pop("AREAL_CORE_BIN", None)
     return env
 
@@ -268,6 +268,13 @@ def artifacts(item, root):
         files = [
             *sorted(directory.glob("*.html")),
             directory / "bundle-analysis.json",
+            *sorted((directory / "assets").glob("*.js")),
+            *sorted((directory / "assets").glob("*.css")),
+        ]
+    if item["id"].endswith(":design-build") or item["id"] == "gui-design-build":
+        directory = root / "clients/gui/dist/design-system"
+        files = [
+            *sorted(directory.glob("*.html")),
             *sorted((directory / "assets").glob("*.js")),
             *sorted((directory / "assets").glob("*.css")),
         ]
@@ -529,7 +536,7 @@ def main():
     began_at = datetime.now(timezone.utc).isoformat()
     parser.add_argument("--base")
     parser.add_argument("--groups")
-    parser.add_argument("--item")
+    parser.add_argument("--item", action="append")
     parser.add_argument("--phase", choices=("commit", "full"), default="full")
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--with-dependencies", action="store_true")
@@ -551,11 +558,16 @@ def main():
     if not args.base and not os.environ.get("GITHUB_EVENT_PATH"):
         parser.error("--base is required outside CI")
     plan = scope.repository_plan(ROOT, args.base)
+    requested_items = (
+        {part.strip() for raw in args.item for part in raw.split(",") if part.strip()}
+        if args.item
+        else None
+    )
     selected = [
         item
         for item in plan["items"]
         if (not args.groups or item["group"] in args.groups.split(","))
-        and (not args.item or item["id"] == args.item)
+        and (not requested_items or item["id"] in requested_items)
         and (args.phase != "commit" or item["phase"] == "commit")
     ]
     if args.groups and not set(args.groups.split(",")) <= set().union(
@@ -575,7 +587,7 @@ def main():
                 break
             names = expanded
         selected = [item for item in plan["items"] if item["id"] in names]
-    if args.item and not selected:
+    if requested_items and not requested_items <= {item["id"] for item in selected}:
         raise ValueError("requested check is absent from the required plan")
     if args.plan:
         print(
@@ -600,11 +612,21 @@ def main():
     fresh = scope.input_key(ROOT, plan["source"]["baseRevision"]) == plan["source"]["inputHash"]
     ready = fresh and all(
         any(result["id"] == name and result["status"] == "passed" for result in report["results"])
-        for name in ("macos:renderer", "gui-core-build", "gui-design-build")
+        for name in ("macos:renderer", "gui-core-build")
+    )
+    portable_ready = fresh and all(
+        any(result["id"] == name and result["status"] == "passed" for result in report["results"])
+        for name in ("portable:renderer", "portable:design-build")
+    )
+    linux_build_ready = fresh and any(
+        result["id"] == "verify-core-build" and result["status"] == "passed"
+        for result in report["results"]
     )
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as stream:
             print("artifact_ready=" + str(ready).lower(), file=stream)
+            print("portable_ready=" + str(portable_ready).lower(), file=stream)
+            print("linux_build_ready=" + str(linux_build_ready).lower(), file=stream)
     if not fresh:
         report["status"] = "invalidated"
         report["reason"] = "inputs changed before finalization"
