@@ -15,21 +15,9 @@ const vite = await createServer({
   configFile: fileURLToPath(new URL("../renderer/vite.config.ts", import.meta.url)),
   server: { host: "127.0.0.1", port: 0 },
   optimizeDeps: {
-    include: [
-      "catalog",
-      "conversation",
-      "library-media",
-      "management",
-      "management-context",
-      "mcp-page",
-      "plugin-store",
-      "provider",
-      "resource",
-      "shared",
-      "snapshots",
-      "transport",
-      "workspace",
-    ].map((name) => `@areal/workbench/desktop-contract/${name}`),
+    include: Object.keys(require("../packages/workbench/package.json").exports)
+      .filter((name) => name.startsWith("./desktop-contract/"))
+      .map((name) => `@areal/workbench/${name.slice(2)}`),
   },
 });
 let browser;

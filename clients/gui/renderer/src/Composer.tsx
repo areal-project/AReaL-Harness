@@ -16,7 +16,6 @@ export { uploadComposerFiles } from "./ComposerUploads.js";
 import { requestTurnStart, cancelTurnStart, readingViews } from "./readingViews.js";
 import {
   acceptPendingMessage,
-  getPendingMessage,
   pendingMessageProjected,
   setPendingMessage,
   usePendingMessage,
@@ -190,6 +189,7 @@ export function Composer({
   const reviewDraft = useReviewComments(reviewKey);
   const comments = attachedReviewComments(reviewDraft.draft);
   const api = useRef<LexicalChatInputHandle | null>(null);
+  const clearingPending = useRef(false);
   const [workspaceReferencePending, setWorkspaceReferencePending] = useState(false);
   const upload = useRef<HTMLInputElement>(null);
   const [menuAnchor, setMenuAnchor] = useState<HTMLDivElement | null>(null);
@@ -444,6 +444,7 @@ export function Composer({
     if (remaining.length) attachmentDrafts.set(key, remaining);
     else attachmentDrafts.delete(key);
     composerDraftStorage.removeItem(key);
+    window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: key }));
     forgetComposerUploads(uploadOwner, files.filter(isComposerFile));
     skills.clear();
     plugins.clear();
@@ -605,8 +606,12 @@ export function Composer({
         files: submittedInput.files,
         previousUserIds: userMessageIds(thread.turns),
       });
-      // 与待发气泡同一帧清空编辑器，失败时在 catch 中恢复原文。
+      // 与待发气泡同一帧清空编辑器，失败时在 catch 中恢复原文；只跳过本次程序清空的空值回写。
+      clearingPending.current = true;
       api.current?.clear();
+      queueMicrotask(() => {
+        clearingPending.current = false;
+      });
     }
     try {
       if (sideCommand && onSide) {
@@ -1163,7 +1168,12 @@ export function Composer({
             })),
           }}
           onChange={(value) => {
-            if (outgoing || getPendingMessage(key)) return;
+            if (outgoing) return;
+            if (clearingPending.current && !value) {
+              clearingPending.current = false;
+              return;
+            }
+            clearingPending.current = false;
             setText(value);
             // 恢复编辑器原文也会通知 onChange，只有内容变化才推进草稿版本。
             if (value === (composerDraftStorage.getItem(key) ?? "")) return;

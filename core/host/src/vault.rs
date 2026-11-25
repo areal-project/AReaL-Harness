@@ -472,6 +472,7 @@ impl Vault {
                 reference,
             } = state.slot
                 && source_id == source
+                && state.entry_id.is_some()
             {
                 references.insert(reference);
             }

@@ -99,6 +99,7 @@ export function SendContinuityFixture() {
     id: "send-continuity-project",
     root: "/fixture",
     name: "Fixture",
+    core: { features: { permissionPresets: true, permissionFullAccess: true } },
     pending: [],
     outcomes: {},
     profiles: [],
@@ -112,6 +113,7 @@ export function SendContinuityFixture() {
         displayName: "Fixture",
       },
     ],
+    lastAcceptedModel: { model: { providerId: "fixture" }, modelId: "model" },
     configurations: { [thread.id]: config },
     state: { connected: true, threads: { [thread.id]: thread }, interactions: {}, queues: {} },
   };

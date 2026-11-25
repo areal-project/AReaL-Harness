@@ -1,3 +1,4 @@
+import { readDesktopSnapshot } from "./support/desktop-fixture.mjs";
 import { installHostTransportBarrier } from "./support/host-transport-barrier.mjs";
 import { prepareRecording } from "./prepare-recording.mjs";
 import { readCoreThread as observeCoreThread } from "./support/core-observation.mjs";
@@ -239,9 +240,7 @@ const modelConfiguration = (config) => {
 };
 
 async function state() {
-  return withSmokeDeadline("renderer snapshot", () =>
-    page.evaluate(() => window.arealDesktop.snapshot()),
-  );
+  return withSmokeDeadline("renderer snapshot", () => readDesktopSnapshot(page));
 }
 
 async function recordMainFailures(application) {
@@ -862,7 +861,7 @@ try {
     globalThis.__scfLoseNextForkResponse = true;
   });
   await forkDialog.getByRole("button", { name: "创建分支", exact: true }).click();
-  await forkDialog.getByRole("button", { name: "查看提交状态", exact: true }).waitFor();
+  await forkDialog.getByRole("button", { name: "核对受理结果", exact: true }).waitFor();
   await forkDialog.getByRole("alert").filter({ hasText: "请先核对原提交" }).waitFor();
   assert.equal(await forkDialog.getByRole("button", { name: "创建分支", exact: true }).count(), 0);
   const lostResult = (await page.evaluate(() => globalThis.__scfMutations)).find(
@@ -1145,13 +1144,18 @@ try {
     );
     return primary && !primary.disabled;
   });
-  await selectSideExcerpt();
-  checks.push(
-    "AC55: floating selection actions and Add to Chat preserve main text/files, remove/readd quotes without sending, dismiss on Escape/collapse/outside/scroll, and invalidate on source navigation",
-  );
+  await until(async () => {
+    const thread = project(await state())?.state?.threads?.[sourceThreadId];
+    return thread?.displayHistory?.freshness === "fresh";
+  }, "source thread observation fresh before selection");
   const beforeCurrentSide = requests.length;
   const sourceTurnIdsBeforeSide = (await readCoreThread(sourceThreadId)).turns.map(
     (turn) => turn.id,
+  );
+  await selectSideExcerpt();
+  await sideTrigger.waitFor();
+  checks.push(
+    "AC55: floating selection actions and Add to Chat preserve main text/files, remove/readd quotes without sending, dismiss on Escape/collapse/outside/scroll, and invalidate on source navigation",
   );
   await sideTrigger.click();
   const sidePane = page.getByTestId("side-chat-pane").filter({ visible: true });

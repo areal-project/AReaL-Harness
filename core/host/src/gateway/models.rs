@@ -376,9 +376,22 @@ impl Session {
         if self.gui_read
             && let Some(home) = self.host.migration.power_sources()?.get(source)
         {
+            let path = home.join("model-selection.json");
             let saved: Option<areal_protocol::host::WorkbenchCreationAcceptedModel> =
-                storage::read_optional(&home.join("model-selection.json"))?;
-            if let Some(saved) = saved
+                storage::read_optional(&path)?;
+            let saved_at = saved.as_ref().map(|item| item.accepted_at).unwrap_or(0);
+            // Core 目录是权威来源；按单调递增的 acceptedAt 同步跨项目偏好，迟到读不覆盖更新选择。
+            if let Ok(observed) = serde_json::from_value::<
+                areal_protocol::host::WorkbenchCreationAcceptedModel,
+            >(accepted.clone())
+                && observed.accepted_at > saved_at
+            {
+                if let Err(error) = storage::write(&path, &observed) {
+                    eprintln!("Host model-selection persistence failed: {error:#}");
+                } else {
+                    self.host.changed();
+                }
+            } else if let Some(saved) = saved
                 && saved.accepted_at > accepted["acceptedAt"].as_i64().unwrap_or(0)
             {
                 accepted = serde_json::to_value(saved)?;

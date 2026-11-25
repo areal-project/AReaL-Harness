@@ -1,7 +1,7 @@
 // 旅程脚本共用的现场：本地假模型、示例 Git 项目、隔离目录里的 Electron 与 Host、按临时目录认领的清理。
 // 只有外部模型是假的；Host、后台、Core 都是真实构建产物，状态全在临时目录里，不碰本机真实数据。
 import { execFileSync } from "node:child_process";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
@@ -170,8 +170,11 @@ export async function createScene(prefix) {
     await page.getByTestId("chat-input").first().waitFor({ timeout: 90_000 });
     // 后台退出可能等待保存或确认；限时关闭后强制结束这一个 Electron 进程。
     const close = async () => {
+      const proc = app.process();
       await Promise.race([app.close(), new Promise((done) => setTimeout(done, 10_000))]);
-      app.process().kill("SIGKILL");
+      try {
+        proc?.kill("SIGKILL");
+      } catch {}
     };
     return { app, page, env, close };
   }
@@ -216,8 +219,18 @@ export async function createScene(prefix) {
     }
   }
 
+  async function unlockTree(dir) {
+    await chmod(dir, 0o700).catch(() => {});
+    for (const entry of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+      if (entry.isSymbolicLink()) continue;
+      const target = join(dir, entry.name);
+      if (entry.isDirectory()) await unlockTree(target);
+    }
+  }
+
   async function dispose() {
     await stopLeftovers();
+    await unlockTree(scratch);
     await rm(scratch, { recursive: true, force: true, maxRetries: 5 });
   }
 

@@ -1,4 +1,5 @@
 import { readTurnToolDetails } from "./support/tool-history.mjs";
+import { createFixtureThread, readDesktopSnapshot } from "./support/desktop-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -265,11 +266,35 @@ let app,
   nativeId,
   pausedHostPid = null;
 async function snapshot() {
-  return page.evaluate(() => window.arealDesktop.snapshot());
+  return readDesktopSnapshot(page);
 }
 async function command(name, params) {
+  if (name === "create") {
+    const { projectId, ...rest } = params;
+    return createFixtureThread(page, projectId, rest);
+  }
   const result = await page.evaluate(
-    ({ name, params }) => window.arealDesktop.command(name, params),
+    async ({ name, params }) => {
+      const observer = globalThis[Symbol.for("areal.host.read")];
+      if (typeof observer?.call === "function") {
+        try {
+          return { ok: true, value: await observer.call(name, params) };
+        } catch (error) {
+          return {
+            ok: false,
+            error: {
+              code: error?.code ?? "internalError",
+              message: error?.message ?? String(error),
+              ...(error?.submissionUnknown !== undefined
+                ? { submissionUnknown: error.submissionUnknown }
+                : {}),
+              ...(error?.requestId !== undefined ? { requestId: error.requestId } : {}),
+            },
+          };
+        }
+      }
+      return window.arealDesktop.command(name, params);
+    },
     { name, params },
   );
   assert.equal(result.ok, true, JSON.stringify(result));
@@ -406,18 +431,45 @@ try {
       (await snapshot()).projects.find((item) => item.root === workspace && item.state?.connected),
     "project ready",
   );
+  const loadedCoreBinary =
+    project.core?.binary ??
+    (await (async () => {
+      for (const directory of await readdir(join(env.AREAL_HARNESS_SERVICE_HOME, "services"))) {
+        const descriptor = JSON.parse(
+          await readFile(
+            join(env.AREAL_HARNESS_SERVICE_HOME, "services", directory, "service.json"),
+            "utf8",
+          ),
+        );
+        if (descriptor.workspace === workspace && descriptor.state === "ready") {
+          if (descriptor.binary) return descriptor.binary;
+          if (Number.isSafeInteger(descriptor.hostPid) && descriptor.hostPid > 0) {
+            const command = execFileSync(
+              "/bin/ps",
+              ["-p", String(descriptor.hostPid), "-o", "command="],
+              { encoding: "utf8" },
+            ).trim();
+            if (command.endsWith(" service-host")) return command.slice(0, -" service-host".length);
+          }
+        }
+      }
+      return undefined;
+    })());
   assert.equal(
-    await realpath(project.core.binary),
+    await realpath(loadedCoreBinary),
     await realpath(coreBinary),
     "the app uses its expected bundled or source Core",
   );
-  events.loadedCoreBinary = project.core.binary;
+  events.loadedCoreBinary = loadedCoreBinary;
   assert.ok(
     project.models.some((model) => model.available),
     "the isolated fixture configuration provides an executable model",
   );
-  assert.ok(
-    project.profiles.some((profile) => profile.id === "fixture" && profile.revision === "v1"),
+  await until(
+    async () =>
+      (await snapshot()).projects
+        .find((item) => item.id === project.id)
+        ?.profiles?.some((profile) => profile.id === "fixture" && profile.revision === "v1"),
     "the isolated fixture deployment is loaded before thread creation",
   );
   projectId = project.id;
@@ -427,15 +479,22 @@ try {
     profile: { id: "fixture", revision: "v1" },
   });
   threadId = first.threadId;
-  if (faultMode === "navigation")
+  await selectCreatedConversation(page, projectId, threadId);
+  if (faultMode === "navigation") {
+    const configured = await until(
+      async () =>
+        (await snapshot()).projects.find((item) => item.id === projectId)?.configurations?.[
+          threadId
+        ],
+      "thread configuration loaded",
+    );
     await command("configure", {
       projectId,
       threadId,
-      expectedRevision: (await snapshot()).projects.find((item) => item.id === projectId)
-        .configurations[threadId].revision,
+      expectedRevision: configured.revision,
       options: { permissionPreset: "fullAccess" },
     });
-  await selectCreatedConversation(page, projectId, threadId);
+  }
   await app.evaluate(({ app, BrowserWindow }) => {
     app.focus({ steal: true });
     const window = BrowserWindow.getAllWindows()[0];

@@ -635,7 +635,11 @@ impl Session {
                 settled["admissionState"] = json!("accepted");
             } else if result["state"] == "rejected" {
                 settled["admissionState"] = json!("rejected");
-                settled["error"] = json!({"code":"CREATION_REJECTED","message":result["message"]});
+                settled["error"] = if result["error"].is_object() {
+                    result["error"].clone()
+                } else {
+                    json!({"code":"CREATION_REJECTED","message":result["message"]})
+                };
             } else {
                 return Ok(record.clone());
             }

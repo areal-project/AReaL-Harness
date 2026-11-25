@@ -28,6 +28,11 @@ await mkdir(outDir, { recursive: true });
 const server = createServer(async (req, res) => {
   try {
     const pathname = decodeURIComponent(new URL(req.url, "http://local").pathname);
+    if (pathname === "/favicon.ico") {
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
     const filePath = resolve(dist, `.${pathname}`);
     if (!filePath.startsWith(dist + sep)) throw new Error("invalid path");
     res.setHeader(
@@ -50,7 +55,12 @@ const server = createServer(async (req, res) => {
 
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const origin = `http://127.0.0.1:${server.address().port}`;
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({
+  headless: true,
+  ...(process.env.AREAL_GUI_TEST_BROWSER
+    ? { executablePath: process.env.AREAL_GUI_TEST_BROWSER }
+    : { channel: "chrome" }),
+});
 
 async function openRoute(
   context,

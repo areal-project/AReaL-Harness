@@ -155,13 +155,39 @@ export async function until(
   throw timeoutError();
 }
 
+// 优先读取渲染器内与界面同源的 Host 读模型投影，回退到桌面壳快照。
+export function readDesktopSnapshot(page) {
+  return page.evaluate(() => {
+    const observer = globalThis[Symbol.for("areal.host.read")];
+    return typeof observer?.snapshot === "function"
+      ? observer.snapshot()
+      : window.arealDesktop.snapshot();
+  });
+}
+
 // page 会在重启 GUI 后换新，所以传取值函数而不是 page 本身。
 export function desktopBridge(currentPage) {
-  const state = () => currentPage().evaluate(() => window.arealDesktop.snapshot());
+  const state = () => readDesktopSnapshot(currentPage());
   const call = async (name, params) => {
     if (name === "library") return libraryCommand(currentPage(), params);
     const reply = await currentPage().evaluate(
-      ({ name, params }) => window.arealDesktop.command(name, params),
+      async ({ name, params }) => {
+        const observer = globalThis[Symbol.for("areal.host.read")];
+        if (typeof observer?.call === "function") {
+          try {
+            return { ok: true, value: await observer.call(name, params) };
+          } catch (error) {
+            return {
+              ok: false,
+              error: {
+                code: error?.code ?? "internalError",
+                message: error?.message ?? String(error),
+              },
+            };
+          }
+        }
+        return window.arealDesktop.command(name, params);
+      },
       { name, params },
     );
     assert.equal(reply.ok, true, JSON.stringify(reply));

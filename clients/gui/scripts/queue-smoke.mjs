@@ -1,4 +1,5 @@
 import { makeTempDir } from "./support/temp.mjs";
+import { readDesktopSnapshot } from "./support/desktop-fixture.mjs";
 import { assertApplicationStopped, closeRecordedSmokeApplication } from "./application-cleanup.mjs";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
@@ -166,16 +167,21 @@ async function assertDropped(operation) {
   );
 }
 const button = (name) => page.getByRole("button", { name, exact: true });
-const state = () =>
-  withSmokeDeadline("queue renderer snapshot", () =>
-    page.evaluate(() => window.arealDesktop.snapshot()),
-  );
+const state = () => withSmokeDeadline("queue renderer snapshot", () => readDesktopSnapshot(page));
 const project = (snapshot) => snapshot.projects.find((p) => p.root === workspace && !p.projectless);
 async function call(name, params) {
   const result = await withSmokeDeadline(`queue command ${name}`, () =>
     page.evaluate(
       async ({ name, params }) => {
         if (Array.isArray(params.bytes)) params.bytes = new Uint8Array(params.bytes);
+        const observer = globalThis[Symbol.for("areal.host.read")];
+        if (observer?.call) {
+          try {
+            return { ok: true, value: await observer.call(name, params) };
+          } catch (error) {
+            return { ok: false, error: { message: error?.message ?? String(error) } };
+          }
+        }
         return window.arealDesktop.command(name, params);
       },
       {
@@ -295,7 +301,10 @@ try {
       const workbench = document.querySelector('[data-testid="areal-workbench"]');
       return workbench?.dataset.projectId === id && !workbench.dataset.threadId;
     }, pid);
-    assert(project(await state()).profiles.some((p) => p.id === "standard" && p.revision === "v1"));
+    await until(
+      (s) => project(s)?.profiles?.some((p) => p.id === "standard" && p.revision === "v1"),
+      "fixture profile ready",
+    );
     await page.evaluate((id) => {
       const key = `areal-gui:draft:${id}:new`;
       localStorage.setItem(`${key}:profile`, JSON.stringify({ id: "standard", revision: "v1" }));
@@ -321,6 +330,8 @@ try {
     "provider catalog",
   );
   const input = () => page.getByTestId("chat-input");
+  await button("选择模型").click();
+  await page.getByRole("radio", { name: "fixture", exact: true }).click();
   await input().fill("hold queue");
   await button("发送").click();
   await until(

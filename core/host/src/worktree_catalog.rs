@@ -2045,7 +2045,16 @@ pub(super) async fn read_thread_target(
         {
             json!({"state":"ready","requestId":id,"threadId":value["threadId"],"executionProjectId":value["executionProjectId"]})
         } else if matches!(value["state"].as_str(), Some("failed" | "cancelled")) {
-            json!({"state":"rejected","requestId":id,"message":value.get("message").cloned().unwrap_or(json!("Creation rejected"))})
+            let message = value
+                .get("message")
+                .and_then(Value::as_str)
+                .or_else(|| value["bindingError"]["message"].as_str())
+                .unwrap_or("Creation rejected");
+            let mut out = json!({"state":"rejected","requestId":id,"message":message});
+            if value["bindingError"].is_object() {
+                out["error"] = value["bindingError"].clone();
+            }
+            out
         } else {
             json!({"state":"unknown"})
         },

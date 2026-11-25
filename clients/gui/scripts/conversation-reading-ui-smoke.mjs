@@ -154,7 +154,10 @@ try {
     await historyReady();
     await frames();
   }
-  const disclosure = () => page.locator('[data-turn-id="old-5"] .turn-progress-summary');
+  const disclosure = () =>
+    page.locator(
+      '[data-turn-id="old-5"] [data-testid="turn-elapsed"] button[aria-expanded], [data-turn-id="old-5"] .turn-progress-summary',
+    );
   await disclosure().click();
   assert.equal(await disclosure().getAttribute("aria-expanded"), "true");
   const turn = () => page.locator('[data-turn-id="old-5"]');

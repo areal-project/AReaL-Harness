@@ -1,6 +1,11 @@
 import { makeTempDir } from "./support/temp.mjs";
+import { createFixtureThread, readDesktopSnapshot } from "./support/desktop-fixture.mjs";
 import { prepareRecording } from "./prepare-recording.mjs";
-import { cleanupSyntheticHostKeychain, closeSmokeApplication } from "./application-cleanup.mjs";
+import {
+  cleanupSyntheticHostKeychain,
+  closeSmokeApplication,
+  readFixtureHost,
+} from "./application-cleanup.mjs";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
 import assert from "node:assert/strict";
 import { readCoreThread } from "./support/core-observation.mjs";
@@ -14,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { isDeepStrictEqual, stripVTControlCharacters } from "node:util";
+import { stripVTControlCharacters } from "node:util";
 import { connect as connectCore } from "../../../examples/desktop-api/client.mjs";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = join(gui, "app");
@@ -311,11 +316,35 @@ const errors = [],
   frames = [],
   checks = [];
 const button = (name) => page.getByRole("button", { name, exact: true });
-const state = () => page.evaluate(() => window.arealDesktop.snapshot());
+const state = () => readDesktopSnapshot(page);
 const project = (snapshot) => snapshot.projects.find((p) => p.root === workspace && !p.projectless);
 async function call(name, params) {
+  if (name === "create") {
+    const { projectId, ...rest } = params;
+    return createFixtureThread(page, projectId, rest);
+  }
   const result = await page.evaluate(
-    async ({ name, params }) => window.arealDesktop.command(name, params),
+    async ({ name, params }) => {
+      const observer = globalThis[Symbol.for("areal.host.read")];
+      if (typeof observer?.call === "function") {
+        try {
+          return { ok: true, value: await observer.call(name, params) };
+        } catch (error) {
+          return {
+            ok: false,
+            error: {
+              code: error?.code ?? "internalError",
+              message: error?.message ?? String(error),
+              ...(error?.submissionUnknown !== undefined
+                ? { submissionUnknown: error.submissionUnknown }
+                : {}),
+              ...(error?.requestId !== undefined ? { requestId: error.requestId } : {}),
+            },
+          };
+        }
+      }
+      return window.arealDesktop.command(name, params);
+    },
     { name, params },
   );
   if (!result.ok)
@@ -414,23 +443,44 @@ async function stopFixtureHost(identity, records) {
     await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
     assert.deepEqual({ hostId: host.hostId, generation: host.generation }, identity);
     const requestId = randomUUID();
+    const reference = {
+      kind: "stopHost",
+      home: env.AREAL_HARNESS_SERVICE_HOME,
+      hostId: identity.hostId,
+      generation: identity.generation,
+      requestId,
+      strategy: "cancel",
+    };
     await writeFile(
       join(scratch, `host-stop-${requestId}-reference.json`),
       JSON.stringify({ ...identity, requestId, services: records }, null, 2),
     );
-    const stop = await host.stop(requestId, identity.generation, "cancel");
+    let stop;
+    try {
+      stop = await host.stop(requestId, identity.generation, "cancel");
+    } catch (error) {
+      const code = String(error?.code ?? "");
+      const message = String(error?.message ?? error);
+      if (!["ENOENT", "ECONNREFUSED"].includes(code) && !message.includes("Host connection closed"))
+        throw error;
+      host.close();
+      const { readOfflineHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
+      stop = await readOfflineHostReceipt(binary, reference);
+    }
     await writeFile(
       join(scratch, `host-stop-${requestId}-receipt.json`),
-      JSON.stringify(stop, null, 2),
+      JSON.stringify(stop ?? null, null, 2),
     );
+    assert.ok(stop, "original Host stop returned a completed receipt");
     assert.equal(stop.requestId, requestId);
     assert.equal(stop.hostId, identity.hostId);
     assert.equal(stop.generation, identity.generation);
     assert.equal(stop.state, "completed");
     for (const original of records) {
-      const item = stop.projects.find((value) => value.serviceId === original.serviceId);
-      assert.equal(item?.serviceGeneration, original.generation);
-      assert.equal(item?.receipt?.state, "completed");
+      const item = stop.projects?.find((value) => value.serviceId === original.serviceId);
+      assert.ok(item, `Host stop receipt settled ${original.serviceId}`);
+      assert.equal(item.serviceGeneration, original.generation);
+      assert.equal(item.receipt?.state, "completed");
       const cleanup = JSON.parse(
         await readFile(
           join(env.AREAL_HARNESS_SERVICE_HOME, "services", original.serviceId, "cleanup.json"),
@@ -620,14 +670,21 @@ try {
       const workbench = document.querySelector('[data-testid="areal-workbench"]');
       return workbench?.dataset.projectId === id && !workbench.dataset.threadId;
     }, pid);
-    assert(project(await state()).profiles.some((p) => p.id === "standard" && p.revision === "v1"));
+    await waitForSnapshot(
+      (s) => project(s)?.profiles?.some((p) => p.id === "standard" && p.revision === "v1"),
+      "fixture profile standard:v1 ready",
+    );
     await page.evaluate((id) => {
       const key = `areal-gui:draft:${id}:new`;
       localStorage.setItem(`${key}:profile`, JSON.stringify({ id: "standard", revision: "v1" }));
       window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: key }));
     }, pid);
   };
-  if (!desktopSettingsMode) await selectFixtureProfile();
+  if (!desktopSettingsMode) {
+    await selectFixtureProfile();
+    await page.getByRole("button", { name: "选择模型", exact: true }).click();
+    await page.getByRole("radio", { name: "fixture", exact: true }).click();
+  }
   const input = () => page.locator("[data-testid=chat-input]");
   const turnCountOf = (s) =>
     Object.values(project(s).state.threads).reduce((n, t) => n + (t.turns?.length ?? 0), 0);
@@ -1045,7 +1102,7 @@ try {
     // 子对话只改变侧面板；真实子 Thread、工具记录与停止结果由 Core 提供。
     const reference = await page.evaluate(
       async ({ pid }) => {
-        const response = await window.arealDesktop.command("media", {
+        const params = {
           projectId: pid,
           threadId: document.querySelector("[data-testid=areal-workbench]").dataset.threadId,
           operation: "upload",
@@ -1056,7 +1113,10 @@ try {
             ),
             (char) => char.charCodeAt(0),
           ),
-        });
+        };
+        const observer = globalThis[Symbol.for("areal.host.read")];
+        if (observer?.call) return observer.call("media", params);
+        const response = await window.arealDesktop.command("media", params);
         if (!response.ok) throw Error(response.error.message);
         return response.value;
       },
@@ -1142,11 +1202,10 @@ try {
       mainWidth,
     );
     // 等待入场缩放结束再检查最终宽度，避免把动画中的 98% 尺寸当成布局回归。
-    await waitForPopupMotion(".task-resources-popup");
+    const resourcesPopup = '[data-slot="popover-content"]:has(.task-resources-popup)';
+    await waitForPopupMotion(resourcesPopup);
     assert.equal(
-      await page
-        .locator(".task-resources-popup")
-        .evaluate((el) => el.getBoundingClientRect().width),
+      await page.locator(resourcesPopup).evaluate((el) => el.getBoundingClientRect().width),
       312, // 默认 14px 界面字号 × 22，加共享行内间距的一半。
     );
     await page.keyboard.press("Escape");
@@ -1278,7 +1337,9 @@ try {
     assert.equal(await input().innerText(), "主对话草稿保持");
     const donePane = page.locator(`[data-agent-conversation="${doneChild.id}"]`);
     assert.equal(await donePane.locator(".user-message").count(), 1);
-    await donePane.locator(".turn-progress-summary").click();
+    await donePane
+      .locator('[data-testid="turn-elapsed"] button[aria-expanded], .turn-progress-summary')
+      .click();
     const doneTool = donePane.locator(".tool-event").first();
     await doneTool.waitFor();
     await doneTool.locator("button[aria-expanded]").click();
@@ -1297,11 +1358,17 @@ try {
     await page.keyboard.press("Escape");
     await resources.waitFor({ state: "hidden" });
     await liveAgentCard.click();
-    await call("stop", {
+    const executions = (
+      await call("manage", { projectId: pid, parentThreadId: tid, operation: "executions" })
+    ).data;
+    const liveExecution = executions.find((item) => item.threadId === liveChild.id);
+    assert.ok(liveExecution?.executionId, "live child execution identity is available");
+    await call("manage", {
       projectId: pid,
-      threadId: liveChild.id,
-      turnId: project(await state()).state.threads[liveChild.id].turns.at(-1).id,
-      requestId: randomUUID(),
+      parentThreadId: tid,
+      executionId: liveExecution.executionId,
+      operation: "executionCancel",
+      mode: "force",
     });
     await page
       .locator(`[data-agent-conversation="${liveChild.id}"] [data-turn-status=interrupted]`)
@@ -1650,7 +1717,10 @@ try {
         .locator(`[data-turn-id="${backgroundTurnId}"][data-turn-status="inProgress"]`)
         .waitFor();
       const requestCount = received.length;
-      const adapter = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
+      const adapter = await readFixtureHost(env);
+      const adapterAuth = JSON.parse(
+        await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/auth.json"), "utf8"),
+      );
       const applicationPid = app.process().pid;
       await hideWindow();
       process.kill(applicationPid, 0);
@@ -1681,7 +1751,9 @@ try {
         .locator(`[data-agent-conversation="${doneChild.id}"] [data-turn-status=completed]`)
         .waitFor();
       // 重新挂载的已完成过程组默认收起，先展开再等恢复的工具记录出现。
-      const restoredProgress = donePane.locator(".turn-progress-summary");
+      const restoredProgress = donePane.locator(
+        '[data-testid="turn-elapsed"] button[aria-expanded], .turn-progress-summary',
+      );
       if ((await restoredProgress.getAttribute("aria-expanded")) === "false")
         await restoredProgress.click();
       await donePane.locator(".tool-event").first().waitFor();
@@ -1700,24 +1772,10 @@ try {
       checks.push(
         "window close preserves the application and running Core turn; reopen restores history/draft without replay",
       );
-      const subscription = (await state()).subscription;
-      assert.equal(subscription.owner, "nativeV1");
+      const subscription = await call("chatgpt", { operation: "status", provider: "openai" });
+      assert.equal(subscription.state, "signed_out");
+      assert.equal(subscription.authenticated, false);
       assert.ok(subscription.sourceId);
-      const readTransport = async () => {
-        const host = new HostClient();
-        try {
-          await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
-          const result = await host.vaultRead({
-            kind: "subscriptionTransport",
-            sourceId: subscription.sourceId,
-          });
-          return result.value;
-        } finally {
-          host.close();
-        }
-      };
-      const transport = await readTransport();
-      assert.ok(transport && typeof transport.token === "string" && transport.token.length > 0);
       process.kill(adapter.pid, "SIGKILL");
       for (let i = 0; i < 100; i++) {
         try {
@@ -1738,14 +1796,16 @@ try {
       );
       await call("connectService", {});
       await waitForSnapshot(async (s) => {
-        const next = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-        return next.pid !== adapter.pid && project(s)?.state?.connected;
+        const next = await readFixtureHost(env).catch(() => null);
+        return next && next.pid !== adapter.pid && project(s)?.state?.connected;
       }, "recover after adapter exit");
-      const restored = await readTransport();
-      assert.ok(
-        isDeepStrictEqual(restored, transport),
-        "Host retains the same subscription transport",
+      const recoveredAuth = JSON.parse(
+        await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/auth.json"), "utf8"),
       );
+      const restored = await call("chatgpt", { operation: "status", provider: "openai" });
+      assert.equal(restored.sourceId, subscription.sourceId);
+      assert.equal(restored.state, "signed_out");
+      assert.equal(restored.authenticated, false);
       await send("适配器重连后继续");
       let continuedTurn;
       await waitForSnapshot(async () => {
@@ -1763,8 +1823,8 @@ try {
         .locator(`[data-turn-id="${continuedTurn.id}"][data-turn-status="completed"]`)
         .waitFor();
       const publicState = JSON.stringify(await state());
-      assert.ok(!publicState.includes(transport.token));
-      assert.ok(!publicState.includes(adapter.token));
+      assert.ok(!publicState.includes(recoveredAuth.token));
+      assert.ok(!publicState.includes(adapterAuth.token));
       checks.push(
         "adapter restart reuses Core history and local capability; no tokens exposed in renderer snapshot",
       );
@@ -1778,22 +1838,37 @@ try {
       ).thread;
       assert.equal(beforeQuitThread.turns.length, turnCount + 1);
       const requestsBeforeQuit = received.length;
-      await input().fill("冷启动保留草稿");
-      await quit();
-      assert.deepEqual(await hostIdentity(), beforeQuitHost, "GUI exit retains the original Host");
-      const afterQuit = await services();
-      for (const original of beforeQuit) {
-        const current = afterQuit.find((item) => item.serviceId === original.serviceId);
-        assert.equal(current?.generation, original.generation);
-        assert.notEqual(current?.state, "stopped");
-        assert.equal(current?.hostPid, original.hostPid);
-        assert.equal(current?.corePid, original.corePid);
-        for (const pid of [original.hostPid, original.corePid].filter(
-          (value) => Number.isSafeInteger(value) && value > 1,
-        ))
-          process.kill(pid, 0);
+      // 保持另一认证客户端连接，验证普通 GUI 退出只登记 releaseWhenUnused、绝不误停共享 Host/Core。
+      const externalClient = new HostClient();
+      await externalClient.connect(env.AREAL_HARNESS_SERVICE_HOME);
+      assert.deepEqual(
+        { hostId: externalClient.hostId, generation: externalClient.generation },
+        beforeQuitHost,
+      );
+      try {
+        await input().fill("冷启动保留草稿");
+        await quit();
+        assert.deepEqual(
+          await hostIdentity(),
+          beforeQuitHost,
+          "GUI exit retains the original Host while another client is connected",
+        );
+        const afterQuit = await services();
+        for (const original of beforeQuit) {
+          const current = afterQuit.find((item) => item.serviceId === original.serviceId);
+          assert.equal(current?.generation, original.generation);
+          assert.notEqual(current?.state, "stopped");
+          assert.equal(current?.hostPid, original.hostPid);
+          assert.equal(current?.corePid, original.corePid);
+          for (const pid of [original.hostPid, original.corePid].filter(
+            (value) => Number.isSafeInteger(value) && value > 1,
+          ))
+            process.kill(pid, 0);
+        }
+        await stopFixtureHost(beforeQuitHost, beforeQuit);
+      } finally {
+        externalClient.close();
       }
-      await stopFixtureHost(beforeQuitHost, beforeQuit);
       await launch();
       await waitForSnapshot(
         (s) => project(s)?.state?.connected,
@@ -2027,6 +2102,10 @@ try {
           throw error;
         });
       const originalHost = descriptorExists ? await hostIdentity() : null;
+      const cleanupClient = originalHost ? new HostClient() : null;
+      if (cleanupClient) {
+        await cleanupClient.connect(env.AREAL_HARNESS_SERVICE_HOME);
+      }
       const metadata = await readFile(join(scratch, "core/service.json"), "utf8")
         .then(JSON.parse)
         .catch((error) => {
@@ -2035,18 +2114,22 @@ try {
         });
       let quitFailed = false;
       try {
-        await quit();
-      } catch (error) {
-        quitFailed = true;
-        passed = false;
-        process.exitCode = 1;
-        errors.push(`Electron cleanup: ${error.message}`);
+        try {
+          await quit();
+        } catch (error) {
+          quitFailed = true;
+          passed = false;
+          process.exitCode = 1;
+          errors.push(`Electron cleanup: ${error.message}`);
+        }
+        assert.ok(
+          originalHost || originalServices.length === 0,
+          "live services require their Host identity",
+        );
+        if (originalHost) await stopFixtureHost(originalHost, originalServices);
+      } finally {
+        cleanupClient?.close();
       }
-      assert.ok(
-        originalHost || originalServices.length === 0,
-        "live services require their Host identity",
-      );
-      if (originalHost) await stopFixtureHost(originalHost, originalServices);
       if (metadata)
         assert.throws(
           () => process.kill(metadata.pid, 0),

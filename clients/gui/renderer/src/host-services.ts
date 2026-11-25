@@ -55,7 +55,12 @@ import {
   reviewToken,
   refreshModelCatalogs,
 } from "./host-auxiliary-reads.js";
-import type { PlatformServices, PlatformReadServices, Snapshot } from "./services.js";
+import type {
+  CommandParams,
+  PlatformServices,
+  PlatformReadServices,
+  Snapshot,
+} from "./services.js";
 import { markRendererStartup } from "./state/startupTiming.js";
 
 export { readObservationResult };
@@ -661,9 +666,48 @@ export function createHostReadServices(
         return { routed: true, snapshot };
       }
       if (client.snapshot().connection !== "ready") return undefined;
-      const project = snapshot.projects.find((value) => value.id === params.projectId) as
+      if (
+        name === "projectless" &&
+        (params.operation === "prepare" || params.operation === "scratch")
+      ) {
+        const original = client.snapshot();
+        const prepared = await command(name, params as CommandParams<"projectless">);
+        if (!prepared.ok) throw Object.assign(new Error(prepared.error.message), prepared.error); // raw-error-ok: 传输层解码，不上屏
+        const projectId =
+          object(prepared.value) && typeof prepared.value.projectId === "string"
+            ? prepared.value.projectId
+            : undefined;
+        if (projectId) {
+          // 预热失败不得掩盖已受理的 prepare/scratch 结果，也不得跨连接误激活。
+          try {
+            await client.refreshShell();
+            const current = client.snapshot();
+            const owner = snapshot.projects.find((value) => value.id === projectId) as
+              | ReadProject
+              | undefined;
+            if (
+              owner &&
+              !owner.state?.connected &&
+              original.connection === "ready" &&
+              current.connection === "ready" &&
+              current.identity.connectionId === original.identity.connectionId
+            ) {
+              await activateProject(owner.hostProjectId, "connect");
+              await client.refreshShell();
+            }
+          } catch {}
+        }
+        return { routed: true, value: prepared.value };
+      }
+      let project = snapshot.projects.find((value) => value.id === params.projectId) as
         | ReadProject
         | undefined;
+      if (!project && name === "create" && typeof params.projectId === "string") {
+        await client.refreshShell().catch(() => {});
+        project = snapshot.projects.find((value) => value.id === params.projectId) as
+          | ReadProject
+          | undefined;
+      }
       if (project && name === "connect") {
         const original = client.snapshot();
         if (original.connection !== "ready") throw new Error("Host unavailable");
@@ -697,6 +741,24 @@ export function createHostReadServices(
         return { routed: true };
       }
       if (project && name === "create" && client.writable("session.create")) {
+        if (!project.state?.connected) {
+          const original = client.snapshot();
+          if (original.connection !== "ready") throw new Error("Host unavailable");
+          const activation = await activateProject(project.hostProjectId, "connect");
+          await client.refreshShell();
+          const current = client.snapshot();
+          const shell = client.readsSnapshot().shell;
+          if (
+            current.connection !== "ready" ||
+            current.identity.connectionId !== original.identity.connectionId ||
+            shell.state !== "fresh" ||
+            shell.value.snapshot.projects.find((value) => value.projectId === project.hostProjectId)
+              ?.serviceGeneration !== activation.serviceGeneration
+          )
+            throw Object.assign(new Error("Original project activation changed"), {
+              code: "RESYNC_REQUIRED",
+            });
+        }
         const { projectId: _projectId, ...input } = params;
         const commandId =
           typeof params.requestId === "string" ? params.requestId : crypto.randomUUID();

@@ -133,7 +133,7 @@ const launch = async () => {
   });
   await button("设置").click();
   await page.getByRole("heading", { name: "模型设置", exact: true }).waitFor();
-  await page.locator(".provider-catalog-row").filter({ hasText: "Fixture" }).click();
+  await page.locator(".provider-catalog button").filter({ hasText: "Fixture" }).click();
   await page.getByRole("textbox", { name: "供应商名称", exact: true }).waitFor();
   await idle();
 };

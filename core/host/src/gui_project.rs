@@ -136,6 +136,9 @@ pub(super) fn same_inputs(left: &LaunchInputs, right: &LaunchInputs) -> Result<b
                 value["environment"][name] = json!(storage::digest(&fs::read(path)?));
             }
         }
+        let names: std::collections::BTreeSet<&str> =
+            inputs.credential_names.iter().map(String::as_str).collect();
+        value["credentialNames"] = json!(names);
         Ok(value)
     }
     Ok(identity(left)? == identity(right)?)
@@ -187,6 +190,12 @@ pub(super) async fn refresh_inputs(
             }
         }
     }
+    // ensure_generation 会并入同来源的环境变量凭据名；候选输入保持同集合，避免无意义重启后误判 RESYNC_REQUIRED。
+    let _ = host.gateway.workbench.project_environment_credentials(
+        project,
+        Some(&source),
+        &mut candidate.credential_names,
+    );
     ensure!(self::options(host, &source)? == options, "RESYNC_REQUIRED");
     ensure!(
         !candidate.options.history_only,

@@ -282,14 +282,32 @@ async fn pass(host: &Rc<Host>, session: &Rc<CoreSession>) -> Result<()> {
         self::desired(host, session)?.is_some_and(|current| current.stamp == desired.stamp),
         "RESYNC_REQUIRED"
     );
-    let ready = desired
+    let default_provider = desired
         .document
-        .data
-        .iter()
-        .filter(|provider| provider.enabled)
-        .all(|provider| {
-            provider.api_key_env.is_none() || proof["credentialStates"][&provider.id] == "available"
-        });
+        .default_model
+        .as_ref()
+        .map(|model| model.provider_id.as_str());
+    let credentials_synced = |proof: &Value| {
+        desired
+            .document
+            .data
+            .iter()
+            .filter(|provider| provider.enabled)
+            .all(|provider| {
+                let expected_available = provider.api_key_env.is_some()
+                    && (default_provider == Some(provider.id.as_str())
+                        || matches!(
+                            desired.document.credential_sources.get(&provider.id),
+                            Some(areal_config::models::CredentialSource::Stored)
+                        )
+                        || matches!(
+                            desired.document.credential_states.get(&provider.id),
+                            Some(areal_config::models::CredentialState::Available)
+                        ));
+                !expected_available || proof["credentialStates"][&provider.id] == "available"
+            })
+    };
+    let ready = credentials_synced(&proof);
     if proof["applied"]["revision"] == *target && ready {
         *session.model_application.settled.borrow_mut() = Some(desired.stamp.clone());
         session
@@ -304,6 +322,10 @@ async fn pass(host: &Rc<Host>, session: &Rc<CoreSession>) -> Result<()> {
         .filter(|provider| provider.enabled)
         .any(|provider| {
             provider.api_key_env.is_some()
+                && matches!(
+                    desired.document.credential_states.get(&provider.id),
+                    Some(areal_config::models::CredentialState::Available)
+                )
                 && proof["credentialStates"][&provider.id] != "available"
                 && !matches!(
                     desired.document.credential_sources.get(&provider.id),
@@ -351,15 +373,7 @@ async fn pass(host: &Rc<Host>, session: &Rc<CoreSession>) -> Result<()> {
         json!({"kind":"unknown","revision":target})
     } else if outcome["response"].get("result").is_some() {
         let proof = &outcome["response"]["result"];
-        let ready = desired
-            .document
-            .data
-            .iter()
-            .filter(|provider| provider.enabled)
-            .all(|provider| {
-                provider.api_key_env.is_none()
-                    || proof["credentialStates"][&provider.id] == "available"
-            });
+        let ready = credentials_synced(proof);
         if ready {
             *session.model_application.settled.borrow_mut() = Some(desired.stamp.clone());
             json!({"kind":"applied","revision":target})

@@ -111,23 +111,25 @@ export function UserPromptEdit({
   return (
     <>
       <ControlHintTooltip title="编辑消息">
-        <Button
-          variant="ghost-subtle"
-          size="icon"
-          type="button"
-          aria-label="编辑消息"
-          disabled={busy || pending || !project.state?.connected || thread.desktop?.archived}
-          onClick={() => {
-            setText(localStorage.getItem(key) ?? original);
-            setAnchor({
-              expectedTurnId: thread.turns?.at(-1)?.id,
-              expectedConfigRevision: project.configurations?.[thread.id]?.revision,
-            });
-            setOpen(true);
-          }}
-        >
-          <EditMessageIcon size={14} />
-        </Button>
+        <span>
+          <Button
+            variant="ghost-subtle"
+            size="icon-sm"
+            type="button"
+            aria-label="编辑消息"
+            disabled={busy || pending || !project.state?.connected || thread.desktop?.archived}
+            onClick={() => {
+              setText(localStorage.getItem(key) ?? original);
+              setAnchor({
+                expectedTurnId: thread.turns?.at(-1)?.id,
+                expectedConfigRevision: project.configurations?.[thread.id]?.revision,
+              });
+              setOpen(true);
+            }}
+          >
+            <EditMessageIcon size={14} />
+          </Button>
+        </span>
       </ControlHintTooltip>
       {open && (
         <section role="region" aria-label="编辑用户消息" className="user-prompt-edit w-full">

@@ -129,7 +129,7 @@ def compare(
     started = time.perf_counter()
     considered = 0
     zero_hit_commits = 0
-    scan_limit = limit if include_unmapped else limit * 4
+    scan_limit = limit if include_unmapped else max(limit * 4, 25)
     for commit, committed_at, subject in recent_commits(scan_limit, ref=ref, all_refs=all_refs):
         paths = changed_paths(commit)
         affected = scope_spec.journey_registry.affected(paths, journey_manifest)

@@ -596,26 +596,25 @@ export const MessageResponse = memo(function MessageResponse({
   );
   return (
     <>
-      <div className={className}>
-        <MarkdownSurface
-          streaming={streaming}
-          theme={theme}
-          components={components}
-          parseIncompleteMarkdown={streaming}
-          remarkPlugins={remarkPlugins}
-          rehypePlugins={rehypePlugins}
-          plugins={plugins}
-          controls={STREAMDOWN_CONTROLS}
-          linkSafety={{ enabled: false }}
-          urlTransform={(url, key, node) =>
-            onRenderImage && key === "src" && /^areal:\/\/blob\/[A-Za-z0-9_-]+$/.test(url)
-              ? url
-              : defaultUrlTransform(url, key, node)
-          }
-        >
-          {normalizeMessageSingleDollarMath(children)}
-        </MarkdownSurface>
-      </div>
+      <MarkdownSurface
+        streaming={streaming}
+        theme={theme}
+        className={className}
+        components={components}
+        parseIncompleteMarkdown={streaming}
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
+        plugins={plugins}
+        controls={STREAMDOWN_CONTROLS}
+        linkSafety={{ enabled: false }}
+        urlTransform={(url, key, node) =>
+          onRenderImage && key === "src" && /^areal:\/\/blob\/[A-Za-z0-9_-]+$/.test(url)
+            ? url
+            : defaultUrlTransform(url, key, node)
+        }
+      >
+        {normalizeMessageSingleDollarMath(children)}
+      </MarkdownSurface>
       <Dialog
         open={diagram !== null}
         onOpenChange={(open) => {

@@ -39,22 +39,21 @@ async function launch(name, withModel) {
 }
 
 try {
-  // 旅程 1：没有模型时，输入框旁的按钮直达模型设置。
+  // 旅程 1：没有模型时，输入框旁明确提示暂无可用模型，用户可经设置进入模型设置。
   {
     const { page, shot, close } = await launch("j1", false);
-    const configure = page.getByRole("button", { name: "配置模型", exact: true });
-    await configure.waitFor();
+    await page.getByText("暂无可用模型", { exact: true }).waitFor();
     record(await inspectPage(page, "旅程1 没模型的首页"));
+    const settingsButton = page.getByRole("button", { name: "设置", exact: true });
     record(
-      await expectFeedback(page, "旅程1 点配置模型", () => configure.click(), {
-        until: page.locator('.settings-navigation-item[aria-current="page"]'),
+      await expectFeedback(page, "旅程1 打开设置", () => settingsButton.click(), {
+        until: page.getByRole("heading", { name: "模型设置", exact: true }),
       }),
     );
-    await page.getByRole("button", { name: "模型设置", exact: true }).waitFor();
     assert.equal(
       await page.locator('.settings-navigation-item[aria-current="page"]').innerText(),
       "模型设置",
-      "配置模型打开的是模型设置页",
+      "设置导航打开的是模型设置页",
     );
     await shot("settings");
     record(await inspectPage(page, "旅程1 模型设置页"));
@@ -65,6 +64,8 @@ try {
     const { app, page, shot, close } = await launch("j3", true);
     await openProjectInDesktop(app, page, scene.project);
     const input = page.getByTestId("chat-input").first();
+    await page.getByRole("button", { name: "选择模型", exact: true }).click();
+    await page.getByRole("radio", { name: "fixture", exact: true }).click();
     await input.fill("给 src/math.ts 加一个 clamp 函数");
     await sendReady(page);
     record(

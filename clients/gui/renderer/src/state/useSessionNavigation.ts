@@ -86,6 +86,8 @@ export function useSessionNavigation(
     projects: [],
     connection: { state: "connecting" },
   });
+  const snapshotRef = useRef(snapshot);
+  snapshotRef.current = snapshot;
   const [restoration, setRestoration] = useState<RestorationState>();
   const restorationAttempt = useRef<RestorationAttempt | undefined>(undefined);
   const [selectedProject, setSelectedProject] = useState<string>();
@@ -168,8 +170,9 @@ export function useSessionNavigation(
     connectionGeneration: project?.core?.connectionGeneration ?? 0,
     ...hostOwner,
   };
+  const pendingSelection = useRef<RestorationOwner | undefined>(undefined);
   const selectedRestoration = useRef(restorationOwner);
-  selectedRestoration.current = restorationOwner;
+  selectedRestoration.current = pendingSelection.current ?? restorationOwner;
   const selectionReady = selectedProject === (project?.id ?? "");
   // Resource pages own their loading, validation and recovery feedback.
   const resourceAction: Action = useCallback<Action>(
@@ -629,19 +632,19 @@ export function useSessionNavigation(
     options?: { waitForReady?: boolean },
   ) => {
     beginSessionLoad(id);
-    const target = conversationProject(
-      snapshot.projects.find((item) => item.id === pid),
-      id,
-    );
+    const logicalBefore = snapshotRef.current.projects.find((item) => item.id === pid);
+    const target = conversationProject(logicalBefore, id);
     const owner = {
       projectId: pid,
       threadId: id,
       connectionGeneration: target?.core?.connectionGeneration ?? 0,
       ...readHostOwner(services.reads),
     };
+    pendingSelection.current = options?.waitForReady ? owner : undefined;
     selectedRestoration.current = owner;
     // 草稿首次发送切到新对话时，先等待本机 Host 完成 session 读取再切换 threadId，
     // 让草稿预览直接一步落到活跃会话，避免中间闪现空白 loading 骨架输入框。
+    const expectedServiceGeneration = logicalBefore?.core?.serviceGeneration;
     if (
       options?.waitForReady &&
       services.reads &&
@@ -650,13 +653,27 @@ export function useSessionNavigation(
       !target.state?.threads?.[id]
     ) {
       await restoreConversation(owner, "open").catch(() => {});
-      if (!sameRestorationOwner(selectedRestoration.current, owner)) return;
+      const currentHost = readHostOwner(services.reads);
+      const logicalAfter = snapshotRef.current.projects.find((item) => item.id === pid);
+      if (
+        pendingSelection.current !== owner ||
+        !sameRestorationOwner(selectedRestoration.current, owner) ||
+        services.reads.status().connection !== "ready" ||
+        currentHost.hostGeneration !== owner.hostGeneration ||
+        currentHost.connectionId !== owner.connectionId ||
+        (expectedServiceGeneration !== undefined &&
+          logicalAfter?.core?.serviceGeneration !== undefined &&
+          logicalAfter.core.serviceGeneration !== expectedServiceGeneration)
+      )
+        return;
+      pendingSelection.current = undefined;
       setNoProject(false);
       setProjectId(pid);
       setThreadId(id);
       localStorage.setItem(`areal-gui:thread:${pid}`, id);
       return;
     }
+    pendingSelection.current = undefined;
     setNoProject(false);
     setProjectId(pid);
     setThreadId(id);
@@ -666,6 +683,7 @@ export function useSessionNavigation(
     await restoreConversation(owner, target?.state?.connected ? "open" : "connect");
   };
   const selectDraft = (pid: string | undefined) => {
+    pendingSelection.current = undefined;
     beginSessionLoad("");
     if (services.recoverPersistedHistory) {
       restorationAttempt.current = undefined;
@@ -711,15 +729,18 @@ export function useSessionNavigation(
     selectConversation,
     selectDraft,
     dispose: () => {
+      pendingSelection.current = undefined;
       restorationAttempt.current = undefined;
     },
     pendingRestoration: () =>
       restorationAttempt.current?.pending ? restorationAttempt.current.promise : undefined,
     selectProject(pid: string) {
+      pendingSelection.current = undefined;
       setNoProject(false);
       setProjectId(pid);
     },
     beginChosenProject(pid: string) {
+      pendingSelection.current = undefined;
       setNoProject(false);
       setProjectId(pid);
       setThreadId("");

@@ -1134,7 +1134,7 @@
     "areas": ["recovery", "lifecycle", "conversation"],
     "requires": [
       "electron",
-      "playwright-chromium",
+      "browser",
       "core-binary",
       "native-runtime",
       "gui-build",
@@ -1151,7 +1151,7 @@
     "areas": ["testing", "recovery"],
     "requires": [
       "electron",
-      "playwright-chromium",
+      "browser",
       "core-binary",
       "native-runtime",
       "gui-build",
@@ -1177,7 +1177,7 @@
     "areas": ["testing", "lifecycle", "conversation"],
     "requires": [
       "electron",
-      "playwright-chromium",
+      "browser",
       "core-binary",
       "native-runtime",
       "gui-build",

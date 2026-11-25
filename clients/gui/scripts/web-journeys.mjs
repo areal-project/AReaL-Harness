@@ -228,8 +228,9 @@ try {
   );
   console.log(`… Host 网页在 127.0.0.1:${port}，保留 Electron owner 直到网页旅程结束`);
 
+  const chromiumPath = process.env.AREAL_CHROMIUM || process.env.AREAL_GUI_TEST_BROWSER;
   browser = await playwright.chromium.launch({
-    executablePath: process.env.AREAL_CHROMIUM || undefined,
+    ...(chromiumPath ? { executablePath: chromiumPath } : { channel: "chrome" }),
     args: process.getuid?.() === 0 ? ["--no-sandbox"] : [],
   });
   const context = await browser.newContext({

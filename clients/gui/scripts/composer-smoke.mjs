@@ -451,8 +451,9 @@ try {
       const workbench = document.querySelector('[data-testid="areal-workbench"]');
       return workbench?.dataset.projectId === id && !workbench.dataset.threadId;
     }, pid);
-    assert(
-      project(await state()).profiles.some((p) => p.id === "standard" && p.revision === revision),
+    await until(
+      (s) => project(s)?.profiles?.some((p) => p.id === "standard" && p.revision === revision),
+      `fixture profile standard:${revision} ready`,
     );
     await page.evaluate(
       ({ id, revision }) => {
@@ -1017,7 +1018,7 @@ try {
     // 草稿目录不创建 Thread，+/slash 同视图并保留正文与同名来源。
     await input().fill("正文保留");
     await chooseFirst();
-    await page.getByRole("button", { name: /查看 Skills/ }).click();
+    await page.getByRole("button", { name: /查看技能/ }).click();
     await page
       .getByRole("dialog", { name: "技能 fixture-skill" })
       .getByText(/PAGED_SKILL_END/)
@@ -1515,9 +1516,14 @@ try {
     assert.equal(uploadedFile.sizeBytes, Buffer.byteLength(uploadedText));
     const uploadedContent = await page.evaluate(
       async (params) => {
-        const result = await window.arealDesktop.command("media", params);
-        if (!result.ok) throw Error(result.error.message);
-        return new TextDecoder("utf-8", { fatal: true }).decode(result.value.bytes);
+        const observer = globalThis[Symbol.for("areal.host.read")];
+        const value = observer?.call
+          ? await observer.call("media", params)
+          : await window.arealDesktop.command("media", params).then((result) => {
+              if (!result.ok) throw Error(result.error.message);
+              return result.value;
+            });
+        return new TextDecoder("utf-8", { fatal: true }).decode(value.bytes);
       },
       { projectId: pid, threadId: tid, operation: "read", uri: uploadedFile.uri },
     );
@@ -1586,9 +1592,6 @@ try {
     });
     await page.evaluate(() => window.dispatchEvent(new Event("areal-plugins-changed")));
     const pluginRequests = received.length;
-    await input().fill("@");
-    await page.getByRole("option", { name: /搜索 MCP 资源/ }).waitFor();
-    await input().press("Escape");
     await input().fill("before  after");
     await input().press("Home");
     for (let i = 0; i < 7; i++) await input().press("ArrowRight");
@@ -1972,9 +1975,8 @@ try {
     for (const theme of ["dark", "light"]) {
       await button("设置").click();
       await button("外观").click();
-      await page.getByRole("combobox", { name: "界面主题", exact: true }).click();
       await page
-        .getByRole("option", { name: theme === "dark" ? "深色" : "浅色", exact: true })
+        .getByRole("radio", { name: theme === "dark" ? "深色" : "浅色", exact: true })
         .click();
       await page.waitForFunction(
         (theme) =>
@@ -2186,8 +2188,11 @@ try {
       );
     });
     await page.reload();
-    await input().fill("@");
-    await page.getByRole("group", { name: "Actions", exact: true }).waitFor();
+    await until(async () => {
+      await input().fill("");
+      await input().fill("@");
+      return (await page.getByRole("group", { name: "Plugins", exact: true }).count()) > 0;
+    }, "English plugin mention group ready after reload");
     await input().fill("@no-such-plugin-reference");
     await page
       .getByTestId("composer-catalog")

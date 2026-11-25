@@ -1,4 +1,8 @@
-import { libraryCommand, observationSummary } from "./support/desktop-fixture.mjs";
+import {
+  libraryCommand,
+  observationSummary,
+  readDesktopSnapshot,
+} from "./support/desktop-fixture.mjs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
@@ -93,9 +97,7 @@ export async function captureSmokeFailure(page, scratch, error) {
   }
   try {
     state.observation = observationSummary(
-      await withSmokeDeadline("failure projection capture", () =>
-        page.evaluate(() => window.arealDesktop.snapshot()),
-      ),
+      await withSmokeDeadline("failure projection capture", () => readDesktopSnapshot(page)),
     );
   } catch (failure) {
     state.observationCaptureError = failure.message;

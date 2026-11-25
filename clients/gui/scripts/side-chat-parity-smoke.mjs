@@ -24,6 +24,7 @@ import {
   openSideChat,
 } from "./smoke-navigation.mjs";
 import { openProjectInDesktop } from "./support/journey-fixture.mjs";
+import { readDesktopSnapshot } from "./support/desktop-fixture.mjs";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
 
 const runnerGui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -300,7 +301,7 @@ let app,
   projectId,
   passed = false;
 const ctx = { app, page, env, binary, workspace, projectId, requests, checks, evidence };
-const state = () => page.evaluate(() => window.arealDesktop.snapshot());
+const state = () => readDesktopSnapshot(page);
 const project = (snapshot) =>
   snapshot.projects.find((item) => item.id === projectId || item.root === workspace);
 const currentId = () => page.getByTestId("areal-workbench").getAttribute("data-thread-id");
@@ -513,15 +514,18 @@ async function newParent(prompt) {
 }
 async function openSide() {
   const parent = await currentId();
+  const currentProject = project(await state());
   const before = new Set(
-    await listCoreSides({
-      binary,
-      env,
-      gui,
-      threadId: parent,
-      project: project(await state()),
-      workspace,
-    }),
+    currentProject?.state?.connected
+      ? await listCoreSides({
+          binary,
+          env,
+          gui,
+          threadId: parent,
+          project: currentProject,
+          workspace,
+        })
+      : [],
   );
   await openSideChat(page);
   await until(async () => {
@@ -989,18 +993,15 @@ async function multipleTabs() {
     "child never appears as a normal sidebar conversation",
   );
   assert.equal(requests.length, countBefore + 1, "tab entries and drafts make no model requests");
-  await withSmokeDeadline(
+  await app.evaluate(({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0];
+    if (!window.isVisible()) throw new Error("window must be visible before close");
+    window.close();
+  });
+  await until(
+    async () =>
+      !(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible())),
     "window closes to background",
-    () =>
-      app.evaluate(({ BrowserWindow }) => {
-        const window = BrowserWindow.getAllWindows()[0];
-        if (!window.isVisible()) throw new Error("window must be visible before close");
-        return new Promise((resolve) => {
-          window.once("hide", () => resolve());
-          window.close();
-        });
-      }),
-    30000,
   );
   const closed = await readCoreThread(second);
   assert.equal(closed.desktop.archived, true, "window close fences owned child");

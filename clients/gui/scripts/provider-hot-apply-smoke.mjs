@@ -312,7 +312,7 @@ function unchanged(before, after, label) {
 async function openSettings(name = "Hot apply fixture") {
   await button("设置").click();
   await page.getByRole("heading", { name: "模型设置", exact: true }).waitFor();
-  await page.locator(".provider-catalog-row").filter({ hasText: name }).click();
+  await page.locator(".provider-catalog button").filter({ hasText: name }).click();
   assert.equal(
     await page.getByRole("tab", { name: "连接配置", exact: true }).count(),
     0,

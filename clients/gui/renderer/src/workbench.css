@@ -4182,10 +4182,9 @@ button[aria-label="停止"] {
   color: var(--color-foreground);
 }
 .fork-target-dialog {
-  width: 280px;
+  width: 100%;
   max-height: calc(100dvh - var(--icon-size-control));
   overflow-y: auto;
-  padding: var(--spacing-inline);
   gap: calc(var(--spacing-inline) / 2);
 }
 .fork-workspace-choice {

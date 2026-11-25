@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import {
   chmod,
   copyFile,
+  cp,
   lstat,
   mkdir,
   readFile,
@@ -27,6 +28,7 @@ import {
 } from "./application-cleanup.mjs";
 import { applicationFixture } from "./application-fixture.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
+import { readDesktopSnapshot } from "./support/desktop-fixture.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), ".."),
   root = resolve(gui, "../..");
@@ -34,8 +36,8 @@ const require = createRequire(join(gui, "app/package.json"));
 const { HostClient } = require("@areal/client/node");
 const { readOfflineHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
 const { _electron: electron, chromium } = require("playwright-core");
-const binary = process.env.AREAL_CORE_BIN;
-assert.ok(binary?.startsWith(join(root, ".local/dev-bin/")), "Use a private fixed Core slot");
+const sourceBinary = process.env.AREAL_CORE_BIN;
+assert.ok(sourceBinary, "AREAL_CORE_BIN is required");
 assert.ok(
   !process.env.AREAL_REOPEN_LEGACY,
   "Detached legacy migration requires the explicit legacy recovery runner",
@@ -44,6 +46,37 @@ const readingSlice = process.argv.includes("--reading-slice"),
   manualReading = readingSlice && process.argv.includes("--manual");
 const replacement = process.env.AREAL_REOPEN_REPLACEMENT_BIN;
 assert.ok(!readingSlice || !replacement, "Reading continuity does not replace the Core binary");
+const force = process.env.AREAL_REOPEN_FORCE_GUI === "1";
+const scratch = await makeTempDir("ar-"),
+  workspace = join(scratch, "workspace"),
+  config = join(scratch, "config.toml");
+let binary = sourceBinary;
+if (!sourceBinary.startsWith(join(root, ".local/dev-bin/"))) {
+  // CI 传入 target/debug/areal 时复制到本次隔离槽位，避免 utimes/replace 修改共享构建产物。
+  const privateBin = join(scratch, "bin");
+  await mkdir(privateBin, { recursive: true });
+  const sourceDir = dirname(sourceBinary);
+  const coreName = basename(sourceBinary);
+  for (const name of [
+    coreName,
+    "areal-runtime",
+    "areal-runtime-fs",
+    "areal-runtime-reaper",
+    "verification-build.json",
+  ]) {
+    const from = join(sourceDir, name);
+    const dest = join(privateBin, name);
+    const info = await lstat(from).catch(() => null);
+    if (!info?.isFile()) continue;
+    await copyFile(from, dest);
+    await chmod(dest, info.mode & 0o777);
+  }
+  const shells = join(sourceDir, "shells");
+  if ((await lstat(shells).catch(() => null))?.isDirectory()) {
+    await cp(shells, join(privateBin, "shells"), { recursive: true });
+  }
+  binary = join(privateBin, coreName);
+}
 const originalStat = await lstat(binary),
   originalHash = createHash("sha256")
     .update(await readFile(binary))
@@ -65,10 +98,6 @@ if (replacement) {
     originalHash,
   );
 }
-const force = process.env.AREAL_REOPEN_FORCE_GUI === "1";
-const scratch = await makeTempDir("ar-"),
-  workspace = join(scratch, "workspace"),
-  config = join(scratch, "config.toml");
 await mkdir(workspace);
 await mkdir(join(scratch, "user/.areal"), { recursive: true });
 execFileSync("git", ["init", "-b", "main"], { cwd: workspace, stdio: "ignore" });
@@ -285,7 +314,7 @@ let app,
   projectId,
   threadId,
   passed = false;
-const state = () => page.evaluate(() => window.arealDesktop.snapshot());
+const state = () => readDesktopSnapshot(page);
 const workbench = () => page.getByTestId("areal-workbench");
 const observeCore = async ({ activate = false } = {}) => {
   const host = new HostClient();
@@ -449,7 +478,7 @@ try {
   await app.evaluate(({ dialog }, workspace) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [workspace] });
   }, workspace);
-  await page.locator(".composer-project").click();
+  await page.getByRole("button", { name: "不在项目中工作", exact: true }).click();
   await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
   const project = await until(
     async () => (await state()).projects.find((candidate) => candidate.root === workspace),
@@ -641,8 +670,7 @@ try {
   const prepareReading = async (condition, label) => {
     await page.getByRole("button", { name: "设置", exact: true }).click();
     await page.getByRole("button", { name: "外观", exact: true }).click();
-    await page.getByRole("combobox", { name: "界面主题", exact: true }).click();
-    await page.getByRole("option", { name: condition.dark ? "深色" : "浅色", exact: true }).click();
+    await page.getByRole("radio", { name: condition.dark ? "深色" : "浅色", exact: true }).click();
     await page
       .getByRole("spinbutton", { name: "界面字号", exact: true })
       .fill(String(condition.font));

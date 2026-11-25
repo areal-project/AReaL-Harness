@@ -1,4 +1,4 @@
-import { until } from "./support/desktop-fixture.mjs";
+import { readDesktopSnapshot, until } from "./support/desktop-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import {
   assertApplicationStopped,
@@ -166,6 +166,50 @@ async function prepareHistorySource(owner, projects) {
 }
 
 async function call(name, params) {
+  if (name === "open") {
+    return withSmokeDeadline(
+      `history ${name}`,
+      () =>
+        page.evaluate(async ({ projectId, threadId }) => {
+          const observer = globalThis[Symbol.for("areal.host.read")];
+          if (!observer?.reads?.selectSession) throw new Error("Host reads unavailable");
+          await observer.reads.selectSession({ projectId, threadId });
+          return observer.snapshot();
+        }, params),
+      120000,
+    );
+  }
+  if (name === "history") {
+    return withSmokeDeadline(
+      `history ${params.operation}`,
+      () =>
+        page.evaluate(async ({ projectId, threadId, viewId, operation }) => {
+          const observer = globalThis[Symbol.for("areal.host.read")];
+          if (!observer?.reads) throw new Error("Host reads unavailable");
+          const currentThread = async () =>
+            (await observer.snapshot()).projects.find((value) => value.id === projectId)?.state
+              ?.threads?.[threadId];
+          const generation = (await currentThread())?.displayHistory?.viewGeneration;
+          if (operation === "acquire") {
+            await observer.reads.acquire(viewId, generation);
+            return { supported: Boolean((await currentThread())?.displayHistory?.supported) };
+          }
+          if (operation === "loadOlder") {
+            const beforeIds = new Set(((await currentThread())?.turns ?? []).map((t) => t.id));
+            await observer.reads.loadOlder(undefined, generation);
+            const afterTurns = (await currentThread())?.turns ?? [];
+            const added = afterTurns.filter((t) => !beforeIds.has(t.id));
+            return { data: added };
+          }
+          if (operation === "release") {
+            await observer.reads.release(viewId, generation);
+            return { ok: true };
+          }
+          throw new Error(`Unsupported history operation: ${operation}`);
+        }, params),
+      120000,
+    );
+  }
   const result = await withSmokeDeadline(
     `history ${name}`,
     () =>
@@ -342,20 +386,15 @@ try {
     for (const id of sessions.get(project.id)) {
       await call("open", { projectId: project.id, threadId: id });
       await until(
-        () =>
-          page.evaluate(
-            async ({ projectId, threadId }) =>
-              Boolean(
-                (await window.arealDesktop.snapshot()).projects.find(
-                  (value) => value.id === projectId,
-                )?.state.threads[threadId],
-              ),
-            { projectId: project.id, threadId: id },
+        async () =>
+          Boolean(
+            (await readDesktopSnapshot(page)).projects.find((value) => value.id === project.id)
+              ?.state?.threads?.[id],
           ),
         "history thread restored",
       );
     }
-    const snapshot = await page.evaluate(() => window.arealDesktop.snapshot());
+    const snapshot = await readDesktopSnapshot(page);
     const restored = snapshot.projects.find((value) => value.id === project.id);
     assert.equal(restored.state.connected, true);
     assert.equal(restored.error, null);
@@ -387,16 +426,15 @@ try {
     const acquired = await call("history", { ...request, operation: "acquire" });
     assert.equal(acquired.supported, true, "Fixture profiles require bounded history");
     let pages = 0;
-    const read = () =>
-      page.evaluate(
-        async ({ projectId, threadId }) =>
-          (await window.arealDesktop.snapshot()).projects.find((value) => value.id === projectId)
-            .state.threads[threadId],
-        request,
-      );
+    const read = async () =>
+      (await readDesktopSnapshot(page)).projects.find((value) => value.id === request.projectId)
+        .state.threads[request.threadId];
     let thread = await read();
     while (!thread.displayHistory.complete) {
-      assert.ok(pages < profile.maxPages, "History profile did not reach its oldest page");
+      assert.ok(
+        pages < profile.maxPages,
+        `History profile did not reach its oldest page: ${JSON.stringify({ pages, displayHistory: thread.displayHistory, turns: thread.turns?.length })}`,
+      );
       const older = await call("history", { ...request, operation: "loadOlder" });
       assert.ok(older.data.length > 0, "Incomplete history returned an empty page");
       pages++;
@@ -515,9 +553,12 @@ try {
             };
             samples.push(entry);
             pending.push(
-              window.arealDesktop.snapshot().then((snapshot) => {
+              Promise.resolve(
+                globalThis[Symbol.for("areal.host.read")]?.snapshot() ??
+                  window.arealDesktop.snapshot(),
+              ).then((snapshot) => {
                 const thread = snapshot.projects.find((value) => value.id === projectId)?.state
-                  .threads[threadId];
+                  ?.threads?.[threadId];
                 entry.projectionAt = performance.now();
                 entry.projection =
                   thread?.turns.flatMap((turn) => turn.items.map((item) => item.id)) ?? [];
@@ -541,15 +582,12 @@ try {
         await page.waitForFunction(() =>
           Boolean(document.querySelector(".messages [data-side-item-id]")),
         );
-      const projection = await page.evaluate(
-        async ({ projectId, threadId }) => {
-          const thread = (await window.arealDesktop.snapshot()).projects.find(
-            (value) => value.id === projectId,
-          )?.state.threads[threadId];
-          return thread?.turns.flatMap((turn) => turn.items.map((item) => item.id)) ?? [];
-        },
-        { projectId: project.id, threadId },
-      );
+      const projection = await (async () => {
+        const thread = (await readDesktopSnapshot(page)).projects.find(
+          (value) => value.id === project.id,
+        )?.state?.threads?.[threadId];
+        return thread?.turns.flatMap((turn) => turn.items.map((item) => item.id)) ?? [];
+      })();
       const captured = await page.evaluate(async () => {
         const observation = window.__historyObservation;
         observation.sample();
@@ -631,7 +669,9 @@ try {
     const threadId = sessions.get(project.id)[0];
     await selectConversation(page, threadId);
     const group = page.locator("[data-turn-id] .turn-progress").first();
-    const groupSummary = group.locator(".turn-progress-summary");
+    const groupSummary = group.locator(
+      '[data-testid="turn-elapsed"] button[aria-expanded], .turn-progress-summary',
+    );
     if ((await groupSummary.getAttribute("aria-expanded")) !== "true") await groupSummary.click();
     const deferred = group.locator("[data-tool-id]").first();
     const activity = deferred
@@ -648,20 +688,16 @@ try {
     });
     await deferred.locator(".tool-summary-row").click();
     await until(
-      () =>
-        page.evaluate(
-          async ({ projectId, threadId, itemId }) => {
-            const snapshot = await window.arealDesktop.snapshot();
-            const thread = snapshot.projects.find((value) => value.id === projectId)?.state.threads[
-              threadId
-            ];
-            return (
-              thread?.turns.flatMap((turn) => turn.items).find((item) => item.id === itemId)
-                ?.type === "dynamicToolCall"
-            );
-          },
-          { projectId: project.id, threadId, itemId },
-        ),
+      async () => {
+        const snapshot = await readDesktopSnapshot(page);
+        const thread = snapshot.projects.find((value) => value.id === project.id)?.state?.threads?.[
+          threadId
+        ];
+        return (
+          thread?.turns.flatMap((turn) => turn.items).find((item) => item.id === itemId)?.type ===
+          "dynamicToolCall"
+        );
+      },
       "deferred tool detail restored",
       { timeout: 30000 },
     );

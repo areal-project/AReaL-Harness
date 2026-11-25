@@ -378,6 +378,8 @@ export async function nativeHostFixture(
       else assert.equal(child.exitCode, 0);
       phase = "synthetic-keychain-cleanup";
       const service = `org.areal.host.v1.${digest(home)}`;
+      // 非敏感 remote.replace 会沿用同一 entryId；按 entryId 去重避免重复校验/删除同一文件。
+      const cleanedEntries = new Set();
       for (const directory of ["vault-operations", "remote-operations"]) {
         for (const name of await readdir(join(home, "host", directory)).catch((error) => {
           if (error.code === "ENOENT") return [];
@@ -385,8 +387,13 @@ export async function nativeHostFixture(
         })) {
           const receipt = JSON.parse(await readFile(join(home, "host", directory, name), "utf8"));
           assert.equal(name, `${receipt.requestId}.json`);
-          if (!["vault.replace", "remote.replace"].includes(receipt.method) || !receipt.entryId)
+          if (
+            !["vault.replace", "remote.replace"].includes(receipt.method) ||
+            !receipt.entryId ||
+            cleanedEntries.has(receipt.entryId)
+          )
             continue;
+          cleanedEntries.add(receipt.entryId);
           if (process.platform === "darwin") {
             const removal = spawnSync(
               "/usr/bin/security",

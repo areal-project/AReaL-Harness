@@ -952,3 +952,79 @@ it("retryRestoration does not lift explicit scheduling suppression unless reques
     resumeScheduling: true,
   });
 });
+
+it("commits waitForReady selection when not superseded and cancels on selectDraft", async () => {
+  const storage = new Map<string, string>();
+  seed.snapshot = {
+    connection: { state: "ready" },
+    projects: [{ id: owner.projectId, root: "/fixture", state: { connected: true, threads: {} } }],
+  };
+  let finishOpen!: () => void;
+  const f = fixture(true, async () => {}, false, false, "");
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => storage.set(key, value),
+    removeItem: (key: string) => storage.delete(key),
+  });
+  f.selectSession.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finishOpen = resolve;
+      }),
+  );
+  const opening = f.navigation.selectConversation(owner.projectId, "created-thread", {
+    waitForReady: true,
+  });
+  await vi.waitFor(() => expect(f.selectSession).toHaveBeenCalledTimes(1));
+  finishOpen();
+  await opening;
+  expect(storage.get(`areal-gui:thread:${owner.projectId}`)).toBe("created-thread");
+
+  let finishCancelled!: () => void;
+  f.selectSession.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finishCancelled = resolve;
+      }),
+  );
+  const cancelled = f.navigation.selectConversation(owner.projectId, "cancelled-thread", {
+    waitForReady: true,
+  });
+  await vi.waitFor(() => expect(f.selectSession).toHaveBeenCalledTimes(2));
+  f.navigation.selectDraft(owner.projectId);
+  finishCancelled();
+  await cancelled;
+  expect(storage.has(`areal-gui:thread:${owner.projectId}`)).toBe(false);
+
+  let finishReconnected!: () => void;
+  f.selectSession.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finishReconnected = resolve;
+      }),
+  );
+  const reconnected = f.navigation.selectConversation(owner.projectId, "stale-host-thread", {
+    waitForReady: true,
+  });
+  await vi.waitFor(() => expect(f.selectSession).toHaveBeenCalledTimes(3));
+  seed.hostGeneration = "next-host";
+  finishReconnected();
+  await reconnected;
+  expect(storage.has(`areal-gui:thread:${owner.projectId}`)).toBe(false);
+
+  let finishDisposed!: () => void;
+  f.selectSession.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finishDisposed = resolve;
+      }),
+  );
+  const disposed = f.navigation.selectConversation(owner.projectId, "disposed-thread", {
+    waitForReady: true,
+  });
+  await vi.waitFor(() => expect(f.selectSession).toHaveBeenCalledTimes(4));
+  f.navigation.dispose();
+  finishDisposed();
+  await disposed;
+  expect(storage.has(`areal-gui:thread:${owner.projectId}`)).toBe(false);
+});

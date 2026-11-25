@@ -530,53 +530,73 @@ pub(super) async fn backend_command(
         .context("INVALID_PARAMS")?
         .to_string();
     let method = request["method"].as_str().context("INVALID_PARAMS")?;
-    let params = match method {
-        "library.command" => serde_json::to_value(
-            serde_json::from_value::<areal_protocol::host::WorkbenchLibraryParams>(
-                request["params"].clone(),
-            )
-            .context("INVALID_PARAMS")?,
-        )?,
-        "worktree.command" if principal == "local" => serde_json::to_value(
-            serde_json::from_value::<areal_protocol::host::LocalWorktreeCommandInput>(
-                request["params"].clone(),
-            )
-            .context("INVALID_PARAMS")?,
-        )?,
-        "worktree.command" => serde_json::to_value(
-            serde_json::from_value::<areal_protocol::host::WorkbenchWorktreeCommandParams>(
-                request["params"].clone(),
-            )
-            .context("INVALID_PARAMS")?,
-        )?,
-        "trajectory.command" => serde_json::to_value(
-            serde_json::from_value::<areal_protocol::host::WorkbenchTrajectoryCommandParams>(
-                request["params"].clone(),
-            )
-            .context("INVALID_PARAMS")?,
-        )?,
-        "feedback.command" => serde_json::to_value(
-            serde_json::from_value::<areal_protocol::host::WorkbenchFeedbackCommandParams>(
-                request["params"].clone(),
-            )
-            .context("INVALID_PARAMS")?,
-        )?,
-        "providers.command" => serde_json::to_value(
-            serde_json::from_value::<areal_protocol::host::WorkbenchProviderCommandParams>(
-                request["params"].clone(),
-            )
-            .context("INVALID_PARAMS")?,
-        )?,
-        "manage.command" => serde_json::to_value(
-            serde_json::from_value::<areal_protocol::host::WorkbenchManageCommandParams>(
-                request["params"].clone(),
-            )
-            .context("INVALID_PARAMS")?,
-        )?,
+    let (params, digest_params) = match method {
+        "library.command" => {
+            let value = serde_json::to_value(
+                serde_json::from_value::<areal_protocol::host::WorkbenchLibraryParams>(
+                    request["params"].clone(),
+                )
+                .context("INVALID_PARAMS")?,
+            )?;
+            (value.clone(), value)
+        }
+        "worktree.command" if principal == "local" => {
+            let value = serde_json::to_value(
+                serde_json::from_value::<areal_protocol::host::LocalWorktreeCommandInput>(
+                    request["params"].clone(),
+                )
+                .context("INVALID_PARAMS")?,
+            )?;
+            (value.clone(), value)
+        }
+        "worktree.command" => {
+            let value = serde_json::to_value(
+                serde_json::from_value::<areal_protocol::host::WorkbenchWorktreeCommandParams>(
+                    request["params"].clone(),
+                )
+                .context("INVALID_PARAMS")?,
+            )?;
+            (value.clone(), value)
+        }
+        "trajectory.command" => {
+            let value = serde_json::to_value(
+                serde_json::from_value::<areal_protocol::host::WorkbenchTrajectoryCommandParams>(
+                    request["params"].clone(),
+                )
+                .context("INVALID_PARAMS")?,
+            )?;
+            (value.clone(), value)
+        }
+        "feedback.command" => {
+            let value = serde_json::to_value(
+                serde_json::from_value::<areal_protocol::host::WorkbenchFeedbackCommandParams>(
+                    request["params"].clone(),
+                )
+                .context("INVALID_PARAMS")?,
+            )?;
+            (value.clone(), value)
+        }
+        "providers.command" => {
+            let parsed = serde_json::from_value::<
+                areal_protocol::host::WorkbenchProviderCommandParams,
+            >(request["params"].clone())
+            .context("INVALID_PARAMS")?;
+            // 摘要沿用规范化参数保证升级后重试兼容；执行保留原始整数 token 字段避免被反序列化拒绝。
+            (request["params"].clone(), serde_json::to_value(parsed)?)
+        }
+        "manage.command" => {
+            let value = serde_json::to_value(
+                serde_json::from_value::<areal_protocol::host::WorkbenchManageCommandParams>(
+                    request["params"].clone(),
+                )
+                .context("INVALID_PARAMS")?,
+            )?;
+            (value.clone(), value)
+        }
         _ => bail!("methodNotFound"),
     };
     let digest =
-        areal_local_service::storage::digest(&serde_json::to_vec(&json!([method, params]))?);
+        areal_local_service::storage::digest(&serde_json::to_vec(&json!([method, digest_params]))?);
     if let Some(mut original) = backend_receipt_raw(host, principal, &command)? {
         ensure!(original["semanticDigest"] == digest, "COMMAND_CONFLICT");
         if let Some(code) = original["settledFailure"].as_str() {

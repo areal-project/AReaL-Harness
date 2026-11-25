@@ -32,7 +32,7 @@ const execute = promisify(execFile);
 const require = createRequire(join(gui, "app/package.json"));
 const { HostClient } = require("@areal/client/node");
 const reportPath = resolve(
-  process.env.AREAL_JOURNEY_REPORT ?? "target/connection-recovery/report.json",
+  process.env.AREAL_JOURNEY_REPORT ?? join(gui, "../../target/connection-recovery/report.json"),
 );
 const out = dirname(reportPath);
 const explorationMode = Boolean(process.env.AREAL_RECOVERY_PLAN);
@@ -763,8 +763,9 @@ try {
   const { port } = JSON.parse(
     await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/web-bind.json"), "utf8"),
   );
+  const chromiumPath = process.env.AREAL_CHROMIUM || process.env.AREAL_GUI_TEST_BROWSER;
   browser = await playwright.chromium.launch({
-    executablePath: process.env.AREAL_CHROMIUM || undefined,
+    ...(chromiumPath ? { executablePath: chromiumPath } : { channel: "chrome" }),
     args: process.getuid?.() === 0 ? ["--no-sandbox"] : [],
   });
   const context = await browser.newContext({

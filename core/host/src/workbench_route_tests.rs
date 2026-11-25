@@ -900,7 +900,7 @@ async fn provider_configuration_writes_do_not_start_node_and_preserve_original_r
         let save = json!({"method":"providers.command","commandId":command,"params":{"sourceId":source,
             "operation":"saveAndApply","expectedRevision":initial["revision"],
             "provider":{"id":"fixture","name":" Renamed ","baseUrl":"https://example.invalid/custom/","protocol":"responses",
-                "models":[{"id":" fixture ","enabled":true,"parameters":{"serviceTier":"default"},"reportedContextWindowTokens":64000,
+                "models":[{"id":" fixture ","enabled":true,"parameters":{"serviceTier":"default","contextWindowTokens":500000,"maxOutputTokens":12000},"reportedContextWindowTokens":64000,
                     "capabilities":{"tools":false,"vision":true,"reasoning":false}}],"enabled":true,"parameters":{"serviceTier":"fast"}}}});
         // 模型配置保存不应被其他项目的执行状态或生命周期锁阻塞。
         let gate = host.slots.borrow()["project"].gate.clone();

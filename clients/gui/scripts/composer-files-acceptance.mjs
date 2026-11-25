@@ -806,8 +806,26 @@ export async function runComposerFilesAcceptance({
   await selectConversation(page, fork.threadId);
   await send("FILES_FORK_REPLAY");
   assert(users(received.at(-1)).some((text) => text.includes(original)));
+  const forkTurnsBeforeCrossThread = (await readCoreThread(fork.threadId)).turns.length;
+  const receivedBeforeCrossThread = received.length;
   const crossThread = await page.evaluate(
-    async (params) => window.arealDesktop.command("send", params),
+    async (params) => {
+      const observer = globalThis[Symbol.for("areal.host.read")];
+      if (typeof observer?.call === "function") {
+        try {
+          return { ok: true, value: await observer.call("send", params) };
+        } catch (error) {
+          return {
+            ok: false,
+            error: {
+              code: error?.code ?? "internalError",
+              message: error?.message ?? String(error),
+            },
+          };
+        }
+      }
+      return window.arealDesktop.command("send", params);
+    },
     {
       projectId: pid,
       threadId: fork.threadId,
@@ -816,7 +834,17 @@ export async function runComposerFilesAcceptance({
     },
   );
   assert.equal(crossThread.ok, false);
-  assert.match(crossThread.error.message, /belong|upload/);
+  assert.equal(crossThread.error.code, "INVALID_PARAMS", JSON.stringify(crossThread.error));
+  assert.equal(
+    (await readCoreThread(fork.threadId)).turns.length,
+    forkTurnsBeforeCrossThread,
+    "cross-thread upload rejection must not create a turn",
+  );
+  assert.equal(
+    received.length,
+    receivedBeforeCrossThread,
+    "cross-thread upload rejection must not reach the model",
+  );
   checks.push(
     "frozen fork replays text File without File capability; submitting another thread's upload still fails",
   );
@@ -1215,15 +1243,19 @@ export async function runComposerFilesAcceptance({
       await until(async () => {
         const snapshot = await state();
         const activeThreadId = await activeId();
-        const outcome = Object.values(project(snapshot).outcomes ?? {}).find(
-          (entry) => entry.remote?.commandId === heldSend.requestId,
-        );
+        const outcome =
+          project(snapshot).outcomes?.[heldSend.requestId] ??
+          Object.values(project(snapshot).outcomes ?? {}).find(
+            (entry) => entry.remote?.commandId === heldSend.requestId,
+          );
         const authoritative = await readCoreThread(uploadThreadId, uploadWorkspace);
         return (
           activeThreadId === uploadThreadId &&
           !project(snapshot).pending.length &&
           outcome?.accepted === true &&
-          outcome.remote?.target?.threadId === uploadThreadId &&
+          (outcome.threadId === uploadThreadId ||
+            outcome.operation?.target?.threadId === uploadThreadId ||
+            outcome.remote?.target?.threadId === uploadThreadId) &&
           authoritative.turns.some(
             (turn) =>
               turn.status === "completed" &&

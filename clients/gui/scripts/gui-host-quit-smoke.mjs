@@ -277,7 +277,7 @@ try {
   checks.push("idle quit exits without native confirmation and Host remains reachable");
   await launch();
   await page.getByRole("button", { name: "设置", exact: true }).click();
-  await page.locator(".provider-catalog-row").filter({ hasText: "Fixture" }).click();
+  await page.locator(".provider-catalog button").filter({ hasText: "Fixture" }).click();
   const name = page.getByRole("textbox", { name: "供应商名称", exact: true });
   await name.fill("Fixture draft");
   await quit();

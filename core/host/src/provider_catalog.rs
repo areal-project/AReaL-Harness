@@ -24,6 +24,7 @@ impl Providers {
 struct Checked {
     stamp: Value,
     execution: Value,
+    project_executions: BTreeMap<String, Value>,
     snapshot: Value,
     errors: Value,
     proofs: BTreeMap<String, Value>,
@@ -111,34 +112,92 @@ fn stamp(host: &Host, source: &str, snapshot: &Value) -> Result<Value> {
         "environment":storage::digest(&serde_json::to_vec(&host.gateway.workbench.environment_credentials(source))?)}),
     )
 }
+fn model_version_prefix(catalog_revision: &str) -> &str {
+    // model_catalog_revision 格式为 connectionId:modelRevision:catalogPublished:applicationRevision；
+    // 前两段唯一标识本连接上 Core 已应用的模型配置版本，不随异步目录缓存或 applied 状态发布抖动。
+    let mut parts = catalog_revision.splitn(3, ':');
+    match (parts.next(), parts.next()) {
+        (Some(connection), Some(model_revision)) => {
+            &catalog_revision[..connection.len() + 1 + model_revision.len()]
+        }
+        _ => catalog_revision,
+    }
+}
+fn project_proof_version(host: &Host, target: &Target) -> Value {
+    json!([
+        target.id,
+        target.running,
+        target
+            .identity
+            .as_ref()
+            .map(|(service, generation, _)| (service, generation)),
+        host.schedules
+            .connections
+            .model_catalog_revision(host, &target.id)
+            .ok()
+            .map(|revision| model_version_prefix(&revision).to_owned()),
+    ])
+}
+fn project_execution_stamp(host: &Host, target: &Target) -> Value {
+    json!([
+        target.id,
+        target.alias,
+        target.root,
+        target.running,
+        target
+            .identity
+            .as_ref()
+            .map(|(service, generation, _)| (service, generation)),
+        host.schedules
+            .connections
+            .model_catalog_revision(host, &target.id)
+            .ok(),
+        host.schedules
+            .connections
+            .model_application(host, &target.id)
+            .ok()
+    ])
+}
+fn project_execution_stamps(host: &Host, targets: &[Target]) -> BTreeMap<String, Value> {
+    targets
+        .iter()
+        .filter(|target| !target.id.is_empty())
+        .map(|target| (target.id.clone(), project_proof_version(host, target)))
+        .collect()
+}
 fn execution_stamp(host: &Host, targets: &[Target]) -> Value {
     json!(
         targets
             .iter()
-            .map(|target| json!([
-                target.id,
-                target.alias,
-                target.root,
-                target.running,
-                target
-                    .identity
-                    .as_ref()
-                    .map(|(service, generation, _)| (service, generation)),
-                host.schedules
-                    .connections
-                    .model_catalog_revision(host, &target.id)
-                    .ok(),
-                host.schedules
-                    .connections
-                    .model_application(host, &target.id)
-                    .ok()
-            ]))
+            .map(|target| project_execution_stamp(host, target))
             .collect::<Vec<_>>()
     )
+}
+fn reusable_proof<'a>(
+    checked: &'a Checked,
+    target_id: &str,
+    project_execution: &Value,
+) -> Option<&'a Value> {
+    // 只有同一项目的执行版本与采样时一致才复用证明，防止同代际切走配置后旧证明误标已应用。
+    (checked.project_executions.get(target_id) == Some(project_execution))
+        .then(|| checked.proofs.get(target_id))
+        .flatten()
+}
+fn reusable_proofs<'a>(
+    checked: &'a Checked,
+    project_executions: &'a BTreeMap<String, Value>,
+) -> BTreeMap<&'a str, &'a Value> {
+    project_executions
+        .iter()
+        .filter_map(|(id, execution)| {
+            reusable_proof(checked, id, execution).map(|proof| (id.as_str(), proof))
+        })
+        .collect()
 }
 fn projection_revision(
     stamp: &Value,
     execution: &Value,
+    project_executions: &BTreeMap<String, Value>,
     checked: Option<&Checked>,
 ) -> Result<String> {
     // 版本必须反映 read() 实际可用的证明；同内容证明重新有效时也要唤醒客户端重读。
@@ -148,7 +207,7 @@ fn projection_revision(
         checked.map(|checked| json!([
             checked.snapshot,
             checked.errors,
-            (checked.execution == *execution).then_some(&checked.proofs)
+            reusable_proofs(checked, project_executions)
         ]))
     ]))?))
 }
@@ -194,7 +253,8 @@ fn connection(provider: &Value, sources: &Value, definitions: &[Value]) -> Resul
         "region":region,"discovery":preset["discovery"],"capabilityDefaults":preset["capabilityDefaults"]}),
     )
 }
-fn credentials_ready(proof: &Value, snapshot: &Value) -> bool {
+fn credentials_ready(proof: &Value, snapshot: &Value, errors: &Value) -> bool {
+    let default_provider = snapshot["defaultModel"]["providerId"].as_str();
     snapshot["data"]
         .as_array()
         .into_iter()
@@ -202,9 +262,17 @@ fn credentials_ready(proof: &Value, snapshot: &Value) -> bool {
         .filter(|provider| provider["enabled"] == true)
         .all(|provider| {
             let id = provider["id"].as_str().unwrap_or("");
-            !provider["apiKeyEnv"].is_string()
-                || (snapshot["credentialStates"][id] == "available"
-                    && proof["credentialStates"][id] == "available")
+            if !provider["apiKeyEnv"].is_string() {
+                return true;
+            }
+            if errors.get(id).is_some_and(|error| !error.is_null()) {
+                return false;
+            }
+            if snapshot["credentialStates"][id] == "unavailable" {
+                return default_provider != Some(id);
+            }
+            snapshot["credentialStates"][id] == "available"
+                && proof["credentialStates"][id] == "available"
         })
 }
 impl Providers {
@@ -217,7 +285,7 @@ impl Providers {
     ) -> Result<Value> {
         let _guard = self.writing.lock().await;
         let target = super::provider_config::write(host, source, command, request).await?;
-        if request["operation"] == "apply"
+        if matches!(request["operation"].as_str(), Some("save" | "apply"))
             || request["operation"]
                 .as_str()
                 .is_some_and(|op| op.ends_with("AndApply"))
@@ -240,14 +308,13 @@ impl Providers {
     pub(super) fn revision(&self, host: &Host, source: &str) -> Result<String> {
         let options = host.gateway.workbench.utility_options(source)?;
         let catalog = workbench_utility::models_catalog(host, source, &options)?;
+        let targets = targets(host, source)?;
         let stamp = stamp(host, source, &catalog)?;
+        let execution = execution_stamp(host, &targets);
+        let project_executions = project_execution_stamps(host, &targets);
         let checked = self.checked.borrow();
         let current = checked.as_ref().filter(|checked| checked.stamp == stamp);
-        projection_revision(
-            &stamp,
-            &execution_stamp(host, &targets(host, source)?),
-            current,
-        )
+        projection_revision(&stamp, &execution, &project_executions, current)
     }
     pub(super) fn read(self: &Rc<Self>, host: &Rc<Host>, source: &str) -> Result<Value> {
         let options = host.gateway.workbench.utility_options(source)?;
@@ -256,20 +323,31 @@ impl Providers {
         let targets = targets(host, source)?;
         let stamp = stamp(host, source, &catalog)?;
         let execution = execution_stamp(host, &targets);
+        let project_executions = project_execution_stamps(host, &targets);
         let checked = self.checked.borrow();
         let current = checked.as_ref().filter(|checked| checked.stamp == stamp);
         let proof_current = current.filter(|checked| checked.execution == execution);
         let mut snapshot = current
             .map(|checked| checked.snapshot.clone())
             .unwrap_or_else(|| catalog.clone());
+        let errors = current
+            .map(|checked| checked.errors.clone())
+            .unwrap_or_else(|| json!({}));
         let revision = snapshot["revision"]
             .as_str()
             .context("INVALID_RESPONSE")?
             .to_owned();
         let projects: Vec<_> = targets.iter().map(|target| {
-            let proof = proof_current.and_then(|checked| checked.proofs.get(&target.id));
+            let proof = current.and_then(|checked| {
+                project_executions
+                    .get(&target.id)
+                    .and_then(|project_execution| {
+                        reusable_proof(checked, &target.id, project_execution)
+                    })
+            });
             let applied = proof.is_some_and(|proof| {
-                proof["applied"]["revision"] == revision && credentials_ready(proof, &snapshot)
+                proof["applied"]["revision"] == revision
+                    && credentials_ready(proof, &snapshot, &errors)
             });
             let kind = if applied {
                 "applied"
@@ -284,10 +362,21 @@ impl Providers {
             if kind == "deferred" {
                 application["reason"] = json!(if target.identity.is_some() { "busy" } else { "disconnected" });
             }
-            if !applied && let Some(state) = proof.and_then(|proof|proof.get("modelApplication"))
-                && state["revision"] == revision
-                && matches!(state["kind"].as_str(),Some("unknown"|"deferred"|"failed")) {
-                application = state.clone();
+            if !applied {
+                let live_state = host
+                    .schedules
+                    .connections
+                    .model_application(host, &target.id)
+                    .ok();
+                let state = live_state
+                    .as_ref()
+                    .or_else(|| proof.and_then(|proof| proof.get("modelApplication")));
+                if let Some(state) = state
+                    && state["revision"] == revision
+                    && matches!(state["kind"].as_str(), Some("unknown" | "deferred" | "failed"))
+                {
+                    application = state.clone();
+                }
             }
             json!({"projectId":target.alias,"root":target.root,"connected":target.identity.is_some(),
                 "applied":applied,"error":application.get("message").cloned().unwrap_or(Value::Null),"application":application})
@@ -304,9 +393,7 @@ impl Providers {
             )
         }));
         snapshot["projects"] = json!(projects);
-        snapshot["credentialErrors"] = current
-            .map(|checked| checked.errors.clone())
-            .unwrap_or_else(|| json!({}));
+        snapshot["credentialErrors"] = errors;
         snapshot["refreshing"] = json!(current.is_none());
         let definitions: Vec<Value> = serde_json::from_str(include_str!(
             "../../../schemas/provider-config/definitions.json"
@@ -355,6 +442,7 @@ impl Providers {
                         Checked {
                             stamp: stamp.clone(),
                             execution: execution.clone(),
+                            project_executions: BTreeMap::new(),
                             snapshot,
                             errors,
                             proofs: BTreeMap::new(),
@@ -405,12 +493,15 @@ async fn check(
             }
         }
     }
+    let before_execution = execution_stamp(host, targets);
     let mut proofs = BTreeMap::new();
+    let mut project_executions = BTreeMap::new();
     let results = futures_util::future::join_all(
         targets
             .iter()
             .filter_map(|target| target.identity.as_ref().map(|identity| (target, identity)))
             .map(|(target, (service, generation, connection))| async move {
+                let before_project_execution = project_proof_version(host, target);
                 let result = tokio::time::timeout(
                     Duration::from_secs(2),
                     host.schedules.connections.remote_request(
@@ -422,12 +513,21 @@ async fn check(
                     ),
                 )
                 .await;
-                (target.id.clone(), service, generation, result)
+                (
+                    target,
+                    service,
+                    generation,
+                    before_project_execution,
+                    result,
+                )
             }),
     )
     .await;
-    for (id, service, generation, result) in results {
-        if let Ok(Ok(mut proof)) = result
+    for (target, service, generation, before_project_execution, result) in results {
+        let id = target.id.clone();
+        let after_project_execution = project_proof_version(host, target);
+        if before_project_execution == after_project_execution
+            && let Ok(Ok(mut proof)) = result
             && proof["serviceId"] == *service
             && proof["generation"] == *generation
             && serde_json::from_value::<areal_protocol::desktop::AppliedModelConfiguration>(
@@ -443,6 +543,7 @@ async fn check(
                 .connections
                 .model_application(host, &id)
                 .unwrap_or(Value::Null);
+            project_executions.insert(id.clone(), after_project_execution);
             proofs.insert(id, proof);
         }
     }
@@ -458,7 +559,9 @@ async fn check(
     );
     Ok(Checked {
         stamp: original,
-        execution: execution_stamp(host, targets),
+        // 记录采样前的执行版本：若采样期间 Core 应用推进，下次读取会立刻再核验新版本而非缓存空证明 30 秒。
+        execution: before_execution,
+        project_executions,
         snapshot,
         errors,
         proofs,
@@ -498,10 +601,13 @@ fn credential_check_stamp_survives_transport_reconnection() {
 #[test]
 fn provider_revision_publishes_same_proof_when_it_becomes_current() {
     let stamp = json!({"revision":"saved-config"});
-    let execution = json!({"generation":"core","catalog":2});
+    let current_exec = json!({"generation":"core","catalog":2});
+    let stale_exec = json!({"generation":"core","catalog":1});
+    let current_map = BTreeMap::from([("project".into(), current_exec.clone())]);
     let mut checked = Checked {
         stamp: stamp.clone(),
-        execution: json!({"generation":"core","catalog":1}),
+        execution: json!([stale_exec.clone()]),
+        project_executions: BTreeMap::from([("project".into(), stale_exec)]),
         snapshot: json!({"revision":"saved-config"}),
         errors: json!({}),
         proofs: BTreeMap::from([(
@@ -510,9 +616,21 @@ fn provider_revision_publishes_same_proof_when_it_becomes_current() {
         )]),
         at: Instant::now(),
     };
-    let unknown = projection_revision(&stamp, &execution, Some(&checked)).unwrap();
-    checked.execution = execution.clone();
-    let applied = projection_revision(&stamp, &execution, Some(&checked)).unwrap();
+    assert!(reusable_proof(&checked, "project", &current_exec).is_none());
+    let unknown = projection_revision(
+        &stamp,
+        &json!([current_exec.clone()]),
+        &current_map,
+        Some(&checked),
+    )
+    .unwrap();
+    checked.execution = json!([current_exec.clone()]);
+    checked
+        .project_executions
+        .insert("project".into(), current_exec.clone());
+    assert!(reusable_proof(&checked, "project", &current_exec).is_some());
+    let applied =
+        projection_revision(&stamp, &json!([current_exec]), &current_map, Some(&checked)).unwrap();
     assert_ne!(
         unknown, applied,
         "restoring the same proof must notify clients after an unknown projection"

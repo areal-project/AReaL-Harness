@@ -42,6 +42,7 @@ const FALLBACK_FONTS: &[&str] = &[
     "monospace",
 ];
 
+#[cfg(target_os = "macos")]
 const ANSI_KEYS: &[(&str, &str)] = &[
     ("black", "Ansi 0 Color"),
     ("red", "Ansi 1 Color"),
@@ -1027,6 +1028,7 @@ fn shell_from_managed_argv(argv: &Value) -> Option<String> {
     arr.first()?.as_str().map(str::to_owned)
 }
 
+#[cfg(target_os = "macos")]
 fn valid_font_size(value: Option<&Value>) -> Option<f64> {
     let val = value?;
     let parsed = val
@@ -1035,6 +1037,7 @@ fn valid_font_size(value: Option<&Value>) -> Option<f64> {
     (parsed.is_finite() && (6.0..=72.0).contains(&parsed)).then_some(parsed)
 }
 
+#[cfg(target_os = "macos")]
 fn format_font_name(raw: &str) -> String {
     let trimmed = raw.trim();
     let without_size = match trimmed.rsplit_once(|c: char| c.is_whitespace()) {
@@ -1054,6 +1057,7 @@ fn format_font_name(raw: &str) -> String {
     without_size.replace('-', " ")
 }
 
+#[cfg(target_os = "macos")]
 fn trailing_font_size(raw: &str) -> Option<f64> {
     let trimmed = raw.trim();
     let (head, tail) = trimmed.rsplit_once(|c: char| c.is_whitespace())?;
@@ -1064,6 +1068,7 @@ fn trailing_font_size(raw: &str) -> Option<f64> {
     (parsed.is_finite() && (6.0..=72.0).contains(&parsed)).then_some(parsed)
 }
 
+#[cfg(target_os = "macos")]
 fn is_valid_hex_color(value: &str) -> bool {
     let s = value.trim();
     let Some(hex) = s.strip_prefix('#') else {
@@ -1072,6 +1077,7 @@ fn is_valid_hex_color(value: &str) -> bool {
     matches!(hex.len(), 3 | 6 | 8) && hex.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
+#[cfg(target_os = "macos")]
 fn parse_color_value(value: &Value) -> Option<String> {
     if let Some(s) = value.as_str() {
         let trimmed = s.trim();
