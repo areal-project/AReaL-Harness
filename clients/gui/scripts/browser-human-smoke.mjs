@@ -9,7 +9,11 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { closeSmokeApplication, stopAndAssertFixtureHost } from "./application-cleanup.mjs";
+import {
+  closeSmokeApplication,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
+} from "./application-cleanup.mjs";
 import {
   selectConversation,
   selectCreatedConversation,
@@ -1989,6 +1993,8 @@ try {
       /* exact task host already exited */
     }
   }
+  const originalHost = await readFixtureHost(env);
+  const quitPid = app?.process()?.pid ?? null;
   if (app) {
     // 被动保存原生按键和 Main 回执，失败时也能区分快捷键、执行与投影阶段。
     events.browserOpening = await app
@@ -2009,7 +2015,10 @@ try {
       process.exitCode = 1;
     });
   }
-  await stopAndAssertFixtureHost(coreBinary, env, scratch, null).catch((error) => {
+  await settleFixtureHostAfterQuit(coreBinary, env, scratch, {
+    host: originalHost,
+    pid: quitPid,
+  }).catch((error) => {
     errors.push(`Host cleanup: ${error.message}`);
     passed = false;
     process.exitCode = 1;

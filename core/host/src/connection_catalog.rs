@@ -29,6 +29,14 @@ impl Catalog {
             .filter(|(current, _)| *current == revision)
             .map(|(_, value)| value.clone())
     }
+
+    pub(super) fn latest_capabilities(&self) -> Option<Value> {
+        self.value
+            .borrow()
+            .as_ref()
+            .map(|(_, value)| value["capabilities"].clone())
+            .filter(|caps| caps["methods"].is_array() && caps["features"].is_object())
+    }
 }
 
 pub(super) async fn hydrate(host: &Rc<Host>, session: &Rc<CoreSession>) {

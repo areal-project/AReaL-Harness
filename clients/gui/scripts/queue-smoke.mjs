@@ -1,6 +1,10 @@
 import { makeTempDir } from "./support/temp.mjs";
 import { readDesktopSnapshot } from "./support/desktop-fixture.mjs";
-import { assertApplicationStopped, closeRecordedSmokeApplication } from "./application-cleanup.mjs";
+import {
+  assertApplicationStopped,
+  closeRecordedSmokeApplication,
+  settleFixtureHostAfterQuit,
+} from "./application-cleanup.mjs";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 import {
@@ -22,8 +26,6 @@ const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = join(gui, "app");
 const require = createRequire(join(desktop, "package.json"));
 const { _electron: electron } = require("playwright-core");
-const { HostClient } = require("@areal/client/node");
-const { readHostReceipt, readOfflineHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
 const root = resolve(gui, "../..");
 const binary = process.env.AREAL_GUI_EXECUTABLE
   ? resolve(dirname(process.env.AREAL_GUI_EXECUTABLE), "../Resources/areal-core/bin/areal")
@@ -456,6 +458,10 @@ try {
     text: "3",
     attachments: [{ type: "image", url: media.uri }],
   });
+  await until(
+    (s) => pending(s)[0]?.id === first.id && pending(s)[0]?.input[1]?.url === media.uri,
+    "queued attachment projected before capture",
+  );
   const configBefore = JSON.stringify(pending(await state())[0].configuration);
   const retainedInputBefore = pending(await state())[0].input.slice(1);
   await input().fill("原未发送草稿");
@@ -724,6 +730,7 @@ try {
       if (error.code === "ENOENT") return null;
       throw error;
     });
+  const quitPid = app?.process()?.pid ?? null;
   try {
     await quit();
   } catch (error) {
@@ -732,39 +739,17 @@ try {
     errors.push(`Electron cleanup: ${error.message}`);
   }
   if (originalHost) {
-    const host = new HostClient();
-    const reference = {
-      kind: "stopHost",
-      requestId: randomUUID(),
-      home,
-      hostId: originalHost.hostId,
-      generation: originalHost.generation,
-      strategy: "cancel",
-    };
-    await writeFile(join(scratch, "host-stop-reference.json"), JSON.stringify(reference, null, 2));
     try {
-      await host.connect(home);
-      assert.equal(host.hostId, reference.hostId);
-      assert.equal(host.generation, reference.generation);
-      let receipt;
-      try {
-        receipt = readHostReceipt(
-          reference,
-          await host.stop(reference.requestId, reference.generation, reference.strategy),
-        );
-      } catch {
-        host.close();
-        receipt = await readOfflineHostReceipt(binary, reference);
-      }
-      await writeFile(join(scratch, "host-stop.json"), JSON.stringify(receipt ?? null, null, 2));
+      const receipt = await settleFixtureHostAfterQuit(binary, env, scratch, {
+        host: originalHost,
+        pid: quitPid,
+      });
       assert.equal(receipt?.state, "completed", "original fixture Host stop remains UNKNOWN");
       checks.push("explicit fixture Host stop completes with matching original project receipts");
     } catch (error) {
       passed = false;
       process.exitCode = 1;
       errors.push(`Host cleanup: ${error.message}`);
-    } finally {
-      host.close();
     }
   }
   const mainFailures = await readFile(join(scratch, "main-exceptions.log"), "utf8").catch(

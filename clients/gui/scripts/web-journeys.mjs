@@ -24,7 +24,8 @@ import {
   cleanupSyntheticHostKeychain,
   closeSmokeApplication,
   makeFixtureDirectoriesWritable,
-  stopAndAssertFixtureHost,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
 } from "./application-cleanup.mjs";
 
 const outIndex = process.argv.indexOf("--out");
@@ -769,9 +770,10 @@ try {
   try {
     if (desktop) {
       const pid = desktop.app.process().pid;
+      const originalHost = await readFixtureHost(desktop.env);
       await closeSmokeApplication(desktop.app);
       await writeFile(join(shots, "electron-exit.json"), JSON.stringify({ pid, code: 0 }));
-      await stopAndAssertFixtureHost(coreBin, desktop.env, shots, { pid });
+      await settleFixtureHostAfterQuit(coreBin, desktop.env, shots, { host: originalHost, pid });
       await cleanupSyntheticHostKeychain(desktop.env.AREAL_HARNESS_SERVICE_HOME, scene.scratch);
       await writeFile(
         join(shots, "cleanup.json"),

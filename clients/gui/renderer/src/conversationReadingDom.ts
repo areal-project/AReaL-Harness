@@ -38,7 +38,17 @@ export function positionTurnStart(element: HTMLElement, turnId?: string, latestT
   return "placed";
 }
 function readingBlocks(item: HTMLElement) {
-  return [...(item.querySelector<HTMLElement>(".conversation-markdown")?.children ?? [])].filter(
+  const root = item.querySelector<HTMLElement>(".conversation-markdown");
+  if (!root) return [];
+  const children = [...root.children].filter(
+    (element): element is HTMLElement => element instanceof HTMLElement,
+  );
+  // MarkdownSurface 渲染单层 Streamdown 根容器；穿透该容器以按真实 Markdown 块定位阅读锚点。
+  const container =
+    children.length === 1 && children[0].tagName === "DIV" && children[0].children.length > 0
+      ? children[0]
+      : root;
+  return [...container.children].filter(
     (element): element is HTMLElement => element instanceof HTMLElement,
   );
 }

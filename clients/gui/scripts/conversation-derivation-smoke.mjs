@@ -16,7 +16,11 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { captureSmokeFailure, selectConversation } from "./smoke-navigation.mjs";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
-import { closeRecordedSmokeApplication, stopAndAssertFixtureHost } from "./application-cleanup.mjs";
+import {
+  closeRecordedSmokeApplication,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
+} from "./application-cleanup.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
@@ -1208,6 +1212,10 @@ try {
     const thread = await readCoreThread(sourceThreadId);
     return thread?.turns.find((turn) => turn.id === activeTurnId)?.status === "completed";
   }, "source Runtime command settled");
+  // 窄屏下 Side 以整页 panel 视图覆盖主会话，先切回主会话再验证可见完成态。
+  if ((await page.locator(".work-area").getAttribute("data-workspace-view")) === "panel") {
+    await page.getByRole("button", { name: "进入分屏视图", exact: true }).click();
+  }
   await page.locator(`[data-turn-id="${activeTurnId}"][data-turn-status="completed"]`).waitFor();
   checks.push(
     "current selection-to-Side creates an idle executable child, sends verified Unicode context only on explicit send, and preserves source identity/configuration while its real Runtime command is active",
@@ -1248,6 +1256,7 @@ try {
   for (const release of heldResponses.values()) release();
   heldResponses.clear();
   const electronPid = app?.process()?.pid;
+  const originalHost = await readFixtureHost(env);
   if (app) {
     if (!passed && page) {
       try {
@@ -1306,7 +1315,10 @@ try {
   }
   let cleanupConfirmed = true;
   try {
-    await stopAndAssertFixtureHost(binary, env, scratch, { pid: electronPid });
+    await settleFixtureHostAfterQuit(binary, env, scratch, {
+      host: originalHost,
+      pid: electronPid,
+    });
     checks.push("isolated Host stop receipt and original process exits are confirmed");
   } catch (error) {
     cleanupConfirmed = false;

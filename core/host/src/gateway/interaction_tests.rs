@@ -1758,6 +1758,7 @@ async fn project_model_metadata_publishes_only_the_current_revision_without_read
                 .await
                 .reply(json!({"data":[{"id":"old","revision":"1"}]}));
             let current = f.call("areal/model/list").await;
+            let core_events = current.responses.clone();
             assert_eq!(
                 f.host
                     .schedules
@@ -1795,6 +1796,67 @@ async fn project_model_metadata_publishes_only_the_current_revision_without_read
             assert_eq!(result["models"][0]["modelId"], "current");
             assert_eq!(result["profiles"], json!([{"id":"current","revision":"2"}]));
             assert_eq!(result["features"]["permissionPresets"], true);
+            // 同一代 Core 目录版本再递增、尚未重读完成时，不能丢失当前代已声明的能力。
+            let after_first_publish = f
+                .host
+                .schedules
+                .connections
+                .model_catalog_revision(&f.host, "project")
+                .unwrap();
+            core_events
+                .send(CoreResponse::Message(
+                    json!({"method":"areal/model/catalogChanged","params":{"revision":2}}),
+                ))
+                .unwrap();
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while f
+                    .host
+                    .schedules
+                    .connections
+                    .model_catalog_revision(&f.host, "project")
+                    .unwrap()
+                    == after_first_publish
+                {
+                    changes.changed().await.unwrap();
+                }
+            })
+            .await
+            .unwrap();
+            let reloading = session.request(&request).await.unwrap();
+            assert_eq!(
+                reloading["features"]["permissionPresets"], true,
+                "同一代 Core 目录重读期间必须保留当前代能力"
+            );
+            let third = f.call("areal/model/list").await;
+            let pending = f
+                .host
+                .schedules
+                .connections
+                .model_catalog_revision(&f.host, "project")
+                .unwrap();
+            third.reply(
+                json!({"data":[{"providerId":"dynamic","modelId":"current","available":true}]}),
+            );
+            f.call("areal/capabilities")
+                .await
+                .reply(json!({"methods":[],"features":{"permissionPresets":true}}));
+            f.call("areal/profile/list")
+                .await
+                .reply(json!({"data":[{"id":"current","revision":"2"}]}));
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while f
+                    .host
+                    .schedules
+                    .connections
+                    .model_catalog_revision(&f.host, "project")
+                    .unwrap()
+                    == pending
+                {
+                    changes.changed().await.unwrap();
+                }
+            })
+            .await
+            .unwrap();
             let after = f.host.read_models.shell(&f.host).await.unwrap();
             assert_ne!(
                 before.projects[0].model_catalog_revision, after.projects[0].model_catalog_revision,

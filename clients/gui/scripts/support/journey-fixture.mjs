@@ -23,6 +23,11 @@ export async function startModel() {
     let body = "";
     req.on("data", (chunk) => (body += chunk));
     req.on("end", () => {
+      if (req.url === "/vitest-version") {
+        res.writeHead(200, { "content-type": "text/plain" });
+        res.end("5.0.5\n");
+        return;
+      }
       const request = JSON.parse(body || "{}");
       const messages = request.messages ?? [];
       const tools = (request.tools ?? []).map((tool) => tool.function?.name);
@@ -80,7 +85,11 @@ export async function startModel() {
       else if (toolResults === 1)
         res.write(
           call("c1", "run_command", {
-            argv: ["npm", "view", "vitest", "version"],
+            argv: [
+              "node",
+              "-e",
+              `fetch("http://127.0.0.1:${model.address().port}/vitest-version").then((r) => r.text()).then((text) => process.stdout.write(text))`,
+            ],
             permissionRequest: { network: true, justification: "查询 vitest 版本用来补测试。" },
           }),
         );
