@@ -117,11 +117,12 @@ def main():
         value = json.loads(path.read_text())
         if value.get("kind") == "verification-report":
             reports.append(value)
+    identity = evidence.current_identity(plan)
     failures = validate(
         plan,
         reports,
         scope.WORKFLOW_GROUPS[args.workflow],
-        (os.environ.get("GITHUB_RUN_ID"), os.environ.get("GITHUB_RUN_ATTEMPT")),
+        (identity["ciRunId"], identity["ciAttempt"]),
     )
     failures += validate_jobs(plan, args.workflow, json.loads(os.environ.get("NEEDS_JSON", "{}")))
     try:
@@ -129,6 +130,7 @@ def main():
             plan,
             [result for report in reports for result in report.get("results", [])],
             "invalidated" if failures else None,
+            identity,
         )
     except ValueError as error:
         failures.append(str(error))

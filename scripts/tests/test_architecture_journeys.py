@@ -3,6 +3,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+from io import StringIO
 from pathlib import Path
 import tempfile
 import unittest
@@ -406,6 +407,53 @@ class ArchitectureAndJourneys(unittest.TestCase):
             )
             self.assertEqual(report["results"][0]["status"], "failed")
             self.assertEqual(report["evidence"]["journeys"][0]["status"], "failed")
+
+    def test_final_gate_combines_business_facts_only_from_its_own_attempt(self):
+        plan, envelope, _, detail = self.fact_fixture()
+        plan["items"] = plan["items"][:2]
+        for item in plan["items"]:
+            item["group"] = "smoke"
+        jobs = {name: {"result": "success"} for name in scope.JOB_GROUPS["gui"]}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for index, item in enumerate(plan["items"]):
+                row = {"id": item["id"], "status": "passed", "exitCode": 0}
+                if index == 0:
+                    row["journeyEvidence"] = {
+                        **detail,
+                        "artifacts": {"observation.json": "a" * 64, "cleanup.json": "b" * 64},
+                    }
+                report = {**envelope, "kind": "verification-report", "results": [row]}
+                report["evidence"] = evidence.build(plan, report)
+                path = root / str(index)
+                path.mkdir()
+                (path / "report.json").write_text(json.dumps(report))
+            for attempt in ("2", "3"):
+                env = {
+                    "NEEDS_JSON": json.dumps(jobs),
+                    "GITHUB_RUN_ID": "run",
+                    "GITHUB_RUN_ATTEMPT": attempt,
+                }
+                with (
+                    self.subTest(attempt=attempt),
+                    patch.dict("os.environ", env),
+                    patch.object(gate.scope, "repository_plan", return_value=plan),
+                    patch.object(
+                        sys, "argv", ["ci-gate", "--workflow", "gui", "--reports", str(root)]
+                    ),
+                    patch("sys.stdout", new_callable=StringIO) as output,
+                ):
+                    code = gate.main()
+                    result = json.loads(output.getvalue())
+                    if attempt == "2":
+                        self.assertEqual(code, 0, result["failures"])
+                        self.assertEqual(result["journeys"][0]["status"], "passed")
+                        self.assertEqual(result["journeys"][0]["facts"], detail["facts"])
+                    else:
+                        self.assertEqual(code, 1)
+                        self.assertIn(
+                            "report is from another CI run or attempt", result["failures"]
+                        )
 
     def test_fact_report_rejects_missing_duplicate_stale_and_false_success(self):
         _plan, report, contract, detail = self.fact_fixture()
