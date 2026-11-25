@@ -28,6 +28,48 @@ function fixture() {
   return { model, previous, items, event, turn };
 }
 
+test("tool replacements and removals survive a late snapshot of the old catalog", () => {
+  const model = new CoreTaskModel();
+  const definition = (name) => ({ name, description: name, inputSchema: { type: "object" } });
+  const source = { sourceTurnId: "first", configurationRevision: 1 };
+  const original = {
+    id: "thread",
+    turns: [
+      {
+        id: "first",
+        status: "completed",
+        items: [{ id: "call", type: "dynamicToolCall", tool: "old" }],
+      },
+    ],
+    dynamicTools: [definition("old")],
+    desktop: { promptPrediction: { ...source, status: "ready", text: "Use the old tool" } },
+  };
+  model.replace(original);
+  const update = (revision, tools) =>
+    model.event("areal/thread/tools/attached", {
+      threadId: original.id,
+      toolsetRevision: revision,
+      dynamicTools: tools,
+    });
+  const next = [definition("new")];
+  update(1, next);
+  const unavailable = { ...source, status: "unavailable" };
+  model.event("areal/thread/predictionChanged", {
+    threadId: original.id,
+    promptPrediction: unavailable,
+  });
+  model.replace(original);
+  const current = () => model.getSnapshot().threads.thread;
+  assert.deepEqual(current().dynamicTools, next);
+  assert.deepEqual(current().desktop.promptPrediction, unavailable);
+  update(2, []);
+  update(1, next);
+  model.replace(original);
+  assert.equal(current().toolsetRevision, 2);
+  assert.deepEqual(current().dynamicTools, []);
+  assert.deepEqual(current().turns, original.turns);
+});
+
 for (const status of ["completed", "interrupted", "failed"]) {
   test(`compacted ${status} turn preserves user, steer, attachments and earlier agent messages`, () => {
     const { model, previous, items, event, turn } = fixture();

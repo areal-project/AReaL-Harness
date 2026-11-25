@@ -51,6 +51,7 @@ GUI 默认开启，可在“预测下一条提示词”设置中关闭。关闭�
 | `thread/list` | `{cursor?,limit?}`; 1–100, default 30 |
 | `thread/read` | `{threadId,includeTurns?}` |
 | `thread/resume` | `{threadId,mode?:"bounded",maxBytes?}` |
+| `areal/thread/tools/set` | `{threadId,expectedToolsetRevision,dynamicTools}`；当前工具宿主替换空闲普通 Thread 的完整工具列表 |
 | `turn/start` | `{threadId,input}` |
 | `turn/steer` | `{threadId,expectedTurnId,input}` |
 | `areal/thread/prediction` | `{threadId,sourceTurnId,operation:"request"|"cancel"}` |
@@ -270,7 +271,7 @@ JSONL 的 30 天期限按文件最后修改时间计算，不逐条检查行的�
 <a id="dynamic-tools"></a>
 ## 动态工具回调
 
-thread/start.dynamicTools 为 `{name,description,inputSchema,outputSchema?}[]`，定义持久化且生命周期内不可变。Core 保存 intent 后向注册连接请求：
+`thread/start` 和 `areal/thread/start` 的 `dynamicTools` 是初始的 `{name,description,inputSchema,outputSchema?}[]`。Core 持久化定义；工具宿主可在两轮对话之间更新它们。Core 保存调用意图后向绑定连接请求：
 
 ```json
 {"id":"REQUEST_ID","method":"item/tool/call","params":{"threadId":"THREAD_ID","turnId":"TURN_ID","callId":"CALL_ID","tool":"lookup","arguments":{"key":"answer"}}}
@@ -285,6 +286,16 @@ thread/start.dynamicTools 为 `{name,description,inputSchema,outputSchema?}[]`�
 success/contentItems 必填；结构化成功结果按 outputSchema 校验，产品媒体扩展见[桌面 API](desktop.md)。success=false 为确定失败；RPC error、无效/超限结果、断连、超时或取消记 UNKNOWN。Core 不重试。areal/tool/cancelled 只是尽力通知，不保证回滚。
 
 恢复的定义没有宿主绑定；旧宿主断开且 Thread 空闲时，由实现回调的客户端 resume 接管。执行宿主断连停止对应 Turn；TUI/Web 对任意回调返回 method-not-found。注册/预算见[工具指南](../guides/tools.md)。
+
+**在同一 Thread 切换业务工具。** 先检查 `areal/capabilities.methods` 是否包含 `areal/thread/tools/set`。等上一轮结束，从 `thread/read` 取 `toolsetRevision`（缺省为 0）和 `dynamicTools`（缺省为空）；如果网关重连，先用 `thread/resume` 重绑并取同一份信息。列表不同时提交完整的新列表，确认成功且新工具回调已就绪后再发下一轮。例如，把旧工具换成 `lookup`：
+
+```json
+{"id":7,"method":"areal/thread/tools/set","params":{"threadId":"THREAD_ID","expectedToolsetRevision":0,"dynamicTools":[{"name":"lookup","description":"查询记录","inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}]}}
+```
+
+成功返回 `{threadId,toolsetRevision}`。同名可更改描述和输入/输出 schema，空数组清除业务工具。列表内容或顺序变化才递增版本，并沿用 `areal/thread/tools/attached` 向订阅者发送**完整列表**。历史工具条目、会话配置和既有 `UNKNOWN` 的检查要求不变，新定义从下一轮起生效。桌面浏览器 `browser_v1` 只能通过固定包接入，替换业务工具时须原样保留。已退役、会被 Core 在恢复时移除的桌面工具定义也不能注册。
+
+调用方须同时有 `interact`、`tools` 和目标 Thread 的访问权，并持有当前工具宿主连接。仅当旧表为空且无在线宿主时，首次添加可直接认领。执行中、压缩中、有排队任务、已归档或由 Task/子会话持有的 Thread 不接受替换。版本过期或宿主冲突返回 `-32009`；无效 schema 或工具重名会拒绝整份更新。`thread/resume` 本身不改工具。响应丢失或发生冲突时，先用 `thread/read` 核对当前版本和完整定义，再决定是否发送新的更新；不要盲目覆盖。工具宿主仍须按实际授权检查每次回调。
 
 ## 原生文件工具权限
 

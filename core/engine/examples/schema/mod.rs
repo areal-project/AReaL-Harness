@@ -588,6 +588,7 @@ pub fn projections() -> (Value, Value) {
         &["thread/tools/attach"],
         object(json!({"threadId":string,"toolsetRevision":number,"bundleId":string})),
     );
+    insert(&["thread/tools/set"], schema::<ThreadToolsetVersion>());
     responses.insert("thread/read".into(), object(json!({"thread":thread})));
     for name in ["thread/start", "thread/resume"] {
         responses.insert(name.into(),object(json!({"thread":thread,"cwd":string,"model":string,"modelProvider":string,"approvalPolicy":string,"permissionMode":{"enum":["YOLO","ASK_PERMISSIONS"]},"approvalsReviewer":string,"sandbox":any_object,"reasoningEffort":nullable(string.clone())})));

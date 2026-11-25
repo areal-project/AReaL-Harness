@@ -112,7 +112,7 @@
 
 工具使用固定、版本化的 Browser Dispatcher 和运行时能力说明，精确输入按对应操作 schema 验证；不允许把未知参数当脚本执行。读/动作两条路径都检查实际资源与控制代次。Core 对动作先记录意图、请求宿主只读 prepare、保存实际计划并审批，然后才派发 execute。宿主在派发前再次验证授权与目标；用户输入直接走人工控制路径，不伪装成 Agent 调用。
 
-新 Thread 在创建时登记 Browser Dispatcher。旧 Thread 的工具表不能直接改写；使用限定的、空闲时追加机制，保留已存在定义及历史，详见[ADR-0007](../adr/0007-browser-tool-compatibility.md)。版本不支持时禁用入口而不是复制会话或修改存储文件。
+新 Thread 在创建时登记 Browser Dispatcher；已有 Thread 只通过[空闲时追加固定包](../adr/0007-browser-tool-compatibility.md)接入浏览器，保留原有工具和历史。[业务工具更新](../api/core.md#dynamic-tools)也必须保留已绑定的 Browser Dispatcher。版本不支持时禁用入口而不是复制会话或修改存储文件。
 
 确认失败、未执行、已派发不明分别映射现有 Core 语义。既有 UNKNOWN 检查确认只增加核对记录，不改变原执行结果。人工“继续”是新授权和显式续轮，不是隐式重试。
 

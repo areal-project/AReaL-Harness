@@ -197,6 +197,7 @@ fn desktop_schema() -> Value {
     add!("areal/subscription/remove", RemoveSubscriptions);
     add!("areal/thread/start", ThreadStart);
     add!("areal/thread/tools/attach", AttachBrowserTools);
+    add!("areal/thread/tools/set", SetThreadTools);
     add!("areal/thread/observe", ObserveThread);
     add!("areal/thread/configure", ConfigureThread);
     add!("areal/turn/start", TurnStart);

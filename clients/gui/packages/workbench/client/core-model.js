@@ -39,12 +39,19 @@ export class CoreTaskModel {
   /** @param {CoreThread} thread @param {{queue?:CoreQueue,interactions?:CoreInteractions}} [metadata] */
   replace(thread, { queue, interactions } = {}) {
     const old = this.state.threads[thread.id];
-    // A snapshot requested before an attachment may arrive after its committed event.
+    // 换表前发出的快照可能晚到，不能恢复已撤下的工具或提示词建议。
     const currentRevision = old?.toolsetRevision ?? 0;
     const incomingRevision = thread.toolsetRevision ?? 0;
     const value =
       currentRevision > incomingRevision
-        ? { ...thread, dynamicTools: old.dynamicTools, toolsetRevision: currentRevision }
+        ? {
+            ...thread,
+            dynamicTools: old.dynamicTools,
+            toolsetRevision: currentRevision,
+            ...(thread.desktop && {
+              desktop: { ...thread.desktop, promptPrediction: old.desktop?.promptPrediction },
+            }),
+          }
         : thread;
     this.publish({
       threads: { ...this.state.threads, [thread.id]: value },
