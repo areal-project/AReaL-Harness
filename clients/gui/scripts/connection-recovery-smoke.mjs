@@ -132,6 +132,17 @@ async function projectStatus(projectId) {
   assert.ok(project, "Original project remains registered");
   return snapshotProject(project);
 }
+async function scheduleContext(desktopPage, projectId) {
+  const result = await fixtureWorkbench(desktopPage, "manage.read", {
+    operation: "taskScheduleContext",
+    projectId,
+    timeZone: "UTC",
+  }).catch((error) => {
+    if (!String(error.message).includes("scheduleHostUnavailable")) throw error;
+    return null;
+  });
+  return Number.isFinite(result?.coreNow) && { coreNow: result.coreNow };
+}
 function traceSocket(socket) {
   const server = socket.connectToServer();
   const pair = { socket, server, identity: null, closed: false };
@@ -893,17 +904,7 @@ try {
     .innerText();
   if (explorationMode) {
     const scheduleReady = await until(
-      async () => {
-        const result = await fixtureWorkbench(desktopPage, "manage.read", {
-          operation: "taskScheduleContext",
-          projectId: uiProjectId,
-          timeZone: "UTC",
-        }).catch((error) => {
-          if (!String(error.message).includes("scheduleHostUnavailable")) throw error;
-          return null;
-        });
-        return Number.isFinite(result?.coreNow) && { coreNow: result.coreNow };
-      },
+      () => scheduleContext(desktopPage, uiProjectId),
       "the original owner scheduling connection is ready before exploration",
       30000,
       undefined,
@@ -920,10 +921,47 @@ try {
     const draft = "连接恢复后继续这条草稿";
     await page.getByTestId("chat-input").first().fill(draft);
     await sendReady(page);
+    const originalConnection = currentPair().identity;
     const beforeIdle = await until(async () => {
       const state = await projectStatus(projectId);
-      return state.state === "ready" && state.serviceGeneration && state;
-    }, "Idle-recovery prerequisite: the UI-triggered activation must reach authoritative Host ready with a Core generation before reclamation");
+      if (state.state !== "ready" || !state.serviceGeneration) return false;
+      // Host 可以先报告 Core 就绪；尚未结算的原唤醒能接管 ifIdle 停止并再次启动项目。
+      const request = wire.findLast(
+        (entry) =>
+          entry.method === "project.activate" &&
+          entry.connectionId === originalConnection.connectionId &&
+          entry.projectId === projectId,
+      );
+      const reply = request?.activation;
+      if (request?.errorCode)
+        throw new Error(`Original project activation failed: ${request.errorCode}`);
+      if (!reply) return false;
+      assert.equal(reply.projectId, projectId);
+      if (reply.state === "ready") {
+        assert.equal(reply.serviceGeneration, state.serviceGeneration);
+      } else {
+        assert.equal(reply.state, "pending");
+        if (!reply.activationId) return false;
+        const { operation } = await host.operation(reply.activationId);
+        assert.notEqual(operation?.state, "blocked", "Original project activation was blocked");
+        if (operation?.state !== "completed") return false;
+        assert.equal(operation.method, "project.ensure");
+        assert.equal(operation.requestId, reply.activationId);
+        assert.equal(operation.projectId, projectId);
+        assert.equal(operation.result?.service?.generation, state.serviceGeneration);
+        if (!(await scheduleContext(desktopPage, uiProjectId))) return false;
+        const confirmed = await projectStatus(projectId);
+        if (confirmed.state !== "ready" || confirmed.serviceGeneration !== state.serviceGeneration)
+          return false;
+      }
+      return {
+        ...state,
+        connectionId: request.connectionId,
+        requestId: request.id,
+        activation: reply,
+      };
+    }, "The original browser activation settles on the ready Core generation before idle reclamation");
+    await persist("idle-activation-prerequisite.json", beforeIdle);
     const idleRequestId = randomUUID();
     const idle = await host.stopProject(
       idleRequestId,
